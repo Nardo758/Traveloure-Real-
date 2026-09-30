@@ -8547,7 +8547,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
 
   // ==================== AFFILIATE PARTNER MANAGEMENT ====================
   
-  const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
+  const { affiliateScraperService, PageExtractNotPermittedError } = await import("../services/affiliate-scraper.service");
 
   // Phase 4 affiliate read-gate helper: is the (optionally-authenticated) requester an admin?
   // Non-blocking — public affiliate reads pass approvedOnly = !isAdmin so admins see the full
@@ -8666,7 +8666,13 @@ router.patch("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, r
     try {
       // Phase 4: approval is set ONLY via the admin approve/reject endpoints — strip any
       // approval fields a client tries to mass-assign through this general update path (D1a).
-      const { approvalStatus, reviewedAt, reviewedBy, rejectionReason, submittedAt, ...safeBody } = req.body ?? {};
+      // Same strip for the page-extract terms gate (ledger `2026-09-30-affiliate-extract-compliant`):
+      // its ONE writer is POST /api/admin/affiliate/partners/:id/page-extract below.
+      const {
+        approvalStatus, reviewedAt, reviewedBy, rejectionReason, submittedAt,
+        pageExtractPermitted, termsCheckedAt,
+        ...safeBody
+      } = req.body ?? {};
       const partner = await affiliateScraperService.updatePartner(req.params.id, safeBody);
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
@@ -8691,13 +8697,41 @@ router.delete("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, 
     }
   });
 
-  // Trigger partner website scrape
+  // Record, after reading the partner program's terms, whether page extraction is allowed (ledger
+  // `2026-09-30-affiliate-extract-compliant`). The ONE writer of page_extract_permitted and
+  // terms_checked_at; `.strict()` so the date is never client-supplied (§19) — it is the moment the
+  // admin answered. Under §2's blanket /api/admin guard.
+  const pageExtractPermissionBody = z.object({ permitted: z.boolean() }).strict();
+
+router.post("/api/admin/affiliate/partners/:id/page-extract", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = pageExtractPermissionBody.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Body must be exactly { permitted: boolean }" });
+      }
+      const partner = await affiliateScraperService.setPageExtractPermission(req.params.id, parsed.data.permitted);
+      if (!partner) {
+        return res.status(404).json({ message: "Partner not found" });
+      }
+      res.json({ partner });
+    } catch (error: any) {
+      console.error("Page-extract permission error:", error);
+      res.status(500).json({ message: "Failed to record the page-extract permission" });
+    }
+  });
+
+  // Trigger partner website scrape (page extraction — runs only where the partner's terms allow it)
 
 router.post("/api/admin/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
     try {
-      const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
+      const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id, getUserId(req) ?? null);
       res.json(result);
     } catch (error: any) {
+      // Terms gate (ledger `2026-09-30-affiliate-extract-compliant`): refused before any job row or
+      // outbound request. 409 — the partner's recorded state forbids it, not a server fault.
+      if (error instanceof PageExtractNotPermittedError) {
+        return res.status(409).json({ message: error.message, reason: error.reason });
+      }
       // SSRF guard refusal (audit §2, ledger 2026-09-02-outbound-fetch-egress): the target
       // was refused BEFORE any request left the server. That is a bad partner row, not a
       // server fault — 400 with the guard's plain reason, which never carries a resolved

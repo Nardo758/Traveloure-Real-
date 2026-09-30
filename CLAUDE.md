@@ -2288,6 +2288,24 @@ This document captures architectural decisions to maintain consistency across co
     **asks** (`409 anchor_needed`, E6 `anchor_asked`) and "Draft without a hotel" is the traveler's own
     answer (`withoutAnchor`, E6 `draftBasis: none_asked`), never sent on their behalf.
 
+58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
+    SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
+    ledger `2026-09-30-affiliate-extract-compliant`; migration 334, HELD FOR RULING).** The admin
+    "Scrape Website" extraction (`affiliate-scraper.service.ts`) runs on the general Anthropic client
+    (`claudeService.completeJson`, cost-tracked to the admin, sourceType `ai_affiliate_extract`) and
+    ONLY for a partner with `affiliate_partners.page_extract_permitted = TRUE` AND `terms_checked_at`
+    set — ONE predicate, `pageExtractAllowed` (`shared/affiliate-extract.ts`), read by the server's
+    refusal (409 `page_extract_not_permitted`, before any job row or fetch) and the admin button alike.
+    NULL = never answered ⇒ OFF (no DB default, so "not answered" and "answered no" stay different
+    facts). The flag and its date have ONE writer, `POST /api/admin/affiliate/partners/:id/page-extract`
+    (`.strict()` `{ permitted }`; the date is the moment of the answer, never a body field), and are
+    stripped from the general partner create/update paths (§19). The own-domain egress limit, the
+    robots.txt check and the honest user agent stay. `affiliate_products.source`
+    (`travelpayouts_import` | `partner_page_extract` | `manual`, app-enforced, no CHECK) is stamped on
+    INSERT by every writer; a pre-334 row keeps NULL and is not backfilled (§13), and an UPDATE never
+    rewrites it. `manual` is declared for the value set; no writer produces it today. All three columns
+    additive nullable, no default, no index, declared in `shared/schema.ts`.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

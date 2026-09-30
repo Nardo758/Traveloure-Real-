@@ -58,6 +58,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import type { AffiliatePartner, AffiliateProduct } from "@shared/schema";
+import { pageExtractAllowed } from "@shared/affiliate-extract";
 
 interface PartnerFormData {
   name: string;
@@ -195,6 +196,24 @@ export default function AdminAffiliatePartners() {
     onError: (error: any) => {
       toast({ title: "Scraping Failed", description: error.message, variant: "destructive" });
     },
+  });
+
+  // Page-extract terms gate (ledger `2026-09-30-affiliate-extract-compliant`): an admin records,
+  // after reading the partner program's terms, whether page extraction is allowed. The server stamps
+  // the date; the Scrape button reads the same `pageExtractAllowed` predicate the server enforces.
+  const pageExtractMutation = useMutation({
+    mutationFn: async ({ partnerId, permitted }: { partnerId: string; permitted: boolean }) =>
+      apiRequest("POST", `/api/admin/affiliate/partners/${partnerId}/page-extract`, { permitted }),
+    onSuccess: (_data, { permitted }) => {
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
+      toast({
+        title: permitted ? "Page extraction allowed" : "Page extraction off",
+        description: permitted
+          ? "Recorded that this partner's program terms allow page extraction."
+          : "Recorded that this partner's program terms do not allow page extraction.",
+      });
+    },
+    onError: (error: any) => toast({ title: "Could not record", description: error.message, variant: "destructive" }),
   });
 
   // Phase 4: partner-level approval — approve/reject the whole partner (its products inherit).
@@ -493,11 +512,36 @@ export default function AdminAffiliatePartners() {
                                 <BarChart3 className="h-4 w-4" />
                               </Button>
                               <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8"
+                                onClick={() => {
+                                  const next = !pageExtractAllowed(partner);
+                                  const question = next
+                                    ? `Record that ${partner.name}'s partner program terms allow page extraction? Only confirm after reading them.`
+                                    : `Record that ${partner.name}'s partner program terms do not allow page extraction?`;
+                                  if (confirm(question)) pageExtractMutation.mutate({ partnerId: partner.id, permitted: next });
+                                }}
+                                disabled={pageExtractMutation.isPending}
+                                title={
+                                  partner.termsCheckedAt
+                                    ? `Terms checked ${new Date(partner.termsCheckedAt).toLocaleDateString()}`
+                                    : "Terms not checked"
+                                }
+                                data-testid={`button-page-extract-${partner.id}`}
+                              >
+                                {pageExtractAllowed(partner) ? "Extraction: allowed" : "Extraction: off"}
+                              </Button>
+                              <Button
                                 size="icon"
                                 variant="ghost"
                                 onClick={() => scrapeMutation.mutate(partner.id)}
-                                disabled={scrapeMutation.isPending}
-                                title="Scrape Website"
+                                disabled={scrapeMutation.isPending || !pageExtractAllowed(partner)}
+                                title={
+                                  pageExtractAllowed(partner)
+                                    ? "Scrape Website"
+                                    : "Page extraction is off until this partner's program terms are recorded as allowing it"
+                                }
                                 data-testid={`button-scrape-${partner.id}`}
                               >
                                 {scrapeMutation.isPending ? (

@@ -621,6 +621,10 @@ jobs:
       # the version the Terms page DISPLAYS — both read shared/legal-versions.ts, never a literal.
       - name: Terms version record == displayed pin
         run: npx tsx --test shared/__tests__/legal-versions.test.ts
+      # 2026-09-30-affiliate-extract-compliant: page extraction runs only for a partner whose program
+      # terms were recorded as allowing it, and every affiliate_products insert stamps its source.
+      - name: Affiliate page-extract gate + provenance pin
+        run: npx tsx --test shared/__tests__/affiliate-extract.test.ts
       # 2026-09-11-offering-commerce-resolver (lane OC-A2): the offering commerce contract is the
       # FIFTH classifier over `provider_services`, and it has no production caller in its own lane —
       # so nothing but this suite can say it is wrong, while OC-A4 refuses activations on it, OC-B1
