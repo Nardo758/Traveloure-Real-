@@ -29,8 +29,36 @@ artifact it names was ratified **before** build. A step never lands a surface wi
 | **A5 — free draft around the open set** | The free first draft builds outward from the best plan-fit option and holds the stay slot open (R126); with no anchor it asks. **Plus the content sourcing brief's §10 A5 items** (`place_facts`, `content_sources`, `PlacesAdapter`, origin order through the upsell engine, `isPublishable`). | B5 | §4 (fixme lifted) | E6 free draft run | none (existing draft surface) | A3, A4 · *Status Sep 29, 2026:* BUILT ahead of the Part 6 sessions under R211 by the decision-maker's dispatch (`2026-09-29-a5-draft-open-set`) — the sessions test the anchor and compare screens, not the draft. Migration 333 approved. **A6 holds for the sessions.** |
 | **A6 — gaps and suggestions (Trips)** | Completeness with "Not needed" (`plan_gap_dismissals`), day jump, move-to-day, and slip suggestions for Trips' REQ categories. Merges map steps 2 and 5 for this group only. | B4, S3, S4 | §5 | E7 gap shown/filled, E8 suggestion shown/added | **Gaps row + one suggestion card** | A5; brief phase 0 template-key mapping and phase 1 engine — **for Trips categories only** |
 | **A7 — the paid run, one version per hotel** | §M5 / amended F2: with an open set each version anchors on one option; earned badges only (R128); `POST …/adopt-stops`; each version names its `optionId`. The paid preview and fee are shown before the charge (LD 41 (d)); the **Trip Pass waiver** reads on the preview when a pass covers the run. | S7, A1 | §6 (fixme lifted) | E9 run purchased, E10 version adopted | **Review board with one column per hotel** | A4, A5 |
-| **A8 — choose, finalize, book, cancel** | Choose rail; Finalize refuses while a set is open (R125); the slip's bookings section (S5) with the **service fee shown before checkout** (R144) and the Trip Pass waiver where it applies; one booking; one cancellation whose refund equals its preview (R166) and which reads "Refunded" (R145); **the chosen partner hotel goes through the booking-agent rail and reads "prepared, awaiting purchase" (LD 44 (e)) — assigned here by the decision-maker's dispatch of Sep 29, 2026**. | S1, B7, S5 | §7 (both fixmes lifted, including the partner-hotel booking-agent test) | E5 option chosen, E11 finalized, E12 booking created, E13 booking cancelled | **Finalize chooser + bookings section** | A7 |
+| **A8 — choose, finalize, book, cancel** | Choose rail; Finalize refuses while a set is open (R125); the slip's bookings section (S5) with the **service fee shown before checkout** (R144) and the Trip Pass waiver where it applies; one booking; one cancellation whose refund equals its preview (R166) and which reads "Refunded" (R145); **the chosen partner hotel goes through the booking-agent rail and reads "prepared, awaiting purchase" (LD 44 (e)) — assigned here by the decision-maker's dispatch of Sep 29, 2026**. **Plus the ONE travel-time service (ruled Sep 30, 2026 — see "A8 — the travel-time service" below; design only until A8 starts): Finalize computes the plan's legs through it, via `activate-transport`, from the plan's items.** | S1, B7, S5 | §7 (both fixmes lifted, including the partner-hotel booking-agent test); **plus the travel-time agreement test** — a finalized fixture plan's per-day leg total and plan-fit's per-day number for the chosen hotel agree within 25%, and a day that does not is NAMED in the failure | E5 option chosen, E11 finalized, E12 booking created, E13 booking cancelled | **Finalize chooser + bookings section** | A7 |
 | **A9 — run records and history** | Part 2 §N: insert-only run record tied to its payment, `itinerary_variants.run_id`, outcome rows; "Your optimized plans" on the slip and in the PDF. | A1 (history) | §8 (fixme lifted) | E9/E10 read back from the run record | **History list on the slip** | A7; §N ratified |
+
+### A8 — the travel-time service (ruled Sep 30, 2026; ledger `2026-09-30-a8-travel-time-service`; DESIGN ONLY until A8 starts)
+
+The decision-maker's ruling: "one travel-time service, ruled now, built in A8." Today three resolvers answer
+"how long from here to there?" and disagree by construction (Kyoto Station → Gion: ~21 min from the matrix or
+~34 est. in plan-fit, ~10–15 min driving in the legs, ~4 min in the transport-gap estimate). They collapse into
+ONE module with three tiers and ONE label:
+
+1. **Matrix** — a neighbourhood-centroid pair with a fresh `travel_matrix` row (A2, R216) answers from the matrix.
+2. **Google Routes** — an exact item-to-item leg, in the **traveler's chosen mode**, computed **at finalize**.
+3. **Straight-line** — when neither exists: distance at ONE configured speed per mode, **always labelled "est."**
+
+**One speeds table, in config.** The three walking speeds in code today (80 m/min in plan-fit's estimate,
+75 m/min elsewhere, 5 km/h in `itinerary-intelligence`) and the 5/25/40 km/h table all go; every straight-line
+answer reads the one table. **Switching a leg's mode recomputes it** (today the driving minutes are kept).
+
+**`activate-transport` is wired into Finalize.** Nothing calls it today, so no production plan has ever had
+legs. At A8 it runs at finalize, takes its stops from the **plan's items** (not the `generated_itineraries`
+JSON), and resolves every leg through the same module.
+
+**Acceptance (added to §7):** a finalized fixture plan's per-day leg total and plan-fit's per-day number for the
+chosen hotel agree within **25%**; where they do not, the test names the day. The §7 partner-hotel booking-agent
+test (above, assigned Sep 29) stays in the same step.
+
+Found by the pre-A8 read and folded into this ruling, not separately fixed: the leg resolver's recommended mode is
+hard-coded to driving with no alternatives and no fallback; multi-day transit passes never trigger; the two
+per-day numbers differ in measure (stop → next stop vs lodging → each stop) and in aggregation (one day's sum vs a
+located-weighted mean), which the 25% tolerance is ruled to absorb.
 
 **The ten travelers can start after A8.** A9 is the month-later view and can land while they are travelling; §8's
 today-passable half (Home axis, Trip Card, refunded label) holds without it.
