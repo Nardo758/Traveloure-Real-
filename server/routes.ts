@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import { activateTripTransport, getTripTransportLegs } from "./services/trip-transport-legs.service";
+import { travelTimeServiceEnabled } from "./config/travel-time.config";
 import { zodErrorBody } from "./utils/zod-error-body";
 import express from "express";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -13218,6 +13220,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .from(trips)
         .where(and(eq(trips.id, tripId), eq(trips.userId, userId)));
       if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+      // A8 (R228): behind the flag, activate-transport takes its stops from the PLAN'S ITEMS and
+      // resolves every leg through the ONE travel-time service (trip-scoped `proposed` legs, the
+      // same step Finalize runs). With the flag off, the variant path below is unchanged.
+      if (travelTimeServiceEnabled()) {
+        const result = await activateTripTransport(tripId);
+        const legs = await getTripTransportLegs(tripId, { includeProposed: true });
+        return res.json({ tripScoped: true, ...result, legs });
+      }
 
       const [genItinerary] = await db
         .select()

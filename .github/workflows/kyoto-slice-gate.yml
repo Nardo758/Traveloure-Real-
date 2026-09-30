@@ -119,6 +119,9 @@ jobs:
           # A production boot purges test accounts unless explicitly allowed. This DB is throwaway.
           ALLOW_TEST_ACCOUNTS: '1'
           E2E_AI_STUB: '1'
+          # A8 (R228): the ONE travel-time service, on only in this job — §7 A8 proves Finalize writes
+          # the plan's legs and that they agree with plan-fit. Off by default everywhere else (R211).
+          TRAVEL_TIME_SERVICE_ENABLED: '1'
           PORT: 5000
           # Plain-http loopback: a `secure` session cookie is never replayed. NEVER in production.
           SESSION_COOKIE_INSECURE: '1'

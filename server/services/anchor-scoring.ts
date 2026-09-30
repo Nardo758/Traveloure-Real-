@@ -24,6 +24,7 @@
  */
 
 import { haversineMeters, estWalkMinutes } from "@shared/geo";
+import { metersPerMinute } from "@shared/travel-speeds";
 
 export type AnchorType = "hotel" | "neighborhood" | "activity";
 
@@ -67,7 +68,7 @@ export interface AnchorScore {
 }
 
 /** ~15 min at the stated walking speed. A documented assumption, not a routed threshold. */
-export const WITHIN_WALK_METERS = 15 * 80; // 1,200 m
+export const WITHIN_WALK_METERS = 15 * metersPerMinute("walk"); // 1,200 m — the ONE speeds table (R228)
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);

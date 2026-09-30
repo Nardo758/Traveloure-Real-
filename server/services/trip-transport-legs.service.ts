@@ -33,9 +33,17 @@ import { CHAUFFEURED_MODES } from "@shared/trip-plan";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import {
   computeTransportLeg,
+  formatDistance,
   type ActivityLocation,
+  type TransportLegResult,
   type UserTransportPrefs,
 } from "./transport-leg-calculator";
+import { haversineMeters } from "@shared/geo";
+import { defaultLegMode, LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
+import type { ResolvedLeg } from "@shared/leg-resolution";
+import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
+import { WITHIN_WALK_METERS } from "./anchor-scoring";
+import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { getTravelerProfile, effectiveProfileToTransportPrefs } from "./traveler-profile.service";
 import { propagateActivitySchedule } from "./activity-schedule.service";
 
@@ -81,6 +89,88 @@ export interface TripLegGenerationResult {
   }>;
 }
 
+/**
+ * A leg resolved by the ONE travel-time service, in the engine's result shape. Its tier is recorded
+ * on the ONE alternative entry for its own mode (`reason`: "routes" | "matrix" | "est."), so a
+ * reader can label a straight-line leg "est." without a new column; cost is null — the service
+ * prices nothing, and no figure is invented.
+ */
+function legFromResolved(
+  from: ActivityLocation,
+  to: ActivityLocation,
+  dayNumber: number,
+  legOrder: number,
+  r: ResolvedLeg,
+): TransportLegResult {
+  return {
+    fromActivityId: from.id,
+    fromName: from.name,
+    fromLat: from.lat,
+    fromLng: from.lng,
+    toActivityId: to.id,
+    toName: to.name,
+    toLat: to.lat,
+    toLng: to.lng,
+    dayNumber,
+    legOrder,
+    distanceMeters: r.distanceMeters,
+    distanceDisplay: formatDistance(r.distanceMeters),
+    recommendedMode: LEG_MODE_STORED[r.mode],
+    estimatedDurationMinutes: r.minutes,
+    estimatedCostUsd: null,
+    alternativeModes: [resolvedAlternative(r)],
+    energyCost: 0,
+    routeProvider: r.basis === "routes" ? "google_routes" : r.basis === "matrix" ? "travel_time_matrix" : "straight_line_est",
+    routeRetrievedAt: new Date().toISOString(),
+  };
+}
+
+/** The ONE alternative entry a service-resolved leg carries — its own mode, its tier in `reason`. */
+export function resolvedAlternative(r: ResolvedLeg) {
+  return {
+    mode: LEG_MODE_STORED[r.mode],
+    durationMinutes: r.minutes,
+    costUsd: null,
+    energyCost: 0,
+    reason: r.label ?? r.basis,
+  };
+}
+
+/**
+ * A8 (R228): Finalize's transport step. The plan's ITEMS (never the `generated_itineraries` JSON)
+ * become trip-scoped `proposed` legs through the ONE travel-time service; the plan's times are not
+ * rewritten. Flag-gated by the caller.
+ */
+export async function activateTripTransport(tripId: string): Promise<TripLegGenerationResult> {
+  return generateTripTransportLegs(tripId, { via: "travel_time_service", propagateSchedule: false });
+}
+
+/**
+ * A8 (R228): switching a leg's mode RECOMPUTES it through the ONE service (today the driving minutes
+ * were kept because the engine's alternatives list is empty). Returns the updated figures, or null
+ * when the flag is off or the mode is not one of the four — the caller then keeps its old path.
+ */
+export async function recomputeLegForMode(
+  leg: { fromLat: number; fromLng: number; toLat: number; toLng: number; tripId?: string | null },
+  rawMode: string,
+  marketSlug?: string | null,
+): Promise<{ estimatedDurationMinutes: number; distanceMeters: number; distanceDisplay: string; estimatedCostUsd: null; energyCost: 0; alternativeModes: ReturnType<typeof resolvedAlternative>[] } | null> {
+  if (!travelTimeServiceEnabled()) return null;
+  const mode = normalizeLegMode(rawMode);
+  if (!mode) return null;
+  const market = marketSlug !== undefined ? marketSlug : leg.tripId ? await tripMarketSlug(leg.tripId) : null;
+  const resolve = await loadLegResolver(market, { exact: true });
+  const r = await resolve({ lat: leg.fromLat, lng: leg.fromLng }, { lat: leg.toLat, lng: leg.toLng }, mode);
+  return {
+    estimatedDurationMinutes: r.minutes,
+    distanceMeters: r.distanceMeters,
+    distanceDisplay: formatDistance(r.distanceMeters),
+    estimatedCostUsd: null,
+    energyCost: 0,
+    alternativeModes: [resolvedAlternative(r)],
+  };
+}
+
 /** A real coordinate, or null. Rejects null/NaN/out-of-range and the (0,0) "Null Island" sentinel. */
 function realCoord(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
   if (lat == null || lng == null) return null;
@@ -107,10 +197,24 @@ function pairKey(dayNumber: number, fromId: string | null, toId: string | null):
  * never shadow a confirmed leg with a duplicate machine proposal). Variant-scoped legs on the same
  * trip are invisible to this function.
  */
-export async function generateTripTransportLegs(tripId: string): Promise<TripLegGenerationResult> {
+export async function generateTripTransportLegs(
+  tripId: string,
+  opts: {
+    /**
+     * A8 (R228): "travel_time_service" resolves every leg through the ONE travel-time module
+     * (Routes at this exact tier when configured, else the matrix, else the labelled estimate) in
+     * the default mode `defaultLegMode` picks. Omitted = the existing driving engine, unchanged.
+     */
+    via?: "engine" | "travel_time_service";
+    /** False = write the legs only; never re-time the plan's items (Finalize's call — the plan is frozen). */
+    propagateSchedule?: boolean;
+  } = {},
+): Promise<TripLegGenerationResult> {
   const trip = await storage.getTrip(tripId);
   if (!trip) throw new Error(`Trip ${tripId} not found`);
   const destination = trip.destination || "";
+  const viaService = opts.via === "travel_time_service";
+  const resolver = viaService ? await loadLegResolver(trip.marketSlug ?? null, { exact: true }) : null;
 
   // WP-A (docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md): the trip owner's traveler profile
   // modulates MODE CHOICE only (prioritize/accessibility/budgetTier — the existing
@@ -205,7 +309,19 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
         order: i + 1,
       };
 
-      const leg = await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+      const leg = resolver
+        ? legFromResolved(
+            fromPoint,
+            toPoint,
+            dayNumber,
+            i + 1,
+            await resolver(
+              fromCoord,
+              toCoord,
+              defaultLegMode(haversineMeters(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng), WITHIN_WALK_METERS),
+            ),
+          )
+        : await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
       if (!leg) {
         skipped.push({
           dayNumber,
@@ -256,6 +372,10 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
       await tx.insert(transportLegs).values(rows);
     }
   });
+
+  if (opts.propagateSchedule === false) {
+    return { created: rows.length, keptConfirmed, replacedProposed: staleProposedIds.length, skipped, scheduleUnresolved: [] };
+  }
 
   const scheduleLegs = [
     ...existing.filter((leg) => leg.proposalStatus === "confirmed"),
@@ -375,7 +495,12 @@ export async function updateTripTransportLeg(
 
   const updates: Record<string, any> = { updatedAt: new Date() };
 
-  if (patch.userSelectedMode !== undefined) {
+  const recomputed =
+    patch.userSelectedMode !== undefined ? await recomputeLegForMode(leg, patch.userSelectedMode) : null;
+  if (recomputed) {
+    updates.userSelectedMode = patch.userSelectedMode;
+    Object.assign(updates, recomputed);
+  } else if (patch.userSelectedMode !== undefined) {
     updates.userSelectedMode = patch.userSelectedMode;
     const alt = ((leg.alternativeModes as any[]) || []).find(
       (a: any) => a?.mode === patch.userSelectedMode,

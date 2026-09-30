@@ -71,6 +71,8 @@
  * failure never fails the transition: the routing status is the source of truth, the cart is
  * the derived view, and the reconciler is re-runnable.
  */
+import { activateTripTransport } from "../services/trip-transport-legs.service";
+import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
@@ -561,6 +563,18 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
       }
     }
 
+    // A8 (R228): behind the flag, Finalize runs activate-transport — the plan's items become
+    // trip-scoped `proposed` legs through the ONE travel-time service. Best-effort after the
+    // commit (§15b): a leg failure never turns a successful finalize into an error.
+    let transportLegsCreated: number | undefined;
+    if (travelTimeServiceEnabled()) {
+      try {
+        transportLegsCreated = (await activateTripTransport(tripId)).created;
+      } catch (err) {
+        logger.error({ err, tripId }, "activate-transport after finalize failed (non-fatal)");
+      }
+    }
+
     // Staged-items warning surface (R-F: WARN, never block). Read after the commit — this trip's
     // own items, no cross-trip leak.
     const [stagedRow] = await db
@@ -573,6 +587,7 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
       finalizedAt: String(result.finalizedAt),
       stagedCount: Number(stagedRow?.n ?? 0),
       finalVersion: result.version,
+      ...(transportLegsCreated !== undefined ? { transportLegsCreated } : {}),
       finalCreated: result.finalCreated,
     });
   } catch (err) {

@@ -5,6 +5,7 @@ import {
   type InsertItineraryItem
 } from "@shared/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
+import { normalizeLegMode, TRAVEL_SPEEDS_KMH } from "@shared/travel-speeds";
 import {
   createCircuitBreaker,
   aiLogger,
@@ -280,14 +281,9 @@ export class ItineraryIntelligenceService {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = R * c;
 
-    const speeds = {
-      walking: 5,
-      cycling: 15,
-      transit: 25,
-      driving: 40,
-    };
-
-    const durationMinutes = Math.round((distanceKm / speeds[mode]) * 60);
+    // The ONE speeds table (shared/travel-speeds.ts, R228) — no local copy.
+    const legMode = normalizeLegMode(mode) ?? "drive";
+    const durationMinutes = Math.round((distanceKm / TRAVEL_SPEEDS_KMH[legMode]) * 60);
 
     return {
       from: { name: "", lat: fromLat, lng: fromLng },

@@ -14,6 +14,7 @@ import { transportBookingOptions, transportLegs, itineraryVariants, providerServ
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts/travelpayouts-client";
 import { buildPartnerizeTrackingLink } from "./partnerize/partnerize-client";
+import { metersPerMinute } from "@shared/travel-speeds";
 
 export interface TransportBookingOption {
   transportLegId?: string;
@@ -162,7 +163,7 @@ export async function populateBookingOptionsForLeg(
 
   // 4. WALKING (if reasonable distance)
   if (leg.distanceMeters < 3000) {
-    const walkMinutes = Math.ceil(leg.distanceMeters / 75); // ~75m/min walking pace
+    const walkMinutes = Math.ceil(leg.distanceMeters / metersPerMinute("walk")); // the ONE speeds table (R228)
     options.push({
       transportLegId: legId,
       bookingType: "info_only",
