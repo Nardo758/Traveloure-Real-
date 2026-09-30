@@ -27,12 +27,15 @@ import { pageExtractAllowed } from "@shared/affiliate-extract";
  * fetch — nothing leaves the server for a partner nobody has cleared.
  */
 export class PageExtractNotPermittedError extends Error {
-  readonly reason = "page_extract_not_permitted";
-  constructor(partnerName: string) {
+  readonly reason: "page_extract_not_permitted" | "page_extract_disabled";
+  constructor(partnerName: string, platformDisabled = false) {
     super(
-      `Page extraction is not permitted for ${partnerName}: an admin must record, after reading the ` +
-        "partner program's terms, that page extraction is allowed.",
+      platformDisabled
+        ? "Partner page extraction is switched off on this platform (AFFILIATE_PAGE_EXTRACT_ENABLED is not 1)."
+        : `Page extraction is not permitted for ${partnerName}: an admin must record, after reading the ` +
+            "partner program's terms, that page extraction is allowed.",
     );
+    this.reason = platformDisabled ? "page_extract_disabled" : "page_extract_not_permitted";
     this.name = "PageExtractNotPermittedError";
   }
 }
@@ -223,6 +226,10 @@ class AffiliateScraperService {
     }
     // The terms gate comes FIRST: no job row, no robots.txt fetch and no page fetch for a partner
     // whose program has not been recorded as allowing page extraction (default off).
+    // Platform kill-switch (default OFF; only the literal "1" enables) — checked before the terms.
+    if (process.env.AFFILIATE_PAGE_EXTRACT_ENABLED !== "1") {
+      throw new PageExtractNotPermittedError(partner.name, true);
+    }
     if (!pageExtractAllowed(partner)) {
       throw new PageExtractNotPermittedError(partner.name);
     }
@@ -487,9 +494,10 @@ ${truncatedHtml}`;
       });
       const products = (parsed as any).products || (parsed as any).items || (parsed as any).listings;
 
+      // No products array is a FAILED extraction, never "the page lists nothing" (§13): the job is
+      // recorded `failed` with this message instead of `completed` with 0 products.
       if (!Array.isArray(products)) {
-        console.warn("AI response was not an array, returning empty");
-        return [];
+        throw new Error("the model's answer carried no products array");
       }
 
       return products.filter((p: any) => p.name && p.productUrl).map((p: any) => ({
