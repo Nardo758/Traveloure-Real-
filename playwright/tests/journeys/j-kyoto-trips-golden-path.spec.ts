@@ -235,6 +235,9 @@ test.describe("1 · entry and occasion", () => {
     await expect(testid(page, "input-etp-start-date")).toHaveValue("");
     await testid(page, "input-etp-start-date").fill(`${year}-11-11`);
     await testid(page, "input-etp-end-date").fill(`${year}-11-15`);
+    await walkTo("input-plan-adults");
+    await expect(testid(page, "input-plan-adults"), "no party is carried from the wedding").toHaveValue("");
+    await testid(page, "input-plan-adults").fill("3");
     await walkTo("input-etp-title");
     await testid(page, "input-etp-title").fill("Kyoto smoke test");
     await walkTo("planning-option-myself");
@@ -250,8 +253,8 @@ test.describe("1 · entry and occasion", () => {
     expect(travelId).toBeTruthy();
     expect(travelId).not.toBe(weddingId);
 
-    const plans = await rows<{ id: string; title: string; s: string; e: string; confirmed: boolean; event_type: string }>(
-      `SELECT id, title, start_date::text AS s, end_date::text AS e, dates_confirmed_at IS NOT NULL AS confirmed, event_type
+    const plans = await rows<{ id: string; title: string; s: string; e: string; confirmed: boolean; event_type: string; adults: number | null }>(
+      `SELECT id, title, start_date::text AS s, end_date::text AS e, dates_confirmed_at IS NOT NULL AS confirmed, event_type, adults
          FROM trips WHERE user_id = $1`,
       [traveler.id],
     );
@@ -260,6 +263,11 @@ test.describe("1 · entry and occasion", () => {
     expect(plans.length, "two plans — the wedding was not re-used").toBe(2);
     expect(travel.title, "B2: the name entered at setup is kept").toBe("Kyoto smoke test");
     expect([travel.s, travel.e, travel.confirmed]).toEqual([`${year}-11-11`, `${year}-11-15`, true]);
+    await expect
+      .poll(async () => (await rows<{ adults: number | null }>(`SELECT adults FROM trips WHERE id = $1`, [travelId]))[0]?.adults, {
+        timeout: 10_000,
+      })
+      .toBe(3);
     expect([wedding.s, wedding.e, wedding.event_type], "the wedding is untouched").toEqual([`${year}-11-24`, `${year}-11-26`, "wedding"]);
     expect(
       await rows(`SELECT id FROM user_experiences WHERE trip_id = $1`, [travelId]),
