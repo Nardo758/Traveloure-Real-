@@ -1,0 +1,23 @@
+---
+name: Automation test isolation
+description: Preventing accidental external-provider calls while verifying automation migrations.
+---
+
+Use an explicit environment allowlist for both fixture servers and their test
+processes. Test mode and synthetic payment credentials are not a general
+network-safety switch.
+
+**Why:** Early automation regression runs inherited a mail-provider credential
+and reported successful sends to synthetic addresses. A later credential-cleared
+run avoided those calls. Setting test mode alone did not isolate that provider.
+
+**How to apply:** Supply the approved development database and synthetic test
+configuration only. Retain a real sandbox credential solely when that particular
+integration is explicitly in scope, force its test mode, and exclude live-key
+fallbacks, production database configuration, and unrelated provider credentials.
+Require an explicit isolated-server URL and reject the normal preview/default
+target: clearing a test client's environment does not clear the environment of
+an already-running server that accidentally receives its requests.
+Preserve required nonsecret package-wrapper settings as described in
+[Nix CLI child environment](nix-cli-child-environment.md). Never record credential
+values in commands, logs, reports, or memory.

@@ -1,4 +1,3 @@
-import type { BackgroundJobSkipped } from "../../services/background-job-runner";
 import type { AutomationContext } from "../contract";
 import { dispatchAutomationEvent } from "../event-dispatcher";
 import { runScheduledAutomation } from "../scheduler-wrapper";
@@ -53,5 +52,3 @@ function isBookingAutomationSkipped(
   return typeof value === "object" && value !== null &&
     (value as { __automationSkipped?: unknown }).__automationSkipped === true;
 }
-
-export type BookingScheduleResult<T> = T | BackgroundJobSkipped;

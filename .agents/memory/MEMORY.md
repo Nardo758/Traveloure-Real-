@@ -81,3 +81,4 @@
 - [Large shell callback output](large-shell-callback-output.md) — verify large copies against their source; successful callbacks can return incomplete text without a truncation flag.
 - [Production geocoding verification](production-geocoding-verification.md) — use cached boot observations, never extra probes; skipped venues are untested, and failures need diagnosis before allowlist changes.
 - [Nix CLI child environment](nix-cli-child-environment.md) — scrubbed subprocesses need package-wrapper settings such as XDG_CONFIG_HOME; launcher failures are not app failures.
+- [Automation test isolation](automation-test-isolation.md) — test mode does not disable unrelated providers; allowlist fixture-process credentials and retain only explicitly approved sandbox access.
