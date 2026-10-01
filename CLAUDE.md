@@ -2301,6 +2301,12 @@ This document captures architectural decisions to maintain consistency across co
     by `admitNeedList`, and `scripts/report-content-coverage.cjs <market>` nests sub-needs under their
     parent, flags terms older than 180 days without deactivating anything, and calls a market with no
     stated requirement `unstated`.
+    **THE REGISTRY HAS ONE WRITER AND ACTIVATION IS THE TERMS CHECK (A6 decision 2A; ledger
+    `2026-10-01-a6-registry-surface`).** `/admin/content-sources` → `content-sources.service.ts`: a source
+    is born inactive and unchecked; a general edit strips `terms_checked_at`/`terms_checked_by`/`active`,
+    and changing `homepage`, `terms_url`, `license_class` or `adapter` clears the check and deactivates;
+    only a user in `CONTENT_SOURCE_ACTIVATOR_USER_IDS` (unset ⇒ nobody) activates, and activation stamps
+    the database's `now()` and the session user in one atomic conditional. No seed script, ever.
     **A PLACES LOOKUP NEEDS A NAMED PLACE, AND THE CAP IS SPENT ACROSS DAYS (ledger
     `2026-09-30-places-named-gate`; production smoke test 3).** An item whose title and location name no
     specific place (`namedPlaceTokens`, `shared/place-name-gate.ts`) is never looked up, and a Places

@@ -118,6 +118,8 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/plan-option-sets.db.test.ts
       - name: A5 content facts — engine order, Places cache, plan-fit points, no public reader
         run: npx tsx --test --test-force-exit server/__tests__/content-facts.db.test.ts
+      - name: A6 content source registry — born inactive, edit strips terms, allowlisted activation
+        run: npx tsx --test --test-force-exit server/__tests__/content-sources.db.test.ts
       # Places named-place gate (ledger `2026-09-30-places-named-gate`, production smoke test 3):
       # generic titles are never looked up, a mismatched answer is never attached, and the per-draft
       # cap reaches every day. G1–G4, fake Places API only.
