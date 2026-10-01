@@ -96,6 +96,8 @@ before(async () => {
 
 after(async () => {
   for (const id of createdBookingIds) {
+    // Paid fixture transitions now persist canonical confirmations under this booking id.
+    await db.execute(sql`DELETE FROM email_outbox WHERE metadata->>'bookingId' = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.trip}`).catch(() => {});
