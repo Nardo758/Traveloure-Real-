@@ -143,7 +143,7 @@ test("C4 the reader returns renderable events in the window, soonest first, neve
 });
 
 test("C5 an empty seed is a no-op", async () => {
-  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, refused: [], located: [], unlocated: [], deferred: [] });
+  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, refused: [], located: [], unlocated: [], deferred: [], nominatim: "untested" });
 });
 
 test("C6 migration 335: a stated vertical and series key land; an unknown vertical or a malformed key is refused; absent stays NULL", async () => {

@@ -18,6 +18,16 @@ export const HEALTH_FLAG_NAMES = [
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;
 
+// Boot seeder observation only; reading health never sends a geocoder request.
+export const healthEgress = { nominatim: "untested" as "ok" | "blocked" | "untested" };
+
+/** What `/api/health` reports for egress: booleans only, read from the cached boot-seeder outcome.
+ *  `nominatimChecked` — the boot seeder made at least one eligible lookup; `nominatimReachable` — every
+ *  such lookup answered. Never-checked is `{ false, false }`, never a claim of reachability (§13). */
+export function healthEgressFlags(state: typeof healthEgress = healthEgress): { nominatimChecked: boolean; nominatimReachable: boolean } {
+  return { nominatimChecked: state.nominatim !== "untested", nominatimReachable: state.nominatim === "ok" };
+}
+
 export function healthFlags(env: Record<string, string | undefined> = process.env): HealthFlags {
   const out = {} as HealthFlags;
   for (const name of HEALTH_FLAG_NAMES) out[name] = env[name] === "1";
