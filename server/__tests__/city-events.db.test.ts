@@ -40,6 +40,9 @@ function inDays(days: number, hourUtc = 10): string {
 }
 
 before(async () => {
+  // No network in this suite: entries without coordinates land unlocated (ledger
+  // `2026-10-01-city-events-nine-seed`; the lookup itself is proven in city-events-seed.db.test.ts).
+  process.env.CITY_EVENTS_VENUE_LOOKUP = "0";
   const host = new URL(process.env.DATABASE_URL ?? "postgres://localhost").hostname.toLowerCase();
   if (process.env.JOURNEY_DB_WRITES_OK !== "1" && !["localhost", "127.0.0.1", "::1", ""].includes(host)) {
     throw new Error("refusing to write fixtures to a non-disposable database");
@@ -140,7 +143,7 @@ test("C4 the reader returns renderable events in the window, soonest first, neve
 });
 
 test("C5 an empty seed is a no-op", async () => {
-  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, refused: [] });
+  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, refused: [], located: [], unlocated: [], deferred: [] });
 });
 
 test("C6 migration 335: a stated vertical and series key land; an unknown vertical or a malformed key is refused; absent stays NULL", async () => {
