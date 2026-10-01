@@ -59,7 +59,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { SlipRail } from "./SlipRail";
-import { itemFactLine } from "@/lib/place-facts";
+import { itemAddressLine, itemFactLine } from "@/lib/place-facts";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
@@ -790,6 +790,8 @@ function SlipItemRow({
 }) {
   const a = activity;
   const factLine = itemFactLine(facts, dateIso);
+  // Ledger `2026-09-30-places-address`: Places address (formatted → short) with its attribution, else the draft's text.
+  const address = itemAddressLine(facts, a.location);
   const purchased = isPurchasedRow(a);
   const secondary = secondaryLine(a, expertName, expertAssigned);
   // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
@@ -827,8 +829,20 @@ function SlipItemRow({
           </p>
           <p className="text-xs text-muted-foreground">
             {a.time ? a.time : null}
-            {a.time && a.location ? " · " : null}
-            {a.location || null}
+            {a.time && address ? " · " : null}
+            {address ? <span data-testid={`slip-item-address-${a.id}`}>{address.text}</span> : null}
+            {address?.provenance ? (
+              <>
+                {" · "}
+                {address.sourceUrl ? (
+                  <a href={address.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline" data-testid={`slip-item-address-source-${a.id}`}>
+                    {address.provenance}
+                  </a>
+                ) : (
+                  <span data-testid={`slip-item-address-source-${a.id}`}>{address.provenance}</span>
+                )}
+              </>
+            ) : null}
           </p>
           {secondary && <p className="text-xs text-muted-foreground mt-0.5">{secondary}</p>}
           {/* R154: the owner's one action on a disputed (View booking) or failed (Try again) row. */}

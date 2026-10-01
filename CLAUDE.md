@@ -2288,6 +2288,13 @@ This document captures architectural decisions to maintain consistency across co
     otherwise every located option named equally — and SAYS which; with no stay and no open set it
     **asks** (`409 anchor_needed`, E6 `anchor_asked`) and "Draft without a hotel" is the traveler's own
     answer (`withoutAnchor`, E6 `draftBasis: none_asked`), never sent on their behalf.
+    **AN ITEM'S ADDRESS IS A PLACES FACT, SHOWN WITH ITS ATTRIBUTION (ledger `2026-09-30-places-address`).**
+    `address` joins the fact types; the Places field mask gains exactly `formattedAddress` and
+    `shortFormattedAddress`. The slip reads ONE chain (`itemAddressLine`, `client/src/lib/place-facts.ts`):
+    the stored `formattedAddress`, then `shortFormattedAddress` — each with the "Google Maps · checked
+    <date>" line beside it — then the draft's own location text, which carries no attribution. It is a
+    display fact inside the plan and is never written onto the item row; a cached answer from before this
+    lane is reused as it is, never re-fetched to add an address.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
