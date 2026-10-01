@@ -132,8 +132,8 @@ export interface PlanningSource {
     /** Local calendar dates in the event's city, "YYYY-MM-DD". lastDate = firstDate for one night. */
     firstDate: string;
     lastDate: string;
-    /** Local wall-clock start, "HH:MM". */
-    startTime: string;
+    /** Local wall-clock start, "HH:MM" — null when the organiser published only the date (migration 337). */
+    startTime: string | null;
     venue: string;
   };
   /**
@@ -360,8 +360,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         startDate: a.firstDate,
         endDate: a.lastDate,
         mainMomentDate: a.firstDate,
-        mainMomentTime: a.startTime,
-        pendingEvents: [{ title: a.title, eventDate: a.firstDate, startTime: a.startTime, location: a.venue }],
+        ...(a.startTime ? { mainMomentTime: a.startTime } : {}),
+        pendingEvents: [{ title: a.title, eventDate: a.firstDate, ...(a.startTime ? { startTime: a.startTime } : {}), location: a.venue }],
       });
     }
     setModalOpen(true);

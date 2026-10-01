@@ -42,7 +42,8 @@ export interface EventGuideFacts {
     venue: string;
     firstDate: string;
     lastDate: string;
-    startTime: string;
+    /** Null when only the date is known (migration 337) — never "00:00". */
+    startTime: string | null;
     nights: number;
     /** The organiser's or primary seller's page; null when absent or refused (R208 / partner host). */
     ticketUrl: string | null;
@@ -179,7 +180,8 @@ export interface SeriesFollowInstance {
   venue: string;
   firstDate: string;
   lastDate: string;
-  startTime: string;
+  /** Null when only the date is known (migration 337) — never "00:00". */
+  startTime: string | null;
   nights: number;
   /** Same rule as type 1: null when absent or refused (R208 / partner host). */
   ticketUrl: string | null;

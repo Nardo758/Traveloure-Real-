@@ -46,7 +46,8 @@ interface AiStats {
   tasksDelegated: number;
   tasksCompleted: number;
   completionRate: number;
-  timeSaved: number;
+  /** null until time saved is actually measured — the row is then omitted (§13). */
+  timeSaved: number | null;
   /** Null: no quality measure exists yet, so the row is not shown (never "0.0/10"). */
   avgQualityScore: string | null;
   editRate: number;
@@ -432,10 +433,12 @@ export default function ExpertAIAssistant() {
                   <span className="text-gray-600 dark:text-gray-400">Tasks Completed</span>
                   <span className="font-medium">{aiStats?.tasksCompleted ?? 0} ({aiStats?.completionRate ?? 0}%)</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">Time Saved</span>
-                  <span className="font-medium">{aiStats?.timeSaved ?? 0} hours</span>
-                </div>
+                {aiStats?.timeSaved != null && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Time Saved</span>
+                    <span className="font-medium">{aiStats.timeSaved} hours</span>
+                  </div>
+                )}
                 {aiStats?.avgQualityScore != null && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600 dark:text-gray-400">Avg Quality Score</span>

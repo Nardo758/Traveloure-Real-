@@ -20,6 +20,11 @@ export interface OccasionTemplate {
   specialRequests: string;
   /** Resident occasions are day-scale; kept explicit so a future multi-day template can differ. */
   dayCount: number;
+  /**
+   * The party the OCCASION itself states — 2 for the couple occasions whose own copy says "for two".
+   * Omitted = not stated: the draft passes no count and the plan stores none (§13), never a guessed 2.
+   */
+  partySize?: number;
 }
 
 export const OCCASION_TEMPLATES: Record<string, OccasionTemplate> = {
@@ -31,6 +36,7 @@ export const OCCASION_TEMPLATES: Record<string, OccasionTemplate> = {
     specialRequests:
       "A romantic evening for two in the member's home city — dinner plus one memorable evening activity. Keep it walkable and local.",
     dayCount: 1,
+    partySize: 2,
   },
   birthday: {
     key: "birthday",
@@ -49,6 +55,7 @@ export const OCCASION_TEMPLATES: Record<string, OccasionTemplate> = {
     specialRequests:
       "A proposal day in the member's home city — a scenic, memorable setting for the moment plus a celebratory dinner.",
     dayCount: 1,
+    partySize: 2,
   },
   celebration: {
     key: "celebration",
@@ -67,6 +74,7 @@ export const OCCASION_TEMPLATES: Record<string, OccasionTemplate> = {
     specialRequests:
       "An anniversary in the member's home city — a special dinner and a meaningful, romantic activity for two.",
     dayCount: 1,
+    partySize: 2,
   },
 };
 

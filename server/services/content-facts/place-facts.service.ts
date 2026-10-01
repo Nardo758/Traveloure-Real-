@@ -14,10 +14,11 @@
 import crypto from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { placeFacts } from "@shared/schema";
+import { contentSources, placeFacts } from "@shared/schema";
 import {
   asFactOrigin,
   factProvenanceLine,
+  isConfirmableFact,
   isFactStale,
   isPublishable,
   needForItemType,
@@ -26,10 +27,17 @@ import {
   type FactView,
 } from "@shared/content-facts";
 import { rankFactsByOrigin } from "../upsell-engine.service";
-import { placesLookupsPerDraft } from "../../config/content-facts.config";
+import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { sourcesForNeed } from "./places-adapter";
 import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
+import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
+import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
+import { getTavilyClient } from "../tavily-client";
+import { claudeService } from "../claude.service";
+import { assertRobotsAllowed } from "../../utils/robots-txt";
+import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
+import { loadPartnerHosts } from "../partner-hosts.service";
 
 export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
   if (!drafts.length) return 0;
@@ -156,6 +164,16 @@ export function attachableDrafts(drafts: FactDraft[], tokens: ReadonlySet<string
 }
 
 /**
+ * ONE info line per successful lookup (decision-maker, Sep 30, 2026 — the spine logged failures
+ * only): the place id, cache hit or miss, and latency. No query text and no plan id, so the log
+ * carries no traveler content. A lookup that found no place logs `place_id=none`.
+ */
+function logLookup(drafts: readonly FactDraft[], cache: "hit" | "miss", startedMs: number): void {
+  const placeId = drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? "none";
+  console.info(`[place-facts] lookup ok place_id=${placeId} cache=${cache} latency_ms=${Date.now() - startedMs}`);
+}
+
+/**
  * After a free draft commits: look up each drafted stop's facts (hours, dining basics, coordinates)
  * — cache first, then the Places spine. NEVER throws and never blocks the draft (§15b): a failed
  * lookup is logged and that item simply has no facts.
@@ -184,12 +202,14 @@ export async function enrichPlanItems(input: {
       if (!adapters.length) continue;
       const query = [item.title, input.city].filter(Boolean).join(", ").slice(0, 300);
       try {
+        const started = Date.now();
         const cached = await cachedForQuery(query);
         if (cached) {
           summary.cached += 1;
           const kept = attachableDrafts(cached, tokens, input.city);
           if (!kept.length) summary.unmatched += 1;
           summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
+          logLookup(cached, "hit", started);
           continue;
         }
         summary.looked += 1;
@@ -197,6 +217,7 @@ export async function enrichPlanItems(input: {
         const kept = attachableDrafts(drafts, tokens, input.city);
         if (drafts.length && !kept.length) summary.unmatched += 1;
         summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
+        logLookup(drafts, "miss", started);
       } catch (err) {
         console.error("[place-facts] lookup failed for an item:", (err as Error)?.message ?? err);
       }
@@ -225,6 +246,8 @@ function toView(r: FactRow, now: Date): FactView | null {
   if (!origin) return null;
   const f = { origin, license: r.license, verifiedAt: r.verifiedAt, fetchedAt: r.fetchedAt, expiresAt: r.expiresAt };
   return {
+    id: r.id,
+    confirmable: isConfirmableFact({ origin, license: r.license, verifiedAt: r.verifiedAt }),
     factType: r.factType as FactType,
     need: r.need as ContentNeed,
     value: r.value as Record<string, unknown>,
@@ -285,4 +308,119 @@ export async function factPointsForTrip(tripId: string, now: Date = new Date()):
     if (Number.isFinite(lat) && Number.isFinite(lng)) out.set(itemId, { lat, lng });
   });
   return out;
+}
+
+/**
+ * A6 (3) — ONE fresh lookup for ONE plan item through the registry (ledger
+ * `2026-10-01-a6-tavily-extract`). The basis is `mayFetchFresh(ctx)`: the free draft gets NO budget
+ * and never reaches here with one. The first ACTIVE `tavily_extract` row that covers the item's
+ * need in the plan's market is used — one source per call — and its facts go through the ONE writer.
+ * Never throws for a refused or empty lookup; it says why.
+ */
+export async function fetchFreshFactsForItem(input: {
+  ctx: FreshFetchContext;
+  tripId: string;
+  item: { id: string; title: string; type: string | null };
+  market: string | null;
+  city: string | null;
+  deps?: Partial<TavilyExtractDeps>;
+}): Promise<{ recorded: number; outcome: string; sourceId: string | null; refused: { factType: string; reason: string }[] }> {
+  const basis = mayFetchFresh(input.ctx);
+  if (!basis) return { recorded: 0, outcome: "not_paid_or_expert", sourceId: null, refused: [] };
+  const need = needForItemType(input.item.type);
+  const rows = await db
+    .select()
+    .from(contentSources)
+    .where(and(eq(contentSources.active, true), eq(contentSources.adapter, "tavily_extract")))
+    .orderBy(contentSources.id);
+  const deps: TavilyExtractDeps = { ...defaultTavilyExtractDeps(), ...(input.deps ?? {}) };
+  const actorId = input.ctx.kind === "expert_action" ? input.ctx.expertUserId : input.ctx.kind === "paid_run" ? input.ctx.actorId : null;
+  const runId = input.ctx.kind === "paid_run" ? input.ctx.runId : null;
+  const source = rows.find((r) => new TavilyExtractAdapter(r, deps).covers(need, input.market));
+  if (!source) return { recorded: 0, outcome: "no_source_for_need", sourceId: null, refused: [] };
+  const budget = await resolveFreshFetchBudget(input.ctx, source);
+  if (!budget.basis) return { recorded: 0, outcome: budget.reason, sourceId: source.id, refused: [] };
+  const adapter = new TavilyExtractAdapter(source, deps, { tripId: input.tripId, itemId: input.item.id, basis, actorId, runId });
+  const drafts = await adapter.fetch({
+    need,
+    market: input.market,
+    query: { text: input.item.title, city: input.city },
+    budgetCents: budget.budgetCents,
+  });
+  const recorded = await recordFacts(drafts, { planId: input.tripId, itemId: input.item.id });
+  return { recorded, outcome: adapter.lastOutcome ?? "no_facts", sourceId: source.id, refused: adapter.lastRefused };
+}
+
+function defaultTavilyExtractDeps(): TavilyExtractDeps {
+  return {
+    client: (usage) => getTavilyClient({ usage }),
+    complete: (opts) => claudeService.completeJson(opts),
+    robots: (url) => assertRobotsAllowed(url, ROBOTS_TXT_USER_AGENT_TOKEN),
+    partnerHosts: () => loadPartnerHosts(),
+  };
+}
+
+export class FactConfirmError extends Error {
+  constructor(public readonly code: string, public readonly status: number) {
+    super(code);
+  }
+}
+
+/**
+ * A6 (4) — an expert CONFIRMS a crawled fact (ledger `2026-10-01-a6-expert-confirm`; brief §8). Insert-
+ * only, as the table requires: a NEW row is written with origin `expert_nugget`, `verified_by` = the
+ * expert, `verified_at = now()`, the fact's statement as the expert's word (`value.text`) and a
+ * pointer back to what it confirmed — the source page's verbatim quote is NOT carried into the nugget,
+ * because a verified nugget is publishable and the quote is the page's text, not the expert's. The
+ * confirmed row then points at its successor through ONE atomic conditional
+ * (`superseded_by IS NULL`), so a second confirm — concurrent or repeated — is refused, never doubled.
+ * The caller has verified the expert is a §12 write-status advisor on this plan and passes the
+ * byline gate for its market.
+ */
+export async function confirmFactAsNugget(input: { tripId: string; factId: string; expertId: string }): Promise<{ nuggetId: string }> {
+  return db.transaction(async (tx) => {
+    const [fact] = await tx
+      .select()
+      .from(placeFacts)
+      .where(and(eq(placeFacts.id, input.factId), eq(placeFacts.planId, input.tripId)));
+    if (!fact) throw new FactConfirmError("not_found", 404);
+    if (fact.supersededBy) throw new FactConfirmError("already_superseded", 409);
+    if (!isConfirmableFact({ origin: fact.origin, license: fact.license, verifiedAt: fact.verifiedAt })) {
+      throw new FactConfirmError("not_confirmable", 409);
+    }
+    const text = typeof (fact.value as any)?.text === "string" ? String((fact.value as any).text).trim() : "";
+    if (!text) throw new FactConfirmError("no_statement", 409);
+    const now = new Date();
+    const ttl = factTtlDays(fact.factType as FactType);
+    const nuggetId = crypto.randomUUID();
+    await tx.insert(placeFacts).values({
+      id: nuggetId,
+      placeRefKind: fact.placeRefKind,
+      placeRef: fact.placeRef,
+      placeLat: fact.placeLat,
+      placeLng: fact.placeLng,
+      market: fact.market,
+      need: fact.need,
+      factType: fact.factType,
+      value: { text, confirmedFromFactId: fact.id },
+      origin: "expert_nugget",
+      sourceId: null,
+      sourceUrl: null,
+      license: null,
+      verifiedBy: input.expertId,
+      verifiedAt: now,
+      fetchedAt: now,
+      expiresAt: ttl == null ? null : new Date(now.getTime() + ttl * 86_400_000),
+      costCents: "0",
+      planId: fact.planId,
+      itineraryItemId: fact.itineraryItemId,
+    });
+    const claimed = await tx
+      .update(placeFacts)
+      .set({ supersededBy: nuggetId })
+      .where(and(eq(placeFacts.id, fact.id), isNull(placeFacts.supersededBy)))
+      .returning({ id: placeFacts.id });
+    if (!claimed.length) throw new FactConfirmError("already_superseded", 409);
+    return { nuggetId };
+  });
 }
