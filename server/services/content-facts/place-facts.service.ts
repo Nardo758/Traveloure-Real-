@@ -29,6 +29,7 @@ import { rankFactsByOrigin } from "../upsell-engine.service";
 import { placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { sourcesForNeed } from "./places-adapter";
+import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
 
 export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
   if (!drafts.length) return 0;
@@ -112,6 +113,46 @@ export interface EnrichItem {
   id: string;
   title: string;
   type: string | null;
+  /** The plan day the item sits on; absent ⇒ day 1 (the budget is shared across days, never by order). */
+  dayNumber?: number | null;
+  locationName?: string | null;
+}
+
+/**
+ * Pure. Which items are looked up, in what order (ledger `2026-09-30-places-named-gate`):
+ *   · only items that NAME a place (`namedPlaceTokens` non-empty) — a generic "Lunch at Traditional
+ *     Restaurant" is never looked up;
+ *   · round-robin ACROSS DAYS — every day's first named item, then every day's second, … — so the
+ *     per-draft budget reaches the last day instead of being spent on the first two in plan order
+ *     (production smoke test 3: 11/11 items with hours on days 1–2, 0/19 on days 3–5).
+ */
+export function lookupOrder(items: readonly EnrichItem[], city: string | null): Array<{ item: EnrichItem; tokens: Set<string> }> {
+  const byDay = new Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>>();
+  for (const item of items) {
+    const tokens = namedPlaceTokens(item, city);
+    if (tokens.size === 0) continue;
+    const day = item.dayNumber ?? 1;
+    const list = byDay.get(day) ?? [];
+    list.push({ item, tokens });
+    byDay.set(day, list);
+  }
+  const days = Array.from(byDay.keys()).sort((a, b) => a - b);
+  const out: Array<{ item: EnrichItem; tokens: Set<string> }> = [];
+  for (let round = 0; ; round++) {
+    let any = false;
+    for (const d of days) {
+      const e = byDay.get(d)![round];
+      if (e) { out.push(e); any = true; }
+    }
+    if (!any) return out;
+  }
+}
+
+/** Pure. The drafts of ONE Places answer, only when its matched name names the item; else none. */
+export function attachableDrafts(drafts: FactDraft[], tokens: ReadonlySet<string>, city: string | null): FactDraft[] {
+  const loc = drafts.find((d) => d.factType === "location");
+  const name = loc && typeof loc.value?.name === "string" ? (loc.value.name as string) : null;
+  return matchNamesItem(name, tokens, city) ? drafts : [];
 }
 
 /**
@@ -126,8 +167,13 @@ function logLookup(drafts: readonly FactDraft[], cache: "hit" | "miss", startedM
 
 /**
  * After a free draft commits: look up each drafted stop's facts (hours, dining basics, coordinates)
- * — cache first, then the Places spine, capped per draft. NEVER throws and never blocks the draft
- * (§15b): a failed lookup is logged and that item simply has no facts.
+ * — cache first, then the Places spine. NEVER throws and never blocks the draft (§15b): a failed
+ * lookup is logged and that item simply has no facts.
+ *
+ * THE CAP is `placesLookupsPerDraft()` — a COST cap, so it counts BILLED lookups only (a cache reuse
+ * costs nothing and no longer spends it), and it is spent in `lookupOrder` (named places only, across
+ * all days). A Places answer whose matched name is not in the item is dropped (`attachableDrafts`):
+ * the call was spent, and nothing is recorded, because nothing true about THIS item came back (§13).
  */
 export async function enrichPlanItems(input: {
   tripId: string;
@@ -135,12 +181,14 @@ export async function enrichPlanItems(input: {
   city: string | null;
   items: EnrichItem[];
   adapters?: SourceAdapter[];
-}): Promise<{ looked: number; cached: number; recorded: number }> {
-  const summary = { looked: 0, cached: 0, recorded: 0 };
+}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number }> {
+  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0 };
   try {
     const cap = placesLookupsPerDraft();
-    for (const item of input.items) {
-      if (summary.looked + summary.cached >= cap) break;
+    const order = lookupOrder(input.items, input.city);
+    summary.unnamed = input.items.length - order.length;
+    for (const { item, tokens } of order) {
+      if (summary.looked >= cap) break;
       const need = needForItemType(item.type);
       const adapters = sourcesForNeed(need, input.market, input.adapters);
       if (!adapters.length) continue;
@@ -150,13 +198,17 @@ export async function enrichPlanItems(input: {
         const cached = await cachedForQuery(query);
         if (cached) {
           summary.cached += 1;
-          summary.recorded += await recordFacts(cached, { planId: input.tripId, itemId: item.id });
+          const kept = attachableDrafts(cached, tokens, input.city);
+          if (!kept.length) summary.unmatched += 1;
+          summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
           logLookup(cached, "hit", started);
           continue;
         }
         summary.looked += 1;
         const drafts = await adapters[0].fetch({ need, market: input.market, query: { text: item.title, city: input.city }, budgetCents: 0 });
-        summary.recorded += await recordFacts(drafts, { planId: input.tripId, itemId: item.id });
+        const kept = attachableDrafts(drafts, tokens, input.city);
+        if (drafts.length && !kept.length) summary.unmatched += 1;
+        summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
         logLookup(drafts, "miss", started);
       } catch (err) {
         console.error("[place-facts] lookup failed for an item:", (err as Error)?.message ?? err);

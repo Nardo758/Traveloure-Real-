@@ -35,6 +35,7 @@ import {
 } from "@shared/blog";
 import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
 import { rankBlogPosts } from "./blog-ranking";
+import { liveSeriesInstances } from "./blog-event-facts.service";
 import { toCityEventCard } from "./city-events.service";
 import { checkBylineEligibility, type BylineDecision } from "./blog-byline-gate.service";
 import { loadPartnerHosts } from "./partner-hosts.service";
@@ -54,7 +55,13 @@ export interface BlogDeps {
 }
 
 export class BlogError extends Error {
-  constructor(public readonly code: string, public readonly status: number, message?: string) {
+  constructor(
+    public readonly code: string,
+    public readonly status: number,
+    message?: string,
+    /** Numbers a refusal states (e.g. how many instances a series has), echoed on the response. */
+    public readonly details?: Record<string, number | string>,
+  ) {
     super(message ?? code);
   }
 }
@@ -358,7 +365,37 @@ export async function toPublicPost(row: any) {
     byline,
     platformLabel: row.authorship === "platform" ? PLATFORM_POST_LABEL : null,
     sources: await sourcesFor(row.id),
-    planDoor: row.city_event_id ? await planDoorFor(row.city_event_id) : null,
+    planDoor: row.city_event_id && row.content_type !== "series_follow" ? await planDoorFor(row.city_event_id) : null,
+    seriesDoors: row.city_event_id && row.content_type === "series_follow" ? await seriesDoorsFor(row.city_event_id) : null,
+  };
+}
+
+/**
+ * The doors of a SERIES FOLLOW (ledger `2026-09-30-blog-series-follow`): one per LIVE, not-yet-ended
+ * instance of the anchor event's `series_key`, soonest first, read through the SAME
+ * `liveSeriesInstances` the fact builder reads (§18 rule 1). The anchor must still exist and not be
+ * withdrawn (the post is about its series); an anchor that has merely passed still names the series.
+ * No anchor, no key, or no live instance ⇒ null — no doors, never a door to something not happening.
+ */
+async function seriesDoorsFor(anchorEventId: string) {
+  const [anchor] = await db.select().from(cityEvents).where(and(eq(cityEvents.id, anchorEventId), isNull(cityEvents.withdrawnAt))).limit(1);
+  if (!anchor?.seriesKey) return null;
+  const now = new Date();
+  const rows = await liveSeriesInstances(anchor.seriesKey, now);
+  if (rows.length === 0) return null;
+  return rows.map((ev) => doorOf(toCityEventCard(ev, null, now)));
+}
+
+/** Pure. A door carries exactly what the events strip's "Plan around it" sends, and no id. */
+function doorOf(card: ReturnType<typeof toCityEventCard>) {
+  return {
+    title: card.series ?? card.title,
+    city: card.city,
+    marketKey: card.marketKey,
+    firstDate: card.firstDate,
+    lastDate: card.lastDate,
+    startTime: card.startTime,
+    venue: card.venue,
   };
 }
 
@@ -374,16 +411,7 @@ async function planDoorFor(cityEventId: string) {
   if (!ev) return null;
   const now = new Date();
   if (new Date(ev.endsAt ?? ev.startsAt).getTime() < now.getTime()) return null;
-  const card = toCityEventCard(ev, null, now);
-  return {
-    title: card.series ?? card.title,
-    city: card.city,
-    marketKey: card.marketKey,
-    firstDate: card.firstDate,
-    lastDate: card.lastDate,
-    startTime: card.startTime,
-    venue: card.venue,
-  };
+  return doorOf(toCityEventCard(ev, null, now));
 }
 
 /** How many published posts the index ranks over before it cuts to a page (the index is small). */

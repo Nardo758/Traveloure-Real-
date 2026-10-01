@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "0e044233c88ea148f0463ab814cf46fc873feff32a460ad2a9a8ea107a760136",
+  "manifestSha256": "26c3bff0df6aafefce45a3626d31615395d4047aa0b0a0a8a75f24726ac450a5",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 629,
-    "remaining": 629,
+    "total": 631,
+    "remaining": 631,
     "categories": {
       "payments": {
         "tested": 0,
@@ -19,7 +19,7 @@
       },
       "admin": {
         "tested": 0,
-        "total": 161
+        "total": 163
       },
       "user-data": {
         "tested": 0,
@@ -364,7 +364,7 @@
       "path": "/api/blog/posts/:slug/reactions/:kind",
       "effectivePath": "/api/blog/posts/:slug/reactions/:kind",
       "source": "server/routes/blog.routes.ts",
-      "line": 195,
+      "line": 221,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1484,7 +1484,7 @@
       "path": "/api/admin/blog/posts/:id",
       "effectivePath": "/api/admin/blog/posts/:id",
       "source": "server/routes/blog.routes.ts",
-      "line": 136,
+      "line": 162,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3920,7 +3920,7 @@
       "path": "/api/admin/blog/drafts",
       "effectivePath": "/api/admin/blog/drafts",
       "source": "server/routes/blog.routes.ts",
-      "line": 113,
+      "line": 117,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3942,7 +3942,7 @@
       "path": "/api/admin/blog/event-guides",
       "effectivePath": "/api/admin/blog/event-guides",
       "source": "server/routes/blog.routes.ts",
-      "line": 130,
+      "line": 134,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3964,7 +3964,7 @@
       "path": "/api/admin/blog/posts",
       "effectivePath": "/api/admin/blog/posts",
       "source": "server/routes/blog.routes.ts",
-      "line": 98,
+      "line": 102,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3986,7 +3986,7 @@
       "path": "/api/admin/blog/posts/:id/publish",
       "effectivePath": "/api/admin/blog/posts/:id/publish",
       "source": "server/routes/blog.routes.ts",
-      "line": 146,
+      "line": 172,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4008,7 +4008,7 @@
       "path": "/api/admin/blog/posts/:id/submit",
       "effectivePath": "/api/admin/blog/posts/:id/submit",
       "source": "server/routes/blog.routes.ts",
-      "line": 142,
+      "line": 168,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4030,7 +4030,7 @@
       "path": "/api/admin/blog/posts/:id/withdraw",
       "effectivePath": "/api/admin/blog/posts/:id/withdraw",
       "source": "server/routes/blog.routes.ts",
-      "line": 150,
+      "line": 176,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4048,11 +4048,55 @@
     },
     {
       "method": "POST",
+      "rawPath": "/api/admin/blog/race-weekends",
+      "path": "/api/admin/blog/race-weekends",
+      "effectivePath": "/api/admin/blog/race-weekends",
+      "source": "server/routes/blog.routes.ts",
+      "line": 156,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/admin/blog/race-weekends",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/blog/series-follows",
+      "path": "/api/admin/blog/series-follows",
+      "effectivePath": "/api/admin/blog/series-follows",
+      "source": "server/routes/blog.routes.ts",
+      "line": 144,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/admin/blog/series-follows",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
       "rawPath": "/api/admin/blog/travelpulse-weekly",
       "path": "/api/admin/blog/travelpulse-weekly",
       "effectivePath": "/api/admin/blog/travelpulse-weekly",
       "source": "server/routes/blog.routes.ts",
-      "line": 122,
+      "line": 126,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -6090,7 +6134,7 @@
       "path": "/api/blog/posts/:slug/reactions",
       "effectivePath": "/api/blog/posts/:slug/reactions",
       "source": "server/routes/blog.routes.ts",
-      "line": 189,
+      "line": 215,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7912,7 +7956,7 @@
       "path": "/api/expert/blog/posts/:id/sign",
       "effectivePath": "/api/expert/blog/posts/:id/sign",
       "source": "server/routes/blog.routes.ts",
-      "line": 162,
+      "line": 188,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
