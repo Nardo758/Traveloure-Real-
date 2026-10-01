@@ -37,6 +37,7 @@ import { APP_REFUND_REFUSED_FROM_STATUSES } from '../utils/booking-from-states';
 import { REFUND_ATTEMPT_KEY, REFUND_RECORD_KEY } from '../../shared/booking-refund-record';
 import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
+import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -909,6 +910,7 @@ class StripePaymentService {
         }
       } catch (balErr: any) {
         console.error('[webhook] balance payment promotion failed:', balErr?.message ?? balErr);
+        if (isCanonicalBookingEmailPersistenceError(balErr)) throw balErr;
       }
       // A balance PI belongs to a service_bookings row already born on the cart rail; the legacy
       // `bookings` loop below never owns it, so return here rather than fall through.
@@ -984,6 +986,7 @@ class StripePaymentService {
     } catch (promoteErr: any) {
       // Never let the cart rail take the legacy rail (or the webhook) down.
       console.error('[webhook] cart-checkout payment promotion failed:', promoteErr?.message ?? promoteErr);
+      if (isCanonicalBookingEmailPersistenceError(promoteErr)) throw promoteErr;
     }
 
     if (!bookingIds) {

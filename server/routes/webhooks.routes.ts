@@ -19,6 +19,7 @@ import { eq, sql } from "drizzle-orm";
 import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 import { handleStripeDispute } from "../services/stripe-dispute.service";
 import { markCheckoutPaymentFailed } from "../services/checkout-claim.service";
+import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-booking-email.service";
 
 const router = Router();
 
@@ -318,6 +319,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           await stripePaymentService.handlePaymentSucceeded(paymentIntent);
         } catch (bookingErr: any) {
           console.error("payment_intent.succeeded: booking confirmation error:", bookingErr.message);
+          if (isCanonicalBookingEmailPersistenceError(bookingErr)) throw bookingErr;
           // Non-fatal: continue to revenue tracking even if booking confirmation fails
         }
 
