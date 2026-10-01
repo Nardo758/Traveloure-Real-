@@ -253,6 +253,19 @@ export function canActivateSource(src: { termsCheckedAt?: Date | string | null; 
   return toMs(src.termsCheckedAt ?? null) !== null && (LICENSE_CLASSES as readonly string[]).includes(src.licenseClass ?? "");
 }
 
+/**
+ * A6 (4) (ledger `2026-10-01-a6-expert-confirm`; brief §8's flywheel): which facts an expert may
+ * CONFIRM into a verified nugget. ONLY a `crawled` fact that is not under a partner or restricted
+ * license and not already verified. A Places fact is NEVER confirmable — Google's display terms keep
+ * its content inside the plan, and a verified nugget is publishable, so confirming it would
+ * republish Google data under our name. A traveler's own note is theirs, not a source to verify.
+ */
+export function isConfirmableFact(f: { origin?: string | null; license?: string | null; verifiedAt?: Date | string | null }): boolean {
+  if (f.origin !== "crawled") return false;
+  if (f.license === "partner" || f.license === "restricted") return false;
+  return f.verifiedAt == null || String(f.verifiedAt) === "";
+}
+
 /** The origin a stored row claims, or null when it is not one of ours (never coerced). */
 export function asFactOrigin(v: unknown): FactOrigin | null {
   return typeof v === "string" && (FACT_ORIGINS as readonly string[]).includes(v) ? (v as FactOrigin) : null;
@@ -266,6 +279,10 @@ export function needForItemType(type: string | null | undefined): ContentNeed {
 
 /** What a plan item's surface renders for one fact — the server's projection, never re-derived. */
 export interface FactView {
+  /** The `place_facts` row id — what the expert's confirm control names (A6 (4)). */
+  id?: string;
+  /** `isConfirmableFact` on this row, computed server-side (A6 (4)). */
+  confirmable?: boolean;
   factType: FactType;
   need: ContentNeed;
   value: Record<string, unknown>;
