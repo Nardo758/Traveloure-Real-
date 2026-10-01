@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "877234874fb2cd5bf46d61036fb59c2c74e4edeb3c32db387d93e0424ccde097",
+  "manifestSha256": "ededfef4a6e4654a78f014afa89e12c1048f9e3966cadd0fe5633f48b5a3c2a1",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 636,
-    "remaining": 636,
+    "total": 637,
+    "remaining": 637,
     "categories": {
       "payments": {
         "tested": 0,
@@ -23,7 +23,7 @@
       },
       "user-data": {
         "tested": 0,
-        "total": 221
+        "total": 222
       },
       "other": {
         "tested": 0,
@@ -11568,7 +11568,7 @@
       "path": "/api/trips/:tripId/itinerary-items/:itemId/fresh-facts",
       "effectivePath": "/api/trips/:tripId/itinerary-items/:itemId/fresh-facts",
       "source": "server/routes/content-facts.routes.ts",
-      "line": 25,
+      "line": 27,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11779,6 +11779,26 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/trips/:tripId/participants/bulk-invite",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/trips/:tripId/place-facts/:factId/confirm",
+      "path": "/api/trips/:tripId/place-facts/:factId/confirm",
+      "effectivePath": "/api/trips/:tripId/place-facts/:factId/confirm",
+      "source": "server/routes/content-facts.routes.ts",
+      "line": 61,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": true,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/trips/:tripId/place-facts/:factId/confirm",
       "tested": false,
       "reason": "Not run: evidence manifest SHA-256 is stale."
     },

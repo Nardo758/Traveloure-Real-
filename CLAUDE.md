@@ -2313,6 +2313,11 @@ This document captures architectural decisions to maintain consistency across co
     per plan, per day and per source off `api_usage_logs` (unreadable ⇒ spent); a crawled fact keeps a
     verbatim quote of at most 300 characters or is refused. The one consumer today is the §12
     write-status advisor's `POST /api/trips/:tripId/itinerary-items/:itemId/fresh-facts`.
+    **AN EXPERT CONFIRMS A CRAWLED FACT INTO A NEW VERIFIED NUGGET (ledger `2026-10-01-a6-expert-confirm`).**
+    `isConfirmableFact` admits only an unverified `crawled` fact outside partner/restricted licenses —
+    never a Places fact, which would otherwise become publishable Google data. The confirm writes a NEW
+    `expert_nugget` row (no quote, URL or license carried) and supersedes the crawled row by one atomic
+    conditional; the route requires a §12 write-status advisor and the blog byline gate for the market.
     **A PLACES LOOKUP NEEDS A NAMED PLACE, AND THE CAP IS SPENT ACROSS DAYS (ledger
     `2026-09-30-places-named-gate`; production smoke test 3).** An item whose title and location name no
     specific place (`namedPlaceTokens`, `shared/place-name-gate.ts`) is never looked up, and a Places
