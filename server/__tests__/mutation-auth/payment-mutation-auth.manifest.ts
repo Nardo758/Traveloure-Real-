@@ -79,7 +79,7 @@ export const paymentMutationAuthorizationManifest: readonly PaymentMutationAudit
 
   // Financial webhooks are authorization by verified Stripe signature, not a user session.
   { method: "POST", path: "/api/webhooks/stripe", source: "server/routes/webhooks.routes.ts", declaration: 'router.post("/stripe", createConnectStripeWebhookHandler()', ownership: "stripe-signature", state: "untested", reason: "Untested: requires signed raw-body Stripe event fixture and asynchronous DB snapshot." },
-  { method: "POST", path: "/api/bookings/webhooks/stripe", source: "server/routes/bookings.ts", declaration: "router.post('/webhooks/stripe', async", ownership: "stripe-signature", state: "untested", reason: "Untested: requires signed raw-body Stripe event fixture and asynchronous DB snapshot." },
+  { method: "POST", path: "/api/bookings/webhooks/stripe", source: "server/routes/bookings.ts", declaration: "router.post('/webhooks/stripe', createPlatformStripeWebhookHandler()", ownership: "stripe-signature", state: "untested", reason: "Untested: requires signed raw-body Stripe event fixture and asynchronous DB snapshot." },
 ];
 
 export const knownAuthorizationReviewFindings = [
