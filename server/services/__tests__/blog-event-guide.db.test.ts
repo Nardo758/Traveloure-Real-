@@ -24,7 +24,9 @@ import { BlogError, createPost, getPublishedBySlug, publishPost } from "../blog-
 import { loadEventGuideFacts, rankStayNear } from "../blog-event-facts.service";
 import { checkEventGuideDraft, draftEventWeekendGuide, eventGuideSlug, promptFacts } from "../blog-event-guide.service";
 
-const RUN = crypto.randomUUID().slice(0, 8);
+// Letters only: fixture titles carry RUN, and a digit run like "12" would read as a number the facts
+// contain, defeating the "an invented number is refused" check.
+const RUN = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => "abcdefghijklmnop"[b % 16]).join("");
 const ADMIN = `evguide-${RUN}-admin`;
 const EV = `evguide-${RUN}-ev`;
 const NEIGHBOUR = `evguide-${RUN}-nb`;

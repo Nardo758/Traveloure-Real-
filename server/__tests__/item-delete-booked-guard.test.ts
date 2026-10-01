@@ -175,7 +175,9 @@ describe("N1 — no new route", () => {
       for (const line of text.split("\n")) {
         if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue; // an annotated dead twin is prose, not a route
         const m = line.match(/(?:app|router)\.(get|post|patch|put|delete)\("(\/api\/trips\/:tripId\/itinerary(?:-items[^"]*|\/reorder))"/);
-        if (m) found.add(`${m[1].toUpperCase()} ${m[2]}`);
+        // The expert fresh-facts action (ledger `2026-10-01-a6-tavily-extract`) shares the item path
+        // prefix but is a content-facts lookup, not an item CRUD rail; it is named here, never matched.
+        if (m && !m[2].endsWith("/:itemId/fresh-facts")) found.add(`${m[1].toUpperCase()} ${m[2]}`);
       }
     }
     assert.deepEqual(

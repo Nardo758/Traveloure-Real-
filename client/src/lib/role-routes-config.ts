@@ -204,6 +204,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/analytics/discover',  description: 'Discover impressions — cards seen per city and type, click-through from linking start' },
   { href: '/admin/qa-checklist',        description: 'QA checklist' },
   { href: '/admin/content-ops',         description: 'Content Ops — YouTube ingestion, extraction status, offering requests, market checklist' },
+  { href: '/admin/content-sources',     description: 'Content Sources — the content-source registry and its terms check' },
   { href: '/admin/audit-log',           description: 'Administrative audit log' },
 ];
 
