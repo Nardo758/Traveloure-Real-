@@ -64,3 +64,22 @@ export function placesLookupsPerDraft(): number {
 export function placesTextSearchCostCents(): number {
   return envNumber("PLACES_TEXT_SEARCH_COST_CENTS", 4);
 }
+
+/**
+ * A6 (3) — fresh-fetch spend caps (ledger `2026-10-01-a6-tavily-extract`; brief §7, decision 3A).
+ * A fresh fetch happens only inside a paid run or an expert action (`mayFetchFresh`), and even
+ * then it is capped per plan and per day across all sources. A registry row's own
+ * `cost_ceiling_cents_per_day` caps that source further. Cents; env-overridable; 0 turns fresh
+ * fetching off entirely.
+ */
+export function freshFetchPlanCapCents(): number {
+  return envNumber("CONTENT_FETCH_PLAN_CAP_CENTS", 25);
+}
+export function freshFetchDayCapCents(): number {
+  return envNumber("CONTENT_FETCH_DAY_CAP_CENTS", 300);
+}
+
+/** The longest verbatim quote a crawled fact may store (a6-design §4: the 300-char cap). Refused, never trimmed. */
+export function factQuoteMaxChars(): number {
+  return envNumber("CONTENT_FACT_QUOTE_MAX_CHARS", 300);
+}

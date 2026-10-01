@@ -252,6 +252,7 @@ import providerRoutes from "./routes/provider.routes";
 import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import blogRoutes from "./routes/blog.routes";
 import contentSourcesRoutes from "./routes/content-sources.routes";
+import contentFactsRoutes from "./routes/content-facts.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
@@ -1310,6 +1311,9 @@ export async function registerRoutes(
   // Content source registry (A6 (2), ledger `2026-10-01-a6-registry-surface`): admin-only, under
   // the §2 blanket guard registered above; activation is restricted further to a config allowlist.
   app.use(contentSourcesRoutes);
+  // Expert-action fresh lookup (A6 (3), ledger `2026-10-01-a6-tavily-extract`): §12 write-status
+  // advisor only; spend capped per plan/day/source; the free draft never reaches it.
+  app.use(contentFactsRoutes);
 
   // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as

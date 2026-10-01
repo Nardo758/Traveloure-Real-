@@ -14,7 +14,7 @@
 import crypto from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { placeFacts } from "@shared/schema";
+import { contentSources, placeFacts } from "@shared/schema";
 import {
   asFactOrigin,
   factProvenanceLine,
@@ -30,6 +30,13 @@ import { placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { sourcesForNeed } from "./places-adapter";
 import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
+import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
+import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
+import { getTavilyClient } from "../tavily-client";
+import { claudeService } from "../claude.service";
+import { assertRobotsAllowed } from "../../utils/robots-txt";
+import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
+import { loadPartnerHosts } from "../partner-hosts.service";
 
 export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
   if (!drafts.length) return 0;
@@ -298,4 +305,54 @@ export async function factPointsForTrip(tripId: string, now: Date = new Date()):
     if (Number.isFinite(lat) && Number.isFinite(lng)) out.set(itemId, { lat, lng });
   });
   return out;
+}
+
+/**
+ * A6 (3) — ONE fresh lookup for ONE plan item through the registry (ledger
+ * `2026-10-01-a6-tavily-extract`). The basis is `mayFetchFresh(ctx)`: the free draft gets NO budget
+ * and never reaches here with one. The first ACTIVE `tavily_extract` row that covers the item's
+ * need in the plan's market is used — one source per call — and its facts go through the ONE writer.
+ * Never throws for a refused or empty lookup; it says why.
+ */
+export async function fetchFreshFactsForItem(input: {
+  ctx: FreshFetchContext;
+  tripId: string;
+  item: { id: string; title: string; type: string | null };
+  market: string | null;
+  city: string | null;
+  deps?: Partial<TavilyExtractDeps>;
+}): Promise<{ recorded: number; outcome: string; sourceId: string | null; refused: { factType: string; reason: string }[] }> {
+  const basis = mayFetchFresh(input.ctx);
+  if (!basis) return { recorded: 0, outcome: "not_paid_or_expert", sourceId: null, refused: [] };
+  const need = needForItemType(input.item.type);
+  const rows = await db
+    .select()
+    .from(contentSources)
+    .where(and(eq(contentSources.active, true), eq(contentSources.adapter, "tavily_extract")))
+    .orderBy(contentSources.id);
+  const deps: TavilyExtractDeps = { ...defaultTavilyExtractDeps(), ...(input.deps ?? {}) };
+  const actorId = input.ctx.kind === "expert_action" ? input.ctx.expertUserId : input.ctx.kind === "paid_run" ? input.ctx.actorId : null;
+  const runId = input.ctx.kind === "paid_run" ? input.ctx.runId : null;
+  const source = rows.find((r) => new TavilyExtractAdapter(r, deps).covers(need, input.market));
+  if (!source) return { recorded: 0, outcome: "no_source_for_need", sourceId: null, refused: [] };
+  const budget = await resolveFreshFetchBudget(input.ctx, source);
+  if (!budget.basis) return { recorded: 0, outcome: budget.reason, sourceId: source.id, refused: [] };
+  const adapter = new TavilyExtractAdapter(source, deps, { tripId: input.tripId, itemId: input.item.id, basis, actorId, runId });
+  const drafts = await adapter.fetch({
+    need,
+    market: input.market,
+    query: { text: input.item.title, city: input.city },
+    budgetCents: budget.budgetCents,
+  });
+  const recorded = await recordFacts(drafts, { planId: input.tripId, itemId: input.item.id });
+  return { recorded, outcome: adapter.lastOutcome ?? "no_facts", sourceId: source.id, refused: adapter.lastRefused };
+}
+
+function defaultTavilyExtractDeps(): TavilyExtractDeps {
+  return {
+    client: (usage) => getTavilyClient({ usage }),
+    complete: (opts) => claudeService.completeJson(opts),
+    robots: (url) => assertRobotsAllowed(url, ROBOTS_TXT_USER_AGENT_TOKEN),
+    partnerHosts: () => loadPartnerHosts(),
+  };
 }
