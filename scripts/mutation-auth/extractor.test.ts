@@ -164,8 +164,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * /api/itinerary-comparisons/:id/adopt-stops — the comparison owner only plus the trip's §12 WRITE
  * gate, exactly as adopt-stop, so other 215 → 216 and resource-owner 96 → 97.
  * 635 / 626 → 636 / 627 (ledger `2026-09-30-travelpulse-weekly`): POST
- * /api/admin/blog/travelpulse-weekly, the admin trigger that drafts this ISO week's platform post
- * (reads no body) — under §2's blanket /api/admin guard, so admin 159 → 160, admin-role 159 → 160.
+ * /api/admin/blog/travelpulse-weekly, the admin trigger for this ISO week's platform draft (reads no
+ * body) — under §2's blanket /api/admin guard, so admin 159 → 160, admin-role 159 → 160.
  * 636 / 627 → 637 / 628 (ledger `2026-09-30-travelpulse-weekly-schedule`): POST
  * /internal/jobs/travelpulse-weekly, machine-to-machine behind INTERNAL_JOB_SECRET (not a user
  * session) — other 216 → 217, public-or-system 39 → 40.
