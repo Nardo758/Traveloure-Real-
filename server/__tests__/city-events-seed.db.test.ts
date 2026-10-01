@@ -3,7 +3,7 @@
  * `2026-10-01-city-events-nine-seed`; migration 337).
  *
  *   E1  every manual entry builds with no refusal; sourceIds are unique; no coordinate is hand-typed;
- *       the two Hogmanay rows share a series key and are the ONLY rows with a known start time
+ *       exactly the rows whose organiser prints a time state one (seed lane 2 widened the set)
  *   E2  a date-only row's card carries NO start time (never "00:00"); a known one carries its local time
  *   E3  the seeder looks a venue up ONCE, only for a row it is inserting: a match stores the point and
  *       is listed as located; no match leaves NULL and is listed as unlocated; a second run asks nothing;
@@ -40,8 +40,8 @@ after(async () => {
   await pool.end();
 });
 
-test("E1: the manual list builds cleanly; only Hogmanay states a time", () => {
-  assert.equal(MANUAL_CITY_EVENTS.length, 9);
+test("E1: the manual list builds cleanly; only rows with a printed time state one", () => {
+  assert.equal(MANUAL_CITY_EVENTS.length, 22);
   const ids = MANUAL_CITY_EVENTS.map((e) => e.sourceId);
   assert.equal(new Set(ids).size, ids.length, "sourceIds are unique");
   for (const e of MANUAL_CITY_EVENTS) {
@@ -52,10 +52,21 @@ test("E1: the manual list builds cleanly; only Hogmanay states a time", () => {
     if (e.ticketUrl) assert.notEqual(ticketUrlRefusal(e.ticketUrl, RESALE_TICKET_HOSTS), "resale_ticket_url");
   }
   const timed = MANUAL_CITY_EVENTS.filter((e) => e.startTimeKnown === true);
-  assert.deepEqual(timed.map((e) => e.sourceId).sort(), ["edinburgh-hogmanay-2026-gardens", "edinburgh-hogmanay-2026-torchlight"]);
-  assert.ok(timed.every((e) => e.seriesKey === "edinburgh-hogmanay"));
+  assert.deepEqual(timed.map((e) => e.sourceId).sort(), [
+    "aitana-cuarto-azul-bogota-2026",
+    "edinburgh-hogmanay-2026-gardens",
+    "edinburgh-hogmanay-2026-torchlight",
+    "gulaab-shilpa-rao-2027",
+    "max-richter-live-mumbai-2026",
+    "mitsuko-uchida-kyoto-2026",
+    "snarky-puppy-porto-2027",
+    "starsailor-edinburgh-2026",
+    "sunburn-festival-2026",
+    "yoasobi-chowakusei-osaka-2026-10-24",
+    "yoasobi-chowakusei-osaka-2026-10-25",
+  ]);
   const away = MANUAL_CITY_EVENTS.filter((e) => e.venueLocality);
-  assert.deepEqual(away.map((e) => [e.city, e.venueLocality]), [["Porto", "Portimão"], ["Kyoto", "Suzuka"]]);
+  assert.deepEqual(away.map((e) => [e.city, e.venueLocality]), [["Porto", "Portimão"], ["Kyoto", "Suzuka"], ["Kyoto", "Osaka"], ["Kyoto", "Osaka"]]);
 });
 
 test("E2: a date-only card carries no start time; a known time renders in the city's zone", () => {
