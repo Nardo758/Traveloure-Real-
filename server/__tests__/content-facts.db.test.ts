@@ -13,6 +13,8 @@
  *       each option's server plan-fit rank
  *   C5  NO PLACES FACT REACHES A PUBLIC ROUTE: the ONE plan assembler — which also serves the public
  *       share/teaser channels — carries none at any level, and only gated files read the table
+ *   C6  NO FORCED REFRESH (ledger `2026-09-30-places-address`): an unexpired answer cached before the
+ *       address fields existed is reused as it is — no call, and no address fact appears for it
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -211,4 +213,29 @@ test("C5: no Places fact reaches a public route", async () => {
   const at = plancard.indexOf("await factsForTrip(tripId)");
   const handler = plancard.lastIndexOf("router.get(", at);
   assert.match(plancard.slice(handler, plancard.indexOf("\n", handler)), /isAuthenticated/, "the plancard read is authenticated");
+});
+
+test("C6: a cached answer from before the address lane is reused as-is — no call, no address", async () => {
+  const item = id("s6");
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin) VALUES (${item}, ${ids.trip}, 2, 'Tofuku-ji', 'attraction', 'ai')`);
+  const query = "Tofuku-ji, Kyoto, Japan";
+  const place = id("tofuku");
+  await recordFacts([
+    fact({ placeRef: place, factType: "location", need: "stop.hours", value: { lat: 34.97, lng: 135.77, name: "Tofuku-ji", query } }),
+    fact({ placeRef: place, value: { weekdayDescriptions: ["Monday: 9:00 AM – 4:00 PM"], query } }),
+  ], { planId: null, itemId: null });
+  let calls = 0;
+  const adapter = new PlacesAdapter(
+    async () => {
+      calls += 1;
+      return { ok: true, status: 200, json: async () => ({ places: [{ id: place, displayName: { text: "Tofuku-ji" }, formattedAddress: "15 Honmachi, Higashiyama Ward, Kyoto" }] }) };
+    },
+    () => "test-key",
+    () => true,
+  );
+  const r = await enrichPlanItems({ tripId: ids.trip, market: "kyoto", city: "Kyoto, Japan", items: [{ id: item, title: "Tofuku-ji", type: "attraction" }], adapters: [adapter] });
+  assert.deepEqual({ looked: r.looked, cached: r.cached }, { looked: 0, cached: 1 });
+  assert.equal(calls, 0, "no forced refresh");
+  const types = ((await db.execute(sql`SELECT fact_type FROM place_facts WHERE itinerary_item_id = ${item}`)).rows as any[]).map((x) => x.fact_type).sort();
+  assert.deepEqual(types, ["hours", "location"]);
 });
