@@ -79,3 +79,5 @@
 - [Nightly QA CLI isolation](nightly-qa-cli-isolation.md) — exit-capable data checks must run outside the web server so findings cannot stop the preview.
 - [Landing hero card copy preference](landing-hero-card-copy-preference.md) — SUPERSEDED Sep 29 by the billboard slot-types dispatch: real cards come only from the gates; a curated card says only "Start this plan".
 - [Large shell callback output](large-shell-callback-output.md) — verify large copies against their source; successful callbacks can return incomplete text without a truncation flag.
+- [Production geocoding verification](production-geocoding-verification.md) — use cached boot observations, never extra probes; skipped venues are untested, and failures need diagnosis before allowlist changes.
+- [Nix CLI child environment](nix-cli-child-environment.md) — scrubbed subprocesses need package-wrapper settings such as XDG_CONFIG_HOME; launcher failures are not app failures.

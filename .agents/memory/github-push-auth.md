@@ -9,3 +9,10 @@ Shell `git push` failures ("Invalid username or token") had TWO stacked causes:
 **Current working setup:** plain origin URL + local `credential.helper` shell function that emits `username=x-access-token` / `password=$GITHUB_TOKEN`, so pushes track the `GITHUB_TOKEN` secret automatically.
 
 **How to apply:** if shell push fails auth, first check `git config --get remote.origin.url` for an embedded token. The `gitPush` CodeExecution callback (Replit GitHub connection) works independently of all of this and is the reliable fallback.
+
+`gh pr edit` can request an unrelated `read:org` scope through its GraphQL
+metadata query even when ordinary repository operations are authorized.
+**Why:** A body-only draft PR update failed on the GraphQL `login` field while
+push, PR creation, and REST repository access worked with the same credential.
+**How to apply:** For body-only updates, use the REST pull-request PATCH with only
+the body field before requesting broader scopes or reconnecting authentication.
