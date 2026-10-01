@@ -32,7 +32,9 @@ import {
 } from "../blog-race-weekend.service";
 import { loadEventGuideFacts } from "../blog-event-facts.service";
 
-const RUN = crypto.randomUUID().slice(0, 8);
+// Letters only: the fixture title carries RUN, and a digit run like "83" would read as a number the
+// facts contain, defeating R3's "no minute reaches the prompt / an unknown number is refused" checks.
+const RUN = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => "abcdefghijklmnop"[b % 16]).join("");
 const ADMIN = `race-${RUN}-admin`;
 const GP = `race-${RUN}-gp`;
 const JAZZ = `race-${RUN}-jazz`;
