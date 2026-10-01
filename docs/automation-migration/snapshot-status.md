@@ -19,10 +19,11 @@ seven-domain migration and not a production release candidate.
 - The shared registry currently validates 58 nodes across the first three domains.
   The 14 current registry/adapter tests pass with a deliberately unreachable dummy
   database URL; these are not a substitute for the bookings domain gate.
-- A snapshot TypeScript check hit its 120-second limit before reporting results.
-  The previously completed payments/moderation checks remained at the measured
-  120-diagnostic baseline. That does not establish the bookings snapshot's type
-  status.
+- The initial snapshot TypeScript check hit its 120-second limit. A subsequent
+  check completed with 120 diagnostics, matching the measured baseline, and no
+  diagnostics in the new registry modules. Comparing diagnostic fingerprints
+  after normalizing expanded type rendering found no newly introduced errors.
+  This is not a clean typecheck and does not replace the bookings regression gate.
 - Separate scheduled-runner provisioning and delivery evidence remain unverified.
 - No production Nominatim reachability result was obtained.
 
