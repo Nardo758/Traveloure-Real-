@@ -32,6 +32,8 @@ interface AiUsageSummary {
   byModel: Record<string, { calls: number; tokens: number; costCents: number }>;
   averageResponseTimeMs: number;
   successRate: number;
+  /** Ledger `2026-10-01-ai-upstream-error-classes`: provider calls that failed (zero cost, success=false). */
+  failedCalls?: number;
 }
 
 interface ApiUsageSummary {
@@ -301,6 +303,12 @@ export default function AdminAICosts() {
                   <p className="text-sm text-muted-foreground">AI Costs</p>
                   <p className="text-2xl font-bold text-blue-600">{formatCost(aiSummary?.totalCostCents || 0)}</p>
                   <p className="text-xs text-muted-foreground">{formatTokens(aiSummary?.totalTokens || 0)} tokens</p>
+                  {/* §13: shown only when the server answered with a count; never a guessed 0. */}
+                  {typeof aiSummary?.failedCalls === "number" && aiSummary.failedCalls > 0 && (
+                    <p className="text-xs text-red-600" data-testid="text-ai-failed-calls">
+                      {aiSummary.failedCalls} failed {aiSummary.failedCalls === 1 ? "call" : "calls"}
+                    </p>
+                  )}
                 </div>
                 <Cpu className="w-8 h-8 text-blue-600 opacity-80" />
               </div>

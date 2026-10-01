@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { reportAiUpstreamError } from "./services/ai-upstream-errors";
 import { optionPickItem, type OptionSlot } from "./services/version-options.service";
 import { buildInputSnapshot, recordOptimizerRun, type RunRecordContext } from "./services/optimizer-runs.service";
 import { db } from "./db";
@@ -85,14 +86,23 @@ function getAnthropicClient(): Anthropic | null {
 async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
   const anthropic = getAnthropicClient();
   if (anthropic) {
-    const response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: CLAUDE_MAX_TOKENS,
-      system: systemPrompt,
-      messages: [
-        { role: "user", content: userPrompt },
-      ],
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: CLAUDE_MAX_TOKENS,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: userPrompt },
+        ],
+      });
+    } catch (err) {
+      // Ledger `2026-10-01-ai-upstream-error-classes`: the paid run fails in the background, so the
+      // failure is recorded and (non-retryable, first per hour) alerted here; rethrown unchanged so
+      // the comparison still lands `failed` exactly as before.
+      await reportAiUpstreamError(err, { route: "optimizer:generateOptimizedItineraries", sourceType: "ai_optimization", model: CLAUDE_MODEL });
+      throw err;
+    }
     // Track cost for CON-B pricing analysis
     if (response.usage) {
       const cost = calculateAnthropicCost(response.usage.input_tokens, response.usage.output_tokens);

@@ -243,6 +243,7 @@ import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
+import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
 import adminRoutes from "./routes/admin.routes";
 import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
@@ -1871,6 +1872,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       } catch (aiErr: any) {
         // Circuit open → surface to outer handler as 503 (do NOT fall back).
         if (aiErr?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") throw aiErr;
+        // Ledger `2026-10-01-ai-upstream-error-classes`: a NON-RETRYABLE upstream failure (credit,
+        // auth, bad request) is not papered over with the canned fallback either — the traveler is
+        // told planning is unavailable, and the failure is recorded and alerted in the one module.
+        if (isNonRetryableAiError(aiErr)) {
+          const failure = await aiFailureResponse(aiErr, {
+            route: "POST /api/trips/:id/generate-itinerary",
+            sourceType: "ai_itinerary",
+            userId: callerUserId,
+          });
+          return res.status(failure.status).json(failure.body);
+        }
+        // A retryable provider failure is still RECORDED (so an outage is visible as failed calls)
+        // before the existing contextual fallback runs.
+        await reportAiUpstreamError(aiErr, {
+          route: "POST /api/trips/:id/generate-itinerary",
+          sourceType: "ai_itinerary",
+          userId: callerUserId,
+        });
         console.error("AI generation failed, using contextual fallback:", aiErr);
         itineraryData = {
           days: Array.from({ length: duration }, (_, i) => ({
