@@ -169,7 +169,9 @@ async function loadNeighbourhoodCandidates(): Promise<NeighbourhoodCandidate[]> 
  * one request per venue, spaced per Nominatim's policy. No match ⇒ the row is inserted with NULL
  * coordinates and named in `unlocated` (never a guessed point). OSM UNREACHABLE ⇒ the row is NOT
  * inserted this run and is named in `deferred`: a seeded row is never looked up again, so a network
- * blip must not become a permanent "not found".
+ * blip must not become a permanent "not found". BOUNDED (decision-maker, Oct 1, 2026): at most ONE
+ * lookup per entry in the list passed (the seed list), per run — a deferred row is retried by the
+ * NEXT boot's single pass, never by a loop here.
  */
 export async function seedCityEvents(
   entries: readonly CityEventSeedEntry[],

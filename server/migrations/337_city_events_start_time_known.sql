@@ -1,7 +1,7 @@
 -- 337 — city_events: whether the start TIME is known (ledger `2026-10-01-city-events-nine-seed`).
--- HELD FOR DECISION-MAKER REVIEW before push (decision-maker, Oct 1, 2026: "Migration 337, same rule
--- as 335/336: nullable boolean, no DEFAULT/CHECK/index, applied twice locally, held in the PR for my
--- review. Null and false both mean 'date only' — the card omits startTime unless it's true.").
+-- APPROVED by the decision-maker, Oct 1, 2026 ("#1224: migration 337 approved"), as dispatched:
+-- "Migration 337, same rule as 335/336: nullable boolean, no DEFAULT/CHECK/index, applied twice
+-- locally … Null and false both mean 'date only' — the card omits startTime unless it's true.".
 --
 -- ONE ADDITIVE, NULLABLE COLUMN. NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL — the publish-trap
 -- posture; declared in shared/schema.ts (deploy-push durability). A publish prompt offering exactly

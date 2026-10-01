@@ -10,7 +10,8 @@
  *       lookups are spaced by Nominatim's interval
  *   E4  the OSM lookup accepts only a result whose name and the venue's match BOTH ways, sends the app's
  *       user agent, never asks for a generic venue, and answers "unreachable" (never null) on a failure
- *   E5  an unreachable lookup DEFERS the row — nothing inserted — and the next run inserts it
+ *   E5  an unreachable lookup DEFERS the row — nothing inserted, exactly ONE lookup that run (bounded,
+ *       never a loop) — and the next run inserts it
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. No network.
  */
@@ -133,8 +134,14 @@ test("E4: the OSM lookup matches by name, identifies itself, skips generic venue
 
 test("E5: an unreachable lookup defers the row; the next run inserts it", async () => {
   const entry = { source: "manual" as const, sourceId: sid("later"), title: "Later", city: "Kyoto", venue: "Suzuka Circuit", startsAt: "2027-04-12T00:00:00+09:00" };
-  const down = await seedCityEvents([entry], { partnerHosts: async () => [], sleep: async () => {}, resolveVenue: async () => "unreachable" as const });
+  let downCalls = 0;
+  const down = await seedCityEvents([entry], {
+    partnerHosts: async () => [],
+    sleep: async () => {},
+    resolveVenue: async () => { downCalls += 1; return "unreachable" as const; },
+  });
   assert.deepEqual([down.inserted, down.deferred], [0, [sid("later")]]);
+  assert.equal(downCalls, 1, "bounded: one lookup per entry per run — the retry is the next run, never a loop");
   const count: any = await db.execute(sql`SELECT count(*)::int AS n FROM city_events WHERE source_id = ${sid("later")}`);
   assert.equal((count.rows ?? count)[0].n, 0, "nothing inserted while OSM is unreachable");
   const up = await seedCityEvents([entry], {

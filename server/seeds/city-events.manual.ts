@@ -44,7 +44,7 @@ import type { CityEventSeedEntry } from "../services/city-events.service";
  * the ledger row `2026-10-01-city-events-nine-seed`). Held until confirmed on the organiser's page:
  * Sunburn Goa 2026, Lakmé Fashion Week x FDCI, Serendipity Arts Festival 2026, Jaipur Literature
  * Festival 2027, Goa Carnival 2027. A `ticketUrl` is set only where the organiser's or primary seller's
- * own page was given; none is guessed.
+ * own page was given; none is guessed. IMAGINE NOH's stays unset until the Kanze theatre's page is read.
  */
 export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
   {
@@ -58,6 +58,8 @@ export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
     endsAt: "2027-01-24T00:00:00+05:30",
     vertical: "music",
     seriesKey: "lollapalooza-india",
+    // The organiser's site (BookMyShow is the seller) — decision-maker, Oct 1, 2026.
+    ticketUrl: "https://lollaindia.com",
   },
   {
     source: "manual",
@@ -70,6 +72,7 @@ export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
     endsAt: "2027-03-21T00:00:00-05:00",
     vertical: "music",
     seriesKey: "estereo-picnic",
+    ticketUrl: "https://www.festivalestereopicnic.com",
   },
   {
     source: "manual",
