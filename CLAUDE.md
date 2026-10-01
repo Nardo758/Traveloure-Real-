@@ -2295,6 +2295,12 @@ This document captures architectural decisions to maintain consistency across co
     <date>" line beside it — then the draft's own location text, which carries no attribution. It is a
     display fact inside the plan and is never written onto the item row; a cached answer from before this
     lane is reused as it is, never re-fetched to add an address.
+    **A NEED MAY CARRY ONE NAMED SUB-NEED LEVEL (A6 decision 1B; ledger `2026-10-01-a6-sub-needs`).**
+    `CONTENT_SUB_NEEDS` names four (`transport.intercity.rail`/`.bus`/`.ferry`, `transport.local.fares`);
+    `needCovers` is the ONE rule (parent reaches its sub-needs, never the reverse), free text is refused
+    by `admitNeedList`, and `scripts/report-content-coverage.cjs <market>` nests sub-needs under their
+    parent, flags terms older than 180 days without deactivating anything, and calls a market with no
+    stated requirement `unstated`.
     **A PLACES LOOKUP NEEDS A NAMED PLACE, AND THE CAP IS SPENT ACROSS DAYS (ledger
     `2026-09-30-places-named-gate`; production smoke test 3).** An item whose title and location name no
     specific place (`namedPlaceTokens`, `shared/place-name-gate.ts`) is never looked up, and a Places
