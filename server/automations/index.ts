@@ -19,3 +19,4 @@ export { paymentAutomations, paymentAutomationRegistry } from "./payments";
 export { moderationAutomations, moderationAutomationRegistry } from "./moderation";
 export { bookingAutomations, bookingAutomationRegistry } from "./bookings";
 export { messagingAutomations, messagingAutomationRegistry } from "./messaging";
+export { providerAutomations, providerAutomationRegistry } from "./provider";

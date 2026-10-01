@@ -21,3 +21,15 @@ an already-running server that accidentally receives its requests.
 Preserve required nonsecret package-wrapper settings as described in
 [Nix CLI child environment](nix-cli-child-environment.md). Never record credential
 values in commands, logs, reports, or memory.
+
+Negative delivery checks must first prove that the originating mutation succeeded,
+not merely that no email was sent.
+
+**Why:** An approval-negative rejection-email test passed after an outdated
+transaction mock allowed a database error to return HTTP 500 before the send path.
+The email-absence assertion alone concealed the failure.
+
+**How to apply:** Assert the expected successful response/result before checking
+no sends, and keep mocked transaction handles aligned with the real service
+boundary. A credential-free dummy database exposes accidental queries safely,
+but does not make an absence-only assertion trustworthy.

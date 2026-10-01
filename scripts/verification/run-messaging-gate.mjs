@@ -10,9 +10,13 @@ import { spawn } from "node:child_process";
 import pg from "pg";
 
 const args = process.argv.slice(2);
-const dbMode = args[0] === "--isolated-db";
-if (dbMode) args.shift();
-if (!args.length || args.some((file) => !/^server\/.*\.test\.ts$/.test(file) || !fs.existsSync(file))) {
+const dbMode = args.includes("--isolated-db");
+const httpHarness = args.includes("--http-harness");
+const testFiles = args.filter((arg) => arg !== "--isolated-db" && arg !== "--http-harness");
+if (httpHarness && !dbMode) {
+  throw new Error("--http-harness requires --isolated-db");
+}
+if (!testFiles.length || testFiles.some((file) => !/^server\/.*\.test\.ts$/.test(file) || !fs.existsSync(file))) {
   throw new Error("Supply explicit existing server test files");
 }
 const env = {};
@@ -34,15 +38,103 @@ const schema = `automation_msg_${crypto.randomBytes(8).toString("hex")}`;
 let pool;
 let schemaCreated = false;
 let child;
+let harness;
 let interrupted = false;
-const stopChild = () => {
-  if (child?.pid && child.exitCode === null) {
-    try { process.kill(-child.pid, "SIGTERM"); } catch { /* already exited */ }
+const signalProcessGroup = (proc, signal) => {
+  if (proc?.pid) {
+    try { process.kill(-proc.pid, signal); } catch { /* process group already exited */ }
   }
 };
-const onSignal = () => { interrupted = true; stopChild(); };
+const stopProcessGroup = async (proc) => {
+  if (!proc?.pid) return;
+  signalProcessGroup(proc, "SIGTERM");
+  if (proc.exitCode === null) {
+    await new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(deadline);
+        proc.removeListener("exit", done);
+        resolve();
+      };
+      const deadline = setTimeout(done, 5_000);
+      proc.once("exit", done);
+    });
+  }
+  // Also signal the group if its leader exited while a descendant remained alive.
+  signalProcessGroup(proc, "SIGKILL");
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      process.kill(-proc.pid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (error) {
+      if (error.code === "ESRCH") return;
+      throw error;
+    }
+  }
+  throw new Error(`Verification child process group ${proc.pid} did not stop; refusing schema cleanup`);
+};
+const onSignal = () => {
+  interrupted = true;
+  signalProcessGroup(child, "SIGTERM");
+  signalProcessGroup(harness, "SIGTERM");
+};
 process.once("SIGINT", onSignal);
 process.once("SIGTERM", onSignal);
+
+function startHttpHarness() {
+  const harnessArgs = [];
+  harnessArgs.push("--require", path.resolve("scripts/verification/messaging-schema-preload.cjs"));
+  harnessArgs.push(
+    "node_modules/tsx/dist/cli.mjs",
+    "server/__tests__/fixtures/verification-gate-harness.ts",
+  );
+  const spawned = spawn(process.execPath, harnessArgs, {
+    env: { ...env, VERIFICATION_HARNESS_PORT: "0" },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+  harness = spawned;
+
+  return new Promise((resolve, reject) => {
+    let pending = "";
+    let settled = false;
+    const deadline = setTimeout(() => {
+      finish(new Error("Verification HTTP harness did not become ready within 120 seconds"));
+    }, 120_000);
+    const finish = (error, port) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (error) reject(error);
+      else resolve(port);
+    };
+    spawned.stdout.setEncoding("utf8");
+    spawned.stdout.on("data", (chunk) => {
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        console.log(line);
+        const match = line.match(/^VERIFICATION_HARNESS_READY_PORT=(\d+)$/);
+        if (match) {
+          const port = Number(match[1]);
+          if (port > 0 && port <= 65535) finish(null, port);
+        }
+      }
+    });
+    spawned.stdout.on("end", () => {
+      if (pending) console.log(pending);
+    });
+    spawned.stderr.setEncoding("utf8");
+    spawned.stderr.on("data", (chunk) => process.stderr.write(chunk));
+    spawned.once("error", (error) => finish(error));
+    spawned.once("exit", (code, signal) => {
+      if (!settled) {
+        finish(new Error(`Verification HTTP harness exited before readiness (code=${code}, signal=${signal})`));
+      }
+    });
+  });
+}
+
 try {
   if (dbMode) {
     const expected = process.env.MESSAGING_DEV_FINGERPRINT;
@@ -133,24 +225,47 @@ try {
     console.log(`ISOLATED_EMPTY_SCHEMA_READY=true tables=${tables.rows.length} foreignKeys=${foreignKeys.rows.length}`);
   }
   if (interrupted) throw new Error("Verification interrupted before tests started");
+
+  if (httpHarness) {
+    if (interrupted) throw new Error("Verification interrupted before HTTP harness startup");
+    const port = await startHttpHarness();
+    const baseUrl = `http://127.0.0.1:${port}`;
+    // The selected HTTP suites must never fall back to the preview/default :5000 target.
+    env.JOURNEY_BASE_URL = baseUrl;
+    console.log(`ISOLATED_HTTP_HARNESS_READY=true address=${baseUrl}`);
+  }
+  if (interrupted) throw new Error("Verification interrupted before tests started");
+
   const nodeArgs = [];
   if (dbMode) nodeArgs.push("--require", path.resolve("scripts/verification/messaging-schema-preload.cjs"));
   nodeArgs.push(
-    "node_modules/tsx/dist/cli.mjs", "--test", "--test-force-exit", "--test-concurrency=1", ...args,
+    "node_modules/tsx/dist/cli.mjs", "--test", "--test-force-exit", "--test-concurrency=1", ...testFiles,
   );
   console.log("PROVIDER_FREE_ALLOWLIST=true");
   const exitCode = await new Promise((resolve, reject) => {
     child = spawn(process.execPath, nodeArgs, { env, stdio: "inherit", detached: true });
+    let escalation;
     const deadline = setTimeout(() => {
       console.error("Verification exceeded its three-minute test budget");
-      stopChild();
+      signalProcessGroup(child, "SIGTERM");
+      escalation = setTimeout(() => signalProcessGroup(child, "SIGKILL"), 5_000);
     }, 180_000);
-    child.once("error", (error) => { clearTimeout(deadline); reject(error); });
-    child.once("exit", (code) => { clearTimeout(deadline); resolve(code ?? 1); });
+    child.once("error", (error) => {
+      clearTimeout(deadline);
+      clearTimeout(escalation);
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      clearTimeout(deadline);
+      clearTimeout(escalation);
+      resolve(interrupted ? 1 : code ?? 1);
+    });
   });
   process.exitCode = exitCode;
 } finally {
-  stopChild();
+  await stopProcessGroup(child);
+  // Stop the fixture HTTP server before dropping its schema, even after test/startup failure.
+  await stopProcessGroup(harness);
   if (schemaCreated) {
     await pool.query(`DROP SCHEMA ${q(schema)} CASCADE`);
     const remaining = await pool.query("SELECT 1 FROM pg_namespace WHERE nspname=$1", [schema]);

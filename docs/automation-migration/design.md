@@ -8,6 +8,12 @@ migration covers discovered, implemented behavior only. It does not infer the
 missing brief text, create campaigns, introduce automatic enforcement, or initiate
 seller transfers.
 
+After cancellation of the original queued task, the operator separately authorized
+resuming the provider stage only. This continuation must stop before AI and
+cross-domain scheduled work; it does not reopen or complete the cancelled task.
+Existing bookings/moderation owners of overlapping provider behavior are retained,
+not wrapped again merely to fill the provider namespace.
+
 The registry is `server/automations/`, with one automation per file in payments,
 moderation, bookings, messaging, provider, ai, and scheduled. Business-domain
 scheduled work remains in its business domain. Cross-domain maintenance belongs

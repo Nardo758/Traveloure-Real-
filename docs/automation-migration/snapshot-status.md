@@ -1,7 +1,7 @@
 # Review-branch snapshot status
 
-This is an intermediate review-branch snapshot. The messaging stage has resumed
-and passed its gate; this is not completion of the seven-domain migration and
+This is an intermediate review-branch snapshot. The provider-only continuation
+has passed its gate; this is not completion of the seven-domain migration and
 not a production release candidate.
 
 ## Completed domain gates
@@ -21,22 +21,32 @@ not a production release candidate.
   no outstanding failures or skips. All 19 messaging nodes have source-to-ID
   evidence; no verification mail/push or live Stripe action occurred. The empty
   development fixture schema was removed. See `messaging-verification.md`.
+- Provider: 100 test cases passed (67 pure, 33 isolated HTTP/DB), with zero
+  outstanding failures or skips. Eight provider nodes have source-to-ID evidence;
+  existing bookings availability and moderation listing activation retain their
+  owners, with no duplicate wrappers. The empty development schema was removed;
+  no verification mail/push or live Stripe action occurred. See
+  `provider-verification.md`.
 
 ## In-progress and remaining work
 
-- Provider, AI, and cross-domain scheduled migrations have not started.
-- The shared registry currently validates 77 nodes across the first four domains.
-  All 32 registry/adapter cases pass with an allowlisted environment and a
-  deliberately unreachable dummy database URL.
-- The final messaging TypeScript check completed with 120 diagnostics, matching
+- AI and cross-domain scheduled migrations remain deferred. Stop before these
+  stages; they were not authorized by the provider-only continuation.
+- The original queued task was explicitly cancelled and remains cancelled.
+  This continuation neither reopens nor marks it complete.
+- The shared registry currently validates 85 unique nodes across five migrated
+  domains. Registry/runtime/producer cases pass within the 67-case pure gate,
+  using an allowlisted environment and an unreachable dummy database URL.
+- The final provider TypeScript check completed with 120 diagnostics, matching
   the measured baseline, and no diagnostics in the registry modules. Normalized
   fingerprints match after removing expanded object-type rendering and the
   unchanged `transfer.paid` diagnostic's truncated Stripe-union display order.
   This is not a clean typecheck.
-- The server bundle passed and independent messaging review found no blocker.
+- The server bundle passed and independent provider review found no blocker.
 - The development workflow restarted and the landing-page smoke check passed.
   The earlier bookings-stage restart applied two pre-existing pending development
-  migrations; neither was authored by this registry migration. See its verification note.
+  migrations; neither was authored by this registry migration. The provider
+  restart applied zero migrations. See the domain verification notes.
 - Separate scheduled-runner provisioning and delivery evidence remain unverified.
 - No production Nominatim reachability result was obtained.
 
@@ -45,5 +55,5 @@ not a production release candidate.
 This branch includes the canonical paid-booking confirmation prerequisite because
 the base `origin/main` did not contain it. No merge, publish, production data edit,
 production job execution, or production schema change accompanies this snapshot.
-Do not publish this workspace checkout. Resume and verify the remaining migration
-stages, obtain human review, and follow the existing release procedure.
+Do not publish this workspace checkout. Remaining stages require separate
+authorization and verification, human review, and the existing release procedure.

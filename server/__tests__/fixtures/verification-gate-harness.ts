@@ -101,7 +101,11 @@ async function startHarness(): Promise<void> {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", resolve);
   });
-  console.log(`Verification test harness listening on 127.0.0.1:${port}`);
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Verification harness did not bind a TCP loopback address");
+  }
+  console.log(`VERIFICATION_HARNESS_READY_PORT=${address.port}`);
 
   const shutdown = async () => {
     await travelPulseScheduler.stop();

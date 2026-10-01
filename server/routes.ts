@@ -31,6 +31,7 @@ import * as messagingService from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { broadcastToUser } from "./websocket";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
+import { dispatchProviderEvent } from "./automations/provider/runtime";
 import { validateImageDataUrl } from "./utils/imageValidation";
 import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
@@ -2635,7 +2636,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   async function mirrorBioToUsersRow(userId: string, bio: unknown): Promise<void> {
     if (typeof bio !== "string" || bio.trim().length === 0) return;
     try {
-      await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+      await dispatchProviderEvent(
+        "provider.application-bio-mirror",
+        "application.bio_mirror",
+        null,
+        { userId },
+        async () => {
+          await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+        },
+      );
     } catch (e: any) {
       console.error("[intake-bio-mirror] users.bio mirror failed:", e?.message);
     }
@@ -2691,7 +2700,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
       // claim when that market's rows land. Server-derived, idempotent, never blocks the submit.
       try {
-        await stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null });
+        await dispatchProviderEvent(
+          "provider.expert-application-neighborhood-stamp",
+          "expert_application.neighborhood_stamp",
+          null,
+          { formId: form.id, userId },
+          () => stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null }),
+        );
       } catch (e: any) {
         console.error("[neighborhood-claims] no-neighborhoods stamp failed:", e?.message);
       }
@@ -2770,7 +2785,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
       // claim when that market's rows land. Server-derived, idempotent, never blocks the submit.
       try {
-        await stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null });
+        await dispatchProviderEvent(
+          "provider.expert-application-neighborhood-stamp",
+          "expert_application.neighborhood_stamp",
+          null,
+          { formId: form.id, userId },
+          () => stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null }),
+        );
       } catch (e: any) {
         console.error("[neighborhood-claims] no-neighborhoods stamp failed:", e?.message);
       }
