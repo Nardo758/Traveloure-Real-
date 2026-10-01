@@ -17,7 +17,6 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { cityEvents } from "@shared/schema";
@@ -29,8 +28,11 @@ import {
   seriesFollowSlug,
   seriesPromptFacts,
 } from "../blog-series-follow.service";
+import { lettersOnlyId } from "../../__tests__/fixtures/letters-only-id";
 
-const RUN = crypto.randomUUID().slice(0, 8);
+// Letters only: fixture titles carry RUN, and a digit run like "12" would read as a number the facts
+// contain, defeating the "an invented number is refused" check.
+const RUN = lettersOnlyId();
 const ADMIN = `sfollow-${RUN}-admin`;
 const KEY = `sf-${RUN}-festival`;
 const SMALL = `sf-${RUN}-small`;

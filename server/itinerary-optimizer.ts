@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { reportAiUpstreamError } from "./services/ai-upstream-errors";
 import { optionPickItem, type OptionSlot } from "./services/version-options.service";
 import { buildInputSnapshot, recordOptimizerRun, type RunRecordContext } from "./services/optimizer-runs.service";
+import { startPaidRunFreshFetch } from "./services/content-facts/paid-run-fresh-fetch";
 import { db } from "./db";
 import { trackAICost } from "./services/ai-cost-tracker";
 import {
@@ -85,14 +87,23 @@ function getAnthropicClient(): Anthropic | null {
 async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
   const anthropic = getAnthropicClient();
   if (anthropic) {
-    const response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: CLAUDE_MAX_TOKENS,
-      system: systemPrompt,
-      messages: [
-        { role: "user", content: userPrompt },
-      ],
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await anthropic.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: CLAUDE_MAX_TOKENS,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: userPrompt },
+        ],
+      });
+    } catch (err) {
+      // Ledger `2026-10-01-ai-upstream-error-classes`: the paid run fails in the background, so the
+      // failure is recorded and (non-retryable, first per hour) alerted here; rethrown unchanged so
+      // the comparison still lands `failed` exactly as before.
+      await reportAiUpstreamError(err, { route: "optimizer:generateOptimizedItineraries", sourceType: "ai_optimization", model: CLAUDE_MODEL });
+      throw err;
+    }
     // Track cost for CON-B pricing analysis
     if (response.usage) {
       const cost = calculateAnthropicCost(response.usage.input_tokens, response.usage.output_tokens);
@@ -1369,6 +1380,18 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       if (runId) {
         await db.update(itineraryVariants).set({ runId }).where(eq(itineraryVariants.id, baselineVariant[0].id));
       }
+      // A9 × A6 (3) (ledger `2026-10-01-a9-paid-run-fresh-fetch`): a PAID run — never a Trip Pass or a
+      // free re-run — gets ONE fresh-fetch pass over the plan's located items within its dates. Not
+      // awaited: it never delays or fails the run (§15b); its cost reaches the run via the runId tag.
+      startPaidRunFreshFetch({
+        basis: runRecord.basis,
+        runId,
+        tripId: runRecord.tripId,
+        actorId: runRecord.createdBy,
+        baselineItems,
+        startDate,
+        endDate,
+      });
     }
 
     const content = await callAI(
