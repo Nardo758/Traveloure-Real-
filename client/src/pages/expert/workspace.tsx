@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { ItemComments } from "@/components/plancard/ItemComments";
+import { ItemFactConfirm } from "@/components/expert/ItemFactConfirm";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1189,6 +1190,8 @@ function ItemsEditorPanel({
                         Shared component with the Trip Card's ActivitiesSection; plain shadcn
                         tokens read fine inside this console-scoped panel (same posture as the
                         other shared Add-panel pickers on this page). */}
+                    {/* A6 (4): confirm a crawled web fact into a verified nugget (draws nothing when none). */}
+                    <ItemFactConfirm tripId={tripId} itemId={item.id} />
                     <ItemComments tripId={tripId} itemId={item.id} />
                   </div>
                 )}

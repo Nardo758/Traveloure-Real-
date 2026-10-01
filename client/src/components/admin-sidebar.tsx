@@ -94,6 +94,8 @@ const menuGroups = [
       // Content Ops (mockup §09, Aug 10 2026): YouTube ingestion trigger, extraction/enrichment
       // status, requested offering types, and the static market-launch checklist in one seat.
       { title: "Content Ops", href: "/admin/content-ops", icon: RefreshCw },
+      // Content source registry (A6 (2)): sources are entered here, never seeded.
+      { title: "Content Sources", href: "/admin/content-sources", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
       { title: "Message Reports", href: "/admin/message-moderation", icon: ShieldAlert },

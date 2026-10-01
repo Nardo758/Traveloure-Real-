@@ -2295,6 +2295,32 @@ This document captures architectural decisions to maintain consistency across co
     <date>" line beside it — then the draft's own location text, which carries no attribution. It is a
     display fact inside the plan and is never written onto the item row; a cached answer from before this
     lane is reused as it is, never re-fetched to add an address.
+    **A NEED MAY CARRY ONE NAMED SUB-NEED LEVEL (A6 decision 1B; ledger `2026-10-01-a6-sub-needs`).**
+    `CONTENT_SUB_NEEDS` names four (`transport.intercity.rail`/`.bus`/`.ferry`, `transport.local.fares`);
+    `needCovers` is the ONE rule (parent reaches its sub-needs, never the reverse), free text is refused
+    by `admitNeedList`, and `scripts/report-content-coverage.cjs <market>` nests sub-needs under their
+    parent, flags terms older than 180 days without deactivating anything, and calls a market with no
+    stated requirement `unstated`.
+    **THE REGISTRY HAS ONE WRITER AND ACTIVATION IS THE TERMS CHECK (A6 decision 2A; ledger
+    `2026-10-01-a6-registry-surface`).** `/admin/content-sources` → `content-sources.service.ts`: a source
+    is born inactive and unchecked; a general edit strips `terms_checked_at`/`terms_checked_by`/`active`,
+    and changing `homepage`, `terms_url`, `license_class` or `adapter` clears the check and deactivates;
+    only a user in `CONTENT_SOURCE_ACTIVATOR_USER_IDS` (unset ⇒ nobody) activates, and activation stamps
+    the database's `now()` and the session user in one atomic conditional. No seed script, ever.
+    **A FRESH FETCH SPENDS ONLY IN A PAID RUN OR AN EXPERT ACTION (A6 decision 3A; ledger
+    `2026-10-01-a6-tavily-extract`).** `mayFetchFresh` is the one predicate; the free draft has no basis and
+    a budget of 0, and `TavilyExtractAdapter` refuses a 0 budget before building a client. Spend is capped
+    per plan, per day and per source off `api_usage_logs` (unreadable ⇒ spent); a crawled fact keeps a
+    verbatim quote of at most 300 characters or is refused. Its two consumers are the §12
+    write-status advisor's `POST /api/trips/:tripId/itinerary-items/:itemId/fresh-facts` and a PAID
+    optimizer run (ledger `2026-10-01-a9-paid-run-fresh-fetch`): one pass after the run is recorded,
+    over the plan's located items within its dates, never awaited (§15b), never for a Trip Pass or a
+    free re-run; its cost reaches the run through the `runId` tag on `api_usage_logs`.
+    **AN EXPERT CONFIRMS A CRAWLED FACT INTO A NEW VERIFIED NUGGET (ledger `2026-10-01-a6-expert-confirm`).**
+    `isConfirmableFact` admits only an unverified `crawled` fact outside partner/restricted licenses —
+    never a Places fact, which would otherwise become publishable Google data. The confirm writes a NEW
+    `expert_nugget` row (no quote, URL or license carried) and supersedes the crawled row by one atomic
+    conditional; the route requires a §12 write-status advisor and the blog byline gate for the market.
     **A PLACES LOOKUP NEEDS A NAMED PLACE, AND THE CAP IS SPENT ACROSS DAYS (ledger
     `2026-09-30-places-named-gate`; production smoke test 3).** An item whose title and location name no
     specific place (`namedPlaceTokens`, `shared/place-name-gate.ts`) is never looked up, and a Places
