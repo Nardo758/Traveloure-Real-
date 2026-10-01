@@ -78,3 +78,4 @@
 - [Billboard market inventory](billboard-market-inventory.md) — live slot one alone cannot select a market without truthful credited fallbacks for the other slots.
 - [Nightly QA CLI isolation](nightly-qa-cli-isolation.md) — exit-capable data checks must run outside the web server so findings cannot stop the preview.
 - [Landing hero card copy preference](landing-hero-card-copy-preference.md) — SUPERSEDED Sep 29 by the billboard slot-types dispatch: real cards come only from the gates; a curated card says only "Start this plan".
+- [Large shell callback output](large-shell-callback-output.md) — verify large copies against their source; successful callbacks can return incomplete text without a truncation flag.

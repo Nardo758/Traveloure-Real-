@@ -49,6 +49,7 @@ import { occasionDraftsScheduler } from "./services/occasion-drafts-scheduler.se
 import { evidenceScorerScheduler } from "./services/evidence-scorer-scheduler.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { runPaymentSchedule } from "./automations/payments/runtime";
 import { getStripeSecretKey, getStripeWebhookSecret } from "./utils/stripe-key";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runDemandRollup } from "./jobs/demandRollup";
@@ -820,7 +821,12 @@ if (process.env.NODE_ENV === "production") {
 
     setTimeout(() => {
       const run = () =>
-        runBackgroundJob("stripe-reconciliation", () => runStripeReconciliation())
+        runPaymentSchedule(
+          "payments.stripe-reconciliation",
+          "stripe-reconciliation",
+          () => runStripeReconciliation({ triggeredBy: "scheduled" }),
+          { runnerName: "stripe-reconciliation" },
+        )
           .catch((err) => logger.error({ err }, "[reconciliation] scheduled pass failed"));
       void run();
       setInterval(() => void run(), 24 * 60 * 60 * 1000);
@@ -833,10 +839,15 @@ if (process.env.NODE_ENV === "production") {
     // Autoscale holds no in-process timer, as every other job here.
     setTimeout(() => {
       const run = () =>
-        runBackgroundJob("bundle-partial-settlement-sweep", async () => {
-          const { sweepUnsettledBundlePartials } = await import("./services/bundle-partial-settlement.service");
-          return sweepUnsettledBundlePartials();
-        }).catch((err) => logger.error({ err }, "[bundle-settlement] scheduled sweep failed"));
+        runPaymentSchedule(
+          "payments.bundle-partial-settlement",
+          "bundle-partial-settlement-sweep",
+          async () => {
+            const { sweepUnsettledBundlePartials } = await import("./services/bundle-partial-settlement.service");
+            return sweepUnsettledBundlePartials();
+          },
+          { runnerName: "bundle-partial-settlement-sweep" },
+        ).catch((err) => logger.error({ err }, "[bundle-settlement] scheduled sweep failed"));
       void run();
       setInterval(() => void run(), 24 * 60 * 60 * 1000);
     }, jitteredStartupDelay(90 * 60 * 1000));

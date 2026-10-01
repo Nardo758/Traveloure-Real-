@@ -12,6 +12,7 @@ import { scorePendingClaims, type ScorePendingResult } from "./evidence-scorer.s
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { EVIDENCE_SCORER_CHECK_INTERVAL_MS, EVIDENCE_SCORER_FIRST_RUN_DELAY_MS } from "../config/evidence-scorer.config";
+import { runModerationSchedule } from "../automations/moderation/runtime";
 
 export const EVIDENCE_SCORER_JOB_NAME = "score-neighborhood-claims";
 
@@ -43,14 +44,27 @@ class EvidenceScorerSchedulerService {
   }
 
   async runOnce(): Promise<ScorePendingResult & { ranAt: Date; error?: string }> {
-    try {
-      const r = await scorePendingClaims();
-      this.lastResult = { ...r, ranAt: new Date() };
-    } catch (err: any) {
-      this.lastResult = { scanned: 0, scored: 0, failed: 0, skipped: 0, results: [], ranAt: new Date(), error: err?.message || String(err) };
-      console.error("[EvidenceScorer] pass failed:", err);
+    const scheduled = await runModerationSchedule(
+      "moderation.claim-score-warm",
+      "evidence-scorer-warm",
+      async () => {
+        try {
+          const r = await scorePendingClaims();
+          this.lastResult = { ...r, ranAt: new Date() };
+        } catch (err: any) {
+          this.lastResult = { scanned: 0, scored: 0, failed: 0, skipped: 0, results: [], ranAt: new Date(), error: err?.message || String(err) };
+          console.error("[EvidenceScorer] pass failed:", err);
+        }
+        return this.lastResult;
+      },
+    );
+    if ("__automationSkipped" in scheduled) {
+      throw new Error(`Evidence scorer warm automation did not run (${scheduled.reason})`);
     }
-    return this.lastResult;
+    if ("__skipped" in scheduled) {
+      throw new Error(`Evidence scorer warm pass was unexpectedly background-skipped (${scheduled.reason})`);
+    }
+    return scheduled;
   }
 
   getLastResult() {

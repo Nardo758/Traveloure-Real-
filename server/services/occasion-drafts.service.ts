@@ -44,6 +44,7 @@ import { resolveOccasionTemplate } from "./occasion-templates";
 import { computeDueOccurrence, OCCASION_LEAD_DAYS, parseDateUTC, toDateKey, type DueOccurrence } from "./occasion-schedule";
 import { isActivePlus } from "./plan-membership.service";
 import { enqueueEmail } from "./email-outbox.service";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 import { buildOccasionReminderEmailPayload } from "./email.service";
 
 const TAG = "[occasion-drafts]";
@@ -78,7 +79,7 @@ interface OccasionCandidate {
  * Batch entry point. Safe to call hourly and re-entrant. `today` is injectable for tests; `limit`
  * bounds a single pass. Never throws — a per-occasion failure is counted and the pass continues.
  */
-export async function runOccasionDrafts(opts?: { today?: Date; limit?: number }): Promise<RunOccasionDraftsResult> {
+async function runOccasionDraftsAction(opts?: { today?: Date; limit?: number }): Promise<RunOccasionDraftsResult> {
   const today = opts?.today ?? new Date();
   const result: RunOccasionDraftsResult = {
     scanned: 0,
@@ -126,6 +127,14 @@ export async function runOccasionDrafts(opts?: { today?: Date; limit?: number })
     `noHomeCity=${result.skippedNoHomeCity} errors=${result.errors}`,
   );
   return result;
+}
+
+export function runOccasionDrafts(opts?: { today?: Date; limit?: number }): Promise<RunOccasionDraftsResult> {
+  return runBookingSchedule(
+    "bookings.occasion-drafts",
+    "run-occasion-drafts",
+    () => runOccasionDraftsAction(opts),
+  );
 }
 
 /** Active occasions belonging to live (non-deleted, non-suspended) users who have set a home city. */

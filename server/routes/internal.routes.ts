@@ -29,8 +29,11 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
-import { sweepExpiredCheckoutClaims, sweepStaleAuthorizedClaims } from "../services/checkout-claim.service";
+import { runPaymentSchedule } from "../automations/payments/runtime";
+import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
+import { runCheckoutClaimSweepSchedule } from "../services/checkout-claim.service";
 import { materializeAllServicesWithPatterns } from "../services/availability-materializer.service";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
@@ -39,6 +42,7 @@ import { scorePendingClaims } from "../services/evidence-scorer.service";
 import { z } from "zod";
 import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
+import { runModerationSchedule } from "../automations/moderation/runtime";
 import {
   recordJobSuccess,
   computeJobHealth,
@@ -110,11 +114,22 @@ export async function runJob(
   name: string,
   fn: () => Promise<unknown>,
   isFailure?: (result: any) => boolean,
+  options: {
+    isSkip?: (result: any) => boolean;
+    useBackgroundJobRunner?: boolean;
+  } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
-    const result = await runBackgroundJob(name, fn);
+    const result = options.useBackgroundJobRunner === false ? await fn() : await runBackgroundJob(name, fn);
     if (isBackgroundJobSkip(result)) {
       return { status: 200, body: { ok: true, skipped: true, reason: result.reason, job: name } };
+    }
+    if (isScheduledAutomationSkip(result)) {
+      return { status: 200, body: { ok: true, skipped: true, reason: result.reason, job: name } };
+    }
+    if (options.isSkip?.(result)) {
+      const reason = (result as any)?.skipReason ?? (result as any)?.reason ?? "action_reported_skip";
+      return { status: 200, body: { ok: true, skipped: true, reason, job: name } };
     }
     if (result === undefined) {
       return {
@@ -208,7 +223,14 @@ router.post("/internal/run-occasion-drafts", requireInternalSecret, async (req, 
 // ── MONEY jobs ─────────────────────────────────────────────────────────────────────────────────
 // earnings-release — flips matured earnings held→releasable (atomic conditional; §15). Idempotent.
 router.post("/internal/jobs/earnings-release", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("earnings-release", () => storage.releaseMaturedEarnings());
+  const { status, body } = await runJob("earnings-release", () =>
+    runPaymentSchedule(
+      "payments.earnings-release",
+      "earnings-release",
+      () => storage.releaseMaturedEarnings(),
+      { useBackgroundJobRunner: false },
+    ),
+  );
   res.status(status).json(body);
 });
 
@@ -228,8 +250,14 @@ router.post("/internal/jobs/booking-auto-completion", requireInternalSecret, asy
 router.post("/internal/jobs/stripe-reconciliation", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob(
     "stripe-reconciliation",
-    () => runStripeReconciliation({ triggeredBy: "scheduled" }),
+    () => runPaymentSchedule(
+      "payments.stripe-reconciliation",
+      "stripe-reconciliation",
+      () => runStripeReconciliation({ triggeredBy: "scheduled" }),
+      { useBackgroundJobRunner: false },
+    ),
     (r) => r?.status === "failed",
+    { isSkip: (r) => r?.status === "skipped" },
   );
   res.status(status).json(body);
 });
@@ -239,10 +267,11 @@ router.post("/internal/jobs/stripe-reconciliation", requireInternalSecret, async
 // this is the 15-min cold-instance backstop.
 router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req, res) => {
   // R164 (G2): the same job also reclaims STAMPED claims left unpaid (sweepStaleAuthorizedClaims).
-  const { status, body } = await runJob("checkout-sweep", async () => ({
-    unauthorized: await sweepExpiredCheckoutClaims(),
-    authorized: await sweepStaleAuthorizedClaims(),
-  }));
+  const { status, body } = await runJob("checkout-sweep",
+    () => runCheckoutClaimSweepSchedule(),
+    undefined,
+    { useBackgroundJobRunner: false },
+  );
   res.status(status).json(body);
 });
 
@@ -250,7 +279,13 @@ router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req,
 // availability-materialization — extends the rolling 60-day availability horizon (ADD-ONLY,
 // ON CONFLICT DO NOTHING). Calls the underlying service (which throws on failure → visible 500).
 router.post("/internal/jobs/availability-materialization", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("availability-materialization", () => materializeAllServicesWithPatterns());
+  const { status, body } = await runJob("availability-materialization", () =>
+    runBookingSchedule(
+      "bookings.availability-horizon-materialization",
+      "availability-materialization",
+      () => materializeAllServicesWithPatterns(),
+    ),
+  );
   res.status(status).json(body);
 });
 
@@ -267,7 +302,12 @@ router.post("/internal/jobs/booking-expiry", requireInternalSecret, async (_req,
 router.post("/internal/jobs/travelpayouts-report-poll", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob(
     "travelpayouts-report-poll",
-    () => cacheSchedulerService.runTravelpayoutsReportPoll(),
+    () => runPaymentSchedule(
+      "payments.travelpayouts-report-poll",
+      "travelpayouts-report-poll",
+      () => cacheSchedulerService.runTravelpayoutsReportPoll(),
+      { useBackgroundJobRunner: false },
+    ),
     (r) => !!r?.error,
   );
   res.status(status).json(body);
@@ -306,7 +346,13 @@ router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, r
 // expert_neighborhoods. The authoritative runner (§26 posture) — the in-process timer is defense.
 router.post("/internal/jobs/score-neighborhood-claims", requireInternalSecret, async (req, res) => {
   const limit = typeof req.body?.limit === "number" && req.body.limit > 0 ? Math.floor(req.body.limit) : undefined;
-  const { status, body } = await runJob(EVIDENCE_SCORER_JOB_NAME, () => scorePendingClaims({ limit }));
+  const { status, body } = await runJob(EVIDENCE_SCORER_JOB_NAME, () =>
+    runModerationSchedule(
+      "moderation.claim-score-hourly",
+      EVIDENCE_SCORER_JOB_NAME,
+      () => scorePendingClaims({ limit }),
+      { limit, payload: req.body },
+    ));
   res.status(status).json(body);
 });
 

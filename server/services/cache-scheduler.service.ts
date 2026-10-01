@@ -11,6 +11,7 @@ import { getPartnerizeCredentials } from "./partnerize/partnerize-client";
 import { affiliateReconciliationService, LATE_REPORT_TOLERANCE_DAYS } from "./affiliate-reconciliation.service";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { runPaymentSchedule } from "../automations/payments/runtime";
 
 // Partnerize campaign catalog changes infrequently — sync every 12 hours,
 // separate from the 24h stale-data refresh loop above.
@@ -115,13 +116,23 @@ class CacheSchedulerService {
     if (getPartnerizeCredentials()) {
       // Partnerize campaign sync — separate cadence, gracefully no-ops without credentials
       setTimeout(() => {
-        void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
+        void runPaymentSchedule(
+          "payments.partnerize-campaign-sync",
+          "partnerize-campaign-sync",
+          () => partnerizeSyncService.syncCampaigns(),
+          { runnerName: "partnerize-campaign-sync", context: { credentialsConfigured: true } },
+        ).catch((err) =>
           console.error("[CacheScheduler] Initial Partnerize sync failed:", err),
         );
       }, jitteredStartupDelay(2 * 60 * 1000));
 
       this.partnerizeSyncTimer = setInterval(() => {
-        void runBackgroundJob("partnerize-campaign-sync", () => partnerizeSyncService.syncCampaigns()).catch((err) =>
+        void runPaymentSchedule(
+          "payments.partnerize-campaign-sync",
+          "partnerize-campaign-sync",
+          () => partnerizeSyncService.syncCampaigns(),
+          { runnerName: "partnerize-campaign-sync", context: { credentialsConfigured: true } },
+        ).catch((err) =>
           console.error("[CacheScheduler] Partnerize sync failed:", err),
         );
       }, PARTNERIZE_SYNC_INTERVAL_MS);
@@ -131,13 +142,23 @@ class CacheSchedulerService {
       // Partnerize conversion/commission report polling — pulls and auto-matches recent commission
       // data so payouts stay reconciled without requiring an admin to hit "Run Now".
       setTimeout(() => {
-        void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
+        void runPaymentSchedule(
+          "payments.partnerize-report-poll",
+          "partnerize-report-poll",
+          () => this.pollPartnerizeReports(),
+          { runnerName: "partnerize-report-poll", context: { credentialsConfigured: true } },
+        ).catch((err) =>
           console.error("[CacheScheduler] Initial Partnerize report poll failed:", err),
         );
       }, jitteredStartupDelay(3 * 60 * 1000));
 
       this.partnerizeReportTimer = setInterval(() => {
-        void runBackgroundJob("partnerize-report-poll", () => this.pollPartnerizeReports()).catch((err) =>
+        void runPaymentSchedule(
+          "payments.partnerize-report-poll",
+          "partnerize-report-poll",
+          () => this.pollPartnerizeReports(),
+          { runnerName: "partnerize-report-poll", context: { credentialsConfigured: true } },
+        ).catch((err) =>
           console.error("[CacheScheduler] Partnerize report poll failed:", err),
         );
       }, PARTNERIZE_REPORT_POLL_INTERVAL_MS);
@@ -152,13 +173,23 @@ class CacheSchedulerService {
     // Gracefully no-ops (logs + skips) when TRAVELPAYOUTS_TOKEN is missing.
     this.travelpayoutsInitialPollTimer = setTimeout(() => {
       this.travelpayoutsInitialPollTimer = null;
-      void runBackgroundJob("travelpayouts-report-poll", () => this.pollTravelpayoutsReports()).catch((err) =>
+      void runPaymentSchedule(
+        "payments.travelpayouts-report-poll",
+        "travelpayouts-report-poll",
+        () => this.pollTravelpayoutsReports(),
+        { runnerName: "travelpayouts-report-poll" },
+      ).catch((err) =>
         console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err),
       );
     }, jitteredStartupDelay(4 * 60 * 1000));
 
     this.travelpayoutsReportTimer = setInterval(() => {
-      void runBackgroundJob("travelpayouts-report-poll", () => this.pollTravelpayoutsReports()).catch((err) =>
+      void runPaymentSchedule(
+        "payments.travelpayouts-report-poll",
+        "travelpayouts-report-poll",
+        () => this.pollTravelpayoutsReports(),
+        { runnerName: "travelpayouts-report-poll" },
+      ).catch((err) =>
         console.error("[CacheScheduler] Travelpayouts report poll failed:", err),
       );
     }, TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS);
