@@ -161,6 +161,9 @@ export const DOORS_THAT_START_A_NEW_PLAN: readonly PlanDoor[] = [
   "billboard",
   "event_strip",
   "events_page",
+  // A blog event guide's "Start this plan" (ledger `2026-09-30-blog-event-guide`) plans around the
+  // post's event from scratch — a reader's bound plan is not the post's.
+  "blog_post",
 ];
 
 export function doorStartsNewPlan(

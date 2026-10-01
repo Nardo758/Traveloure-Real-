@@ -11,6 +11,11 @@ export const BLOG_CONTENT_TYPES = [
   "travelpulse_weekly",
   "gems_roundup",
   "link_roundup",
+  // Blog generator lane (decision-maker dispatch, Sep 30, 2026; ledger `2026-09-30-blog-event-guide`):
+  // three event types drafted by the platform from platform data, never auto-published.
+  "event_weekend_guide",
+  "series_follow",
+  "race_weekend",
 ] as const;
 export type BlogContentType = (typeof BLOG_CONTENT_TYPES)[number];
 
@@ -18,12 +23,25 @@ export type BlogContentType = (typeof BLOG_CONTENT_TYPES)[number];
 export const BLOG_AUTHORSHIPS = ["expert", "platform"] as const;
 export type BlogAuthorship = (typeof BLOG_AUTHORSHIPS)[number];
 
+/**
+ * The platform-authored types. Ruling 5 named TravelPulse weekly alone; the blog generator lane
+ * (decision-maker dispatch, Sep 30, 2026 — ledger `2026-09-30-blog-event-guide`) adds the three event
+ * types, which are drafted from platform data (city_events, publishable place_facts, the travel-time
+ * matrix's ORDER), carry the platform label and no byline, and publish only through the admin rail.
+ */
+export const PLATFORM_AUTHORED_TYPES: readonly BlogContentType[] = [
+  "travelpulse_weekly",
+  "event_weekend_guide",
+  "series_follow",
+  "race_weekend",
+];
+
 export function authorshipFor(contentType: BlogContentType): BlogAuthorship {
-  return contentType === "travelpulse_weekly" ? "platform" : "expert";
+  return PLATFORM_AUTHORED_TYPES.includes(contentType) ? "platform" : "expert";
 }
 
 /** The label a platform-authored post carries instead of a byline (ruling 5). */
-export const PLATFORM_POST_LABEL = "AI signal from public data";
+export const PLATFORM_POST_LABEL = "AI-drafted from public and licensed data sources";
 
 /**
  * Lifecycle. draft → in_review (expert posts) → signed → published → withdrawn. Platform posts go

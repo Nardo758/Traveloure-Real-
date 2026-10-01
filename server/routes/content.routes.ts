@@ -61,6 +61,7 @@ import {
   type HeldSlot,
 } from "@shared/draft-basis";
 import { draftBasisInputs } from "../services/plan-option-sets.service";
+import { healthFlags } from "../services/runtime-flags";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -357,6 +358,8 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
   // health probe raises.
   router.get("/api/health", async (_req, res) => {
     const build = getBuildInfo();
+    // Ledger `2026-09-30-health-flags`: four operator switches as booleans only — never a value.
+    const flags = healthFlags();
     try {
       const ok = await dbHealthCheck();
       if (ok) {
@@ -372,12 +375,12 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
           .then((r: any) => (r.rows ?? r)[0]?.newest ?? null)
           .catch(() => null);
         const trendScores = trendScoreAgeReport(newestScore, trendScoreMaxAgeHours());
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, migrations, trendScores });
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, migrations, trendScores });
       } else {
-        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build });
+        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags });
       }
     } catch {
-      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build });
+      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags });
     }
   });
 

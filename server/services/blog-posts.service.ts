@@ -21,9 +21,9 @@
  *    quote misquotes); a source on a partner's domain is REFUSED (ruling 4).
  */
 import crypto from "node:crypto";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { blogPosts, blogPostSources, blogPostReactions } from "@shared/schema";
+import { blogPosts, blogPostSources, blogPostReactions, cityEvents } from "@shared/schema";
 import {
   BLOG_IMPRESSION_CONTENT_TYPE,
   BLOG_SLUG_RE,
@@ -35,6 +35,8 @@ import {
 } from "@shared/blog";
 import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
 import { rankBlogPosts } from "./blog-ranking";
+import { liveSeriesInstances } from "./blog-event-facts.service";
+import { toCityEventCard } from "./city-events.service";
 import { checkBylineEligibility, type BylineDecision } from "./blog-byline-gate.service";
 import { loadPartnerHosts } from "./partner-hosts.service";
 import { isOnPartnerHost, partnerHostOf } from "@shared/partner-hosts";
@@ -53,7 +55,13 @@ export interface BlogDeps {
 }
 
 export class BlogError extends Error {
-  constructor(public readonly code: string, public readonly status: number, message?: string) {
+  constructor(
+    public readonly code: string,
+    public readonly status: number,
+    message?: string,
+    /** Numbers a refusal states (e.g. how many instances a series has), echoed on the response. */
+    public readonly details?: Record<string, number | string>,
+  ) {
     super(message ?? code);
   }
 }
@@ -117,9 +125,18 @@ export interface CreatePostInput {
   occasionSlug?: string | null;
   bylineExpertId?: string | null;
   sources?: BlogSourceInput[];
+  /**
+   * The city event an event-guide post is about (migration 335). SERVER COMPOSERS ONLY: the admin
+   * create rail's `.strict()` body never admits it, and an event type without it is refused, so an
+   * event guide can only be born from the generators' fact check (ledger `2026-09-30-blog-event-guide`).
+   */
+  cityEventId?: string | null;
 }
 
-export async function createPost(input: CreatePostInput, actorId: string, deps: BlogDeps = {}) {
+/** Event types are generator-born only (they need a city event and the fact check). */
+const EVENT_TYPES: ReadonlySet<string> = new Set(["event_weekend_guide", "series_follow", "race_weekend"]);
+
+export async function createPost(input: CreatePostInput, actorId: string | null, deps: BlogDeps = {}) {
   if (!isBlogContentType(input.contentType)) throw new BlogError("unknown_content_type", 400);
   if (!BLOG_SLUG_RE.test(input.slug)) throw new BlogError("invalid_slug", 400);
   const contentType = input.contentType as BlogContentType;
@@ -128,6 +145,7 @@ export async function createPost(input: CreatePostInput, actorId: string, deps: 
   if (authorship === "expert" && !bylineExpertId) throw new BlogError("byline_required", 400);
   if (authorship === "platform" && bylineExpertId) throw new BlogError("platform_post_has_no_byline", 400);
   if (authorship === "expert" && !input.marketSlug) throw new BlogError("market_required", 400);
+  if (EVENT_TYPES.has(contentType) && !input.cityEventId) throw new BlogError("event_guide_requires_generator", 400);
   const sources = input.sources ?? [];
   await admitSources(sources, deps);
   const summary = input.summary ?? null;
@@ -148,6 +166,7 @@ export async function createPost(input: CreatePostInput, actorId: string, deps: 
       body: input.body,
       contentSha256: hash,
       bylineExpertId,
+      cityEventId: input.cityEventId ?? null,
       createdBy: actorId,
     }).returning();
     if (sources.length) {
@@ -346,7 +365,53 @@ export async function toPublicPost(row: any) {
     byline,
     platformLabel: row.authorship === "platform" ? PLATFORM_POST_LABEL : null,
     sources: await sourcesFor(row.id),
+    planDoor: row.city_event_id && row.content_type !== "series_follow" ? await planDoorFor(row.city_event_id) : null,
+    seriesDoors: row.city_event_id && row.content_type === "series_follow" ? await seriesDoorsFor(row.city_event_id) : null,
   };
+}
+
+/**
+ * The doors of a SERIES FOLLOW (ledger `2026-09-30-blog-series-follow`): one per LIVE, not-yet-ended
+ * instance of the anchor event's `series_key`, soonest first, read through the SAME
+ * `liveSeriesInstances` the fact builder reads (§18 rule 1). The anchor must still exist and not be
+ * withdrawn (the post is about its series); an anchor that has merely passed still names the series.
+ * No anchor, no key, or no live instance ⇒ null — no doors, never a door to something not happening.
+ */
+async function seriesDoorsFor(anchorEventId: string) {
+  const [anchor] = await db.select().from(cityEvents).where(and(eq(cityEvents.id, anchorEventId), isNull(cityEvents.withdrawnAt))).limit(1);
+  if (!anchor?.seriesKey) return null;
+  const now = new Date();
+  const rows = await liveSeriesInstances(anchor.seriesKey, now);
+  if (rows.length === 0) return null;
+  return rows.map((ev) => doorOf(toCityEventCard(ev, null, now)));
+}
+
+/** Pure. A door carries exactly what the events strip's "Plan around it" sends, and no id. */
+function doorOf(card: ReturnType<typeof toCityEventCard>) {
+  return {
+    title: card.series ?? card.title,
+    city: card.city,
+    marketKey: card.marketKey,
+    firstDate: card.firstDate,
+    lastDate: card.lastDate,
+    startTime: card.startTime,
+    venue: card.venue,
+  };
+}
+
+/**
+ * The "Start this plan" door of an event post (ledger `2026-09-30-blog-event-guide`), read from the
+ * LIVE `city_events` row every time, never stored on the post: a withdrawn, deleted or past event has
+ * no door (null), so a post never offers to plan around something that is not happening. It carries
+ * the same fields the events strip's "Plan around it" sends (the event is the plan's fixed anchor,
+ * M7), and no id.
+ */
+async function planDoorFor(cityEventId: string) {
+  const [ev] = await db.select().from(cityEvents).where(and(eq(cityEvents.id, cityEventId), isNull(cityEvents.withdrawnAt))).limit(1);
+  if (!ev) return null;
+  const now = new Date();
+  if (new Date(ev.endsAt ?? ev.startsAt).getTime() < now.getTime()) return null;
+  return doorOf(toCityEventCard(ev, null, now));
 }
 
 /** How many published posts the index ranks over before it cuts to a page (the index is small). */

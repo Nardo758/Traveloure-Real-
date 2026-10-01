@@ -5,6 +5,10 @@
  *     GET  /api/admin/blog/posts[?status=]          list
  *     POST /api/admin/blog/posts                    create a draft (.strict pick — §19)
  *     POST /api/admin/blog/drafts                   research + AI draft → a draft post (C.2)
+ *     POST /api/admin/blog/travelpulse-weekly       this ISO week's platform draft from the displayed signal (PR 3)
+ *     POST /api/admin/blog/event-guides             { eventId } — a weekend guide to one city event (type 1)
+ *     POST /api/admin/blog/series-follows           { seriesKey } — one series across markets and dates (type 2)
+ *     POST /api/admin/blog/race-weekends            { eventId, fromMarket? } — a race reached from a launch market (type 3)
  *     PATCH /api/admin/blog/posts/:id               edit — clears any signature (ruling 3)
  *     POST /api/admin/blog/posts/:id/submit         draft → in_review (byline gate)
  *     POST /api/admin/blog/posts/:id/publish        only when signed for THIS content
@@ -43,6 +47,10 @@ import {
   withdrawPost,
 } from "../services/blog-posts.service";
 import { draftPostFromResearch } from "../services/blog-draft.service";
+import { draftTravelPulseWeekly } from "../services/travelpulse-weekly.service";
+import { draftRaceWeekend } from "../services/blog-race-weekend.service";
+import { draftSeriesFollow } from "../services/blog-series-follow.service";
+import { draftEventWeekendGuide } from "../services/blog-event-guide.service";
 
 const router = Router();
 
@@ -78,7 +86,7 @@ const reactionKindParam = z.enum(BLOG_REACTION_KINDS);
 const withdrawBody = z.object({ reason: z.string().max(200).nullable().optional() }).strict();
 
 function fail(res: Response, err: unknown) {
-  if (err instanceof BlogError) return res.status(err.status).json({ error: err.code });
+  if (err instanceof BlogError) return res.status(err.status).json({ ...(err.details ?? {}), error: err.code });
   console.error("[blog] unexpected error", err);
   return res.status(500).json({ error: "internal_error" });
 }
@@ -110,6 +118,45 @@ router.post("/api/admin/blog/drafts", async (req, res) => {
   const parsed = draftBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
   try { res.status(201).json({ post: await draftPostFromResearch(parsed.data, getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+// TravelPulse PR 3 (ledger `2026-09-30-travelpulse-weekly`): draft this ISO week's platform post
+// from the displayed signal. Admin-only by the §2 prefix guard; no body is read (the week, the facts
+// and the author are all server-derived). Never publishes — the publish rail below does that.
+router.post("/api/admin/blog/travelpulse-weekly", async (req, res) => {
+  try { res.status(201).json({ post: await draftTravelPulseWeekly(getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+// Blog generator lane, type 1 (ledger `2026-09-30-blog-event-guide`): draft the weekend guide for ONE
+// city event. Admin-only by the §2 prefix guard; `.strict()` body of exactly the event id (§19). The
+// facts, the author and the slug are server-derived; never publishes.
+const eventGuideBody = z.object({ eventId: z.string().min(1).max(64) }).strict();
+router.post("/api/admin/blog/event-guides", async (req, res) => {
+  const parsed = eventGuideBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
+  try { res.status(201).json({ post: await draftEventWeekendGuide(parsed.data.eventId, getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+// Type 2 (ledger `2026-09-30-blog-series-follow`): a platform DRAFT following one recurring series.
+// Admin-only by the §2 prefix guard; `.strict()` body of exactly the series key (§19). Refused under
+// two live instances, with the count stated.
+const seriesFollowBody = z.object({ seriesKey: z.string().min(1).max(120) }).strict();
+router.post("/api/admin/blog/series-follows", async (req, res) => {
+  const parsed = seriesFollowBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
+  try { res.status(201).json({ post: await draftSeriesFollow(parsed.data.seriesKey, getUserId(req)!) }); } catch (e) { fail(res, e); }
+});
+
+// Type 3 (ledger `2026-09-30-blog-race-weekend`): a platform DRAFT for a motorsport event within the
+// travel-time budget of a launch market. Admin-only by the §2 prefix guard; `.strict()` body (§19).
+const raceWeekendBody = z.object({
+  eventId: z.string().min(1).max(64),
+  fromMarket: z.string().min(1).max(40).optional(),
+}).strict();
+router.post("/api/admin/blog/race-weekends", async (req, res) => {
+  const parsed = raceWeekendBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
+  try { res.status(201).json({ post: await draftRaceWeekend(parsed.data, getUserId(req)!) }); } catch (e) { fail(res, e); }
 });
 
 router.patch("/api/admin/blog/posts/:id", async (req, res) => {

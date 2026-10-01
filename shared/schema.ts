@@ -10255,6 +10255,12 @@ export const cityEvents = pgTable("city_events", {
   billedArtists: text("billed_artists"),
   blurb: text("blurb"),
   imagePath: text("image_path"),
+  // Migration 335 (ledger `2026-09-30-city-events-vertical-series`). Both NULLABLE, no default, no
+  // CHECK, no index. `vertical` ∈ CITY_EVENT_VERTICALS (shared/city-events.ts, app-enforced); NULL =
+  // not stated. `series_key` groups one recurring series across years and cities (distinct from the
+  // display name in `series`); NULL = not part of a stated series.
+  vertical: varchar("vertical", { length: 20 }),
+  seriesKey: text("series_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   withdrawnAt: timestamp("withdrawn_at"),
 }, (table) => [
@@ -11965,6 +11971,12 @@ export const blogPosts = pgTable("blog_posts", {
   status: varchar("status", { length: 20 }).notNull(),
   marketSlug: varchar("market_slug", { length: 40 }),
   occasionSlug: varchar("occasion_slug", { length: 80 }),
+  // Migration 335 (ledger `2026-09-30-city-events-vertical-series`): the city event an event-guide
+  // post is ABOUT, so the post page can render its "Start this plan" door from the LIVE event row.
+  // NULLABLE, no FK, no default, no index: the link is APP-ENFORCED — the post read joins by id and
+  // renders no door when the event is gone. Written only by the server-side generators, never by a
+  // request body.
+  cityEventId: varchar("city_event_id"),
   title: varchar("title", { length: 200 }).notNull(),
   summary: text("summary"),
   body: text("body").notNull(),

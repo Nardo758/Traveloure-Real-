@@ -33,7 +33,7 @@ test("B2 the byline is a handle link, and only an expert post can Ask the local"
   assert.equal(bylinePath(null), null);
   assert.equal(canAskTheLocal({ byline }), true);
   assert.equal(canAskTheLocal({ byline: null }), false, "a platform post has no local to ask");
-  assert.equal(authorLine({ byline: null, platformLabel: "AI signal from public data" }), "AI signal from public data");
+  assert.equal(authorLine({ byline: null, platformLabel: "AI-drafted from public and licensed data sources" }), "AI-drafted from public and licensed data sources");
 });
 
 test("B3 every reaction kind has a label; body is paragraphs; a missing date says nothing", () => {

@@ -8,6 +8,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { apiRequest } from "@/lib/queryClient";
 import { conversationChatPath, startConversation } from "@/lib/earner-address";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { planAroundSource } from "@/components/landing/events-strip";
 import type { BlogReactionKind } from "@shared/blog";
 import {
   BLOG_REACTION_LABELS,
@@ -19,6 +21,7 @@ import {
   canAskTheLocal,
   publishedLabel,
   type PublicBlogPost,
+  type BlogPlanDoor,
 } from "@/lib/blog-view";
 
 /**
@@ -91,6 +94,9 @@ function PostBody({ post }: { post: PublicBlogPost }) {
           <p key={i} className="whitespace-pre-line">{p}</p>
         ))}
       </div>
+
+      {post.planDoor && <StartThisPlanDoor door={post.planDoor} />}
+      {post.seriesDoors && post.seriesDoors.length > 0 && <SeriesDoors doors={post.seriesDoors} />}
 
       {post.sources.length > 0 && (
         <section className="mt-10" data-testid="section-blog-sources">
@@ -183,6 +189,43 @@ function AskTheLocal({ post }: { post: PublicBlogPost }) {
           We couldn't open a conversation right now. Please try again.
         </p>
       )}
+    </section>
+  );
+}
+
+/**
+ * An event post's ONE door (ledger `2026-09-30-blog-event-guide`): opens the one planning modal with
+ * the event as the fixed anchor, through the SAME `planAroundSource` the events strip uses, door
+ * `blog_post`. Minutes and distances appear inside the plan, never on the post.
+ */
+/** A series follow: one dated row per live instance, each its own door into the one planning modal. */
+function SeriesDoors({ doors }: { doors: BlogPlanDoor[] }) {
+  const { open } = usePlanning();
+  return (
+    <section className="mt-10" data-testid="section-blog-series-doors">
+      <ul className="space-y-3">
+        {doors.map((door, i) => (
+          <li key={`${door.city}-${door.firstDate}`} className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+            <span>
+              <span className="font-mono text-sm">{door.firstDate}</span> · {door.city} · {door.venue}
+            </span>
+            <Button variant="outline" onClick={() => open(planAroundSource({ ...door, series: null }, "blog_post"))} data-testid={`button-blog-series-plan-${i}`}>
+              Start this plan
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function StartThisPlanDoor({ door }: { door: NonNullable<PublicBlogPost["planDoor"]> }) {
+  const { open } = usePlanning();
+  return (
+    <section className="mt-10" data-testid="section-blog-plan-door">
+      <Button onClick={() => open(planAroundSource({ ...door, series: null }, "blog_post"))} data-testid="button-blog-start-plan">
+        Start this plan
+      </Button>
     </section>
   );
 }
