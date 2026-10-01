@@ -28,6 +28,94 @@ export const CONTENT_NEEDS = [
 export type ContentNeed = (typeof CONTENT_NEEDS)[number];
 
 /**
+ * A6 decision 1B (ledger `2026-10-01-a6-sub-needs`): a SMALL, NAMED list of dotted sub-needs, one
+ * level deep. The engine still asks for the parent need (A5 unchanged); a sub-need exists so a
+ * source can say "intercity, but not rail" in `does_not_cover`, and so the coverage report can show
+ * that gap. Free text ("everything else", "last-service rules") is refused everywhere — it belongs
+ * in `notes`.
+ */
+export const CONTENT_SUB_NEEDS = {
+  "transport.intercity.rail": "transport.intercity",
+  "transport.intercity.bus": "transport.intercity",
+  "transport.intercity.ferry": "transport.intercity",
+  "transport.local.fares": "transport.local",
+} as const satisfies Record<string, ContentNeed>;
+export type ContentSubNeed = keyof typeof CONTENT_SUB_NEEDS;
+/** A value a `covers` / `does_not_cover` entry may hold: a need or a named sub-need. */
+export type ContentNeedKey = ContentNeed | ContentSubNeed;
+
+export function isContentNeed(v: unknown): v is ContentNeed {
+  return typeof v === "string" && (CONTENT_NEEDS as readonly string[]).includes(v);
+}
+export function isContentSubNeed(v: unknown): v is ContentSubNeed {
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(CONTENT_SUB_NEEDS, v);
+}
+export function isContentNeedKey(v: unknown): v is ContentNeedKey {
+  return isContentNeed(v) || isContentSubNeed(v);
+}
+/** The top-level need a key belongs to (itself for a top-level need), or null when it is not ours. */
+export function parentNeed(v: unknown): ContentNeed | null {
+  if (isContentNeed(v)) return v;
+  return isContentSubNeed(v) ? CONTENT_SUB_NEEDS[v] : null;
+}
+/** The named sub-needs under one need, in declaration order. */
+export function subNeedsOf(need: ContentNeed): ContentSubNeed[] {
+  return (Object.keys(CONTENT_SUB_NEEDS) as ContentSubNeed[]).filter((k) => CONTENT_SUB_NEEDS[k] === need);
+}
+
+/**
+ * THE ONE RULE for "does a registry entry reach this need" (§18 rule 1). `entry` is one value from
+ * a source's `covers` or `does_not_cover`; `asked` is the need or sub-need being asked about. A
+ * parent reaches its own sub-needs; a sub-need never reaches its parent or a sibling. Unknown
+ * strings reach nothing (never coerced).
+ */
+export function needCovers(entry: unknown, asked: unknown): boolean {
+  if (!isContentNeedKey(entry) || !isContentNeedKey(asked)) return false;
+  if (entry === asked) return true;
+  return isContentNeed(entry) && isContentSubNeed(asked) && CONTENT_SUB_NEEDS[asked] === entry;
+}
+
+/**
+ * How one source stands on one need or sub-need:
+ *   `covers`   — a `covers` entry reaches it and no `does_not_cover` entry does;
+ *   `partial`  — it covers a parent need but excludes at least one of that need's sub-needs
+ *                (12Go: intercity yes, rail no);
+ *   `excludes` — a `does_not_cover` entry reaches it (an exclusion always wins);
+ *   `none`     — the source says nothing about it.
+ * A source covering only a sub-need does NOT cover the parent: a rail-only source is not an
+ * intercity source.
+ */
+export type NeedStanding = "covers" | "partial" | "excludes" | "none";
+export function sourceNeedStanding(
+  src: { covers?: readonly unknown[] | null; doesNotCover?: readonly unknown[] | null },
+  asked: ContentNeedKey,
+): NeedStanding {
+  const covers = src.covers ?? [];
+  const excl = src.doesNotCover ?? [];
+  if (excl.some((e) => needCovers(e, asked))) return "excludes";
+  if (!covers.some((c) => needCovers(c, asked))) return "none";
+  if (isContentNeed(asked) && excl.some((e) => isContentSubNeed(e) && CONTENT_SUB_NEEDS[e] === asked)) return "partial";
+  return "covers";
+}
+
+/**
+ * Admission for a `covers` / `does_not_cover` list (the registry surface's writer reads this):
+ * trimmed, de-duplicated, and every value a need or a named sub-need. Anything else is REFUSED by
+ * name, never dropped silently.
+ */
+export function admitNeedList(values: unknown): { ok: true; needs: ContentNeedKey[] } | { ok: false; refused: string[] } {
+  if (!Array.isArray(values)) return { ok: false, refused: [String(values)] };
+  const needs: ContentNeedKey[] = [];
+  const refused: string[] = [];
+  for (const raw of values) {
+    const v = typeof raw === "string" ? raw.trim() : raw;
+    if (isContentNeedKey(v)) { if (!needs.includes(v)) needs.push(v); }
+    else refused.push(String(raw));
+  }
+  return refused.length ? { ok: false, refused } : { ok: true, needs };
+}
+
+/**
  * Brief §3's eight fact types, plus TWO the brief's own adapters produce and §3 does not name:
  * `location` (§6/§10: Places supplies "coordinates") and `dining_basics` (§6: "dining basics" —
  * reservable, vegetarian). Stated additions, not renames. A THIRD, `address` (ledger
@@ -165,6 +253,19 @@ export function canActivateSource(src: { termsCheckedAt?: Date | string | null; 
   return toMs(src.termsCheckedAt ?? null) !== null && (LICENSE_CLASSES as readonly string[]).includes(src.licenseClass ?? "");
 }
 
+/**
+ * A6 (4) (ledger `2026-10-01-a6-expert-confirm`; brief §8's flywheel): which facts an expert may
+ * CONFIRM into a verified nugget. ONLY a `crawled` fact that is not under a partner or restricted
+ * license and not already verified. A Places fact is NEVER confirmable — Google's display terms keep
+ * its content inside the plan, and a verified nugget is publishable, so confirming it would
+ * republish Google data under our name. A traveler's own note is theirs, not a source to verify.
+ */
+export function isConfirmableFact(f: { origin?: string | null; license?: string | null; verifiedAt?: Date | string | null }): boolean {
+  if (f.origin !== "crawled") return false;
+  if (f.license === "partner" || f.license === "restricted") return false;
+  return f.verifiedAt == null || String(f.verifiedAt) === "";
+}
+
 /** The origin a stored row claims, or null when it is not one of ours (never coerced). */
 export function asFactOrigin(v: unknown): FactOrigin | null {
   return typeof v === "string" && (FACT_ORIGINS as readonly string[]).includes(v) ? (v as FactOrigin) : null;
@@ -178,6 +279,10 @@ export function needForItemType(type: string | null | undefined): ContentNeed {
 
 /** What a plan item's surface renders for one fact — the server's projection, never re-derived. */
 export interface FactView {
+  /** The `place_facts` row id — what the expert's confirm control names (A6 (4)). */
+  id?: string;
+  /** `isConfirmableFact` on this row, computed server-side (A6 (4)). */
+  confirmable?: boolean;
   factType: FactType;
   need: ContentNeed;
   value: Record<string, unknown>;

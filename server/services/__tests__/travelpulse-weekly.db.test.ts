@@ -8,7 +8,6 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { BlogError } from "../blog-posts.service";
@@ -22,8 +21,10 @@ import {
   type WeeklyMarketSignal,
 } from "../travelpulse-weekly.service";
 import { PLATFORM_POST_LABEL } from "@shared/blog";
+import { lettersOnlyId } from "../../__tests__/fixtures/letters-only-id";
 
-const RUN = crypto.randomUUID().slice(0, 8);
+// Letters only: the weekly drafter refuses a number its facts do not carry (see lettersOnlyId).
+const RUN = lettersOnlyId();
 const ADMIN = `tpweekly-${RUN}-admin`;
 // A week no real data will ever hold, so the slug cannot collide with a production-shaped fixture.
 const NOW = new Date("2099-03-04T09:00:00Z");

@@ -25,6 +25,8 @@ export interface UsageSummary {
   byModel: Record<string, { calls: number; tokens: number; costCents: number }>;
   averageResponseTimeMs: number;
   successRate: number;
+  /** Calls recorded with success=false — every classified upstream AI failure lands here at zero cost (ledger `2026-10-01-ai-upstream-error-classes`). */
+  failedCalls: number;
 }
 
 export interface DailyUsage {
@@ -122,6 +124,7 @@ class AIUsageService {
       byModel,
       averageResponseTimeMs: totalCalls > 0 ? Math.round(totalResponseTime / totalCalls) : 0,
       successRate: totalCalls > 0 ? Math.round((successCount / totalCalls) * 100) : 100,
+      failedCalls: totalCalls - successCount,
     };
   }
 
