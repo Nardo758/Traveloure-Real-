@@ -45,6 +45,7 @@ import {
 } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 
 const router = Router();
 
@@ -112,14 +113,21 @@ router.post("/api/conversations/start", isAuthenticated, async (req, res) => {
       const stored = sanitizeText(body.about) ?? body.about;
       const sent = await sendMessage(sessionUserId, recipientId, stored);
       messageId = sent.id;
-      broadcastToUser(recipientId, {
+      const frame = {
         type: "chat",
         id: sent.id,
         senderId: sessionUserId,
         recipientId,
         content: stored,
         timestamp: new Date().toISOString(),
-      });
+      };
+      await dispatchMessagingEvent(
+        "messaging.chat-realtime-fanout",
+        "chat.realtime.requested",
+        frame,
+        { recipientId, messageId: sent.id, transport: "http" },
+        () => broadcastToUser(recipientId, frame),
+      );
     }
 
     const recipient = await loadPublicRecipientCard(recipientId);

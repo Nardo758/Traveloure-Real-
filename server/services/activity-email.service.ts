@@ -22,6 +22,9 @@ import { isNotificationChannelEnabled } from "./notification-preferences.service
 import { buildActivityEmail, type ActivityEmailKind } from "../utils/activity-email-copy";
 import { isEarnerRole, isProviderRole } from "@shared/roles";
 import type { NotificationPreferenceKey } from "@shared/notification-preferences";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
+import { dispatchMessagingProducer } from "../automations/messaging/producer-index";
+import { activityEmailAutomation } from "../automations/messaging/activity-email";
 
 const PREFERENCE_FOR: Record<ActivityEmailKind, NotificationPreferenceKey> = {
   new_message: "newMessage",
@@ -57,6 +60,17 @@ export interface SendActivityEmailInput {
 }
 
 export async function sendActivityEmail(input: SendActivityEmailInput): Promise<"sent" | "skipped"> {
+  return dispatchMessagingProducer(
+    activityEmailAutomation,
+    dispatchMessagingEvent,
+    "activity.email",
+    input,
+    { recipientId: input.recipientId, kind: input.kind, destination: input.destination },
+    () => sendActivityEmailAction(input),
+  );
+}
+
+async function sendActivityEmailAction(input: SendActivityEmailInput): Promise<"sent" | "skipped"> {
   try {
     const recipient = await storage.getUser(input.recipientId);
     // Only earners: the decision was about experts and providers reaching their notifications.

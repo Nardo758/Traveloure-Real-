@@ -8,6 +8,7 @@ import {
 import { listConversationContexts } from "./contact-rails.service";
 import type { ConversationContextView } from "./contact-rails.pure";
 import { dispatchModerationEvent } from "../automations/moderation/runtime";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 
 export function buildConversationId(userId1: string, userId2: string): string {
   return [userId1, userId2].sort().join("_");
@@ -222,34 +223,42 @@ export async function sendMessage(
   const senderName =
     [sender?.firstName, sender?.lastName].filter(Boolean).join(" ") || "Someone";
 
-  const [notice] = await db.insert(notifications).values({
-    userId: recipientId,
-    type: "message_received",
-    title: "New message",
-    message: `${senderName} sent you a message`,
-    relatedId: newMessage.id,
-    relatedType: "message",
-    // F4 (workstation-flows audit): carry the sender so the notification can deep-link straight
-    // into the right chat thread (/chat?clientId=…) instead of the chat lobby.
-    data: { clientId: senderId },
-  }).returning({ id: notifications.id });
-  // Locked Decision 53: the phone twin, claimed once and consent-gated (never throws).
-  if (notice?.id) {
-    const noticeId = notice.id;
-    void import("./web-push.service").then(({ dispatchPushForNotification }) => dispatchPushForNotification(noticeId)).catch(() => undefined);
-  }
+  await dispatchMessagingEvent(
+    "messaging.message-follow-ons",
+    "message.created",
+    { messageId: newMessage.id, senderId, recipientId },
+    { messageId: newMessage.id, senderId, recipientId },
+    async () => {
+      const [notice] = await db.insert(notifications).values({
+        userId: recipientId,
+        type: "message_received",
+        title: "New message",
+        message: `${senderName} sent you a message`,
+        relatedId: newMessage.id,
+        relatedType: "message",
+        // F4 (workstation-flows audit): carry the sender so the notification can deep-link straight
+        // into the right chat thread (/chat?clientId=…) instead of the chat lobby.
+        data: { clientId: senderId },
+      }).returning({ id: notifications.id });
+      // Locked Decision 53: the phone twin, claimed once and consent-gated (never throws).
+      if (notice?.id) {
+        const noticeId = notice.id;
+        void import("./web-push.service").then(({ dispatchPushForNotification }) => dispatchPushForNotification(noticeId)).catch(() => undefined);
+      }
 
-  // Ledger 2026-09-24-earner-email-notifications: an earner also gets ONE email per sender per
-  // hour (consent, address and throttle decided in the ONE sender). Fire-and-forget — the message
-  // is already committed and an email must never fail it (§15b).
-  void import("./activity-email.service").then(({ sendActivityEmail }) =>
-    sendActivityEmail({
-      recipientId,
-      kind: "new_message",
-      actorName: senderName === "Someone" ? null : senderName,
-      destination: "messages",
-      throttleKey: `${senderId}>${recipientId}`,
-    }),
+      // Ledger 2026-09-24-earner-email-notifications: an earner also gets ONE email per sender per
+      // hour (consent, address and throttle decided in the ONE sender). Fire-and-forget — the message
+      // is already committed and an email must never fail it (§15b).
+      void import("./activity-email.service").then(({ sendActivityEmail }) =>
+        sendActivityEmail({
+          recipientId,
+          kind: "new_message",
+          actorName: senderName === "Someone" ? null : senderName,
+          destination: "messages",
+          throttleKey: `${senderId}>${recipientId}`,
+        }),
+      );
+    },
   );
 
   return {

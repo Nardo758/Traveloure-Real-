@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { dispatchModerationEvent } from "./automations/moderation/runtime";
 import { dispatchBookingEvent } from "./automations/bookings/runtime";
+import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -1825,40 +1826,48 @@ export class DatabaseStorage implements IStorage {
       metadata: { senderId: chat.senderId, receiverId: chat.receiverId },
     });
 
-    // MT-2: notify the recipient of a new direct message. This is the single shared
-    // write path for both the /ws socket "chat" handler and POST /api/chats, so firing
-    // the notification here (rather than duplicating it in each caller) guarantees it
-    // fires exactly once per message. Mirrors the per-item-comment notification shape
-    // (booking-actions.ts) and messages.service.ts's "message_received" type/data
-    // convention. Best-effort: a notification failure must never fail the message
-    // create, which has already committed above.
-    if (newChat.receiverId) {
+    // The persisted row is the transaction boundary: schedule its recipient bell row and
+    // activity-email follow-on only after the write, without putting realtime delivery here.
+    const receiverId = newChat.receiverId;
+    if (receiverId) {
       try {
-        await this.createNotification({
-          userId: newChat.receiverId,
-          type: 'message_received',
-          title: 'New message',
-          message: 'You have a new message',
-          relatedId: newChat.id,
-          relatedType: 'message',
-          data: { clientId: newChat.senderId },
-        } as any);
+        await dispatchMessagingEvent(
+          "messaging.chat-follow-ons",
+          "chat.created",
+          { chatId: newChat.id, senderId: newChat.senderId, receiverId },
+          { chatId: newChat.id, senderId: newChat.senderId, receiverId },
+          async () => {
+            try {
+              await this.createNotification({
+                userId: receiverId,
+                type: 'message_received',
+                title: 'New message',
+                message: 'You have a new message',
+                relatedId: newChat.id,
+                relatedType: 'message',
+                data: { clientId: newChat.senderId },
+              } as any);
+            } catch (err) {
+              console.error('Failed to create message notification:', err);
+            }
+            // Ledger 2026-09-24-earner-email-notifications: the email twin of the notice above,
+            // through the ONE sender (earner-only, consent-gated, one per sender per hour).
+            const senderId = newChat.senderId;
+            void import('./services/activity-email.service').then(async ({ sendActivityEmail, displayNameOf }) =>
+              sendActivityEmail({
+                recipientId: receiverId,
+                kind: 'new_message',
+                actorName: await displayNameOf(senderId),
+                destination: 'messages',
+                throttleKey: `${senderId}>${receiverId}`,
+              }),
+            );
+          },
+        );
       } catch (err) {
+        // Follow-ons are best effort; the chat row has already been committed.
         console.error('Failed to create message notification:', err);
       }
-      // Ledger 2026-09-24-earner-email-notifications: the email twin of the notice above, through
-      // the ONE sender (earner-only, consent-gated, one per sender per hour). Never throws.
-      const receiverId = newChat.receiverId;
-      const senderId = newChat.senderId;
-      void import('./services/activity-email.service').then(async ({ sendActivityEmail, displayNameOf }) =>
-        sendActivityEmail({
-          recipientId: receiverId,
-          kind: 'new_message',
-          actorName: await displayNameOf(senderId),
-          destination: 'messages',
-          throttleKey: `${senderId}>${receiverId}`,
-        }),
-      );
     }
 
     return newChat;
@@ -4557,7 +4566,16 @@ export class DatabaseStorage implements IStorage {
     // throws (web-push.service.ts). The sweep covers any writer that does not come through here.
     if (newNotification?.id) {
       const id = newNotification.id;
-      void import("./services/web-push.service").then(({ dispatchPushForNotification }) => dispatchPushForNotification(id)).catch(() => undefined);
+      void dispatchMessagingEvent(
+        "messaging.notification-create",
+        "notification.created",
+        { notificationId: id },
+        { notificationId: id },
+        async () => {
+          const { dispatchPushForNotification } = await import("./services/web-push.service");
+          await dispatchPushForNotification(id);
+        },
+      ).catch(() => undefined);
     }
     return newNotification;
   }

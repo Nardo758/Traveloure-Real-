@@ -19,16 +19,35 @@
  */
 
 import { Resend } from "resend";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
+import { dispatchMessagingProducer, wrapEmailProviderTransport } from "../automations/messaging/producer-index";
+import { authPasswordResetEmailAutomation } from "../automations/messaging/auth-password-reset-email";
+import { authVerificationEmailAutomation } from "../automations/messaging/auth-verification-email";
+import { authWelcomeEmailAutomation } from "../automations/messaging/auth-welcome-email";
+import { planDeliveredEmailAutomation } from "../automations/messaging/plan-delivered-email";
+import { planApprovedEmailAutomation } from "../automations/messaging/plan-approved-email";
+import { planChangesRequestedEmailAutomation } from "../automations/messaging/plan-changes-requested-email";
+import { planSuggestionEmailAutomation } from "../automations/messaging/plan-suggestion-email";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 import { escHtml, stripCrLf } from "../utils/email-escape";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 
 let cachedClient: Resend | null = null;
+function createClient(key: string): Resend {
+  const client = new Resend(key);
+  const originalSend = client.emails.send.bind(client.emails);
+  client.emails.send = wrapEmailProviderTransport(
+    originalSend,
+    dispatchMessagingEvent,
+  ) as typeof client.emails.send;
+  return client;
+}
+
 function getClient(): Resend | null {
   const key = process.env.RESEND_API_KEY;
   if (!key) return null;
   if (cachedClient) return cachedClient;
-  cachedClient = new Resend(key);
+  cachedClient = createClient(key);
   return cachedClient;
 }
 
@@ -113,7 +132,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   }
 
   try {
-    const client = new Resend(apiKey);
+    const client = createClient(apiKey);
     const { data, error } = await client.emails.send({
       from,
       to: params.to,
@@ -597,6 +616,17 @@ interface PasswordResetParams {
 }
 
 export async function sendPasswordResetEmail(params: PasswordResetParams): Promise<void> {
+  return dispatchMessagingProducer(
+    authPasswordResetEmailAutomation,
+    dispatchMessagingEvent,
+    "auth.password_reset_email",
+    params,
+    {},
+    () => sendPasswordResetEmailAction(params),
+  );
+}
+
+async function sendPasswordResetEmailAction(params: PasswordResetParams): Promise<void> {
   const client = getClient();
   if (!client) {
     // Logged for ops visibility — the LB-P1 forgot-password handler is intentionally
@@ -667,6 +697,17 @@ interface EmailVerificationParams {
 }
 
 export async function sendEmailVerificationEmail(params: EmailVerificationParams): Promise<void> {
+  return dispatchMessagingProducer(
+    authVerificationEmailAutomation,
+    dispatchMessagingEvent,
+    "auth.verification_email",
+    params,
+    {},
+    () => sendEmailVerificationEmailAction(params),
+  );
+}
+
+async function sendEmailVerificationEmailAction(params: EmailVerificationParams): Promise<void> {
   const client = getClient();
   if (!client) {
     console.warn("[email] RESEND_API_KEY not set — verification email NOT sent to", params.toEmail);
@@ -1346,6 +1387,17 @@ interface WelcomeEmailParams {
  * Safe to call without awaiting — all errors are caught internally.
  */
 export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void> {
+  return dispatchMessagingProducer(
+    authWelcomeEmailAutomation,
+    dispatchMessagingEvent,
+    "auth.welcome_email",
+    params,
+    {},
+    () => sendWelcomeEmailAction(params),
+  );
+}
+
+async function sendWelcomeEmailAction(params: WelcomeEmailParams): Promise<void> {
   const client = getClient();
   if (!client) {
     console.log("[email] RESEND_API_KEY not set — skipping welcome email for", params.toEmail);
@@ -1979,6 +2031,17 @@ interface PlanDeliveredEmailParams {
  * insert, only on the workspace-status `-> delivered` transition (never `in_review`).
  */
 export async function sendPlanDeliveredEmail(params: PlanDeliveredEmailParams): Promise<void> {
+  return dispatchMessagingProducer(
+    planDeliveredEmailAutomation,
+    dispatchMessagingEvent,
+    "plan.delivered_email",
+    params,
+    {},
+    () => sendPlanDeliveredEmailAction(params),
+  );
+}
+
+async function sendPlanDeliveredEmailAction(params: PlanDeliveredEmailParams): Promise<void> {
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const tripUrl = `${getAppBaseUrl()}/trip/${params.tripId}?tab=itinerary`;
   const subject = "Your itinerary has been delivered";
@@ -2040,6 +2103,17 @@ interface PlanApprovedEmailParams {
  * both ride the same /trips/:id/plan-review decision endpoint, just the opposite branch.
  */
 export async function sendPlanApprovedEmail(params: PlanApprovedEmailParams): Promise<void> {
+  return dispatchMessagingProducer(
+    planApprovedEmailAutomation,
+    dispatchMessagingEvent,
+    "plan.approved_email",
+    params,
+    {},
+    () => sendPlanApprovedEmailAction(params),
+  );
+}
+
+async function sendPlanApprovedEmailAction(params: PlanApprovedEmailParams): Promise<void> {
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${params.tripId}`;
   const subject = "Your delivered plan was approved";
@@ -2101,6 +2175,17 @@ interface PlanChangesRequestedEmailParams {
  * W3-B ②: CHANGES REQUESTED -> expert email.
  */
 export async function sendPlanChangesRequestedEmail(params: PlanChangesRequestedEmailParams): Promise<void> {
+  return dispatchMessagingProducer(
+    planChangesRequestedEmailAutomation,
+    dispatchMessagingEvent,
+    "plan.changes_requested_email",
+    params,
+    {},
+    () => sendPlanChangesRequestedEmailAction(params),
+  );
+}
+
+async function sendPlanChangesRequestedEmailAction(params: PlanChangesRequestedEmailParams): Promise<void> {
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${params.tripId}`;
   const subject = "Changes requested on your delivered plan";
@@ -2171,6 +2256,17 @@ interface NewSuggestionEmailParams {
  * server/routes/booking-actions.ts). This function itself does not re-check that gate.
  */
 export async function sendNewSuggestionEmail(params: NewSuggestionEmailParams): Promise<void> {
+  return dispatchMessagingProducer(
+    planSuggestionEmailAutomation,
+    dispatchMessagingEvent,
+    "plan.suggestion_email",
+    params,
+    {},
+    () => sendNewSuggestionEmailAction(params),
+  );
+}
+
+async function sendNewSuggestionEmailAction(params: NewSuggestionEmailParams): Promise<void> {
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const tripUrl = `${getAppBaseUrl()}/trip/${params.tripId}?tab=itinerary`;
   const subject = "New suggestion from your expert";

@@ -46,6 +46,9 @@
 
 import type { GuestInviteEmailParams } from "./guest-invite-email";
 import type { EventInvite, InviteTemplate } from "../../shared/guest-invites-schema";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
+import { dispatchMessagingProducer } from "../automations/messaging/producer-index";
+import { guestInviteSendAutomation } from "../automations/messaging/guest-invite-send";
 
 // `storage` and the outbox are reached through DYNAMIC imports inside `defaultInviteSendPorts`,
 // never at module load. Both pull in `server/db.ts`, which throws when DATABASE_URL is unset — a
@@ -220,6 +223,20 @@ export interface SendInvitesParams {
 export async function sendExperienceInvites(
   params: SendInvitesParams,
   ports: InviteSendPorts = defaultInviteSendPorts,
+): Promise<SendInvitesResult> {
+  return dispatchMessagingProducer(
+    guestInviteSendAutomation,
+    dispatchMessagingEvent,
+    "guest_invite.send",
+    params,
+    { experienceId: params.experienceId, organizerId: params.organizerId },
+    () => sendExperienceInvitesAction(params, ports),
+  );
+}
+
+async function sendExperienceInvitesAction(
+  params: SendInvitesParams,
+  ports: InviteSendPorts,
 ): Promise<SendInvitesResult> {
   const ctx = await ports.getExperienceSendContext(params.experienceId);
   if (!ctx) {
