@@ -93,6 +93,7 @@ test("E3: the seeder looks a venue up once, only on insert, spaced, and flags no
     { source: "manual" as const, sourceId: sid("hall"), title: "Hall", city: "Kyoto", venue: "Nowhere Hall", startsAt: "2027-04-10T00:00:00+09:00" },
   ];
   const first = await seedCityEvents(entries, deps);
+  assert.equal(first.nominatim, "ok");
   assert.equal(first.inserted, 2);
   assert.deepEqual(first.located, [{ sourceId: sid("race"), matchedName: "Suzuka Circuit" }]);
   assert.deepEqual(first.unlocated, [sid("hall")]);
@@ -106,6 +107,7 @@ test("E3: the seeder looks a venue up once, only on insert, spaced, and flags no
   assert.equal((byId.get(sid("race")) as any).start_time_known, null, "date only ⇒ NULL");
   const again = await seedCityEvents(entries, deps);
   assert.equal(again.inserted, 0);
+  assert.equal(again.nominatim, "untested", "already seeded: no lookup this boot");
   assert.equal(calls.length, 2, "an existing row is never looked up again");
 });
 
@@ -140,6 +142,7 @@ test("E5: an unreachable lookup defers the row; the next run inserts it", async 
     sleep: async () => {},
     resolveVenue: async () => { downCalls += 1; return "unreachable" as const; },
   });
+  assert.equal(down.nominatim, "blocked");
   assert.deepEqual([down.inserted, down.deferred], [0, [sid("later")]]);
   assert.equal(downCalls, 1, "bounded: one lookup per entry per run — the retry is the next run, never a loop");
   const count: any = await db.execute(sql`SELECT count(*)::int AS n FROM city_events WHERE source_id = ${sid("later")}`);
@@ -149,5 +152,6 @@ test("E5: an unreachable lookup defers the row; the next run inserts it", async 
     sleep: async () => {},
     resolveVenue: async () => ({ lat: 34.8431, lng: 136.5407, matchedName: "Suzuka Circuit", attribution: "© OpenStreetMap contributors" as const }),
   });
+  assert.equal(up.nominatim, "ok");
   assert.deepEqual([up.inserted, up.located.length, up.deferred.length], [1, 1, 0]);
 });

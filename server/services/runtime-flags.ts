@@ -18,6 +18,9 @@ export const HEALTH_FLAG_NAMES = [
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;
 
+// Boot seeder observation only; reading health never sends a geocoder request.
+export const healthEgress = { nominatim: "untested" as "ok" | "blocked" | "untested" };
+
 export function healthFlags(env: Record<string, string | undefined> = process.env): HealthFlags {
   const out = {} as HealthFlags;
   for (const name of HEALTH_FLAG_NAMES) out[name] = env[name] === "1";

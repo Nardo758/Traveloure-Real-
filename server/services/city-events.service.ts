@@ -38,7 +38,7 @@ import {
 import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
 import { loadPartnerHosts } from "./partner-hosts.service";
-import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, type VenueCoordinate, type VenueQuery } from "./venue-geocode.service";
+import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, venueIsLookupable, type VenueCoordinate, type VenueQuery } from "./venue-geocode.service";
 
 /** What a seed entry may state. Derived columns (nights, neighbourhood) are not accepted. */
 export interface CityEventSeedEntry {
@@ -188,12 +188,14 @@ export async function seedCityEvents(
   located: Array<{ sourceId: string; matchedName: string }>;
   unlocated: string[];
   deferred: string[];
+  nominatim: "ok" | "blocked" | "untested";
 }> {
   const refused: Array<{ sourceId: string; reason: CityEventRefusal }> = [];
   const located: Array<{ sourceId: string; matchedName: string }> = [];
   const unlocated: string[] = [];
   const deferred: string[] = [];
-  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, refused, located, unlocated, deferred };
+  let nominatim: "ok" | "blocked" | "untested" = "untested";
+  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, refused, located, unlocated, deferred, nominatim };
   const candidates = await loadNeighbourhoodCandidates();
   const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
   // CITY_EVENTS_VENUE_LOOKUP=0 turns the network lookup off (tests, an offline boot): rows then land
@@ -221,6 +223,7 @@ export async function seedCityEvents(
       if (lookups > 0) await sleep(NOMINATIM_MIN_INTERVAL_MS);
       lookups += 1;
       const hit = await resolveVenue({ venue: entry.venue.trim(), locality: entry.venueLocality?.trim() || market?.cityName || null, country: market?.country ?? null });
+      if (lookupOn && venueIsLookupable(entry.venue) && nominatim !== "blocked") nominatim = hit === "unreachable" ? "blocked" : "ok";
       if (hit === "unreachable") {
         deferred.push(entry.sourceId);
         logger.warn({ sourceId: entry.sourceId, venue: entry.venue }, "[city-events] venue lookup unreachable; row deferred to the next run");
@@ -243,7 +246,7 @@ export async function seedCityEvents(
     skipped += 1;
     if (await fillManualTypingIfNull(built.row)) filled += 1;
   }
-  return { inserted, skipped, filled, refused, located, unlocated, deferred };
+  return { inserted, skipped, filled, refused, located, unlocated, deferred, nominatim };
 }
 
 /**
