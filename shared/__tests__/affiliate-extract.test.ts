@@ -82,6 +82,14 @@ test("P5: the page extract checks the terms gate before any job row or fetch", (
   assert.ok(gate < body.indexOf("fetchWebPage("), "the gate must come before any fetch");
 });
 
+test("P7: the platform kill-switch precedes the terms gate, and a missing products array fails the job", () => {
+  const src = read("server/services/affiliate-scraper.service.ts");
+  const body = src.slice(src.indexOf("async scrapePartnerWebsite("));
+  const kill = body.indexOf('process.env.AFFILIATE_PAGE_EXTRACT_ENABLED !== "1"');
+  assert.ok(kill > 0 && kill < body.indexOf("pageExtractAllowed(partner)"), "switch checked first");
+  assert.doesNotMatch(src, /not an array, returning empty/);
+});
+
 test("P6: the extractor runs on the Anthropic client, never xAI", () => {
   const src = read("server/services/affiliate-scraper.service.ts");
   assert.equal(/XAI_API_KEY|api\.x\.ai|from "openai"/.test(src), false);
