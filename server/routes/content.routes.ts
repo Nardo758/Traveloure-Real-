@@ -4879,7 +4879,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           tripId: resolvedTripId,
           market: snapshot.trip.marketSlug ?? null,
           city: destination,
-          items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null })),
+          items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null, dayNumber: it.dayNumber ?? null, locationName: it.location ?? it.locationName ?? null })),
         });
       }
       // LD 41 (c): THE PRIMARY GENERATE PATH WRITES `ai_cost_tracking` — now inside the generator
