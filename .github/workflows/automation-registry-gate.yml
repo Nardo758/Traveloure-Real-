@@ -29,8 +29,6 @@ jobs:
       - name: Validate all domain IDs and cancellation references without executing actions
         run: npx tsx scripts/check-automation-registry.ts
       - name: Verify registry dispatch, scheduling, and fail-closed contracts
-        shell: bash
-        run: |
-          mapfile -t tests < <(find server/automations -type f -name '*.test.ts' | sort)
-          test "${#tests[@]}" -gt 0
-          npx tsx --test --test-concurrency=1 "${tests[@]}"
+        # Literal globs (not a find/mapfile list) so scripts/check-test-files-wired.cjs can see these
+        # files are run. Both depths that hold tests today are named; a deeper directory must be added here.
+        run: npx tsx --test --test-concurrency=1 server/automations/__tests__/*.test.ts server/automations/*/__tests__/*.test.ts
