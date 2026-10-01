@@ -62,7 +62,7 @@ import {
   type HeldSlot,
 } from "@shared/draft-basis";
 import { draftBasisInputs } from "../services/plan-option-sets.service";
-import { healthFlags, healthEgress } from "../services/runtime-flags";
+import { healthFlags, healthEgressFlags } from "../services/runtime-flags";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -361,7 +361,7 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
     const build = getBuildInfo();
     // Ledger `2026-09-30-health-flags`: four operator switches as booleans only — never a value.
     const flags = healthFlags();
-    const egress = { ...healthEgress };
+    const egress = healthEgressFlags();
     try {
       const ok = await dbHealthCheck();
       if (ok) {

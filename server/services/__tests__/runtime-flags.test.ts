@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { HEALTH_FLAG_NAMES, healthFlags, healthEgress } from "../runtime-flags";
+import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags } from "../runtime-flags";
 
 test("F1: the four switches, booleans, '1' is on", () => {
   const f = healthFlags({ PLACE_FACTS_PLACES_ENABLED: "1", AFFILIATE_PAGE_EXTRACT_ENABLED: "true", DMO_INGEST_ENABLED: "0" });
@@ -36,12 +36,17 @@ test("F3: every /api/health answer carries the flags", () => {
 
 test("F4: boot egress starts untested and is present on all health branches without another lookup", () => {
   assert.deepEqual(healthEgress, { nominatim: "untested" });
+  // Booleans only on the wire: untested ⇒ not checked; blocked ⇒ checked, not reachable; ok ⇒ both.
+  assert.deepEqual(healthEgressFlags(), { nominatimChecked: false, nominatimReachable: false });
+  assert.deepEqual(healthEgressFlags({ nominatim: "blocked" }), { nominatimChecked: true, nominatimReachable: false });
+  assert.deepEqual(healthEgressFlags({ nominatim: "ok" }), { nominatimChecked: true, nominatimReachable: true });
+  for (const v of Object.values(healthEgressFlags({ nominatim: "ok" }))) assert.equal(typeof v, "boolean");
   const here = path.dirname(fileURLToPath(import.meta.url));
   const src = fs.readFileSync(path.join(here, "../../routes/content.routes.ts"), "utf8");
   const start = src.indexOf('router.get("/api/health"');
   const block = src.slice(start, src.indexOf('router.get("/api/status"', start));
   assert.equal((block.match(/\bbuild, flags, egress\b/g) ?? []).length, 3);
-  assert.ok(block.includes("const egress = { ...healthEgress };"));
+  assert.ok(block.includes("const egress = healthEgressFlags();"));
   assert.doesNotMatch(block, /fetch\s*\(|resolveVenueFromOsm|seedManualCityEvents/);
   const startup = fs.readFileSync(path.join(here, "../../index.ts"), "utf8");
   assert.equal((startup.match(/healthEgress\.nominatim = eventsResult\.nominatim/g) ?? []).length, 1);
