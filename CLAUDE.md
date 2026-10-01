@@ -2336,6 +2336,15 @@ This document captures architectural decisions to maintain consistency across co
     and renders no door when the event is gone (replacing ON DELETE SET NULL). It is the event an
     event-guide post is about, so the post page renders its plan door from the LIVE event row. Written only
     by the server-side generators.
+    **A CITY EVENT MAY KNOW ITS DATE BUT NOT ITS TIME, AND ITS VENUE POINT COMES FROM OPENSTREETMAP
+    (decision-maker, Oct 1, 2026 — ledger `2026-10-01-city-events-nine-seed`; migration 337, HELD FOR
+    RULING).** `city_events.start_time_known` is additive nullable boolean, no default/CHECK/index/backfill,
+    declared in `shared/schema.ts`; NULL and FALSE both mean date only (`starts_at` holds local midnight),
+    and the card returns no start time — never "00:00" (§13). Venue coordinates are never hand-typed: the
+    seeder asks Nominatim once per venue, only when inserting, with the app's user agent and spaced per
+    its policy; a two-way name match or nothing (NULL, flagged `unlocated`); unreachable ⇒ the row is
+    deferred to the next run. Not Google Places, whose coordinates are plan-only with a 30-day cache
+    (LD 57). "© OpenStreetMap contributors" is REQUIRED wherever such a coordinate renders.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

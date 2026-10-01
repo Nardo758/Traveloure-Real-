@@ -275,8 +275,8 @@ export interface CityEventCard {
   /** Start and end as local calendar dates in the city (YYYY-MM-DD); end = start for one night. */
   firstDate: string;
   lastDate: string;
-  /** Local wall-clock start (HH:MM) in the city. */
-  startTime: string;
+  /** Local wall-clock start (HH:MM) in the city — null when only the date is known (migration 337). */
+  startTime: string | null;
   ticketUrl: string | null;
   blurb: string | null;
   imagePath: string | null;

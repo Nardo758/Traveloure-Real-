@@ -1878,4 +1878,8 @@ export const MIGRATION_FILES = [
   // optimizer_runs (insert-only) + optimizer_run_outcomes (append-only) + itinerary_variants.run_id.
   // Additive: NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. HELD FOR RULING.
   "336_optimizer_run_records.sql",
+  // 337 — city_events.start_time_known (ledger `2026-10-01-city-events-nine-seed`): NULL/FALSE = the
+  // date is known, the time is not; the card omits its start time unless TRUE. Additive, nullable, NO
+  // DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. HELD FOR RULING.
+  "337_city_events_start_time_known.sql",
 ] as const;
