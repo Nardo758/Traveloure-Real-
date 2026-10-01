@@ -88,7 +88,7 @@ function isProviderHttpError(e: any): boolean {
   return (
     typeof e?.status === "number" &&
     e.status >= 400 &&
-    e.status <= 599 &&
+    e.status <= 599 && // fee-literal-ok: HTTP status-code range (5xx ceiling), not a fee
     ("error" in e || "request_id" in e || "headers" in e)
   );
 }
