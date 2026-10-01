@@ -18,6 +18,7 @@ import { contentSources, placeFacts } from "@shared/schema";
 import {
   asFactOrigin,
   factProvenanceLine,
+  isConfirmableFact,
   isFactStale,
   isPublishable,
   needForItemType,
@@ -26,7 +27,7 @@ import {
   type FactView,
 } from "@shared/content-facts";
 import { rankFactsByOrigin } from "../upsell-engine.service";
-import { placesLookupsPerDraft } from "../../config/content-facts.config";
+import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { sourcesForNeed } from "./places-adapter";
 import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
@@ -245,6 +246,8 @@ function toView(r: FactRow, now: Date): FactView | null {
   if (!origin) return null;
   const f = { origin, license: r.license, verifiedAt: r.verifiedAt, fetchedAt: r.fetchedAt, expiresAt: r.expiresAt };
   return {
+    id: r.id,
+    confirmable: isConfirmableFact({ origin, license: r.license, verifiedAt: r.verifiedAt }),
     factType: r.factType as FactType,
     need: r.need as ContentNeed,
     value: r.value as Record<string, unknown>,
@@ -355,4 +358,69 @@ function defaultTavilyExtractDeps(): TavilyExtractDeps {
     robots: (url) => assertRobotsAllowed(url, ROBOTS_TXT_USER_AGENT_TOKEN),
     partnerHosts: () => loadPartnerHosts(),
   };
+}
+
+export class FactConfirmError extends Error {
+  constructor(public readonly code: string, public readonly status: number) {
+    super(code);
+  }
+}
+
+/**
+ * A6 (4) — an expert CONFIRMS a crawled fact (ledger `2026-10-01-a6-expert-confirm`; brief §8). Insert-
+ * only, as the table requires: a NEW row is written with origin `expert_nugget`, `verified_by` = the
+ * expert, `verified_at = now()`, the fact's statement as the expert's word (`value.text`) and a
+ * pointer back to what it confirmed — the source page's verbatim quote is NOT carried into the nugget,
+ * because a verified nugget is publishable and the quote is the page's text, not the expert's. The
+ * confirmed row then points at its successor through ONE atomic conditional
+ * (`superseded_by IS NULL`), so a second confirm — concurrent or repeated — is refused, never doubled.
+ * The caller has verified the expert is a §12 write-status advisor on this plan and passes the
+ * byline gate for its market.
+ */
+export async function confirmFactAsNugget(input: { tripId: string; factId: string; expertId: string }): Promise<{ nuggetId: string }> {
+  return db.transaction(async (tx) => {
+    const [fact] = await tx
+      .select()
+      .from(placeFacts)
+      .where(and(eq(placeFacts.id, input.factId), eq(placeFacts.planId, input.tripId)));
+    if (!fact) throw new FactConfirmError("not_found", 404);
+    if (fact.supersededBy) throw new FactConfirmError("already_superseded", 409);
+    if (!isConfirmableFact({ origin: fact.origin, license: fact.license, verifiedAt: fact.verifiedAt })) {
+      throw new FactConfirmError("not_confirmable", 409);
+    }
+    const text = typeof (fact.value as any)?.text === "string" ? String((fact.value as any).text).trim() : "";
+    if (!text) throw new FactConfirmError("no_statement", 409);
+    const now = new Date();
+    const ttl = factTtlDays(fact.factType as FactType);
+    const nuggetId = crypto.randomUUID();
+    await tx.insert(placeFacts).values({
+      id: nuggetId,
+      placeRefKind: fact.placeRefKind,
+      placeRef: fact.placeRef,
+      placeLat: fact.placeLat,
+      placeLng: fact.placeLng,
+      market: fact.market,
+      need: fact.need,
+      factType: fact.factType,
+      value: { text, confirmedFromFactId: fact.id },
+      origin: "expert_nugget",
+      sourceId: null,
+      sourceUrl: null,
+      license: null,
+      verifiedBy: input.expertId,
+      verifiedAt: now,
+      fetchedAt: now,
+      expiresAt: ttl == null ? null : new Date(now.getTime() + ttl * 86_400_000),
+      costCents: "0",
+      planId: fact.planId,
+      itineraryItemId: fact.itineraryItemId,
+    });
+    const claimed = await tx
+      .update(placeFacts)
+      .set({ supersededBy: nuggetId })
+      .where(and(eq(placeFacts.id, fact.id), isNull(placeFacts.supersededBy)))
+      .returning({ id: placeFacts.id });
+    if (!claimed.length) throw new FactConfirmError("already_superseded", 409);
+    return { nuggetId };
+  });
 }

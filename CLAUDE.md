@@ -2316,6 +2316,11 @@ This document captures architectural decisions to maintain consistency across co
     optimizer run (ledger `2026-10-01-a9-paid-run-fresh-fetch`): one pass after the run is recorded,
     over the plan's located items within its dates, never awaited (§15b), never for a Trip Pass or a
     free re-run; its cost reaches the run through the `runId` tag on `api_usage_logs`.
+    **AN EXPERT CONFIRMS A CRAWLED FACT INTO A NEW VERIFIED NUGGET (ledger `2026-10-01-a6-expert-confirm`).**
+    `isConfirmableFact` admits only an unverified `crawled` fact outside partner/restricted licenses —
+    never a Places fact, which would otherwise become publishable Google data. The confirm writes a NEW
+    `expert_nugget` row (no quote, URL or license carried) and supersedes the crawled row by one atomic
+    conditional; the route requires a §12 write-status advisor and the blog byline gate for the market.
     **A PLACES LOOKUP NEEDS A NAMED PLACE, AND THE CAP IS SPENT ACROSS DAYS (ledger
     `2026-09-30-places-named-gate`; production smoke test 3).** An item whose title and location name no
     specific place (`namedPlaceTokens`, `shared/place-name-gate.ts`) is never looked up, and a Places

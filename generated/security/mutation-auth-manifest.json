@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 645,
-  "rawRegistrationCount": 645,
-  "uniqueMethodNormalizedPathCount": 636,
-  "distinctMethodPathCount": 636,
+  "mutationCount": 646,
+  "rawRegistrationCount": 646,
+  "uniqueMethodNormalizedPathCount": 637,
+  "distinctMethodPathCount": 637,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -146,12 +146,12 @@
   "categoryTotals": {
     "payments": 31,
     "admin": 167,
-    "user-data": 221,
+    "user-data": 222,
     "other": 217
   },
   "boundaryTotals": {
     "admin-role": 167,
-    "session-self": 326,
+    "session-self": 327,
     "resource-owner": 97,
     "signature": 6,
     "public-or-system": 40,
@@ -159,7 +159,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 99,
+    "delta": 100,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -10313,7 +10313,7 @@
       "path": "/api/trips/:tripId/itinerary-items/:itemId/fresh-facts",
       "effectivePath": "/api/trips/:tripId/itinerary-items/:itemId/fresh-facts",
       "source": "server/routes/content-facts.routes.ts",
-      "line": 25,
+      "line": 27,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10518,6 +10518,23 @@
       "effectivePath": "/api/trips/:tripId/participants/bulk-invite",
       "source": "server/routes.ts",
       "line": 12564,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": true,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/trips/:tripId/place-facts/:factId/confirm",
+      "path": "/api/trips/:tripId/place-facts/:factId/confirm",
+      "effectivePath": "/api/trips/:tripId/place-facts/:factId/confirm",
+      "source": "server/routes/content-facts.routes.ts",
+      "line": 61,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
