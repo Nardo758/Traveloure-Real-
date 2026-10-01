@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { reportAiUpstreamError } from "./services/ai-upstream-errors";
 import { optionPickItem, type OptionSlot } from "./services/version-options.service";
 import { buildInputSnapshot, recordOptimizerRun, type RunRecordContext } from "./services/optimizer-runs.service";
+import { startPaidRunFreshFetch } from "./services/content-facts/paid-run-fresh-fetch";
 import { db } from "./db";
 import { trackAICost } from "./services/ai-cost-tracker";
 import {
@@ -1379,6 +1380,18 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       if (runId) {
         await db.update(itineraryVariants).set({ runId }).where(eq(itineraryVariants.id, baselineVariant[0].id));
       }
+      // A9 × A6 (3) (ledger `2026-10-01-a9-paid-run-fresh-fetch`): a PAID run — never a Trip Pass or a
+      // free re-run — gets ONE fresh-fetch pass over the plan's located items within its dates. Not
+      // awaited: it never delays or fails the run (§15b); its cost reaches the run via the runId tag.
+      startPaidRunFreshFetch({
+        basis: runRecord.basis,
+        runId,
+        tripId: runRecord.tripId,
+        actorId: runRecord.createdBy,
+        baselineItems,
+        startDate,
+        endDate,
+      });
     }
 
     const content = await callAI(

@@ -122,6 +122,8 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/tavily-extract.db.test.ts
       - name: A6 expert confirm — crawled fact to verified nugget, once, never a Places fact
         run: npx tsx --test --test-force-exit server/__tests__/fact-confirm.db.test.ts
+      - name: A9 paid-run fresh fetch — paid runs only, one pass, never a free draft (pure)
+        run: npx tsx --test --test-force-exit server/__tests__/paid-run-fresh-fetch.test.ts
       - name: A6 content source registry — born inactive, edit strips terms, allowlisted activation
         run: npx tsx --test --test-force-exit server/__tests__/content-sources.db.test.ts
       # Places named-place gate (ledger `2026-09-30-places-named-gate`, production smoke test 3):

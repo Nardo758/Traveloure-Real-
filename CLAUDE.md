@@ -2311,8 +2311,11 @@ This document captures architectural decisions to maintain consistency across co
     `2026-10-01-a6-tavily-extract`).** `mayFetchFresh` is the one predicate; the free draft has no basis and
     a budget of 0, and `TavilyExtractAdapter` refuses a 0 budget before building a client. Spend is capped
     per plan, per day and per source off `api_usage_logs` (unreadable ⇒ spent); a crawled fact keeps a
-    verbatim quote of at most 300 characters or is refused. The one consumer today is the §12
-    write-status advisor's `POST /api/trips/:tripId/itinerary-items/:itemId/fresh-facts`.
+    verbatim quote of at most 300 characters or is refused. Its two consumers are the §12
+    write-status advisor's `POST /api/trips/:tripId/itinerary-items/:itemId/fresh-facts` and a PAID
+    optimizer run (ledger `2026-10-01-a9-paid-run-fresh-fetch`): one pass after the run is recorded,
+    over the plan's located items within its dates, never awaited (§15b), never for a Trip Pass or a
+    free re-run; its cost reaches the run through the `runId` tag on `api_usage_logs`.
     **AN EXPERT CONFIRMS A CRAWLED FACT INTO A NEW VERIFIED NUGGET (ledger `2026-10-01-a6-expert-confirm`).**
     `isConfirmableFact` admits only an unverified `crawled` fact outside partner/restricted licenses —
     never a Places fact, which would otherwise become publishable Google data. The confirm writes a NEW
