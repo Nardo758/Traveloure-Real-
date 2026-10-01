@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runHealthFor, LAST_RUN_ERROR_MAX } from "../run-health";
+import { runHealthFor, perMarketErrors, LAST_RUN_ERROR_MAX } from "../run-health";
 
 test("H1: no errors ⇒ success, no error text", () => {
   assert.deepEqual(runHealthFor({ errors: [] }), { status: "success", error: null });
@@ -15,10 +15,20 @@ test("H1: no errors ⇒ success, no error text", () => {
 test("H2: any per-market error ⇒ partial, messages kept in order", () => {
   const r = runHealthFor({ errors: ["kyoto: BestTime API 402 at /forecasts: no credits", "goa: timeout"] });
   assert.equal(r.status, "partial");
-  assert.equal(r.error, "kyoto: BestTime API 402 at /forecasts: no credits | goa: timeout");
+  assert.deepEqual(JSON.parse(r.error!), [
+    { market: "kyoto", error: "BestTime API 402 at /forecasts: no credits" },
+    { market: "goa", error: "timeout" },
+  ]);
 });
 
-test("H3: the stored text is capped at the failure branch's length", () => {
-  const r = runHealthFor({ errors: Array.from({ length: 50 }, (_, i) => `m${i}: ${"x".repeat(40)}`) });
-  assert.equal(r.error!.length, LAST_RUN_ERROR_MAX);
+test("H3: each market's message is capped on its own, so one long error cannot crowd out the rest", () => {
+  const errors = Array.from({ length: 8 }, (_, i) => `m${i}: ${"x".repeat(2000)}`);
+  const stored = JSON.parse(runHealthFor({ errors }).error!);
+  assert.equal(stored.length, 8, "every market is kept");
+  for (const e of stored) assert.equal(e.error.length, LAST_RUN_ERROR_MAX);
+  assert.deepEqual(stored.map((e: any) => e.market), errors.map((_, i) => `m${i}`));
+});
+
+test("H4: a message with no market prefix is kept with market null, never guessed", () => {
+  assert.deepEqual(perMarketErrors(["fetch failed"]), [{ market: null, error: "fetch failed" }]);
 });

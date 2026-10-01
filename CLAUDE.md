@@ -2235,7 +2235,8 @@ This document captures architectural decisions to maintain consistency across co
     `blog_posts`, `blog_post_sources`, `blog_post_reactions` — born empty with their indexes, **NO DB CHECK and NO
     DEFAULT on status**, all **declared in `shared/schema.ts`**; the value sets live ONCE in `shared/blog.ts`. ONE
     lifecycle, `server/services/blog-posts.service.ts`: expert posts go draft → in_review → signed → published →
-    withdrawn; TravelPulse weekly is the ONLY platform-authored type, carries "AI signal from public data" instead
+    withdrawn; TravelPulse weekly is the ONLY platform-authored type (AMENDED Sep 30, 2026 — ledger
+    `2026-09-30-blog-event-guide`: the three generator-born event types join it, `PLATFORM_AUTHORED_TYPES`), carries "AI-drafted from public and licensed data sources" (label amended Sep 30, 2026, ledger `2026-09-30-travelpulse-weekly`) instead
     of a byline and needs no signature (ruling 5). **THE CONTENT HASH** (`content_sha256`, server-computed over
     title + summary + body + every source) is what an expert signs: signing is ONE atomic conditional on status,
     byline and that hash (§15), and **the signature IS the per-post publishing consent** — `consent_at` is stamped in
@@ -2312,6 +2313,22 @@ This document captures architectural decisions to maintain consistency across co
     INSERT by every writer; a pre-334 row keeps NULL and is not backfilled (§13), and an UPDATE never
     rewrites it. `manual` is declared for the value set; no writer produces it today. All three columns
     additive nullable, no default, no index, declared in `shared/schema.ts`.
+
+59. **A CITY EVENT MAY STATE ITS VERTICAL AND ITS SERIES (decision-maker dispatch, Sep 30, 2026 — the blog
+    generator lane's prerequisite; ledger `2026-09-30-city-events-vertical-series`; migration 335, APPROVED
+    Sep 30, 2026 without the FK).** `city_events.vertical` (`music` | `fashion` | `motorsport` | `other`, app-enforced ONCE in
+    `CITY_EVENT_VERTICALS`, no CHECK) and `city_events.series_key` (lower-case kebab, groups one recurring
+    series across years and cities; distinct from the display-name `series`) are additive nullable, NO
+    DEFAULT, NO INDEX, NO BACKFILL, declared in `shared/schema.ts`. NULL = not stated (§13): never guessed
+    from a title. The ONE row builder (`buildCityEventRow`) admits both and refuses an unknown vertical or
+    a malformed key by name. The seeder is insert-only with ONE ruled exception: on an existing
+    `source = 'manual'` row it may FILL `vertical`/`series_key` where the stored value is NULL — those two
+    fields only; a stated value is never replaced and nothing else is ever rewritten. The same migration
+    adds `blog_posts.city_event_id` with **NO FK** (a new column on an existing table is nullable, no
+    DEFAULT/CHECK/index/FK): the link is APP-ENFORCED — the composer sets it, and the post read joins by id
+    and renders no door when the event is gone (replacing ON DELETE SET NULL). It is the event an
+    event-guide post is about, so the post page renders its plan door from the LIVE event row. Written only
+    by the server-side generators.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

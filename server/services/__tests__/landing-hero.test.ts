@@ -126,10 +126,11 @@ describe("composeLandingHero — honest collapse", () => {
   });
   test("city with thin data → city present, every leg null (never fabricates)", () => {
     const p = composeLandingHero({
-      topCity: { cityName: "Porto", trendingScore: 0, crowdLevel: "quiet" },
+      topCity: { cityName: "Porto", trendingScore: 0, crowdBand: null },
       anchorExpert: null, gems: [], services: [], wanted: null,
     });
     assert.equal(p.city, "Porto");
+    assert.equal(p.crowd, null); // no band ⇒ no crowd claim (TravelPulse PR 2)
     assert.equal(p.trend, 0); // below-floor: 0, not an invented positive
     assert.equal(p.anchorExpert, null);
     assert.equal(p.gem, null);
@@ -188,12 +189,13 @@ describe("composeLandingHero — honest collapse", () => {
   });
   test("anchor and wanted list pass through untouched — no default names, prices, or neighborhoods", () => {
     const p = composeLandingHero({
-      topCity: { cityName: "Kyoto", trendingScore: 92, crowdLevel: "high" },
+      topCity: { cityName: "Kyoto", trendingScore: 92, crowdBand: "high" },
       anchorExpert: { name: "Yuki Flowers", handle: "yuki-flowers", fromPriceCents: 24900 },
       gems: [], services: [],
       wanted: [{ title: "Evening kaiseki host", city: "Kyoto" }],
     });
     assert.equal(p.trend, 92);
+    assert.equal(p.crowd, "high"); // the resolver band, passed through (TravelPulse PR 2)
     assert.deepEqual(p.anchorExpert, { name: "Yuki Flowers", handle: "yuki-flowers", fromPriceCents: 24900 });
     assert.deepEqual(p.wanted, [{ title: "Evening kaiseki host", city: "Kyoto" }]);
   });

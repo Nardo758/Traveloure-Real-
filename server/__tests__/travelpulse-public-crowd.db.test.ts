@@ -1,5 +1,6 @@
 /**
- * travelpulse-public-crowd.db.test.ts — TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`;
+ * travelpulse-public-crowd.db.test.ts — TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`) and
+ * PR 2 (ledger `2026-09-30-travelpulse-crowd-band`, T5: the computed band, fresh and confident only;
  * trend-engine audit Sep 29, 2026 §3/§5).
  *
  * The decision-maker's ruling: the legacy `travel_pulse_cities.crowd_level` leaves EVERY public
@@ -73,7 +74,13 @@ let server: http.Server;
 let base = "";
 const created: { cityId?: string; happeningId?: string; seasonId?: string; entityId?: string } = {};
 let restoreCity: { crowdLevel: string | null; pulseScore: number | null } | null = null;
-let restoreScore: { trendScore: string | null; trendConfidence: string | null; computedAt: Date } | null = null;
+let restoreScore: {
+  trendScore: string | null;
+  trendConfidence: string | null;
+  computedAt: Date;
+  crowdBand: string | null;
+  crowdConfidence: string | null;
+} | null = null;
 
 async function getJson(path: string): Promise<{ status: number; body: any }> {
   const res = await fetch(`${base}${path}`);
@@ -87,19 +94,24 @@ async function getJson(path: string): Promise<{ status: number; body: any }> {
   return { status: res.status, body };
 }
 
-async function setScore(computedAt: Date): Promise<void> {
+/** Upsert the fixture market's score row. `crowd` omitted ⇒ NO band (the PR 1 tests' state). */
+async function setScore(computedAt: Date, crowd?: { band: string; confidence: string }): Promise<void> {
+  const crowdBand = crowd?.band ?? null;
+  const crowdConfidence = crowd?.confidence ?? null;
   await db
     .insert(trendScores)
     .values({
       trendEntityId: created.entityId!,
       trendScore: "1.400",
       trendConfidence: "0.9000",
+      crowdBand,
+      crowdConfidence,
       computedAt,
       scoringRunId: "travelpulse-public-crowd-test",
     })
     .onConflictDoUpdate({
       target: trendScores.trendEntityId,
-      set: { trendScore: "1.400", trendConfidence: "0.9000", computedAt },
+      set: { trendScore: "1.400", trendConfidence: "0.9000", crowdBand, crowdConfidence, computedAt },
     });
 }
 
@@ -152,7 +164,15 @@ describe("TravelPulse PR 1 — no legacy crowd on a public route; stale Trend sh
     if (ent) {
       created.entityId = ent.id;
       const [s] = await db.select().from(trendScores).where(eq(trendScores.trendEntityId, ent.id)).limit(1);
-      if (s) restoreScore = { trendScore: s.trendScore, trendConfidence: s.trendConfidence, computedAt: s.computedAt };
+      if (s) {
+        restoreScore = {
+          trendScore: s.trendScore,
+          trendConfidence: s.trendConfidence,
+          computedAt: s.computedAt,
+          crowdBand: s.crowdBand,
+          crowdConfidence: s.crowdConfidence,
+        };
+      }
     } else {
       const [row] = await db
         .insert(trendEntities)
@@ -210,7 +230,8 @@ describe("TravelPulse PR 1 — no legacy crowd on a public route; stale Trend sh
     assert.ok(JSON.stringify(view).includes("PR1 fixture — happening now"), "location view did not read the fixture");
   });
 
-  it("T2: the hero never states a crowd", async () => {
+  it("T2: with no computed band, the hero states no crowd", async () => {
+    await setScore(new Date());
     const { body } = await getJson("/api/landing/hero");
     assert.equal(body.crowd, null);
   });
@@ -229,6 +250,23 @@ describe("TravelPulse PR 1 — no legacy crowd on a public route; stale Trend sh
     const rail = (await getJson("/api/travelpulse/cities?limit=20")).body.cities as any[];
     const kyoto = rail.find((c) => c.cityName === CITY);
     assert.equal(kyoto?.trendingScore, 0, "the rail's existing suppression path (0) for a stale score");
+  });
+
+  it("T5: PR 2 — the resolver's band shows on the rail as `crowdBand` only when confident and fresh", async () => {
+    const railKyoto = async () =>
+      ((await getJson("/api/travelpulse/cities?limit=20")).body.cities as any[]).find((c) => c.cityName === CITY);
+
+    await setScore(new Date(), { band: "high", confidence: "0.7000" });
+    const shown = await railKyoto();
+    assert.equal(shown?.crowdBand, "high");
+    assert.equal("crowdLevel" in (shown ?? {}), false, "the legacy key never returns");
+    assert.equal("crowdConfidence" in (shown ?? {}), false, "no crowd number is published");
+
+    await setScore(new Date(), { band: "high", confidence: "0.1000" });
+    assert.equal((await railKyoto())?.crowdBand, null, "below the confidence floor ⇒ no label");
+
+    await setScore(new Date(Date.now() - 72 * 3_600_000), { band: "high", confidence: "0.7000" });
+    assert.equal((await railKyoto())?.crowdBand, null, "a stale band ⇒ no label");
   });
 
   it("T4: /api/health reports the newest trend-score age", async () => {

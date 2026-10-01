@@ -181,6 +181,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // Track A A2 (R216) follow-up, ledger `2026-09-29-matrix-daily`: posted daily; a no-op
   // (`skipped: not_due`) while the matrix is fresh, a real refresh when due or the centroids move.
   { job: "travel-matrix-refresh", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // TravelPulse weekly (ledger `2026-09-30-travelpulse-weekly-schedule`): posted daily; drafts once per
+  // ISO week, and every other day answers `already_drafted` without a model call. Still a real pass.
+  { job: "travelpulse-weekly", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -324,6 +327,15 @@ router.post("/internal/jobs/travel-matrix-refresh", requireInternalSecret, async
     () => refreshMarketMatrix({ marketSlug: market, force: parsed.data.force === true }),
     (r) => r?.status === "failed" || !!r?.refused,
   );
+  res.status(status).json(body);
+});
+
+// travelpulse-weekly — TravelPulse PR 3's scheduled runner (ledger
+// `2026-09-30-travelpulse-weekly-schedule`). DRAFTS ONLY: the admin publish rail is still the one way
+// a post goes live. No body is read.
+router.post("/internal/jobs/travelpulse-weekly", requireInternalSecret, async (_req, res) => {
+  const { runTravelPulseWeeklyJob } = await import("../services/travelpulse-weekly.service");
+  const { status, body } = await runJob("travelpulse-weekly", () => runTravelPulseWeeklyJob(), (r) => r?.status === "failed");
   res.status(status).json(body);
 });
 

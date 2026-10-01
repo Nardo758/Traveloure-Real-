@@ -303,7 +303,7 @@ declare -A BUCKET_ROUTES=(
   ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims"
   ["four-hourly"]="booking-expiry"
   ["six-hourly"]="travelpayouts-report-poll"
-  ["daily"]="stripe-reconciliation availability-materialization travel-matrix-refresh"
+  ["daily"]="stripe-reconciliation availability-materialization travel-matrix-refresh travelpulse-weekly"
 )
 # BUCKET_ROUTES_TABLE_END
 BUCKET_ORDER=(backstops hourly four-hourly six-hourly daily)

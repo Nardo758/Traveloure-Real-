@@ -32,7 +32,7 @@ export async function seedManualCityEvents() {
 if (import.meta.url === `file://${process.argv[1]}`) {
   seedManualCityEvents()
     .then((r) => {
-      console.log(`[city-events] inserted ${r.inserted}, skipped ${r.skipped}, refused ${r.refused.length}`);
+      console.log(`[city-events] inserted ${r.inserted}, skipped ${r.skipped}, filled ${r.filled}, refused ${r.refused.length}`);
       process.exit(0);
     })
     .catch((err) => {

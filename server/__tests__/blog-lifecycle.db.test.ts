@@ -154,7 +154,7 @@ test("L9 TravelPulse weekly is platform-authored, labelled, and needs no signatu
   await publishPost(p.id, ADMIN, eligible);
   const pub = await getPublishedBySlug(slug("tp"));
   assert.equal(pub!.byline, null);
-  assert.equal(pub!.platformLabel, "AI signal from public data");
+  assert.equal(pub!.platformLabel, "AI-drafted from public and licensed data sources");
 });
 
 test("L10 submission is refused when the byline gate refuses", async () => {

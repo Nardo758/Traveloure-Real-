@@ -42,6 +42,9 @@ export const PLAN_DOORS = [
   "billboard",
   "event_strip",
   "events_page",
+  // Amended 2026-09-30 (slip-funnel-events.md §3.1; ledger `2026-09-30-blog-event-guide`): an event
+  // post's "Start this plan" door.
+  "blog_post",
 ] as const;
 export type PlanDoor = (typeof PLAN_DOORS)[number];
 

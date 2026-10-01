@@ -1,4 +1,4 @@
-import { displayTrendScore } from "@shared/trend-display";
+import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 import { db } from "../db";
 import {
@@ -41,6 +41,8 @@ import crypto from "crypto";
  */
 export type PublicTrendingCity = Omit<TravelPulseCity, "crowdLevel" | "pulseScore"> & {
   trendingScore: number;
+  /** TravelPulse PR 2: the resolver's crowd band through `displayCrowdBand`; null = no label (§13). */
+  crowdBand: DisplayCrowdBand | null;
   _resolverScore: number | null;
   _isRanked: boolean;
 };
@@ -176,7 +178,14 @@ export class TravelPulseService {
   // ============================================
 
   /** The resolver's newest score per market key (`trend_scores` joined to its market entity). */
-  private async loadResolverScores(): Promise<Map<string, { score: number | null; confidence: number; computedAt: Date | null; whyText: string | null }>> {
+  private async loadResolverScores(): Promise<Map<string, {
+    score: number | null;
+    confidence: number;
+    computedAt: Date | null;
+    whyText: string | null;
+    crowdBand: string | null;
+    crowdConfidence: number | null;
+  }>> {
     const resolverRows = await db
       .select({
         internalId: trendEntities.internalId,
@@ -184,6 +193,8 @@ export class TravelPulseService {
         trendConfidence: trendScores.trendConfidence,
         computedAt: trendScores.computedAt,
         whyText: trendScores.whyText,
+        crowdBand: trendScores.crowdBand,
+        crowdConfidence: trendScores.crowdConfidence,
       })
       .from(trendEntities)
       .leftJoin(trendScores, eq(trendScores.trendEntityId, trendEntities.id))
@@ -196,6 +207,8 @@ export class TravelPulseService {
           confidence: r.trendConfidence != null ? parseFloat(r.trendConfidence) : 0,
           computedAt: r.computedAt ?? null,
           whyText: r.whyText ?? null,
+          crowdBand: r.crowdBand ?? null,
+          crowdConfidence: r.crowdConfidence != null ? parseFloat(r.crowdConfidence) : null,
         },
       ]),
     );
@@ -223,6 +236,33 @@ export class TravelPulseService {
       );
     }
     return out;
+  }
+
+  /**
+   * What a PUBLIC surface may say about each operating market this run: the displayed Trend number
+   * and crowd band through the ONE pair of display rules, and the resolver's contributing source
+   * keys. Null where nothing may be shown. Read by the TravelPulse weekly generator (ledger
+   * `2026-09-30-travelpulse-weekly`), which must never see a raw signal value.
+   */
+  async displayedSignalByMarket(): Promise<Array<{
+    marketKey: string;
+    cityName: string;
+    trend: number | null;
+    crowd: DisplayCrowdBand | null;
+    computedAt: Date | null;
+  }>> {
+    const scores = await this.loadResolverScores();
+    const opts = { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() };
+    return OPERATING_MARKETS.map(m => {
+      const rd = scores.get(m.marketKey) ?? null;
+      return {
+        marketKey: m.marketKey,
+        cityName: m.cityName,
+        trend: displayTrendScore(rd, opts),
+        crowd: displayCrowdBand(rd ? { band: rd.crowdBand, confidence: rd.crowdConfidence, computedAt: rd.computedAt } : null, opts),
+        computedAt: rd?.computedAt ?? null,
+      };
+    });
   }
 
   async getTrendingCities(limit: number = 20): Promise<PublicTrendingCity[]> {
@@ -254,12 +294,18 @@ export class TravelPulseService {
       const isRanked = shown !== null;
       const trendingScore = shown ?? 0;
 
-      // PR 1: the legacy crowd label and pulse score are NOT spread onto a public row — Crowd
-      // returns when PR 2 computes it from `crowd_band_config`; the Trend number has one source.
+      // PR 1: the legacy crowd label and pulse score are NOT spread onto a public row. PR 2 (ledger
+      // `2026-09-30-travelpulse-crowd-band`): Crowd is the resolver's band under its OWN key,
+      // `crowdBand`, through the ONE display rule — the legacy `crowdLevel` never returns.
       const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, ...publicCity } = city;
+      const crowdBand = displayCrowdBand(
+        rd ? { band: rd.crowdBand, confidence: rd.crowdConfidence, computedAt: rd.computedAt } : null,
+        { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() },
+      );
       return {
         ...publicCity,
         trendingScore,
+        crowdBand,
         _resolverScore: rd?.score ?? null,
         _isRanked: isRanked,
       };

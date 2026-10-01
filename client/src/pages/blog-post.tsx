@@ -8,6 +8,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { apiRequest } from "@/lib/queryClient";
 import { conversationChatPath, startConversation } from "@/lib/earner-address";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { planAroundSource } from "@/components/landing/events-strip";
 import type { BlogReactionKind } from "@shared/blog";
 import {
   BLOG_REACTION_LABELS,
@@ -91,6 +93,8 @@ function PostBody({ post }: { post: PublicBlogPost }) {
           <p key={i} className="whitespace-pre-line">{p}</p>
         ))}
       </div>
+
+      {post.planDoor && <StartThisPlanDoor door={post.planDoor} />}
 
       {post.sources.length > 0 && (
         <section className="mt-10" data-testid="section-blog-sources">
@@ -183,6 +187,22 @@ function AskTheLocal({ post }: { post: PublicBlogPost }) {
           We couldn't open a conversation right now. Please try again.
         </p>
       )}
+    </section>
+  );
+}
+
+/**
+ * An event post's ONE door (ledger `2026-09-30-blog-event-guide`): opens the one planning modal with
+ * the event as the fixed anchor, through the SAME `planAroundSource` the events strip uses, door
+ * `blog_post`. Minutes and distances appear inside the plan, never on the post.
+ */
+function StartThisPlanDoor({ door }: { door: NonNullable<PublicBlogPost["planDoor"]> }) {
+  const { open } = usePlanning();
+  return (
+    <section className="mt-10" data-testid="section-blog-plan-door">
+      <Button onClick={() => open(planAroundSource({ ...door, series: null }, "blog_post"))} data-testid="button-blog-start-plan">
+        Start this plan
+      </Button>
     </section>
   );
 }
