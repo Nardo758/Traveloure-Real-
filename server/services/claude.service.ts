@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { trackAnthropicResponse } from './ai-cost-tracker';
 import { parseAiJsonObjectOrThrow } from '../utils/ai-json';
+import { reportAiUpstreamError } from './ai-upstream-errors';
 
 // claude-sonnet-4-5 is the latest model
 const DEFAULT_MODEL = "claude-sonnet-4-5";
@@ -414,12 +415,26 @@ Return JSON:
     userId?: string | null;
     label: string;
   }): Promise<{ result: T; model: string; usage: { input_tokens: number; output_tokens: number } }> {
-    const message = await anthropic.messages.create({
-      model: DEFAULT_MODEL,
-      max_tokens: opts.maxTokens,
-      system: `${opts.system}\n\nRespond with valid JSON only — no markdown, no explanation.`,
-      messages: [{ role: 'user', content: opts.user }],
-    });
+    let message: Anthropic.Message;
+    try {
+      message = await anthropic.messages.create({
+        model: DEFAULT_MODEL,
+        max_tokens: opts.maxTokens,
+        system: `${opts.system}\n\nRespond with valid JSON only — no markdown, no explanation.`,
+        messages: [{ role: 'user', content: opts.user }],
+      });
+    } catch (err) {
+      // Ledger `2026-10-01-ai-upstream-error-classes`: every upstream failure is classified,
+      // recorded and (non-retryable, first per hour) alerted ONCE here; the error is rethrown
+      // unchanged, so a route that catches it again reads the same class and does not re-record it.
+      await reportAiUpstreamError(err, {
+        route: opts.label,
+        sourceType: opts.sourceType,
+        userId: opts.userId ?? null,
+        model: DEFAULT_MODEL,
+      });
+      throw err;
+    }
     await trackAnthropicResponse(message, { sourceType: opts.sourceType, userId: opts.userId ?? null });
     const block = message.content.find((b) => b.type === 'text');
     const text = block && block.type === 'text' ? block.text : '';
