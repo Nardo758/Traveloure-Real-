@@ -2235,7 +2235,8 @@ This document captures architectural decisions to maintain consistency across co
     `blog_posts`, `blog_post_sources`, `blog_post_reactions` — born empty with their indexes, **NO DB CHECK and NO
     DEFAULT on status**, all **declared in `shared/schema.ts`**; the value sets live ONCE in `shared/blog.ts`. ONE
     lifecycle, `server/services/blog-posts.service.ts`: expert posts go draft → in_review → signed → published →
-    withdrawn; TravelPulse weekly is the ONLY platform-authored type, carries "AI-drafted from public and licensed data sources" (label amended Sep 30, 2026, ledger `2026-09-30-travelpulse-weekly`) instead
+    withdrawn; TravelPulse weekly is the ONLY platform-authored type (AMENDED Sep 30, 2026 — ledger
+    `2026-09-30-blog-event-guide`: the three generator-born event types join it, `PLATFORM_AUTHORED_TYPES`), carries "AI-drafted from public and licensed data sources" (label amended Sep 30, 2026, ledger `2026-09-30-travelpulse-weekly`) instead
     of a byline and needs no signature (ruling 5). **THE CONTENT HASH** (`content_sha256`, server-computed over
     title + summary + body + every source) is what an expert signs: signing is ONE atomic conditional on status,
     byline and that hash (§15), and **the signature IS the per-post publishing consent** — `consent_at` is stamped in

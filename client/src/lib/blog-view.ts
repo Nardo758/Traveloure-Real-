@@ -31,6 +31,19 @@ export interface PublicBlogPost {
   byline: PublicBlogByline | null;
   platformLabel: string | null;
   sources: PublicBlogSource[];
+  /**
+   * An event post's "Start this plan" door, read by the server from the LIVE event row (ledger
+   * `2026-09-30-blog-event-guide`). Null for every other post, and for a withdrawn or past event.
+   */
+  planDoor?: {
+    title: string;
+    city: string;
+    marketKey: string | null;
+    firstDate: string;
+    lastDate: string;
+    startTime: string;
+    venue: string;
+  } | null;
 }
 
 /**
