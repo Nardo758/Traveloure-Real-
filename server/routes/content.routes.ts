@@ -9,6 +9,7 @@ import { withQueryTimer } from '../utils/queryTimer';
 import { parsePagination } from '../utils/pagination';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
+import { aiFailureResponse } from '../services/ai-upstream-errors';
 import {
   normalizeGeneratedEstimatedCost,
   normalizeGeneratedItineraryPayload,
@@ -4791,7 +4792,15 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
             eventData: freeDraftRunEventData({ outcome: "provider_failed" }),
           });
         }
-        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+        // Ledger `2026-10-01-ai-upstream-error-classes`: a non-retryable upstream failure (credit,
+        // auth, bad request) answers the distinct 502 with no retry prompt; everything else keeps the
+        // sanitized 503 exactly as before. Recorded and (first per hour) alerted in the one module.
+        const failure = await aiFailureResponse(aiError, {
+          route: "POST /api/ai/generate-itinerary",
+          sourceType: "ai_itinerary",
+          userId,
+        });
+        return res.status(failure.status).json(failure.body);
       }
 
       const tripDayCount = Math.floor(
@@ -5055,7 +5064,15 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         }, userId);
       } catch (aiError: any) {
         console.error("AI optimized-itinerary generation failed:", aiError);
-        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+        // Ledger `2026-10-01-ai-upstream-error-classes`: the three variations are generated in
+        // sequence, so a non-retryable failure on the base call throws before either alternative is
+        // attempted — the alternatives run never fires against a provider that refused the first call.
+        const failure = await aiFailureResponse(aiError, {
+          route: "POST /api/ai/generate-optimized-itineraries",
+          sourceType: "ai_itinerary",
+          userId,
+        });
+        return res.status(failure.status).json(failure.body);
       }
 
       // ledger 2026-08-22-ai-slip-defects: the stored row ids ride the response so the
