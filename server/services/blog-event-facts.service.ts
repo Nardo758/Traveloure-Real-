@@ -164,3 +164,83 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     alsoOn,
   };
 }
+
+// ─── Type 2: SERIES FOLLOW (ledger `2026-09-30-blog-series-follow`) ─────────────────────────────
+
+/** A series follow is refused below this many upcoming instances (decision-maker dispatch). */
+export const SERIES_FOLLOW_MIN_INSTANCES = 2;
+export const SERIES_FOLLOW_MAX_INSTANCES = 12;
+
+export interface SeriesFollowInstance {
+  id: string;
+  title: string;
+  city: string;
+  marketKey: string | null;
+  venue: string;
+  firstDate: string;
+  lastDate: string;
+  startTime: string;
+  nights: number;
+  /** Same rule as type 1: null when absent or refused (R208 / partner host). */
+  ticketUrl: string | null;
+}
+
+export interface SeriesFollowFacts {
+  series: { key: string; name: string; vertical: string | null };
+  /** Soonest first, across every market and year the key groups. */
+  instances: SeriesFollowInstance[];
+}
+
+/**
+ * Pure. The series' display name and vertical from its instances: the first instance's stated
+ * `series` (else its title), and a vertical ONLY when every instance that states one agrees — a
+ * disagreement is not resolved by picking one (§13).
+ */
+export function seriesIdentity(rows: ReadonlyArray<Pick<CityEvent, "series" | "title" | "vertical">>): { name: string; vertical: string | null } {
+  const first = rows[0];
+  const stated = Array.from(new Set(rows.map((r) => r.vertical).filter((v): v is string => !!v)));
+  return { name: first?.series?.trim() || first?.title || "", vertical: stated.length === 1 ? stated[0] : null };
+}
+
+/**
+ * The live, not-yet-ended instances of one series, soonest first. A withdrawn or past instance is not
+ * one (it gets no door); fewer than SERIES_FOLLOW_MIN_INSTANCES is `series_too_small`.
+ */
+export async function loadSeriesFollowFacts(
+  seriesKey: string,
+  deps: EventFactsDeps = {},
+): Promise<SeriesFollowFacts | { refused: "series_too_small"; instances: number }> {
+  const now = deps.now ?? new Date();
+  const rows = await liveSeriesInstances(seriesKey, now);
+  if (rows.length < SERIES_FOLLOW_MIN_INSTANCES) return { refused: "series_too_small", instances: rows.length };
+  const hosts = await (deps.partnerHosts ?? loadPartnerHosts)();
+  const instances = rows.slice(0, SERIES_FOLLOW_MAX_INSTANCES).map((row) => {
+    const card = toCityEventCard(row, null, now);
+    return {
+      id: row.id,
+      title: row.title,
+      city: row.city,
+      marketKey: card.marketKey,
+      venue: row.venue,
+      firstDate: card.firstDate,
+      lastDate: card.lastDate,
+      startTime: card.startTime,
+      nights: row.nights,
+      ticketUrl: row.ticketUrl && ticketUrlRefusal(row.ticketUrl, hosts) === null ? row.ticketUrl : null,
+    };
+  });
+  return { series: { key: seriesKey, ...seriesIdentity(rows) }, instances };
+}
+
+/** The ONE query for "the live instances of a series" — the fact builder and the post's doors both read it. */
+export async function liveSeriesInstances(seriesKey: string, now: Date): Promise<CityEvent[]> {
+  return db
+    .select()
+    .from(cityEvents)
+    .where(and(
+      eq(cityEvents.seriesKey, seriesKey),
+      isNull(cityEvents.withdrawnAt),
+      sql`COALESCE(${cityEvents.endsAt}, ${cityEvents.startsAt}) >= ${now}`,
+    ))
+    .orderBy(cityEvents.startsAt, cityEvents.id);
+}
