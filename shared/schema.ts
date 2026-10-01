@@ -10261,6 +10261,10 @@ export const cityEvents = pgTable("city_events", {
   // display name in `series`); NULL = not part of a stated series.
   vertical: varchar("vertical", { length: 20 }),
   seriesKey: text("series_key"),
+  // Migration 337 (ledger `2026-10-01-city-events-nine-seed`). NULLABLE, no default, no CHECK, no
+  // index. TRUE = the organiser published the time of day `starts_at` carries; NULL and FALSE both
+  // mean date only, and the card omits its start time (§13 — never "00:00").
+  startTimeKnown: boolean("start_time_known"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   withdrawnAt: timestamp("withdrawn_at"),
 }, (table) => [

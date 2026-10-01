@@ -16,15 +16,17 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { cityEvents, placeFacts } from "@shared/schema";
 import { BlogError, createPost, getPublishedBySlug, publishPost } from "../blog-posts.service";
 import { loadEventGuideFacts, rankStayNear } from "../blog-event-facts.service";
 import { checkEventGuideDraft, draftEventWeekendGuide, eventGuideSlug, promptFacts } from "../blog-event-guide.service";
+import { lettersOnlyId } from "../../__tests__/fixtures/letters-only-id";
 
-const RUN = crypto.randomUUID().slice(0, 8);
+// Letters only: fixture titles carry RUN, and a digit run like "12" would read as a number the facts
+// contain, defeating the "an invented number is refused" check.
+const RUN = lettersOnlyId();
 const ADMIN = `evguide-${RUN}-admin`;
 const EV = `evguide-${RUN}-ev`;
 const NEIGHBOUR = `evguide-${RUN}-nb`;
@@ -51,8 +53,8 @@ before(async () => {
   ] as any);
   const base = { placeRefKind: "event_id", placeRef: EV, market: "kyoto", need: "stop.hours", factType: "hours", fetchedAt: new Date() };
   await db.insert(placeFacts).values([
-    { ...base, id: `${EV}-f1`, value: { text: `PLACES-${RUN}` }, origin: "places_api", license: "restricted" },
-    { ...base, id: `${EV}-f2`, value: { text: "Doors open an hour before the first set." }, origin: "event", license: "official" },
+    { ...base, id: `${EV}-fa`, value: { text: `PLACES-${RUN}` }, origin: "places_api", license: "restricted" },
+    { ...base, id: `${EV}-fb`, value: { text: "Doors open an hour before the first set." }, origin: "event", license: "official" },
   ] as any);
 });
 

@@ -4,8 +4,8 @@
  * a fact came from a crawl or an API. Every adapter returns FactDrafts that the ONE writer
  * (`recordFacts`) stores with cost and provenance.
  *
- * Built in A5: `PlacesAdapter` (the structured spine). A6 builds `TavilyExtractAdapter`, the
- * registry surface and the coverage report; nothing here stands in for them.
+ * Built in A5: `PlacesAdapter` (the structured spine). A6 (3) adds `TavilyExtractAdapter`, one per
+ * active `tavily_extract` registry row, which refuses any request whose budget is 0 (the free path).
  */
 import type { ContentNeed, FactOrigin, FactType, LicenseClass, PlaceRefKind } from "@shared/content-facts";
 

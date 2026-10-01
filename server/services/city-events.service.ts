@@ -38,6 +38,7 @@ import {
 import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
 import { loadPartnerHosts } from "./partner-hosts.service";
+import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, type VenueCoordinate, type VenueQuery } from "./venue-geocode.service";
 
 /** What a seed entry may state. Derived columns (nights, neighbourhood) are not accepted. */
 export interface CityEventSeedEntry {
@@ -54,8 +55,18 @@ export interface CityEventSeedEntry {
   venue: string;
   venueLat?: number | null;
   venueLng?: number | null;
-  /** ISO 8601 with offset, e.g. "2026-11-20T19:00:00+09:00". */
+  /**
+   * Lookup-only (never stored): where the venue is, when it differs from `city` (Suzuka, Portimão).
+   * With no coordinates stated, the seeder asks OpenStreetMap for "venue, locality, country".
+   */
+  venueLocality?: string | null;
+  /**
+   * ISO 8601 with offset, e.g. "2026-11-20T19:00:00+09:00". For a date-only event, local midnight of
+   * the first day — and leave `startTimeKnown` unset, so no "00:00" is ever shown (migration 337).
+   */
   startsAt: string;
+  /** TRUE only when the organiser published the time of day. Unset = date only. */
+  startTimeKnown?: boolean;
   endsAt?: string | null;
   ticketUrl?: string | null;
   billedArtists?: string | null;
@@ -115,6 +126,7 @@ export function buildCityEventRow(
       series: entry.series?.trim() || null,
       vertical,
       seriesKey,
+      startTimeKnown: entry.startTimeKnown === true ? true : null,
       title: entry.title.trim(),
       city: market.cityName,
       venue: entry.venue.trim(),
@@ -149,24 +161,79 @@ async function loadNeighbourhoodCandidates(): Promise<NeighbourhoodCandidate[]> 
   }));
 }
 
-/** Insert-only seeder. Returns what it did; never throws for a refused entry. */
+/**
+ * Insert-only seeder. Returns what it did; never throws for a refused entry.
+ *
+ * VENUE COORDINATES (ledger `2026-10-01-city-events-nine-seed`): an entry that states none is looked up
+ * in OpenStreetMap — ONLY when its row does not exist yet, so a boot never re-asks for a seeded event —
+ * one request per venue, spaced per Nominatim's policy. No match ⇒ the row is inserted with NULL
+ * coordinates and named in `unlocated` (never a guessed point). OSM UNREACHABLE ⇒ the row is NOT
+ * inserted this run and is named in `deferred`: a seeded row is never looked up again, so a network
+ * blip must not become a permanent "not found". BOUNDED (decision-maker, Oct 1, 2026): at most ONE
+ * lookup per entry in the list passed (the seed list), per run — a deferred row is retried by the
+ * NEXT boot's single pass, never by a loop here.
+ */
 export async function seedCityEvents(
   entries: readonly CityEventSeedEntry[],
-  deps: { partnerHosts?: () => Promise<string[]> } = {},
-): Promise<{ inserted: number; skipped: number; filled: number; refused: Array<{ sourceId: string; reason: CityEventRefusal }> }> {
+  deps: {
+    partnerHosts?: () => Promise<string[]>;
+    resolveVenue?: (q: VenueQuery) => Promise<VenueCoordinate | null | "unreachable">;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<{
+  inserted: number;
+  skipped: number;
+  filled: number;
+  refused: Array<{ sourceId: string; reason: CityEventRefusal }>;
+  located: Array<{ sourceId: string; matchedName: string }>;
+  unlocated: string[];
+  deferred: string[];
+}> {
   const refused: Array<{ sourceId: string; reason: CityEventRefusal }> = [];
-  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, refused };
+  const located: Array<{ sourceId: string; matchedName: string }> = [];
+  const unlocated: string[] = [];
+  const deferred: string[] = [];
+  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, refused, located, unlocated, deferred };
   const candidates = await loadNeighbourhoodCandidates();
   const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
+  // CITY_EVENTS_VENUE_LOOKUP=0 turns the network lookup off (tests, an offline boot): rows then land
+  // unlocated and are flagged, exactly as a no-match does.
+  const lookupOn = process.env.CITY_EVENTS_VENUE_LOOKUP !== "0";
+  const resolveVenue = deps.resolveVenue ?? (lookupOn ? (q: VenueQuery) => resolveVenueFromOsm(q) : async () => null);
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let lookups = 0;
   let inserted = 0;
   let skipped = 0;
   let filled = 0;
   for (const entry of entries) {
-    const built = buildCityEventRow(entry, candidates, partnerHosts);
+    let built = buildCityEventRow(entry, candidates, partnerHosts);
     if ("refused" in built) {
       refused.push({ sourceId: entry.sourceId, reason: built.refused });
       logger.warn({ sourceId: entry.sourceId, reason: built.refused }, "[city-events] seed entry refused");
       continue;
+    }
+    const exists = await db
+      .select({ id: cityEvents.id })
+      .from(cityEvents)
+      .where(and(eq(cityEvents.source, built.row.source), eq(cityEvents.sourceId, built.row.sourceId)));
+    if (exists.length === 0 && (entry.venueLat == null || entry.venueLng == null)) {
+      const market = getMarketByCityName(entry.city.trim());
+      if (lookups > 0) await sleep(NOMINATIM_MIN_INTERVAL_MS);
+      lookups += 1;
+      const hit = await resolveVenue({ venue: entry.venue.trim(), locality: entry.venueLocality?.trim() || market?.cityName || null, country: market?.country ?? null });
+      if (hit === "unreachable") {
+        deferred.push(entry.sourceId);
+        logger.warn({ sourceId: entry.sourceId, venue: entry.venue }, "[city-events] venue lookup unreachable; row deferred to the next run");
+        continue;
+      }
+      if (hit) {
+        const rebuilt = buildCityEventRow({ ...entry, venueLat: hit.lat, venueLng: hit.lng }, candidates, partnerHosts);
+        if ("row" in rebuilt) built = rebuilt;
+        located.push({ sourceId: entry.sourceId, matchedName: hit.matchedName });
+      } else {
+        unlocated.push(entry.sourceId);
+        logger.warn({ sourceId: entry.sourceId, venue: entry.venue }, "[city-events] venue not located; coordinates left empty");
+      }
     }
     const result = await db.insert(cityEvents).values(built.row).onConflictDoNothing().returning({ id: cityEvents.id });
     if (result.length > 0) {
@@ -176,7 +243,7 @@ export async function seedCityEvents(
     skipped += 1;
     if (await fillManualTypingIfNull(built.row)) filled += 1;
   }
-  return { inserted, skipped, filled, refused };
+  return { inserted, skipped, filled, refused, located, unlocated, deferred };
 }
 
 /**
@@ -226,7 +293,8 @@ export function toCityEventCard(row: CityEvent, neighbourhood: string | null, no
     daysUntil: daysUntil(startsAt, now, tz),
     firstDate,
     lastDate: endsAt && row.nights > 1 ? localDate(endsAt, tz) : firstDate,
-    startTime: localTime(startsAt, tz),
+    // Migration 337: only a published time is shown; NULL/FALSE = date only, never "00:00" (§13).
+    startTime: row.startTimeKnown === true ? localTime(startsAt, tz) : null,
     ticketUrl: row.ticketUrl,
     blurb: row.blurb,
     imagePath: row.imagePath,

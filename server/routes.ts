@@ -246,6 +246,7 @@ import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
+import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
 import adminRoutes from "./routes/admin.routes";
 import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
@@ -253,6 +254,8 @@ import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import blogRoutes from "./routes/blog.routes";
+import contentSourcesRoutes from "./routes/content-sources.routes";
+import contentFactsRoutes from "./routes/content-facts.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
@@ -1308,6 +1311,12 @@ export async function registerRoutes(
   // Expert-signed blog (ledger `2026-09-27-blog-lifecycle`, Locked Decision 57): admin rails sit under
   // the §2 blanket guard registered above; the expert sign rail derives the signer from the session.
   app.use(blogRoutes);
+  // Content source registry (A6 (2), ledger `2026-10-01-a6-registry-surface`): admin-only, under
+  // the §2 blanket guard registered above; activation is restricted further to a config allowlist.
+  app.use(contentSourcesRoutes);
+  // Expert-action fresh lookup (A6 (3), ledger `2026-10-01-a6-tavily-extract`): §12 write-status
+  // advisor only; spend capped per plan/day/source; the free draft never reaches it.
+  app.use(contentFactsRoutes);
 
   // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
@@ -1874,6 +1883,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       } catch (aiErr: any) {
         // Circuit open → surface to outer handler as 503 (do NOT fall back).
         if (aiErr?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") throw aiErr;
+        // Ledger `2026-10-01-ai-upstream-error-classes`: a NON-RETRYABLE upstream failure (credit,
+        // auth, bad request) is not papered over with the canned fallback either — the traveler is
+        // told planning is unavailable, and the failure is recorded and alerted in the one module.
+        if (isNonRetryableAiError(aiErr)) {
+          const failure = await aiFailureResponse(aiErr, {
+            route: "POST /api/trips/:id/generate-itinerary",
+            sourceType: "ai_itinerary",
+            userId: callerUserId,
+          });
+          return res.status(failure.status).json(failure.body);
+        }
+        // A retryable provider failure is still RECORDED (so an outage is visible as failed calls)
+        // before the existing contextual fallback runs.
+        await reportAiUpstreamError(aiErr, {
+          route: "POST /api/trips/:id/generate-itinerary",
+          sourceType: "ai_itinerary",
+          userId: callerUserId,
+        });
         console.error("AI generation failed, using contextual fallback:", aiErr);
         itineraryData = {
           days: Array.from({ length: duration }, (_, i) => ({
