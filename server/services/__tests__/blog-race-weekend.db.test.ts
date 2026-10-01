@@ -15,7 +15,6 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { cityEvents } from "@shared/schema";
@@ -31,10 +30,11 @@ import {
   type RaceWeekendFacts,
 } from "../blog-race-weekend.service";
 import { loadEventGuideFacts } from "../blog-event-facts.service";
+import { lettersOnlyId } from "../../__tests__/fixtures/letters-only-id";
 
 // Letters only: the fixture title carries RUN, and a digit run like "83" would read as a number the
 // facts contain, defeating R3's "no minute reaches the prompt / an unknown number is refused" checks.
-const RUN = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => "abcdefghijklmnop"[b % 16]).join("");
+const RUN = lettersOnlyId();
 const ADMIN = `race-${RUN}-admin`;
 const GP = `race-${RUN}-gp`;
 const JAZZ = `race-${RUN}-jazz`;
