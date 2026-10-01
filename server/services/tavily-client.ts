@@ -84,6 +84,12 @@ export interface TavilyClientDeps {
   readMonthToDateUsd?: () => Promise<number | null>;
   /** Injected ceiling (tests). Defaults to the ratified `TAVILY_MONTHLY_CAP_USD` (R-T1-c). */
   capUsd?: number | null;
+  /**
+   * Attribution stamped on every `api_usage_logs` row this client writes (ledger
+   * `2026-10-01-a6-tavily-extract`): who the spend was for and why, so a per-plan or per-day cap
+   * can be read back off the same table the monthly cap reads. Never a key, never page content.
+   */
+  usage?: { userId?: string | null; metadata?: Record<string, unknown> };
 }
 
 /**
@@ -125,9 +131,12 @@ async function logTavilyCall(
   responseTimeMs: number,
   resultCount: number | undefined,
   errorMessage: string | undefined,
+  usage?: TavilyClientDeps["usage"],
 ): Promise<void> {
   try {
     await logger.logApiCall({
+      ...(usage?.userId ? { userId: usage.userId } : {}),
+      ...(usage?.metadata ? { metadata: usage.metadata } : {}),
       provider: "tavily",
       endpoint,
       operation: `tavily_${endpoint}`,
@@ -188,10 +197,10 @@ function wrapClient(sdk: TavilySdkClient, deps: TavilyClientDeps): TavilyLogging
       const resultCount: number | undefined = Array.isArray(result?.results)
         ? result.results.length
         : undefined;
-      await logTavilyCall(logger, endpoint, true, now() - start, resultCount, undefined);
+      await logTavilyCall(logger, endpoint, true, now() - start, resultCount, undefined, deps.usage);
       return result;
     } catch (err: any) {
-      await logTavilyCall(logger, endpoint, false, now() - start, undefined, err?.message || String(err));
+      await logTavilyCall(logger, endpoint, false, now() - start, undefined, err?.message || String(err), deps.usage);
       throw err;
     }
   }

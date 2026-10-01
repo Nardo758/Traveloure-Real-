@@ -188,6 +188,7 @@ test("C5: no Places fact reaches a public route", async () => {
     "server/services/plan-option-sets.service.ts", // plan-fit (owner/advisor/delegate option-set rails)
     "server/routes/plancard.routes.ts", // GET /api/trips/:tripId/plancard, behind its owner/advisor gate
     "server/routes/content.routes.ts", // the free draft's enrichment WRITE (authenticated, owner-checked)
+    "server/routes/content-facts.routes.ts", // A6 (3) expert-action fresh lookup WRITE (§12 write-status advisor only)
     // The blog generator lane's fact builder (ledger `2026-09-30-blog-event-guide`): NOT behind a plan
     // gate, because its output is a public post — so it keeps ONLY what `isPublishable` allows
     // (platform-owned or expert-verified; never Places, crawled or partner), pinned by blog-event-guide E3.
