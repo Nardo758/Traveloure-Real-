@@ -614,7 +614,9 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
       };
     } catch (error: any) {
       console.error("Autonomous itinerary generation failed:", error.message);
-      throw new Error(`Autonomous itinerary generation failed: ${error.message}`);
+      // `cause` keeps the provider error reachable, so the route can classify it (ledger
+      // `2026-10-01-ai-upstream-error-classes`) — the message alone said "high demand" for a 400.
+      throw new Error(`Autonomous itinerary generation failed: ${error.message}`, { cause: error });
     }
   }
 
