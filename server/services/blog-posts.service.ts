@@ -119,7 +119,7 @@ export interface CreatePostInput {
   sources?: BlogSourceInput[];
 }
 
-export async function createPost(input: CreatePostInput, actorId: string, deps: BlogDeps = {}) {
+export async function createPost(input: CreatePostInput, actorId: string | null, deps: BlogDeps = {}) {
   if (!isBlogContentType(input.contentType)) throw new BlogError("unknown_content_type", 400);
   if (!BLOG_SLUG_RE.test(input.slug)) throw new BlogError("invalid_slug", 400);
   const contentType = input.contentType as BlogContentType;

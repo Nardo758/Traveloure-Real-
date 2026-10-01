@@ -115,7 +115,7 @@ export function checkWeeklyDraft(
 export interface WeeklyDeps extends BlogDeps {
   slugExists?: (slug: string) => Promise<boolean>;
   signal?: () => Promise<WeeklyMarketSignal[]>;
-  model?: (input: { system: string; user: string; actorId: string }) => Promise<{ title?: unknown; summary?: unknown; body?: unknown }>;
+  model?: (input: { system: string; user: string; actorId: string | null }) => Promise<{ title?: unknown; summary?: unknown; body?: unknown }>;
   now?: Date;
 }
 
@@ -129,7 +129,7 @@ async function defaultSignal(): Promise<WeeklyMarketSignal[]> {
   return travelPulseService.displayedSignalByMarket();
 }
 
-async function defaultModel(input: { system: string; user: string; actorId: string }) {
+async function defaultModel(input: { system: string; user: string; actorId: string | null }) {
   const { result } = await claudeService.completeJson<{ title?: unknown; summary?: unknown; body?: unknown }>({
     system: input.system,
     user: input.user,
@@ -142,7 +142,7 @@ async function defaultModel(input: { system: string; user: string; actorId: stri
 }
 
 /** Draft this ISO week's TravelPulse post. Never publishes. */
-export async function draftTravelPulseWeekly(actorId: string, deps: WeeklyDeps = {}) {
+export async function draftTravelPulseWeekly(actorId: string | null, deps: WeeklyDeps = {}) {
   const now = deps.now ?? new Date();
   const slug = weeklySlug(now);
   // A cheap read first so a second run for the week spends no model call. It is NOT the guard: the
@@ -166,5 +166,26 @@ export async function draftTravelPulseWeekly(actorId: string, deps: WeeklyDeps =
     if (e instanceof BlogError && e.code === "slug_taken") throw new BlogError("already_drafted", 409);
     if ((e as { code?: string })?.code === "23505") throw new BlogError("already_drafted", 409);
     throw e;
+  }
+}
+
+/**
+ * The scheduled runner (ledger `2026-09-30-travelpulse-weekly-schedule`), posted DAILY by the jobs
+ * cron and drafting at most once per ISO week: the first run of a week drafts, every later run is an
+ * `already_drafted` no-op that spends no model call (the slug read precedes it). There is no session,
+ * so the actor is null — the cost row and `created_by` carry no user (§13: never a made-up system id).
+ * A thin week is an honest outcome, not a failure; a refused or failed draft IS a failure.
+ */
+export async function runTravelPulseWeeklyJob(
+  deps: WeeklyDeps = {},
+): Promise<{ status: "drafted"; postId: string; slug: string } | { status: "already_drafted" | "not_enough_signal" } | { status: "failed"; error: string }> {
+  try {
+    const post = await draftTravelPulseWeekly(null, deps);
+    return { status: "drafted", postId: post.id, slug: post.slug };
+  } catch (e) {
+    if (e instanceof BlogError && (e.code === "already_drafted" || e.code === "not_enough_signal")) {
+      return { status: e.code };
+    }
+    return { status: "failed", error: e instanceof Error ? e.message : String(e) };
   }
 }
