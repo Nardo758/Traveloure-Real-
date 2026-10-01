@@ -193,6 +193,9 @@ after(async () => {
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.rmSourceTrip}`).catch(() => {});
   await db.execute(sql`DELETE FROM provider_services WHERE id = ${ids.service}`).catch(() => {});
+  // A promoted booking enqueues the canonical "Booking confirmed" email to the fixture traveler;
+  // those rows are this file's and must not be left for a later drain to find (internal-jobs S2).
+  await db.execute(sql`DELETE FROM email_outbox WHERE to_email = ${`recon-${RUN}@t.test`}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ${ids.user}`).catch(() => {});
   // Runs this suite opened are cleaned last (exceptions FK-cascade off them anyway).
   await db
