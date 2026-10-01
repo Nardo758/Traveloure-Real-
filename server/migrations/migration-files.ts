@@ -1871,6 +1871,9 @@ export const MIGRATION_FILES = [
   // (the per-partner terms gate on page extraction). Three additive nullable columns — NO DEFAULT,
   // NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. §20 ADD COLUMN carve-out.
   "334_affiliate_extract_provenance.sql",
+  // city_events vertical + series_key (ledger `2026-09-30-city-events-vertical-series`). TWO additive
+  // nullable columns, NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts.
+  "335_city_events_vertical_series.sql",
   // 336 — Track A A9 optimizer run records (ledger `2026-09-30-a9-run-records`; product map §N2):
   // optimizer_runs (insert-only) + optimizer_run_outcomes (append-only) + itinerary_variants.run_id.
   // Additive: NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. HELD FOR RULING.

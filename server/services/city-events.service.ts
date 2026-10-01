@@ -2,8 +2,11 @@
  * city-events.service.ts — the ONE writer and the ONE reader of `city_events` (ledger
  * `2026-09-28-city-events`, migration 330).
  *
- * Writer: `seedCityEvents` INSERTS ONLY, keyed on (source, source_id) with ON CONFLICT DO
- * NOTHING — an existing row is never overwritten, never deleted. It derives `nights` and
+ * Writer: `seedCityEvents` INSERTS, keyed on (source, source_id) with ON CONFLICT DO
+ * NOTHING — an existing row is never overwritten, never deleted. ONE ruled exception (decision-maker,
+ * Sep 30, 2026): on an existing `source = 'manual'` row the seeder may FILL `vertical` and
+ * `series_key` where the stored value is NULL — those two fields only, never a stated value
+ * replaced, nothing else ever rewritten. It derives `nights` and
  * `neighbourhood_id` itself; a seed entry cannot type them. An entry is refused (logged, not
  * inserted) when its city is not an operating market, it has no venue or start, or its ticket
  * link points at a partner's domain — the registry's hosts, read by the SAME `loadPartnerHosts`
@@ -13,7 +16,7 @@
  * CITY_EVENTS_WINDOW_DAYS, soonest first, with every display value derived here from the row
  * (countdown, local first/last date) so the page types nothing.
  */
-import { and, asc, gte, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cityEvents, cityNeighborhoods, type InsertCityEvent, type CityEvent } from "@shared/schema";
 import {
@@ -29,6 +32,8 @@ import {
   type CityEventsPayload,
   type CityEventSource,
   type NeighbourhoodCandidate,
+  isCityEventVertical,
+  CITY_EVENT_SERIES_KEY_RE,
 } from "@shared/city-events";
 import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
@@ -39,6 +44,10 @@ export interface CityEventSeedEntry {
   source: CityEventSource;
   sourceId: string;
   series?: string | null;
+  /** Migration 335: one of CITY_EVENT_VERTICALS; omitted = not stated. */
+  vertical?: string | null;
+  /** Migration 335: lower-case kebab key grouping one recurring series across years and cities. */
+  seriesKey?: string | null;
   title: string;
   /** An operating market's city name, e.g. "Kyoto". */
   city: string;
@@ -61,7 +70,9 @@ export type CityEventRefusal =
   | "bad_end"
   | "affiliate_ticket_url"
   | "resale_ticket_url"
-  | "empty_source_id";
+  | "empty_source_id"
+  | "unknown_vertical"
+  | "bad_series_key";
 
 /**
  * Pure: turn a seed entry into the row to insert, or name why it is refused. The neighbourhood
@@ -83,6 +94,10 @@ export function buildCityEventRow(
     endsAt = new Date(entry.endsAt);
     if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() < startsAt.getTime()) return { refused: "bad_end" };
   }
+  const vertical = entry.vertical?.trim() || null;
+  if (vertical !== null && !isCityEventVertical(vertical)) return { refused: "unknown_vertical" };
+  const seriesKey = entry.seriesKey?.trim() || null;
+  if (seriesKey !== null && !CITY_EVENT_SERIES_KEY_RE.test(seriesKey)) return { refused: "bad_series_key" };
   if (entry.ticketUrl) {
     // A malformed link keeps its historical reason, affiliate_ticket_url; a resale host is named.
     const why = ticketUrlRefusal(entry.ticketUrl, partnerHosts);
@@ -98,6 +113,8 @@ export function buildCityEventRow(
       source: entry.source,
       sourceId: entry.sourceId.trim(),
       series: entry.series?.trim() || null,
+      vertical,
+      seriesKey,
       title: entry.title.trim(),
       city: market.cityName,
       venue: entry.venue.trim(),
@@ -136,13 +153,14 @@ async function loadNeighbourhoodCandidates(): Promise<NeighbourhoodCandidate[]> 
 export async function seedCityEvents(
   entries: readonly CityEventSeedEntry[],
   deps: { partnerHosts?: () => Promise<string[]> } = {},
-): Promise<{ inserted: number; skipped: number; refused: Array<{ sourceId: string; reason: CityEventRefusal }> }> {
+): Promise<{ inserted: number; skipped: number; filled: number; refused: Array<{ sourceId: string; reason: CityEventRefusal }> }> {
   const refused: Array<{ sourceId: string; reason: CityEventRefusal }> = [];
-  if (entries.length === 0) return { inserted: 0, skipped: 0, refused };
+  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, refused };
   const candidates = await loadNeighbourhoodCandidates();
   const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
   let inserted = 0;
   let skipped = 0;
+  let filled = 0;
   for (const entry of entries) {
     const built = buildCityEventRow(entry, candidates, partnerHosts);
     if ("refused" in built) {
@@ -151,10 +169,40 @@ export async function seedCityEvents(
       continue;
     }
     const result = await db.insert(cityEvents).values(built.row).onConflictDoNothing().returning({ id: cityEvents.id });
-    if (result.length > 0) inserted += 1;
-    else skipped += 1;
+    if (result.length > 0) {
+      inserted += 1;
+      continue;
+    }
+    skipped += 1;
+    if (await fillManualTypingIfNull(built.row)) filled += 1;
   }
-  return { inserted, skipped, refused };
+  return { inserted, skipped, filled, refused };
+}
+
+/**
+ * The ONE rewrite the seeder may make (decision-maker, Sep 30, 2026): an existing MANUAL row gets
+ * `vertical` / `series_key` where it stores NULL and the entry states a value. COALESCE keeps a
+ * stated value, so a later seed never re-types an event; every other column is untouched. Returns
+ * whether a row changed.
+ */
+async function fillManualTypingIfNull(row: InsertCityEvent): Promise<boolean> {
+  if (row.source !== "manual") return false;
+  const vertical = row.vertical ?? null;
+  const seriesKey = row.seriesKey ?? null;
+  if (vertical === null && seriesKey === null) return false;
+  const nullFillable = [
+    vertical !== null ? isNull(cityEvents.vertical) : undefined,
+    seriesKey !== null ? isNull(cityEvents.seriesKey) : undefined,
+  ].filter(Boolean);
+  const updated = await db
+    .update(cityEvents)
+    .set({
+      vertical: sql`COALESCE(${cityEvents.vertical}, ${vertical})`,
+      seriesKey: sql`COALESCE(${cityEvents.seriesKey}, ${seriesKey})`,
+    })
+    .where(and(eq(cityEvents.source, "manual"), eq(cityEvents.sourceId, row.sourceId), sql`(${sql.join(nullFillable as any[], sql` OR `)})`))
+    .returning({ id: cityEvents.id });
+  return updated.length > 0;
 }
 
 /** Pure: shape one row into the card the page renders. */
