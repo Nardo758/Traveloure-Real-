@@ -98,6 +98,10 @@ import { createHandoffRequestsForBooking } from "./concierge-handoff.service";
 import { logger } from "../infrastructure/logger";
 import { paidRevenueAmount, paidTransitionRowFromSql, recordPaidRevenueEvent } from "./funnel-revenue.service";
 import { stampPaidCharge } from "./payment-on-record";
+import {
+  isCanonicalBookingEmailPersistenceError,
+  persistCanonicalBookingConfirmation,
+} from "./canonical-booking-email.service";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { getStripeSecretKey } from "../utils/stripe-key";
@@ -1285,6 +1289,12 @@ async function promoteOneBooking(
       // transition has exactly one event and an unpaid row has none (ledger
       // `2026-09-27-funnel-revenue-on-paid`). Derived from the stamp; savepointed, never throws (§15b).
       await recordPaidRevenueEvent(tx, stamp, paidRow);
+      await persistCanonicalBookingConfirmation(tx, {
+        bookingId: row.id,
+        paymentIntentId,
+        leg: hasOutstandingBalance ? "deposit" : "full",
+        paidCharge: stamp,
+      });
       return { promoted: true, diaryRows, terminalStatus: null };
     });
   } catch (err) {
@@ -1292,6 +1302,7 @@ async function promoteOneBooking(
       { err, bookingId: row.id, paymentIntentId, actor },
       "[checkout-promote] promotion transaction failed — booking left payment_pending for the next signal",
     );
+    if (isCanonicalBookingEmailPersistenceError(err)) throw err;
     return { promoted: false, diaryRows: 0, terminalStatus: null };
   }
 }
@@ -2430,6 +2441,12 @@ export async function promoteBalancePayment(opts: {
       const balanceRow = paidTransitionRowFromSql(claimedRow);
       const balanceStamp = await stampPaidCharge(tx, bookingId, "balance_paid", paidRevenueAmount("balance_paid", balanceRow));
       await recordPaidRevenueEvent(tx, balanceStamp, balanceRow);
+      await persistCanonicalBookingConfirmation(tx, {
+        bookingId,
+        paymentIntentId,
+        leg: "balance",
+        paidCharge: balanceStamp,
+      });
       const tripId = claimedRow.trip_id ?? null;
       if (tripId) {
         const details = (claimedRow.booking_details ?? {}) as Record<string, unknown>;
@@ -2461,6 +2478,7 @@ export async function promoteBalancePayment(opts: {
       { err, bookingId, paymentIntentId, actor },
       "[checkout-balance] balance promotion transaction failed — booking left deposit_paid for the next signal",
     );
+    if (isCanonicalBookingEmailPersistenceError(err)) throw err;
     return result;
   }
 }

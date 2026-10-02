@@ -119,6 +119,7 @@ import {
   loadBalancePayerParticipants,
   buildBalanceIdempotencyKey,
 } from "../services/balance-payer.service";
+import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-booking-email.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -772,6 +773,14 @@ async function authorizeAndPromote(
       });
       paidPromotion = promo.promoted.length > 0 || promo.alreadyConfirmed.length > 0;
     } catch (err: any) {
+      if (isCanonicalBookingEmailPersistenceError(err)) {
+        return res.status(503).json({
+          success: false,
+          error: "booking_confirmation_persistence_failed",
+          message: "Payment succeeded, but we could not save your booking confirmation yet. We will retry automatically; please do not pay again.",
+          retryable: true,
+        });
+      }
       console.error(
         `[checkout] one-click paid-promotion failed for ${paymentIntent.paymentIntentId} ` +
         `(payment SUCCEEDED; webhook/reconciliation will converge):`, err?.message ?? err,
@@ -2553,6 +2562,14 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             : "Balance checkout started. Complete payment.",
       });
     } catch (err: any) {
+      if (isCanonicalBookingEmailPersistenceError(err)) {
+        return res.status(503).json({
+          success: false,
+          error: "booking_confirmation_persistence_failed",
+          message: "Payment succeeded, but we could not save your booking confirmation yet. We will retry automatically; please do not pay again.",
+          retryable: true,
+        });
+      }
       console.error("Pay-balance error:", err);
       res.status(500).json({ message: "Balance checkout failed" });
     }
