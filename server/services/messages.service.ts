@@ -7,6 +7,7 @@ import {
 } from "./conversation-public-id.pure";
 import { listConversationContexts } from "./contact-rails.service";
 import type { ConversationContextView } from "./contact-rails.pure";
+import { dispatchModerationEvent } from "../automations/moderation/runtime";
 
 export function buildConversationId(userId1: string, userId2: string): string {
   return [userId1, userId2].sort().join("_");
@@ -465,16 +466,24 @@ async function notifyAdminsOfReport(
   reason: string,
   reportedUserId: string,
 ): Promise<void> {
-  try {
-    await db.insert(adminNotifications).values({
-      type: "message_report",
-      message: `New ${reportType} abuse report (${reason}) — review it in Message Reports`,
-      reason,
-      metadata: { reportId, reportType, reportedUserId },
-    });
-  } catch (err: any) {
-    console.error("[messages] admin notification for report failed (non-fatal):", err?.message ?? err);
-  }
+  await dispatchModerationEvent(
+    "moderation.pending-report-admin-notification",
+    `${reportType}_report.pending`,
+    { reportId, reportType, reason, reportedUserId, status: "pending", reportPersisted: true },
+    { reportId, reportType, reason, reportedUserId, status: "pending", reportPersisted: true },
+    async () => {
+      try {
+        return await db.insert(adminNotifications).values({
+          type: "message_report",
+          message: `New ${reportType} abuse report (${reason}) — review it in Message Reports`,
+          reason,
+          metadata: { reportId, reportType, reportedUserId },
+        });
+      } catch (err: any) {
+        console.error("[messages] admin notification for report failed (non-fatal):", err?.message ?? err);
+      }
+    },
+  );
 }
 
 type ReportReason = (typeof VALID_REASONS)[number];

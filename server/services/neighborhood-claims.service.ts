@@ -63,6 +63,7 @@ import {
 } from "@shared/neighborhood-claims";
 import { logClaimTransition } from "./neighborhood-claim-transitions.service";
 import { EvidenceThresholdsMissingError, loadEvidenceThresholds } from "./evidence-thresholds.service";
+import { dispatchModerationEvent } from "../automations/moderation/runtime";
 
 /** The transaction-local GUC the migration-272 trigger requires on expert_neighborhoods INSERTs. */
 export const EXPERT_NEIGHBORHOODS_WRITER_SETTING = "traveloure.expert_neighborhoods_writer";
@@ -603,10 +604,23 @@ export async function stampNoNeighborhoodsAvailable(opts: { formId: string; user
  * this file's hooks). Disabled with EVIDENCE_SCORER_AUTORUN=0 — the DB suites drive the scorer
  * explicitly and must not race a background pass.
  */
-function enqueueScoring(claimId: string, version: number): void {
+function enqueueScoring(
+  claimId: string,
+  version: number,
+  event: "neighborhood_claim.submitted" | "neighborhood_claim.rescore_requested" = "neighborhood_claim.submitted",
+): void {
   if (process.env.EVIDENCE_SCORER_AUTORUN === "0" || process.env.NODE_ENV === "test") return;
-  void import("./evidence-scorer.service")
-    .then((m) => m.scoreClaim({ claimId, version }))
+  void dispatchModerationEvent(
+    "moderation.claim-submit-score",
+    event,
+    { claimId, version },
+    { claimId, version },
+    async () => {
+      // Keep the dynamic import: the scorer imports this module's claim hooks.
+      const m = await import("./evidence-scorer.service");
+      return m.scoreClaim({ claimId, version });
+    },
+  )
     .catch((err: any) => console.error(`[neighborhood-claims] enqueue scoring failed for ${claimId}:`, err?.message ?? err));
 }
 
@@ -618,7 +632,7 @@ export async function requestRescore(opts: { claimId: string; adminId: string })
     .where(and(eq(expertNeighborhoodClaims.id, opts.claimId), eq(expertNeighborhoodClaims.status, "submitted")))
     .returning();
   if (!row) return fail(409, "not_rescorable", "Only a submitted claim can be re-queued for scoring");
-  enqueueScoring(row.id, row.version);
+  enqueueScoring(row.id, row.version, "neighborhood_claim.rescore_requested");
   return { ok: true, value: row };
 }
 

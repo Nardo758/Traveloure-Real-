@@ -42,6 +42,7 @@ import { scorePendingClaims } from "../services/evidence-scorer.service";
 import { z } from "zod";
 import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
+import { runModerationSchedule } from "../automations/moderation/runtime";
 import {
   recordJobSuccess,
   computeJobHealth,
@@ -346,7 +347,13 @@ router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, r
 // expert_neighborhoods. The authoritative runner (§26 posture) — the in-process timer is defense.
 router.post("/internal/jobs/score-neighborhood-claims", requireInternalSecret, async (req, res) => {
   const limit = typeof req.body?.limit === "number" && req.body.limit > 0 ? Math.floor(req.body.limit) : undefined;
-  const { status, body } = await runJob(EVIDENCE_SCORER_JOB_NAME, () => scorePendingClaims({ limit }));
+  const { status, body } = await runJob(EVIDENCE_SCORER_JOB_NAME, () =>
+    runModerationSchedule(
+      "moderation.claim-score-hourly",
+      EVIDENCE_SCORER_JOB_NAME,
+      () => scorePendingClaims({ limit }),
+      { limit, payload: req.body },
+    ));
   res.status(status).json(body);
 });
 

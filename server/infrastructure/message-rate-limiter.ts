@@ -30,6 +30,7 @@
  * store (e.g. Redis) — noted for future scaling, not required today.
  */
 import { logger } from "./logger";
+import { runModerationSchedule } from "../automations/moderation/runtime";
 
 // Per-sender: an engaged human rarely sends more than ~10-15 messages a minute even
 // across several open threads; 30/min leaves generous headroom for a fast typer while
@@ -57,10 +58,12 @@ interface Entry {
 const store = new Map<string, Entry>();
 
 const cleanup = setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of Array.from(store.entries())) {
-    if (entry.resetTime < now) store.delete(key);
-  }
+  void runModerationSchedule("moderation.message-rate-limiter-cleanup", "message-rate-limiter-cleanup", () => {
+    const now = Date.now();
+    for (const [key, entry] of Array.from(store.entries())) {
+      if (entry.resetTime < now) store.delete(key);
+    }
+  });
 }, 60 * 1000);
 // Never let this housekeeping timer hold the event loop open (mirrors rate-limiter.ts).
 cleanup.unref?.();

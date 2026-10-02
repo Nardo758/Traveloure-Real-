@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { dispatchModerationEvent } from "./automations/moderation/runtime";
 import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
@@ -7421,12 +7422,20 @@ export class DatabaseStorage implements IStorage {
   // === Content Flags ===
 
   async createContentFlag(data: InsertContentFlag): Promise<ContentFlag> {
-    const [flag] = await db.insert(contentFlags).values(data).returning();
+    return dispatchModerationEvent(
+      "moderation.content-flag-created",
+      "content_flag.created",
+      data,
+      { flagInput: data },
+      async () => {
+        const [flag] = await db.insert(contentFlags).values(data).returning();
 
-    // Also update the content registry to mark as flagged
-    await this.flagContent(data.trackingNumber, data.reporterId || 'system', data.description || data.flagType);
+        // Also update the content registry to mark as flagged
+        await this.flagContent(data.trackingNumber, data.reporterId || 'system', data.description || data.flagType);
 
-    return flag;
+        return flag;
+      },
+    );
   }
 
   async getContentFlags(trackingNumber: string): Promise<ContentFlag[]> {
