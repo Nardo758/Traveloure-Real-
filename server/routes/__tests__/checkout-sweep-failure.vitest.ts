@@ -13,7 +13,7 @@ const fixture = vi.hoisted(() => ({
 vi.mock("../../db", () => ({
   db: {
     execute: fixture.execute,
-    select: () => ({ from: async () => [...fixture.heartbeats.values()] }),
+    select: () => ({ from: async () => Array.from(fixture.heartbeats.values()) }),
     insert: () => ({
       values: (row: Record<string, unknown>) => ({
         onConflictDoUpdate: async () => {
@@ -43,7 +43,8 @@ const originalSecret = process.env.INTERNAL_JOB_SECRET;
 beforeAll(async () => {
   process.env.INTERNAL_JOB_SECRET = SECRET;
   const app = express();
-  app.use(express.json(), internalRoutes);
+  app.use(express.json() as express.RequestHandler);
+  app.use(internalRoutes);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
