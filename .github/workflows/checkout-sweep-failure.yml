@@ -7,7 +7,7 @@ on:
       - server/routes/internal.routes.ts
       - server/services/job-heartbeats.service.ts
       - server/services/background-job-runner.ts
-      - server/routes/__tests__/checkout-sweep-failure.test.ts
+      - server/routes/__tests__/checkout-sweep-failure.vitest.ts
       - vitest.checkout-sweep.config.ts
       - .github/workflows/checkout-sweep-failure.yml
       - package.json
@@ -19,7 +19,7 @@ on:
       - server/routes/internal.routes.ts
       - server/services/job-heartbeats.service.ts
       - server/services/background-job-runner.ts
-      - server/routes/__tests__/checkout-sweep-failure.test.ts
+      - server/routes/__tests__/checkout-sweep-failure.vitest.ts
       - vitest.checkout-sweep.config.ts
       - .github/workflows/checkout-sweep-failure.yml
       - package.json

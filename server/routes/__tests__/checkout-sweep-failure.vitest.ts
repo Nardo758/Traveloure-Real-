@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import express from "express";
 import type { AddressInfo } from "node:net";
 
+// .vitest.ts keeps this suite out of build.yml's Node-only route *.test.ts glob.
 // Only persistence is simulated. The sweeps, cron wrapper, heartbeat writer,
 // health computation and HTTP routes below are the production implementations.
 const fixture = vi.hoisted(() => ({

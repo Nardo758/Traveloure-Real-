@@ -10,6 +10,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["server/routes/__tests__/checkout-sweep-failure.test.ts"],
+    include: ["server/routes/__tests__/checkout-sweep-failure.vitest.ts"],
   },
 });
