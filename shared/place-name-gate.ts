@@ -59,11 +59,20 @@ function fold(text: string): string {
 }
 
 /** Pure. The distinctive words of a text: folded, split, generic words and the city's words removed. */
+// Unicode-safe word boundary (ledger `2026-10-02-city-events-venue-relookup` follow-on): a word is a run
+// of letters, digits or combining marks in ANY script. The ASCII-only split this replaced dropped every
+// non-Latin name — "京都観世会館" had no words at all, so it was never looked up and could never match.
+// Marks stay inside the word because NFKD splits a kana's voicing mark off its letter (ジ → シ + ゙).
+// Latin diacritics are still folded away first, so "Café" and "Cafe" remain one word.
+// Built with the constructor: the tsconfig target rejects the `u` flag on a literal.
+const WORD_SPLIT = new RegExp("[^\\p{L}\\p{N}\\p{M}]+", "u");
+const ALL_DIGITS = new RegExp("^\\p{N}+$", "u");
+
 export function distinctiveTokens(text: string | null | undefined, city: string | null | undefined): Set<string> {
-  const cityWords = new Set(fold(city ?? "").split(/[^a-z0-9]+/).filter(Boolean));
+  const cityWords = new Set(fold(city ?? "").split(WORD_SPLIT).filter(Boolean));
   const out = new Set<string>();
-  for (const w of fold(text ?? "").split(/[^a-z0-9]+/)) {
-    if (w.length < 3 || /^\d+$/.test(w)) continue;
+  for (const w of fold(text ?? "").split(WORD_SPLIT)) {
+    if (Array.from(w).length < 3 || ALL_DIGITS.test(w)) continue;
     if (GENERIC_PLACE_WORDS.has(w) || cityWords.has(w)) continue;
     out.add(w);
   }
