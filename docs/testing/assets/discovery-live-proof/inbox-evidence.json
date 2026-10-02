@@ -1,0 +1,46 @@
+{
+  "capturedAt": "2026-10-02T08:01:50.341Z",
+  "confirmationCount": 1,
+  "messages": [
+    {
+      "file": "docs/testing/assets/discovery-live-proof/received-booking-confirmation.eml",
+      "id": "6abf64285e4c448fef452361",
+      "from": {
+        "address": "no-reply@traveloure.com",
+        "name": "Traveloure"
+      },
+      "subject": "Booking confirmed — Live canonical email verification",
+      "receivedAt": "2026-10-02T07:58:32+00:00",
+      "to": [
+        {
+          "address": "traveloure-1c3d4a97-2d9@uberip.com",
+          "name": ""
+        }
+      ],
+      "text": "Payment received — booking confirmed\nHi Live Checkout Verification,\nYour payment has been received and your booking is confirmed.\nBooking: Live canonical email verification\nBooking reference: TRV-202610-00001\nPayment recorded: 21.40 USD\nView your bookings: http://localhost:5000/bookings"
+    },
+    {
+      "file": "docs/testing/assets/discovery-live-proof/received-vendor-email.eml",
+      "id": "6abf6383bc3963144e76fea3",
+      "from": {
+        "address": "no-reply@traveloure.com",
+        "name": "Traveloure"
+      },
+      "subject": "Traveloure live vendor verification",
+      "receivedAt": "2026-10-02T07:55:46+00:00",
+      "to": [
+        {
+          "address": "traveloure-1c3d4a97-2d9@uberip.com",
+          "name": ""
+        }
+      ],
+      "text": "Controlled development verification; no customer recipient.",
+      "attachments": [
+        {
+          "filename": "invitation.ics",
+          "contentType": "text/calendar"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "bookingId": "a6a42cd8-6497-4f97-aaa6-522db677b607",
+  "paymentIntentId": "pi_3UM1MPRJlh67IHOH1WM6AySJ",
+  "livemode": false,
+  "paymentStatus": "succeeded",
+  "amount": 2140,
+  "currency": "usd",
+  "confirm": {
+    "httpStatus": 200,
+    "body": {
+      "success": true,
+      "message": "Booking confirmed",
+      "source": "webhook"
+    }
+  },
+  "firstDrain": {
+    "drained": 0
+  },
+  "replay": {
+    "httpStatus": 200,
+    "body": {
+      "received": true
+    }
+  },
+  "secondReplay": {
+    "httpStatus": 200,
+    "body": {
+      "received": true
+    }
+  },
+  "clientReplay": {
+    "httpStatus": 200,
+    "body": {
+      "success": true,
+      "message": "Booking confirmed",
+      "source": "webhook"
+    }
+  },
+  "finalDrain": {
+    "drained": 0
+  },
+  "confirmations": [
+    {
+      "id": "1",
+      "status": "sent",
+      "attempt_count": 1,
+      "subject": "Booking confirmed — Live canonical email verification",
+      "metadata": {
+        "leg": "full",
+        "source": "canonical_service_booking_payment",
+        "eventKey": "canonical_booking_confirmation:a6a42cd8-6497-4f97-aaa6-522db677b607:full",
+        "bookingId": "a6a42cd8-6497-4f97-aaa6-522db677b607",
+        "paidCharge": {
+          "at": "2026-10-02T07:58:31.547Z",
+          "amount": 21.4,
+          "status": "confirmed"
+        },
+        "paymentLeg": "full",
+        "paymentIntentId": "pi_3UM1MPRJlh67IHOH1WM6AySJ"
+      }
+    }
+  ]
+}

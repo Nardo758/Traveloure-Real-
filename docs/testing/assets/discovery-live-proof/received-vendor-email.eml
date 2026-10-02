@@ -1,0 +1,63 @@
+Delivered-To: traveloure-1c3d4a97-2d9@uberip.com
+Return-Path: <010001a0fb9cb4c5-7ad81d73-adf7-4a49-a74b-c5afef73c8ff-000000@send.traveloure.com>
+Received: from a48-52.smtp-out.amazonses.com (a48-52.smtp-out.amazonses.com [54.240.48.52])
+	by in.mail.tm (Haraka/3.1.2) with ESMTPS id 78449092-E0ED-4DB1-9D06-59EACBF04872.1
+	envelope-from <010001a0fb9cb4c5-7ad81d73-adf7-4a49-a74b-c5afef73c8ff-000000@send.traveloure.com>
+	tls TLS_AES_256_GCM_SHA384;
+	Fri, 02 Oct 2026 07:55:47 +0000
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple; s=resend;
+	d=traveloure.com; t=1790927746;
+	h=From:To:Reply-To:Subject:Message-ID:Date:MIME-Version:Content-Type;
+	bh=pZmsU+5QWQOe8zalEy+4rIxniScGr7TCNXLMdZauCRs=;
+	b=kqkoEmPNQZ44qKNV1xkuuUKsE6tab/JfFmUIk7tMwQah0ORMorrGTWBgOSPRtEQT
+	WlDUvqeNYmmv7AXSKHCuvtvGPQYqKhg1V9Z0TO0XP0MMjqi9vpXMHEh54kOML/aJYIJ
+	8O2Q2yVvLZKY4r13K36Rvm89a+IAz49zvpFGDLR0=
+DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
+	s=224i4yxa5dv7c2xz3womw6peuasteono; d=amazonses.com; t=1790927746;
+	h=From:To:Reply-To:Subject:Message-ID:Date:MIME-Version:Content-Type:Feedback-ID;
+	bh=pZmsU+5QWQOe8zalEy+4rIxniScGr7TCNXLMdZauCRs=;
+	b=pYmXfr0X9rJxH6vIYT6Yi0/W1CFq62N5yVkJD6Ts19swXVmAP2SOxSEPKV3TkWNx
+	i/GXTo/qlqsxJ4UxUvn3nGChs4W/WWnUorpi88FNj47KUjKtMONHSQpxb1L2M8ufVGQ
+	/3gAK/I1lmWgUNK9jvF6prOfqsZam2wh5xhikgOw=
+From: Traveloure <no-reply@traveloure.com>
+To: traveloure-1c3d4a97-2d9@uberip.com
+Reply-To: admin@traveloure.com
+Subject: Traveloure live vendor verification
+Message-ID: <010001a0fb9cb4c5-7ad81d73-adf7-4a49-a74b-c5afef73c8ff-000000@email.amazonses.com>
+Date: Fri, 2 Oct 2026 07:55:46 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="--_NmP-de03abcf4ea8db1f-Part_1"
+Feedback-ID: :1.us-east-1.F3x9CR//gmpKSBGaAUKkEwoWCXB3lP73ajsOyf7L0wFR4p9LXq/F9gYnVCheI95fnVxKPGEV09gWIKwCn9DqtD88/sdrnygR1WPJFeOL9XgvKBD5Oa5P7nEUOudG6oPNPGf77Wzh80ofwpFQIPX7h8BvgbXPSwfoDoDo/axmgBY=:1.us-east-1.pAEstvQcjyhQNKGKcgSlzI7SVR8ZSG5wSmKwiz/A8Dg=:AmazonSES
+X-SES-Outgoing: 2026.10.02-54.240.48.52
+
+
+----_NmP-de03abcf4ea8db1f-Part_1Content-Type: multipart/alternative;
+ boundary="--_NmP-de03abcf4ea8db1f-Part_2"
+
+
+----_NmP-de03abcf4ea8db1f-Part_2Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+Controlled development verification; no customer recipient.
+----_NmP-de03abcf4ea8db1f-Part_2
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<div style=3D"white-space:pre-wrap">Controlled development verification; no=
+ customer recipient.</div>
+----_NmP-de03abcf4ea8db1f-Part_2--
+
+----_NmP-de03abcf4ea8db1f-Part_1
+Content-Type: text/calendar; name=invitation.ics
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename=invitation.ics
+
+QkVHSU46VkNBTEVOREFSClZFUlNJT046Mi4wClBST0RJRDotLy9UcmF2ZWxvdXJlLy9WZW5kb3Ig
+Q29vcmRpbmF0aW9uLy9FTgpDQUxTQ0FMRTpHUkVHT1JJQU4KTUVUSE9EOlJFUVVFU1QKQkVHSU46
+VkVWRU5UClVJRDp2ZW5kb3ItMTc5MDkyNzc0NTcxOEB0cmF2ZWxvdXJlLmNvbQpEVFNUQU1QOjIw
+MjYxMDAyVDA3NTU0NVoKRFRTVEFSVDoyMDI2MTExMFQxMDAwMDBaCkRURU5EOjIwMjYxMTEwVDEy
+MDAwMFoKU1VNTUFSWTpUcmF2ZWxvdXJlIGxpdmUgdmVuZG9yIHZlcmlmaWNhdGlvbgpERVNDUklQ
+VElPTjpWZW5kb3IgY29vcmRpbmF0aW9uIGV2ZW50IGZvciBWZXJpZmljYXRpb24gdmVuZG9yClNU
+QVRVUzpDT05GSVJNRUQKRU5EOlZFVkVOVApFTkQ6VkNBTEVOREFS
+
+----_NmP-de03abcf4ea8db1f-Part_1--
