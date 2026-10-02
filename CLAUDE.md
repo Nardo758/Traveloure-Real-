@@ -1683,7 +1683,9 @@ This document captures architectural decisions to maintain consistency across co
     (`service_bookings.status`, dated by the EXISTING `resolveServiceDate`), a balance
     (`balance_due_at`), the handover (derived `start − 48h`), a trip start (`trips.start_date`), an
     event (`user_experiences.event_date`; invites carry no deadline column, so none is shown) and
-    an occasion whose Plus draft FIRED end to end (`occasion_drafts`, LD 26). §14 applied to
+    an occasion whose Plus draft FIRED end to end (`occasion_drafts`, LD 26). The traveler-facing
+    note on Coming up is a plain label from the kind (`upcomingKindLabel`); the column string
+    stays on the payload and is not drawn. §14 applied to
     reads: the owner is the session, never the query string. §13: an undated row is OMITTED, no
     `tz` is claimed for a NULL-timezone plan (LD 30 — the row becomes a calendar day), and nothing
     is zero-filled. **The 48-hour window is ONE derivation shared with the Trip Card lane** —

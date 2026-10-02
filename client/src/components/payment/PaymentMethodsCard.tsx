@@ -134,7 +134,7 @@ export function PaymentMethodsCard() {
   });
 
   return (
-    <Card className="border border-border">
+    <Card id="payment-methods" className="border border-border scroll-mt-20">
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <div>
           <CardTitle className="text-lg text-foreground dark:text-white flex items-center gap-2">
@@ -142,7 +142,7 @@ export function PaymentMethodsCard() {
             Payment Methods
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Saved cards let you pay booking and coordination fees with one click.
+            Saved cards let you pay booking and coordination fees with one click. Card details are stored by Stripe, not on Traveloure.
           </CardDescription>
         </div>
         {!isLoading && available && <AddCardDialog />}
@@ -159,7 +159,7 @@ export function PaymentMethodsCard() {
             No saved cards yet. A card is saved automatically the next time you pay for a booking or fee.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
             {methods.map((card) => (
               <CardRow
                 key={card.id}

@@ -1,13 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { relativeDayLabel, shortDate, type UpcomingRow } from "@/lib/home-time-axis";
+import { relativeDayLabel, shortDate, upcomingKindLabel, type UpcomingRow } from "@/lib/home-time-axis";
 
 /**
  * ComingUp — Home's time axis (ledger `2026-09-07-home-time-axis`; CLAUDE.md Locked Decision
  * 45 (8), ruling row `2026-09-07-home-owns-time-axis`). The dated rows across EVERY plan, nearest
  * first, from the ONE reader `GET /api/me/upcoming` (server/services/upcoming.service.ts). Each
- * row: Fraunces date + mono relative day · one sentence · plan chip · mono source note · one
- * action that deep-links to where the row is acted on.
+ * row: Fraunces date + mono relative day · one sentence · plan chip · a plain kind label · one
+ * action that deep-links to where the row is acted on. The column that produced the row stays
+ * on the payload and is not drawn.
  *
  * §13: the server already omitted every undated row and every "0 invites"; this component adds
  * nothing to a row it did not receive. The count line states the window. With no rows it says so
@@ -115,8 +116,8 @@ export function ComingUp({ data, isLoading, now }: { data: UpcomingPayload | und
                   >
                     {row.planName}
                   </span>
-                  <span className="text-[10px] truncate" style={{ fontFamily: MONO, color: "var(--earn-faint)" }} title={row.source}>
-                    {row.source}
+                  <span className="text-[10px] truncate" style={{ fontFamily: MONO, color: "var(--earn-faint)" }} data-testid="coming-up-kind">
+                    {upcomingKindLabel(row.kind)}
                   </span>
                 </div>
               </div>

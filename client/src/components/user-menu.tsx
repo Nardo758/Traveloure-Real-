@@ -137,8 +137,8 @@ export function UserMenu() {
               {avatarFallback}
             </AvatarFallback>
           </Avatar>
-          <div className="flex flex-col items-start leading-none" aria-hidden="true">
-            <span className="text-sm font-medium text-muted-foreground dark:text-gray-300">
+          <div className="hidden sm:flex flex-col items-start leading-none min-w-0" aria-hidden="true">
+            <span className="text-sm font-medium text-muted-foreground dark:text-gray-300 truncate max-w-[8rem]">
               {displayName}
             </span>
             {roleLabel && (

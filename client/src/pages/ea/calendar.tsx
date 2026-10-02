@@ -166,14 +166,14 @@ export default function EACalendar() {
   return (
     <EALayout title="Multi-Event Coordination">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900" data-testid="text-calendar-title">
               Multi-Event Coordination
             </h1>
             <p className="text-gray-600">Manage all executive events in one view</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setConflictsOpen(true)} data-testid="button-resolve-conflicts">
               <ShieldAlert className="w-4 h-4 mr-2" />
               Resolve Conflicts{conflicts.length > 0 ? ` (${conflicts.length})` : ""}
@@ -187,8 +187,8 @@ export default function EACalendar() {
         {/* Calendar Matrix */}
         <Card className="border border-gray-200">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="ghost" size="icon" onClick={() => setWeekOffset((w) => w - 1)} data-testid="button-prev-week">
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
@@ -213,12 +213,12 @@ export default function EACalendar() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-max min-w-full border-collapse">
                 <thead>
                   <tr>
                     <th className="p-3 text-left text-sm font-medium text-gray-500 border-b">Executive</th>
                     {weekDays.map((day) => (
-                      <th key={day.toISOString()} className={`p-3 text-center text-sm font-medium border-b min-w-16 ${sameDay(day, today) ? "text-primary" : "text-gray-500"}`}>
+                      <th key={day.toISOString()} className={`p-3 text-center text-sm font-medium border-b whitespace-nowrap min-w-[4.5rem] ${sameDay(day, today) ? "text-primary" : "text-gray-500"}`}>
                         {day.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase()}
                         <div className="text-xs font-normal">{day.getDate()}</div>
                       </th>

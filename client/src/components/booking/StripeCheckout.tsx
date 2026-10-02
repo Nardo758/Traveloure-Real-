@@ -81,15 +81,19 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, si
       });
 
       if (error) {
+        // The Payment Element already draws card and field errors. A second banner plus the
+        // parent's toast repeats that sentence (payments QA: the decline shown twice, plus
+        // Link's own "Please try again"). Link itself stays on — wallets are LD 43.
+        const elementShowsIt = error.type === 'card_error' || error.type === 'validation_error';
         // A `validation_error` never reached Stripe (an incomplete card field) — the form stays usable.
         // Anything else is a real attempt on this PaymentIntent; a single-attempt form closes on it.
         if (singleAttempt && error.type !== 'validation_error') {
           setClosed(true);
-          setErrorMessage(`${error.message || 'Payment failed'} ${SINGLE_ATTEMPT_CLOSED_MESSAGE}`);
-        } else {
+          setErrorMessage(SINGLE_ATTEMPT_CLOSED_MESSAGE);
+        } else if (!elementShowsIt) {
           setErrorMessage(error.message || 'Payment failed');
         }
-        onError(error.message || 'Payment failed');
+        if (!elementShowsIt) onError(error.message || 'Payment failed');
       } else if (paymentIntent) {
         if (paymentIntent.status === 'succeeded') {
           onSuccess(paymentIntent.id);
