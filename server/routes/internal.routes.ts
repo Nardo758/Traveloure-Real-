@@ -30,6 +30,7 @@ import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
 import { sweepExpiredCheckoutClaims, sweepStaleAuthorizedClaims } from "../services/checkout-claim.service";
+import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
 import { materializeAllServicesWithPatterns } from "../services/availability-materializer.service";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -110,11 +111,22 @@ export async function runJob(
   name: string,
   fn: () => Promise<unknown>,
   isFailure?: (result: any) => boolean,
+  options: {
+    isSkip?: (result: any) => boolean;
+    useBackgroundJobRunner?: boolean;
+  } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
-    const result = await runBackgroundJob(name, fn);
+    const result = options.useBackgroundJobRunner === false ? await fn() : await runBackgroundJob(name, fn);
     if (isBackgroundJobSkip(result)) {
       return { status: 200, body: { ok: true, skipped: true, reason: result.reason, job: name } };
+    }
+    if (isScheduledAutomationSkip(result)) {
+      return { status: 200, body: { ok: true, skipped: true, reason: result.reason, job: name } };
+    }
+    if (options.isSkip?.(result)) {
+      const reason = (result as any)?.skipReason ?? (result as any)?.reason ?? "action_reported_skip";
+      return { status: 200, body: { ok: true, skipped: true, reason, job: name } };
     }
     if (result === undefined) {
       return {
