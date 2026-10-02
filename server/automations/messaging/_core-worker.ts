@@ -5,7 +5,7 @@ import { dispatchAutomationEvent } from "../event-dispatcher";
 import { messagingAutomationRegistry } from "./index";
 import { coreByKind } from "./_core-index";
 import { renderCoreEmail } from "./_core-renderer";
-import { MARKETING_KINDS, marketingPreferences, isDaytime, safeName } from "./_core-policy";
+import { MARKETING_KINDS, marketingPreferences, isDaytime, safeName, journeyBaseUrl } from "./_core-policy";
 import { lockJourney, scheduleMessage, cancelVerificationReminders, type JourneyJob } from "./_core-store";
 import { finalizeAccountDeletion } from "./_core-auth";
 import { unsubscribePath } from "./_core-unsubscribe";
@@ -52,7 +52,7 @@ async function processJob(id: string, userId: string): Promise<number | undefine
       return;
     }
     let link = message.copy({ name: safeName(user.first_name) }).path;
-    const base = getAppBaseUrl();
+    const base = journeyBaseUrl(getAppBaseUrl);
     if (verification || job.message_type === "reset_request") {
       if (verification) {
         const rate = (await tx.execute(sql`SELECT COUNT(*)::int AS count,MIN(created_at) AS oldest

@@ -6,6 +6,7 @@ export default defineConfig({
     "@shared": path.resolve(process.cwd(), "shared"),
     "@": path.resolve(process.cwd(), "client/src"),
   } },
-  test: { environment: "node", include: ["server/automations/messaging/__tests__/core-journey.test.ts"],
+  test: { environment: "node", include: ["server/automations/messaging/__tests__/core-journey.test.ts",
+    "server/automations/messaging/__tests__/core-links.test.ts"],
     passWithNoTests: false },
 });

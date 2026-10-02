@@ -15,3 +15,16 @@ Obtain the authorized test address and a receipt-verification method before
 creating a live traveler or sending test messages. If neither is available,
 ask rather than infer an address from the database. Never store the address,
 inbox credentials, message tokens or other personal data in project memory.
+
+## Development isolation
+
+Keep test journey links on the development preview; do not change the global
+email base URL merely to run signup tests.
+
+**Why:** The user approved development-only journey links on 2026-10-02 while
+requiring production and unrelated emails to remain unchanged. Shared mail
+configuration can otherwise send a development token to the published app.
+
+**How to apply:** Before sending, check that the authorized real address is
+unused when a new traveler is required, and verify the test link's environment.
+Do not overwrite or delete an existing account just to reuse its inbox.

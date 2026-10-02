@@ -7,6 +7,18 @@ export const SIGNUP_RESPONSE = {
   message: "Check your email for the next step. If you already have an account, we'll send sign-in instructions.",
 };
 export const MARKETING_KINDS = new Set(["profile_nudge", "planner_nudge"]);
+/** Keep development journey links on the preview without changing other mail. */
+export function journeyBaseUrl(fallback: () => string,
+  environment: { NODE_ENV?: string; REPLIT_DEV_DOMAIN?: string } = process.env): string {
+  if (environment.NODE_ENV === "development" && environment.REPLIT_DEV_DOMAIN) {
+    const host = environment.REPLIT_DEV_DOMAIN;
+    if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(host)) {
+      throw new Error("Invalid development host for journey email links");
+    }
+    return `https://${host}`;
+  }
+  return fallback();
+}
 export function marketingPreferences(preferences: unknown) {
   const p = (preferences && typeof preferences === "object" ? preferences : {}) as Record<string, any>;
   const s = p.settings ?? {};
