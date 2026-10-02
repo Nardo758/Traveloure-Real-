@@ -1251,7 +1251,7 @@ async function clearCartAfterPaidPromotion(
   }
   if (owners.size === 0) return;
   const { clearCheckedOutCartLines } = await import("./cart-projection.service");
-  for (const userId of owners) {
+  for (const userId of Array.from(owners)) {
     await clearCheckedOutCartLines(userId);
   }
 }
