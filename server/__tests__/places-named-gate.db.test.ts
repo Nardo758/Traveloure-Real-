@@ -10,6 +10,10 @@
  *   G3  a named item whose Places answer names somewhere else records nothing (the answer is dropped)
  *   G4  a 5-day plan with named venues on every day gets facts on EVERY day under a cap smaller than
  *       its item count; a cache reuse does not spend the cap
+ *   G5  smoke 4 P2: "Fushimi Inari Taisha Alternative: Kiyomizu-dera Temple" is looked up as
+ *       Kiyomizu-dera, and an answer naming Fushimi Inari is never attached to it
+ *   G6  smoke 4 P1: every named item logs its DAY and OUTCOME (attached / unmatched / none), and a
+ *       skipped item logs why, so "never attempted" and "attempted and missed" read differently
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -156,4 +160,58 @@ test("G4: a 5-day plan with named venues on every day gets facts on every day un
   assert.equal(r2.cached, 5);
   assert.equal(r2.looked, 5);
   assert.equal(state.calls, 10);
+});
+
+test("G5: a two-place 'A Alternative: B' title is looked up as B and never given A's facts", async () => {
+  delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+  const item: EnrichItem = { id: id("alt"), title: "Fushimi Inari Taisha Alternative: Kiyomizu-dera Temple", type: "attraction", dayNumber: 2 };
+  await insertItems([item]);
+  const queries: string[] = [];
+  // A search for the whole title returns Fushimi Inari (Google's top hit in production).
+  const { adapter } = placesFake((q) => {
+    queries.push(q);
+    return q.startsWith("Fushimi") ? "Fushimi Inari Taisha" : "Kiyomizu-dera";
+  });
+  const r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [item], adapters: [adapter] });
+  assert.equal(queries.length, 1);
+  assert.match(queries[0], /^Kiyomizu-dera Temple/);
+  assert.doesNotMatch(queries[0], /Fushimi/);
+  assert.equal(r.unmatched, 0);
+  const rows = await factRows([item.id]);
+  assert.ok(rows.some((x) => x.fact_type === "hours"), "Kiyomizu-dera's hours attach");
+
+  // And an answer naming Fushimi Inari for that item is refused outright.
+  const fushimiOnly: EnrichItem = { ...item, id: id("alt2"), title: "Fushimi Inari Taisha Alternative: Kiyomizu-dera Temple (2)" };
+  await insertItems([fushimiOnly]);
+  const { adapter: wrong } = placesFake(() => "Fushimi Inari Taisha");
+  const r2 = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [fushimiOnly], adapters: [wrong] });
+  assert.equal(r2.unmatched, 1);
+  assert.deepEqual(await factRows([fushimiOnly.id]), []);
+});
+
+test("G6: each item logs its day and outcome; skips log a reason", async () => {
+  process.env.PLACES_LOOKUPS_PER_DRAFT = "2";
+  const items: EnrichItem[] = [
+    { id: id("l1"), title: "Ryozen Kannon", type: "attraction", dayNumber: 1 },
+    { id: id("l2"), title: "Shoren-in", type: "attraction", dayNumber: 2 },
+    { id: id("l3"), title: "Shimogamo Jinja", type: "attraction", dayNumber: 3 },
+    { id: id("l4"), title: "Lunch at Traditional Restaurant", type: "lunch", dayNumber: 3 },
+  ];
+  await insertItems(items);
+  const lines: string[] = [];
+  const orig = console.info;
+  console.info = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+  try {
+    const { adapter } = placesFake((q) => (q.startsWith("Shoren") ? "Somewhere Else Entirely" : q.split(",")[0]));
+    await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter] });
+  } finally {
+    console.info = orig;
+    delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+  }
+  const facts = lines.filter((l) => l.startsWith("[place-facts]"));
+  assert.ok(facts.some((l) => /lookup day=1 outcome=attached /.test(l)), facts.join("\n"));
+  assert.ok(facts.some((l) => /lookup day=2 outcome=unmatched /.test(l)), facts.join("\n"));
+  assert.ok(facts.some((l) => /skipped day=3 reason=cap/.test(l)), facts.join("\n"));
+  assert.ok(facts.some((l) => /skipped day=3 reason=unnamed/.test(l)), facts.join("\n"));
+  for (const l of facts) assert.doesNotMatch(l, /Ryozen|Shoren|Shimogamo|Lunch/, "no traveler content in the log");
 });

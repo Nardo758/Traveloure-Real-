@@ -131,6 +131,11 @@ jobs:
       # cap reaches every day. G1–G4, fake Places API only.
       - name: Places named-place gate — generic items get no facts; the cap reaches every day
         run: npx tsx --test --test-force-exit server/__tests__/places-named-gate.db.test.ts
+      # Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): the "Where to stay" read and bind
+      # against real rows — eligibility, ranking by the plan's own days, no invented inventory,
+      # Skip and "I've got lodging sorted" through the option-set rail. D1–D4.
+      - name: Where to stay — ranked by the plan's days; skip and own answers bind honestly
+        run: npx tsx --test --test-force-exit server/__tests__/where-to-stay.db.test.ts
 
       # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): no legacy crowd/pulse field on
       # the four public routes, the 48h Trend freshness gate, and /api/health's score age. T1–T4.

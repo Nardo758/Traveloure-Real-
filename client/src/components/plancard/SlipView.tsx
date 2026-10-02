@@ -26,7 +26,6 @@ import {
   List as ListIcon,
   Map as MapIcon,
   Sparkles,
-  Users,
 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,6 +58,9 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { SlipRail } from "./SlipRail";
+import { SlipHeaderMeta } from "./SlipHeaderMeta";
+import { WhereToStayPanel } from "./WhereToStayPanel";
+import type { WhereToStayView } from "@shared/where-to-stay";
 import { itemAddressLine, itemFactLine } from "@/lib/place-facts";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
@@ -73,7 +75,7 @@ import {
   type PlanEvent,
 } from "@/lib/slip-events";
 import { planBudgetLine, statedEventBudget } from "@/lib/plan-budget";
-import { eventCountLabel, planHeaderCountLabel } from "@/lib/plan-vocabulary";
+import { planHeaderCountLabel } from "@/lib/plan-vocabulary";
 import {
   slipPlanMetaLine,
   slipStopsLine,
@@ -124,7 +126,6 @@ import {
   SLIP_ASK_EXPERT_LABEL,
 } from "@/lib/slip-item-tools";
 import { MapControlCenter } from "./MapControlCenter";
-import { SetPlanDates } from "./SetPlanDates";
 // LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
 // actually holds bookable rows. The component itself decides visibility from the vault read.
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
@@ -531,60 +532,16 @@ function SlipHeader({
       <h1 className={`${SLIP_TITLE_FONT_CLASS} text-2xl font-bold text-foreground`} data-testid="slip-title">
         {trip?.title || trip?.destination || "Trip plan"}
       </h1>
-      <p className="text-sm text-muted-foreground" data-testid="slip-meta">
-        {start && end ? `${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}` : null}
-        {/* ── DID ANYBODY CHOOSE THIS WINDOW? (punchlist D-22 + R-4, migration 302, ledger
-            `2026-09-15-d22-dates-confirmed`.) `trips.start_date`/`end_date` are NOT NULL, so the
-            range above has ALWAYS rendered — including for a ready-made clone, whose window is
-            `new Date()` + `duration_days - 1` chosen by the fulfilment job, and for an authoring
-            build's synthetic anchor. This is the one place the slip says which it is, and it is
-            also R-4's missing moment: the CTA is the first client caller `PATCH /api/trips/:id`
-            has ever had. Renders NOTHING for a confirmed plan (§13: the unmarked case stays
-            quiet), and the CTA is the OWNER's alone (Locked Decision 42 D16). */}
-        {start && end ? " " : null}
-        <SetPlanDates
-          tripId={trip?.id ?? ""}
-          startDate={trip?.startDate}
-          endDate={trip?.endDate}
-          datesConfirmedAt={(trip as any)?.datesConfirmed}
-          isOwner={isOwner}
-        />
-        {start && end && partyLabel ? " · " : null}
-        {partyLabel ? (
-          <span className="inline-flex items-center gap-1" data-testid="slip-meta-party">
-            <Users className="w-3.5 h-3.5 inline" />
-            {partyLabel}
-          </span>
-        ) : null}
-        {/* RC-12: nobody has said who is going, so the owner is ASKED rather than shown an
-            invented "1 traveler" (§13). The count comes back through step 4's one owner-gated
-            write, and this link then gives way to it. */}
-        {onAskParty ? (
-          <>
-            {(start && end) || partyLabel ? " · " : null}
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-              onClick={onAskParty}
-              data-testid="slip-meta-ask-party"
-            >
-              <Users className="w-3.5 h-3.5 inline" />
-              Who's coming?
-            </button>
-          </>
-        ) : null}
-        {/* THE EVENT COUNT (re-audit A16). The SAME derivation the Trip Strip's chip already
-            renders — `countPlanEvents` / `eventCountLabel` — never a second count (§18 rule 1),
-            and hidden at zero exactly as the chip is: a plan with no `user_experiences` row has
-            only its one implicit unnamed event, which is not a row and is never counted as one,
-            so "0 events" would be a claim about the plan rather than a count (§13). */}
-        {eventCount > 0 ? (
-          <span data-testid="slip-meta-events">
-            {(start && end) || partyLabel ? " · " : null}
-            {eventCountLabel(eventCount)}
-          </span>
-        ) : null}
-      </p>
+      <SlipHeaderMeta
+        tripId={trip?.id ?? ""}
+        startDate={trip?.startDate ?? null}
+        endDate={trip?.endDate ?? null}
+        datesConfirmed={(trip as any)?.datesConfirmed}
+        isOwner={isOwner}
+        partyLabel={partyLabel}
+        onAskParty={onAskParty}
+        eventCount={eventCount}
+      />
       {anchorLine ? (
         <p className="text-sm text-foreground" data-testid="slip-anchor-state">
           {anchorLine}
@@ -1643,6 +1600,15 @@ export function SlipView({
   const planActivities = sortedDays.flatMap((d) => d.activities ?? []);
   const hasStayItem = planActivities.some((act) => act.type === "accommodation");
   const locatedStops = planActivities.filter((act) => act.type !== "accommodation" && act.lat != null && act.lng != null).length;
+  // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Where to stay", recommended AFTER the
+  // draft. The server decides eligibility (2+ days, a draft exists, nothing decided yet) — the client
+  // only asks once the plan has items, and restates none of the rule.
+  const nonStayItemCount = planActivities.filter((act) => act.type !== "accommodation").length;
+  const whereToStayQuery = useQuery<WhereToStayView>({
+    queryKey: [`/api/trips/${tripId}/where-to-stay`],
+    enabled: !!tripId && nonStayItemCount > 0 && !hasStayItem,
+  });
+  const whereToStay = whereToStayQuery.data?.eligible ? whereToStayQuery.data : null;
 
   // ── DAY → EVENT → ITEMS (migration 277; ledger `2026-09-04-slip-events`) ──────────────────
   // TWO conditions, both real, and neither is guessed:
@@ -2050,15 +2016,16 @@ export function SlipView({
           onDismiss={() => setExpertDoorState("dismissed")}
         />
       ) : null}
+      {whereToStay ? <WhereToStayPanel tripId={tripId} view={whereToStay} canChoose={canEditItems} /> : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {optionSets.some((st) => st.status === "open" || (st.status === "chosen" && (st.easierCount ?? 0) > 0)) ||
-      (tripsAnchor && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 && canWriteSets) ? (
+      (tripsAnchor && !whereToStay && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 && canWriteSets) ? (
         <div className="space-y-3" data-testid="slip-option-sets">
           {optionSets.map((st) => (
             <SlipOptionSetCard key={st.id} tripId={tripId} set={st} canWrite={canWriteSets} canChoose={canEditItems} />
           ))}
-          {tripsAnchor && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 ? (
+          {tripsAnchor && !whereToStay && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 ? (
             <SlipLodgingEntry tripId={tripId} locatedStops={locatedStops} canWrite={canWriteSets} />
           ) : null}
         </div>

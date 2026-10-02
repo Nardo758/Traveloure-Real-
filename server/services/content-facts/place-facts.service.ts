@@ -30,7 +30,7 @@ import { rankFactsByOrigin } from "../upsell-engine.service";
 import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { sourcesForNeed } from "./places-adapter";
-import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
+import { matchNamesItem, namedPlaceTokens, placeLookupText } from "@shared/place-name-gate";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
 import { getTavilyClient } from "../tavily-client";
@@ -164,13 +164,36 @@ export function attachableDrafts(drafts: FactDraft[], tokens: ReadonlySet<string
 }
 
 /**
- * ONE info line per successful lookup (decision-maker, Sep 30, 2026 — the spine logged failures
- * only): the place id, cache hit or miss, and latency. No query text and no plan id, so the log
- * carries no traveler content. A lookup that found no place logs `place_id=none`.
+ * ONE info line per lookup ATTEMPT (decision-maker, Sep 30, 2026 — the spine logged failures only):
+ * the place id, cache hit or miss, and latency. No query text and no plan id, so the log carries no
+ * traveler content. A lookup that found no place logs `place_id=none`.
+ *
+ * SMOKE 4 (P1, ledger `2026-10-02-smoke4-draft-fixes`): the line now also carries the item's DAY and
+ * its OUTCOME — `attached` (facts recorded), `unmatched` (a place came back but did not name the
+ * item, so nothing was attached) or `none` (no place came back). Before this, an answer rejected by
+ * the name gate logged as `lookup ok`, and an item skipped (unnamed, past the cap, no adapter) logged
+ * nothing, so a day with no hours could not be told "never attempted" from "attempted and missed".
+ * Skips now log one `skipped` line each with their reason.
  */
-function logLookup(drafts: readonly FactDraft[], cache: "hit" | "miss", startedMs: number): void {
+function logLookup(
+  drafts: readonly FactDraft[],
+  cache: "hit" | "miss",
+  startedMs: number,
+  day: number,
+  outcome: "attached" | "unmatched" | "none",
+): void {
   const placeId = drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? "none";
-  console.info(`[place-facts] lookup ok place_id=${placeId} cache=${cache} latency_ms=${Date.now() - startedMs}`);
+  console.info(
+    `[place-facts] lookup day=${day} outcome=${outcome} place_id=${placeId} cache=${cache} latency_ms=${Date.now() - startedMs}`,
+  );
+}
+
+function logSkipped(day: number, reason: "unnamed" | "cap" | "no_adapter"): void {
+  console.info(`[place-facts] skipped day=${day} reason=${reason}`);
+}
+
+function outcomeOf(drafts: readonly FactDraft[], kept: readonly FactDraft[]): "attached" | "unmatched" | "none" {
+  return kept.length ? "attached" : drafts.length ? "unmatched" : "none";
 }
 
 /**
@@ -195,12 +218,24 @@ export async function enrichPlanItems(input: {
     const cap = placesLookupsPerDraft();
     const order = lookupOrder(input.items, input.city);
     summary.unnamed = input.items.length - order.length;
+    const ordered = new Set(order.map((o) => o.item));
+    for (const it of input.items) if (!ordered.has(it)) logSkipped(it.dayNumber ?? 1, "unnamed");
     for (const { item, tokens } of order) {
-      if (summary.looked >= cap) break;
+      const day = item.dayNumber ?? 1;
+      if (summary.looked >= cap) {
+        logSkipped(day, "cap");
+        continue;
+      }
       const need = needForItemType(item.type);
       const adapters = sourcesForNeed(need, input.market, input.adapters);
-      if (!adapters.length) continue;
-      const query = [item.title, input.city].filter(Boolean).join(", ").slice(0, 300);
+      if (!adapters.length) {
+        logSkipped(day, "no_adapter");
+        continue;
+      }
+      // P2 (smoke 4): the visited place only — a two-place "A Alternative: B" title searched whole
+      // returns A's facts for a visit to B.
+      const lookupText = placeLookupText(item.title);
+      const query = [lookupText, input.city].filter(Boolean).join(", ").slice(0, 300);
       try {
         const started = Date.now();
         const cached = await cachedForQuery(query);
@@ -209,15 +244,15 @@ export async function enrichPlanItems(input: {
           const kept = attachableDrafts(cached, tokens, input.city);
           if (!kept.length) summary.unmatched += 1;
           summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
-          logLookup(cached, "hit", started);
+          logLookup(cached, "hit", started, day, outcomeOf(cached, kept));
           continue;
         }
         summary.looked += 1;
-        const drafts = await adapters[0].fetch({ need, market: input.market, query: { text: item.title, city: input.city }, budgetCents: 0 });
+        const drafts = await adapters[0].fetch({ need, market: input.market, query: { text: lookupText, city: input.city }, budgetCents: 0 });
         const kept = attachableDrafts(drafts, tokens, input.city);
         if (drafts.length && !kept.length) summary.unmatched += 1;
         summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
-        logLookup(drafts, "miss", started);
+        logLookup(drafts, "miss", started, day, outcomeOf(drafts, kept));
       } catch (err) {
         console.error("[place-facts] lookup failed for an item:", (err as Error)?.message ?? err);
       }

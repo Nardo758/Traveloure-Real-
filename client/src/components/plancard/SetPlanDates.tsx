@@ -71,6 +71,8 @@ export interface SetPlanDatesProps {
   datesConfirmedAt: PlanDatesConfirmedAt;
   /** Locked Decision 42 D16 — the CTA is the owner's and nobody else's. */
   isOwner: boolean;
+  /** Print a leading space before the chip (the slip header's meta line). Nothing when confirmed. */
+  leadingSpace?: boolean;
 }
 
 export function SetPlanDates({
@@ -79,6 +81,7 @@ export function SetPlanDates({
   endDate,
   datesConfirmedAt,
   isOwner,
+  leadingSpace = false,
 }: SetPlanDatesProps) {
   const label = planDatesLabel(datesConfirmedAt, isOwner);
   const [open, setOpen] = useState(false);
@@ -112,6 +115,8 @@ export function SetPlanDates({
   };
 
   return (
+    <>
+    {leadingSpace ? " " : null}
     <span className="inline-flex items-center gap-1.5" data-testid="slip-dates-placeholder">
       <span
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border border-border text-muted-foreground"
@@ -180,5 +185,6 @@ export function SetPlanDates({
         </Dialog>
       )}
     </span>
+    </>
   );
 }

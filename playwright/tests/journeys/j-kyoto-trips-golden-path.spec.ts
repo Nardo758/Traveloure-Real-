@@ -890,31 +890,24 @@ test.describe("4 · free draft around the set", () => {
     ).toEqual([]);
   });
 
-  test("§4 — a Travel plan with no stay and no set asks where you're staying; 'Draft without a hotel' drafts", async ({ page }) => {
-    // A5 (§M5) on a RESOLVED Trips occasion (R215). Same stand-in as §4-today (E2E_AI_STUB).
+  test("§4 — a Travel plan with no stay and no set drafts at once, then recommends where to stay", async ({ page }) => {
+    // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`; decision-maker, Oct 2, 2026: "Hotel is
+    // optional and recommended after the draft, not asked before it"). A RESOLVED Trips occasion
+    // (R215), no stay, no set: "Draft it with AI" drafts on the first press — the client sends the
+    // explicit skip — and the slip then shows the "Where to stay" panel. Same stand-in as §4-today.
     const tripId = await planWithOccasion(page, "s4-ask", "travel");
     await page.goto(`/plans/${tripId}`);
     await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
-    const asked = await actAndAwait(
+    const status = await actAndAwait(
       page,
       async () => {
         await testid(page, "slip-action-draft-ai").click();
       },
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
-    expect(asked, "the draft asks where the traveler is staying").toBe(409);
-    await expect(testid(page, "slip-draft-anchor-ask")).toContainText("Where are you staying?");
-    expect(await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId]), "the ask wrote nothing").toEqual([]);
-    const status = await actAndAwait(
-      page,
-      async () => {
-        await testid(page, "slip-draft-without-anchor").click();
-      },
-      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
-    );
-    expect(ok2xx(status), `draft answered ${status}`).toBe(true);
+    expect(ok2xx(status), `draft answered ${status} — it must draft, never ask first`).toBe(true);
     const items = await rows<{ id: string }>(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId]);
-    expect(items.length, "the traveler's own answer drafted the days").toBeGreaterThan(0);
+    expect(items.length, "the first press drafted the days").toBeGreaterThan(0);
     await expect
       .poll(
         async () =>
@@ -926,10 +919,12 @@ test.describe("4 · free draft around the set", () => {
           ).map((r) => r.properties),
         { timeout: 10_000 },
       )
-      .toEqual([
-        { outcome: "anchor_asked" },
-        { outcome: "drafted", itemsWritten: items.length, draftBasis: "none_asked", heldSlots: 0 },
-      ]);
+      .toEqual([{ outcome: "drafted", itemsWritten: items.length, draftBasis: "none_asked", heldSlots: 0 }]);
+    const stay = await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`);
+    expect(stay.status()).toBe(200);
+    const view = await stay.json();
+    expect(view.eligible, "a drafted 2+ day plan with no stay is offered where to stay").toBe(true);
+    expect(JSON.stringify(view), "no distance or minute value is served").not.toMatch(/minutes|meters|km/);
   });
 
   test("§4 — with an open hotel set the draft succeeds, leaves the set open and adds no accommodation", async ({ page }) => {

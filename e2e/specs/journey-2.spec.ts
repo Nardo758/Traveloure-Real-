@@ -109,11 +109,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     );
 
     await page.click(SELECTORS.generateBtn);
-    // The traveler's own answer to the anchor question, when it is asked.
-    const anchorAsk = page.locator('[data-testid="ai-draft-anchor-ask"]');
-    if (await anchorAsk.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false)) {
-      await page.click('[data-testid="ai-draft-without-anchor"]');
-    }
+    // Smoke 4 item 5: the draft is never preceded by a hotel question (ledger `2026-10-02-smoke4-draft-fixes`).
     // The redirect only happens when the AI service responds successfully.
     // If XAI_API_KEY is absent in the deployed app the endpoint may error or
     // stay on the loading state.  Catch the timeout and skip so the CI gate

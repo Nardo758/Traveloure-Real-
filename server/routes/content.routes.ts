@@ -58,6 +58,7 @@ import {
   draftBasisPromptBlock,
   heldSlotsFor,
   withoutHeldItems,
+  withoutHotelWording,
   type DraftBasis,
   type HeldSlot,
 } from "@shared/draft-basis";
@@ -4839,6 +4840,22 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           ).kept.map(({ dayNumber: _d, ...a }: any) => a),
         }));
         if (heldSlots.some((h) => h.categoryKey === "accommodation")) normalizedResult.accommodationSuggestions = [];
+      }
+      // Smoke 4, item 4 (ledger `2026-10-02-smoke4-draft-fixes`): a draft with no place to stay has
+      // no hotel in it. Day 1's hotel item becomes the arrival and the last day's the departure, with
+      // no hotel wording; the stored plan is rewritten with the rows so the two never disagree.
+      if (draftBasis.kind === "none_asked") {
+        const arrivalCity = String(destination ?? "").split(",")[0].trim();
+        normalizedResult.canonicalItems = withoutHotelWording(normalizedResult.canonicalItems, tripDayCount, arrivalCity)
+          .map((it) => ({ ...it, name: it.title }));
+        normalizedResult.dailyItinerary = normalizedResult.dailyItinerary.map((d: any) => ({
+          ...d,
+          activities: withoutHotelWording(
+            (Array.isArray(d.activities) ? d.activities : []).map((a: any) => ({ ...a, title: String(a.name ?? ""), dayNumber: Number(d.day) })),
+            tripDayCount,
+            arrivalCity,
+          ).map(({ dayNumber: _d, title, ...a }: any) => ({ ...a, name: title })),
+        }));
       }
       const snapshot = await saveGeneratedItinerarySnapshot({
         userId,

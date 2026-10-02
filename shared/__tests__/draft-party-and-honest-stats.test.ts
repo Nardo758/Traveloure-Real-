@@ -33,6 +33,8 @@ test("Q3: AI stats carry no assumed time saved, and the card omits the row when 
 
 test("Q4: a Places lookup logs place_id, cache and latency on success", () => {
   const src = read("server/services/content-facts/place-facts.service.ts");
-  assert.match(src, /lookup ok place_id=\$\{placeId\} cache=\$\{cache\} latency_ms=/);
+  // Smoke 4 P1 (ledger `2026-10-02-smoke4-draft-fixes`): the line also names the day and the outcome,
+  // so an answer the name gate rejected no longer reads as "ok".
+  assert.match(src, /lookup day=\$\{day\} outcome=\$\{outcome\} place_id=\$\{placeId\} cache=\$\{cache\} latency_ms=/);
   assert.equal((src.match(/logLookup\(/g) ?? []).length, 3, "declared once, called on hit and on miss");
 });

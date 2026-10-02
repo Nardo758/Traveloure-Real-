@@ -79,14 +79,46 @@ export function distinctiveTokens(text: string | null | undefined, city: string 
   return out;
 }
 
-/** Pure. The item's distinctive words from its title and location. Empty ⇒ the item names no place. */
+/**
+ * THE PLACE BEING VISITED (smoke test 4, P2 — ledger `2026-10-02-smoke4-draft-fixes`). A drafted title
+ * "Fushimi Inari Taisha Alternative: Kiyomizu-dera Temple" names two places; the one the traveler is
+ * visiting is the one AFTER "Alternative:". Matching on the whole title let Google's top hit for the
+ * first name (Fushimi Inari) pass the gate, and its address and hours were attached to an item that is
+ * a visit to Kiyomizu-dera. Pure; returns the title unchanged when it carries no such clause, and the
+ * whole title when nothing follows the marker (§13: never an empty name).
+ */
+const ALTERNATIVE_MARKER = /\balternative\s*:/i;
+
+export function hasAlternativeClause(title: string | null | undefined): boolean {
+  return ALTERNATIVE_MARKER.test(title ?? "");
+}
+
+export function visitedPlaceTitle(title: string): string {
+  const parts = title.split(new RegExp(ALTERNATIVE_MARKER.source, "gi"));
+  if (parts.length < 2) return title;
+  const visited = parts[parts.length - 1].replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, "");
+  return visited || title;
+}
+
+/**
+ * Pure. The item's distinctive words from its title and location. Empty ⇒ the item names no place.
+ * A title with an "Alternative:" clause resolves against its VISITED place only — the location field
+ * is then not read, because a drafter that wrote two places into a title may have put the other one
+ * there (P2).
+ */
 export function namedPlaceTokens(
   item: { title: string; locationName?: string | null },
   city: string | null | undefined,
 ): Set<string> {
+  if (hasAlternativeClause(item.title)) return distinctiveTokens(visitedPlaceTitle(item.title), city);
   const out = distinctiveTokens(item.title, city);
   distinctiveTokens(item.locationName ?? null, city).forEach((t) => out.add(t));
   return out;
+}
+
+/** Pure. The text a Places lookup searches for: the visited place, never the whole two-place title. */
+export function placeLookupText(title: string): string {
+  return visitedPlaceTitle(title);
 }
 
 /** Pure. Does a Places answer's name name THIS item? More than half its distinctive words must be in it. */

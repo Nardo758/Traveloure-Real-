@@ -151,6 +151,7 @@ export function draftBasisPromptBlock(basis: DraftBasis, held: readonly HeldSlot
         : `The traveler has not chosen where to stay; they are considering: ${names}. Build days that are easy to reach from all of them. Do not recommend or choose between these places.`,
     );
   }
+  if (basis.kind === "none_asked") lines.push(NO_HOTEL_PROMPT_LINE);
   for (const h of held) {
     const when = h.dayNumber === null ? "on any day" : `on day ${h.dayNumber}`;
     lines.push(`Do not add any ${h.categoryKey} item ${when}: the traveler is still deciding it themselves.`);
@@ -169,4 +170,66 @@ export function draftBasisLine(basis: DraftBasis): string | null {
   if (n === 0) return "Your places to stay aren't on the map yet, so the draft couldn't build around them. Where you'll stay is left open.";
   if (n === 1) return `Built around ${basis.builtAround[0].title}${basis.ranked ? ", the place that makes your days easiest" : ""}. Where you'll stay is still yours to choose.`;
   return `Built around the ${n} places you're considering. Where you'll stay is still yours to choose.`;
+}
+
+/**
+ * A DRAFT WITH NO PLACE TO STAY HAS NO HOTEL IN IT (smoke test 4, item 4 — ledger
+ * `2026-10-02-smoke4-draft-fixes`). A "Draft without a hotel" draft still opened with "Check-in &
+ * Hotel Orientation" and closed with "Return to Hotel & Checkout": `none_asked` told the model
+ * nothing, and nothing filtered it. Two layers, as for held slots: the prompt says so, and whatever
+ * the model writes anyway is rewritten here — day 1's hotel item becomes the ARRIVAL, the last day's
+ * the DEPARTURE, neither with hotel wording, and a hotel item on any other day is dropped (there is
+ * no hotel to return to). Pure.
+ */
+export const NO_HOTEL_PROMPT_LINE =
+  "The traveler has not chosen a place to stay. Do not add hotel check-in, check-out, return-to-hotel or hotel orientation items. Day 1 may begin with arriving in the city and the last day may end with departing; neither mentions a hotel.";
+
+const HOTEL_ITEM_WORDING =
+  /\bcheck[\s-]?(?:in|out)\b|\bcheckout\b|\bcheckin\b|\b(?:return|back|rest)\s+(?:to|at)\s+(?:the\s+|your\s+)?hotel\b|\bhotel\s+(?:orientation|check)/i;
+
+export function isHotelItemTitle(title: string | null | undefined): boolean {
+  return HOTEL_ITEM_WORDING.test(title ?? "");
+}
+
+export interface DehotelItem {
+  dayNumber: number;
+  title: string;
+  description?: string | null;
+  location?: string | null;
+}
+
+/**
+ * Rewrites hotel-worded items for a plan with no place to stay. `lastDay` is the plan's last day
+ * number. A one-day plan's check-OUT wording is the departure and anything else the arrival.
+ */
+export function withoutHotelWording<T extends DehotelItem>(
+  items: readonly T[],
+  lastDay: number,
+  city: string | null | undefined,
+): T[] {
+  const place = (city ?? "").trim();
+  const arrival = place ? `Arrival in ${place}` : "Arrival";
+  const departure = place ? `Departure from ${place}` : "Departure";
+  const out: T[] = [];
+  let arrived = false;
+  let departed = false;
+  for (const it of items) {
+    if (!isHotelItemTitle(it.title)) {
+      out.push(it);
+      continue;
+    }
+    const leaving = /check[\s-]?out|checkout/i.test(it.title);
+    if (it.dayNumber === lastDay && (leaving || it.dayNumber !== 1)) {
+      if (departed) continue;
+      departed = true;
+      out.push({ ...it, title: departure, description: "Leave for home or your next stop.", location: place || it.location || null });
+    } else if (it.dayNumber === 1) {
+      if (arrived) continue;
+      arrived = true;
+      out.push({ ...it, title: arrival, description: "Arrive and get your bearings.", location: place || it.location || null });
+    }
+    // Any other day, and a second arrival or departure: there is no hotel to go back to, so the
+    // item is dropped rather than repeated.
+  }
+  return out;
 }

@@ -34,7 +34,6 @@
  * draft no longer auto-starts an optimization or opens the comparison page.
  */
 
-import { ANCHOR_NEEDED_ERROR } from "@shared/draft-basis";
 import { planSpanLabel } from "@shared/plan-dates";
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, Gem, LogIn } from 'lucide-react';
@@ -206,7 +205,6 @@ export default function EnhancedPlanningModal({
   // `error`, because it is not a failure — it is a routing answer that carries a destination.
   const [draftRefusal, setDraftRefusal] = useState<AiDraftRefusal | null>(null);
   // A5 (§M5): the server asked where the traveler is staying instead of drafting. Its own sentence.
-  const [anchorAsk, setAnchorAsk] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // City-derived refinements (neighborhoods + hidden gems). These are AI-only inputs — they
@@ -299,7 +297,7 @@ export default function EnhancedPlanningModal({
     : experienceType;
 
   // Handle form submission
-  const handleGenerate = async (opts: { withoutAnchor?: boolean } = {}) => {
+  const handleGenerate = async () => {
     // Validate. The basics are no longer editable here, so every message points the traveler at
     // the step that OWNS the answer instead of at a field this form no longer has.
     const newErrors: Record<string, string> = {};
@@ -323,7 +321,6 @@ export default function EnhancedPlanningModal({
     setIsLoading(true);
     setError('');
     setDraftRefusal(null);
-    setAnchorAsk(null);
 
     try {
       // Call the existing itinerary generation endpoint
@@ -350,8 +347,10 @@ export default function EnhancedPlanningModal({
           mobilityConsiderations: mobilityConsiderations.includes('none') ? undefined : mobilityConsiderations,
           budget: budgetTier,
           specialRequests: specialRequests || undefined,
-          // A5: sent only when the traveler pressed "Draft without a hotel" — never on their behalf.
-          ...(opts.withoutAnchor ? { withoutAnchor: true } : {}),
+          // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Draft it with AI" always
+          // drafts — the explicit skip is sent on every call, and where to stay is recommended on
+          // the slip after the draft, never asked before it.
+          withoutAnchor: true,
         }),
       });
 
@@ -363,10 +362,6 @@ export default function EnhancedPlanningModal({
         // ONE pay-gate implementation. Since RC-1 the plan modal's AI finish sends the tripId it
         // just minted — an empty slip, so this refusal needs a second writer on that plan to fire;
         // it is handled here so no door has to invent its own handling.
-        if (response.status === 409 && errorData?.error === ANCHOR_NEEDED_ERROR && typeof errorData?.message === 'string') {
-          setAnchorAsk(errorData.message);
-          return;
-        }
         const refusal = readSlipHasItemsRefusal(response.status, errorData);
         if (refusal) {
           setDraftRefusal(refusal);
@@ -818,37 +813,6 @@ export default function EnhancedPlanningModal({
                   Optimize this plan instead
                 </button>
               )}
-            </div>
-          )}
-
-          {/* A5 (§M5): the draft is built around where the traveler stays. Two answers, both theirs:
-              add places on the plan (the slip's "Where are you staying?" card), or draft without one. */}
-          {anchorAsk && (
-            <div
-              className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg text-sm space-y-2"
-              data-testid="ai-draft-anchor-ask"
-            >
-              <p>{anchorAsk}</p>
-              <div className="flex flex-wrap gap-3">
-                {tripId && (
-                  <button
-                    type="button"
-                    onClick={() => { onClose(); setLocation(`/plans/${tripId}`); }}
-                    className="underline font-medium"
-                    data-testid="ai-draft-anchor-add-places"
-                  >
-                    Add places to stay
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void handleGenerate({ withoutAnchor: true })}
-                  className="underline font-medium"
-                  data-testid="ai-draft-without-anchor"
-                >
-                  Draft without a hotel
-                </button>
-              </div>
             </div>
           )}
 

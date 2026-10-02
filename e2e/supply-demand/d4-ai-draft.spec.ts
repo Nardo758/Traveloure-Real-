@@ -136,15 +136,8 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
   await generateBtn.click().catch(() => {});
   await shot(page, 'D4', '03', 'generating');
 
-  // A5 (ledger `2026-09-29-a5-draft-open-set`, §M5) + R215: a plan whose occasion RESOLVED to a Trip,
-  // with no place to stay and no places being compared, is ASKED where the traveler is staying first.
-  // A plan with no resolved occasion is not asked (the `vacation` default is not an answer). When the
-  // question appears, the traveler's own answer is "Draft without a hotel".
-  const anchorAsk = testid(page, 'ai-draft-anchor-ask');
-  if (await appears(anchorAsk, 10000)) {
-    await shot(page, 'D4', '03b', 'anchor-question');
-    await testid(page, 'ai-draft-without-anchor').click();
-  }
+  // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Draft it with AI" always drafts —
+  // where to stay is recommended on the slip after the draft, never asked before it.
 
   // Give the model call a generous window; this is exactly the leg the CI stub key may not be
   // able to complete. Poll for either new itinerary_items or an on-screen error, up to 90s.

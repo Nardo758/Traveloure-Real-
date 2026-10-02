@@ -156,3 +156,13 @@ describe("generated itinerary normalization", () => {
     assert.equal(storedActivity.estimatedCost, null);
   });
 });
+describe("smoke 4 P2 — a drafted item visits ONE place (ledger 2026-10-02-smoke4-draft-fixes)", () => {
+  it("keeps the place after 'Alternative:' as the title, in the rows and the stored plan alike", () => {
+    const out = normalizeGeneratedItineraryPayload({
+      dailyItinerary: [{ day: 1, activities: [{ name: "Fushimi Inari Taisha Alternative: Kiyomizu-dera Temple", type: "attraction" }] }],
+    });
+    assert.equal(out.canonicalItems[0].title, "Kiyomizu-dera Temple");
+    assert.equal(out.canonicalItems[0].name, "Kiyomizu-dera Temple");
+    assert.equal((out.dailyItinerary[0] as any).activities[0].name, "Kiyomizu-dera Temple");
+  });
+});

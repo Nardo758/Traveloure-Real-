@@ -499,7 +499,7 @@ export async function reopenOptionSet(input: { tripId: string; setId: string; us
 // ── Plan-fit (§M3) and the M9 entry ─────────────────────────────────────────────────────────
 
 /** The plan's stops plan-fit scores against: every item that is not itself a place to stay. */
-async function fitItems(tripId: string): Promise<FitItem[]> {
+export async function fitItems(tripId: string): Promise<FitItem[]> {
   const rows = await db
     .select({ id: itineraryItems.id, dayNumber: itineraryItems.dayNumber, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
     .from(itineraryItems)

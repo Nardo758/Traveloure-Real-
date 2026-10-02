@@ -1,7 +1,7 @@
 /** B5 (ledger `2026-09-30-b5-dates-days-and-nights`): a window's span says days AND nights. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planSpanLabel } from "../plan-dates";
+import { planDayCountLabel, planSpanLabel } from "../plan-dates";
 
 test("S1 Nov 11–15 is five days and four nights, never '4 days'", () => {
   assert.equal(planSpanLabel("2026-11-11", "2026-11-15"), "5 days · 4 nights");
@@ -19,4 +19,10 @@ test("S4 §13 — an inverted, missing or malformed window says nothing", () => 
   assert.equal(planSpanLabel("", "2026-11-11"), null);
   assert.equal(planSpanLabel(undefined, null), null);
   assert.equal(planSpanLabel("Nov 11", "2026-11-15"), null);
+});
+test("S5 the day count alone (smoke 4 B5): Nov 11–15 is '5 days'; §13 nothing for a bad window", () => {
+  assert.equal(planDayCountLabel("2026-11-11", "2026-11-15"), "5 days");
+  assert.equal(planDayCountLabel("2026-11-11T00:00:00.000Z", "2026-11-11"), "1 day");
+  assert.equal(planDayCountLabel("2026-11-15", "2026-11-11"), null);
+  assert.equal(planDayCountLabel(null, "2026-11-11"), null);
 });
