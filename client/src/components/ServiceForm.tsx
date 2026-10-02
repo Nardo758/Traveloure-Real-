@@ -1656,6 +1656,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         payload.approvalStatus = "submitted";
         payload.status = "draft";
       } else if (role === "provider") {
+        // Publish is review entry. A draft saved on the way stays `draft` unless this
+        // write names `approvalStatus: submitted` — that is the PATCH rail's
+        // leaving-draft predicate. Status `active` alone updates the live flag and
+        // leaves the listing out of the admin queue.
+        payload.saveIntent = "submit";
+        payload.approvalStatus = "submitted";
         payload.status = "active";
       }
 

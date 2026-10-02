@@ -134,7 +134,12 @@ async function ensureHandle(seller: APIRequestContext, wanted: string): Promise<
 }
 
 async function publishAndApprove(seller: APIRequestContext, c: SellerCase): Promise<string> {
-  const created = await seller.post("/api/provider/services", { data: c.listing });
+  const categories = await (await seller.get("/api/service-categories")).json();
+  const categoryId = Array.isArray(categories)
+    ? (categories.find((row: { id?: unknown }) => row && typeof row.id === "string")?.id as string | undefined)
+    : undefined;
+  expect(categoryId, "a seeded service category is required before a listing can enter review").toBeTruthy();
+  const created = await seller.post("/api/provider/services", { data: { ...c.listing, categoryId } });
   expect(created.status(), `publish ${c.label} listing: ${await created.text()}`).toBe(201);
   const listing = await created.json();
   expect(listing.approvalStatus, "a new listing is born submitted (migration 111)").toBe("submitted");

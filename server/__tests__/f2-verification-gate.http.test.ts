@@ -144,6 +144,9 @@ function servicePayload(overrides: Record<string, unknown> = {}) {
     // asserts; it simply stops the fixture from silently claiming to be a downloadable product.
     deliveryMethod: "async_messaging",
     status: "active",
+    // Review entry requires a category (listingReviewReadiness). This suite proves the
+    // verification gate, so the fixture names a real category and does not assert one.
+    ...(reviewCategoryId ? { categoryId: reviewCategoryId } : {}),
     ...overrides,
   };
 }
@@ -160,12 +163,19 @@ let providerBoth: Actor;
 let providerIdOnly: Actor;
 let admin: Actor;
 let plainUser: Actor;
+let reviewCategoryId = "";
 
 before(async () => {
   const health = await fetch(`${BASE_URL}/api/health`).catch(() => null);
   assert.ok(health && health.ok, `dev server must be running on ${BASE_URL} ('npm run dev')`);
 
   await assertDisposableDb();
+
+  const category = await readPool.query(
+    `SELECT id FROM service_categories WHERE category_key IS NOT NULL ORDER BY category_key LIMIT 1`,
+  );
+  reviewCategoryId = category.rows[0]?.id ?? "";
+  assert.ok(reviewCategoryId, "a service category must exist so a review-ready publish can name one");
 
   [expertVerified, expertUnverified, providerBoth, providerIdOnly, admin, plainUser] = await Promise.all([
     registerActor("expert-verified"),
