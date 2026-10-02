@@ -15,3 +15,4 @@ export type {
   AutomationDomain,
   AutomationRegistry,
 } from "./contract";
+export { paymentAutomations, paymentAutomationRegistry } from "./payments";

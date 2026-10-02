@@ -39,6 +39,11 @@ import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/s
 import { logger } from '../infrastructure/logger';
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from '@shared/payment-on-record';
 import { isCanonicalBookingEmailPersistenceError } from '../services/canonical-booking-email.service';
+import {
+  dispatchPaymentEvent,
+  PLATFORM_DISPUTE_PAYOUT_AUTOMATION_IDS,
+  PLATFORM_PAYMENT_EVENT_AUTOMATION_IDS,
+} from '../automations/payments/runtime';
 
 const router = Router();
 
@@ -558,58 +563,83 @@ let loggedMissingWebhookSecretOnce = false;
 // (POST /api/webhooks/stripe and /api/webhooks/stripe-identity in webhooks.routes.ts) verify, so
 // this route now mirrors that established pattern — no new middleware, no change to body parsing
 // for any other route.
-router.post('/webhooks/stripe', async (req: any, res) => {
-  const webhookSecret = getStripeWebhookSecret("platform");
-  if (!webhookSecret) {
-    if (!loggedMissingWebhookSecretOnce) {
-      console.error(
-        '[bookings webhook] Stripe platform webhook signing secret is missing for this environment — refusing deliveries.'
+export function createPlatformStripeWebhookHandler(actions: {
+  processPlatformEvent?: typeof processPlatformWebhookEvent;
+  handlePaymentWebhook?: (event: Stripe.Event) => Promise<void>;
+} = {}) {
+  return async (req: any, res: any) => {
+    const webhookSecret = getStripeWebhookSecret("platform");
+    if (!webhookSecret) {
+      if (!loggedMissingWebhookSecretOnce) {
+        console.error(
+          '[bookings webhook] Stripe platform webhook signing secret is missing for this environment — refusing deliveries.'
+        );
+        loggedMissingWebhookSecretOnce = true;
+      }
+      return res.status(503).json({ error: 'Webhook not configured' });
+    }
+
+    const sig = req.headers['stripe-signature'];
+
+    if (!sig) {
+      return res.status(400).json({ error: 'Missing signature' });
+    }
+
+    if (!req.rawBody) {
+      return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
+    }
+
+    const stripe = new Stripe(getStripeSecretKey() || '', {
+      apiVersion: '2024-12-18.acacia' as any,
+    });
+    let event: Stripe.Event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.rawBody,
+        sig,
+        webhookSecret
       );
-      loggedMissingWebhookSecretOnce = true;
+    } catch (error: any) {
+      console.warn('Webhook signature error:', error.message);
+      return res.status(400).json({ error: 'Invalid webhook signature' });
     }
-    return res.status(503).json({ error: 'Webhook not configured' });
-  }
+    try {
+      // Platform disputes and bank payouts have a separate consumer claim. Do not
+      // use webhook_events.processed: the Connect rail legitimately sees the
+      // same Stripe event ID for different work.
+      const platformEventAutomationId = PLATFORM_EVENT_TYPES.has(event.type)
+        ? PLATFORM_DISPUTE_PAYOUT_AUTOMATION_IDS.get(event.type)
+        : PLATFORM_PAYMENT_EVENT_AUTOMATION_IDS.get(event.type);
+      const sessionType = event.type === "checkout.session.completed"
+        ? (event.data.object as Stripe.Checkout.Session).metadata?.type
+        : undefined;
+      const shouldRunAutomation = platformEventAutomationId &&
+        (event.type !== "checkout.session.completed" ||
+          sessionType === "expert_service" || sessionType === "transport_booking");
 
-  const sig = req.headers['stripe-signature'];
+      if (shouldRunAutomation) {
+        await dispatchPaymentEvent(platformEventAutomationId, event.type, event, async () => {
+          if (PLATFORM_EVENT_TYPES.has(event.type)) {
+            await (actions.processPlatformEvent ?? processPlatformWebhookEvent)(event, stripe);
+          } else {
+            await (actions.handlePaymentWebhook ?? ((received) => stripePaymentService.handleWebhook(received)))(event);
+          }
+        });
+      } else if (PLATFORM_EVENT_TYPES.has(event.type)) {
+        await (actions.processPlatformEvent ?? processPlatformWebhookEvent)(event, stripe);
+      } else {
+        await (actions.handlePaymentWebhook ?? ((received) => stripePaymentService.handleWebhook(received)))(event);
+      }
 
-  if (!sig) {
-    return res.status(400).json({ error: 'Missing signature' });
-  }
-
-  if (!req.rawBody) {
-    return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
-  }
-
-  const stripe = new Stripe(getStripeSecretKey() || '', {
-    apiVersion: '2024-12-18.acacia' as any,
-  });
-  let event: Stripe.Event;
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.rawBody,
-      sig,
-      webhookSecret
-    );
-  } catch (error: any) {
-    console.warn('Webhook signature error:', error.message);
-    return res.status(400).json({ error: 'Invalid webhook signature' });
-  }
-  try {
-    // Platform disputes and bank payouts have a separate consumer claim. Do not
-    // use webhook_events.processed: the Connect rail legitimately sees the
-    // same Stripe event ID for different work.
-    if (PLATFORM_EVENT_TYPES.has(event.type)) {
-      await processPlatformWebhookEvent(event, stripe);
-    } else {
-      await stripePaymentService.handleWebhook(event);
+      res.json({ received: true });
+    } catch (error: any) {
+      console.error('Webhook processing error:', error);
+      res.status(500).json({ error: 'Webhook processing failed; delivery can be retried' });
     }
+  };
+}
 
-    res.json({ received: true });
-  } catch (error: any) {
-    console.error('Webhook processing error:', error);
-    res.status(500).json({ error: 'Webhook processing failed; delivery can be retried' });
-  }
-});
+router.post('/webhooks/stripe', createPlatformStripeWebhookHandler());
 
 /**
  * POST /api/bookings/refund

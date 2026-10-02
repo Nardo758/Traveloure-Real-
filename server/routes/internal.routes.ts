@@ -29,8 +29,9 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
-import { sweepExpiredCheckoutClaims, sweepStaleAuthorizedClaims } from "../services/checkout-claim.service";
+import { runPaymentSchedule } from "../automations/payments/runtime";
 import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
+import { runCheckoutClaimSweepSchedule } from "../services/checkout-claim.service";
 import { materializeAllServicesWithPatterns } from "../services/availability-materializer.service";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -220,7 +221,14 @@ router.post("/internal/run-occasion-drafts", requireInternalSecret, async (req, 
 // ── MONEY jobs ─────────────────────────────────────────────────────────────────────────────────
 // earnings-release — flips matured earnings held→releasable (atomic conditional; §15). Idempotent.
 router.post("/internal/jobs/earnings-release", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("earnings-release", () => storage.releaseMaturedEarnings());
+  const { status, body } = await runJob("earnings-release", () =>
+    runPaymentSchedule(
+      "payments.earnings-release",
+      "earnings-release",
+      () => storage.releaseMaturedEarnings(),
+      { useBackgroundJobRunner: false },
+    ),
+  );
   res.status(status).json(body);
 });
 
@@ -240,8 +248,14 @@ router.post("/internal/jobs/booking-auto-completion", requireInternalSecret, asy
 router.post("/internal/jobs/stripe-reconciliation", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob(
     "stripe-reconciliation",
-    () => runStripeReconciliation({ triggeredBy: "scheduled" }),
+    () => runPaymentSchedule(
+      "payments.stripe-reconciliation",
+      "stripe-reconciliation",
+      () => runStripeReconciliation({ triggeredBy: "scheduled" }),
+      { useBackgroundJobRunner: false },
+    ),
     (r) => r?.status === "failed",
+    { isSkip: (r) => r?.status === "skipped" },
   );
   res.status(status).json(body);
 });
@@ -251,12 +265,12 @@ router.post("/internal/jobs/stripe-reconciliation", requireInternalSecret, async
 // this is the 15-min cold-instance backstop.
 router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req, res) => {
   // R164 (G2): the same job also reclaims STAMPED claims left unpaid (sweepStaleAuthorizedClaims).
-  const { status, body } = await runJob("checkout-sweep", async () => {
-    const unauthorized = await sweepExpiredCheckoutClaims();
-    const authorized = await sweepStaleAuthorizedClaims();
-    const error = [unauthorized.error, authorized.error].filter(Boolean).join("; ");
-    return { unauthorized, authorized, ...(error ? { error } : {}) };
-  }, (result) => !!result?.error);
+  const { status, body } = await runJob("checkout-sweep",
+    () => runCheckoutClaimSweepSchedule(),
+    // A failed candidate scan in either sweep is a failed run, never a success heartbeat (R261).
+    (result) => !!result?.error,
+    { useBackgroundJobRunner: false },
+  );
   res.status(status).json(body);
 });
 
@@ -281,7 +295,12 @@ router.post("/internal/jobs/booking-expiry", requireInternalSecret, async (_req,
 router.post("/internal/jobs/travelpayouts-report-poll", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob(
     "travelpayouts-report-poll",
-    () => cacheSchedulerService.runTravelpayoutsReportPoll(),
+    () => runPaymentSchedule(
+      "payments.travelpayouts-report-poll",
+      "travelpayouts-report-poll",
+      () => cacheSchedulerService.runTravelpayoutsReportPoll(),
+      { useBackgroundJobRunner: false },
+    ),
     (r) => !!r?.error,
   );
   res.status(status).json(body);

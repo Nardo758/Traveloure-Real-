@@ -10,8 +10,8 @@
  * concurrent/overlapping runs are safe and idempotent — a second pass matches nothing.
  */
 import { storage } from "../storage";
-import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { runPaymentSchedule } from "../automations/payments/runtime";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — clearance windows are day-scale, so this is ample
 const FIRST_RUN_DELAY_MS = 2 * 60 * 1000; // 2 min after startup, once the DB has settled
@@ -34,12 +34,22 @@ class EarningsReleaseSchedulerService {
     }
     console.log("[EarningsRelease] Starting earnings release scheduler");
     setTimeout(() => {
-      void runBackgroundJob("earnings-release", () => this.runRelease()).catch((err) =>
+      void runPaymentSchedule(
+        "payments.earnings-release",
+        "earnings-release",
+        () => this.runRelease(),
+        { runnerName: "earnings-release" },
+      ).catch((err) =>
         console.error("[EarningsRelease] scheduled pass failed:", err),
       );
     }, jitteredStartupDelay(FIRST_RUN_DELAY_MS));
     this.timer = setInterval(() => {
-      void runBackgroundJob("earnings-release", () => this.runRelease()).catch((err) =>
+      void runPaymentSchedule(
+        "payments.earnings-release",
+        "earnings-release",
+        () => this.runRelease(),
+        { runnerName: "earnings-release" },
+      ).catch((err) =>
         console.error("[EarningsRelease] scheduled pass failed:", err),
       );
     }, CHECK_INTERVAL_MS);
