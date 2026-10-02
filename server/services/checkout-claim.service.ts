@@ -102,7 +102,7 @@ import {
   isCanonicalBookingEmailPersistenceError,
   persistCanonicalBookingConfirmation,
 } from "./canonical-booking-email.service";
-import { runBackgroundJob } from "./background-job-runner";
+import { dispatchPaymentTrigger, runPaymentSchedule } from "../automations/payments/runtime";
 import { jitteredStartupDelay } from "./startup-delay";
 import { getStripeSecretKey } from "../utils/stripe-key";
 // Ruling 11 (ledger `2026-09-08-rulings-11-12`): the plan-work advisor grant, taken at the
@@ -1053,13 +1053,25 @@ async function loadPromotionCandidates(
  * @param bookingIds        optional narrowing to the caller's own booking (the client confirm
  *                          names exactly one). Never widens the set.
  */
-export async function promotePaidCheckout(opts: {
+export interface PromotePaidCheckoutOptions {
   paymentIntentId: string;
   actor: PromotionActor;
   actorId?: string | null;
   metadataBookingIds?: string[];
   bookingIds?: string[];
-}): Promise<PaymentPromotionResult> {
+}
+
+export async function promotePaidCheckout(opts: PromotePaidCheckoutOptions): Promise<PaymentPromotionResult> {
+  return dispatchPaymentTrigger(
+    "payments.checkout-paid-promotion",
+    "checkout.paid-promotion.requested",
+    opts,
+    { actor: opts.actor },
+    () => performPaidCheckoutPromotion(opts),
+  );
+}
+
+async function performPaidCheckoutPromotion(opts: PromotePaidCheckoutOptions): Promise<PaymentPromotionResult> {
   const { paymentIntentId, actor } = opts;
   const result: PaymentPromotionResult = {
     promoted: [],
@@ -1902,10 +1914,22 @@ export type LateSuccessRefundResult =
  * PI is `failed` — a PI that also backs a live booking is not this rule's case and is left to the
  * exception a human reads. Never throws.
  */
-export async function refundLateSuccessOnFailedIntent(opts: {
+export interface LateSuccessRefundOptions {
   paymentIntentId: string;
   actor: string;
-}): Promise<LateSuccessRefundResult> {
+}
+
+export async function refundLateSuccessOnFailedIntent(opts: LateSuccessRefundOptions): Promise<LateSuccessRefundResult> {
+  return dispatchPaymentTrigger(
+    "payments.platform-late-success-refund",
+    "payment_intent.succeeded.late-failed",
+    opts,
+    { actor: opts.actor },
+    () => performLateSuccessRefund(opts),
+  );
+}
+
+async function performLateSuccessRefund(opts: LateSuccessRefundOptions): Promise<LateSuccessRefundResult> {
   const { paymentIntentId, actor } = opts;
   if (!paymentIntentId) return { outcome: "not_applicable", reason: "no_payment_intent" };
   try {
@@ -2387,12 +2411,24 @@ export interface BalancePromotionResult {
  * of its own choosing: the row's OWN server-stamped `stripe_balance_intent_id` must equal the one
  * presented. Amount is never read here — the balance was server-derived at the balance checkout.
  */
-export async function promoteBalancePayment(opts: {
+export interface PromoteBalancePaymentOptions {
   bookingId: string;
   paymentIntentId: string;
   actor: PromotionActor;
   actorId?: string | null;
-}): Promise<BalancePromotionResult> {
+}
+
+export async function promoteBalancePayment(opts: PromoteBalancePaymentOptions): Promise<BalancePromotionResult> {
+  return dispatchPaymentTrigger(
+    "payments.balance-paid-promotion",
+    "checkout.balance-promotion.requested",
+    opts,
+    { actor: opts.actor },
+    () => performBalancePaymentPromotion(opts),
+  );
+}
+
+async function performBalancePaymentPromotion(opts: PromoteBalancePaymentOptions): Promise<BalancePromotionResult> {
   const { bookingId, paymentIntentId, actor } = opts;
   const result: BalancePromotionResult = { promoted: false, alreadyConfirmed: false, diaryRows: 0 };
   if (!bookingId || !paymentIntentId) return result;
@@ -2487,6 +2523,29 @@ export async function promoteBalancePayment(opts: {
 // Runs often enough that reclaimed inventory returns within the same shopping session, and is a
 // no-op on a healthy platform (the candidate query matches nothing).
 
+/** One overlap-guarded pass for both unstamped and previously authorized claims. */
+export async function runFullCheckoutClaimSweep(): Promise<{
+  unauthorized: Awaited<ReturnType<typeof sweepExpiredCheckoutClaims>>;
+  authorized: Awaited<ReturnType<typeof sweepStaleAuthorizedClaims>>;
+  /** Either candidate scan failed; zero counters are not a completed scan (R261). */
+  error?: string;
+}> {
+  const unauthorized = await sweepExpiredCheckoutClaims();
+  const authorized = await sweepStaleAuthorizedClaims();
+  const error = [unauthorized.error, authorized.error].filter(Boolean).join("; ");
+  return { unauthorized, authorized, ...(error ? { error } : {}) };
+}
+
+/** The in-process timer and external cron share this single registry/overlap-guarded entry point. */
+export function runCheckoutClaimSweepSchedule() {
+  return runPaymentSchedule(
+    "payments.checkout-claim-sweep",
+    "checkout-sweep",
+    runFullCheckoutClaimSweep,
+    { runnerName: "checkout-sweep" },
+  );
+}
+
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 class CheckoutClaimSweepScheduler {
@@ -2510,9 +2569,7 @@ class CheckoutClaimSweepScheduler {
   }
 
   private async run(): Promise<void> {
-    await runBackgroundJob("checkout-sweep", () => sweepExpiredCheckoutClaims());
-    // R164 (G2): the stamped-claim half of the same reclaim, on the same cadence.
-    await runBackgroundJob("stale-authorized-sweep", () => sweepStaleAuthorizedClaims());
+    await runCheckoutClaimSweepSchedule();
   }
 }
 

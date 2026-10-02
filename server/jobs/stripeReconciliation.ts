@@ -234,6 +234,7 @@ export interface ReconciliationException {
 export interface ReconciliationResult {
   runId: string | null;
   status: "completed" | "skipped" | "failed";
+  skipReason?: string;
   exceptions: ReconciliationException[];
   /** Rows this pass actually inserted (detected minus already on record). */
   newExceptions: number;
@@ -476,6 +477,7 @@ export async function runStripeReconciliation(opts?: {
   if (!reader) {
     logger.info("[RECONCILIATION] STRIPE_SECRET_KEY not set — skipping (run RECORDED as skipped)");
     base.status = "skipped";
+    base.skipReason = "stripe_secret_key_missing";
     await closeRun(runId, base, "STRIPE_SECRET_KEY not set — nothing was compared");
     return base;
   }

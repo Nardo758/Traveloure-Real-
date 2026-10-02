@@ -79,6 +79,7 @@ import {
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { viatorService } from "../services/viator.service";
 import { affiliateScraperService } from "../services/affiliate-scraper.service";
+import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
@@ -1959,7 +1960,13 @@ router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res
   }
   try {
     const { runStripeReconciliation } = await import("../jobs/stripeReconciliation");
-    const result = await runStripeReconciliation({ triggeredBy: "manual" });
+    const result = await dispatchPaymentTrigger(
+      "payments.stripe-reconciliation-manual",
+      "admin.stripe-reconciliation.run_now",
+      { adminAuthorized: true },
+      {},
+      () => runStripeReconciliation({ triggeredBy: "manual" }),
+    );
     res.json({
       ...result,
       note: result.status === "skipped"
@@ -4171,7 +4178,13 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
       }
 
       const { affiliateReconciliationService } = await import("../services/affiliate-reconciliation.service");
-      const result = await affiliateReconciliationService.getReconciliationView(period, partner);
+      const result = await dispatchPaymentTrigger(
+        "payments.affiliate-admin-reconciliation-view",
+        "admin.affiliate.reconciliation_view.requested",
+        { adminAuthorized: true, period, partner },
+        {},
+        () => affiliateReconciliationService.getReconciliationView(period, partner),
+      );
       res.json(result);
     } catch (error: any) {
       console.error("[Reconciliation] Error:", error);
