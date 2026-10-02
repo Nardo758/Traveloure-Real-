@@ -3,7 +3,7 @@
  * `2026-10-01-city-events-nine-seed`; migration 337).
  *
  *   E1  every manual entry builds with no refusal; sourceIds are unique; no coordinate is hand-typed;
- *       the two Hogmanay rows share a series key and are the ONLY rows with a known start time
+ *       exactly the rows whose organiser prints a time state one (seed lane 2 widened the set)
  *   E2  a date-only row's card carries NO start time (never "00:00"); a known one carries its local time
  *   E3  the seeder looks a venue up ONCE, only for a row it is inserting: a match stores the point and
  *       is listed as located; no match leaves NULL and is listed as unlocated; a second run asks nothing;
@@ -12,6 +12,12 @@
  *       user agent, never asks for a generic venue, and answers "unreachable" (never null) on a failure
  *   E5  an unreachable lookup DEFERS the row — nothing inserted, exactly ONE lookup that run (bounded,
  *       never a loop) — and the next run inserts it
+ *   E7  the name match is Unicode-safe: a Japanese venue string is lookup-able and matches its OSM
+ *       name exactly; a voiced kana keeps its mark inside the word; a different Japanese name never
+ *       matches; Latin diacritics still fold ("Café" = "Cafe")
+ *   E6  an existing UNLOCATED manual row whose seed entry names a different venue takes the new venue and
+ *       ONE fresh lookup that run; unreachable leaves it untouched for the next run; a second run asks
+ *       nothing; a LOCATED row is never renamed or looked up again
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. No network.
  */
@@ -23,6 +29,7 @@ import { db, pool } from "../db";
 import { buildCityEventRow, seedCityEvents, toCityEventCard } from "../services/city-events.service";
 import { MANUAL_CITY_EVENTS } from "../seeds/city-events.manual";
 import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, venueIsLookupable } from "../services/venue-geocode.service";
+import { distinctiveTokens } from "@shared/place-name-gate";
 import { RESALE_TICKET_HOSTS, ticketUrlRefusal } from "@shared/city-events";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -40,8 +47,8 @@ after(async () => {
   await pool.end();
 });
 
-test("E1: the manual list builds cleanly; only Hogmanay states a time", () => {
-  assert.equal(MANUAL_CITY_EVENTS.length, 9);
+test("E1: the manual list builds cleanly; only rows with a printed time state one", () => {
+  assert.equal(MANUAL_CITY_EVENTS.length, 22);
   const ids = MANUAL_CITY_EVENTS.map((e) => e.sourceId);
   assert.equal(new Set(ids).size, ids.length, "sourceIds are unique");
   for (const e of MANUAL_CITY_EVENTS) {
@@ -52,10 +59,21 @@ test("E1: the manual list builds cleanly; only Hogmanay states a time", () => {
     if (e.ticketUrl) assert.notEqual(ticketUrlRefusal(e.ticketUrl, RESALE_TICKET_HOSTS), "resale_ticket_url");
   }
   const timed = MANUAL_CITY_EVENTS.filter((e) => e.startTimeKnown === true);
-  assert.deepEqual(timed.map((e) => e.sourceId).sort(), ["edinburgh-hogmanay-2026-gardens", "edinburgh-hogmanay-2026-torchlight"]);
-  assert.ok(timed.every((e) => e.seriesKey === "edinburgh-hogmanay"));
+  assert.deepEqual(timed.map((e) => e.sourceId).sort(), [
+    "aitana-cuarto-azul-bogota-2026",
+    "edinburgh-hogmanay-2026-gardens",
+    "edinburgh-hogmanay-2026-torchlight",
+    "gulaab-shilpa-rao-2027",
+    "max-richter-live-mumbai-2026",
+    "mitsuko-uchida-kyoto-2026",
+    "snarky-puppy-porto-2027",
+    "starsailor-edinburgh-2026",
+    "sunburn-festival-2026",
+    "yoasobi-chowakusei-osaka-2026-10-24",
+    "yoasobi-chowakusei-osaka-2026-10-25",
+  ]);
   const away = MANUAL_CITY_EVENTS.filter((e) => e.venueLocality);
-  assert.deepEqual(away.map((e) => [e.city, e.venueLocality]), [["Porto", "Portimão"], ["Kyoto", "Suzuka"]]);
+  assert.deepEqual(away.map((e) => [e.city, e.venueLocality]), [["Porto", "Portimão"], ["Kyoto", "Suzuka"], ["Kyoto", "Osaka"], ["Kyoto", "Osaka"]]);
 });
 
 test("E2: a date-only card carries no start time; a known time renders in the city's zone", () => {
@@ -93,6 +111,7 @@ test("E3: the seeder looks a venue up once, only on insert, spaced, and flags no
     { source: "manual" as const, sourceId: sid("hall"), title: "Hall", city: "Kyoto", venue: "Nowhere Hall", startsAt: "2027-04-10T00:00:00+09:00" },
   ];
   const first = await seedCityEvents(entries, deps);
+  assert.equal(first.nominatim, "ok");
   assert.equal(first.inserted, 2);
   assert.deepEqual(first.located, [{ sourceId: sid("race"), matchedName: "Suzuka Circuit" }]);
   assert.deepEqual(first.unlocated, [sid("hall")]);
@@ -106,6 +125,7 @@ test("E3: the seeder looks a venue up once, only on insert, spaced, and flags no
   assert.equal((byId.get(sid("race")) as any).start_time_known, null, "date only ⇒ NULL");
   const again = await seedCityEvents(entries, deps);
   assert.equal(again.inserted, 0);
+  assert.equal(again.nominatim, "untested", "already seeded: no lookup this boot");
   assert.equal(calls.length, 2, "an existing row is never looked up again");
 });
 
@@ -140,6 +160,7 @@ test("E5: an unreachable lookup defers the row; the next run inserts it", async 
     sleep: async () => {},
     resolveVenue: async () => { downCalls += 1; return "unreachable" as const; },
   });
+  assert.equal(down.nominatim, "blocked");
   assert.deepEqual([down.inserted, down.deferred], [0, [sid("later")]]);
   assert.equal(downCalls, 1, "bounded: one lookup per entry per run — the retry is the next run, never a loop");
   const count: any = await db.execute(sql`SELECT count(*)::int AS n FROM city_events WHERE source_id = ${sid("later")}`);
@@ -149,5 +170,77 @@ test("E5: an unreachable lookup defers the row; the next run inserts it", async 
     sleep: async () => {},
     resolveVenue: async () => ({ lat: 34.8431, lng: 136.5407, matchedName: "Suzuka Circuit", attribution: "© OpenStreetMap contributors" as const }),
   });
+  assert.equal(up.nominatim, "ok");
   assert.deepEqual([up.inserted, up.located.length, up.deferred.length], [1, 1, 0]);
+});
+
+test("E6: a renamed venue on an unlocated row is looked up once; a located row is never touched", async () => {
+  const base = { source: "manual" as const, title: "Rename", city: "Kyoto", startsAt: "2027-05-01T00:00:00+09:00" };
+  const old = { ...base, sourceId: sid("rename"), venue: "Kyoto Kanze Noh Hall" };
+  const fixed = { ...old, venue: "Kyoto Kanze Noh Theatre" };
+  const hit = { lat: 35.0151, lng: 135.7837, matchedName: "Kyoto Kanze Noh Theatre", attribution: "© OpenStreetMap contributors" as const };
+  const quiet = { partnerHosts: async () => [] as string[], sleep: async () => {} };
+  const row = async (id: string) => {
+    const r: any = await db.execute(sql`SELECT venue, venue_lat AS lat FROM city_events WHERE source_id = ${id}`);
+    return (r.rows ?? r)[0];
+  };
+
+  // Born unlocated under the old name.
+  await seedCityEvents([old], { ...quiet, resolveVenue: async () => null });
+  assert.deepEqual(await row(sid("rename")), { venue: "Kyoto Kanze Noh Hall", lat: null });
+
+  // OSM unreachable: nothing changes, the row is deferred, and exactly one lookup was made.
+  let calls = 0;
+  const down = await seedCityEvents([fixed], { ...quiet, resolveVenue: async () => { calls += 1; return "unreachable" as const; } });
+  assert.equal(calls, 1);
+  assert.deepEqual([down.renamed, down.deferred], [0, [sid("rename")]]);
+  assert.deepEqual(await row(sid("rename")), { venue: "Kyoto Kanze Noh Hall", lat: null }, "unreachable leaves the row as it was");
+
+  // OSM reachable: the venue is corrected and the point stored, once.
+  calls = 0;
+  const up = await seedCityEvents([fixed], { ...quiet, resolveVenue: async (q) => { calls += 1; assert.equal(q.venue, "Kyoto Kanze Noh Theatre"); return hit; } });
+  assert.equal(calls, 1);
+  assert.deepEqual([up.renamed, up.located], [1, [{ sourceId: sid("rename"), matchedName: "Kyoto Kanze Noh Theatre" }]]);
+  const after1 = await row(sid("rename"));
+  assert.equal(after1.venue, "Kyoto Kanze Noh Theatre");
+  assert.equal(Number(after1.lat), 35.0151);
+
+  // A second run asks nothing: the strings agree and the row is located.
+  calls = 0;
+  const again = await seedCityEvents([fixed], { ...quiet, resolveVenue: async () => { calls += 1; return hit; } });
+  assert.deepEqual([calls, again.renamed], [0, 0]);
+
+  // A LOCATED row with a different seed venue is never renamed or looked up.
+  const moved = { ...fixed, venue: "Somewhere Else Entirely" };
+  const stay = await seedCityEvents([moved], { ...quiet, resolveVenue: async () => { calls += 1; return hit; } });
+  assert.deepEqual([calls, stay.renamed], [0, 0]);
+  assert.equal((await row(sid("rename"))).venue, "Kyoto Kanze Noh Theatre");
+
+  // A renamed venue that OSM does not match is renamed, stays unlocated, and is not asked about again.
+  const lost = { ...base, sourceId: sid("lost"), venue: "Old Name Hall" };
+  await seedCityEvents([lost], { ...quiet, resolveVenue: async () => null });
+  const miss = await seedCityEvents([{ ...lost, venue: "New Name Hall" }], { ...quiet, resolveVenue: async () => null });
+  assert.deepEqual([miss.renamed, miss.unlocated], [1, [sid("lost")]]);
+  assert.deepEqual(await row(sid("lost")), { venue: "New Name Hall", lat: null });
+  calls = 0;
+  await seedCityEvents([{ ...lost, venue: "New Name Hall" }], { ...quiet, resolveVenue: async () => { calls += 1; return null; } });
+  assert.equal(calls, 0, "bounded: once the names agree nothing is asked again");
+});
+
+test("E7: the two-way name match is Unicode-safe", async () => {
+  assert.equal(venueIsLookupable("京都観世会館"), true, "a Japanese venue has words and is looked up");
+  const hit = await resolveVenueFromOsm(
+    { venue: "京都観世会館", locality: "Kyoto", country: "Japan" },
+    async () => ({ ok: true, json: async () => [{ lat: "35.0150", lon: "135.7836", name: "京都観世会館", namedetails: { name: "京都観世会館" } }] }),
+  );
+  assert.deepEqual(hit, { lat: 35.015, lng: 135.7836, matchedName: "京都観世会館", attribution: "© OpenStreetMap contributors" });
+  const other = await resolveVenueFromOsm(
+    { venue: "京都観世会館", locality: "Kyoto", country: "Japan" },
+    async () => ({ ok: true, json: async () => [{ lat: "1", lon: "2", name: "京都コンサートホール" }] }),
+  );
+  assert.equal(other, null, "a different Japanese name never matches");
+  assert.deepEqual([...distinctiveTokens("サンジェルマン", null)], [[..."サンジェルマン".normalize("NFKD")].join("")], "a voiced kana stays one word");
+  assert.deepEqual([...distinctiveTokens("Café Lumière", null)], [...distinctiveTokens("Cafe Lumiere", null)], "Latin diacritics still fold");
+  assert.equal(venueIsLookupable("Kyoto Concert Hall"), true);
+  assert.equal(venueIsLookupable("The Old GMC Complex"), true);
 });
