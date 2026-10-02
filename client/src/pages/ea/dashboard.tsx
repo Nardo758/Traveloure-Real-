@@ -132,10 +132,16 @@ export default function EADashboard() {
     queryKey: ["/api/ea/clients"],
   });
 
-  // Travel Coordination (/api/ea/travel) counts the EA's own travel records. The plans an EA
-  // builds for a client (LD 52 (C)) are listed on /ea/trips from /api/ea/trips.
+  // Travel Coordination counts the EA's own arrangements AND the plans built for a client
+  // (LD 52 (C), /api/ea/trips). A plan with no status is still a plan.
   const { data: travel } = useQuery<{ id: string; status: string }[]>({
     queryKey: ["/api/ea/travel"],
+  });
+  const { data: managedPlans } = useQuery<{ id: string; status: string | null }[]>({
+    queryKey: ["/api/ea/trips"],
+  });
+  const { data: events } = useQuery<{ id: string; title: string; date?: string | null; executiveName?: string | null }[]>({
+    queryKey: ["/api/ea/events"],
   });
 
   const { data: executives } = useQuery<EaExecutive[]>({
@@ -151,7 +157,16 @@ export default function EADashboard() {
   });
 
   const clientCount = clients?.length ?? 0;
-  const activeTravelCount = travel?.filter((t) => !["completed", "cancelled"].includes(t.status)).length ?? 0;
+  const openPlans = (managedPlans ?? []).filter((p) => p.status !== "completed" && p.status !== "cancelled");
+  const activeTravelCount =
+    (travel?.filter((t) => !["completed", "cancelled"].includes(t.status)).length ?? 0) + openPlans.length;
+  const recentEvents = [...(events ?? [])]
+    .sort((a, b) => {
+      const at = a.date ? new Date(a.date).getTime() : 0;
+      const bt = b.date ? new Date(b.date).getTime() : 0;
+      return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
+    })
+    .slice(0, 5);
   const aiTaskCount = aiTasks?.length ?? 0;
   const messagesCount = communications?.length ?? 0;
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "there" : "there";
@@ -314,11 +329,32 @@ export default function EADashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8">
-                  <Inbox className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
-                  <p className="text-[#7A7A72] text-sm">No recent activity</p>
-                  <p className="text-[#AEAEA6] text-xs mt-1">Activity will appear here as you work</p>
-                </div>
+                {recentEvents.length > 0 ? (
+                  <div className="space-y-2" data-testid="list-recent-events">
+                    {recentEvents.map((event) => (
+                      <div key={event.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[#E8E8E2]" data-testid={`recent-event-${event.id}`}>
+                        <div className="min-w-0">
+                          <p className="font-medium text-[#1A1A18] truncate">{event.title}</p>
+                          {event.executiveName && <p className="text-xs text-[#7A7A72]">{event.executiveName}</p>}
+                        </div>
+                        <p className="text-xs text-[#7A7A72] shrink-0">
+                          {event.date ? new Date(event.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}
+                        </p>
+                      </div>
+                    ))}
+                    <Link href="/ea/events">
+                      <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-events">
+                        View events <ArrowRight className="w-4 h-4 ml-1" />
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Inbox className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
+                    <p className="text-[#7A7A72] text-sm">No recent activity</p>
+                    <p className="text-[#AEAEA6] text-xs mt-1">Events you create will appear here</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

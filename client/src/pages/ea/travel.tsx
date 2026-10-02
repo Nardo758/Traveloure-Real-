@@ -29,6 +29,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDelegateToAi } from "./use-ea-ai-delegate";
+import { eaPersonOptions, type EaRosterClient } from "@/lib/ea-people";
+import { Link } from "wouter";
 
 interface EaTravelArrangement {
   id: string; executiveId?: string | null; executiveName?: string; title: string; destination?: string;
@@ -40,6 +42,15 @@ interface EaTravelArrangement {
 interface EaExecutive {
   id: string;
   name: string;
+}
+
+interface ManagedPlan {
+  id: string;
+  title: string | null;
+  destination: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  clientName: string | null;
 }
 
 const emptyForm = {
@@ -64,14 +75,21 @@ export default function EATravel() {
   const { data: executives = [] } = useQuery<EaExecutive[]>({
     queryKey: ["/api/ea/executives"],
   });
+  const { data: clients = [] } = useQuery<EaRosterClient[]>({
+    queryKey: ["/api/ea/clients"],
+  });
+  const people = eaPersonOptions(executives, clients);
+  const { data: managedPlans = [] } = useQuery<ManagedPlan[]>({
+    queryKey: ["/api/ea/trips"],
+  });
 
   const createMutation = useMutation({
     mutationFn: () => {
-      const exec = executives.find((e) => e.id === form.executiveId);
+      const person = people.find((p) => p.key === form.executiveId);
       return apiRequest("POST", "/api/ea/travel", {
         title: form.title,
-        executiveId: form.executiveId || undefined,
-        executiveName: exec?.name || undefined,
+        executiveId: person?.executiveId || undefined,
+        executiveName: person?.name || undefined,
         destination: form.destination || undefined,
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
@@ -134,11 +152,11 @@ export default function EATravel() {
                       <SelectValue placeholder="Select executive" />
                     </SelectTrigger>
                     <SelectContent>
-                      {executives.length === 0 && (
-                        <div className="px-2 py-1.5 text-xs text-gray-400">No executives added yet</div>
+                      {people.length === 0 && (
+                        <div className="px-2 py-1.5 text-xs text-gray-400">No clients or executives yet</div>
                       )}
-                      {executives.map((exec) => (
-                        <SelectItem key={exec.id} value={exec.id}>{exec.name}</SelectItem>
+                      {people.map((person) => (
+                        <SelectItem key={person.key} value={person.key}>{person.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -215,11 +233,35 @@ export default function EATravel() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {managedPlans.length > 0 && (
+              <div className="space-y-3" data-testid="section-managed-plans">
+                <p className="text-sm font-medium text-[#1A1A18]">Plans you're building</p>
+                {managedPlans.map((plan) => (
+                  <Link key={plan.id} href={`/plans/${plan.id}`}>
+                    <div className="p-3 rounded-lg border border-gray-200 hover:border-[#AEAEA6]" data-testid={`managed-plan-${plan.id}`}>
+                      <p className="font-medium text-gray-900">{plan.clientName ? `${plan.clientName} — ` : ""}{plan.title || plan.destination || "Plan"}</p>
+                      <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
+                        <MapPin className="w-4 h-4" /> {plan.destination ?? "—"}
+                      </p>
+                      {(plan.startDate || plan.endDate) && (
+                        <p className="text-sm text-gray-500 flex items-center gap-2">
+                          <Calendar className="w-4 h-4" /> {plan.startDate ?? "—"}{plan.endDate ? ` → ${plan.endDate}` : ""}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
             {activeTrips.length === 0 && (
               <div className="text-center py-8">
                 <Plane className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
-                <p className="font-medium text-[#1A1A18]">No active trips</p>
-                <p className="text-sm text-[#7A7A72] mt-1">Trip arrangements will appear here</p>
+                <p className="font-medium text-[#1A1A18]">{managedPlans.length > 0 ? "No travel arrangements" : "No active trips"}</p>
+                <p className="text-sm text-[#7A7A72] mt-1">
+                  {managedPlans.length > 0
+                    ? "Arrangements you add here sit beside the plans above"
+                    : "Trip arrangements will appear here"}
+                </p>
               </div>
             )}
             {activeTrips.map((trip) => (
