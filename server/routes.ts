@@ -343,7 +343,8 @@ import {
 // not go LIVE if `resolveOfferingCommerceContract` cannot say how it is sold. Scoped to
 // transitions INTO active — rows already active are untouched by ruling.
 import { checkOfferingActivationGate } from "./services/offering-activation-gate.service";
-import { listingPriceGate } from "./services/listing-price-gate";
+import { listingPriceGate, listingReviewReadiness } from "./services/listing-price-gate";
+import { admitListingSaveIntent } from "@shared/listing-save-intent";
 // Migration 292 / ledger `2026-09-12-listing-names-its-expert-offering`: the ONE admission of
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
@@ -4063,6 +4064,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // they reach the database, emails, or AI prompts (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
 
+      // Save-as-Draft is a pick, not `approvalStatus` (that column stays omitted, §19).
+      // An explicit draft is born `draft` and skips every publish/review gate. Anything else
+      // keeps F2's born-`submitted` default.
+      const saveIntent = admitListingSaveIntent(bodyWithoutLocation);
+      if (!saveIntent.ok) {
+        return res.status(saveIntent.status).json(saveIntent.body);
+      }
+      if (saveIntent.draft) {
+        (input as any).status = "draft";
+      }
+
       // ── THE LISTING NAMES ITS OWN EXPERT OFFERING (migration 292, ledger
       // `2026-09-12-listing-names-its-expert-offering`; punchlist D-13/V-12) ──────────────────
       // §19: `insertProviderServiceSchema` OMITS `expertOfferingTypeKey`, because under an
@@ -4155,6 +4167,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const prices = pricingTiersInput.map((t: any) => Number(t.price)).filter((p: number) => p > 0);
         if (prices.length > 0) {
           (input as any).price = String(Math.min(...prices));
+        }
+      }
+
+      // Entering review (explicit submit, or a publish that is born into the queue) needs a
+      // category, and — unless the status is `active`, whose price refusal stays the publish
+      // gate below — a positive price. A saveIntent draft never reaches this. Runs AFTER the
+      // package_tiers recompute so a tiers listing is judged on its derived scalar.
+      const rawApprovalStatus = (bodyWithoutLocation as { approvalStatus?: unknown }).approvalStatus;
+      const enteringReview =
+        !saveIntent.draft &&
+        (saveIntent.submit || rawApprovalStatus === "submitted" || (input as any).status === "active");
+      if (enteringReview) {
+        const review = listingReviewReadiness({
+          categoryId: (input as any).categoryId,
+          priceType: (input as any).priceType,
+          price: (input as any).price,
+        });
+        if (review.ok === false && (review.code === "CATEGORY_REQUIRED" || (input as any).status !== "active")) {
+          return res.status(400).json({ message: review.message, code: review.code });
         }
       }
 
@@ -4287,7 +4318,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cityPatch = await deriveCityPatch((input as any).neighborhood, {
         neighborhoodPresent: (input as any).neighborhood !== undefined,
       });
-      const service = await storage.createProviderService({ ...inputWithoutCity, ...locationPatch, ...cityPatch, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch, userId });
+      const service = await storage.createProviderService({
+        ...inputWithoutCity,
+        ...locationPatch,
+        ...cityPatch,
+        ...expertOfferingPatch,
+        ...declaredArtifactPatch,
+        ...priceBasisPatch,
+        userId,
+        ...(saveIntent.draft ? { approvalStatus: "draft" as const } : {}),
+      });
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4442,6 +4482,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
       // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
+
+      const saveIntent = admitListingSaveIntent(bodyWithoutLocation);
+      if (!saveIntent.ok) {
+        return res.status(saveIntent.status).json(saveIntent.body);
+      }
+      if (saveIntent.draft && ownedService.approvalStatus !== "approved") {
+        (input as any).status = "draft";
+      }
 
       // THE LISTING NAMES ITS OWN EXPERT OFFERING — the UPDATE half (migration 292, ledger
       // `2026-09-12-listing-names-its-expert-offering`). Same ONE admission the create rail runs
@@ -4662,6 +4710,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // Review entry is refused BEFORE the row write, so a missing category or price
+      // does not land and then 400. The submit itself still happens after the update.
+      const leavingDraftForReview =
+        !saveIntent.draft &&
+        requestedApprovalStatus === "submitted" &&
+        ownedService.approvalStatus !== "submitted" &&
+        ownedService.approvalStatus !== "in_review" &&
+        ownedService.approvalStatus !== "approved";
+      if (leavingDraftForReview) {
+        const review = listingReviewReadiness({
+          categoryId: (input as any).categoryId ?? ownedService.categoryId,
+          priceType: (input as any).priceType ?? ownedService.priceType,
+          price: (input as any).price ?? ownedService.price,
+        });
+        if (!review.ok) {
+          return res.status(400).json({ message: review.message, code: review.code });
+        }
+      }
+
       // D7 NEVER-CLOBBER RULE (docs/DECISIONS.md ruling 62's amendment, §13): declaring a
       // `pickupCoverageMode` switches only what is RENDERED. It must never delete, null or
       // overwrite the other mode's data — so this handler writes the mode column and NOTHING
@@ -4759,13 +4826,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // the client's ServiceDetail interface expects (serviceName, approvalStatus, etc.), not
       // the mapped ProviderServiceListing shape (title, status/isActive) submitProviderServiceListing returns.
       let finalRow: typeof updated = updated;
-      if (
-        requestedApprovalStatus === "submitted" &&
-        ownedService.approvalStatus !== "submitted" &&
-        ownedService.approvalStatus !== "in_review" &&
-        ownedService.approvalStatus !== "approved"
-      ) {
+      if (leavingDraftForReview) {
         await storage.submitProviderServiceListing(req.params.id);
+        finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
+      } else if (
+        saveIntent.draft &&
+        ownedService.approvalStatus !== "approved" &&
+        ownedService.approvalStatus !== "draft"
+      ) {
+        // A Save-as-Draft on a listing that already entered review pulls it back out.
+        // An approved listing is not taken down here (§23 edit-split owns that).
+        await db
+          .update(providerServices)
+          .set({ approvalStatus: "draft", updatedAt: new Date() })
+          .where(eq(providerServices.id, req.params.id));
         finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
       }
 

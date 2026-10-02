@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+import { SellerQuotesPanel } from "@/components/quotes/SellerQuotesPanel";
 // QA-1 (ledger 90 follow-up): this page had its own hand-written History predicate
 // (`status === "confirmed" || status === "completed"`), never the shared module Inbox/Today/
 // Customers/Money all consume — the same "sixth answer" ledger 90 closed elsewhere. Consuming
@@ -1631,6 +1632,10 @@ export default function ExpertInbox() {
           </TabsList>
 
           <TabsContent value="queue" className="space-y-8">
+            <section className="space-y-3" data-testid="section-inbox-quotes">
+              <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide">Quote requests</h2>
+              <SellerQuotesPanel />
+            </section>
             <BookingsSection />
             <AssignmentInvitesSection />
             <CoordinationEngagementsSection />

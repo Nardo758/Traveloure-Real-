@@ -463,6 +463,8 @@ jobs:
       # both surfaces read the server's named refusals through.
       - name: Quote surface copy pin
         run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
+      - name: Listing save intent pin
+        run: npx tsx --test shared/__tests__/listing-save-intent.test.ts
       - name: Bundle component + settlement copy pin
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin

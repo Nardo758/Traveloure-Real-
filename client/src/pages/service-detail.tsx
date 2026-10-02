@@ -57,7 +57,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
-import { resolveTargetTripId } from "@/lib/trip-target";
+import { quoteRequestTripId, resolveTargetTripId } from "@/lib/trip-target";
 import { addedTitle } from "@/lib/plan-vocabulary";
 import { decideAddTarget } from "@/lib/add-target";
 import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
@@ -518,6 +518,9 @@ export default function ServiceDetailPage() {
   const searchString = useSearch();
   const [tripCtx] = useTripContext();
   const targetTripId = resolveTargetTripId(searchString, tripCtx);
+  // A quote names a plan only when this page was opened from one (`?tripId=`).
+  // Ambient TripContext is not that choice (roles-dev QA M8).
+  const quoteTripId = quoteRequestTripId(searchString);
   const { showRefusal } = useRouteRefusalToast(targetTripId);
 
   // ── "WHICH EVENT?" (ledger 2026-09-04-which-event-picker; migration 277) ─────────────────
@@ -625,15 +628,15 @@ export default function ServiceDetailPage() {
   // nothing and names nothing but the listing in the path (§14/§19). The server hands back the
   // open quote when one already exists (`created: false`), so a second press is not a second
   // request.
-  // Ledger `2026-09-19-quote-plan-link`: `tripId` rides along when this page already resolved one
-  // (the SAME `targetTripId` every add on this page uses, §18 rule 1) — never a new fetch just for
-  // this. The server re-verifies ownership of whatever trip it names (§14); this is a courtesy
+  // Ledger `2026-09-19-quote-plan-link`: `tripId` rides along only when the URL names a plan
+  // (`quoteRequestTripId`). Ambient TripContext is not a plan this page was opened from.
+  // The server re-verifies ownership of whatever trip it names (§14); this is a courtesy
   // carry, not a grant. No `itineraryItemId`: this page loads no per-trip item list to resolve one
   // from.
   const requestQuoteMutation = useMutation<{ created: boolean }>({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/services/${id}/quote-requests`, {
-        ...(targetTripId ? { tripId: targetTripId } : {}),
+        ...(quoteTripId ? { tripId: quoteTripId } : {}),
       });
       return (await res.json()) as { created: boolean };
     },
@@ -1876,7 +1879,7 @@ export default function ServiceDetailPage() {
                     to this trip (cart_items.trip_id) and the booking is logged onto it at checkout
                     (service_bookings.trip_id = the cart row's trip). It does NOT claim the service
                     appears on the plan's day list before checkout — it doesn't (§13). */}
-                {targetTripId && (
+                {quoteTripId && (
                   <div
                     className="mb-[17px] rounded-[8px] border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-3 py-2.5 text-[11.5px] leading-snug text-[color:var(--earn-ink)]"
                     data-testid="banner-trip-handoff"
@@ -1885,7 +1888,7 @@ export default function ServiceDetailPage() {
                     cart scoped to the trip you came from, and the booking is logged onto that trip
                     when you check out.{" "}
                     <Link
-                      href={`/plans/${targetTripId}`}
+                      href={`/plans/${quoteTripId}`}
                       className="underline font-medium"
                       data-testid="link-back-to-plan"
                     >

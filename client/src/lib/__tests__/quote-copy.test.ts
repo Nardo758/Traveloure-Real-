@@ -29,6 +29,7 @@ import {
   quoteDepositLine,
   quoteIsAcceptable,
   quoteIsIssuable,
+  quoteIsDeclinable,
   quoteIsWithdrawable,
   quoteIssueRefusalLine,
   quoteStateCopy,
@@ -115,6 +116,8 @@ test("B1-B3: the affordances mirror the server's own claims", () => {
   // Withdraw: only a live offer can be taken back; a `requested` row has no offer yet.
   assert.equal(quoteIsWithdrawable(row({})), true);
   assert.equal(quoteIsWithdrawable(row({ lifecycle: "requested", status: "requested" })), false);
+  assert.equal(quoteIsDeclinable(row({ lifecycle: "requested", status: "requested" })), true);
+  assert.equal(quoteIsDeclinable(row({})), false);
   // Issue: a first offer, or a RE-QUOTE of an expired one (LD 49 — never an edit).
   assert.equal(quoteIsIssuable(row({ lifecycle: "requested", status: "requested" })), true);
   assert.equal(quoteIsIssuable(row({ lifecycle: "expired", status: "quoted" })), true);
