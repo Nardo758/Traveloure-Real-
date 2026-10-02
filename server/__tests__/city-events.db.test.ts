@@ -14,8 +14,9 @@
  *    withdrawn one, and reports `total` for the strip threshold.
  * C5 an empty seed is a no-op.
  * C6 migration 335: a stated vertical/series key lands; unknown/malformed is refused; absent is NULL.
- * C7 the ONE ruled rewrite: an existing MANUAL row gets vertical/series_key filled where it stores
- *    NULL — never a stated value replaced, never any other column, never a non-manual row.
+ * C7 the ruled rewrites: an existing MANUAL row gets vertical/series_key filled where it stores
+ *    NULL — never a stated value replaced, never a non-manual row — and, while it is UNLOCATED, the seed
+ *    entry's corrected venue (ledger `2026-10-02-city-events-venue-relookup`); no other column moves.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -143,7 +144,7 @@ test("C4 the reader returns renderable events in the window, soonest first, neve
 });
 
 test("C5 an empty seed is a no-op", async () => {
-  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, refused: [], located: [], unlocated: [], deferred: [] });
+  assert.deepEqual(await seedCityEvents([]), { inserted: 0, skipped: 0, filled: 0, renamed: 0, refused: [], located: [], unlocated: [], deferred: [], nominatim: "untested" });
 });
 
 test("C6 migration 335: a stated vertical and series key land; an unknown vertical or a malformed key is refused; absent stays NULL", async () => {
@@ -182,7 +183,7 @@ test("C7 the seeder fills a manual row's NULL vertical/series_key and rewrites n
   assert.equal(fill.vertical, "fashion");
   assert.equal(fill.series_key, "kyoto-fashion-week");
   assert.equal(fill.title, "First", "no other column is rewritten");
-  assert.equal(fill.venue, "Hall");
+  assert.equal(fill.venue, "Other hall", "an UNLOCATED manual row takes the corrected venue (the venue re-lookup rule)");
   const keep = byId.get(sid("keep"));
   assert.equal(keep.vertical, "music", "a stated value is never replaced");
   assert.equal(keep.series_key, "kyoto-jazz", "its NULL key is filled");

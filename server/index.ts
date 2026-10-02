@@ -1,6 +1,7 @@
 // Load .env first (dev machines; gitignored). dotenv never overrides vars already
 // set in the environment, so production shells and deploy platforms are unaffected.
 import "dotenv/config";
+import { healthEgress } from "./services/runtime-flags";
 import "./validate-env";
 import express, { type Request, Response, NextFunction, RequestHandler } from "express";
 import crypto from "crypto";
@@ -399,8 +400,9 @@ async function runDatabaseSeeding() {
   try {
     const { seedManualCityEvents } = await import("./seeds/city-events.manual");
     const eventsResult = await seedManualCityEvents();
-    if (eventsResult.inserted > 0 || eventsResult.filled > 0 || eventsResult.refused.length > 0 || eventsResult.deferred.length > 0) {
-      logger.info({ inserted: eventsResult.inserted, filled: eventsResult.filled, refused: eventsResult.refused, located: eventsResult.located, unlocated: eventsResult.unlocated, deferred: eventsResult.deferred }, "Seeded city events");
+    healthEgress.nominatim = eventsResult.nominatim;
+    if (eventsResult.inserted > 0 || eventsResult.filled > 0 || eventsResult.renamed > 0 || eventsResult.refused.length > 0 || eventsResult.deferred.length > 0) {
+      logger.info({ inserted: eventsResult.inserted, filled: eventsResult.filled, renamed: eventsResult.renamed, refused: eventsResult.refused, located: eventsResult.located, unlocated: eventsResult.unlocated, deferred: eventsResult.deferred }, "Seeded city events");
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed city events");

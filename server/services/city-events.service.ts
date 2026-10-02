@@ -38,7 +38,7 @@ import {
 import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
 import { loadPartnerHosts } from "./partner-hosts.service";
-import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, type VenueCoordinate, type VenueQuery } from "./venue-geocode.service";
+import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, venueIsLookupable, type VenueCoordinate, type VenueQuery } from "./venue-geocode.service";
 
 /** What a seed entry may state. Derived columns (nights, neighbourhood) are not accepted. */
 export interface CityEventSeedEntry {
@@ -184,16 +184,19 @@ export async function seedCityEvents(
   inserted: number;
   skipped: number;
   filled: number;
+  renamed: number;
   refused: Array<{ sourceId: string; reason: CityEventRefusal }>;
   located: Array<{ sourceId: string; matchedName: string }>;
   unlocated: string[];
   deferred: string[];
+  nominatim: "ok" | "blocked" | "untested";
 }> {
   const refused: Array<{ sourceId: string; reason: CityEventRefusal }> = [];
   const located: Array<{ sourceId: string; matchedName: string }> = [];
   const unlocated: string[] = [];
   const deferred: string[] = [];
-  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, refused, located, unlocated, deferred };
+  let nominatim: "ok" | "blocked" | "untested" = "untested";
+  if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, renamed: 0, refused, located, unlocated, deferred, nominatim };
   const candidates = await loadNeighbourhoodCandidates();
   const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
   // CITY_EVENTS_VENUE_LOOKUP=0 turns the network lookup off (tests, an offline boot): rows then land
@@ -205,6 +208,7 @@ export async function seedCityEvents(
   let inserted = 0;
   let skipped = 0;
   let filled = 0;
+  let renamed = 0;
   for (const entry of entries) {
     let built = buildCityEventRow(entry, candidates, partnerHosts);
     if ("refused" in built) {
@@ -213,14 +217,55 @@ export async function seedCityEvents(
       continue;
     }
     const exists = await db
-      .select({ id: cityEvents.id })
+      .select({ id: cityEvents.id, venue: cityEvents.venue, venueLat: cityEvents.venueLat })
       .from(cityEvents)
       .where(and(eq(cityEvents.source, built.row.source), eq(cityEvents.sourceId, built.row.sourceId)));
-    if (exists.length === 0 && (entry.venueLat == null || entry.venueLng == null)) {
+    const handTyped = entry.venueLat != null && entry.venueLng != null;
+    const lookUp = async () => {
       const market = getMarketByCityName(entry.city.trim());
       if (lookups > 0) await sleep(NOMINATIM_MIN_INTERVAL_MS);
       lookups += 1;
       const hit = await resolveVenue({ venue: entry.venue.trim(), locality: entry.venueLocality?.trim() || market?.cityName || null, country: market?.country ?? null });
+      if (lookupOn && venueIsLookupable(entry.venue) && nominatim !== "blocked") nominatim = hit === "unreachable" ? "blocked" : "ok";
+      return hit;
+    };
+    // The ONE re-lookup (decision-maker, Oct 2, 2026): an existing MANUAL row that is still UNLOCATED and
+    // whose seed entry now names a different venue takes the corrected venue and ONE fresh lookup this
+    // boot. A located row is never touched, and once the venue is written the strings agree, so the
+    // next boot asks nothing — bounded by construction. Unreachable leaves the row as it was, so the
+    // next boot retries, the same posture as a deferred insert.
+    const stored = exists[0];
+    if (stored && built.row.source === "manual" && stored.venueLat == null && !handTyped && stored.venue !== built.row.venue) {
+      const hit = await lookUp();
+      if (hit === "unreachable") {
+        deferred.push(entry.sourceId);
+        logger.warn({ sourceId: entry.sourceId, venue: entry.venue }, "[city-events] venue re-lookup unreachable; rename deferred to the next run");
+        skipped += 1;
+        continue;
+      }
+      const relocated = hit
+        ? buildCityEventRow({ ...entry, venueLat: hit.lat, venueLng: hit.lng }, candidates, partnerHosts)
+        : built;
+      const next = "row" in relocated ? relocated.row : built.row;
+      const changed = await db
+        .update(cityEvents)
+        .set({ venue: next.venue, venueLat: next.venueLat, venueLng: next.venueLng, neighbourhoodId: next.neighbourhoodId })
+        .where(and(eq(cityEvents.source, "manual"), eq(cityEvents.sourceId, next.sourceId), isNull(cityEvents.venueLat)))
+        .returning({ id: cityEvents.id });
+      if (changed.length > 0) {
+        renamed += 1;
+        if (hit) located.push({ sourceId: entry.sourceId, matchedName: hit.matchedName });
+        else {
+          unlocated.push(entry.sourceId);
+          logger.warn({ sourceId: entry.sourceId, venue: entry.venue }, "[city-events] renamed venue not located; coordinates left empty");
+        }
+      }
+      skipped += 1;
+      if (await fillManualTypingIfNull(built.row)) filled += 1;
+      continue;
+    }
+    if (exists.length === 0 && !handTyped) {
+      const hit = await lookUp();
       if (hit === "unreachable") {
         deferred.push(entry.sourceId);
         logger.warn({ sourceId: entry.sourceId, venue: entry.venue }, "[city-events] venue lookup unreachable; row deferred to the next run");
@@ -243,7 +288,7 @@ export async function seedCityEvents(
     skipped += 1;
     if (await fillManualTypingIfNull(built.row)) filled += 1;
   }
-  return { inserted, skipped, filled, refused, located, unlocated, deferred };
+  return { inserted, skipped, filled, renamed, refused, located, unlocated, deferred, nominatim };
 }
 
 /**
