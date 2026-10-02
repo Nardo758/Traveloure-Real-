@@ -336,8 +336,7 @@ test.describe("1 · entry and occasion", () => {
     );
     await testid(page, "planning-option-ai").click();
     await testid(page, "button-generate-itinerary").click();
-    const ask = testid(page, "ai-draft-without-anchor");
-    if (await appears(ask, 15_000)) await ask.click();
+    // Smoke 4 item 5: the draft is never preceded by a hotel question.
     expect(ok2xx((await draft).status()), "the draft is not refused as 'already has items'").toBe(true);
 
     const plans = await rows<{ id: string }>(`SELECT id FROM trips WHERE user_id = $1`, [traveler.id]);
@@ -875,8 +874,7 @@ test.describe("4 · free draft around the set", () => {
     await testid(page, "planning-option-ai").click();
     await expect(testid(page, "button-generate-itinerary")).toBeVisible({ timeout: 15_000 });
     await testid(page, "button-generate-itinerary").click();
-    const ask = testid(page, "ai-draft-without-anchor");
-    if (await appears(ask, 15_000)) await ask.click();
+    // Smoke 4 item 5: the draft is never preceded by a hotel question.
     await page.waitForURL(/\/plans\//, { timeout: 60_000 });
     const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
     await expect(page).not.toHaveURL(/itinerary-comparison/);
