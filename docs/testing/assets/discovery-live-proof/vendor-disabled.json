@@ -4,7 +4,7 @@
     "sent": 0,
     "failed": 1,
     "failureReasons": [
-      "Contract edc43fe9-1bd8-498d-933a-9b4f8b196dee: Email notifications are disabled by platform settings"
+      "Contract <contract id redacted>: Email notifications are disabled by platform settings"
     ]
   },
   "communications": 1

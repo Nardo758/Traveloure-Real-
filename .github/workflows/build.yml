@@ -238,7 +238,7 @@ jobs:
       # importer, §18c) carried a type error. ZERO new type errors in any file it touched.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '120'
+          TSC_BASELINE: '118'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"

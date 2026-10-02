@@ -78,5 +78,3 @@
 - [Billboard market inventory](billboard-market-inventory.md) — live slot one alone cannot select a market without truthful credited fallbacks for the other slots.
 - [Nightly QA CLI isolation](nightly-qa-cli-isolation.md) — exit-capable data checks must run outside the web server so findings cannot stop the preview.
 - [Landing hero card copy preference](landing-hero-card-copy-preference.md) — SUPERSEDED Sep 29 by the billboard slot-types dispatch: real cards come only from the gates; a curated card says only "Start this plan".
-- [Isolated reference catalogs](isolated-reference-catalogs.md) — preserve fixture foreign keys and seed non-personal platform catalogs and fees; do not weaken production guards.
-- [Registry release gates](registry-release-gates.md) — email release, genuine scheduled runner, timeout investigation and explicit PR scope must precede registry work.

@@ -24,12 +24,12 @@ losing the notification. No new schema migration.
 - A real receiving mailbox was created at Mail.tm. No Gmail/Outlook integration.
 - The isolated traveler account's email was that same mailbox.
 - Actual `POST /api/checkout` returned HTTP 201 and created canonical
-  `service_bookings` booking `a6a42cd8-6497-4f97-aaa6-522db677b607`.
+  `service_bookings` booking `<booking id redacted>`.
 - Reference: `TRV-202610-00001`.
-- Real Stripe TEST PaymentIntent: `pi_3UM1MPRJlh67IHOH1WM6AySJ`, `livemode=false`,
+- Real Stripe TEST PaymentIntent: `<PaymentIntent id redacted>`, `livemode=false`,
   `status=succeeded`, amount 2,140 cents USD. No live charge.
 - Client confirmation and the real outbox drain delivered the email.
-- Sender: `Traveloure <no-reply@traveloure.com>`.
+- Sender: the platform's configured no-reply address (display name `Traveloure`).
 - Subject: `Booking confirmed — Live canonical email verification`.
 - Received: `2026-10-02T07:58:32+00:00`.
 - The received message states reference `TRV-202610-00001` and payment `21.40 USD`,
@@ -40,10 +40,11 @@ losing the notification. No new schema migration.
   zero rows. Exactly one confirmation row existed, sent with one attempt.
 - An independent inbox read after replay still found exactly one confirmation.
 
-The original received SMTP message is
-[`received-booking-confirmation.eml`](../testing/assets/discovery-live-proof/received-booking-confirmation.eml).
-This is received-message evidence, not a reconstructed email or sender success
-log. Inbox metadata and text are retained alongside it.
+The raw received SMTP message and the inbox/payment capture files were removed
+from the repository before merge (public repository; founder ruling, Oct 2,
+2026). A redacted excerpt of what was received and recorded is kept in
+[Redacted evidence excerpts](#redacted-evidence-excerpts) below. Recipient
+addresses, message IDs and Stripe ids are not reproduced.
 
 **Verification limitations:** This was a real API/payment/email test on an
 isolated development database, with a loopback-only authenticated fixture
@@ -67,7 +68,7 @@ the service still imported nonexistent `emailService`.
     "sent": 0,
     "failed": 1,
     "failureReasons": [
-      "Contract edc43fe9-1bd8-498d-933a-9b4f8b196dee: Cannot read properties of undefined (reading 'sendEmail')"
+      "Contract <contract id redacted>: Cannot read properties of undefined (reading 'sendEmail')"
     ]
   }
 }
@@ -81,13 +82,13 @@ Authorization, trip/contract ownership checks and fan-out limits are unchanged.
 **After fix:** Actual route returned HTTP 200, `sent=1`, `failed=0`, no failure
 reasons. The same receiving mailbox obtained:
 
-- Sender: `Traveloure <no-reply@traveloure.com>`.
+- Sender: the platform's configured no-reply address (display name `Traveloure`).
 - Subject: `Traveloure live vendor verification`.
 - Received: `2026-10-02T07:55:46+00:00`.
 - Attachment: `invitation.ics`, MIME type `text/calendar`.
 
-Original received message:
-[`received-vendor-email.eml`](../testing/assets/discovery-live-proof/received-vendor-email.eml).
+The raw received message was removed before merge; see
+[Redacted evidence excerpts](#redacted-evidence-excerpts).
 
 An additional live negative check disabled email in the isolated platform
 settings. The route returned HTTP 200 with `sent=0`, `failed=1`, and the disabled
@@ -191,3 +192,73 @@ Live GitHub API checks:
 **Release blockers:** The separate Scheduled Deployment is not provisioned.
 Code repair is on a review branch, not merged/published. Do not treat the
 automation-registry migration as cleared for continuation.
+
+## Redacted evidence excerpts
+
+Excerpts of the removed raw files. Recipient mailbox, sender address, message
+IDs, booking and contract ids, and Stripe ids are redacted.
+
+**Received traveler confirmation** (captured 2026-10-02T08:01:50Z; one
+confirmation in the inbox after both replays):
+
+```text
+From: Traveloure <redacted no-reply address>
+To: <redacted test mailbox>
+Subject: Booking confirmed — Live canonical email verification
+Received: 2026-10-02T07:58:32+00:00
+
+Payment received — booking confirmed
+Hi Live Checkout Verification,
+Your payment has been received and your booking is confirmed.
+Booking: Live canonical email verification
+Booking reference: TRV-202610-00001
+Payment recorded: 21.40 USD
+View your bookings: http://localhost:5000/bookings
+```
+
+**Received vendor email:**
+
+```text
+From: Traveloure <redacted no-reply address>
+To: <redacted test mailbox>
+Subject: Traveloure live vendor verification
+Received: 2026-10-02T07:55:46+00:00
+Attachment: invitation.ics (text/calendar)
+
+Controlled development verification; no customer recipient.
+```
+
+**Payment and replay record** (TEST mode):
+
+```json
+{
+  "paymentIntentId": "<redacted>",
+  "livemode": false,
+  "paymentStatus": "succeeded",
+  "amount": 2140,
+  "currency": "usd",
+  "confirm": { "httpStatus": 200, "body": { "success": true, "source": "webhook" } },
+  "firstDrain": { "drained": 0 },
+  "replay": { "httpStatus": 200, "body": { "received": true } },
+  "secondReplay": { "httpStatus": 200, "body": { "received": true } },
+  "clientReplay": { "httpStatus": 200, "body": { "success": true, "source": "webhook" } },
+  "finalDrain": { "drained": 0 },
+  "confirmations": [
+    {
+      "status": "sent",
+      "attempt_count": 1,
+      "subject": "Booking confirmed — Live canonical email verification",
+      "metadata": {
+        "leg": "full",
+        "source": "canonical_service_booking_payment",
+        "eventKey": "canonical_booking_confirmation:<booking id redacted>:full",
+        "paidCharge": { "amount": 21.4, "status": "confirmed" }
+      }
+    }
+  ]
+}
+```
+
+The landing-page screenshot taken after the fixes was also removed; its claim
+(the public preview renders the landing page and unauthenticated session
+requests return HTTP 401) stands as text in "Regression and cleanup" above.
