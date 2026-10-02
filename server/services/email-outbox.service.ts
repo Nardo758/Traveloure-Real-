@@ -113,7 +113,7 @@ export interface EnqueueEmailParams extends SendEmailParams {
  * Returns the outbox row id so callers can correlate logs.
  * Never throws — all errors are caught and recorded on the outbox row.
  */
-export async function enqueueEmail(params: EnqueueEmailParams): Promise<number | null> {
+async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | null> {
   const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
   const lease      = new Date(Date.now() + LEASE_MS);
 
@@ -153,6 +153,23 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
   return outboxId;
 }
 
+/** Route enqueue through the messaging registry while preserving its public result contract. */
+export async function enqueueEmail(params: EnqueueEmailParams): Promise<number | null> {
+  try {
+    const { dispatchMessagingEvent } = await import("../automations/messaging/runtime");
+    return await dispatchMessagingEvent(
+      "messaging.email-outbox-enqueue",
+      "email.enqueue",
+      { emailType: params.emailType ?? "generic" },
+      { emailType: params.emailType ?? "generic" },
+      () => enqueueEmailImpl(params),
+    );
+  } catch (err) {
+    logger.error({ err }, "[email-outbox] enqueue automation dispatch failed");
+    return null;
+  }
+}
+
 /**
  * Drain loop: atomically claim up to 50 due or lease-expired rows using a
  * CTE with FOR UPDATE SKIP LOCKED, then attempt delivery on each claimed row.
@@ -177,7 +194,7 @@ export interface DrainOutboxResult {
   error?: string;
 }
 
-export async function drainOutbox(): Promise<DrainOutboxResult> {
+async function drainOutboxImpl(): Promise<DrainOutboxResult> {
   type ClaimedRow = {
     id:            number;
     to_email:      string;
@@ -244,6 +261,33 @@ export async function drainOutbox(): Promise<DrainOutboxResult> {
   }
 
   return { drained: claimed.length };
+}
+
+/** Route the existing drain implementation through its scheduled messaging node. */
+export async function drainOutbox(): Promise<DrainOutboxResult> {
+  try {
+    const { runMessagingSchedule } = await import("../automations/messaging/runtime");
+    return await runMessagingSchedule(
+      "messaging.email-outbox-drain",
+      "email-outbox-drain",
+      () => drainOutboxImpl(),
+    );
+  } catch (err) {
+    logger.error({ err }, "[email-outbox] drain automation dispatch failed");
+    return { drained: 0, error: "failed to dispatch drain automation" };
+  }
+}
+
+/** Admin retry dispatch uses its own event node and the same original drain action. */
+export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainOutboxResult> {
+  const { dispatchMessagingEvent } = await import("../automations/messaging/runtime");
+  return dispatchMessagingEvent(
+    "messaging.email-outbox-admin-retry",
+    "email_outbox.admin_retry",
+    { outboxId },
+    { outboxId },
+    () => drainOutboxImpl(),
+  );
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

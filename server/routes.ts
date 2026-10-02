@@ -30,6 +30,7 @@ import {
 import * as messagingService from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { broadcastToUser } from "./websocket";
+import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 import { validateImageDataUrl } from "./utils/imageValidation";
 import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
@@ -2447,14 +2448,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
         }
         const chat = await storage.createChat({ ...input, senderId: sessionUserId, receiverId: resolved.otherUserId });
-        broadcastToUser(String(chat.receiverId), {
+        const frame = {
           type: "chat",
           id: chat.id,
           senderId: sessionUserId,
           recipientId: chat.receiverId,
           content: chat.message,
           timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
-        });
+        };
+        await dispatchMessagingEvent(
+          "messaging.chat-realtime-fanout",
+          "chat.realtime.requested",
+          frame,
+          { recipientId: chat.receiverId, messageId: chat.id, transport: "http" },
+          () => broadcastToUser(String(chat.receiverId), frame),
+        );
         // The response carries the PUBLIC id; the row's own id-shaped fields are the deprecated
         // half and lane 2/3 remove them.
         return res.status(201).json({ ...chat, conversationId: publicConversationId });
@@ -2474,14 +2482,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const chat = await storage.createChat({ ...input, senderId: sessionUserId });
 
       // Live-push to the recipient's open chat client (same frame shape as the /ws relay).
-      broadcastToUser(String(chat.receiverId), {
+      const frame = {
         type: "chat",
         id: chat.id,
         senderId: sessionUserId,
         recipientId: chat.receiverId,
         content: chat.message,
         timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
-      });
+      };
+      await dispatchMessagingEvent(
+        "messaging.chat-realtime-fanout",
+        "chat.realtime.requested",
+        frame,
+        { recipientId: chat.receiverId, messageId: chat.id, transport: "http" },
+        () => broadcastToUser(String(chat.receiverId), frame),
+      );
 
       res.status(201).json(chat);
     } catch (err) {
