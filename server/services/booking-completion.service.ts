@@ -91,6 +91,7 @@ import {
   serviceDateCompletionDays,
 } from "../config/completion-windows.config";
 import { acceptanceModeFor, type DeliveryInstantSource } from "@shared/acceptance-window";
+import { dispatchBookingEvent } from "../automations/bookings/runtime";
 import {
   COMPLETION_DECLARED_STATUS,
   declaredCompletionDeadline,
@@ -813,7 +814,7 @@ export interface CompleteBookingResult {
  *    nobody won must leave no trace claiming it did (§15b — irreversible state follows the
  *    operation that authorizes it).
  */
-export async function completeBooking(input: {
+async function completeBookingAction(input: {
   bookingId: string;
   actor: CompletionActor;
   now?: Date;
@@ -943,6 +944,22 @@ export async function completeBooking(input: {
   return { completed: true, bookingId: input.bookingId, rule: eligibility.rule, evidence: eligibility.evidence };
 }
 
+export async function completeBooking(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+  reason?: string;
+  allowOwnerDeclaredFallback?: boolean;
+}): Promise<CompleteBookingResult> {
+  return dispatchBookingEvent(
+    "bookings.completion-writer",
+    "service_booking.completion.requested",
+    input,
+    { bookingId: input.bookingId, actor: input.actor },
+    () => completeBookingAction(input),
+  );
+}
+
 export interface DeclareCompletionResult {
   declared: boolean;
   bookingId: string;
@@ -969,7 +986,7 @@ export interface DeclareCompletionResult {
  * 3. Record the provenance (`bookingDetails.completionDeclaration` + a `booking_completion_declared`
  *    diary row) AFTER the flip — a declaration nobody won must leave no trace claiming it did.
  */
-export async function declareBookingCompletion(input: {
+async function declareBookingCompletionAction(input: {
   bookingId: string;
   actor: CompletionActor;
   now?: Date;
@@ -1065,6 +1082,22 @@ export async function declareBookingCompletion(input: {
     ...(disputeBy ? { disputeBy } : {}),
     windowDays,
   };
+}
+
+export async function declareBookingCompletion(input: {
+  bookingId: string;
+  actor: CompletionActor;
+  now?: Date;
+  reason?: string;
+  allowOwnerDeclaredFallback?: boolean;
+}): Promise<DeclareCompletionResult> {
+  return dispatchBookingEvent(
+    "bookings.completion-declaration-writer",
+    "service_booking.completion_declaration.requested",
+    input,
+    { bookingId: input.bookingId, actor: input.actor },
+    () => declareBookingCompletionAction(input),
+  );
 }
 
 /**

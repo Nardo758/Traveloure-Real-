@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -3517,6 +3518,30 @@ export class DatabaseStorage implements IStorage {
    * good, with no code path to give it back.
    */
   async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined> {
+    const action = () =>
+      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify);
+    if (status === "confirmed" && notify?.type === "booking_confirmed") {
+      return dispatchBookingEvent(
+        "bookings.provider-acceptance-follow-on",
+        "service_booking.provider_accepted",
+        { bookingId: id, status, notification: notify },
+        { bookingId: id, status, notificationType: notify.type },
+        action,
+      );
+    }
+    if (status === "cancelled" || status === "refunded") {
+      return dispatchBookingEvent(
+        "bookings.cancellation-follow-ons",
+        `service_booking.${status}`,
+        { bookingId: id, status, reason, notification: notify },
+        { bookingId: id, status, notificationType: notify?.type ?? null },
+        action,
+      );
+    }
+    return action();
+  }
+
+  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
