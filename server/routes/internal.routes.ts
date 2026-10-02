@@ -239,10 +239,12 @@ router.post("/internal/jobs/stripe-reconciliation", requireInternalSecret, async
 // this is the 15-min cold-instance backstop.
 router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req, res) => {
   // R164 (G2): the same job also reclaims STAMPED claims left unpaid (sweepStaleAuthorizedClaims).
-  const { status, body } = await runJob("checkout-sweep", async () => ({
-    unauthorized: await sweepExpiredCheckoutClaims(),
-    authorized: await sweepStaleAuthorizedClaims(),
-  }));
+  const { status, body } = await runJob("checkout-sweep", async () => {
+    const unauthorized = await sweepExpiredCheckoutClaims();
+    const authorized = await sweepStaleAuthorizedClaims();
+    const error = [unauthorized.error, authorized.error].filter(Boolean).join("; ");
+    return { unauthorized, authorized, ...(error ? { error } : {}) };
+  }, (result) => !!result?.error);
   res.status(status).json(body);
 });
 
