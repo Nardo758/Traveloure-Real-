@@ -246,7 +246,7 @@ export class VendorManagementService {
     const failureReasons: string[] = [];
 
     // Get email service
-    const { emailService } = await import("./email.service");
+    const { sendEmail } = await import("./email.service");
 
     for (const contract of validContracts) {
       try {
@@ -257,27 +257,31 @@ export class VendorManagementService {
           continue;
         }
 
-        const emailPayload: any = {
+        const escapedBody = body.replace(/[&<>"']/g, (character) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[character]!));
+        const emailPayload: import("./email.service").SendEmailParams = {
           to: vendorEmail,
           subject,
-          body,
-          fromName: "Traveloure Coordination",
-          tags: [`trip-${tripId}`, `vendor-${contract.id}`],
+          text: body,
+          html: `<div style="white-space:pre-wrap">${escapedBody}</div>`,
         };
 
         // Add calendar invite if requested
         if (options?.includeCalendarInvite && options.eventDate) {
-          emailPayload.icsContent = this.generateCalendarInvite(
-            contract.vendorName || "Vendor",
-            subject,
-            options.eventDate
-          );
+          emailPayload.attachments = [{
+            filename: "invitation.ics",
+            contentType: "text/calendar",
+            content: Buffer.from(this.generateCalendarInvite(
+              contract.vendorName || "Vendor", subject, options.eventDate
+            )),
+          }];
         }
 
-        // Send email (non-blocking)
-        emailService.sendEmail(emailPayload).catch(err => {
-          logger.warn(`Failed to send email to vendor ${contract.vendorEmail}:`, err.message);
-        });
+        // The exported sender returns failures instead of throwing. Count only
+        // accepted sends; never record a sent communication on a failed send.
+        const delivery = await sendEmail(emailPayload);
+        if (!delivery.ok) throw new Error(delivery.error || "Email delivery was not accepted");
 
         // Log communication
         await this.logCommunication(contract.id, {

@@ -66,6 +66,8 @@ export interface SendEmailParams {
   text?: string;
   /** Override per-call; falls back to EMAIL_REPLY_TO env var. */
   replyTo?: string;
+  /** Optional files, including vendor coordination calendar invitations. */
+  attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }
 
 export interface SendEmailResult {
@@ -121,6 +123,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
       replyTo: replyTo,
+      ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     });
 
     if (error) {
