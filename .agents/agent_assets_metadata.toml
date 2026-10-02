@@ -286,3 +286,17 @@ mtime_ms = 1790687870259
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/53d968a4-1de0-4247-a2e6-656fc3f6991e/bd7d8b9f-0b45-4848-a6af-32d3c23cd872"
 storage_version_token = "1790687906185618"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "lYnN-lRmDo5QIlzPW-Z8R"
+uri = "file://docs/findings/checkout-sweep-failure-monitoring-20261002.md"
+type = "text"
+title = "Checkout monitoring fix and timeout evidence"
+description = "11 simulated-failure HTTP checks passed; primary connection measurements and the pending live-verification gate are documented separately."
+logical_id = "f076e28a-d96d-4081-86fc-598a8310b85e"
+content_hash = "sha256:4cd641b16c617ac04c717901dde4274545f9478766a936ed5ae1a1489895a4db"
+size = 6856
+mtime_ms = 1790936771372
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/f076e28a-d96d-4081-86fc-598a8310b85e/5e1634ee-578e-4dcc-8bbd-26ed7ce14e2e"
+storage_version_token = "1790936929075876"
+content_type = "text/markdown"
