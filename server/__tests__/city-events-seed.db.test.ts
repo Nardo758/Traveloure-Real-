@@ -12,6 +12,9 @@
  *       user agent, never asks for a generic venue, and answers "unreachable" (never null) on a failure
  *   E5  an unreachable lookup DEFERS the row — nothing inserted, exactly ONE lookup that run (bounded,
  *       never a loop) — and the next run inserts it
+ *   E6  an existing UNLOCATED manual row whose seed entry names a different venue takes the new venue and
+ *       ONE fresh lookup that run; unreachable leaves it untouched for the next run; a second run asks
+ *       nothing; a LOCATED row is never renamed or looked up again
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. No network.
  */
@@ -165,4 +168,57 @@ test("E5: an unreachable lookup defers the row; the next run inserts it", async 
   });
   assert.equal(up.nominatim, "ok");
   assert.deepEqual([up.inserted, up.located.length, up.deferred.length], [1, 1, 0]);
+});
+
+test("E6: a renamed venue on an unlocated row is looked up once; a located row is never touched", async () => {
+  const base = { source: "manual" as const, title: "Rename", city: "Kyoto", startsAt: "2027-05-01T00:00:00+09:00" };
+  const old = { ...base, sourceId: sid("rename"), venue: "Kyoto Kanze Noh Hall" };
+  const fixed = { ...old, venue: "Kyoto Kanze Noh Theatre" };
+  const hit = { lat: 35.0151, lng: 135.7837, matchedName: "Kyoto Kanze Noh Theatre", attribution: "© OpenStreetMap contributors" as const };
+  const quiet = { partnerHosts: async () => [] as string[], sleep: async () => {} };
+  const row = async (id: string) => {
+    const r: any = await db.execute(sql`SELECT venue, venue_lat AS lat FROM city_events WHERE source_id = ${id}`);
+    return (r.rows ?? r)[0];
+  };
+
+  // Born unlocated under the old name.
+  await seedCityEvents([old], { ...quiet, resolveVenue: async () => null });
+  assert.deepEqual(await row(sid("rename")), { venue: "Kyoto Kanze Noh Hall", lat: null });
+
+  // OSM unreachable: nothing changes, the row is deferred, and exactly one lookup was made.
+  let calls = 0;
+  const down = await seedCityEvents([fixed], { ...quiet, resolveVenue: async () => { calls += 1; return "unreachable" as const; } });
+  assert.equal(calls, 1);
+  assert.deepEqual([down.renamed, down.deferred], [0, [sid("rename")]]);
+  assert.deepEqual(await row(sid("rename")), { venue: "Kyoto Kanze Noh Hall", lat: null }, "unreachable leaves the row as it was");
+
+  // OSM reachable: the venue is corrected and the point stored, once.
+  calls = 0;
+  const up = await seedCityEvents([fixed], { ...quiet, resolveVenue: async (q) => { calls += 1; assert.equal(q.venue, "Kyoto Kanze Noh Theatre"); return hit; } });
+  assert.equal(calls, 1);
+  assert.deepEqual([up.renamed, up.located], [1, [{ sourceId: sid("rename"), matchedName: "Kyoto Kanze Noh Theatre" }]]);
+  const after1 = await row(sid("rename"));
+  assert.equal(after1.venue, "Kyoto Kanze Noh Theatre");
+  assert.equal(Number(after1.lat), 35.0151);
+
+  // A second run asks nothing: the strings agree and the row is located.
+  calls = 0;
+  const again = await seedCityEvents([fixed], { ...quiet, resolveVenue: async () => { calls += 1; return hit; } });
+  assert.deepEqual([calls, again.renamed], [0, 0]);
+
+  // A LOCATED row with a different seed venue is never renamed or looked up.
+  const moved = { ...fixed, venue: "Somewhere Else Entirely" };
+  const stay = await seedCityEvents([moved], { ...quiet, resolveVenue: async () => { calls += 1; return hit; } });
+  assert.deepEqual([calls, stay.renamed], [0, 0]);
+  assert.equal((await row(sid("rename"))).venue, "Kyoto Kanze Noh Theatre");
+
+  // A renamed venue that OSM does not match is renamed, stays unlocated, and is not asked about again.
+  const lost = { ...base, sourceId: sid("lost"), venue: "Old Name Hall" };
+  await seedCityEvents([lost], { ...quiet, resolveVenue: async () => null });
+  const miss = await seedCityEvents([{ ...lost, venue: "New Name Hall" }], { ...quiet, resolveVenue: async () => null });
+  assert.deepEqual([miss.renamed, miss.unlocated], [1, [sid("lost")]]);
+  assert.deepEqual(await row(sid("lost")), { venue: "New Name Hall", lat: null });
+  calls = 0;
+  await seedCityEvents([{ ...lost, venue: "New Name Hall" }], { ...quiet, resolveVenue: async () => { calls += 1; return null; } });
+  assert.equal(calls, 0, "bounded: once the names agree nothing is asked again");
 });
