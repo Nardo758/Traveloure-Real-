@@ -7,6 +7,8 @@
  *   R3 a non-owner sees the ranking and no buttons
  *   R4 an ineligible view (single-day plan, nothing drafted, already decided) renders nothing
  *   R5 nothing printed is a distance or a travel time
+ *   R6 §13 — a city that HAS neighbourhoods but a plan with nothing on the map says the latter, never
+ *      "no neighbourhoods for Kyoto"; a city with none says that
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/where-to-stay-panel.test.tsx
  */
@@ -15,7 +17,7 @@ import assert from "node:assert/strict";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import type { WhereToStayView } from "@shared/where-to-stay";
-import { HOTELS_COMING_SOON, WhereToStayPanelView } from "../WhereToStayPanelView";
+import { HOTELS_COMING_SOON, NO_LOCATED_ITEMS, WhereToStayPanelView } from "../WhereToStayPanelView";
 
 (globalThis as any).React = React;
 
@@ -67,5 +69,13 @@ describe("Where to stay panel", () => {
 
   it("R5 no distance or travel time is printed", () => {
     assert.doesNotMatch(text(render(NO_INVENTORY)), /\d+\s*(min|mins|minutes|km|m)\b/);
+  });
+
+  it("R6 §13 — an empty ranking names its real reason", () => {
+    const noStops = text(render({ ...NO_INVENTORY, neighborhoods: [], unranked: "no_located_items" }));
+    assert.ok(noStops.includes(NO_LOCATED_ITEMS));
+    assert.doesNotMatch(noStops, /don't have neighbourhoods/);
+    const noRows = text(render({ ...NO_INVENTORY, neighborhoods: [], unranked: "no_neighborhoods" }));
+    assert.ok(noRows.includes("We don't have neighbourhoods for Kyoto yet."));
   });
 });

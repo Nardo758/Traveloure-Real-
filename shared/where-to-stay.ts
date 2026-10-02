@@ -179,4 +179,10 @@ export interface WhereToStayView {
   /** True when the city has ANY hotel in our own inventory. False ⇒ "hotels coming soon". */
   hotelsAvailable: boolean;
   neighborhoods: Array<{ slug: string; name: string; reason: string; hotels: StayHotel[] }>;
+  /**
+   * Why `neighborhoods` is empty on an eligible view — two different facts, said differently (§13):
+   * the city has no neighbourhood rows, or none of the plan's items is on the map yet. Absent when
+   * the ranking has rows.
+   */
+  unranked?: "no_neighborhoods" | "no_located_items";
 }

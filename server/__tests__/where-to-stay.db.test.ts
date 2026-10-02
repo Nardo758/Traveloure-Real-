@@ -7,6 +7,8 @@
  *   D2 a single-day plan and an undrafted plan are not eligible; a stranger gets not_found
  *   D3 Skip closes an anchored lodging set with nothing chosen, and the panel is then gone
  *   D4 "I've got lodging sorted" with a neighbourhood puts a stay on the plan with NO coordinates
+ *   D5 §13 — a drafted plan whose stops have no coordinates says so (no_located_items), never that the
+ *      city has no neighbourhoods; a city with none says that (no_neighborhoods)
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -26,6 +28,8 @@ const T5 = id("five");
 const T5B = id("five-b");
 const T1 = id("one");
 const T0 = id("empty");
+const TU = id("unlocated");
+const TN = id("nowhere");
 
 async function trip(tripId: string, start: string, end: string) {
   await db.execute(sql`
@@ -61,6 +65,14 @@ before(async () => {
   await trip(T1, "2027-11-11", "2027-11-11");
   await item(T1, 1, 35.0, 135.78, 1);
   await trip(T0, "2027-11-11", "2027-11-15");
+  await trip(TU, "2027-11-11", "2027-11-15");
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin)
+    VALUES (${id("tu-1")}, ${TU}, 1, 'Explore', 'attraction', 'ai')`);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, event_type)
+    VALUES (${TN}, ${OWNER}, ${`Nowhere ${RUN}`}, ${`Nowhereville${RUN}, Japan`}, '2027-11-11', '2027-11-15', 'draft', 'vacation')
+  `);
+  await item(TN, 1, 35.0, 135.78, 1);
 });
 
 after(async () => {
@@ -84,6 +96,7 @@ test("D1 a drafted five-day plan is ranked by its own days; no inventory is said
   assert.deepEqual(view.neighborhoods.map((n) => n.name), ["East Ward", "West Ward", "South Ward"]);
   assert.equal(view.neighborhoods[0].reason, "closest to 4 of your 5 days");
   assert.equal(view.neighborhoods[1].reason, "closest to 1 of your 5 days");
+  assert.equal(view.unranked, undefined, "a ranked view carries no empty-state reason");
   assert.equal(view.hotelsAvailable, false);
   for (const n of view.neighborhoods) assert.deepEqual(n.hotels, []);
   assert.doesNotMatch(JSON.stringify(view), /minutes|meters|"lat"|"lng"/);
@@ -119,4 +132,14 @@ test("D4 'I've got lodging sorted' with a neighbourhood adds a stay with no coor
   assert.equal(row.latitude, null);
   assert.equal(row.longitude, null);
   await assert.rejects(bindWhereToStay(T5B, STRANGER, { kind: "skip" }), /No such plan/);
+});
+
+test("D5 §13 — an empty ranking names its real reason", async () => {
+  const unlocated = await loadWhereToStay(TU, OWNER);
+  assert.equal(unlocated.eligible, true);
+  assert.deepEqual(unlocated.neighborhoods, []);
+  assert.equal(unlocated.unranked, "no_located_items");
+  const nowhere = await loadWhereToStay(TN, OWNER);
+  assert.equal(nowhere.eligible, true);
+  assert.equal(nowhere.unranked, "no_neighborhoods");
 });

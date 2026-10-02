@@ -923,6 +923,59 @@ test.describe("4 · free draft around the set", () => {
     const view = await stay.json();
     expect(view.eligible, "a drafted 2+ day plan with no stay is offered where to stay").toBe(true);
     expect(JSON.stringify(view), "no distance or minute value is served").not.toMatch(/minutes|meters|km/);
+    // The stub draft's stops carry no coordinates, so nothing is ranked yet — and the panel says
+    // THAT, never that Kyoto has no neighbourhoods (it has them; §13).
+    expect(view.neighborhoods).toEqual([]);
+    expect(view.unranked).toBe("no_located_items");
+  });
+
+  test("§4 — with the draft's stops on the map, Where to stay ranks Kyoto's neighbourhoods by the days", async ({ page }) => {
+    // Follow-up to smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): the ranked panel, not
+    // only its empty state. The CI database carries Kyoto's `city_neighborhoods` rows (the same rows
+    // the matrix stand-in refreshes); the stub draft's stops have no coordinates, so this places five
+    // days' stops the way located items would be — four in Gion, one in Arashiyama.
+    const tripId = await planWithOccasion(page, "s4-rank", "travel");
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
+    const status = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "slip-action-draft-ai").click();
+      },
+      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
+    );
+    expect(ok2xx(status), `draft answered ${status}`).toBe(true);
+    // The stub draft writes day 1 only; days 2–5 get one stop each through the ordinary item rail.
+    for (const day of [2, 3, 4, 5]) await createItem(page.request, tripId, `Stop on day ${day}`, day);
+    // On the map: days 1–4 at Gion's centroid, day 5 at Arashiyama's (the CI rows' own centroids).
+    await rows(
+      `UPDATE itinerary_items SET latitude = CASE WHEN day_number = 5 THEN 35.0094 ELSE 35.0036 END,
+         longitude = CASE WHEN day_number = 5 THEN 135.6680 ELSE 135.7748 END
+       WHERE trip_id = $1`,
+      [tripId],
+    );
+    const res = await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`);
+    expect(res.status()).toBe(200);
+    const view = await res.json();
+    expect(view.eligible).toBe(true);
+    expect(view.unranked, "a ranked view carries no empty-state reason").toBeUndefined();
+    expect(view.neighborhoods.length, "the top three of Kyoto's neighbourhoods").toBe(3);
+    expect(view.neighborhoods.slice(0, 2).map((n: any) => n.slug)).toEqual(["gion", "arashiyama"]);
+    expect(view.neighborhoods[0].reason).toBe("closest to 4 of your 5 days");
+    expect(view.neighborhoods[1].reason).toBe("closest to 1 of your 5 days");
+    expect(JSON.stringify(view), "the ranking serves an order and words, never a number of minutes or metres").not.toMatch(/minutes|meters|"lat"|"lng"/);
+
+    await page.reload();
+    const panel = testid(page, "where-to-stay-panel");
+    await expect(panel).toBeVisible({ timeout: 20_000 });
+    for (const n of view.neighborhoods) {
+      await expect(testid(page, `where-to-stay-reason-${n.slug}`)).toHaveText(n.reason);
+    }
+    // CI seeds no hotel inventory (R211), so each neighbourhood says so rather than inventing one.
+    if (!view.hotelsAvailable) {
+      await expect(page.locator('[data-testid^="where-to-stay-coming-soon-"]')).toHaveCount(3);
+    }
+    await expect(testid(page, "where-to-stay-no-neighborhoods")).toHaveCount(0);
   });
 
   test("§4 — with an open hotel set the draft succeeds, leaves the set open and adds no accommodation", async ({ page }) => {

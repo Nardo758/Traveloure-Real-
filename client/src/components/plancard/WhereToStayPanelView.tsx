@@ -15,6 +15,7 @@ import type { StayHotel, WhereToStayView } from "@shared/where-to-stay";
 export const WHERE_TO_STAY_TITLE = "Where to stay";
 export const WHERE_TO_STAY_SUBTITLE = "Optional — ranked by where your days are.";
 export const HOTELS_COMING_SOON = "Hotels coming soon";
+export const NO_LOCATED_ITEMS = "Once some of your stops are on the map, we'll rank neighbourhoods by them.";
 
 export interface WhereToStayPanelViewProps {
   view: WhereToStayView;
@@ -87,9 +88,17 @@ export function WhereToStayPanelView({
       </div>
 
       {view.neighborhoods.length === 0 ? (
-        <p className="text-sm text-muted-foreground" data-testid="where-to-stay-no-neighborhoods">
-          {view.city ? `We don't have neighbourhoods for ${view.city} yet.` : "We don't have neighbourhoods for this city yet."}
-        </p>
+        view.unranked === "no_located_items" ? (
+          // The city HAS neighbourhoods; the plan has nothing on the map to rank them by yet (§13 —
+          // never "no neighbourhoods", which would be a false statement about the city).
+          <p className="text-sm text-muted-foreground" data-testid="where-to-stay-no-located-items">
+            {NO_LOCATED_ITEMS}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground" data-testid="where-to-stay-no-neighborhoods">
+            {view.city ? `We don't have neighbourhoods for ${view.city} yet.` : "We don't have neighbourhoods for this city yet."}
+          </p>
+        )
       ) : (
         <ol className="space-y-3">
           {view.neighborhoods.map((n, i) => (

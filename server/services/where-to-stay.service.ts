@@ -185,6 +185,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
     city,
     basis,
     hotelsAvailable: hotels.length > 0,
+    ...(ranked.length === 0 ? { unranked: neighborhoods.length === 0 ? ("no_neighborhoods" as const) : ("no_located_items" as const) } : {}),
     neighborhoods: ranked.map((r) => ({ slug: r.slug, name: r.name, reason: r.reason, hotels: placed[r.slug] ?? [] })),
   };
 }
