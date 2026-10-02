@@ -160,6 +160,9 @@ before(async () => {
 
 after(async () => {
   for (const id of createdBookingIds) {
+    // Winning payment promotions now enqueue the canonical traveler confirmation in this
+    // fixture's transaction. Remove its durable queue row as well as the booking row.
+    await db.execute(sql`DELETE FROM email_outbox WHERE metadata->>'bookingId' = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`).catch(() => {});
   }
   for (const id of createdItemIds) {

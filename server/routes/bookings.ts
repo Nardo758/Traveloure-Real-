@@ -38,6 +38,7 @@ import { getStripeSecretKey, getStripeWebhookSecret } from '../utils/stripe-key'
 import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
 import { logger } from '../infrastructure/logger';
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from '@shared/payment-on-record';
+import { isCanonicalBookingEmailPersistenceError } from '../services/canonical-booking-email.service';
 
 const router = Router();
 
@@ -364,6 +365,14 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
 
     res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
   } catch (error: any) {
+    if (isCanonicalBookingEmailPersistenceError(error)) {
+      return res.status(503).json({
+        success: false,
+        error: 'booking_confirmation_persistence_failed',
+        message: 'Payment succeeded, but we could not save your booking confirmation yet. We will retry automatically; please do not pay again.',
+        retryable: true,
+      });
+    }
     const code = error?.code;
     if (code === 'PAYMENT_NOT_SUCCEEDED' || code === 'STRIPE_LOOKUP_FAILED') {
       return res.status(402).json({ success: false, error: error.message });
