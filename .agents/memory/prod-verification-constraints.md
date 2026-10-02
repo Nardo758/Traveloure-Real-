@@ -6,9 +6,6 @@ description: What can and cannot be verified directly against the production Tra
   **Why:** dispatch playbooks assume "grant role directly in the DB", which is impossible on prod.
   **How to apply:** run expert-session UI checks on the dev workspace pinned to the same commit as prod, and mark prod-side session checks NOT VERIFIED (env-blocked).
 - The traveler bookings page is mounted at `/bookings` (ProtectedRoute → MyBookingsPage); `/my-bookings` is NOT a route and client-404s. Dispatches referencing /my-bookings are using a stale path.
-- For database connection investigations, distinguish managed read-replica metrics from the app's primary. Do not infer writer connection pressure or cold-start history from replica uptime/session counts.
-  **Why:** The production SQL callback reported a newly started replica, while a separately verified primary had different uptime and session counts. Aggregate data can match while operational metrics describe different servers.
-  **How to apply:** Confirm recovery/primary status before interpreting connection limits or startup times, and distinguish a current snapshot from evidence at the failure time.
 - OG injection (`/services/:id`, storefront.routes.ts) and `/r/:code` 302s now work on prod — the earlier static-catch-all ordering bug is fixed live.
 - `/api/service-offering-types` exists only as an admin route (`/api/admin/service-offering-types`); the public path 404s by design of the current tree.
 - Prod residue accounts: 60 `@traveloure.test` users still exist (all role `user`, logins 401) — never re-seed; purge must come from the GitHub side.
