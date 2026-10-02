@@ -332,12 +332,12 @@ export default function EADashboard() {
                 {recentEvents.length > 0 ? (
                   <div className="space-y-2" data-testid="list-recent-events">
                     {recentEvents.map((event) => (
-                      <div key={event.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[#E8E8E2]" data-testid={`recent-event-${event.id}`}>
+                      <div key={event.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[color:var(--earn-border)]" data-testid={`recent-event-${event.id}`}>
                         <div className="min-w-0">
-                          <p className="font-medium text-[#1A1A18] truncate">{event.title}</p>
-                          {event.executiveName && <p className="text-xs text-[#7A7A72]">{event.executiveName}</p>}
+                          <p className="font-medium text-[color:var(--earn-ink)] truncate">{event.title}</p>
+                          {event.executiveName && <p className="text-xs text-[color:var(--earn-muted)]">{event.executiveName}</p>}
                         </div>
-                        <p className="text-xs text-[#7A7A72] shrink-0">
+                        <p className="text-xs text-[color:var(--earn-muted)] shrink-0">
                           {event.date ? new Date(event.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}
                         </p>
                       </div>

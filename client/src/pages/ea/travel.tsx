@@ -235,10 +235,10 @@ export default function EATravel() {
           <CardContent className="space-y-6">
             {managedPlans.length > 0 && (
               <div className="space-y-3" data-testid="section-managed-plans">
-                <p className="text-sm font-medium text-[#1A1A18]">Plans you're building</p>
+                <p className="text-sm font-medium text-[color:var(--earn-ink)]">Plans you're building</p>
                 {managedPlans.map((plan) => (
                   <Link key={plan.id} href={`/plans/${plan.id}`}>
-                    <div className="p-3 rounded-lg border border-gray-200 hover:border-[#AEAEA6]" data-testid={`managed-plan-${plan.id}`}>
+                    <div className="p-3 rounded-lg border border-gray-200 hover:border-[color:var(--earn-border)]" data-testid={`managed-plan-${plan.id}`}>
                       <p className="font-medium text-gray-900">{plan.clientName ? `${plan.clientName} — ` : ""}{plan.title || plan.destination || "Plan"}</p>
                       <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
                         <MapPin className="w-4 h-4" /> {plan.destination ?? "—"}
