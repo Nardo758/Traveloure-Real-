@@ -97,7 +97,7 @@ jobs:
           ALLOW_TEST_ACCOUNTS: '1'
 
       - name: Resolver authority pins
-        run: npx tsx --test server/__tests__/fee-resolution-authority.db.test.ts
+        run: npx tsx --test --test-concurrency=1 server/__tests__/fee-resolution-authority.db.test.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production

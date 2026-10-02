@@ -22,6 +22,7 @@ import {
   BandResolutionError,
   PROVIDER_RAILS_BAND,
   TRAVELER_SERVICE_FEE_BAND,
+  BETA_FLAT_BAND,
   round2,
 } from "../services/fee-resolution.service";
 // 1C (ruling 69 disposition 6) — the direct charge lane's entry points. They delegate to the same
@@ -36,8 +37,27 @@ let categoryId: string;
 let providerId: string;
 let originalRate: number;
 let bandKeyUnderTest: string;
+let previousPolicy: string | null = null;
+let policyRowExisted = false;
 
 before(async () => {
+  // These pins prove the TIERED category path. The beta period's default policy is beta_flat,
+  // which would make a category-band edit look like a no-op. Pin tiered for this file and
+  // restore whatever the database had.
+  const policy = await db.execute(sql`
+    SELECT setting_value FROM platform_settings
+     WHERE setting_key = 'active_provider_commission_policy' LIMIT 1
+  `);
+  if (policy.rows?.length) {
+    policyRowExisted = true;
+    previousPolicy = String((policy.rows[0] as { setting_value: string }).setting_value);
+  }
+  await db.execute(sql`
+    INSERT INTO platform_settings (setting_key, setting_value, updated_at)
+    VALUES ('active_provider_commission_policy', 'tiered', now())
+    ON CONFLICT (setting_key) DO UPDATE SET setting_value = 'tiered', updated_at = now()
+  `);
+
   // A category on a real band — the D1 path. `moderate` is used only as a STARTING POINT; every
   // expectation below re-reads whatever rate the band actually holds.
   bandKeyUnderTest = "moderate";
@@ -62,6 +82,16 @@ after(async () => {
   await db.execute(sql`UPDATE fee_bands SET default_rate = ${originalRate} WHERE band_key = ${bandKeyUnderTest}`);
   await db.execute(sql`DELETE FROM service_categories WHERE id = ${categoryId}`);
   await db.execute(sql`DELETE FROM users WHERE id = ${providerId}`);
+  if (policyRowExisted && previousPolicy !== null) {
+    await db.execute(sql`
+      UPDATE platform_settings SET setting_value = ${previousPolicy}
+       WHERE setting_key = 'active_provider_commission_policy'
+    `);
+  } else {
+    await db.execute(sql`
+      DELETE FROM platform_settings WHERE setting_key = 'active_provider_commission_policy'
+    `);
+  }
 });
 
 /**
@@ -400,5 +430,43 @@ test("A13 (1C): an expert-lane owner and a breached band guard both REFUSE, leav
   } finally {
     await db.execute(sql`DELETE FROM service_categories WHERE id = ${orphanId}`);
     await db.execute(sql`ALTER TABLE service_categories ALTER COLUMN commission_band_key SET NOT NULL`);
+  }
+});
+
+/**
+ * Beta policy: the next resolution is the beta_flat row. Editing the category band does not
+ * move it. Editing beta_flat does. A number captured before the edit stays put.
+ */
+test("B1: under beta_flat the resolved rate is the beta band, not the category band", async () => {
+  const betaBefore = await requireBand(BETA_FLAT_BAND);
+  const categoryBefore = await requireBand(bandKeyUnderTest);
+  await db.execute(sql`
+    UPDATE platform_settings SET setting_value = 'beta_flat'
+     WHERE setting_key = 'active_provider_commission_policy'
+  `);
+  try {
+    const resolved = await resolveProviderRate({ categoryId });
+    assert.equal(resolved.platformRate, betaBefore.rate);
+    assert.equal(resolved.bandKey, BETA_FLAT_BAND);
+    assert.notEqual(resolved.bandKey, bandKeyUnderTest);
+
+    const editedCategory = round2(categoryBefore.rate / 2);
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${editedCategory} WHERE band_key = ${bandKeyUnderTest}`);
+    const afterCategoryEdit = await resolveProviderRate({ categoryId });
+    assert.equal(afterCategoryEdit.platformRate, betaBefore.rate, "a category-band edit must not move a beta-priced line");
+
+    const captured = resolved.platformRate;
+    const editedBeta = round2(betaBefore.rate / 2);
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${editedBeta} WHERE band_key = ${BETA_FLAT_BAND}`);
+    const afterBetaEdit = await resolveProviderRate({ categoryId });
+    assert.equal(afterBetaEdit.platformRate, editedBeta, "editing beta_flat reaches the next resolution");
+    assert.equal(captured, betaBefore.rate, "a rate captured before the edit stays put");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${betaBefore.rate} WHERE band_key = ${BETA_FLAT_BAND}`);
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${categoryBefore.rate} WHERE band_key = ${bandKeyUnderTest}`);
+    await db.execute(sql`
+      UPDATE platform_settings SET setting_value = 'tiered'
+       WHERE setting_key = 'active_provider_commission_policy'
+    `);
   }
 });

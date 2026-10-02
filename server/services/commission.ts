@@ -29,10 +29,12 @@
 import { db } from "../db";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/schema";
+import { providerCommissionBandKey } from "@shared/fee-policy";
 import {
   AFFILIATE_STANDARD_BAND,
   CONCIERGE_BOOKING_FEE_BAND_KEY,
   CONCIERGE_BOOKING_EXPERT_SHARE_BAND,
+  BETA_FLAT_BAND,
   EXPERT_STANDARD_BAND,
   EXPERIENCE_CART_BAND_KEY,
   TIP_HANDLING_BAND,
@@ -317,17 +319,17 @@ export function decideBandKey(
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
   if (isProviderLine) {
-    // RULING 49: the `beta_flat` band is DEACTIVATED, so the `beta_flat` POLICY may no longer
-    // select it — `getBand` returns null for an inactive row and the resolver then throws, which is
-    // exactly the break verify-fee-config-parity caught. The policy value is left alone (it is read
-    // elsewhere and is a settings concern); what changes is that it no longer names a dead band.
-    //
-    // Provider lines now always resolve the category band (ruling 48's model) with the configured
-    // default as the last stop. The authoritative implementation is the single resolver
-    // (`fee-resolution.service.ts` → `resolveProviderRate`), which reads
-    // service_categories.commission_band_key directly and is fail-loud; this legacy helper keeps
-    // its existing callers working until the charge paths are repointed onto it (lane item 1C).
-    return opts.categoryCommissionBand ?? defaultBandKey;
+    // Ledger 2026-10-02-beta-rollout-fees amends ruling 49 for the beta period: a beta_flat
+    // policy (and a missing policy) names the beta_flat band even when the category carries
+    // a tier key and even when the default band is expert_standard. Tiered still uses the
+    // category key, then the configured default. An unknown policy names a key getBand will
+    // miss so the resolver throws instead of charging expert_standard.
+    return providerCommissionBandKey({
+      policy,
+      categoryBandKey: opts.categoryCommissionBand,
+      defaultBandKey,
+      betaBandKey: BETA_FLAT_BAND,
+    });
   }
 
   // Phase 1.5 enumeration: if the caller passed a specific category that's
@@ -659,30 +661,15 @@ export async function resolveCommissionRates(
     }
   }
 
-  // Tier 4 / 5 — fee_bands band lookup
+  // Tier 4 / 5 — fee_bands band lookup.
+  // A missing policy is the beta period. default_commission_band_key is the tiered path's
+  // last stop only; under beta_flat, decideBandKey ignores it and names the beta band.
   const policy = (await getSetting("active_provider_commission_policy")) ?? "beta_flat";
-  // RULING 49: the hardcoded fallback was `beta_flat`, which is now DEACTIVATED — an inactive band
-  // makes `getBand` return null and the resolver throw, so this fallback had become a guaranteed
-  // failure for any provider line that reached it (caught by verify-fee-config-parity). The
-  // documented last-resort default is now `expert_standard`, which is the band the existing
-  // EXPERT_SHARE_RATE/PLATFORM_FEE_RATE code constants already mirror (:51-52) — i.e. this restores
-  // the behaviour those constants were written to describe, rather than inventing a new rate.
-  // The admin-set `default_commission_band_key` still wins when configured.
   const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "expert_standard";
 
-  // THE EARLY-ADOPTER BAND SELECTION IS GONE, AND THIS IS THE RECORD OF WHY.
-  // Ruling 49 (migration 178) DEACTIVATED `beta_flat` — "Do not reactivate; a founding-provider
-  // promise is a premium-band grant via the D0 override mechanism, not this band" — and repointed
-  // the two `platform_settings` rows that named it. After that, `isEarlyAdopterProvider` had no
-  // caller and the `if (isProviderLine && providerId)` branch it fed called `decideBandKey` with
-  // arguments IDENTICAL to its own `else`, so the test selected nothing. Both are deleted here
-  // (§18c: no consumer ⇒ delete, don't gate) rather than left to read as a live money gate.
-  //
-  // Provider lines resolve the category band like every other line (ruling 48's model), with the
-  // admin-set `default_commission_band_key` as the last stop. The authoritative implementation is
-  // the single resolver (`fee-resolution.service.ts` → `resolveProviderRate`, ruling 47); this
-  // legacy path keeps working for its existing callers until the charge paths are repointed onto
-  // it (lane item 1C).
+  // Provider lines follow providerCommissionBandKey (ledger 2026-10-02-beta-rollout-fees).
+  // The authoritative charge path is resolveProviderRate, which reads the same policy.
+  // This legacy helper stays for callers that have not moved onto that resolver.
   const bandKey = decideBandKey(
     { source, category, categoryCommissionBand: null /* tiered lookup wires in 1C */ },
     policy,

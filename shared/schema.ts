@@ -11492,6 +11492,10 @@ export const serviceQuotes = pgTable("service_quotes", {
   // belong to tripId AND reference this provider_services row). NULL = no existing plan item
   // named; no backfill.
   itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
+  // Ledger 2026-10-02-beta-rollout-fees (migration 338). The owner's share of the quoted
+  // amount, pinned when the quote is issued. NULL = issued before this column; accept
+  // resolves the live band. No default, no check, no backfill. Omitted from the public view.
+  ownerShareRate: decimal("owner_share_rate", { precision: 7, scale: 6 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

@@ -195,6 +195,10 @@ export const feeBandPatchBodySchema = z
     displayName: z.string(),
     description: z.string(),
     isActive: z.boolean(),
+    // Present only after the operator confirms the old-to-new change. Optional so a
+    // display-only edit and the schema tests' partial bodies still parse; the handler
+    // refuses a money field that arrives without it.
+    confirm: z.literal(true).optional(),
   })
   .partial()
   .strict();

@@ -39,7 +39,10 @@ This document captures architectural decisions to maintain consistency across co
    back to the same code constants when a row is absent/non-positive** (a fee floor's safe failure mode), so the seed is
    behavior-neutral on apply and the constants survive only as the documented fallback default (`fee-literal-ok`,
    matching the `getFee` DEFAULT_FEE_CENTS fallback posture). Idempotent `ON CONFLICT DO NOTHING`; no schema/CHECK change
-   → no publish-time push trap.
+   → no publish-time push trap. **Beta provider commission (ledger `2026-10-02-beta-rollout-fees`):** while
+   `active_provider_commission_policy` is `beta_flat`, new provider bookings read the `beta_flat` band;
+   the four tier bands stay defined and active so an admin can flip the policy to `tiered` without a
+   deploy. Ruling 49's deactivation of `beta_flat` is amended by that ledger row.
 9. **Routing realities (corrected Aug 7, 2026 — decision-maker ratified).** `server/routes/experts.routes.ts` is now
    **MOUNTED and live** (`app.use` in `server/routes.ts`; the dark-endpoint repairs landed it — the earlier
    "imported-but-unmounted" note was stale). The **unmounted-router guard** (`scripts/check-unmounted-routers.cjs`,

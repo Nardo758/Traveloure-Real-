@@ -1882,4 +1882,9 @@ export const MIGRATION_FILES = [
   // date is known, the time is not; the card omits its start time unless TRUE. Additive, nullable, NO
   // DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. APPROVED Oct 1, 2026.
   "337_city_events_start_time_known.sql",
+  // 338 — beta provider commission (ledger 2026-10-02-beta-rollout-fees): reactivate beta_flat,
+  // point active_provider_commission_policy at it where it is still tiered, and add
+  // service_quotes.owner_share_rate (nullable, no default, no check, no index, no backfill).
+  // Declared in shared/schema.ts. DATA plus ADD COLUMN IF NOT EXISTS.
+  "338_beta_rollout_fees.sql",
 ] as const;
