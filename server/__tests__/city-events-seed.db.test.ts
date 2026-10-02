@@ -12,6 +12,9 @@
  *       user agent, never asks for a generic venue, and answers "unreachable" (never null) on a failure
  *   E5  an unreachable lookup DEFERS the row — nothing inserted, exactly ONE lookup that run (bounded,
  *       never a loop) — and the next run inserts it
+ *   E7  the name match is Unicode-safe: a Japanese venue string is lookup-able and matches its OSM
+ *       name exactly; a voiced kana keeps its mark inside the word; a different Japanese name never
+ *       matches; Latin diacritics still fold ("Café" = "Cafe")
  *   E6  an existing UNLOCATED manual row whose seed entry names a different venue takes the new venue and
  *       ONE fresh lookup that run; unreachable leaves it untouched for the next run; a second run asks
  *       nothing; a LOCATED row is never renamed or looked up again
@@ -26,6 +29,7 @@ import { db, pool } from "../db";
 import { buildCityEventRow, seedCityEvents, toCityEventCard } from "../services/city-events.service";
 import { MANUAL_CITY_EVENTS } from "../seeds/city-events.manual";
 import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, venueIsLookupable } from "../services/venue-geocode.service";
+import { distinctiveTokens } from "@shared/place-name-gate";
 import { RESALE_TICKET_HOSTS, ticketUrlRefusal } from "@shared/city-events";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -221,4 +225,22 @@ test("E6: a renamed venue on an unlocated row is looked up once; a located row i
   calls = 0;
   await seedCityEvents([{ ...lost, venue: "New Name Hall" }], { ...quiet, resolveVenue: async () => { calls += 1; return null; } });
   assert.equal(calls, 0, "bounded: once the names agree nothing is asked again");
+});
+
+test("E7: the two-way name match is Unicode-safe", async () => {
+  assert.equal(venueIsLookupable("京都観世会館"), true, "a Japanese venue has words and is looked up");
+  const hit = await resolveVenueFromOsm(
+    { venue: "京都観世会館", locality: "Kyoto", country: "Japan" },
+    async () => ({ ok: true, json: async () => [{ lat: "35.0150", lon: "135.7836", name: "京都観世会館", namedetails: { name: "京都観世会館" } }] }),
+  );
+  assert.deepEqual(hit, { lat: 35.015, lng: 135.7836, matchedName: "京都観世会館", attribution: "© OpenStreetMap contributors" });
+  const other = await resolveVenueFromOsm(
+    { venue: "京都観世会館", locality: "Kyoto", country: "Japan" },
+    async () => ({ ok: true, json: async () => [{ lat: "1", lon: "2", name: "京都コンサートホール" }] }),
+  );
+  assert.equal(other, null, "a different Japanese name never matches");
+  assert.deepEqual([...distinctiveTokens("サンジェルマン", null)], [[..."サンジェルマン".normalize("NFKD")].join("")], "a voiced kana stays one word");
+  assert.deepEqual([...distinctiveTokens("Café Lumière", null)], [...distinctiveTokens("Cafe Lumiere", null)], "Latin diacritics still fold");
+  assert.equal(venueIsLookupable("Kyoto Concert Hall"), true);
+  assert.equal(venueIsLookupable("The Old GMC Complex"), true);
 });
