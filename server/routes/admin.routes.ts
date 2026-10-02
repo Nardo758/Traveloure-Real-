@@ -100,7 +100,7 @@ import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoE
 import { messageReports, userBlocks } from "@shared/schema";
 import { countItemKindsForTrip } from "../services/item-kind-counts.service";
 import { emailOutbox } from "@shared/schema";
-import { drainOutbox } from "../services/email-outbox.service";
+import { drainOutboxForAdminRetry } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -9308,7 +9308,7 @@ router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, re
     }
 
     // Fire the drain in the background — don't wait for delivery.
-    drainOutbox().catch(err =>
+    drainOutboxForAdminRetry(id).catch(err =>
       console.error("[admin/email-outbox/retry] drainOutbox error:", err)
     );
 

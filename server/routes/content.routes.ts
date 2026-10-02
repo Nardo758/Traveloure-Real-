@@ -144,6 +144,7 @@ import {
 import { hasExistingConversation, isBlockedBetween } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 import { trendScoreAgeReport } from "@shared/trend-display";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
@@ -577,28 +578,43 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
         message: message || "Hello, I would like to connect with you.",
       });
 
-      // Create notification for expert
-      await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
-      // Ledger 2026-09-24-earner-email-notifications: the email twin, through the ONE sender.
-      void import("../services/activity-email.service").then(async ({ sendActivityEmail, displayNameOf }) =>
-        sendActivityEmail({
-          recipientId: expertId,
-          kind: "new_message",
-          actorName: await displayNameOf(userId),
-          destination: "messages",
-          throttleKey: `${userId}>${expertId}`,
-        }),
+      await dispatchMessagingEvent(
+        "messaging.message-follow-ons",
+        "message.created",
+        { messageId: chat.id, senderId: userId, recipientId: expertId },
+        { messageId: chat.id, senderId: userId, recipientId: expertId },
+        async () => {
+          // Create notification for expert
+          await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
+          // Ledger 2026-09-24-earner-email-notifications: the email twin, through the ONE sender.
+          void import("../services/activity-email.service").then(async ({ sendActivityEmail, displayNameOf }) =>
+            sendActivityEmail({
+              recipientId: expertId,
+              kind: "new_message",
+              actorName: await displayNameOf(userId),
+              destination: "messages",
+              throttleKey: `${userId}>${expertId}`,
+            }),
+          );
+        },
       );
 
       // Live-push to the expert's open chat client (same frame shape as the /ws relay).
-      broadcastToUser(expertId, {
+      const frame = {
         type: "chat",
         id: chat.id,
         senderId: userId,
         recipientId: expertId,
         content: chat.message,
         timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
-      });
+      };
+      await dispatchMessagingEvent(
+        "messaging.chat-realtime-fanout",
+        "chat.realtime.requested",
+        frame,
+        { recipientId: expertId, messageId: chat.id, transport: "http" },
+        () => broadcastToUser(expertId, frame),
+      );
 
       res.status(201).json({
         message: "Chat started successfully",

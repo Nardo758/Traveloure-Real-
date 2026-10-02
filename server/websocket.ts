@@ -6,6 +6,7 @@ import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
 import { hasExistingConversation } from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
+import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 
 // `log` previously came from "./index" — the only file in server/ importing back into
 // the app entrypoint, which drags in and RUNS the entire bootstrap (migrations, DB
@@ -223,7 +224,7 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: st
 
             // senderId is the session-resolved userId — a forged message.senderId in the
             // payload is never read (MT-1). storage.createChat is the shared write path
-            // with POST /api/chats and also fires the MT-2 recipient notification.
+            // with POST /api/chats and schedules its post-persist follow-ons.
             const savedMessage = await storage.createChat({
               message: message.content,
               senderId: userId,
@@ -241,10 +242,15 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: st
 
             ws.send(JSON.stringify(response));
 
-            const recipientClient = clients.get(message.recipientId);
-            if (recipientClient && recipientClient.ws.readyState === WebSocket.OPEN) {
-              recipientClient.ws.send(JSON.stringify(response));
-            }
+            // Keep the sender acknowledgement first, then relay the same frame exactly once.
+            // The shared helper sends synchronously; the event wrapper does not queue delivery.
+            await dispatchMessagingEvent(
+              "messaging.chat-realtime-fanout",
+              "chat.realtime.requested",
+              response,
+              { recipientId: message.recipientId, messageId: savedMessage.id, transport: "websocket" },
+              () => broadcastToUser(message.recipientId!, response),
+            );
           } catch (err) {
             // Block enforcement: createChat throws a sentinel when a block row exists.
             // Surface a specific error type so the client can distinguish a policy

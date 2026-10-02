@@ -121,7 +121,7 @@ async function deliverClaimed(rows: ClaimedNotice[]): Promise<number> {
 }
 
 /** Push ONE notification now (called right after a write). Idempotent via the claim. */
-export async function dispatchPushForNotification(notificationId: string): Promise<void> {
+async function dispatchPushForNotificationImpl(notificationId: string): Promise<void> {
   try {
     if (!notificationId || !isPushConfigured()) return;
     const r = await db.execute(sql`
@@ -138,8 +138,24 @@ export async function dispatchPushForNotification(notificationId: string): Promi
   }
 }
 
+/** Immediate notification writes keep their non-fatal push contract through the registry. */
+export async function dispatchPushForNotification(notificationId: string): Promise<void> {
+  try {
+    const { dispatchMessagingEvent } = await import("../automations/messaging/runtime");
+    await dispatchMessagingEvent(
+      "messaging.push-notification-dispatch",
+      "notification.push_requested",
+      { notificationId },
+      { notificationId },
+      () => dispatchPushForNotificationImpl(notificationId),
+    );
+  } catch (err) {
+    logger.warn({ err, notificationId }, "[web-push] automation dispatch failed (non-fatal)");
+  }
+}
+
 /** The sweep: every recent, unclaimed notice of a person with a device — covers every writer. */
-export async function sweepUnpushedNotifications(): Promise<{ claimed: number; sent: number }> {
+async function sweepUnpushedNotificationsImpl(): Promise<{ claimed: number; sent: number }> {
   try {
     if (!isPushConfigured()) return { claimed: 0, sent: 0 };
     const r = await db.execute(sql`
@@ -160,6 +176,21 @@ export async function sweepUnpushedNotifications(): Promise<{ claimed: number; s
     return { claimed: rows.length, sent: await deliverClaimed(rows) };
   } catch (err) {
     logger.warn({ err }, "[web-push] sweep failed (non-fatal)");
+    return { claimed: 0, sent: 0 };
+  }
+}
+
+/** Keep the existing five-minute push sweep action behind its scheduled registry node. */
+export async function sweepUnpushedNotifications(): Promise<{ claimed: number; sent: number }> {
+  try {
+    const { runMessagingSchedule } = await import("../automations/messaging/runtime");
+    return await runMessagingSchedule(
+      "messaging.push-notification-sweep",
+      "push-notification-sweep",
+      () => sweepUnpushedNotificationsImpl(),
+    );
+  } catch (err) {
+    logger.warn({ err }, "[web-push] sweep automation dispatch failed (non-fatal)");
     return { claimed: 0, sent: 0 };
   }
 }

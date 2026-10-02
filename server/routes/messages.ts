@@ -28,6 +28,7 @@ import {
 } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 
 const router = Router();
 
@@ -220,14 +221,21 @@ router.post("/", isAuthenticated, async (req, res) => {
 
     // Live-push to the recipient's open chat client (same frame shape as the /ws relay).
     // HTTP sends were previously invisible to an open recipient until reload.
-    broadcastToUser(targetRecipientId, {
+    const frame = {
       type: "chat",
       id: result.id,
       senderId: userId,
       recipientId: targetRecipientId,
       content: storedMessage,
       timestamp: new Date().toISOString(),
-    });
+    };
+    await dispatchMessagingEvent(
+      "messaging.chat-realtime-fanout",
+      "chat.realtime.requested",
+      frame,
+      { recipientId: targetRecipientId, messageId: result.id, transport: "http" },
+      () => broadcastToUser(targetRecipientId, frame),
+    );
 
     res.status(201).json(result);
   } catch (error) {
