@@ -194,6 +194,8 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
     try {
       const userId = getUserId(req)!;
       const summary = await storage.getProviderEarningsSummary(userId);
+      const { sumAwaitingCompletionEarnings } = await import("../services/revenue-tracking.service");
+      const awaitingCompletion = await sumAwaitingCompletionEarnings(userId);
       // Ledger 90 (FP-5, S2): the EFFECTIVE payout threshold, server-derived, so the Money page
       // can state one number instead of printing a hardcoded "$10.00" the server may not be the
       // one enforcing. `effective` = max(platform floor, the earner's own Settings minimum) —
@@ -208,6 +210,7 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
         availableForPayout: summary.available,
         pendingPayout: summary.pending,
         commissionRate: summary.total > 0 ? (summary.paidOut / summary.total) : 0,
+        ...(awaitingCompletion > 0 ? { awaitingCompletion } : {}),
         payoutMinimum: {
           platformFloorCents: MIN_PAYOUT_CENTS,
           effectiveCents: effectiveMinimumCents,

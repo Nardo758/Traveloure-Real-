@@ -64,6 +64,44 @@ export function composeTravelerCharge(parts: TravelerChargeParts): number {
 }
 
 /**
+ * The payable total a cart READ may show beside `total` (ledger
+ * `2026-10-02-checkout-display-equals-charge`).
+ *
+ * `total` stays the pre-fee composition — the fee is disclosed beside it, and folding it in
+ * would change every reader of `cart.total`. `amountDue` is what checkout will charge when the
+ * preview resolved: the SAME composition with the preview's `chargedTotal` (0 when the fee was
+ * waived). When there are no fee lines, that equals the pre-fee total. When there WERE fee lines
+ * and the band did not resolve, this returns null and the caller OMITS the field (§13 — the
+ * pre-fee total is not the charge).
+ */
+export function cartAmountDue(parts: {
+  subtotal: number;
+  conciergeFee: number;
+  surchargeTotal: number;
+  /** null = the preview was omitted. A number, including 0, means the band answered. */
+  previewCharged: number | null;
+  hadFeeLines: boolean;
+}): string | null {
+  if (parts.previewCharged != null) {
+    return composeTravelerCharge({
+      subtotal: parts.subtotal,
+      conciergeFee: parts.conciergeFee,
+      surchargeTotal: parts.surchargeTotal,
+      travelerFee: parts.previewCharged,
+    }).toFixed(2);
+  }
+  if (!parts.hadFeeLines) {
+    return composeTravelerCharge({
+      subtotal: parts.subtotal,
+      conciergeFee: parts.conciergeFee,
+      surchargeTotal: parts.surchargeTotal,
+      travelerFee: 0,
+    }).toFixed(2);
+  }
+  return null;
+}
+
+/**
  * The booking_details key a checkout claim stamps so a row SAYS which composition priced it.
  * Its PRESENCE is the discriminator (§13): a row without it was charged under the pre-A3
  * composition and must be read back that way, never re-derived as if it had been fixed. There is

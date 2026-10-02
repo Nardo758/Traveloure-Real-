@@ -18,11 +18,13 @@ import {
   parseCartQuantityInput,
 } from "@/lib/cart-quantity";
 import {
+  paymentStepTotal,
   travelerFeePreviewAddend,
   travelerFeePreviewDisplay,
   type TravelerFeePreviewBlock,
   type TravelerFeePreviewDisplay,
 } from "@/lib/traveler-fee-preview";
+import { clearCheckoutKey, readOrMintCheckoutKey } from "@/lib/checkout-idempotency";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,6 +174,8 @@ interface CartData {
   // server-side through the charge's own resolver and shown BEFORE checkout. Omitted when the server
   // has no answer — never read as $0.
   travelerFeePreview?: TravelerFeePreviewBlock;
+  /** Payable total: `total` plus the previewed service fee. Omitted when the fee cannot be known. */
+  amountDue?: string;
 }
 
 /**
@@ -659,9 +663,9 @@ export default function CartPage() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const [flowStep, setFlowStep] = useState<FlowStep>("cart");
-  // Generated once per page mount — stays stable across multiple "Pay Now" clicks
-  // so duplicate submissions carry the same key and are de-duped server-side + by Stripe.
-  const [checkoutIdempotencyKey] = useState<string>(() => crypto.randomUUID());
+  // Stable for this set of cart lines, including across a reload, so a declined card retries
+  // the SAME claim instead of minting another payment-pending booking. Cleared only once paid.
+  const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState<string | null>(null);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
 
@@ -899,6 +903,15 @@ export default function CartPage() {
     enabled: !authLoading,
   });
 
+  const checkoutLineIds = (cart?.items ?? []).filter((item) => !!item.service).map((item) => item.id);
+  const checkoutLineKey = checkoutLineIds.slice().sort().join(",");
+  useEffect(() => {
+    if (isLoading) return;
+    setCheckoutIdempotencyKey((prev) =>
+      readOrMintCheckoutKey(typeof sessionStorage === "undefined" ? null : sessionStorage, checkoutLineIds, prev),
+    );
+  }, [isLoading, checkoutLineKey]);
+
   // L1: when the trip-level date range isn't set yet, a room-stay item's own dates
   // are real trip dates too — falling back to them keeps the "Add your travel dates"
   // banner/nudge from claiming no dates exist when one is plainly visible in the cart.
@@ -1060,6 +1073,9 @@ export default function CartPage() {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
       }
+      if (!checkoutIdempotencyKey) {
+        throw new Error("Checkout is still preparing");
+      }
       const res = await apiRequest("POST", "/api/checkout", {
         currency: displayCurrency,
         idempotencyKey: checkoutIdempotencyKey,
@@ -1126,8 +1142,10 @@ export default function CartPage() {
             payment_required: true,
           });
         }
+        const paidIds = data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [];
+        clearCheckoutKey(typeof sessionStorage === "undefined" ? null : sessionStorage, checkoutLineIds);
         confirmCheckoutPayment(
-          data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [],
+          paidIds,
           data.paymentIntent?.paymentIntentId,
         ).catch(() => {});
         toast({
@@ -1147,14 +1165,16 @@ export default function CartPage() {
         // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
         // to lose its checked-out lines (checkout already cleared them server-side), but the payment step
         // still needs to show the traveler exactly what they're paying for.
+        const piDollars =
+          data.paymentIntent?.amount != null ? (Number(data.paymentIntent.amount) / 100).toFixed(2) : undefined;
         setCheckoutOrderSnapshot({
           items: cart?.items || [],
-          subtotal: data.subtotal,
-          platformFee: data.platformFee,
-          conciergeFee: data.conciergeFee ?? "0",
-          travelSurcharge: data.travelSurcharge ?? "0",
+          subtotal: data.subtotal ?? cart?.subtotal ?? "0",
+          platformFee: data.platformFee ?? "0",
+          conciergeFee: data.conciergeFee ?? cart?.conciergeFee ?? "0",
+          travelSurcharge: data.travelSurcharge ?? cart?.travelSurcharge ?? "0",
           travelerFee: data.travelerFee,
-          total: data.total,
+          total: data.total ?? piDollars ?? cart?.amountDue ?? cart?.total ?? "0",
         });
         setCheckoutPaymentIntent(data.paymentIntent);
         setCheckoutBookingIds(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []);
@@ -1289,6 +1309,11 @@ export default function CartPage() {
   // The amount is the server's; the ONE wording/omission rule decides whether a line is drawn.
   const travelerFeeDisplay = travelerFeePreviewDisplay(cart?.travelerFeePreview, formatPrice);
   const travelerFeeAddend = travelerFeePreviewAddend(travelerFeeDisplay);
+  // The server's payable total when it could compose one; otherwise the same lines summed here.
+  const payableTotal =
+    cart?.amountDue != null && Number.isFinite(parseFloat(cart.amountDue))
+      ? parseFloat(cart.amountDue)
+      : combinedTotal + travelerFeeAddend;
 
   const handleCurrencyChange = (code: string) => {
     setDisplayCurrency(code);
@@ -2390,7 +2415,7 @@ export default function CartPage() {
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>{travelerFeeDisplay?.kind === "charged" ? "Estimated total" : "Total"}</span>
-                        <span data-testid="text-total">{formatPrice(combinedTotal + travelerFeeAddend)}</span>
+                        <span data-testid="text-total">{formatPrice(payableTotal)}</span>
                       </div>
                       {displayCurrency !== "USD" && (
                         <p className="text-xs text-muted-foreground" data-testid="text-currency-disclaimer">
@@ -2876,12 +2901,6 @@ export default function CartPage() {
                         <span className="text-muted-foreground">Subtotal</span>
                         <span>{formatPrice(combinedSubtotal)}</span>
                       </div>
-                      {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
-                        <div className="flex justify-between text-green-600">
-                          <span>Savings</span>
-                          <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
-                        </div>
-                      )}
                       {conciergeFee > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
@@ -2894,8 +2913,8 @@ export default function CartPage() {
                       <TravelerFeePreviewRow display={travelerFeeDisplay} formatPrice={formatPrice} testId="text-traveler-fee-preview-review" />
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
-                        <span>{travelerFeeDisplay?.kind === "charged" ? "Estimated total" : "Total"}</span>
-                        <span>{formatPrice(combinedTotal + travelerFeeAddend - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span>{cart?.amountDue != null ? "Total" : travelerFeeDisplay?.kind === "charged" ? "Estimated total" : "Total"}</span>
+                        <span data-testid="text-total-review">{formatPrice(payableTotal)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
@@ -2961,11 +2980,11 @@ export default function CartPage() {
                         <StripeCheckout
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
-                          // R162 (ledger `2026-09-27-failed-is-final`): a declined card marks these
-                          // bookings `failed`, which is final — the form closes rather than
-                          // re-confirming the same PaymentIntent; "Try again" starts a new one.
-                          singleAttempt
                           onSuccess={async (paymentIntentId) => {
+                            clearCheckoutKey(
+                              typeof sessionStorage === "undefined" ? null : sessionStorage,
+                              checkoutLineIds,
+                            );
                             // #213 (legacy-reconciliation lane): the CLIENT POLLING FALLBACK, which
                             // this flow never had. The webhook is the authoritative confirmation, but
                             // it is asynchronous (and undelivered in local dev), so poll bulk-status
@@ -3117,12 +3136,6 @@ export default function CartPage() {
                           {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.subtotal) : combinedSubtotal)}
                         </span>
                       </div>
-                      {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
-                        <div className="flex justify-between text-green-600">
-                          <span>Savings</span>
-                          <span>-{formatPrice(optimizationResult.estimatedTotal.savings)}</span>
-                        </div>
-                      )}
                       {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee) > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
@@ -3142,12 +3155,9 @@ export default function CartPage() {
                           </span>
                         </div>
                       )}
-                      {/* Ledger 2026-09-08-cart-fee-line: the ruled traveler service fee that rode
-                          this charge. Rendered ONLY from the checkout response, which knows what was
-                          actually billed (0 on a rails- or Trip-Pass-covered line); the pre-checkout
-                          cart has no coverage answer, so it shows no fee line rather than a guessed
-                          one (§13). */}
-                      {checkoutOrderSnapshot?.travelerFee != null &&
+                      {/* Before the PaymentIntent exists, the fee is the cart preview. After checkout,
+                          it is the amount that rode the charge. A covered fee draws nothing here. */}
+                      {checkoutOrderSnapshot?.travelerFee != null ? (
                         parseFloat(checkoutOrderSnapshot.travelerFee) > 0 && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Service fee</span>
@@ -3155,15 +3165,20 @@ export default function CartPage() {
                               {formatPrice(parseFloat(checkoutOrderSnapshot.travelerFee))}
                             </span>
                           </div>
-                        )}
+                        )
+                      ) : (
+                        <TravelerFeePreviewRow display={travelerFeeDisplay} formatPrice={formatPrice} testId="text-traveler-fee-payment" />
+                      )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
                         <span data-testid="text-total-payment">
-                          {formatPrice(
-                            (checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.total) : combinedTotal) -
-                              (optimizationResult?.estimatedTotal?.savings || 0)
-                          )}
+                          {formatPrice(paymentStepTotal({
+                            paymentIntentAmountCents: checkoutPaymentIntent?.amount,
+                            snapshotTotal: checkoutOrderSnapshot?.total,
+                            amountDue: cart?.amountDue,
+                            fallback: payableTotal,
+                          }))}
                         </span>
                       </div>
                     </CardContent>
@@ -3184,7 +3199,7 @@ export default function CartPage() {
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={() => checkoutMutation.mutate()}
-                          disabled={checkoutMutation.isPending}
+                          disabled={checkoutMutation.isPending || !checkoutIdempotencyKey}
                           data-testid="button-complete-booking"
                         >
                           {checkoutMutation.isPending ? (

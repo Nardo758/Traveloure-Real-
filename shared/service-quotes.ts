@@ -81,6 +81,44 @@ export function quoteLifecycle(row: QuoteLifecycleRow, now: Date = new Date()): 
   return "quoted";
 }
 
+/**
+ * Whether an accepted quote's minted booking can still be paid, is already paid, or the
+ * payment window has closed. The charge rail still refuses an expired quote (`quote_expired`);
+ * this only tells the surface which control to draw, so a confirmed booking is not also
+ * offered as unpaid (ledger `2026-10-02-checkout-display-equals-charge`).
+ *
+ * A paid booking status wins over a lapsed `expires_at`: the money already moved. `expired`
+ * is said only when the booking is still unpaid.
+ */
+const QUOTE_PAID_BOOKING_STATUSES = new Set([
+  "confirmed",
+  "deposit_paid",
+  "completed",
+  "in_progress",
+  "completion_declared",
+  "awaiting_acceptance",
+  "partially_completed",
+]);
+
+export type QuotePaymentOffer = "pay" | "paid" | "expired" | "refunded" | "none";
+
+export function quotePaymentOffer(
+  input: {
+    lifecycle: string;
+    bookingId?: string | null;
+    bookingStatus?: string | null;
+    expiresAt?: Date | string | null;
+  },
+  now: Date = new Date(),
+): QuotePaymentOffer {
+  if (input.lifecycle !== "accepted" || !input.bookingId) return "none";
+  if (input.bookingStatus === "refunded") return "refunded";
+  if (input.bookingStatus && QUOTE_PAID_BOOKING_STATUSES.has(input.bookingStatus)) return "paid";
+  const expires = toDate(input.expiresAt);
+  if (expires && expires.getTime() <= now.getTime()) return "expired";
+  return "pay";
+}
+
 /** Pure mirror of the accept claim's WHERE clause, for readers that want to say "acceptable". */
 export function isQuoteAcceptable(
   row: QuoteLifecycleRow & { acceptedAt?: Date | string | null; supersededBy?: string | null },

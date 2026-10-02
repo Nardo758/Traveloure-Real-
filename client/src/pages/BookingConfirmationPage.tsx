@@ -39,6 +39,37 @@ const getStripe = () => {
 
 type PageState = 'loading' | 'success' | 'processing' | 'failed' | 'canceled' | 'no_params';
 
+type BookingStatusRow = {
+  status: string;
+  confirmationCode: string | null;
+  amountCharged?: string;
+  subtotal?: string;
+  conciergeFee?: string;
+  travelerFee?: string;
+};
+
+type BookingRef = {
+  id: string;
+  code: string | null;
+  status: string;
+  amountCharged?: string;
+  subtotal?: string;
+  conciergeFee?: string;
+  travelerFee?: string;
+};
+
+function toBookingRef(id: string, row: BookingStatusRow): BookingRef {
+  return {
+    id,
+    code: row.confirmationCode ?? null,
+    status: row.status,
+    ...(row.amountCharged ? { amountCharged: row.amountCharged } : {}),
+    ...(row.subtotal ? { subtotal: row.subtotal } : {}),
+    ...(row.conciergeFee ? { conciergeFee: row.conciergeFee } : {}),
+    ...(row.travelerFee ? { travelerFee: row.travelerFee } : {}),
+  };
+}
+
 export default function BookingConfirmationPage() {
   const [, navigate] = useLocation();
   const [state, setState] = useState<PageState>('loading');
@@ -46,18 +77,39 @@ export default function BookingConfirmationPage() {
   const [errorMessage, setErrorMessage] = useState<string>('');
   // #533: the bookings this payment covered, with the reference and status the SERVER holds —
   // read from bulk-status (owner-scoped), never assumed from the payment having succeeded.
-  const [bookingRefs, setBookingRefs] = useState<{ id: string; code: string | null; status: string }[] | null>(null);
+  const [bookingRefs, setBookingRefs] = useState<BookingRef[] | null>(null);
   useEffect(() => {
     const ids = parseBookingIdsParam(new URLSearchParams(window.location.search).get('bookings'));
     if (ids.length === 0) return;
-    apiRequest('POST', '/api/bookings/bulk-status', { bookingIds: ids })
-      .then((r) => r.json())
-      .then((body: { statuses?: Record<string, { status: string; confirmationCode: string | null }> }) => {
-        setBookingRefs(ids.filter((id) => body.statuses?.[id]).map((id) => ({
-          id, code: body.statuses![id].confirmationCode ?? null, status: body.statuses![id].status,
-        })));
-      })
-      .catch(() => setBookingRefs(null));
+    let cancelled = false;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      apiRequest('POST', '/api/bookings/bulk-status', { bookingIds: ids })
+        .then((r) => r.json())
+        .then((body: { statuses?: Record<string, BookingStatusRow> }) => {
+          if (cancelled) return;
+          const refs = ids
+            .filter((id) => body.statuses?.[id])
+            .map((id) => toBookingRef(id, body.statuses![id]));
+          setBookingRefs(refs);
+          const waitingOnReceipt = refs.some(
+            (b) => !b.amountCharged && (b.status === 'payment_pending' || b.status === 'confirmed' || b.status === 'deposit_paid'),
+          );
+          attempts += 1;
+          if (waitingOnReceipt && attempts < 4) {
+            timer = setTimeout(load, 800);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setBookingRefs(null);
+        });
+    };
+    load();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -169,6 +221,20 @@ export default function BookingConfirmationPage() {
                 {bookingRefs.map((b) => (
                   <li key={b.id} className="rounded-lg border border-gray-200 px-3 py-2" data-testid={`booking-ref-${b.id}`}>
                     <p className="text-sm text-gray-700">{bookingStatusSentence(b.status)}</p>
+                    {b.amountCharged ? (
+                      <p className="text-sm font-semibold text-gray-900 mt-1" data-testid={`booking-amount-${b.id}`}>
+                        Charged ${b.amountCharged}
+                      </p>
+                    ) : null}
+                    {(b.subtotal || b.conciergeFee || b.travelerFee) ? (
+                      <p className="text-xs text-gray-500 mt-0.5" data-testid={`booking-receipt-${b.id}`}>
+                        {[
+                          b.subtotal ? `Service $${b.subtotal}` : null,
+                          b.conciergeFee ? `Destination concierge fee $${b.conciergeFee}` : null,
+                          b.travelerFee ? `Service fee $${b.travelerFee}` : null,
+                        ].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
                     {b.code ? (
                       <p className="text-xs text-gray-500 mt-0.5">
                         Reference <span className="font-mono font-semibold text-gray-900" data-testid={`booking-code-${b.id}`}>{b.code}</span>

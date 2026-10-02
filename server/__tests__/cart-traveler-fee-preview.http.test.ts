@@ -221,7 +221,10 @@ test("V1–V4, V7 the cart read carries the charge's own per-line fee, capped, g
   assert.equal(Object.keys(pv.byTrip).length, 1, "a line on no plan is in no plan's group");
 
   // V7 — `total` keeps its meaning: the fee is disclosed beside it, not folded in.
+  // `amountDue` is the charge: the same total plus the previewed fee.
   assert.equal(cart.total, (smallPrice * 2 + bigPrice).toFixed(2));
+  const due = Math.round((parseFloat(cart.total) + pv.chargedTotal) * 100) / 100;
+  assert.equal(cart.amountDue, due.toFixed(2));
 });
 
 test("V5b an unresolvable band omits the block — never a $0 fee", async () => {
@@ -230,6 +233,7 @@ test("V5b an unresolvable band omits the block — never a $0 fee", async () => 
     const cart = await getCart();
     assert.ok(cart.itemCount > 0, "the cart still has lines");
     assert.ok(!("travelerFeePreview" in cart), "no band ⇒ no answer ⇒ no block");
+    assert.ok(!("amountDue" in cart), "no band ⇒ the pre-fee total is not claimed as the charge");
   } finally {
     await db.execute(sql`UPDATE fee_bands SET is_active = true WHERE band_key = ${TRAVELER_SERVICE_FEE_BAND}`);
   }

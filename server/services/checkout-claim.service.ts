@@ -1224,7 +1224,36 @@ async function performPaidCheckoutPromotion(opts: PromotePaidCheckoutOptions): P
       "[checkout-promote] payment promotion complete",
     );
   }
+
+  // The cart stays until the charge is real (ledger `2026-10-02-checkout-display-equals-charge`).
+  // A decline leaves the lines in place so the same claim can be retried. A quote-born charge
+  // (`quote-buy-`) never owned cart lines and must not empty a cart the traveler is still using.
+  // Best-effort: the booking is the money truth (§15b).
+  await clearCartAfterPaidPromotion(candidates, result).catch((err) =>
+    logger.error(
+      { err, paymentIntentId },
+      "[checkout-promote] cart clear after paid promotion failed (booking stands)",
+    ),
+  );
   return result;
+}
+
+async function clearCartAfterPaidPromotion(
+  candidates: CandidateRow[],
+  result: PaymentPromotionResult,
+): Promise<void> {
+  const paid = new Set([...result.promoted, ...result.alreadyConfirmed]);
+  const owners = new Set<string>();
+  for (const row of candidates) {
+    if (!paid.has(row.id) || !row.travelerId) continue;
+    if ((row.idempotencyKey ?? "").startsWith("quote-buy-")) continue;
+    owners.add(row.travelerId);
+  }
+  if (owners.size === 0) return;
+  const { clearCheckedOutCartLines } = await import("./cart-projection.service");
+  for (const userId of owners) {
+    await clearCheckedOutCartLines(userId);
+  }
 }
 
 /**
