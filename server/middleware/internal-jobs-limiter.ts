@@ -36,6 +36,7 @@
  */
 import type { Request, Response, NextFunction } from "express";
 import { logger } from "../infrastructure/logger";
+import { runModerationSchedule } from "../automations/moderation/runtime";
 
 export const INTERNAL_WINDOW_MS = 15 * 60 * 1000;
 export const INTERNAL_MAX_REQUESTS = 30;
@@ -58,12 +59,14 @@ const state = new Map<string, IpState>();
 // Housekeeping only — unref'd so it never holds the event loop open (same reasoning as
 // InMemoryRateLimiter's sweep in infrastructure/rate-limiter.ts).
 const sweep = setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of Array.from(state.entries())) {
-    if (entry.resetTime < now && entry.lockedUntil < now && entry.authFailures === 0) {
-      state.delete(key);
+  void runModerationSchedule("moderation.internal-jobs-limiter-cleanup", "internal-jobs-limiter-cleanup", () => {
+    const now = Date.now();
+    for (const [key, entry] of Array.from(state.entries())) {
+      if (entry.resetTime < now && entry.lockedUntil < now && entry.authFailures === 0) {
+        state.delete(key);
+      }
     }
-  }
+  });
 }, 60_000);
 sweep.unref?.();
 

@@ -8,6 +8,7 @@ import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, g
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
+import { dispatchModerationEvent } from "../../automations/moderation/runtime";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -405,11 +406,17 @@ export function setupEmailAuth(app: Express): void {
         await tx.update(users).set({ password: hashedPassword }).where(eq(users.id, claimed.userId));
         // Session invalidation is part of the same transaction and covers both
         // Passport user shapes. A failure rolls back the password/token change.
-        await tx.execute(drizzleSql`
-          DELETE FROM sessions
-          WHERE sess->'passport'->'user'->'claims'->>'sub' = ${claimed.userId}
-             OR sess->'passport'->'user'->>'id' = ${claimed.userId}
-        `);
+        await dispatchModerationEvent(
+          "moderation.password-reset-session-purge",
+          "password_reset.password_persisted",
+          { userId: claimed.userId, resetTokenClaimed: true },
+          { userId: claimed.userId, resetTokenClaimed: true },
+          () => tx.execute(drizzleSql`
+            DELETE FROM sessions
+            WHERE sess->'passport'->'user'->'claims'->>'sub' = ${claimed.userId}
+               OR sess->'passport'->'user'->>'id' = ${claimed.userId}
+          `),
+        );
         return true;
       });
       if (!resetApplied) {

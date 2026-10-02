@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { logger } from "./logger";
+import { runModerationSchedule } from "../automations/moderation/runtime";
 
 interface RateLimitConfig {
   windowMs: number;
@@ -19,7 +20,9 @@ class InMemoryRateLimiter {
   private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
-    this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+    this.cleanupInterval = setInterval(() => {
+      void runModerationSchedule("moderation.rate-limiter-cleanup", "rate-limiter-cleanup", () => this.cleanup());
+    }, 60000);
     // .unref() so this housekeeping timer never by itself holds the event loop open.
     // Without it the process cannot exit on its own — which surfaces as hanging test
     // runs and a delayed graceful shutdown, not as a user-visible bug. The sweep is
