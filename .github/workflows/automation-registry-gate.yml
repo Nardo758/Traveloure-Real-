@@ -30,5 +30,6 @@ jobs:
         run: npx tsx scripts/check-automation-registry.ts
       - name: Verify registry dispatch, scheduling, and fail-closed contracts
         # Literal globs (not a find/mapfile list) so scripts/check-test-files-wired.cjs can see these
-        # files are run. Both depths that hold tests today are named; a deeper directory must be added here.
-        run: npx tsx --test --test-concurrency=1 server/automations/__tests__/*.test.ts server/automations/*/__tests__/*.test.ts
+        # files are run. Only the top-level depth holds tests in the core PR; the first domain PR that
+        # adds server/automations/<domain>/__tests__ adds that glob here (an unmatched glob is an error).
+        run: npx tsx --test --test-concurrency=1 server/automations/__tests__/*.test.ts
