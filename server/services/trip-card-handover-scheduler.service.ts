@@ -26,6 +26,7 @@ import { logger } from "../infrastructure/logger";
 import { TRIP_CARD_HANDOVER_WINDOW_MS } from "@shared/trip-primary-surface";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — matches earningsReleaseScheduler's cadence
 const FIRST_RUN_DELAY_MS = 3 * 60 * 1000; // stagger slightly after the other startup schedulers
@@ -75,7 +76,15 @@ class TripCardHandoverSchedulerService {
   }
 
   /** Run one pass. Safe to call ad-hoc. */
-  async runPass(): Promise<HandoverStats> {
+  runPass(): Promise<HandoverStats> {
+    return runBookingSchedule(
+      "bookings.trip-card-handover-nudge",
+      "trip-card-handover",
+      () => this.runPassAction(),
+    );
+  }
+
+  private async runPassAction(): Promise<HandoverStats> {
     try {
       const candidates = await this.findUnnudgedCandidates();
       let nudged = 0;

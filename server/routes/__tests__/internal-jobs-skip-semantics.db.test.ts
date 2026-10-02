@@ -22,6 +22,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
 import type { AddressInfo } from "node:net";
+import { eq } from "drizzle-orm";
+import { jobHeartbeats } from "@shared/schema";
+import { db } from "../../db";
 import internalRoutes, { runJob } from "../internal.routes";
 import { runBackgroundJob } from "../../services/background-job-runner";
 
@@ -107,4 +110,24 @@ test("S4: an object-returning job is unchanged — ok:true with its result, no s
     assert.equal(typeof body.result?.expert, "number");
     assert.equal(typeof body.result?.provider, "number");
   });
+});
+
+test("S5: a missing-Stripe-key reconciliation is an HTTP 200 skip and never stamps its heartbeat", async () => {
+  const before = await db.select().from(jobHeartbeats).where(eq(jobHeartbeats.jobName, "stripe-reconciliation"));
+  const { status, body } = await runJob(
+    "stripe-reconciliation",
+    async () => ({ status: "skipped", skipReason: "stripe_secret_key_missing" }),
+    (result) => result?.status === "failed",
+    { isSkip: (result) => result?.status === "skipped" },
+  );
+  const after = await db.select().from(jobHeartbeats).where(eq(jobHeartbeats.jobName, "stripe-reconciliation"));
+
+  assert.equal(status, 200);
+  assert.deepEqual(body, {
+    ok: true,
+    skipped: true,
+    reason: "stripe_secret_key_missing",
+    job: "stripe-reconciliation",
+  });
+  assert.deepEqual(after, before, "a skipped reconciliation is not a successful cron heartbeat");
 });

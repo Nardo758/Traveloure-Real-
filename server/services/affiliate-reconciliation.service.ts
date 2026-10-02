@@ -18,6 +18,7 @@ import {
 } from "./affiliate-attribution.service";
 import { confirmFromPartnerReport } from "./affiliate-booking-confirmation.service";
 import { resolveCommissionRates } from "./commission";
+import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -562,7 +563,13 @@ class AffiliateReconciliationService {
     // row (agent-booking confirm's honest "unknown yet") can ever be matched, and it adopts the
     // partner's real amount instead of estimating one. External rows it consumes are skipped
     // below so one partner-reported commission is never credited to two internal rows.
-    const exactMatchedExternalRefIds = await this.adoptExactTokenMatches(external, internalRows, consumed);
+    const exactMatchedExternalRefIds = await dispatchPaymentTrigger(
+      "payments.affiliate-exact-report-adoption",
+      "affiliate.report.exact_token_adoption.check",
+      { matchingRequested: true },
+      {},
+      () => this.adoptExactTokenMatches(external, internalRows, consumed),
+    );
 
     for (const ext of external) {
       if (exactMatchedExternalRefIds.has(ext.partnerReferenceId)) continue;

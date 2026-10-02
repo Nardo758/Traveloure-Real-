@@ -79,6 +79,9 @@ import {
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { viatorService } from "../services/viator.service";
 import { affiliateScraperService } from "../services/affiliate-scraper.service";
+import { dispatchPaymentTrigger } from "../automations/payments/runtime";
+import { dispatchModerationEvent } from "../automations/moderation/runtime";
+import { dispatchProviderEvent } from "../automations/provider/runtime";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
@@ -98,7 +101,7 @@ import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoE
 import { messageReports, userBlocks } from "@shared/schema";
 import { countItemKindsForTrip } from "../services/item-kind-counts.service";
 import { emailOutbox } from "@shared/schema";
-import { drainOutbox } from "../services/email-outbox.service";
+import { drainOutboxForAdminRetry } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -1959,7 +1962,13 @@ router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res
   }
   try {
     const { runStripeReconciliation } = await import("../jobs/stripeReconciliation");
-    const result = await runStripeReconciliation({ triggeredBy: "manual" });
+    const result = await dispatchPaymentTrigger(
+      "payments.stripe-reconciliation-manual",
+      "admin.stripe-reconciliation.run_now",
+      { adminAuthorized: true },
+      {},
+      () => runStripeReconciliation({ triggeredBy: "manual" }),
+    );
     res.json({
       ...result,
       note: result.status === "skipped"
@@ -2953,53 +2962,69 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       // out only when this save ENTERED `approved` — a re-save of an approved application must not
       // congratulate the applicant again (board #905, ledger `2026-09-23-phase2-messages`).
       if (enteredStatus(updated, "approved")) {
-      // Notify the user to complete Stripe Connect setup
-      await insertNotification({
-        userId: updated.userId,
-        type: "application_approved",
-        title: "Application Approved! 🎉",
-        message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
-        data: { link: "/expert/money" }, // C8: Earnings module renamed Money (§17); old route redirects
-      });
+        await dispatchProviderEvent(
+          "provider.expert-application-decision-follow-ons",
+          "expert.application.decision",
+          { applicationId: req.params.id, userId: updated.userId, decision: "approved", enteredTerminalStatus: true },
+          { applicationId: req.params.id, userId: updated.userId, decision: "approved", enteredTerminalStatus: true },
+          async () => {
+            // Notify the user to complete Stripe Connect setup
+            await insertNotification({
+              userId: updated.userId,
+              type: "application_approved",
+              title: "Application Approved! 🎉",
+              message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
+              data: { link: "/expert/money" }, // C8: Earnings module renamed Money (§17); old route redirects
+            });
 
-      // Send the applicant a congratulations email with a link to /expert/money
-      const [approvedApplicant] = await db
-        .select({ email: users.email, firstName: users.firstName })
-        .from(users)
-        .where(eq(users.id, updated.userId));
-      if (approvedApplicant?.email) {
-        try {
-          const { sendExpertApplicationApprovalEmail } = await import("../services/email.service");
-          sendExpertApplicationApprovalEmail({
-            toEmail: approvedApplicant.email,
-            firstName: approvedApplicant.firstName ?? null,
-          });
-        } catch (err) {
-          console.error("[admin] Failed to send expert approval email (non-fatal):", err);
-        }
-      }
+            // Send the applicant a congratulations email with a link to /expert/money
+            const [approvedApplicant] = await db
+              .select({ email: users.email, firstName: users.firstName })
+              .from(users)
+              .where(eq(users.id, updated.userId));
+            if (approvedApplicant?.email) {
+              try {
+                const { sendExpertApplicationApprovalEmail } = await import("../services/email.service");
+                sendExpertApplicationApprovalEmail({
+                  toEmail: approvedApplicant.email,
+                  firstName: approvedApplicant.firstName ?? null,
+                });
+              } catch (err) {
+                console.error("[admin] Failed to send expert approval email (non-fatal):", err);
+              }
+            }
+          },
+        );
       }
     }
 
     // If rejected, send the applicant an email with the rejection reason (if any).
     // Guard: only when this save ENTERED `rejected` (read under the row lock) — not on re-saves.
     if (status === "rejected" && enteredStatus(updated, "rejected")) {
-      const [applicant] = await db
-        .select({ email: users.email, firstName: users.firstName })
-        .from(users)
-        .where(eq(users.id, updated.userId));
-      if (applicant?.email) {
-        try {
-          const { sendExpertApplicationRejectionEmail } = await import("../services/email.service");
-          sendExpertApplicationRejectionEmail({
-            toEmail: applicant.email,
-            firstName: applicant.firstName ?? null,
-            rejectionMessage: rejectionMessage ?? null,
-          });
-        } catch (err) {
-          console.error("[admin] Failed to send expert rejection email (non-fatal):", err);
+      await dispatchProviderEvent(
+        "provider.expert-application-decision-follow-ons",
+        "expert.application.decision",
+        { applicationId: req.params.id, userId: updated.userId, decision: "rejected", enteredTerminalStatus: true },
+        { applicationId: req.params.id, userId: updated.userId, decision: "rejected", enteredTerminalStatus: true },
+        async () => {
+          const [applicant] = await db
+            .select({ email: users.email, firstName: users.firstName })
+            .from(users)
+            .where(eq(users.id, updated.userId));
+          if (applicant?.email) {
+            try {
+              const { sendExpertApplicationRejectionEmail } = await import("../services/email.service");
+              sendExpertApplicationRejectionEmail({
+                toEmail: applicant.email,
+                firstName: applicant.firstName ?? null,
+                rejectionMessage: rejectionMessage ?? null,
+              });
+            } catch (err) {
+              console.error("[admin] Failed to send expert rejection email (non-fatal):", err);
+            }
+          }
         }
-      }
+      );
     }
 
     const { priorStatus: _expertPriorStatus, ...expertForm } = updated;
@@ -3022,13 +3047,19 @@ router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthentica
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
-    await insertNotification({
-      userId: updated.userId,
-      type: "rejection_reason_updated",
-      title: "Rejection Feedback Updated",
-      message: "An admin has updated the feedback on your expert application. Review the new message to understand what you can improve before reapplying.",
-      data: { link: "/expert-status" },
-    });
+    await dispatchProviderEvent(
+      "provider.expert-rejection-feedback-notification",
+      "expert.application.rejection-feedback-updated",
+      { applicationId: req.params.id, userId: updated.userId, requestedContext: "rejection-feedback-update" },
+      { applicationId: req.params.id, userId: updated.userId, requestedContext: "rejection-feedback-update" },
+      () => insertNotification({
+        userId: updated.userId,
+        type: "rejection_reason_updated",
+        title: "Rejection Feedback Updated",
+        message: "An admin has updated the feedback on your expert application. Review the new message to understand what you can improve before reapplying.",
+        data: { link: "/expert-status" },
+      }),
+    );
     res.json(updated);
   });
 
@@ -3066,18 +3097,27 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
   // Fire-and-forget email to the provider when a decision CHANGES to verified/rejected.
   const decision = verificationUpdate.providerVerificationStatus;
   if ((decision === "verified" || decision === "rejected") && decision !== target.priorStatus) {
-    if (target.email) {
-      try {
-        const { sendVerificationDecisionEmail } = await import("../services/email.service");
-        sendVerificationDecisionEmail({
-          toEmail: target.email,
-          firstName: target.firstName ?? null,
-          decision,
-          reason: reason ?? null,
-        }).catch((e: any) => console.error("[email] verification-decision send error:", e?.message));
-      } catch (mailErr: any) {
-        console.error("[admin verification] email send error (non-fatal):", mailErr.message);
-      }
+    const email = target.email;
+    if (email) {
+      await dispatchProviderEvent(
+        "provider.verification-decision-email",
+        "provider.verification.decision-changed",
+        { userId: req.params.id, email, decision, priorStatus: target.priorStatus },
+        { userId: req.params.id, email, decision, priorStatus: target.priorStatus },
+        async () => {
+          try {
+            const { sendVerificationDecisionEmail } = await import("../services/email.service");
+            sendVerificationDecisionEmail({
+              toEmail: email,
+              firstName: target.firstName ?? null,
+              decision,
+              reason: reason ?? null,
+            }).catch((e: any) => console.error("[email] verification-decision send error:", e?.message));
+          } catch (mailErr: any) {
+            console.error("[admin verification] email send error (non-fatal):", mailErr.message);
+          }
+        },
+      );
     }
   }
 
@@ -3257,24 +3297,32 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
       }
       // One-time messages only on ENTRY into `approved` (board #905) — the role write stays.
       if (enteredStatus(updated, "approved")) {
-      // Notify the user to complete Stripe Connect setup
-      await insertNotification({
-        userId: updated.userId,
-        type: "application_approved",
-        title: "Application Approved! 🎉",
-        message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
-        // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
-        data: { link: "/provider/money" },
-      });
-      // Send approval email (fire-and-forget)
-      const providerUser = await storage.getUser(updated.userId);
-      if (providerUser?.email) {
-        const { sendProviderApplicationApprovalEmail } = await import("../services/email.service");
-        sendProviderApplicationApprovalEmail({
-          toEmail: providerUser.email,
-          firstName: providerUser.firstName ?? null,
-        });
-      }
+        await dispatchProviderEvent(
+          "provider.provider-application-decision-follow-ons",
+          "provider.application.decision",
+          { applicationId: req.params.id, userId: updated.userId, decision: "approved", enteredTerminalStatus: true },
+          { applicationId: req.params.id, userId: updated.userId, decision: "approved", enteredTerminalStatus: true },
+          async () => {
+            // Notify the user to complete Stripe Connect setup
+            await insertNotification({
+              userId: updated.userId,
+              type: "application_approved",
+              title: "Application Approved! 🎉",
+              message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
+              // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
+              data: { link: "/provider/money" },
+            });
+            // Send approval email (fire-and-forget)
+            const providerUser = await storage.getUser(updated.userId);
+            if (providerUser?.email) {
+              const { sendProviderApplicationApprovalEmail } = await import("../services/email.service");
+              sendProviderApplicationApprovalEmail({
+                toEmail: providerUser.email,
+                firstName: providerUser.firstName ?? null,
+              });
+            }
+          },
+        );
       }
     }
 
@@ -3282,26 +3330,34 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     // Changing the feedback on an already-rejected application is the separate rejection-reason
     // route, which re-sends by design.
     if (status === "rejected" && enteredStatus(updated, "rejected")) {
-      // Notify the user in-app
-      await insertNotification({
-        userId: updated.userId,
-        type: "application_rejected",
-        title: "Application Not Approved",
-        message: rejectionMessage
-          ? `Your provider application was not approved. Feedback: ${rejectionMessage}`
-          : "Unfortunately, your provider application was not approved at this time. You can review the feedback and reapply when you're ready.",
-        data: { link: "/provider-status", rejectionMessage: rejectionMessage ?? null },
-      });
-      // Send rejection email (fire-and-forget)
-      const providerUser = await storage.getUser(updated.userId);
-      if (providerUser?.email) {
-        const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
-        sendProviderApplicationRejectionEmail({
-          toEmail: providerUser.email,
-          firstName: providerUser.firstName ?? null,
-          rejectionMessage: rejectionMessage ?? null,
-        });
-      }
+      await dispatchProviderEvent(
+        "provider.provider-application-decision-follow-ons",
+        "provider.application.decision",
+        { applicationId: req.params.id, userId: updated.userId, decision: "rejected", enteredTerminalStatus: true },
+        { applicationId: req.params.id, userId: updated.userId, decision: "rejected", enteredTerminalStatus: true },
+        async () => {
+          // Notify the user in-app
+          await insertNotification({
+            userId: updated.userId,
+            type: "application_rejected",
+            title: "Application Not Approved",
+            message: rejectionMessage
+              ? `Your provider application was not approved. Feedback: ${rejectionMessage}`
+              : "Unfortunately, your provider application was not approved at this time. You can review the feedback and reapply when you're ready.",
+            data: { link: "/provider-status", rejectionMessage: rejectionMessage ?? null },
+          });
+          // Send rejection email (fire-and-forget)
+          const providerUser = await storage.getUser(updated.userId);
+          if (providerUser?.email) {
+            const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
+            sendProviderApplicationRejectionEmail({
+              toEmail: providerUser.email,
+              firstName: providerUser.firstName ?? null,
+              rejectionMessage: rejectionMessage ?? null,
+            });
+          }
+        },
+      );
     }
 
     const { priorStatus: _providerPriorStatus, ...providerForm } = updated;
@@ -3324,23 +3380,31 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
-    await insertNotification({
-      userId: updated.userId,
-      type: "rejection_reason_updated",
-      title: "Rejection Feedback Updated",
-      message: "An admin has updated the feedback on your provider application. Review the new message to understand what you can improve before reapplying.",
-      data: { link: "/provider-status" },
-    });
-    // Send updated rejection feedback email (fire-and-forget)
-    const providerUser = await storage.getUser(updated.userId);
-    if (providerUser?.email) {
-      const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
-      sendProviderApplicationRejectionEmail({
-        toEmail: providerUser.email,
-        firstName: providerUser.firstName ?? null,
-        rejectionMessage: rejectionMessage,
-      });
-    }
+    await dispatchProviderEvent(
+      "provider.provider-rejection-feedback-follow-ons",
+      "provider.application.rejection-feedback-updated",
+      { applicationId: req.params.id, userId: updated.userId, requestedContext: "rejection-feedback-update" },
+      { applicationId: req.params.id, userId: updated.userId, requestedContext: "rejection-feedback-update" },
+      async () => {
+        await insertNotification({
+          userId: updated.userId,
+          type: "rejection_reason_updated",
+          title: "Rejection Feedback Updated",
+          message: "An admin has updated the feedback on your provider application. Review the new message to understand what you can improve before reapplying.",
+          data: { link: "/provider-status" },
+        });
+        // Send updated rejection feedback email (fire-and-forget)
+        const providerUser = await storage.getUser(updated.userId);
+        if (providerUser?.email) {
+          const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
+          sendProviderApplicationRejectionEmail({
+            toEmail: providerUser.email,
+            firstName: providerUser.firstName ?? null,
+            rejectionMessage: rejectionMessage,
+          });
+        }
+      },
+    );
     res.json(updated);
   });
 
@@ -3849,15 +3913,31 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
     dedupeKey: string;
   }): Promise<void> {
     try {
-      await storage.createNotification({
-        userId: opts.userId,
-        type: opts.type,
-        title: opts.title,
-        message: opts.message,
-        relatedId: opts.serviceId,
-        relatedType: "provider_service",
-        dedupeKey: opts.dedupeKey,
-      } as any);
+      await dispatchProviderEvent(
+        "provider.listing-review-decision-notification",
+        "provider.listing-review.decision-notification",
+        {
+          userId: opts.userId,
+          serviceId: opts.serviceId,
+          dedupeKey: opts.dedupeKey,
+          requestedContext: "listing-review-decision-notification",
+        },
+        {
+          userId: opts.userId,
+          serviceId: opts.serviceId,
+          dedupeKey: opts.dedupeKey,
+          requestedContext: "listing-review-decision-notification",
+        },
+        () => storage.createNotification({
+          userId: opts.userId,
+          type: opts.type,
+          title: opts.title,
+          message: opts.message,
+          relatedId: opts.serviceId,
+          relatedType: "provider_service",
+          dedupeKey: opts.dedupeKey,
+        } as any),
+      );
     } catch (err: any) {
       const pgCode = err?.code ?? err?.cause?.code;
       if (pgCode !== "23505") {
@@ -4171,7 +4251,13 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
       }
 
       const { affiliateReconciliationService } = await import("../services/affiliate-reconciliation.service");
-      const result = await affiliateReconciliationService.getReconciliationView(period, partner);
+      const result = await dispatchPaymentTrigger(
+        "payments.affiliate-admin-reconciliation-view",
+        "admin.affiliate.reconciliation_view.requested",
+        { adminAuthorized: true, period, partner },
+        {},
+        () => affiliateReconciliationService.getReconciliationView(period, partner),
+      );
       res.json(result);
     } catch (error: any) {
       console.error("[Reconciliation] Error:", error);
@@ -9025,36 +9111,37 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
       .where(eq(users.id, id))
       .returning();
 
-    // Destroy all active sessions for this user so the suspension takes effect immediately.
-    // All three login paths serialize `claims.sub` — email login (emailAuth.ts:250), email
-    // register (:148) and Facebook (facebookAuth.ts:147) — so this selector reaches every
-    // session, not only Replit-issued ones.
-    try {
-      await db.execute(
-        sql`DELETE FROM sessions WHERE sess->'passport'->'user'->'claims'->>'sub' = ${id}`
-      );
-    } catch (sessErr) {
-      console.warn("[admin/suspend] session purge failed (non-fatal):", (sessErr as any)?.message);
-    }
+    await dispatchModerationEvent(
+      "moderation.suspension-session-cleanup",
+      "admin.user_suspension.persisted",
+      { userId: id, suspensionPersisted: true },
+      { userId: id, suspensionPersisted: true },
+      async () => {
+        // Destroy all active sessions for this user so the suspension takes effect immediately.
+        // All login paths serialize `claims.sub`, so this selector reaches every session shape.
+        try {
+          await db.execute(
+            sql`DELETE FROM sessions WHERE sess->'passport'->'user'->'claims'->>'sub' = ${id}`
+          );
+        } catch (sessErr) {
+          console.warn("[admin/suspend] session purge failed (non-fatal):", (sessErr as any)?.message);
+        }
 
-    // #1435 — the purge above CANNOT reach an already-open WebSocket. That socket authenticated
-    // before the suspension existed and holds no session reference afterwards, so deleting the
-    // session row stops the next handshake and leaves a live one messaging indefinitely. Closing
-    // it is a separate act and belongs here, next to the purge, for the same reason the purge is
-    // here: suspension is the action whose whole point is to take effect immediately.
-    // Non-fatal like the purge — a suspension must not fail because a socket could not be closed.
-    try {
-      const { disconnectUser } = await import("../websocket");
-      const closed = disconnectUser(id);
-      // §13: "closed a socket" and "there was none open" are different facts, so the log says which.
-      console.log(
-        closed
-          ? `[admin/suspend] closed live WebSocket for ${id}`
-          : `[admin/suspend] no live WebSocket for ${id}`
-      );
-    } catch (wsErr) {
-      console.warn("[admin/suspend] WebSocket disconnect failed (non-fatal):", (wsErr as any)?.message);
-    }
+        // Session deletion cannot close an already-open WebSocket; retain the existing
+        // best-effort disconnect immediately after the persisted manual suspension.
+        try {
+          const { disconnectUser } = await import("../websocket");
+          const closed = disconnectUser(id);
+          console.log(
+            closed
+              ? `[admin/suspend] closed live WebSocket for ${id}`
+              : `[admin/suspend] no live WebSocket for ${id}`
+          );
+        } catch (wsErr) {
+          console.warn("[admin/suspend] WebSocket disconnect failed (non-fatal):", (wsErr as any)?.message);
+        }
+      },
+    );
 
     await recordAdminAudit({
       actorId: adminUserId,
@@ -9293,7 +9380,7 @@ router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, re
     }
 
     // Fire the drain in the background — don't wait for delivery.
-    drainOutbox().catch(err =>
+    drainOutboxForAdminRetry(id).catch(err =>
       console.error("[admin/email-outbox/retry] drainOutbox error:", err)
     );
 

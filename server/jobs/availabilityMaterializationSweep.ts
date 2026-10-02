@@ -12,15 +12,22 @@
  */
 import { logger } from "../infrastructure/logger";
 import { materializeAllServicesWithPatterns } from "../services/availability-materializer.service";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 
 export async function runAvailabilityMaterializationSweep(): Promise<void> {
-  try {
-    const result = await materializeAllServicesWithPatterns();
-    logger.info(
-      { ...result },
-      "[availability-materializer] daily horizon-extension sweep complete",
-    );
-  } catch (err) {
-    logger.error({ err }, "[availability-materializer] daily horizon-extension sweep failed");
-  }
+  return runBookingSchedule(
+    "bookings.availability-horizon-materialization",
+    "availability-materialization",
+    async () => {
+      try {
+        const result = await materializeAllServicesWithPatterns();
+        logger.info(
+          { ...result },
+          "[availability-materializer] daily horizon-extension sweep complete",
+        );
+      } catch (err) {
+        logger.error({ err }, "[availability-materializer] daily horizon-extension sweep failed");
+      }
+    },
+  );
 }

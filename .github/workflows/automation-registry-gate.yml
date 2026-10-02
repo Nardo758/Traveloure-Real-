@@ -1,0 +1,34 @@
+name: Automation Registry Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NODE_ENV: test
+      # No database service and no credentials: adapter tests bind stubbed actions.
+      # An accidental database call must fail instead of reaching a live database.
+      DATABASE_URL: postgresql://ci-noconnect@127.0.0.1:1/nodb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Validate all domain IDs and cancellation references without executing actions
+        run: npx tsx scripts/check-automation-registry.ts
+      - name: Verify registry dispatch, scheduling, and fail-closed contracts
+        # Literal globs (not a find/mapfile list) so scripts/check-test-files-wired.cjs can see these
+        # files are run. Both depths that hold tests today are named; a deeper directory must be added here.
+        run: npx tsx --test --test-concurrency=1 server/automations/__tests__/*.test.ts server/automations/*/__tests__/*.test.ts

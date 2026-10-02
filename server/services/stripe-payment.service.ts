@@ -38,6 +38,7 @@ import { REFUND_ATTEMPT_KEY, REFUND_RECORD_KEY } from '../../shared/booking-refu
 import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
 import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
+import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -996,73 +997,76 @@ class StripePaymentService {
 
     // ── LEGACY RAIL (`bookings`) — the process-cart flow. Unchanged (D-12 closes that rail to
     // NEW writes on a date; confirming rows it already wrote is untouched). ──────────────────
-    const bookingIdList = bookingIds.split(',').map((id: string) => id.trim()).filter(Boolean);
-    for (const bookingId of bookingIdList) {
-      // `bookings.id` is a UUID column; `service_bookings.id` is a varchar. A cart-checkout PI
-      // carries service_bookings ids, so a non-UUID id would make the comparison below THROW
-      // (22P02) and abandon every remaining id in the list. The cart rail already ran above, so
-      // this only protects the legacy rail from ids it does not own — skip them silently.
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId)) {
-        continue;
-      }
-      // Idempotency: skip bookings that are already confirmed
-      const existing = await db.execute(sql`
-        SELECT status FROM bookings WHERE id = ${bookingId} LIMIT 1
-      `);
-      const currentStatus = (existing.rows?.[0] as any)?.status;
-      if (currentStatus === 'confirmed') {
-        console.log(`[webhook] booking ${bookingId} already confirmed — skipping`);
-        continue;
-      }
+    const bookingIdList = bookingIds.split(',').map((id: string) => id.trim())
+      .filter((id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (bookingIdList.length === 0) return;
+    await dispatchPaymentTrigger(
+      "payments.platform-legacy-booking-success",
+      "payment_intent.succeeded",
+      paymentIntent,
+      { signatureVerified: true },
+      async () => {
+        for (const bookingId of bookingIdList) {
+          // Idempotency: skip bookings that are already confirmed
+          const existing = await db.execute(sql`
+            SELECT status FROM bookings WHERE id = ${bookingId} LIMIT 1
+          `);
+          const currentStatus = (existing.rows?.[0] as any)?.status;
+          if (currentStatus === 'confirmed') {
+            console.log(`[webhook] booking ${bookingId} already confirmed — skipping`);
+            continue;
+          }
 
-      const confirmationCode = this.generateConfirmationCode();
+          const confirmationCode = this.generateConfirmationCode();
 
-      if (isDeposit === 'true') {
-        await db.execute(sql`
-          UPDATE bookings SET
-            status = 'confirmed',
-            payment_status = 'succeeded',
-            confirmed_at = NOW(),
-            confirmation_code = ${confirmationCode},
-            deposit_paid = true
-          WHERE id = ${bookingId}
-        `);
-      } else {
-        await db.execute(sql`
-          UPDATE bookings SET
-            status = 'confirmed',
-            payment_status = 'succeeded',
-            confirmed_at = NOW(),
-            confirmation_code = ${confirmationCode},
-            deposit_paid = true,
-            balance_paid = true
-          WHERE id = ${bookingId}
-        `);
-      }
+          if (isDeposit === 'true') {
+            await db.execute(sql`
+              UPDATE bookings SET
+                status = 'confirmed',
+                payment_status = 'succeeded',
+                confirmed_at = NOW(),
+                confirmation_code = ${confirmationCode},
+                deposit_paid = true
+              WHERE id = ${bookingId}
+            `);
+          } else {
+            await db.execute(sql`
+              UPDATE bookings SET
+                status = 'confirmed',
+                payment_status = 'succeeded',
+                confirmed_at = NOW(),
+                confirmation_code = ${confirmationCode},
+                deposit_paid = true,
+                balance_paid = true
+              WHERE id = ${bookingId}
+            `);
+          }
 
-      console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
+          console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
 
-      // Fire-and-forget confirmation email — must not block the webhook response
-      const bookingDetails = await db.execute(sql`
-        SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
-        FROM bookings b
-        JOIN users u ON u.id = b.user_id
-        WHERE b.id = ${bookingId}
-        LIMIT 1
-      `).catch(() => null);
+          // Fire-and-forget confirmation email — must not block the webhook response
+          const bookingDetails = await db.execute(sql`
+            SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
+            FROM bookings b
+            JOIN users u ON u.id = b.user_id
+            WHERE b.id = ${bookingId}
+            LIMIT 1
+          `).catch(() => null);
 
-      const row = bookingDetails?.rows?.[0] as any;
-      if (row?.email) {
-        enqueueBookingConfirmationEmail({
-          toEmail: row.email,
-          userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
-          bookingId,
-          bookingTitle: row.title || 'Your booking',
-          bookingDate: row.booking_date ?? null,
-          confirmationCode,
-        });
-      }
-    }
+          const row = bookingDetails?.rows?.[0] as any;
+          if (row?.email) {
+            enqueueBookingConfirmationEmail({
+              toEmail: row.email,
+              userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
+              bookingId,
+              bookingTitle: row.title || 'Your booking',
+              bookingDate: row.booking_date ?? null,
+              confirmationCode,
+            });
+          }
+        }
+      },
+    );
   }
 
   /**

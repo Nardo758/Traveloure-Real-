@@ -70,6 +70,7 @@ import { geocodeAddress } from "../utils/geocode";
 import { EgressBlockedError } from "../utils/egress-guard";
 import { RobotsDisallowedError } from "../utils/robots-txt";
 import { buildAttributedAffiliateUrl } from "../services/affiliate-attribution.service";
+import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
@@ -143,6 +144,7 @@ import {
 import { hasExistingConversation, isBlockedBetween } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
 import { broadcastToUser } from "../websocket";
+import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 import { trendScoreAgeReport } from "@shared/trend-display";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
@@ -576,28 +578,43 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
         message: message || "Hello, I would like to connect with you.",
       });
 
-      // Create notification for expert
-      await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
-      // Ledger 2026-09-24-earner-email-notifications: the email twin, through the ONE sender.
-      void import("../services/activity-email.service").then(async ({ sendActivityEmail, displayNameOf }) =>
-        sendActivityEmail({
-          recipientId: expertId,
-          kind: "new_message",
-          actorName: await displayNameOf(userId),
-          destination: "messages",
-          throttleKey: `${userId}>${expertId}`,
-        }),
+      await dispatchMessagingEvent(
+        "messaging.message-follow-ons",
+        "message.created",
+        { messageId: chat.id, senderId: userId, recipientId: expertId },
+        { messageId: chat.id, senderId: userId, recipientId: expertId },
+        async () => {
+          // Create notification for expert
+          await insertChatNotification({ userId: expertId, chatId: chat.id, senderId: userId, tripId });
+          // Ledger 2026-09-24-earner-email-notifications: the email twin, through the ONE sender.
+          void import("../services/activity-email.service").then(async ({ sendActivityEmail, displayNameOf }) =>
+            sendActivityEmail({
+              recipientId: expertId,
+              kind: "new_message",
+              actorName: await displayNameOf(userId),
+              destination: "messages",
+              throttleKey: `${userId}>${expertId}`,
+            }),
+          );
+        },
       );
 
       // Live-push to the expert's open chat client (same frame shape as the /ws relay).
-      broadcastToUser(expertId, {
+      const frame = {
         type: "chat",
         id: chat.id,
         senderId: userId,
         recipientId: expertId,
         content: chat.message,
         timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
-      });
+      };
+      await dispatchMessagingEvent(
+        "messaging.chat-realtime-fanout",
+        "chat.realtime.requested",
+        frame,
+        { recipientId: expertId, messageId: chat.id, transport: "http" },
+        () => broadcastToUser(expertId, frame),
+      );
 
       res.status(201).json({
         message: "Chat started successfully",
@@ -8130,42 +8147,50 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           // §8: admin-editable band (migration 143), falls back to the AFFILIATE_PLATFORM_FEE /
           // AFFILIATE_EXPERT_SHARE code constants — snapshotted for the eventual reconciliation
           // pass, not applied to a fabricated commission figure today.
-          const splitRates = await resolveCommissionRates({ source: "affiliate" });
-          let partnerId: string | undefined;
-          try {
-            const [partnerRow] = await db
-              .select({ id: affiliatePartners.id })
-              .from(affiliatePartners)
-              .where(sql`LOWER(${affiliatePartners.name}) = LOWER(${updated.partnerName})`)
-              .limit(1);
-            partnerId = partnerRow?.id;
-          } catch {
-            // Best-effort name match only — never block confirmation on this.
-          }
-          await storage.createAffiliateEarning({
-            partnerId: partnerId ?? null,
-            expertId: updated.expertId ?? null,
-            bookingAmount: updated.price != null ? String(updated.price) : "0.00",
-            commissionRate: "0.00",
-            totalCommission: "0.00",
-            platformShare: "0.00",
-            expertShare: "0.00",
-            providerShare: "0.00",
-            currency: "USD",
-            partnerReferenceId: updated.confirmationRef ?? null,
-            externalReportData: {
-              affiliateBookingRequestId: updated.id,
-              partnerName: updated.partnerName,
-              note: "Confirmed via the agent-booking rail; the partner's real commission is not yet "
-                + "known (arrives via partner report) so commission/total/share fields are recorded 0, "
-                + "not fabricated — reconcile via reconciliationStatus/reconciliationNotes once the "
-                + "partner report lands.",
-              internalSplitRatesAtConfirm: {
-                platformFeeRate: splitRates.platformFeeRate,
-                expertShareRate: splitRates.expertShareRate,
-              },
+          await dispatchPaymentTrigger(
+            "payments.affiliate-booking-purchase-ledger",
+            "affiliate.booking_request.purchase_recorded",
+            { requestId: updated.id },
+            { purchaseClaimed: true },
+            async () => {
+              const splitRates = await resolveCommissionRates({ source: "affiliate" });
+              let partnerId: string | undefined;
+              try {
+                const [partnerRow] = await db
+                  .select({ id: affiliatePartners.id })
+                  .from(affiliatePartners)
+                  .where(sql`LOWER(${affiliatePartners.name}) = LOWER(${updated.partnerName})`)
+                  .limit(1);
+                partnerId = partnerRow?.id;
+              } catch {
+                // Best-effort name match only — never block confirmation on this.
+              }
+              await storage.createAffiliateEarning({
+                partnerId: partnerId ?? null,
+                expertId: updated.expertId ?? null,
+                bookingAmount: updated.price != null ? String(updated.price) : "0.00",
+                commissionRate: "0.00",
+                totalCommission: "0.00",
+                platformShare: "0.00",
+                expertShare: "0.00",
+                providerShare: "0.00",
+                currency: "USD",
+                partnerReferenceId: updated.confirmationRef ?? null,
+                externalReportData: {
+                  affiliateBookingRequestId: updated.id,
+                  partnerName: updated.partnerName,
+                  note: "Confirmed via the agent-booking rail; the partner's real commission is not yet "
+                    + "known (arrives via partner report) so commission/total/share fields are recorded 0, "
+                    + "not fabricated — reconcile via reconciliationStatus/reconciliationNotes once the "
+                    + "partner report lands.",
+                  internalSplitRatesAtConfirm: {
+                    platformFeeRate: splitRates.platformFeeRate,
+                    expertShareRate: splitRates.expertShareRate,
+                  },
+                },
+              } as any);
             },
-          } as any);
+          );
         } catch (earnErr) {
           // Non-critical: the booking is already confirmed; a ledger-write failure must not
           // undo that or 500 the response.

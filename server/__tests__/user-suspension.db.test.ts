@@ -37,6 +37,7 @@ process.env.SESSION_SECRET ??= "test-session-secret-not-for-prod";
 const { db, pool } = await import("../db");
 const { eq } = await import("drizzle-orm");
 const { users } = await import("../../shared/schema");
+const { passwordResetTokens } = await import("../../shared/models/auth");
 const { getSession, isAuthenticated } = await import("../replit_integrations/auth/replitAuth");
 const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
 
@@ -498,6 +499,93 @@ describe("admin suspend guard — cannot suspend another admin account", () => {
       false,
       `Target admin's isSuspended must remain false after a blocked suspend attempt`
     );
+  });
+});
+
+describe("manual admin suspension — post-persist automation purges the target session", () => {
+  let adminId: string;
+  let targetId: string;
+  let server: http.Server;
+  let suspensionResponse: HttpResult;
+  let targetSessionId: string;
+
+  before(async () => {
+    server = await getAdminGuardServer();
+    adminId = await createTestUser({ role: "admin" });
+    targetId = await createTestUser();
+    const adminEmail = (await getUserRow(adminId)).email;
+    const targetEmail = (await getUserRow(targetId)).email;
+
+    const adminLogin = await post(server, "/api/auth/login", { email: adminEmail, password: TEST_PASSWORD });
+    const targetLogin = await post(server, "/api/auth/login", { email: targetEmail, password: TEST_PASSWORD });
+    assert.equal(adminLogin.status, 200, `admin login failed: ${JSON.stringify(adminLogin.data)}`);
+    assert.equal(targetLogin.status, 200, `target login failed: ${JSON.stringify(targetLogin.data)}`);
+    assert.ok(adminLogin.setCookie);
+    assert.ok(targetLogin.setCookie);
+
+    const encoded = targetLogin.setCookie!.split("=", 2)[1];
+    const signedSession = decodeURIComponent(encoded);
+    assert.ok(signedSession.startsWith("s:"), "expected signed express-session cookie");
+    targetSessionId = signedSession.slice(2, signedSession.lastIndexOf("."));
+    assert.equal((await pool.query("SELECT sid FROM sessions WHERE sid = $1", [targetSessionId])).rowCount, 1);
+
+    suspensionResponse = await patch(
+      server,
+      `/api/admin/users/${targetId}/suspend`,
+      { reason: "moderation automation regression" },
+      adminLogin.setCookie,
+    );
+  });
+
+  after(async () => {
+    if (targetId) await deleteTestUser(targetId);
+    if (adminId) await deleteTestUser(adminId);
+  });
+
+  it("persists manual suspension and deletes the target's existing session row", async () => {
+    assert.equal(suspensionResponse.status, 200, `suspend failed: ${JSON.stringify(suspensionResponse.data)}`);
+    assert.equal((await getUserRow(targetId)).isSuspended, true);
+    assert.equal((await pool.query("SELECT sid FROM sessions WHERE sid = $1", [targetSessionId])).rowCount, 0);
+  });
+});
+
+describe("password reset — registry-wrapped session purge remains in the atomic reset transaction", () => {
+  let userId: string;
+  let resetResponse: HttpResult;
+  let sessionId: string;
+
+  before(async () => {
+    const server = await getSharedServer();
+    userId = await createTestUser();
+    const userEmail = (await getUserRow(userId)).email;
+    const loginRes = await post(server, "/api/auth/login", { email: userEmail, password: TEST_PASSWORD });
+    assert.equal(loginRes.status, 200);
+    assert.ok(loginRes.setCookie);
+
+    const signedSession = decodeURIComponent(loginRes.setCookie!.split("=", 2)[1]);
+    sessionId = signedSession.slice(2, signedSession.lastIndexOf("."));
+    assert.equal((await pool.query("SELECT sid FROM sessions WHERE sid = $1", [sessionId])).rowCount, 1);
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    await db.insert(passwordResetTokens).values({
+      userId,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    resetResponse = await post(server, "/api/auth/reset-password", {
+      token: rawToken,
+      newPassword: "ResetPass2!",
+    });
+  });
+
+  after(async () => {
+    if (userId) await deleteTestUser(userId);
+  });
+
+  it("accepts the reset and removes the live session row in the same transaction", async () => {
+    assert.equal(resetResponse.status, 200, `reset failed: ${JSON.stringify(resetResponse.data)}`);
+    assert.equal((await pool.query("SELECT sid FROM sessions WHERE sid = $1", [sessionId])).rowCount, 0);
   });
 });
 

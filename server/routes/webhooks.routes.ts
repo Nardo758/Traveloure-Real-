@@ -13,6 +13,7 @@ import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { activateVerificationHeldListings } from "../services/publish-verification.service";
+import { dispatchModerationEvent } from "../automations/moderation/runtime";
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, adminNotifications, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
@@ -20,6 +21,10 @@ import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key"
 import { handleStripeDispute } from "../services/stripe-dispute.service";
 import { markCheckoutPaymentFailed } from "../services/checkout-claim.service";
 import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-booking-email.service";
+import {
+  CONNECT_FINANCIAL_EVENT_AUTOMATION_IDS,
+  dispatchPaymentEvent,
+} from "../automations/payments/runtime";
 
 const router = Router();
 
@@ -73,7 +78,13 @@ router.post("/stripe-identity", async (req: any, res) => {
       // outstanding half of the publish predicate for this user (the whole predicate for
       // experts; one of two for providers) — re-evaluate and promote any approved+draft
       // held listings. No-ops safely if the provider side is still unverified.
-      await activateVerificationHeldListings(userId).catch((err) =>
+      await dispatchModerationEvent(
+        "moderation.verification-held-listing-activation",
+        event.type,
+        session,
+        { userId },
+        () => activateVerificationHeldListings(userId),
+      ).catch((err) =>
         console.error("[webhooks/stripe-identity] activateVerificationHeldListings failed (non-fatal):", err)
       );
     } else if (event.type === "identity.verification_session.requires_input") {
@@ -274,7 +285,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
               // "verified" transition; the sweep itself re-checks the full predicate
               // (identity too) and no-ops safely if it still fails.
               if (newBizStatus === "verified") {
-                await activateVerificationHeldListings(provUserId).catch((err) =>
+                await dispatchModerationEvent(
+                  "moderation.verification-held-listing-activation",
+                  "account.updated.business_verification_verified",
+                  account,
+                  { userId: provUserId, businessVerified: true },
+                  () => activateVerificationHeldListings(provUserId),
+                ).catch((err) =>
                   console.error("[webhooks/stripe] activateVerificationHeldListings failed (non-fatal):", err)
                 );
               }
@@ -459,34 +476,57 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
 // POST /api/webhooks/stripe
 // Handles Stripe Connect account events, transfer confirmations, and payment intents.
 // No auth middleware — verified via Stripe-Signature header using raw body.
-router.post("/stripe", async (req: any, res) => {
-  const sig = req.headers["stripe-signature"] as string | undefined;
-  const webhookSecret = getStripeWebhookSecret("connect");
-  let event: Stripe.Event;
+export function createConnectStripeWebhookHandler(
+  processEvent: (event: Stripe.Event) => Promise<void> = processStripeWebhookEvent,
+) {
+  return async (req: any, res: any) => {
+    const sig = req.headers["stripe-signature"] as string | undefined;
+    const webhookSecret = getStripeWebhookSecret("connect");
+    let event: Stripe.Event;
 
-  if (!webhookSecret) {
-    return res.status(503).json({ message: "Stripe Connect webhook not configured for this environment" });
-  }
-  if (!sig) {
-    return res.status(400).json({ message: "Missing Stripe-Signature header" });
-  }
-  if (!req.rawBody) {
-    return res.status(500).json({ message: "Raw body unavailable for signature verification" });
-  }
-  try {
-    event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
-  } catch (err: any) {
-    console.error("Stripe Connect webhook signature verification failed:", err.message);
-    return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
-  }
+    if (!webhookSecret) {
+      return res.status(503).json({ message: "Stripe Connect webhook not configured for this environment" });
+    }
+    if (!sig) {
+      return res.status(400).json({ message: "Missing Stripe-Signature header" });
+    }
+    if (!req.rawBody) {
+      return res.status(500).json({ message: "Raw body unavailable for signature verification" });
+    }
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Stripe Connect webhook signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook signature error: ${err.message}` });
+    }
 
-  try {
-    await processStripeWebhookEvent(event);
-    res.json({ received: true });
-  } catch (err) {
-    console.error("[WEBHOOK PROCESSING ERROR]", event.type, err);
-    res.status(500).json({ message: "Webhook processing failed; delivery can be retried" });
-  }
-});
+    try {
+      const eventType = String(event.type);
+      const automationId = CONNECT_FINANCIAL_EVENT_AUTOMATION_IDS.get(eventType);
+      const transferMetadata = eventType === "transfer.created" || eventType === "transfer.paid"
+        ? (event.data.object as Stripe.Transfer).metadata
+        : undefined;
+      const transferSupported = eventType !== "transfer.created" && eventType !== "transfer.paid" ||
+        (!!transferMetadata?.payoutId &&
+          (transferMetadata.requesterType === "expert" || transferMetadata.requesterType === "provider"));
+      if (automationId && transferSupported) {
+        await dispatchPaymentEvent(
+          automationId,
+          event.type,
+          event,
+          () => processEvent(event),
+        );
+      } else {
+        await processEvent(event);
+      }
+      res.json({ received: true });
+    } catch (err) {
+      console.error("[WEBHOOK PROCESSING ERROR]", event.type, err);
+      res.status(500).json({ message: "Webhook processing failed; delivery can be retried" });
+    }
+  };
+}
+
+router.post("/stripe", createConnectStripeWebhookHandler());
 
 export default router;

@@ -17,8 +17,8 @@
 import { db } from "../db";
 import { users, notifications } from "@shared/schema";
 import { eq, and, sql, or, isNull, gte, inArray, desc } from "drizzle-orm";
-import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { runPaymentSchedule } from "../automations/payments/runtime";
 
 const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
 const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
@@ -99,7 +99,12 @@ class StripeConnectReminderService {
    * concurrency cap and overlap-dedups (previously it called the DB directly, bypassing the cap).
    */
   private async runRemindersGuarded(): Promise<void> {
-    await runBackgroundJob("stripe-connect-reminder", () => this.runReminders());
+    await runPaymentSchedule(
+      "payments.stripe-connect-reminder",
+      "stripe-connect-reminder",
+      () => this.runReminders(),
+      { runnerName: "stripe-connect-reminder" },
+    );
   }
 
   private async runReminders(): Promise<void> {

@@ -11,6 +11,7 @@
  * with the ratified 7-day `ready_made_sale` window (D7: refundable only while in escrow).
  */
 import { db } from "../db";
+import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { storage } from "../storage";
 import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators, users } from "@shared/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
@@ -477,11 +478,27 @@ export type ReadyMadeRecordResult =
  * `expect` is what the caller's own authenticated context says this purchase must be. It is
  * REQUIRED for any actor outside `SERVER_VERIFIED_ACTORS`.
  */
-export async function recordAndFulfilReadyMadePurchase(opts: {
+export interface RecordAndFulfilReadyMadePurchaseOptions {
   intent: ReadyMadeIntentView;
   actor: ReadyMadePurchaseActor;
   expect?: { listingId?: string | null; buyerId?: string | null };
-}): Promise<ReadyMadeRecordResult> {
+}
+
+export async function recordAndFulfilReadyMadePurchase(
+  opts: RecordAndFulfilReadyMadePurchaseOptions,
+): Promise<ReadyMadeRecordResult> {
+  return dispatchPaymentTrigger(
+    "payments.ready-made-purchase-fulfilment",
+    "ready_made.purchase-fulfilment.requested",
+    opts,
+    { actor: opts.actor },
+    () => performRecordAndFulfilReadyMadePurchase(opts),
+  );
+}
+
+async function performRecordAndFulfilReadyMadePurchase(
+  opts: RecordAndFulfilReadyMadePurchaseOptions,
+): Promise<ReadyMadeRecordResult> {
   const { intent, actor, expect } = opts;
 
   // ── 1. Is this ours at all? ─────────────────────────────────────────────────────────────────

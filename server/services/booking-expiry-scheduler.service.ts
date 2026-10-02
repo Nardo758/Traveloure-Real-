@@ -3,6 +3,7 @@ import { bookings, notifications } from "@shared/schema";
 import { sql, and, eq, lt } from "drizzle-orm";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 
 const DEFAULT_STALE_THRESHOLD_HOURS = 48;
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // every 4 hours
@@ -89,7 +90,15 @@ class BookingExpirySchedulerService {
     return this.runCancellation();
   }
 
-  private async runCancellation(): Promise<AutoCancelStats> {
+  private runCancellation(): Promise<AutoCancelStats> {
+    return runBookingSchedule(
+      "bookings.legacy-payment-expiry",
+      "booking-expiry",
+      () => this.runCancellationAction(),
+    );
+  }
+
+  private async runCancellationAction(): Promise<AutoCancelStats> {
     if (this.isRunning) {
       console.log("[BookingExpiry] Already running, skipping");
       return this.lastStats ?? { cancelledCount: 0, bookingIds: [], errors: [], ranAt: new Date() };

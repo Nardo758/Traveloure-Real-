@@ -30,6 +30,8 @@ import {
 import * as messagingService from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { broadcastToUser } from "./websocket";
+import { dispatchMessagingEvent } from "./automations/messaging/runtime";
+import { dispatchProviderEvent } from "./automations/provider/runtime";
 import { validateImageDataUrl } from "./utils/imageValidation";
 import { strictRateLimiter } from "./infrastructure/rate-limiter";
 import type { Server } from "http";
@@ -70,6 +72,7 @@ import {
   DATE_RANGE_MAX_NIGHTS,
   nightDatesInclusive,
 } from "./services/availability-materializer.service";
+import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { api } from "@shared/routes";
 // ONE derivation of the plan's party total, shared with the client (ledger
 // `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
@@ -2446,14 +2449,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(429).json({ message: rate.message, scope: rate.scope, retryAfter: rate.retryAfterSec });
         }
         const chat = await storage.createChat({ ...input, senderId: sessionUserId, receiverId: resolved.otherUserId });
-        broadcastToUser(String(chat.receiverId), {
+        const frame = {
           type: "chat",
           id: chat.id,
           senderId: sessionUserId,
           recipientId: chat.receiverId,
           content: chat.message,
           timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
-        });
+        };
+        await dispatchMessagingEvent(
+          "messaging.chat-realtime-fanout",
+          "chat.realtime.requested",
+          frame,
+          { recipientId: chat.receiverId, messageId: chat.id, transport: "http" },
+          () => broadcastToUser(String(chat.receiverId), frame),
+        );
         // The response carries the PUBLIC id; the row's own id-shaped fields are the deprecated
         // half and lane 2/3 remove them.
         return res.status(201).json({ ...chat, conversationId: publicConversationId });
@@ -2473,14 +2483,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const chat = await storage.createChat({ ...input, senderId: sessionUserId });
 
       // Live-push to the recipient's open chat client (same frame shape as the /ws relay).
-      broadcastToUser(String(chat.receiverId), {
+      const frame = {
         type: "chat",
         id: chat.id,
         senderId: sessionUserId,
         recipientId: chat.receiverId,
         content: chat.message,
         timestamp: chat.createdAt?.toISOString?.() || new Date().toISOString(),
-      });
+      };
+      await dispatchMessagingEvent(
+        "messaging.chat-realtime-fanout",
+        "chat.realtime.requested",
+        frame,
+        { recipientId: chat.receiverId, messageId: chat.id, transport: "http" },
+        () => broadcastToUser(String(chat.receiverId), frame),
+      );
 
       res.status(201).json(chat);
     } catch (err) {
@@ -2646,7 +2663,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   async function mirrorBioToUsersRow(userId: string, bio: unknown): Promise<void> {
     if (typeof bio !== "string" || bio.trim().length === 0) return;
     try {
-      await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+      await dispatchProviderEvent(
+        "provider.application-bio-mirror",
+        "application.bio_mirror",
+        null,
+        { userId },
+        async () => {
+          await db.update(users).set({ bio: bio.trim() }).where(eq(users.id, userId));
+        },
+      );
     } catch (e: any) {
       console.error("[intake-bio-mirror] users.bio mirror failed:", e?.message);
     }
@@ -2702,7 +2727,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
       // claim when that market's rows land. Server-derived, idempotent, never blocks the submit.
       try {
-        await stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null });
+        await dispatchProviderEvent(
+          "provider.expert-application-neighborhood-stamp",
+          "expert_application.neighborhood_stamp",
+          null,
+          { formId: form.id, userId },
+          () => stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null }),
+        );
       } catch (e: any) {
         console.error("[neighborhood-claims] no-neighborhoods stamp failed:", e?.message);
       }
@@ -2781,7 +2812,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
       // claim when that market's rows land. Server-derived, idempotent, never blocks the submit.
       try {
-        await stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null });
+        await dispatchProviderEvent(
+          "provider.expert-application-neighborhood-stamp",
+          "expert_application.neighborhood_stamp",
+          null,
+          { formId: form.id, userId },
+          () => stampNoNeighborhoodsAvailable({ formId: form.id, userId, city: form.city ?? null }),
+        );
       } catch (e: any) {
         console.error("[neighborhood-claims] no-neighborhoods stamp failed:", e?.message);
       }
@@ -3664,7 +3701,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const saved = await storage.replaceServiceAvailabilityPatterns(service.id, patterns);
       // Trigger 1/2 (materializer service header): expand the rolling window immediately so a
       // saved pattern is bookable without waiting for the daily horizon-extension sweep.
-      const materialized = await materializeServiceAvailability(service.id);
+      const materialized = await dispatchBookingEvent(
+        "bookings.availability-pattern-authoring",
+        "provider.availability.patterns.saved",
+        { serviceId: service.id },
+        { serviceId: service.id },
+        () => materializeServiceAvailability(service.id),
+      );
       res.json({ patterns: saved, materialized });
     } catch (err: any) {
       const pgCode = err?.code ?? err?.cause?.code;
@@ -3740,8 +3783,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // vendor_availability_slots rows (mirrors the pattern/blackout triggers above), then
       // re-price any already-materialized, STILL-UNBOOKED night in the (possibly edited) range —
       // a booked/claimed night is never touched (§18b posture).
-      const materialized = await materializeDateRangeAvailability(service.id);
-      const repriced = await repriceDateRangeAvailability(service.id);
+      const { materialized, repriced } = await dispatchBookingEvent(
+        "bookings.availability-date-range-authoring",
+        "provider.availability.date-ranges.saved",
+        { serviceId: service.id },
+        { serviceId: service.id },
+        async () => ({
+          materialized: await materializeDateRangeAvailability(service.id),
+          repriced: await repriceDateRangeAvailability(service.id),
+        }),
+      );
       res.json({ dateRanges: saved, materialized, repriced });
     } catch (err: any) {
       const pgCode = err?.code ?? err?.cause?.code;
@@ -3805,8 +3856,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Blackouts apply to EITHER shape (scheduled-slot services or property date-ranges), so
       // both materializers run — each is a no-op for a service with nothing of that shape to
       // expand (a scheduled service has no date-ranges; a property has no weekly patterns).
-      const materialized = await materializeServiceAvailability(service.id);
-      const materializedDateRanges = await materializeDateRangeAvailability(service.id);
+      const { materialized, materializedDateRanges } = await dispatchBookingEvent(
+        "bookings.availability-blackout-authoring",
+        "provider.availability.blackouts.saved",
+        { serviceId: service.id },
+        { serviceId: service.id },
+        async () => ({
+          materialized: await materializeServiceAvailability(service.id),
+          materializedDateRanges: await materializeDateRangeAvailability(service.id),
+        }),
+      );
       res.json({ blackouts: saved, materialized, materializedDateRanges });
     } catch (err: any) {
       const pgCode = err?.code ?? err?.cause?.code;
