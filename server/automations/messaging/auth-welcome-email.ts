@@ -12,6 +12,6 @@ export const welcomeMessage: CoreMessage = {
   copy: ({ name }) => ({
     subject: `Welcome to Traveloure, ${name}`,
     body: "You're in. Tell our AI where you want to go and get a full itinerary in minutes. Need help? Just reply to this email.",
-    button: "Plan my first trip", path: "/dashboard",
+    button: "Plan my 1st Experience", path: "/dashboard",
   }),
 };

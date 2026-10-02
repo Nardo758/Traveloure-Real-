@@ -129,6 +129,19 @@ describe("Consent, time zone, localization and send-time guards", () => {
     expect(result.subject).toBe("Welcome to Traveloure, there");
     expect(result.html).toContain('lang="en"');
   });
+  it.each([
+    ["en", "Plan my 1st Experience"],
+    ["es", "Planificar mi primera experiencia"],
+    ["fr", "Planifier ma première expérience"],
+    ["hi", "मेरे पहले अनुभव की योजना बनाएं"],
+  ])("uses the approved experience CTA in %s HTML and plain text", (language, button) => {
+    const result = renderCoreEmail(coreByKind.get("welcome")!, { name: "Unit", language },
+      "https://example.invalid/dashboard");
+    expect(result.html).toContain(button);
+    expect(result.text).toContain(button);
+    expect(result.html).not.toContain("Plan my first trip");
+    expect(coreByKind.get("welcome")!.copy({ name: "Unit" }).path).toBe("/dashboard");
+  });
   it("marketing requires unsubscribe headers and link, security does not", () => {
     expect(() => renderCoreEmail(coreByKind.get("profile_nudge")!, { name: "Unit" })).toThrow("Marketing requires");
     expect(renderCoreEmail(coreByKind.get("new_device_login")!, { name: "Unit" }).headers).toBeUndefined();
