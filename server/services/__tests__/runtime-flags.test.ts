@@ -65,7 +65,9 @@ test("F5: real seeder reports answers, failures and no-attempt cases without any
   // Empty neighbourhoods and an in-memory existence predicate; never connect.
   (db as any).select = () => ({
     from: () => ({
-      where: async () => exists ? [{ id: "existing" }] : [],
+      // An already-seeded row carries the stored venue and its coordinates: a LOCATED row with the
+      // entry's own venue is never re-looked up (ledger `2026-10-02-city-events-venue-relookup`).
+      where: async () => exists ? [{ id: "existing", venue: "Suzuka Circuit", venueLat: 34.8431 }] : [],
       then: (resolve: any, reject: any) => Promise.resolve([]).then(resolve, reject),
     }),
   });
