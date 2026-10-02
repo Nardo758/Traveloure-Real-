@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAutomationRegistry } from "../../registry";
+import { coreMessages } from "../_core-index";
 import {
   dispatchMessagingProducer,
   producerAutomations,
   wrapEmailProviderTransport,
 } from "../producer-index";
 
-test("messaging producer definitions register ten unique active boundaries", () => {
-  const registry = createAutomationRegistry(producerAutomations);
-  assert.deepEqual(Array.from(registry.byId.keys()), [
+test("messaging producer definitions register ten unique active boundaries with welcome cancellation dependencies", () => {
+  const reminders = coreMessages.filter((message) => message.kind.startsWith("verify_reminder_")).map((message) => message.node);
+  const registry = createAutomationRegistry([...producerAutomations, ...reminders]);
+  assert.deepEqual(Array.from(registry.byId.keys()).slice(0, producerAutomations.length), [
     "messaging.auth-password-reset-email",
     "messaging.auth-verification-email",
     "messaging.auth-welcome-email",

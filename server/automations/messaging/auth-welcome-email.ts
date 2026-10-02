@@ -1,18 +1,17 @@
 import type { AutomationContext, AutomationDefinition } from "../contract";
+import { coreNode, type CoreMessage } from "./_core-definition";
 
 export const authWelcomeEmailAutomation: AutomationDefinition<AutomationContext> = {
-  id: "messaging.auth-welcome-email",
-  name: "Send account welcome email",
-  domain: "messaging",
-  type: "operational",
-  trigger: { kind: "event", events: ["auth.welcome_email"] },
-  condition: { description: "Run for the existing account welcome-email call.", evaluate: () => true },
-  idempotencyKey: null,
-  delay: null,
-  cancels: [],
-  actionGuard: "Account creation remains owned by its existing caller; this action does not create or alter accounts.",
-  action: { kind: "send_message", detail: "Invoke the existing best-effort welcome email sender." },
-  retryPolicy: "No automation retry; the sender catches/logs provider errors.",
-  failureBehavior: "The sender's existing best-effort behavior is preserved; a returned void is not proof of delivery.",
-  enabled: true,
+  ...coreNode("welcome", "messaging.auth-welcome-email"),
+  trigger: { kind: "event", events: ["signup_journey.welcome", "auth.welcome_email"] },
+};
+
+export const welcomeMessage: CoreMessage = {
+  kind: "welcome",
+  node: authWelcomeEmailAutomation,
+  copy: ({ name }) => ({
+    subject: `Welcome to Traveloure, ${name}`,
+    body: "You're in. Tell our AI where you want to go and get a full itinerary in minutes. Need help? Just reply to this email.",
+    button: "Plan my first trip", path: "/dashboard",
+  }),
 };

@@ -85,6 +85,12 @@ export interface SendEmailParams {
   text?: string;
   /** Override per-call; falls back to EMAIL_REPLY_TO env var. */
   replyTo?: string;
+  /** Core journey only: preserve unsubscribe headers across durable retries. */
+  headers?: Record<string, string>;
+  idempotencyKey?: string;
+  journeyDelivery?: boolean;
+  journeyUserId?: string;
+  journeyKind?: string;
 }
 
 export interface SendEmailResult {
@@ -138,9 +144,10 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       to: params.to,
       subject: params.subject,
       html: params.html,
+      ...(params.headers ? { headers: params.headers } : {}),
       ...(params.text ? { text: params.text } : {}),
       replyTo: replyTo,
-    });
+    }, params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined);
 
     if (error) {
       console.error("[email] sendEmail Resend error:", {
@@ -616,14 +623,8 @@ interface PasswordResetParams {
 }
 
 export async function sendPasswordResetEmail(params: PasswordResetParams): Promise<void> {
-  return dispatchMessagingProducer(
-    authPasswordResetEmailAutomation,
-    dispatchMessagingEvent,
-    "auth.password_reset_email",
-    params,
-    {},
-    () => sendPasswordResetEmailAction(params),
-  );
+  const { queueLegacyAuthEmail } = await import("../automations/messaging/_core-legacy");
+  await queueLegacyAuthEmail("reset_request", params.toEmail);
 }
 
 async function sendPasswordResetEmailAction(params: PasswordResetParams): Promise<void> {
@@ -697,14 +698,8 @@ interface EmailVerificationParams {
 }
 
 export async function sendEmailVerificationEmail(params: EmailVerificationParams): Promise<void> {
-  return dispatchMessagingProducer(
-    authVerificationEmailAutomation,
-    dispatchMessagingEvent,
-    "auth.verification_email",
-    params,
-    {},
-    () => sendEmailVerificationEmailAction(params),
-  );
+  const { queueLegacyAuthEmail } = await import("../automations/messaging/_core-legacy");
+  await queueLegacyAuthEmail("verify_email", params.toEmail);
 }
 
 async function sendEmailVerificationEmailAction(params: EmailVerificationParams): Promise<void> {
@@ -1387,14 +1382,8 @@ interface WelcomeEmailParams {
  * Safe to call without awaiting — all errors are caught internally.
  */
 export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void> {
-  return dispatchMessagingProducer(
-    authWelcomeEmailAutomation,
-    dispatchMessagingEvent,
-    "auth.welcome_email",
-    params,
-    {},
-    () => sendWelcomeEmailAction(params),
-  );
+  const { queueLegacyAuthEmail } = await import("../automations/messaging/_core-legacy");
+  await queueLegacyAuthEmail("welcome", params.toEmail);
 }
 
 async function sendWelcomeEmailAction(params: WelcomeEmailParams): Promise<void> {

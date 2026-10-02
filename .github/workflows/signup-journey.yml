@@ -1,0 +1,24 @@
+name: Signup journey (five-minute trigger)
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signup-journey-cron
+  cancel-in-progress: false
+jobs:
+  journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Same reviewed endpoint as the existing jobs-cron workflow.
+      BASE_URL: https://www.traveloure.com
+      FORCE_BUCKET: signup-journey
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run due signup journey messages
+        env:
+          INTERNAL_JOB_SECRET: ${{ secrets.INTERNAL_JOB_SECRET }}
+        run: ./scripts/ci/post-internal-jobs.sh --due

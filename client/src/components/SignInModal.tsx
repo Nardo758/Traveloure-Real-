@@ -133,6 +133,13 @@ export function SignInModal({
         throw new Error(data.message || "Authentication failed");
       }
 
+      if (mode === "signup") {
+        // Identical next step for new/existing addresses; registration no longer
+        // creates a session. Guest data remains untouched until a genuine login.
+        toast({ title: "Check your email", description: data.message });
+        onOpenChange(false);
+        return;
+      }
       await Promise.all([migrateGuestCart(), claimGuestConcierge()]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
 

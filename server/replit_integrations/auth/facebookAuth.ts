@@ -6,7 +6,8 @@ import passport from "passport";
 import FacebookStrategy from "passport-facebook";
 import type { Express } from "express";
 import { authStorage } from "./storage";
-import { sendWelcomeEmail } from "../../services/email.service";
+import { acceptSocialEmailAssertion, recordSuccessfulLogin } from "../../automations/messaging/_core-auth";
+import { runCoreJourney } from "../../automations/messaging/_core-worker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 interface InstagramAccount {
@@ -133,15 +134,12 @@ export async function facebookVerify(
       });
     }
 
-    if (isNewUser && email) {
-      sendWelcomeEmail({ toEmail: email, firstName: user.firstName ?? null }).catch(
-        (err) => console.error("[auth/facebook] welcome email failed (non-fatal):", err)
-      );
-    }
-
     if (user.isSuspended) {
       return done(null, false, { message: "Your account has been suspended. Please contact support." } as any);
     }
+    // Graph email presence is not a signed email_verified assertion. Existing
+    // verified accounts may welcome; new accounts must verify. Never emit Google.
+    if (email) await acceptSocialEmailAssertion(user.id, undefined);
 
     const sessionUser = {
       claims: {
@@ -219,9 +217,20 @@ export function setupFacebookAuth(app: Express) {
   app.get("/api/auth/facebook/callback", (req, res, next) => {
     ensureFacebookStrategy(req.hostname);
     passport.authenticate(`facebook:${req.hostname}`, {
-      successRedirect: "/become-expert?influencer=true&auth=facebook",
       failureRedirect: "/become-expert?influencer=true&error=auth_failed",
     })(req, res, next);
+  }, async (req, res) => {
+    try {
+      const id = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!id) return res.status(401).json({ message: "Authentication required" });
+      await recordSuccessfulLogin(id, req);
+      void runCoreJourney({ userId: id }).catch((error) => console.error("[auth/facebook] journey failed", error));
+      res.redirect("/become-expert?influencer=true&auth=facebook");
+    } catch (error) {
+      req.logout(() => {});
+      console.error("[auth/facebook] sign-in persistence failed", error);
+      res.status(500).json({ message: "Failed to finish sign-in. Please try again." });
+    }
   });
 
   app.get("/api/auth/instagram-data", (req, res) => {

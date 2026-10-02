@@ -38,6 +38,7 @@ import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.ser
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
 import { drainOutboxAndSweepPush } from "../services/email-outbox.service";
+import { runCoreJourney } from "../automations/messaging/_core-worker";
 import { scorePendingClaims } from "../services/evidence-scorer.service";
 import { z } from "zod";
 import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
@@ -177,6 +178,7 @@ export async function runJob(
 // the workflow's route strings against these entries is filed in FOLLOWUPS.md; until it lands this
 // comment is the coupling.
 export const JOB_CADENCE: readonly JobCadence[] = [
+  { job: "signup-journey", expectedIntervalSec: 5 * 60, bucket: "signup-journey" },
   // jobs-cron.yml — backstops, */15 * * * *
   { job: "checkout-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
   { job: "itinerary-generation-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
@@ -328,6 +330,12 @@ router.post("/internal/jobs/itinerary-generation-sweep", requireInternalSecret, 
 
 router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("email-outbox", () => drainOutboxAndSweepPush(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
+// Dedicated external five-minute journey trigger; no in-process timer.
+router.post("/internal/jobs/signup-journey", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("signup-journey", () => runCoreJourney(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 

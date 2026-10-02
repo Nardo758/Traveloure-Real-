@@ -1882,4 +1882,5 @@ export const MIGRATION_FILES = [
   // date is known, the time is not; the card omits its start time unless TRUE. Additive, nullable, NO
   // DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts. APPROVED Oct 1, 2026.
   "337_city_events_start_time_known.sql",
+  "338_signup_journey.sql",
 ] as const;

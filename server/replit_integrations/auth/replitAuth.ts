@@ -12,7 +12,8 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
-import { sendWelcomeEmail } from "../../services/email.service";
+import { acceptSocialEmailAssertion, recordSuccessfulLogin } from "../../automations/messaging/_core-auth";
+import { runCoreJourney } from "../../automations/messaging/_core-worker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 const getOidcConfig = memoize(
@@ -69,7 +70,7 @@ function updateUserSession(
 
 // Exported for tests — the registration-flag gate is verified without a live
 // OIDC handshake.
-export async function upsertUser(claims: any): Promise<void> {
+export async function upsertUser(claims: any) {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
@@ -90,7 +91,8 @@ export async function upsertUser(claims: any): Promise<void> {
       const merged = updated ?? emailOwner;
       console.log(`[auth/replit] Merged Replit OIDC ${userId} → existing account ${emailOwner.id}`);
       if (merged.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
-      return;
+      await acceptSocialEmailAssertion(merged.id, claims["email_verified"]);
+      return merged;
     }
   }
 
@@ -112,11 +114,8 @@ export async function upsertUser(claims: any): Promise<void> {
 
   if (user.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
 
-  if (!existing && email) {
-    sendWelcomeEmail({ toEmail: email, firstName: claims["first_name"] ?? null }).catch(
-      (err) => console.error("[auth/replit] welcome email failed (non-fatal):", err)
-    );
-  }
+  if (email) await acceptSocialEmailAssertion(user.id, claims["email_verified"]);
+  return user;
 }
 
 export async function setupAuth(app: Express) {
@@ -146,7 +145,10 @@ export async function setupAuth(app: Express) {
     const user = {};
     updateUserSession(user, tokens);
     try {
-      await upsertUser(tokens.claims());
+      const account = await upsertUser(tokens.claims());
+      // Journey jobs, sessions and deletion cancellation must use the canonical
+      // account when an existing password email owns the Replit login.
+      (user as any).claims.sub = account.id;
     } catch (err: any) {
       if (err?.message === "ACCOUNT_SUSPENDED") {
         return verified(null, false, { message: "Your account has been suspended. Please contact support." } as any);
@@ -199,9 +201,20 @@ export async function setupAuth(app: Express) {
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/dashboard",
       failureRedirect: "/api/login",
     })(req, res, next);
+  }, async (req, res) => {
+    try {
+      const id = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!id) return res.status(401).json({ message: "Authentication required" });
+      await recordSuccessfulLogin(id, req);
+      void runCoreJourney({ userId: id }).catch((error) => console.error("[auth/replit] journey failed", error));
+      res.redirect("/dashboard");
+    } catch (error) {
+      req.logout(() => {});
+      console.error("[auth/replit] sign-in persistence failed", error);
+      res.status(500).json({ message: "Failed to finish sign-in. Please try again." });
+    }
   });
 
   app.get("/api/logout", (req, res) => {

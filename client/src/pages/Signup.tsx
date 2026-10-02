@@ -12,11 +12,13 @@ export function SignupPage() {
 
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     setLoading(true);
     setError("");
+    setNotice("");
     try {
       // Split "Full name" into firstName / lastName for the server schema
       const nameParts = form.name.trim().split(/\s+/);
@@ -42,7 +44,9 @@ export function SignupPage() {
         setError(data.message || t("signupPage.failed"));
         return;
       }
-      setLocation("/dashboard");
+      // Same neutral next step for a new or an existing address. Never infer
+      // account creation from the response or send an anonymous user to dashboard.
+      setNotice(data.message || "Check your email for the next step.");
     } catch {
       setError(t("signupPage.genericError"));
     } finally {
@@ -60,6 +64,11 @@ export function SignupPage() {
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
             {error}
+          </div>
+        )}
+        {notice && (
+          <div role="status" data-testid="signup-check-email" className="mb-4 p-3 rounded-lg bg-purple-50 text-purple-900 text-sm">
+            {notice}
           </div>
         )}
 

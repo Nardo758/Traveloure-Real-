@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, bigint, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HANDLE_MAX_LENGTH } from "./handle";
@@ -11937,9 +11937,50 @@ export const emailOutbox = pgTable("email_outbox", {
   metadata:     jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
   createdAt:    timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("journey_email_idempotency_idx").on(sql`(${table.metadata}->>'journeyIdempotencyKey')`)
+    .where(sql`${table.metadata} ? 'journeyIdempotencyKey'`),
+  uniqueIndex("journey_email_alert_idx").on(sql`(${table.metadata}->>'journeyAlertFor')`, table.toEmail)
+    .where(sql`${table.metadata} ? 'journeyAlertFor'`),
+]);
 export type EmailOutbox = typeof emailOutbox.$inferSelect;
 export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
+
+// Signup/login journey durability. New tables only; no existing account is
+// enrolled or changed by the migration. Automation implementation lives in messaging.
+export const signupJourneyState = pgTable("signup_journey_state", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  accountState: varchar("account_state", { length: 32 }).notNull(),
+  failedAttempts: integer("failed_attempts").notNull(),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  welcomeAt: timestamp("welcome_at", { withTimezone: true }),
+  deletionRequestedAt: timestamp("deletion_requested_at", { withTimezone: true }),
+  deletionDueAt: timestamp("deletion_due_at", { withTimezone: true }),
+});
+export const signupJourneyJobs = pgTable("signup_journey_jobs", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  messageType: varchar("message_type", { length: 64 }).notNull(),
+  relatedId: varchar("related_id").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  sendAt: timestamp("send_at", { withTimezone: true }).notNull(),
+  status: varchar("status", { length: 32 }).notNull(),
+  skipReason: text("skip_reason"),
+  payload: jsonb("payload").notNull(),
+  attemptCount: integer("attempt_count").notNull(),
+  outboxId: bigint("outbox_id", { mode: "number" }),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+}, (table) => [
+  uniqueIndex("signup_journey_jobs_idempotency_idx").on(table.idempotencyKey),
+  index("signup_journey_jobs_due_idx").on(table.status, table.sendAt),
+]);
+export const signupJourneyDevices = pgTable("signup_journey_devices", {
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  fingerprint: varchar("fingerprint", { length: 64 }).notNull(),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.fingerprint] })]);
 
 // trend_scores — materialized resolver output. One row per entity. Rewritten each scoring run.
 // crowd_band null = entity is below confidence floor (L9) — must not appear on any surface.

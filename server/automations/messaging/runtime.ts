@@ -15,6 +15,15 @@ export async function dispatchMessagingEvent<T>(
     id,
     { ...context, event, payload },
     action,
+    { cancellation: { cancel: async (_id, _cancelledId, values) => {
+      if (typeof values.userId !== "string") throw new Error("Cancellation requires a user scope");
+      const { db } = await import("../../db");
+      const { cancelVerificationReminders, lockJourney } = await import("./_core-store");
+      await db.transaction(async (tx) => {
+        await lockJourney(tx, values.userId as string);
+        await cancelVerificationReminders(tx, values.userId as string);
+      });
+    } } },
   );
   if (!dispatched.executed) {
     throw new Error(`Messaging automation ${id} did not run (${dispatched.reason})`);

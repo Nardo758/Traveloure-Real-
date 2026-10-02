@@ -4,11 +4,19 @@ import crypto from "crypto";
 import { db } from "../../db";
 import { users, passwordResetTokens, emailVerificationTokens } from "@shared/models/auth";
 import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
-import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { dispatchModerationEvent } from "../../automations/moderation/runtime";
+import { scheduleSignup, duplicateSignup, requestVerification, requestReset, lockJourney } from "../../automations/messaging/_core-store";
+import { recordPasswordAttempt, recordSuccessfulLogin, verifyJourneyToken, afterPasswordReset } from "../../automations/messaging/_core-auth";
+import { runCoreJourney } from "../../automations/messaging/_core-worker";
+import { SIGNUP_RESPONSE } from "../../automations/messaging/_core-policy";
+import { registerJourneyUnsubscribe } from "../../automations/messaging/_core-unsubscribe";
+
+function kickJourney(userId: string) {
+  void runCoreJourney({ userId }).catch((error) => console.error("[signup-journey] immediate pass failed", error));
+}
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -66,8 +74,10 @@ const loginSchema = z.object({
 });
 
 export function setupEmailAuth(app: Express): void {
+  registerJourneyUnsubscribe(app);
   // Register new user with email/password
   app.post("/api/auth/register", async (req, res) => {
+    const started = Date.now();
     try {
       // Admin-controlled kill switch (/admin/system → "New User Registration").
       // platform_settings.new_user_registration_enabled = 'false' blocks signups.
@@ -90,21 +100,22 @@ export function setupEmailAuth(app: Express): void {
       // userType from request body is intentionally ignored — all new accounts
       // start as role='user'. Role upgrades happen via approved application forms.
 
-      // Check if user already exists
+      // Both new and existing addresses pay the same scrypt cost. No new account
+      // receives a session or an identifying response before verification.
+      const hashedPassword = await hashPassword(password);
       const existingUser = await db
         .select()
         .from(users)
-        .where(eq(users.email, email.toLowerCase()))
+        .where(drizzleSql`lower(${users.email})=lower(${email})`)
         .then((r) => r[0]);
 
       if (existingUser) {
-        return res.status(400).json({
-          message: "An account with this email already exists",
-        });
+        await duplicateSignup(existingUser.id);
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, 850 - (Date.now() - started))));
+        res.status(200).json(SIGNUP_RESPONSE);
+        kickJourney(existingUser.id);
+        return;
       }
-
-      // Hash password
-      const hashedPassword = await hashPassword(password);
 
       // Create user with terms accepted at registration time
       const [newUser] = await db
@@ -121,7 +132,19 @@ export function setupEmailAuth(app: Express): void {
           termsVersion: CURRENT_TERMS_VERSION,
           privacyVersion: CURRENT_PRIVACY_VERSION,
         })
+        .onConflictDoNothing({ target: users.email })
         .returning();
+
+      // A concurrent registration can win after the initial read. It receives
+      // precisely the same response, not a unique-constraint privacy leak.
+      if (!newUser) {
+        const [owner] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+        if (owner) await duplicateSignup(owner.id);
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, 850 - (Date.now() - started))));
+        res.status(200).json(SIGNUP_RESPONSE);
+        if (owner) kickJourney(owner.id);
+        return;
+      }
 
       // Fire-and-forget: T1 funnel event (includes paid-acquisition attribution)
       trackFunnelEvent({
@@ -132,54 +155,10 @@ export function setupEmailAuth(app: Express): void {
         refToken: (req.body.refToken as string) || undefined,
       }).catch(() => { /* fire-and-forget funnel event — never blocks signup */ });
 
-      // Fire-and-forget verification email. Failure here MUST NOT block signup —
-      // the user can request a resend later. RESEND_API_KEY absence is logged
-      // inside sendEmailVerificationEmail.
-      issueAndSendVerification(newUser.id, newUser.email!, newUser.firstName ?? null).catch(
-        (err) => console.error("[auth/register] verification email issue failed:", err)
-      );
-
-      // Fire-and-forget welcome email. Sent after verification so the two emails
-      // don't race into the same inbox second. Failure is non-fatal.
-      sendWelcomeEmail({ toEmail: newUser.email!, firstName: newUser.firstName ?? null }).catch(
-        (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
-      );
-
-      // Log the user in — regenerate the session ID first to prevent fixation.
-      const sessionUser = {
-        claims: {
-          sub: newUser.id,
-          email: newUser.email,
-          first_name: newUser.firstName,
-          last_name: newUser.lastName,
-          role: newUser.role,
-        },
-        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
-      };
-
-      req.session.regenerate((regenErr) => {
-        if (regenErr) {
-          console.error("Session regeneration error after registration:", regenErr);
-          return res.status(500).json({ message: "Failed to create session" });
-        }
-        (req as any).login(sessionUser, (err: any) => {
-          if (err) {
-            console.error("Login error after registration:", err);
-            return res.status(500).json({ message: "Failed to create session" });
-          }
-          
-          res.status(201).json({
-            message: "Account created successfully",
-            user: {
-              id: newUser.id,
-              email: newUser.email,
-              firstName: newUser.firstName,
-              lastName: newUser.lastName,
-              role: newUser.role,
-            },
-          });
-        });
-      });
+      await scheduleSignup(newUser.id);
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, 850 - (Date.now() - started))));
+      res.status(200).json(SIGNUP_RESPONSE);
+      kickJourney(newUser.id);
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Failed to create account" });
@@ -227,9 +206,11 @@ export function setupEmailAuth(app: Express): void {
 
       // Verify password
       const isValid = await verifyPassword(password, user.password);
-      if (!isValid) {
+      const attempt = await recordPasswordAttempt(user.id, isValid);
+      if (!attempt.allowed) {
+        if (attempt.locked) kickJourney(user.id);
         return res.status(401).json({
-          message: "Invalid email or password",
+          message: attempt.locked ? "Your account is temporarily locked. Try again in 30 minutes or reset your password." : "Invalid email or password",
         });
       }
 
@@ -267,12 +248,20 @@ export function setupEmailAuth(app: Express): void {
           console.error("Session regeneration error:", regenErr);
           return res.status(500).json({ message: "Failed to create session" });
         }
-        (req as any).login(sessionUser, (err: any) => {
+        (req as any).login(sessionUser, async (err: any) => {
           if (err) {
             console.error("Login error:", err);
             return res.status(500).json({ message: "Failed to create session" });
           }
 
+          try {
+            await recordSuccessfulLogin(user.id, req);
+            kickJourney(user.id);
+          } catch (error) {
+            req.logout(() => {});
+            console.error("[auth/login] journey persistence failed", error);
+            return res.status(500).json({ message: "Failed to finish sign-in. Please try again." });
+          }
           res.json({
             message: "Logged in successfully",
             user: {
@@ -298,8 +287,6 @@ export function setupEmailAuth(app: Express): void {
   // ONLY the sha256 hash; POST /reset-password validates the token, sets the
   // new password through the existing scrypt hashPassword(), invalidates the
   // user's existing sessions, and marks the token used.
-
-  const RESET_TOKEN_TTL_MIN = 60;
 
   function hashToken(raw: string): string {
     return crypto.createHash("sha256").update(raw).digest("hex");
@@ -329,29 +316,8 @@ export function setupEmailAuth(app: Express): void {
       if (user && user.password) {
         // Skip OAuth-only accounts (no password set) — generating a reset for
         // them would be a no-op + signal that the email exists in another way.
-        const raw = crypto.randomBytes(32).toString("hex");
-        const tokenHash = hashToken(raw);
-        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000);
-
-        await db.insert(passwordResetTokens).values({
-          userId: user.id,
-          tokenHash,
-          expiresAt,
-        });
-
-        const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
-        try {
-          await sendPasswordResetEmail({
-            toEmail: user.email!,
-            firstName: user.firstName ?? null,
-            resetUrl,
-            expiresInMinutes: RESET_TOKEN_TTL_MIN,
-          });
-        } catch (emailErr) {
-          // Don't surface delivery state to the client. Log for ops; the token
-          // row remains in the DB so retries are possible.
-          console.error("[auth/forgot-password] email delivery failed:", emailErr);
-        }
+        await requestReset(user.id, `minute:${Math.floor(Date.now() / 60000)}`);
+        kickJourney(user.id);
       }
 
       // Always 200 with a generic message — no account enumeration.
@@ -390,6 +356,11 @@ export function setupEmailAuth(app: Express): void {
 
       const hashedPassword = await hashPassword(newPassword);
       const resetApplied = await db.transaction(async (tx) => {
+        const [identity] = await tx.select({ userId: passwordResetTokens.userId })
+          .from(passwordResetTokens).where(eq(passwordResetTokens.tokenHash, tokenHash)).limit(1);
+        if (!identity) return false;
+        const { user: current } = await lockJourney(tx, identity.userId);
+        if (current.is_deleted || current.is_suspended) return false;
         // Claim the token atomically. Concurrent replays race on this conditional
         // UPDATE; exactly one can transition used_at from NULL.
         const [claimed] = await tx
@@ -404,6 +375,7 @@ export function setupEmailAuth(app: Express): void {
         if (!claimed) return false;
 
         await tx.update(users).set({ password: hashedPassword }).where(eq(users.id, claimed.userId));
+        await afterPasswordReset(tx, claimed.userId, tokenHash);
         // Session invalidation is part of the same transaction and covers both
         // Passport user shapes. A failure rolls back the password/token change.
         await dispatchModerationEvent(
@@ -417,7 +389,7 @@ export function setupEmailAuth(app: Express): void {
                OR sess->'passport'->'user'->>'id' = ${claimed.userId}
           `),
         );
-        return true;
+        return claimed.userId;
       });
       if (!resetApplied) {
         return res.status(400).json({
@@ -428,6 +400,7 @@ export function setupEmailAuth(app: Express): void {
       res.json({
         message: "Password has been reset successfully. You can now sign in.",
       });
+      kickJourney(resetApplied);
     } catch (error) {
       console.error("Password reset error:", error);
       res.status(500).json({ message: "Failed to reset password" });
@@ -437,22 +410,6 @@ export function setupEmailAuth(app: Express): void {
   // ─── Email verification on signup ──────────────────────────────────────────
   // Same token shape + storage pattern as the password-reset flow: raw token
   // sent via email, only the sha256 hash persisted, single-use + TTL.
-
-  const VERIFY_TOKEN_TTL_HOURS = 24;
-
-  async function issueAndSendVerification(userId: string, email: string, firstName: string | null) {
-    const raw = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashToken(raw);
-    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000);
-    await db.insert(emailVerificationTokens).values({ userId, tokenHash, expiresAt });
-    const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
-    await sendEmailVerificationEmail({
-      toEmail: email,
-      firstName,
-      verifyUrl,
-      expiresInHours: VERIFY_TOKEN_TTL_HOURS,
-    });
-  }
 
   // POST /api/auth/send-verification — authenticated; (re)issues a token to the
   // caller's email. Used by the "Resend verification email" UI button.
@@ -469,16 +426,9 @@ export function setupEmailAuth(app: Express): void {
       if (user.emailVerified) {
         return res.status(200).json({ message: "Email already verified." });
       }
-      // Burn any prior unused tokens for this user — only the newest link
-      // should be valid.
-      await db
-        .update(emailVerificationTokens)
-        .set({ usedAt: new Date() })
-        .where(and(
-          eq(emailVerificationTokens.userId, userId),
-          isNull(emailVerificationTokens.usedAt),
-        ));
-      await issueAndSendVerification(userId, user.email, user.firstName ?? null);
+      const queued = await requestVerification(userId, `minute:${Math.floor(Date.now() / 60000)}`);
+      if (queued === "limited") return res.status(429).json({ message: "At most 3 verification emails per hour. Please try later." });
+      kickJourney(userId);
       return res.status(200).json({
         message: "Verification email sent. Check your inbox.",
       });
@@ -504,27 +454,15 @@ export function setupEmailAuth(app: Express): void {
         });
       }
       const tokenHash = hashToken(parsed.data.token);
-      const now = new Date();
-      const tokenRow = await db
-        .select()
-        .from(emailVerificationTokens)
-        .where(and(
-          eq(emailVerificationTokens.tokenHash, tokenHash),
-          isNull(emailVerificationTokens.usedAt),
-          gt(emailVerificationTokens.expiresAt, now),
-        ))
-        .then((r) => r[0]);
-      if (!tokenRow) {
+      const verifiedUserId = await verifyJourneyToken(tokenHash);
+      if (!verifiedUserId) {
         return res.status(400).json({
           message: "This verification link is invalid or has expired. Please request a new one.",
         });
       }
-      await db.update(users).set({ emailVerified: now }).where(eq(users.id, tokenRow.userId));
-      await db
-        .update(emailVerificationTokens)
-        .set({ usedAt: now })
-        .where(eq(emailVerificationTokens.id, tokenRow.id));
-      return res.json({ message: "Email verified successfully." });
+      res.json({ message: "Email verified successfully." });
+      kickJourney(verifiedUserId);
+      return;
     } catch (error) {
       console.error("Verify email error:", error);
       return res.status(500).json({ message: "Failed to verify email" });

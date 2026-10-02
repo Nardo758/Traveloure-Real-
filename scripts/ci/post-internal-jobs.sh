@@ -299,6 +299,9 @@ post_route_with_retry() {
 # the order buckets are checked and, when due, posted in. ──
 # BUCKET_ROUTES_TABLE_BEGIN
 declare -A BUCKET_ROUTES=(
+  # Forced only by signup-journey.yml every five minutes; intentionally absent
+  # from BUCKET_ORDER so the existing 15-minute/money cadence is unchanged.
+  ["signup-journey"]="signup-journey"
   ["backstops"]="checkout-sweep itinerary-generation-sweep email-outbox"
   ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims"
   ["four-hourly"]="booking-expiry"

@@ -1,18 +1,18 @@
 import type { AutomationContext, AutomationDefinition } from "../contract";
+import { coreNode, type CoreMessage } from "./_core-definition";
 
 export const authVerificationEmailAutomation: AutomationDefinition<AutomationContext> = {
-  id: "messaging.auth-verification-email",
-  name: "Send email-verification email",
-  domain: "messaging",
-  type: "security",
-  trigger: { kind: "event", events: ["auth.verification_email"] },
-  condition: { description: "Run for the existing email-verification call.", evaluate: () => true },
-  idempotencyKey: null,
-  delay: null,
-  cancels: [],
-  actionGuard: "The auth caller's verification-token creation and verification checks remain authoritative.",
-  action: { kind: "send_message", detail: "Invoke the existing email-verification sender." },
-  retryPolicy: "No automation retry; existing sender behavior and provider response semantics are retained.",
-  failureBehavior: "Existing sender errors propagate to the auth caller; a missing provider key may return without sending.",
-  enabled: true,
+  ...coreNode("verify_email", "messaging.auth-verification-email"),
+  trigger: { kind: "event", events: ["signup_journey.verify_email", "auth.verification_email"] },
+};
+
+// Preserve the existing registered ID; the core journey uses its guarded event.
+export const verifyEmailMessage: CoreMessage = {
+  kind: "verify_email",
+  node: authVerificationEmailAutomation,
+  copy: ({ name }) => ({
+    subject: "Confirm your email to start planning",
+    body: `Hi ${name}, welcome to Traveloure. Tap the button to confirm your email. The link works for 24 hours.`,
+    button: "Confirm my email", path: "/verify-email",
+  }),
 };

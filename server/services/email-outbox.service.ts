@@ -205,6 +205,8 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     reply_to:      string | null;
     attempt_count: number;
     max_attempts:  number;
+    metadata: Record<string, any>;
+    created_at: Date;
   };
 
   let claimed: ClaimedRow[];
@@ -234,7 +236,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
              updated_at  = NOW()
       FROM   candidates c
       WHERE  o.id = c.id
-      RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
+      RETURNING o.id, o.to_email, o.subject, o.html, o.text_body, o.metadata, o.created_at,
                 o.from_address, o.reply_to, o.attempt_count, o.max_attempts
     `);
     claimed = (result.rows ?? []) as ClaimedRow[];
@@ -253,6 +255,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       html:    row.html,
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to  ? { replyTo: row.reply_to } : {}),
+      ...journeyDeliveryParams(row),
     };
     await attemptDelivery(row.id, params, {
       attemptCount: row.attempt_count,
@@ -261,6 +264,34 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
   }
 
   return { drained: claimed.length };
+}
+
+function journeyDeliveryParams(row: { metadata?: Record<string, any>; created_at?: Date }) {
+  if (row.metadata?.signupJourney !== true) return {};
+  return {
+    headers: row.metadata.journeyHeaders,
+    idempotencyKey: row.metadata.journeyIdempotencyKey,
+    journeyDelivery: true,
+    journeyUserId: row.metadata.journeyUserId,
+    journeyKind: row.metadata.journeyKind,
+    // Never retry an uncertain delivery outside Resend's 24-hour dedup window.
+    journeyTooOld: !!row.created_at && Date.now() - new Date(row.created_at).getTime() > 23 * 3600000,
+  };
+}
+
+/** Scoped immediate attempt; cannot drain another user's messages. */
+export async function deliverJourneyOutboxRow(outboxId: number): Promise<void> {
+  const result = await db.execute(sql`UPDATE email_outbox SET status='processing',
+    retry_after=NOW()+INTERVAL '10 minutes',updated_at=NOW()
+    WHERE id=${outboxId} AND ((status IN ('pending','failed') AND (retry_after IS NULL OR retry_after<=NOW()))
+      OR (status='processing' AND retry_after<=NOW())) AND metadata->>'signupJourney'='true'
+    RETURNING *`);
+  const row = result.rows[0] as any;
+  if (!row) return;
+  await attemptDelivery(Number(row.id), {
+    to: row.to_email, subject: row.subject, html: row.html, text: row.text_body || undefined,
+    ...(row.reply_to ? { replyTo: row.reply_to } : {}), ...journeyDeliveryParams(row),
+  }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts });
 }
 
 /** Route the existing drain implementation through its scheduled messaging node. */
@@ -313,7 +344,20 @@ async function attemptDelivery(
   // there is no circular import at module-load time.
   let result: SendEmailResult;
   try {
-    if (_outboxTestHooks.sendEmailFn) {
+    if (outboxId && params.journeyDelivery) {
+      const { journeyDeliveryGate } = await import("../automations/messaging/_core-delivery");
+      const gate = await journeyDeliveryGate(params.journeyUserId!, params.journeyKind!);
+      if (gate.action !== "send") {
+        await db.execute(sql`UPDATE email_outbox SET status=${gate.action === "defer" ? "failed" : "cancelled"},
+          last_error=${gate.action === "defer" ? "daytime_deferred" : gate.reason},
+          retry_after=${gate.action === "defer" ? new Date(Date.now() + 30 * 60000) : null},
+          updated_at=NOW() WHERE id=${outboxId} AND status='processing'`);
+        return;
+      }
+    }
+    if ((params as SendEmailParams & { journeyTooOld?: boolean }).journeyTooOld) {
+      result = { ok: false, error: "Journey delivery quarantined outside provider idempotency window" };
+    } else if (_outboxTestHooks.sendEmailFn) {
       result = await _outboxTestHooks.sendEmailFn(params);
     } else {
       const { sendEmail } = await import("./email.service");
@@ -346,9 +390,12 @@ async function attemptDelivery(
         "[email-outbox] sent"
       );
     } else {
-      const isDead    = attemptCount >= maxAttempts;
+      const isDead    = attemptCount >= maxAttempts ||
+        !!(params as SendEmailParams & { journeyTooOld?: boolean }).journeyTooOld;
       const newStatus = isDead ? "dead" : "failed";
-      const retryAt   = isDead ? null : _nextRetryAfter(attemptCount);
+      const retryAt   = isDead ? null : params.journeyDelivery
+        ? new Date(Date.now() + [1, 5, 30][Math.min(attemptCount - 1, 2)] * 60000)
+        : _nextRetryAfter(attemptCount);
 
       await db.execute(sql`
         UPDATE email_outbox
@@ -366,6 +413,10 @@ async function attemptDelivery(
           { outboxId, to: toStr, subject: params.subject, error: result.error, attemptCount },
           "[email-outbox] DEAD — max attempts exhausted; admin action required"
         );
+        if (params.journeyDelivery) {
+          const { alertJourneyFailure } = await import("../automations/messaging/_core-alert");
+          await alertJourneyFailure(`outbox:${outboxId}`);
+        }
       } else {
         logger.warn(
           { outboxId, to: toStr, subject: params.subject, error: result.error, attemptCount, retryAt },
