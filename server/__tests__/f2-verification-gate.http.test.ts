@@ -172,7 +172,12 @@ before(async () => {
   await assertDisposableDb();
 
   const category = await readPool.query(
-    `SELECT id FROM service_categories WHERE category_key IS NOT NULL ORDER BY category_key LIMIT 1`,
+    `SELECT id FROM service_categories
+      WHERE category_key IS NOT NULL
+        AND COALESCE(requires_background_check, false) = false
+        AND COALESCE(insurance_band, 0) < 2
+      ORDER BY category_key
+      LIMIT 1`,
   );
   reviewCategoryId = category.rows[0]?.id ?? "";
   assert.ok(reviewCategoryId, "a service category must exist so a review-ready publish can name one");

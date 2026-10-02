@@ -162,7 +162,14 @@ before(async () => {
   const health = await fetch(`${BASE_URL}/api/health`).catch(() => null);
   assert.ok(health && health.ok, `dev server must be running on ${BASE_URL}`);
   await assertDisposableDb();
-  const found = await db.execute(sql`SELECT id FROM service_categories WHERE category_key IS NOT NULL ORDER BY category_key LIMIT 1`);
+  const found = await db.execute(sql`
+    SELECT id FROM service_categories
+     WHERE category_key IS NOT NULL
+       AND COALESCE(requires_background_check, false) = false
+       AND COALESCE(insurance_band, 0) < 2
+     ORDER BY category_key
+     LIMIT 1
+  `);
   componentCategoryId = String((found.rows as { id?: string }[])[0]?.id ?? "");
   assert.ok(componentCategoryId, "a service category must exist so a review-ready component can name one");
   await createProvider();

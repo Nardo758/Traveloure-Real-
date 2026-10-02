@@ -136,7 +136,12 @@ async function ensureHandle(seller: APIRequestContext, wanted: string): Promise<
 async function publishAndApprove(seller: APIRequestContext, c: SellerCase): Promise<string> {
   const categories = await (await seller.get("/api/service-categories")).json();
   const categoryId = Array.isArray(categories)
-    ? (categories.find((row: { id?: unknown }) => row && typeof row.id === "string")?.id as string | undefined)
+    ? (categories.find((row: { id?: unknown; requiresBackgroundCheck?: boolean | null; insuranceBand?: number | null }) =>
+        row
+        && typeof row.id === "string"
+        && row.requiresBackgroundCheck !== true
+        && (row.insuranceBand ?? 0) < 2,
+      )?.id as string | undefined)
     : undefined;
   expect(categoryId, "a seeded service category is required before a listing can enter review").toBeTruthy();
   const created = await seller.post("/api/provider/services", { data: { ...c.listing, categoryId } });
