@@ -269,7 +269,8 @@ router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req,
   // R164 (G2): the same job also reclaims STAMPED claims left unpaid (sweepStaleAuthorizedClaims).
   const { status, body } = await runJob("checkout-sweep",
     () => runCheckoutClaimSweepSchedule(),
-    undefined,
+    // A failed candidate scan in either sweep is a failed run, never a success heartbeat (R261).
+    (result) => !!result?.error,
     { useBackgroundJobRunner: false },
   );
   res.status(status).json(body);

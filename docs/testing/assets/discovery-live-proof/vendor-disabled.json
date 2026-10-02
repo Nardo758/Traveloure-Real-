@@ -1,0 +1,11 @@
+{
+  "httpStatus": 200,
+  "body": {
+    "sent": 0,
+    "failed": 1,
+    "failureReasons": [
+      "Contract <contract id redacted>: Email notifications are disabled by platform settings"
+    ]
+  },
+  "communications": 1
+}

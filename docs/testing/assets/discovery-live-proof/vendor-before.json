@@ -1,0 +1,10 @@
+{
+  "httpStatus": 200,
+  "body": {
+    "sent": 0,
+    "failed": 1,
+    "failureReasons": [
+      "Contract <contract id redacted>: Cannot read properties of undefined (reading 'sendEmail')"
+    ]
+  }
+}

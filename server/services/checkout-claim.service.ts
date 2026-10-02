@@ -87,7 +87,7 @@
 
 import Stripe from "stripe";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, getPoolStats } from "../db";
 import { serviceBookings, providerServices, users } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
@@ -135,6 +135,8 @@ export interface ProvisionalClaimRow {
 }
 
 export interface SweepResult {
+  /** Candidate scan failed; zero counters are not evidence of a completed scan. */
+  error?: string;
   /** Rows past TTL that carried no attempt marker — voided (Layer 1: provably never reached Stripe). */
   voidedUnreached: number;
   /** Marked rows Stripe confirmed have no PaymentIntent — voided after Layer-2 reconciliation. */
@@ -574,8 +576,8 @@ export async function sweepExpiredCheckoutClaims(opts?: {
       createdAt: r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at)),
     }));
   } catch (err) {
-    logger.error({ err }, "[checkout-sweep] candidate query failed — no rows touched");
-    return result;
+    logger.error({ err, pool: getPoolStats() }, "[checkout-sweep] candidate query failed — no rows touched");
+    return { ...result, error: (err instanceof Error ? err.message : String(err)) || "Candidate query failed" };
   }
 
   for (const row of candidates) {
@@ -1569,6 +1571,8 @@ export async function cancelStalePaymentIntent(opts: {
 // imported at the top of this module beside the claim TTL.
 
 export interface StaleAuthorizedSweepResult {
+  /** Candidate scan failed; callers must not stamp a successful heartbeat. */
+  error?: string;
   /** PaymentIntents read. */
   examined: number;
   /** Stripe says succeeded ⇒ handed to the ONE shared promotion. */
@@ -1817,8 +1821,8 @@ export async function sweepStaleAuthorizedClaims(opts?: {
       paymentIntentId: String(x.stripe_payment_intent_id),
     }));
   } catch (err) {
-    logger.error({ err }, "[stale-authorized-sweep] candidate query failed — no rows touched");
-    return result;
+    logger.error({ err, pool: getPoolStats() }, "[stale-authorized-sweep] candidate query failed — no rows touched");
+    return { ...result, error: (err instanceof Error ? err.message : String(err)) || "Candidate query failed" };
   }
 
   const byPi = new Map<string, typeof rows>();
@@ -2523,11 +2527,13 @@ async function performBalancePaymentPromotion(opts: PromoteBalancePaymentOptions
 export async function runFullCheckoutClaimSweep(): Promise<{
   unauthorized: Awaited<ReturnType<typeof sweepExpiredCheckoutClaims>>;
   authorized: Awaited<ReturnType<typeof sweepStaleAuthorizedClaims>>;
+  /** Either candidate scan failed; zero counters are not a completed scan (R261). */
+  error?: string;
 }> {
-  return {
-    unauthorized: await sweepExpiredCheckoutClaims(),
-    authorized: await sweepStaleAuthorizedClaims(),
-  };
+  const unauthorized = await sweepExpiredCheckoutClaims();
+  const authorized = await sweepStaleAuthorizedClaims();
+  const error = [unauthorized.error, authorized.error].filter(Boolean).join("; ");
+  return { unauthorized, authorized, ...(error ? { error } : {}) };
 }
 
 /** The in-process timer and external cron share this single registry/overlap-guarded entry point. */

@@ -45,3 +45,6 @@ attached_assets/Pasted-*
 # them — generated/security/mutation-auth-evidence.json — whose `log` field names a
 # LOCAL path, valid only for the run that produced it.
 generated/security/evidence-logs/
+
+# Replit agent memory is session-local; never commit new entries (founder ruling, Oct 2, 2026).
+.agents/memory/
