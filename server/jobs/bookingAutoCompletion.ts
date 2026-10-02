@@ -84,6 +84,7 @@ import { bookingAutoCompleteScheduler, type PiVerifier } from "../services/booki
 import { runArtifactAcceptancePass } from "../services/artifact-acceptance-timer.service";
 import { runCoordinationWindowPass } from "../services/coordination-completion.service";
 import { COMPLETION_DECLARED_STATUS } from "@shared/declared-completion-window";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 
 /** How long a non-succeeded-PI candidate stays excluded after a stamp (matches the replit line). */
 const UNPAID_RECHECK_HOURS = 24;
@@ -204,7 +205,7 @@ async function passesPaymentGate(input: {
   return true;
 }
 
-export async function runBookingAutoCompletion(
+async function runBookingAutoCompletionAction(
   now: Date = new Date(),
   verifyPi: PiVerifier = stripeVerifier,
 ): Promise<AutoCompletionRunResult> {
@@ -350,8 +351,12 @@ export async function runBookingAutoCompletion(
   // rather than a widened `findAutoCompleteCandidates`, whose predicate is also `completeBooking`'s
   // default guard (the D-24 invariant, one state over). A failure here never fails the pass above.
   try {
-    const declaredCandidates = await findDeclaredWindowCandidates(now);
-    for (const bookingId of declaredCandidates) {
+    await runBookingSchedule(
+      "bookings.declared-window-close",
+      "booking-auto-completion",
+      async () => {
+        const declaredCandidates = await findDeclaredWindowCandidates(now);
+        for (const bookingId of declaredCandidates) {
       let eligibility;
       try {
         eligibility = await resolveCompletionEligibility(bookingId, now, { declaredWindow: true });
@@ -394,7 +399,9 @@ export async function runBookingAutoCompletion(
         logger.error({ err, bookingId }, "[auto-complete] window close failed — booking left untouched");
         bumpDeclared("completion_error");
       }
-    }
+        }
+      },
+    );
   } catch (err) {
     logger.error({ err }, "[auto-complete] declared-window pass failed");
   }
@@ -404,7 +411,11 @@ export async function runBookingAutoCompletion(
   // no coordinator earning exists — and touches no fee; what the window gates on that rail is the
   // admin refund, read at the refund route.
   try {
-    const coordination = await runCoordinationWindowPass(now);
+    const coordination = await runBookingSchedule(
+      "bookings.coordination-window-close",
+      "booking-auto-completion",
+      () => runCoordinationWindowPass(now),
+    );
     result.coordinationCompleted = coordination.completed;
     result.coordinationCompletedIds = coordination.completedIds;
     result.coordinationSkipped = coordination.skipped;
@@ -428,7 +439,11 @@ export async function runBookingAutoCompletion(
   // A failure here never fails the pass above: the two arms are independent, and the next run
   // retries under the same atomic conditionals.
   try {
-    const artifact = await runArtifactAcceptancePass(now, verifyPi);
+    const artifact = await runBookingSchedule(
+      "bookings.artifact-acceptance",
+      "booking-auto-completion",
+      () => runArtifactAcceptancePass(now, verifyPi),
+    );
     result.prompted = artifact.prompted;
     result.escalated = artifact.escalated;
     result.artifactSkipped = artifact.skipped;
@@ -444,7 +459,11 @@ export async function runBookingAutoCompletion(
   // with ledger rows missing. Re-run the idempotent mint for those. Reuses the retained scheduler's
   // tested helper so there is ONE reconciliation implementation, not a copy.
   try {
-    result.reconciled = await bookingAutoCompleteScheduler.reconcileMissingLedgerRows(now);
+    result.reconciled = await runBookingSchedule(
+      "bookings.completion-ledger-reconciliation",
+      "booking-auto-completion",
+      () => bookingAutoCompleteScheduler.reconcileMissingLedgerRows(now),
+    );
   } catch (err) {
     logger.error({ err }, "[auto-complete] ledger reconciliation pass failed");
   }
@@ -470,4 +489,15 @@ export async function runBookingAutoCompletion(
     "[auto-complete] D8 booking auto-completion pass",
   );
   return result;
+}
+
+export async function runBookingAutoCompletion(
+  now: Date = new Date(),
+  verifyPi: PiVerifier = stripeVerifier,
+): Promise<AutoCompletionRunResult> {
+  return runBookingSchedule(
+    "bookings.auto-completion",
+    "booking-auto-completion",
+    () => runBookingAutoCompletionAction(now, verifyPi),
+  );
 }

@@ -174,10 +174,10 @@ async function makeSucceededPaymentIntent(amount: number, bookingId: string): Pr
   return pi.id;
 }
 
-async function seedSlot(id: string): Promise<void> {
+async function seedSlot(id: string, startTime: string, endTime: string): Promise<void> {
   await db.execute(sql`
     INSERT INTO vendor_availability_slots (id, service_id, provider_id, date, start_time, end_time, capacity, booked_count, status)
-    VALUES (${id}, ${ids.service}, ${userIds.provider}, '2026-12-01', '09:00', '12:00', 1, 1, 'fully_booked')
+    VALUES (${id}, ${ids.service}, ${userIds.provider}, '2026-12-01', ${startTime}, ${endTime}, 1, 1, 'fully_booked')
   `);
 }
 
@@ -189,6 +189,8 @@ async function seedDepositBooking(args: {
   depositAmount: number | null;
   bookingDetails?: Record<string, unknown>;
 }): Promise<void> {
+  // Keep the run-specific suffix unique while honoring tracking_number's varchar(20).
+  const trackingNumber = args.id.slice(-20);
   await db.execute(sql`
     INSERT INTO service_bookings
       (id, service_id, traveler_id, provider_id, status, total_amount, platform_fee, insurance_fee,
@@ -200,7 +202,7 @@ async function seedDepositBooking(args: {
        ${args.paymentIntentId}, ${args.paymentIntentId},
        ${args.depositAmount === null ? null : args.depositAmount.toFixed(2)}, true,
        ${BALANCE.toFixed(2)}, false, ${args.slotId},
-       ${JSON.stringify(args.bookingDetails ?? {})}::jsonb, ${args.id})
+       ${JSON.stringify(args.bookingDetails ?? {})}::jsonb, ${trackingNumber})
   `);
 }
 
@@ -250,7 +252,11 @@ before(async () => {
             ${TOTAL_AMOUNT}, 'active', 'approved', true, 'percentage', 30)
   `);
 
-  await Promise.all([seedSlot(ids.slotGood), seedSlot(ids.slotBad), seedSlot(ids.slotFee)]);
+  await Promise.all([
+    seedSlot(ids.slotGood, "09:00", "12:00"),
+    seedSlot(ids.slotBad, "13:00", "16:00"),
+    seedSlot(ids.slotFee, "17:00", "20:00"),
+  ]);
 
   // D1/D2/D3 — a clean deposit-partial: exactly the deposit captured, no traveler fee.
   paymentIntents.good = await makeSucceededPaymentIntent(DEPOSIT, ids.bookingGood);

@@ -16,3 +16,4 @@ export type {
   AutomationRegistry,
 } from "./contract";
 export { paymentAutomations, paymentAutomationRegistry } from "./payments";
+export { bookingAutomations, bookingAutomationRegistry } from "./bookings";

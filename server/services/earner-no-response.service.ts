@@ -28,6 +28,7 @@ import { storage } from "../storage";
 import { enqueueEmail } from "./email-outbox.service";
 import { isNotificationChannelEnabled } from "./notification-preferences.service";
 import { escHtml } from "../utils/email-escape";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 import {
   alternativeExpertsPath,
   earnerNoResponseCopy,
@@ -107,7 +108,7 @@ async function findCandidates(hours: number): Promise<Candidate[]> {
   ];
 }
 
-export async function runEarnerNoResponseNotices(): Promise<EarnerNoResponseStats> {
+async function runEarnerNoResponseNoticesAction(): Promise<EarnerNoResponseStats> {
   const hours = earnerNoResponseHours();
   const stats: EarnerNoResponseStats = { candidates: 0, notified: 0, emailed: 0, errors: [] };
   const candidates = await findCandidates(hours);
@@ -153,4 +154,12 @@ export async function runEarnerNoResponseNotices(): Promise<EarnerNoResponseStat
     }
   }
   return stats;
+}
+
+export function runEarnerNoResponseNotices(): Promise<EarnerNoResponseStats> {
+  return runBookingSchedule(
+    "bookings.earner-no-response-notice",
+    "booking-expiry",
+    () => runEarnerNoResponseNoticesAction(),
+  );
 }

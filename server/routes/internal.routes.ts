@@ -33,6 +33,7 @@ import { runPaymentSchedule } from "../automations/payments/runtime";
 import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
 import { runCheckoutClaimSweepSchedule } from "../services/checkout-claim.service";
 import { materializeAllServicesWithPatterns } from "../services/availability-materializer.service";
+import { runBookingSchedule } from "../automations/bookings/runtime";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { itineraryGenerationSweepScheduler } from "../services/itinerary-generation-sweep-scheduler.service";
@@ -278,7 +279,13 @@ router.post("/internal/jobs/checkout-sweep", requireInternalSecret, async (_req,
 // availability-materialization — extends the rolling 60-day availability horizon (ADD-ONLY,
 // ON CONFLICT DO NOTHING). Calls the underlying service (which throws on failure → visible 500).
 router.post("/internal/jobs/availability-materialization", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("availability-materialization", () => materializeAllServicesWithPatterns());
+  const { status, body } = await runJob("availability-materialization", () =>
+    runBookingSchedule(
+      "bookings.availability-horizon-materialization",
+      "availability-materialization",
+      () => materializeAllServicesWithPatterns(),
+    ),
+  );
   res.status(status).json(body);
 });
 
