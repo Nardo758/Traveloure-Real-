@@ -1892,8 +1892,13 @@ export const MIGRATION_FILES = [
   // guarded UPDATE matched nothing. DATA ONLY: insert-if-missing on 033's column list, then
   // 338's guarded UPDATE and policy upsert. No DEFAULT, CHECK, index, or FK.
   "339_beta_flat_band_insert.sql",
+  // 340 — ai_generated_itineraries.where_to_stay + facts_lookup (ledger 2026-10-03-smoke5-fixes):
+  // the draft's stored Where-to-stay ranking and its place-facts lookup progress. Two additive,
+  // nullable jsonb columns; NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts.
+  // APPROVED Oct 3, 2026.
+  "340_draft_stay_ranking_and_lookup_progress.sql",
   // 341 — content_sources.public_ok + its audit pair (ledger 2026-10-03-official-facts-public-ok,
   // ruling R-p). Three nullable columns, no DEFAULT/CHECK/index/FK, no backfill. Declared in
-  // shared/schema.ts. HELD for the founder's ruling. (340 is claimed by another lane.)
+  // shared/schema.ts. APPROVED Oct 3, 2026.
   "341_content_sources_public_ok.sql",
 ] as const;

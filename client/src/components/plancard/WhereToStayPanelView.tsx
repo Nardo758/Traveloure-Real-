@@ -106,9 +106,12 @@ export function WhereToStayPanelView({
               <div className="flex items-baseline gap-2">
                 <span className="font-mono text-xs text-muted-foreground">{i + 1}</span>
                 <span className="text-sm font-semibold text-foreground">{n.name}</span>
-                <span className="text-xs text-muted-foreground" data-testid={`where-to-stay-reason-${n.slug}`}>
-                  {n.reason}
-                </span>
+                {/* Smoke 5 item 6: a tied option has no reason — its name stands alone. */}
+                {n.reason ? (
+                  <span className="text-xs text-muted-foreground" data-testid={`where-to-stay-reason-${n.slug}`}>
+                    {n.reason}
+                  </span>
+                ) : null}
               </div>
               {!view.hotelsAvailable ? (
                 <p className="pl-5 text-xs text-muted-foreground italic" data-testid={`where-to-stay-coming-soon-${n.slug}`}>

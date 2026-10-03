@@ -35,6 +35,9 @@ test("Q4: a Places lookup logs place_id, cache and latency on success", () => {
   const src = read("server/services/content-facts/place-facts.service.ts");
   // Smoke 4 P1 (ledger `2026-10-02-smoke4-draft-fixes`): the line also names the day and the outcome,
   // so an answer the name gate rejected no longer reads as "ok".
-  assert.match(src, /lookup day=\$\{day\} outcome=\$\{outcome\} place_id=\$\{placeId\} cache=\$\{cache\} latency_ms=/);
-  assert.equal((src.match(/logLookup\(/g) ?? []).length, 3, "declared once, called on hit and on miss");
+  // Smoke 5 (ledger `2026-10-03-smoke5-fixes`): it also names the plan and the item, and one call
+  // serves both the cache hit and the billed miss.
+  assert.match(src, /lookup plan_id=\$\{ids\.planId\} item_id=\$\{ids\.itemId\} day=\$\{day\} outcome=\$\{outcome\} place_id=\$\{placeId\} cache=\$\{cache\} /);
+  assert.match(src, /latency_ms=\$\{Date\.now\(\) - startedMs\}/);
+  assert.equal((src.match(/logLookup\(/g) ?? []).length, 2, "declared once, called once for hit and miss alike");
 });

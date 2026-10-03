@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { planFitLine, PLAN_FIT_MIN_LOCATED, type PlanFit } from "@shared/plan-fit";
+import { planFitLine, type PlanFit } from "@shared/plan-fit";
 import type { DatedPriceView } from "@/lib/plan-compare";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 
@@ -162,64 +162,6 @@ export function optionSetGlance(set: Pick<SlipOptionSet, "label" | "categoryKey"
   const name = set.label ?? (set.categoryKey === "accommodation" ? LODGING_LABEL : "Comparing");
   const n = set.options.length;
   return n ? `${name} · ${n} to compare` : `${name} · nothing added yet`;
-}
-
-/**
- * The lodging entry on a slip that has stops but no place to stay: open a comparison, or — with
- * enough located stops — ask for places that fit the days (§M9). Renders nothing when a stay is
- * already on the plan or a lodging comparison is open (that card takes over).
- */
-export function SlipLodgingEntry({
-  tripId,
-  locatedStops,
-  canWrite,
-}: {
-  tripId: string;
-  locatedStops: number;
-  canWrite: boolean;
-}) {
-  const { toast } = useToast();
-  const create = useMutation({
-    mutationFn: async () =>
-      (await apiRequest("POST", `/api/trips/${tripId}/option-sets`, { categoryKey: "accommodation", label: LODGING_LABEL, anchor: true })).json(),
-    onSuccess: () => invalidatePlan(tripId),
-    onError: (e) => toast({ title: serverMessage(e, "Couldn't start a comparison"), variant: "destructive" }),
-  });
-  const suggest = useMutation({
-    mutationFn: async () => (await apiRequest("POST", `/api/trips/${tripId}/option-sets/suggest`, {})).json(),
-    onSuccess: () => invalidatePlan(tripId),
-    onError: (e) => toast({ title: serverMessage(e, "No places to suggest yet") }),
-  });
-  if (!canWrite) return null;
-  const canSuggest = locatedStops >= PLAN_FIT_MIN_LOCATED;
-  return (
-    <div className="rounded-lg border border-border p-3 space-y-2" data-testid="slip-lodging-entry">
-      <p className="text-sm font-semibold text-foreground">Where are you staying?</p>
-      <p className="text-xs text-muted-foreground">Add up to {OPTION_SET_CAP} places you're considering and see how each fits your days.</p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          className="min-h-[44px]"
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-          data-testid="slip-lodging-compare"
-        >
-          Compare places to stay
-        </Button>
-        {canSuggest ? (
-          <Button
-            variant="outline"
-            className="min-h-[44px]"
-            onClick={() => suggest.mutate()}
-            disabled={suggest.isPending}
-            data-testid="slip-lodging-suggest"
-          >
-            Suggest places that fit these days
-          </Button>
-        ) : null}
-      </div>
-    </div>
-  );
 }
 
 /** Start a lodging comparison from the empty slip's anchor question ("I'm deciding"). */

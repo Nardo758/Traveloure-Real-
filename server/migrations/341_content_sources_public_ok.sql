@@ -1,4 +1,4 @@
--- Ledger 2026-10-03-official-facts-public-ok (R?). Ruling R-p, 2026-10-03.
+-- Ledger 2026-10-03-official-facts-public-ok (R278). Ruling R-p, 2026-10-03. APPROVED by the decision-maker, Oct 3, 2026.
 -- ADDITIVE ONLY. Three nullable columns on content_sources. No DEFAULT, no CHECK, no index, no FK,
 -- no backfill. Declared in shared/schema.ts (deploy-push durability rule).
 --

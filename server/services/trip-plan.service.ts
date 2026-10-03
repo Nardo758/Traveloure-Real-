@@ -37,6 +37,7 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
+import { coordinatesStillPending, hasItemLocation } from "./coordinate-backfill.pure";
 import { db } from "../db";
 import { storage } from "../storage";
 import { providerServices, serviceBookings, tripExpertAdvisors, tripTransactions } from "@shared/schema";
@@ -347,9 +348,10 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
 export async function resolveMissingItemCoordinates(
   items: Array<{ id: string; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
   destination: string | null | undefined,
-): Promise<void> {
+): Promise<boolean> {
   const MAX_PER_REQUEST = 12;
   let resolved = 0;
+  const attempted = new Set<string>();
   for (const item of items) {
     if (resolved >= MAX_PER_REQUEST) break;
     if (item.latitude != null && item.longitude != null) continue;
@@ -358,14 +360,12 @@ export async function resolveMissingItemCoordinates(
     // (locationName OR locationAddress) before geocoding at all; `destination` is only a
     // disambiguation SUFFIX on top of a real item-level address, never the sole address. An item
     // with no location stays un-pinned — the honest state.
-    const hasItemLocation =
-      (item.locationName && String(item.locationName).trim().length > 0) ||
-      (item.locationAddress && String(item.locationAddress).trim().length > 0);
-    if (!hasItemLocation) continue;
+    if (!hasItemLocation(item)) continue;
     const address = [item.locationName, item.locationAddress, destination]
       .filter((p) => p && String(p).trim().length > 0)
       .join(", ");
     if (!address) continue;
+    attempted.add(item.id);
     try {
       const geo = await geocodeAddress(address);
       if (!geo) continue;
@@ -380,6 +380,7 @@ export async function resolveMissingItemCoordinates(
       // best-effort; leave this item un-pinned
     }
   }
+  return coordinatesStillPending(items, attempted);
 }
 
 /**
@@ -694,9 +695,8 @@ export async function assembleTripPlan(
   // path, so the client never geocodes. Skipped when rendering a snapshot — the frozen items
   // already carry the coordinates resolved at Finalize, and a snapshot render must not write live
   // rows.
-  if (!renderingSnapshot) {
-    await resolveMissingItemCoordinates(items as any, trip.destination);
-  }
+  // Smoke 5 item 5: whether the backfill's per-request cap left locatable items for a later read.
+  const coordinatesPending = !renderingSnapshot ? await resolveMissingItemCoordinates(items as any, trip.destination) : false;
 
   const comparison = await storage.getItineraryComparisonByTripId(tripId);
 
@@ -1184,6 +1184,9 @@ export async function assembleTripPlan(
     bookings: tripBookings,
     // Spec A: the slip's diary (owner surface only — see the field's contract in trip-plan.ts).
     recentTransitions,
+    // Smoke 5 item 5 — present only when TRUE: this read's coordinate backfill stopped at its cap
+    // with items it never tried, so a re-read will pin more of them. Absent ⇒ nothing is pending.
+    ...(coordinatesPending ? { coordinatesPending: true as const } : {}),
     plancard: {
       tripRole: options.tripRole ?? (trip.userId === options.viewerId ? "owner" : "expert"),
       trip: {

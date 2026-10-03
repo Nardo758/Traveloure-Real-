@@ -1,4 +1,5 @@
 import * as React from "react";
+import { pinLocationText } from "@/lib/place-facts";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { APIProvider, Map, InfoWindow, useMap } from "@vis.gl/react-google-maps";
@@ -347,7 +348,8 @@ function MapContent({
             <div className="p-1 min-w-[140px]" data-testid={`map-info-window-${pin.id}-${tripId}`}>
               <div className="font-bold text-sm" data-testid={`map-info-name-${pin.id}`}>{pin.name}</div>
               <div className="text-xs mt-0.5 flex items-center gap-1 text-muted-foreground" data-testid={`map-info-location-${pin.id}`}>
-                <MapPin className="w-3 h-3" /> {pin.location}
+                {/* Smoke 5 item 3: an AI-written location shows its ward/area only — the same rule as the row. */}
+                <MapPin className="w-3 h-3" /> {pinLocationText(pin.location, pin.origin)}
               </div>
               <div className="flex gap-2 mt-1 items-center">
                 <span className="text-xs" data-testid={`map-info-time-${pin.id}`}>{pin.time}</span>

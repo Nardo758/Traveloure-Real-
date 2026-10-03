@@ -10,12 +10,19 @@
  *   W4 a travel-time cost orders the ranking and is reported as such; the output carries no number
  *   W5 a cost that cannot answer a pair falls back to straight line for the whole ranking
  *   W6 hotels land in the neighbourhood nearest them, nearest first, unlocated hotels never placed
+ *   W7 smoke 5 — the same plan in any row order ranks the same way (two calls, same order)
+ *   W8 smoke 5 — equal closest-day counts break on TOTAL STRAIGHT-LINE distance, then name
+ *   W9 smoke 5 — under a travel-time cost the tie-break is still straight line, then name
+ *   W10 smoke 5 item 6 — a reason renders only when it distinguishes the option from its neighbours
+ *   W11 smoke 5 item 6 — a stored ranking is read back only for its own draft, wording re-derived
  *
  * Run: npx tsx --test shared/__tests__/where-to-stay.test.ts
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  distinguishingReasons,
+  readStoredStayRanking,
   hotelsByNeighborhood,
   rankStayNeighborhoods,
   stayReason,
@@ -93,4 +100,59 @@ test("W6 hotels go to their nearest neighbourhood, nearest first; unlocated neve
   assert.deepEqual(placed.arashiyama.map((h) => h.id), ["a1"]);
   assert.deepEqual(placed["kyoto-station"], []);
   assert.deepEqual(Object.keys(placed.gion[0]).sort(), ["id", "kind", "name", "starRating"], "no coordinates leave");
+});
+
+test("W7 same plan, two calls, any row order — same ranking", () => {
+  const first = rankStayNeighborhoods({ neighborhoods: N, days: DAYS, top: 4 }).ranked.map((r) => r.slug);
+  const shuffled = rankStayNeighborhoods({
+    neighborhoods: [...N].reverse(),
+    days: [...DAYS].reverse().map((d) => ({ ...d, points: [...d.points].reverse() })),
+    top: 4,
+  }).ranked.map((r) => r.slug);
+  assert.deepEqual(shuffled, first);
+  assert.deepEqual(rankStayNeighborhoods({ neighborhoods: N, days: DAYS, top: 4 }).ranked.map((r) => r.slug), first);
+});
+
+test("W8 a tie on closest days breaks on total straight-line distance, then name", () => {
+  // One day sitting exactly between two mirror-image neighbourhoods; a third is farther away.
+  const mid = { lat: 35, lng: 135.75 };
+  const pair: StayNeighborhood[] = [
+    { slug: "zz-east", name: "Zeta", lat: 35, lng: 135.76 },
+    { slug: "aa-west", name: "Alpha", lat: 35, lng: 135.74 },
+    { slug: "far", name: "Beta", lat: 35, lng: 135.9 },
+  ];
+  const days: StayDay[] = [{ dayNumber: 1, points: [mid] }];
+  const ranked = rankStayNeighborhoods({ neighborhoods: pair, days }).ranked;
+  // Alpha and Zeta are equally near: the day goes to Alpha by name, Zeta beats far Beta on distance.
+  assert.deepEqual(ranked.map((r) => r.slug), ["aa-west", "zz-east", "far"]);
+  assert.deepEqual(rankStayNeighborhoods({ neighborhoods: [...pair].reverse(), days }).ranked.map((r) => r.slug), ["aa-west", "zz-east", "far"]);
+});
+
+test("W9 under a travel-time cost, ties still break on straight line, then name", () => {
+  const flat = () => 10;
+  const ranked = rankStayNeighborhoods({ neighborhoods: N, days: DAYS, cost: flat, top: 4 }).ranked;
+  // Every neighbourhood costs the same, so each day goes to its straight-line nearest and the
+  // rest order by total straight-line distance — the same answer as no cost at all.
+  assert.deepEqual(ranked.map((r) => r.slug), rankStayNeighborhoods({ neighborhoods: N, days: DAYS, top: 4 }).ranked.map((r) => r.slug));
+});
+
+test("W10 tied options show their names alone; distinct counts keep their reason", () => {
+  const r = (slug: string, closestDays: number) => ({ slug, name: slug, closestDays, locatedDays: 5, reason: stayReason(closestDays, 5) });
+  assert.deepEqual(distinguishingReasons([r("a", 2), r("b", 2), r("c", 1)]).map((x) => x.reason), [null, null, "closest to 1 of your 5 days"]);
+  assert.deepEqual(distinguishingReasons([r("a", 4), r("b", 1), r("c", 0)]).map((x) => x.reason), [
+    "closest to 4 of your 5 days",
+    "closest to 1 of your 5 days",
+    "close to your days overall",
+  ]);
+  assert.deepEqual(distinguishingReasons([r("a", 3), r("b", 0), r("c", 0)]).map((x) => x.reason), ["closest to 3 of your 5 days", null, null]);
+});
+
+test("W11 a stored ranking is read only for its own draft", () => {
+  const value = { draftId: "d1", computedAt: "2026-10-03T00:00:00Z", basis: "straight_line", ranked: [{ slug: "gion", name: "Gion", closestDays: 4, locatedDays: 5, reason: "stale words" }] };
+  const read = readStoredStayRanking(value, "d1")!;
+  assert.equal(read.ranked[0].reason, "closest to 4 of your 5 days", "wording has one author");
+  assert.equal(readStoredStayRanking(value, "d2"), null, "another draft's ranking is not this draft's");
+  assert.equal(readStoredStayRanking(null, "d1"), null);
+  assert.equal(readStoredStayRanking({ ...value, ranked: [] }, "d1"), null);
+  assert.equal(readStoredStayRanking({ ...value, basis: "minutes" }, "d1"), null);
 });

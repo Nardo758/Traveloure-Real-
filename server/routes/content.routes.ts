@@ -4924,6 +4924,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           market: snapshot.trip.marketSlug ?? null,
           city: destination,
           items: insertedItems.map((it: any) => ({ id: it.id, title: it.title, type: it.type ?? null, dayNumber: it.dayNumber ?? null, locationName: it.location ?? it.locationName ?? null })),
+          // Smoke 5 item 8: progress is recorded on this draft's row, so the slip can say which
+          // items are still being checked and re-read until the run is done.
+          draftId: savedItinerary?.id ?? null,
         });
       }
       // LD 41 (c): THE PRIMARY GENERATE PATH WRITES `ai_cost_tracking` — now inside the generator
