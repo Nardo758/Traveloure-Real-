@@ -25,10 +25,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <DashboardSidebar />
         <div className="flex flex-col flex-1 min-w-0">
           <header
-            className="flex items-center justify-between h-[52px] px-5 sticky top-0 z-40"
+            className="flex items-center justify-between gap-2 h-[52px] px-3 sm:px-5 sticky top-0 z-40"
             style={{ background: "var(--console-card)", borderBottom: "1px solid var(--console-line)" }}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <SidebarTrigger
                 className="h-8 w-8 rounded-lg text-[var(--console-mid)] hover:bg-[hsl(var(--muted))]"
                 style={{ border: "1px solid var(--console-line)" }}
@@ -38,7 +38,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <TraveloureLogo className="h-6" />
               </Link>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <NotificationBell />
               <UserMenu />
             </div>

@@ -531,6 +531,12 @@ async function authorizeAndPromote(
      */
     useSavedCard?: boolean;
     /**
+     * The saved card this one-click should charge. The server charges it only when it is
+     * one of the session customer's vaulted cards (`resolveSavedCardChargeId`). Absent ⇒
+     * the customer's default, never the most recently added card.
+     */
+    savedPaymentMethodId?: string;
+    /**
      * Lane 7 (ruling 72): the amount to charge NOW when this checkout collects DEPOSITS. Server-
      * derived (§14) as the sum of per-line deposit amounts + full non-deposit lines; each booking
      * row already carries its own deposit_amount/balance_amount. Absent ⇒ charge the full total,
@@ -622,7 +628,7 @@ async function authorizeAndPromote(
       // never disagree about what "this request" is — and so a re-drive of the same claim
       // returns Stripe's ORIGINAL PaymentIntent rather than creating a second one.
       checkoutKey,
-      { offSession: args.useSavedCard === true },
+      { offSession: args.useSavedCard === true, savedPaymentMethodId: args.savedPaymentMethodId },
     );
   } catch (stripeErr: any) {
     // THE FAILURE THIS LANE EXISTS FOR. Nothing irreversible has happened: no cart clear, no
@@ -1263,6 +1269,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             ...(redriveAnyDeposit ? { chargeAmount: Math.round(redriveChargeNow * 100) / 100 } : {}),
             redriven: true,
             useSavedCard: req.body?.useSavedCard === true,
+            savedPaymentMethodId:
+              typeof req.body?.savedPaymentMethodId === "string" ? req.body.savedPaymentMethodId : undefined,
           });
         }
         // Mixed or terminal — the key is spent. Never a false success.
@@ -2348,6 +2356,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // full total is charged, unchanged (§13).
         ...(anyDepositLine ? { chargeAmount: Math.round(checkoutAmountDueNow * 100) / 100 } : {}),
         useSavedCard: req.body?.useSavedCard === true,
+        savedPaymentMethodId:
+          typeof req.body?.savedPaymentMethodId === "string" ? req.body.savedPaymentMethodId : undefined,
       });
     } catch (err: any) {
       console.error("Checkout error:", err);
