@@ -27,8 +27,6 @@ const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
-  // Smoke 7 (ledger `2026-10-03-no-ward-pins`): the result's types, so a rename can require a point of interest.
-  "places.types",
   "places.location",
   "places.regularOpeningHours.weekdayDescriptions",
   "places.priceLevel",
@@ -38,6 +36,8 @@ const FIELD_MASK = [
   // Ledger `2026-09-30-places-address`: the two address fields, and nothing else added.
   "places.formattedAddress",
   "places.shortFormattedAddress",
+  // Smoke 7 (ledger `2026-10-03-no-ward-pins`): the result's types, so a rename can require a point of interest.
+  "places.types",
 ].join(",");
 
 const COVERS: ReadonlySet<ContentNeed> = new Set<ContentNeed>(["stop.hours", "dining", "neighbourhood"]);
@@ -107,8 +107,9 @@ export class PlacesAdapter implements SourceAdapter {
     const push = (d: Omit<FactDraft, keyof typeof base | "costCents">) =>
       out.push({ ...base, ...d, costCents: out.length === 0 ? cost : 0 });
     if (located) {
-      const types = Array.isArray(p.types) ? p.types.map(String) : [];
-      push({ need: req.need, factType: "location", value: { lat, lng, name, query: text, types }, expiresAt: expiry(fetchedAt, factTtlDays("location")) });
+      // §13: an answer that names no types stores none (never an empty list read as "not a place").
+      const types = Array.isArray(p.types) && p.types.length ? p.types.map(String) : null;
+      push({ need: req.need, factType: "location", value: { lat, lng, name, query: text, ...(types ? { types } : {}) }, expiresAt: expiry(fetchedAt, factTtlDays("location")) });
     }
     const hours = p.regularOpeningHours?.weekdayDescriptions;
     if (Array.isArray(hours) && hours.length) {
