@@ -45,6 +45,7 @@ import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isManagingEaForTrip } from "./ea-plan-delegate.service";
 import { readPlanPenOccasionSlug } from "./plan-pen-occasion.service";
+import { planIsMoment, stampMomentLock } from "./item-lock.service";
 import { factPointsForTrip } from "./content-facts/place-facts.service";
 import { resolveOccasionForPlan } from "@shared/occasions";
 import type { DraftOpenSet } from "@shared/draft-basis";
@@ -396,6 +397,7 @@ export async function chooseOptionTx(
         )
         .returning({ id: itineraryItems.id });
       await tx.update(planOptionSets).set({ itineraryItemId: created.id }).where(eq(planOptionSets.id, claimed.id));
+      if (claimed.anchorRole === "primary" && (await planIsMoment(input.tripId))) await stampMomentLock(tx, created.id);
       return { set: { ...claimed, itineraryItemId: created.id }, itemId: created.id };
     }
     // The incumbent is rewritten too: after a reopen (§M9) the item holds the LAST choice, and
@@ -406,6 +408,8 @@ export async function chooseOptionTx(
       .where(and(eq(itineraryItems.id, claimed.itineraryItemId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`))
       .returning({ id: itineraryItems.id });
     if (!rewritten.length) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
+    // R-ah: a Moment plan's built-around item is locked by default.
+    if (claimed.anchorRole === "primary" && (await planIsMoment(input.tripId))) await stampMomentLock(tx, claimed.itineraryItemId);
     return { set: claimed, itemId: claimed.itineraryItemId };
   }
 }
@@ -430,6 +434,8 @@ export async function closeOptionSet(input: { tripId: string; setId: string; use
  */
 export async function promoteAnchor(input: { tripId: string; itemId: string; userId: string }): Promise<{ setId: string; fromCategory: string | null; toCategory: string | null }> {
   if (!(await planRole(input.tripId, input.userId, "choose"))) throw notFound();
+  // R-ah: the item a MOMENT plan is built around is locked by default.
+  const isMoment = await planIsMoment(input.tripId);
   const result = await db.transaction(async (tx) => {
     const [trip] = await tx.select({ finalizedAt: trips.finalizedAt }).from(trips).where(eq(trips.id, input.tripId)).for("update");
     if (!trip) throw notFound();
@@ -451,6 +457,7 @@ export async function promoteAnchor(input: { tripId: string; itemId: string; use
       .where(and(eq(planOptionSets.tripId, input.tripId), eq(planOptionSets.anchorRole, "primary"), sql`COALESCE(stop_position, 0) = 0`))
       .limit(1);
     if (prev?.itineraryItemId === item.id) return { setId: prev.id, fromCategory: prev.categoryKey, toCategory, unchanged: true };
+    if (isMoment) await stampMomentLock(tx, item.id);
     if (prev) await tx.update(planOptionSets).set({ anchorRole: "secondary" }).where(eq(planOptionSets.id, prev.id));
 
     const [existing] = await tx.select().from(planOptionSets).where(and(eq(planOptionSets.tripId, input.tripId), eq(planOptionSets.itineraryItemId, item.id))).limit(1);

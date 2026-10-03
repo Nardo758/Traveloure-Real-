@@ -5943,6 +5943,12 @@ export const itineraryItems = pgTable("itinerary_items", {
   // rewrite the column default on every deploy.
   routingStatus: varchar("routing_status", { length: 20 }).notNull().default("in_planning"),
 
+  // Migration 342 (ledger `2026-10-03-item-locks`, ruling R-ah): when the item was locked ("Keep
+  // this"). NULL = not locked. A locked item joins the ONE protected-item class — Regenerate,
+  // Optimize and Build-around never move or remove it. No DEFAULT, no CHECK; written ONLY by the
+  // owner's lock rail and the Moment default, and omitted from `insertItineraryItemSchema` (§19).
+  lockedAt: timestamp("locked_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -6297,7 +6303,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275

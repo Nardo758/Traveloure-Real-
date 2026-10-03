@@ -342,6 +342,8 @@ export interface PlanCardActivity {
   origin?: string | null;
   /** R-w: an AI-drafted item with no venue (`isSupplySlot`); present only when true. Not drawn yet. */
   supplySlot?: true;
+  /** R-ah (migration 342): the traveler locked this item ("Keep this"). Present only when true. */
+  locked?: true;
   /**
    * D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`) — the two LINK columns the
    * item-kind derivation reads, mirroring `TripPlanActivity` (shared/trip-plan.ts):

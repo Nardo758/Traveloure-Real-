@@ -56,6 +56,7 @@ import {
 } from "@shared/schema";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import { itineraryItemIsMoneyCommitted } from "@shared/itinerary-item-money";
+import { itineraryItemIsLocked } from "@shared/itinerary-item-lock";
 import {
   parsePlanProposalChangeSet,
   sanitizePlanProposalChangeSet,
@@ -202,6 +203,8 @@ async function loadAskScope(
     description: row.description,
     isExpertWork: itineraryItemIsExpertWork(row),
     isMoneyCommitted: itineraryItemIsMoneyCommitted(row),
+    // R-ah: a locked row is protected too (the machine-protected class).
+    isLocked: itineraryItemIsLocked(row),
   }));
 
   // D-50 — the catalog is `loadOptimizerCatalog` ONLY (no second catalog read) and is for the
@@ -258,7 +261,7 @@ async function loadAskScope(
   return {
     scope,
     tripItemIds: itemRows.map((r) => r.id),
-    protectedItemIds: marked.filter((m) => m.isExpertWork || m.isMoneyCommitted).map((m) => m.id),
+    protectedItemIds: marked.filter((m) => m.isExpertWork || m.isMoneyCommitted || m.isLocked).map((m) => m.id),
   };
 }
 

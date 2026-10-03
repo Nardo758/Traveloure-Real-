@@ -682,6 +682,22 @@ export function slipItemBookingLine(a: PlanCardActivity): string | null {
   return null;
 }
 
+/** R-ah — the owner's "Keep this" / "Unlock" (`PUT …/lock`, `.strict()` `{ locked }`). */
+function useToggleItemLock(tripId: string, itemId: string, locked: boolean): () => void {
+  const { toast } = useToast();
+  const m = useMutation({
+    mutationFn: async () => (await apiRequest("PUT", `/api/trips/${tripId}/itinerary-items/${itemId}/lock`, { locked: !locked })).json(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: locked ? "Unlocked" : "Kept — Optimize and redrafts will leave this in place" });
+    },
+    onError: () => toast({ title: "Couldn't change the lock", variant: "destructive" }),
+  });
+  return () => {
+    if (!m.isPending) m.mutate();
+  };
+}
+
 /** R-r — the item-level question when no local is live in the city. Existing rail, nothing charged. */
 function ItemAskLocalPanel({ tripId, itemId, onClose }: { tripId: string; itemId: string; onClose: () => void }) {
   const { toast } = useToast();
@@ -820,6 +836,7 @@ function SlipDayItem({
   });
   const actions = useSlipItemActions({ tripId, itemId: a.id, tools, dayNumber, dayItemIds, groupItemIds });
   const promote = usePromoteAnchor(tripId, a.id);
+  const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
   const showThread = hasAdvisor && (isOwner || isExpertViewer);
   const menu: ItemRowMenu | null = canEditItems
     ? {
@@ -827,6 +844,8 @@ function SlipDayItem({
         onMoveUp: actions.onMoveUp,
         onMoveDown: actions.onMoveDown,
         onRemove: actions.onRemove,
+        // R-ah: the lock is the OWNER's instruction to every machine rewrite.
+        onToggleLock: isOwner ? toggleLock : undefined,
         // R-m: an advisor on the plan ⇒ the item's own thread; none ⇒ the expert door, which opens
         // whether or not any expert serves the market (the door says so itself). Owner only — the
         // door is the owner's to open.

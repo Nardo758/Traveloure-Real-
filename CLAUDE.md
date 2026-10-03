@@ -2420,6 +2420,18 @@ This document captures architectural decisions to maintain consistency across co
     reports so the slip can say "checking hours…" and poll until done. On the row, not in process
     memory, because any server instance may answer the read. NULL = not computed / no run recorded.
 
+61. **A TRAVELER CAN LOCK ANY ITEM, AND NO MACHINE MOVES OR REMOVES A LOCKED ONE (decision-maker ratified
+    Oct 3, 2026 — ruling R-ah; ledger `2026-10-03-item-locks`; migration 342).** `itinerary_items.locked_at`
+    (timestamp, nullable, NO DEFAULT/CHECK/index/FK, no backfill, declared in `shared/schema.ts`); NULL = not
+    locked. A lock joins LD 42 D3's expert work as ONE machine-protected class — row form
+    `itineraryItemIsMachineProtected` (`shared/itinerary-item-lock.ts`), WHERE form
+    `itineraryItemNotMachineProtected()` (inside `itineraryItemRebuildDeletable()` and both apply-to-trip
+    deletes) — so Regenerate, an Optimize apply, the optimizer's input (a fixed commitment) and an AI proposal
+    apply all leave it in place. It binds machines, not the owner. Writers: the owner-only
+    `PUT /api/trips/:tripId/itinerary-items/:itemId/lock` (`.strict()` `{ locked }`, §19; one 404, LD 40) and
+    the Moment default (the item a Moment plan is built around is locked when it becomes that anchor). The
+    insert schema omits the column and the storage strip removes it.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

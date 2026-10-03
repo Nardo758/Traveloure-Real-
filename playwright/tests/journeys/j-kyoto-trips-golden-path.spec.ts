@@ -1194,6 +1194,33 @@ test.describe("smoke 7 · ask a local", () => {
   });
 });
 
+test.describe("R-ah · item locks", () => {
+  test("R-ah — 'Keep this' locks an item; the lock survives a reload and the entry then reads 'Unlock'", async ({ page }) => {
+    const { tripId, itemId } = await kyotoPlanWithOneItem(page, "lock");
+    await page.goto(`/plans/${tripId}`);
+    await testid(page, `item-menu-${itemId}`).click();
+    const entry = testid(page, `item-menu-lock-${itemId}`);
+    await expect(entry).toHaveText("Keep this");
+    const status = await actAndAwait(
+      page,
+      async () => {
+        await entry.click();
+      },
+      { method: "PUT", path: /^\/api\/trips\/[^/]+\/itinerary-items\/[^/]+\/lock$/ },
+    );
+    expect(ok2xx(status), `lock answered ${status}`).toBe(true);
+    const [row] = await rows<{ locked_at: Date | null }>(`SELECT locked_at FROM itinerary_items WHERE id = $1`, [itemId]);
+    expect(row.locked_at, "locked_at is stamped").not.toBeNull();
+
+    await page.reload();
+    await expect(testid(page, `slip-item-locked-${itemId}`)).toBeVisible({ timeout: 20_000 });
+    await testid(page, `item-menu-${itemId}`).click();
+    await expect(testid(page, `item-menu-lock-${itemId}`)).toHaveText("Unlock");
+    await testid(page, `item-menu-lock-${itemId}`).click();
+    await expect(testid(page, `slip-item-locked-${itemId}`)).toHaveCount(0, { timeout: 15_000 });
+  });
+});
+
 test.describe("smoke 7 · ⋯ on touch", () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
   test("smoke 7 — ⋯ opens on a tap", async ({ page }) => {

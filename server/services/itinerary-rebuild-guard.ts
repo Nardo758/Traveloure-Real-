@@ -6,6 +6,7 @@ import {
   itineraryItemIsPaid,
 } from "@shared/itinerary-item-money";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
+import { itineraryItemIsLocked, itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 
 /**
  * D-1 money-safety guard (ledger 2026-08-31-two-surfaces-one-handoff).
@@ -49,15 +50,27 @@ export function itineraryItemNotExpertWork(): SQL {
 }
 
 /**
+ * ── THE MACHINE-PROTECTED CLASS (ruling R-ah, ledger `2026-10-03-item-locks`, migration 342) ──
+ *
+ * A LOCKED row ("Keep this") joins expert work as the one class no machine rewrite may move or
+ * remove. This is the WHERE-clause form; the row-level form is `itineraryItemIsMachineProtected`
+ * (`shared/itinerary-item-lock.ts`). Every machine delete that used to AND in
+ * `itineraryItemNotExpertWork()` ANDs in THIS instead, so a lock reaches every one of them at once.
+ */
+export function itineraryItemNotMachineProtected(): SQL {
+  return and(itineraryItemNotExpertWork(), isNull(itineraryItems.lockedAt))!;
+}
+
+/**
  * ANDed into a rebuild DELETE's WHERE clause to restrict it to rows that are safe to replace.
  * A row is deletable only when it is NOT in a protected status, carries no booking reference,
- * AND is not expert work (D3).
+ * is not expert work (D3) AND is not locked (R-ah).
  */
 export function itineraryItemRebuildDeletable(): SQL {
   return and(
     notInArray(itineraryItems.routingStatus, [...REBUILD_PROTECTED_STATUSES]),
     isNull(itineraryItems.bookingId),
-    itineraryItemNotExpertWork(),
+    itineraryItemNotMachineProtected(),
   )!;
 }
 
@@ -89,4 +102,4 @@ export {
 // together. NOT added to the row-level money predicate — a traveler pressing ✕ on their own
 // row is doing what they meant; D3 protects expert work from MACHINE rewrites (optimizer apply,
 // AI rebuild), not from the owner.
-export { itineraryItemIsExpertWork };
+export { itineraryItemIsExpertWork, itineraryItemIsLocked, itineraryItemIsMachineProtected };
