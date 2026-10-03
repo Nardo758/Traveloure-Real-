@@ -1,5 +1,4 @@
--- Ledger 2026-10-03-smoke5-fixes (smoke 5 items 6 and 8). HELD FOR RULING until the decision-maker
--- approves this migration.
+-- Ledger 2026-10-03-smoke5-fixes (smoke 5 items 6 and 8). APPROVED by the decision-maker, Oct 3, 2026.
 --
 -- Two additive, NULLABLE jsonb columns on the draft's own row (ai_generated_itineraries).
 -- No DEFAULT, no CHECK, no index, no FK, no backfill. Declared in shared/schema.ts.

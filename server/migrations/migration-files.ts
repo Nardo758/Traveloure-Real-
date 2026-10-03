@@ -1895,5 +1895,6 @@ export const MIGRATION_FILES = [
   // 340 — ai_generated_itineraries.where_to_stay + facts_lookup (ledger 2026-10-03-smoke5-fixes):
   // the draft's stored Where-to-stay ranking and its place-facts lookup progress. Two additive,
   // nullable jsonb columns; NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts.
+  // APPROVED Oct 3, 2026.
   "340_draft_stay_ranking_and_lookup_progress.sql",
 ] as const;

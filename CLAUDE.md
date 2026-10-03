@@ -2392,7 +2392,7 @@ This document captures architectural decisions to maintain consistency across co
     (LD 57). "© OpenStreetMap contributors" is REQUIRED wherever such a coordinate renders.
 
 60. **A DRAFT CARRIES ITS OWN WHERE-TO-STAY RANKING AND ITS LOOKUP PROGRESS (smoke 5, Oct 3, 2026 —
-    ledger `2026-10-03-smoke5-fixes`; migration 340, HELD FOR RULING).** Two additive nullable jsonb
+    ledger `2026-10-03-smoke5-fixes`; migration 340, APPROVED by the decision-maker Oct 3, 2026).** Two additive nullable jsonb
     columns on the draft's row, `ai_generated_itineraries.where_to_stay` and `facts_lookup` — no
     DEFAULT, no CHECK, no index, no backfill, declared in `shared/schema.ts`. The ranking is computed
     once per draft, after its place-facts run has finished, stored by one conditional UPDATE and read
