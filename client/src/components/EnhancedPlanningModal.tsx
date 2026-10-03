@@ -39,7 +39,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Calendar, Users, MapPin, Sparkles, ChevronDown, ChevronRight, Settings, Heart, Utensils, Accessibility, DollarSign, Target, AlertCircle, Gem, LogIn } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { getQueryFn } from '@/lib/queryClient';
+import { getQueryFn, queryClient } from '@/lib/queryClient';
 import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
 import { refreshPlanLists } from "@/lib/plan-lists";
 
@@ -380,6 +380,12 @@ export default function EnhancedPlanningModal({
       // traveler lands on that plan's slip. Alternatives are the PAID step — the slip's Optimize,
       // with its fee stated and charged only on confirm (LD 41 (b)/(d)) — never opened from here.
       if (data.tripId) {
+        // Smoke 5 item 4: the plan modal's finish already put the traveler on this slip (it was
+        // empty), so its reads are refreshed here — the same three keys the slip's own "Draft with
+        // AI" refreshes — rather than relying on a navigation that may not change the route.
+        for (const k of ["plancard", "option-sets", "where-to-stay"]) {
+          void queryClient.invalidateQueries({ queryKey: [`/api/trips/${data.tripId}/${k}`] });
+        }
         onClose();
         setLocation(`/plans/${data.tripId}`);
       } else {

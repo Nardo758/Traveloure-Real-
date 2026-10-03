@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, type Page } from "@playwright/test";
 import { perDayAgreement } from "../../../shared/leg-resolution";
+import { isAcceptableArrivalLine, isHotelItemTitle } from "../../../shared/draft-basis";
 import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/lib/ui";
 import { fillPlanModalToFinish, clickPlanFinish } from "../../../e2e/supply-demand/lib/flows";
 import {
@@ -872,12 +873,25 @@ test.describe("4 · free draft around the set", () => {
     await openModalFromHero(page);
     expect(await fillPlanModalToFinish(page, KYOTO, { occasionSlug: "travel", lenDays: 4 })).toBe(true);
     await testid(page, "planning-option-ai").click();
-    await expect(testid(page, "button-generate-itinerary")).toBeVisible({ timeout: 15_000 });
-    await testid(page, "button-generate-itinerary").click();
-    // Smoke 4 item 5: the draft is never preceded by a hotel question.
-    await page.waitForURL(/\/plans\//, { timeout: 60_000 });
+    // Smoke 5 item 4: the finish minted the plan, so the traveler is ON ITS SLIP before the AI form
+    // opens over it — never left on the page the wizard was opened from.
+    await page.waitForURL(/\/plans\//, { timeout: 30_000 });
     const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
+    await expect(testid(page, "button-generate-itinerary")).toBeVisible({ timeout: 15_000 });
+    // Smoke 4 item 5: the draft is never preceded by a hotel question.
+    const drafted = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "button-generate-itinerary").click();
+      },
+      { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
+      60_000,
+    );
+    expect(ok2xx(drafted), `draft answered ${drafted}`).toBe(true);
+    await expect(page).toHaveURL(new RegExp(`/plans/${tripId}`));
     await expect(page).not.toHaveURL(/itinerary-comparison/);
+    // The slip it already showed refreshes to the drafted items (no navigation needed).
+    await expect(page.getByText("Explore Kyoto").first()).toBeVisible({ timeout: 20_000 });
     expect(
       (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId])).length,
       "the draft is saved into the plan",
@@ -904,8 +918,15 @@ test.describe("4 · free draft around the set", () => {
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
     expect(ok2xx(status), `draft answered ${status} — it must draft, never ask first`).toBe(true);
-    const items = await rows<{ id: string }>(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId]);
+    const items = await rows<{ id: string; title: string }>(`SELECT id, title FROM itinerary_items WHERE trip_id = $1`, [tripId]);
     expect(items.length, "the first press drafted the days").toBeGreaterThan(0);
+    // Smoke 5 item 10: a no-hotel draft carries no hotel item, and any arrival or departure line is
+    // either our own ("Arrival in Kyoto") or a station-specific line the model wrote — both pass.
+    for (const it of items) {
+      expect(isHotelItemTitle(it.title), `no hotel wording: "${it.title}"`).toBe(false);
+      if (/\barriv/i.test(it.title)) expect(isAcceptableArrivalLine(it.title, "Kyoto", "arrival"), it.title).toBe(true);
+      if (/\b(depart|leav)/i.test(it.title)) expect(isAcceptableArrivalLine(it.title, "Kyoto", "departure"), it.title).toBe(true);
+    }
     await expect
       .poll(
         async () =>
@@ -964,6 +985,9 @@ test.describe("4 · free draft around the set", () => {
     expect(view.neighborhoods[0].reason).toBe("closest to 4 of your 5 days");
     expect(view.neighborhoods[1].reason).toBe("closest to 1 of your 5 days");
     expect(JSON.stringify(view), "the ranking serves an order and words, never a number of minutes or metres").not.toMatch(/minutes|meters|"lat"|"lng"/);
+    // Smoke 5 item 1: the same plan ranks the same way on a second call.
+    const again = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json();
+    expect(again.neighborhoods.map((n: any) => n.slug)).toEqual(view.neighborhoods.map((n: any) => n.slug));
 
     await page.reload();
     const panel = testid(page, "where-to-stay-panel");
@@ -976,6 +1000,24 @@ test.describe("4 · free draft around the set", () => {
       await expect(page.locator('[data-testid^="where-to-stay-coming-soon-"]')).toHaveCount(3);
     }
     await expect(testid(page, "where-to-stay-no-neighborhoods")).toHaveCount(0);
+    // Smoke 5 item 2: the panel is the ONE lodging surface — the legacy inline card never shows.
+    await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
+
+    // …and after Skip, a reload brings back neither the panel nor the legacy card.
+    const skip = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "where-to-stay-skip").click();
+      },
+      { method: "POST", path: new RegExp(`^/api/trips/${tripId}/where-to-stay$`) },
+    );
+    expect(ok2xx(skip), `skip answered ${skip}`).toBe(true);
+    await page.reload();
+    await expect(testid(page, "slip-header")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Stop on day 2")).toBeVisible({ timeout: 20_000 });
+    await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
+    await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
+    expect((await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json()).reason).toBe("decided");
   });
 
   test("§4 — with an open hotel set the draft succeeds, leaves the set open and adds no accommodation", async ({ page }) => {

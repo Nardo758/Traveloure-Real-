@@ -23,10 +23,11 @@
  *                    has". Each day then starts from its first item, which is what a plan with no
  *                    stay already does.
  */
-import { and, eq, ilike, isNotNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   affiliateProducts,
+  aiGeneratedItineraries,
   cityNeighborhoods,
   hotelCache,
   itineraryItems,
@@ -36,8 +37,12 @@ import {
 } from "@shared/schema";
 import {
   WHERE_TO_STAY_MIN_DAYS,
+  distinguishingReasons,
   hotelsByNeighborhood,
   rankStayNeighborhoods,
+  readStoredStayRanking,
+  type RankedStayNeighborhood,
+  type StoredStayRanking,
   type StayCost,
   type StayDay,
   type StayHotel,
@@ -47,6 +52,7 @@ import {
 } from "@shared/where-to-stay";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { loadMatrixReader } from "./travel-time-matrix.service";
+import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
 import {
   OptionSetError,
   addOption,
@@ -104,7 +110,8 @@ async function cityNeighborhoodRows(city: string): Promise<StayNeighborhood[]> {
   const rows = await db
     .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name, lat: cityNeighborhoods.centroidLat, lng: cityNeighborhoods.centroidLng })
     .from(cityNeighborhoods)
-    .where(sql`lower(${cityNeighborhoods.city}) = lower(${city})`);
+    .where(sql`lower(${cityNeighborhoods.city}) = lower(${city})`)
+    .orderBy(asc(cityNeighborhoods.slug));
   return rows
     .map((r) => ({ slug: r.slug, name: r.name, lat: Number(r.lat), lng: Number(r.lng) }))
     .filter((n) => Number.isFinite(n.lat) && Number.isFinite(n.lng));
@@ -117,11 +124,13 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
       .select({ id: hotelCache.id, name: hotelCache.name, lat: hotelCache.latitude, lng: hotelCache.longitude, starRating: hotelCache.starRating })
       .from(hotelCache)
       .where(and(or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city)), isNotNull(hotelCache.latitude), isNotNull(hotelCache.longitude)))
+      .orderBy(asc(hotelCache.id))
       .limit(500),
     db
       .select({ id: affiliateProducts.id, name: affiliateProducts.name, category: affiliateProducts.category, subCategory: affiliateProducts.subCategory, coordinates: affiliateProducts.coordinates })
       .from(affiliateProducts)
       .where(and(ilike(affiliateProducts.city, city), eq(affiliateProducts.isActive, true), isNotNull(affiliateProducts.coordinates)))
+      .orderBy(asc(affiliateProducts.id))
       .limit(500),
   ]);
   const out: Array<StayHotel & { lat: number; lng: number }> = [];
@@ -168,16 +177,32 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   }
 
   const neighborhoods = city ? await cityNeighborhoodRows(city) : [];
-  let cost: StayCost | undefined;
-  if (travelTimeServiceEnabled() && trip.marketSlug && (await hasPaidOptimizerRun(tripId))) {
-    const reader = await loadMatrixReader(trip.marketSlug);
-    // Minutes ORDER the neighbourhoods and never leave this function (R242).
-    cost = (n, p) => {
-      const t = reader({ lat: n.lat, lng: n.lng }, p, "transit");
-      return Number.isFinite(t?.minutes) ? t.minutes : null;
-    };
+  // Smoke 5 item 6 (migration 340): the ranking is computed ONCE per draft and stored on the draft's
+  // row; a reload reads it back. It is stored only once the draft's place-facts run has finished
+  // (its stops' coordinates have landed) and only when it ranked something — an empty or half-located
+  // ranking is never frozen as the draft's answer.
+  const draft = await latestDraft(tripId);
+  const stored = draft ? readStoredStayRanking(draft.whereToStay, draft.id) : null;
+  let ranked: RankedStayNeighborhood[];
+  let basis: "straight_line" | "travel_time";
+  if (stored) {
+    ranked = stored.ranked;
+    basis = stored.basis;
+  } else {
+    let cost: StayCost | undefined;
+    if (travelTimeServiceEnabled() && trip.marketSlug && (await hasPaidOptimizerRun(tripId))) {
+      const reader = await loadMatrixReader(trip.marketSlug);
+      // Minutes ORDER the neighbourhoods and never leave this function (R242).
+      cost = (n, p) => {
+        const t = reader({ lat: n.lat, lng: n.lng }, p, "transit");
+        return Number.isFinite(t?.minutes) ? t.minutes : null;
+      };
+    }
+    ({ ranked, basis } = rankStayNeighborhoods({ neighborhoods, days: Array.from(byDay.values()), cost }));
+    if (draft && ranked.length && pendingLookupItemIds(draft.factsLookup).length === 0) {
+      await storeStayRanking(draft.id, { draftId: draft.id, computedAt: new Date().toISOString(), basis, ranked });
+    }
   }
-  const { ranked, basis } = rankStayNeighborhoods({ neighborhoods, days: Array.from(byDay.values()), cost });
   const hotels = city ? await cityHotels(city) : [];
   const placed = hotelsByNeighborhood(hotels, neighborhoods, ranked.map((r) => r.slug));
   return {
@@ -186,8 +211,35 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
     basis,
     hotelsAvailable: hotels.length > 0,
     ...(ranked.length === 0 ? { unranked: neighborhoods.length === 0 ? ("no_neighborhoods" as const) : ("no_located_items" as const) } : {}),
-    neighborhoods: ranked.map((r) => ({ slug: r.slug, name: r.name, reason: r.reason, hotels: placed[r.slug] ?? [] })),
+    neighborhoods: distinguishingReasons(ranked).map((r) => ({ slug: r.slug, name: r.name, reason: r.reason, hotels: placed[r.slug] ?? [] })),
   };
+}
+
+/** The plan's latest draft row — the one its ranking and lookup progress belong to. */
+async function latestDraft(tripId: string): Promise<{ id: string; whereToStay: unknown; factsLookup: unknown } | null> {
+  const [row] = await db
+    .select({ id: aiGeneratedItineraries.id, whereToStay: aiGeneratedItineraries.whereToStay, factsLookup: aiGeneratedItineraries.factsLookup })
+    .from(aiGeneratedItineraries)
+    .where(eq(aiGeneratedItineraries.tripId, tripId))
+    .orderBy(sql`${aiGeneratedItineraries.createdAt} DESC NULLS LAST`)
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Store once: the statement only writes a draft whose ranking is still unset, so two first reads
+ * racing each other leave the first answer (and both computed the same order — the ranking is
+ * deterministic). Never throws: a failed store only means the next read computes again.
+ */
+async function storeStayRanking(draftId: string, value: StoredStayRanking): Promise<void> {
+  try {
+    await db
+      .update(aiGeneratedItineraries)
+      .set({ whereToStay: value })
+      .where(and(eq(aiGeneratedItineraries.id, draftId), isNull(aiGeneratedItineraries.whereToStay)));
+  } catch (err) {
+    console.error(`[where-to-stay] store failed draft_id=${draftId}:`, (err as Error)?.message ?? err);
+  }
 }
 
 export type StayBinding =

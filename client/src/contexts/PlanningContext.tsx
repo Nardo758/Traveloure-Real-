@@ -496,6 +496,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       if (branch === "ai") {
         setCommitted(plan);
         setModalOpen(false);
+        // Smoke 5 item 4 (ledger `2026-10-03-smoke5-fixes`): the finish has MINTED the plan (RC-1),
+        // so the traveler is on its slip from this moment — the AI form opens OVER the slip, not
+        // over the page the wizard was opened from. Three smokes ended on /destinations: the form
+        // only navigated after a successful draft, so closing it, or a draft that did not finish,
+        // left the traveler on the door's page with a plan they could not see. No plan (a guest, a
+        // refused mint) ⇒ nothing to land on, and the form opens where it always did.
+        if (plan.tripId) setLocation(`/plans/${plan.tripId}`);
         setAiOpen(true);
         return;
       }

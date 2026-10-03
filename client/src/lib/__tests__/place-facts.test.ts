@@ -10,7 +10,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { itemAddressLine, itemFactLine } from "../place-facts";
+import { itemAddressLine, itemFactLine, pinLocationText } from "../place-facts";
 
 const base = { need: "stop.hours", origin: "places_api", sourceUrl: "https://maps.google.com/?cid=1", provenance: "Google Maps · checked 29 Sept 2026", stale: false, publishable: false } as const;
 const hours = { ...base, factType: "hours", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM", "Tuesday: Closed"] } } as any;
@@ -58,4 +58,32 @@ test("A3: the draft's own text carries no attribution", () => {
 test("A4: nothing ⇒ null", () => {
   assert.equal(itemAddressLine([hours], null), null);
   assert.equal(itemAddressLine(undefined, "  "), null);
+});
+
+test("A5 (smoke 5): an unverified street address renders its ward/area only", () => {
+  // The AI drafted "Philosopher's Path Walk" at a street that is not the path.
+  const drafted = "Imadegawa-dori, Sakyo Ward, Kyoto 606-8306, Japan";
+  const line = itemAddressLine(undefined, drafted, "ai")!;
+  assert.equal(line.text, "Sakyo Ward, Kyoto, Japan");
+  assert.equal(line.provenance, null);
+  assert.doesNotMatch(line.text, /Imadegawa|dori|606/);
+  assert.deepEqual(itemAddressLine(undefined, "2 Shishigatani Honenin-cho, Sakyo-ku, Kyoto", "ai"), { text: "Sakyo-ku, Kyoto", provenance: null, sourceUrl: null });
+  assert.equal(itemAddressLine(undefined, "Imadegawa-dori", "ai"), null, "a bare street names no area");
+  assert.equal(itemAddressLine(undefined, "123 Main Street", "ai"), null);
+  assert.equal(itemAddressLine(undefined, "Philosopher's Path Walk, Sakyo Ward, Kyoto", "ai")!.text, "Sakyo Ward, Kyoto", "a venue name is not an area");
+});
+
+test("A6 (smoke 5): a street-level address renders only from a Google-checked fact", () => {
+  const google = address({ formattedAddress: "Tetsugaku-no-michi, Sakyo Ward, Kyoto 606-8406" });
+  assert.equal(itemAddressLine([google], "Imadegawa-dori, Sakyo Ward, Kyoto", "ai")!.text, "Tetsugaku-no-michi, Sakyo Ward, Kyoto 606-8406");
+  // An address fact from any other origin is not Google-checked: the street is cut as for the draft.
+  const crawled = { ...address({ formattedAddress: "Imadegawa-dori 12, Sakyo Ward, Kyoto" }), origin: "crawled", provenance: "Web page" };
+  assert.deepEqual(itemAddressLine([crawled], "Imadegawa-dori, Sakyo Ward, Kyoto", "ai"), { text: "Sakyo Ward, Kyoto", provenance: null, sourceUrl: null });
+});
+
+test("A7 (smoke 5): words a person typed are theirs; the map pin follows the row's rule", () => {
+  assert.equal(itemAddressLine(undefined, "12 Imadegawa-dori, Kyoto", "traveler")!.text, "12 Imadegawa-dori, Kyoto");
+  assert.equal(itemAddressLine(undefined, "12 Imadegawa-dori, Kyoto", "expert")!.text, "12 Imadegawa-dori, Kyoto");
+  assert.equal(pinLocationText("Imadegawa-dori, Sakyo Ward, Kyoto", "ai"), "Sakyo Ward, Kyoto");
+  assert.equal(pinLocationText("12 Imadegawa-dori, Kyoto", "traveler"), "12 Imadegawa-dori, Kyoto");
 });

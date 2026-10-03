@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { factsForTrip } from "../services/content-facts/place-facts.service";
+import { factsForTrip, pendingFactLookups } from "../services/content-facts/place-facts.service";
 import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import {
@@ -707,6 +707,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // serves the public share channels: a Places fact is display-inside-a-plan only. Keyed by item
     // id; an item with no facts is absent (§13). Additive — existing consumers ignore the key.
     const placeFacts = await factsForTrip(tripId);
+    // Smoke 5 item 8 (ledger `2026-10-03-smoke5-fixes`): the items the latest draft's place-facts run
+    // is still checking (migration 340). Present only when non-empty; the slip shows "checking
+    // hours…" on those rows and re-reads until the key is gone. A stale or finished run ⇒ absent.
+    const factsPendingItemIds = await pendingFactLookups(tripId);
 
     // IS AN EXPERT ASSIGNED? (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2.) An
     // advisor in a §12 WRITE status (accepted/assigned) — the SAME predicate the routing rail refuses
@@ -758,6 +762,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       expertAssigned,
       // A5 — see the note above.
       placeFacts,
+      // Smoke 5 item 5 (ledger `2026-10-03-smoke5-fixes`) — present only when TRUE: the read's
+      // coordinate backfill hit its per-request cap with items left untried, so the slip re-reads
+      // until it is absent. Without it, items past the cap drew no "Build my days around this".
+      ...((plan as any).coordinatesPending === true ? { coordinatesPending: true } : {}),
+      ...(factsPendingItemIds.length ? { factsPendingItemIds } : {}),
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {

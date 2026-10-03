@@ -22,7 +22,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
-import { enrichPlanItems, lookupOrder, type EnrichItem } from "../services/content-facts/place-facts.service";
+import { enrichPlanItems, lookupOrder, pendingFactLookups, type EnrichItem } from "../services/content-facts/place-facts.service";
 import { PlacesAdapter } from "../services/content-facts/places-adapter";
 import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
 
@@ -34,7 +34,7 @@ const CITY = "Kyoto, Japan";
 const GENERIC = ["Dinner at Local Izakaya", "Lunch at Traditional Restaurant", "Traditional Tea Ceremony Experience"];
 
 /** A fake Places API. `answer(query)` names the place returned; every call is counted. */
-function placesFake(answer: (query: string) => string) {
+function placesFake(answer: (query: string) => string, opts: { noHours?: (query: string) => boolean } = {}) {
   const state = { calls: 0 };
   const adapter = new PlacesAdapter(
     async (_url, init) => {
@@ -49,7 +49,7 @@ function placesFake(answer: (query: string) => string) {
             id: `${id("place")}-${crypto.createHash("sha1").update(q).digest("hex").slice(0, 10)}`,
             displayName: { text: name },
             location: { latitude: 35.0, longitude: 135.7 },
-            regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] },
+            ...(opts.noHours?.(q) ? {} : { regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] } }),
           }],
         }),
       };
@@ -88,6 +88,7 @@ before(async () => {
 after(async () => {
   try {
     await db.execute(sql`DELETE FROM place_facts WHERE plan_id = ${TRIP} OR place_ref LIKE ${`png-${RUN}-%`}`);
+    await db.execute(sql`DELETE FROM ai_generated_itineraries WHERE trip_id = ${TRIP}`);
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${TRIP}`);
     await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
     await db.execute(sql`DELETE FROM users WHERE id = ${OWNER}`);
@@ -209,9 +210,78 @@ test("G6: each item logs its day and outcome; skips log a reason", async () => {
     delete process.env.PLACES_LOOKUPS_PER_DRAFT;
   }
   const facts = lines.filter((l) => l.startsWith("[place-facts]"));
-  assert.ok(facts.some((l) => /lookup day=1 outcome=attached /.test(l)), facts.join("\n"));
-  assert.ok(facts.some((l) => /lookup day=2 outcome=unmatched /.test(l)), facts.join("\n"));
-  assert.ok(facts.some((l) => /skipped day=3 reason=cap/.test(l)), facts.join("\n"));
-  assert.ok(facts.some((l) => /skipped day=3 reason=unnamed/.test(l)), facts.join("\n"));
+  // Smoke 5: every line carries plan_id and item_id (opaque ids, never a title).
+  assert.ok(facts.some((l) => l.includes(`lookup plan_id=${TRIP} item_id=${id("l1")} day=1 outcome=attached `)), facts.join("\n"));
+  assert.ok(facts.some((l) => l.includes(`lookup plan_id=${TRIP} item_id=${id("l2")} day=2 outcome=unmatched `)), facts.join("\n"));
+  assert.ok(facts.some((l) => l.includes(`skipped plan_id=${TRIP} item_id=${id("l3")} day=3 reason=cap`)), facts.join("\n"));
+  assert.ok(facts.some((l) => l.includes(`skipped plan_id=${TRIP} item_id=${id("l4")} day=3 reason=unnamed`)), facts.join("\n"));
+  // Every item that stored a fact has a lookup line naming it.
+  const r = await db.execute(sql`SELECT DISTINCT itinerary_item_id AS item FROM place_facts WHERE plan_id = ${TRIP} AND itinerary_item_id IN (${id("l1")}, ${id("l2")}, ${id("l3")})`);
+  for (const row of r.rows as Array<{ item: string }>) assert.ok(facts.some((l) => l.includes(`item_id=${row.item} `)), `no line for ${row.item}`);
   for (const l of facts) assert.doesNotMatch(l, /Ryozen|Shoren|Shimogamo|Lunch/, "no traveler content in the log");
+});
+
+test("G7 smoke 5 item 7: a day whose first place stores no hours tries its next named place next", async () => {
+  process.env.PLACES_LOOKUPS_PER_DRAFT = "3";
+  const items: EnrichItem[] = [
+    { id: id("h1a"), title: "Teramachi Kyogoku", type: "attraction", dayNumber: 1 },
+    { id: id("h1b"), title: "Entoku-in", type: "attraction", dayNumber: 1 },
+    { id: id("h2a"), title: "Kodai-ji", type: "attraction", dayNumber: 2 },
+    { id: id("h3a"), title: "Daisen-in", type: "attraction", dayNumber: 3 },
+  ];
+  await insertItems(items);
+  const queries: string[] = [];
+  const { adapter } = placesFake(
+    (q) => {
+      queries.push(q.split(",")[0]);
+      return q.split(",")[0];
+    },
+    { noHours: (q) => q.startsWith("Teramachi") },
+  );
+  try {
+    await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter] });
+  } finally {
+    delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+  }
+  // Day 1's first place had no hours, so day 1's next place is tried BEFORE day 2 — then the
+  // round-robin resumes. The cap (3) is unchanged, so day 3 waits.
+  assert.deepEqual(queries, ["Teramachi Kyogoku", "Entoku-in", "Kodai-ji"]);
+  const rows = await factRows(items.map((i) => i.id));
+  assert.ok(rows.some((x) => x.item === id("h1b") && x.fact_type === "hours"), "day 1 ends with hours");
+  assert.ok(!rows.some((x) => x.item === id("h1a") && x.fact_type === "hours"));
+});
+
+test("G8 smoke 5 item 9: an attached Google name replaces the drafted title — only on attach", async () => {
+  const typo: EnrichItem = { id: id("bam"), title: "Arashiyama Bamboo Groove", type: "attraction", dayNumber: 4 };
+  const off: EnrichItem = { id: id("off"), title: "Shisen-do", type: "attraction", dayNumber: 4 };
+  const renamedByTraveler: EnrichItem = { id: id("trv"), title: "Okochi Sanso Villa", type: "attraction", dayNumber: 5 };
+  await insertItems([typo, off, renamedByTraveler]);
+  // The traveler renamed this one after the draft: its row no longer carries the drafted title.
+  await db.execute(sql`UPDATE itinerary_items SET title = 'My garden visit' WHERE id = ${renamedByTraveler.id}`);
+  const { adapter } = placesFake((q) => (q.startsWith("Arashiyama") ? "Arashiyama Bamboo Grove" : q.startsWith("Shisen") ? "Somewhere Else Entirely" : "Okochi Sanso Villa"));
+  const r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [typo, off, renamedByTraveler], adapters: [adapter] });
+  const title = async (itemId: string) =>
+    ((await db.execute(sql`SELECT title FROM itinerary_items WHERE id = ${itemId}`)).rows[0] as any).title as string;
+  assert.equal(await title(typo.id), "Arashiyama Bamboo Grove", "attached ⇒ the place's own name");
+  assert.equal(await title(off.id), "Shisen-do", "unmatched ⇒ never renamed");
+  assert.equal(await title(renamedByTraveler.id), "My garden visit", "a traveler's rename is never overwritten");
+  assert.equal(r.renamed, 1);
+});
+
+test("G9 smoke 5 item 8: the run records progress on its draft and ends with nothing pending", async () => {
+  const [{ id: draftId }] = (await db.execute(sql`
+    INSERT INTO ai_generated_itineraries (id, trip_id, destination, start_date, end_date)
+    VALUES (${id("draft")}, ${TRIP}, ${CITY}, '2027-11-11', '2027-11-15') RETURNING id`)).rows as Array<{ id: string }>;
+  const item: EnrichItem = { id: id("prog"), title: "Ryoan-ji", type: "attraction", dayNumber: 1 };
+  await insertItems([item]);
+  // While it runs, the item is pending; this snapshot is what a mid-run plancard read would see.
+  const { LookupProgress } = await import("../services/content-facts/lookup-progress");
+  await new LookupProgress(draftId).start([item.id]);
+  assert.deepEqual(await pendingFactLookups(TRIP), [item.id]);
+  const { adapter } = placesFake((q) => q.split(",")[0]);
+  await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [item], adapters: [adapter], draftId });
+  assert.deepEqual(await pendingFactLookups(TRIP), []);
+  const row = (await db.execute(sql`SELECT facts_lookup FROM ai_generated_itineraries WHERE id = ${draftId}`)).rows[0] as any;
+  assert.equal(row.facts_lookup.status, "done");
+  assert.deepEqual(row.facts_lookup.pending, []);
 });

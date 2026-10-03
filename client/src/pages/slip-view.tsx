@@ -10,6 +10,7 @@ import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
 import { ConciergeCard } from "@/components/marketplace/concierge-card";
+import { plancardRefetchInterval } from "@/lib/plancard-refetch";
 
 export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -22,6 +23,9 @@ export default function SlipViewPage() {
     queryKey: [`/api/trips/${tripId}/plancard`],
     enabled: !!tripId,
     staleTime: 30000,
+    // Smoke 5 item 5: re-read while the server says item pins are still pending (`plancard-refetch`).
+    refetchInterval: (query) =>
+      plancardRefetchInterval(query.state.data as { coordinatesPending?: boolean; factsPendingItemIds?: string[] } | undefined),
   });
 
   if (isLoading) {

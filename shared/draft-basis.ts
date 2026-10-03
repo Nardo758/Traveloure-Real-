@@ -233,3 +233,19 @@ export function withoutHotelWording<T extends DehotelItem>(
   }
   return out;
 }
+
+/**
+ * Smoke 5 item 10 (ledger `2026-10-03-smoke5-fixes`). Pure. Whether a no-hotel draft's arrival or
+ * departure line is acceptable copy: our own rewrite ("Arrival in Kyoto" / "Departure from Kyoto"),
+ * or a line the model wrote that names where the traveler actually arrives or leaves from — a
+ * station, airport, port or terminal ("Arrive at Kyoto Station"). Neither may mention a hotel.
+ */
+export function isAcceptableArrivalLine(title: string, city: string | null | undefined, kind: "arrival" | "departure"): boolean {
+  const t = (title ?? "").trim();
+  if (!t || isHotelItemTitle(t) || /\b(hotel|ryokan|hostel|lodging|accommodation)\b/i.test(t)) return false;
+  const place = (city ?? "").trim();
+  const ours = kind === "arrival" ? (place ? `Arrival in ${place}` : "Arrival") : place ? `Departure from ${place}` : "Departure";
+  if (t === ours) return true;
+  const verb = kind === "arrival" ? /\barriv/i : /\b(depart|leav)/i;
+  return verb.test(t) && /\b(station|airport|port|terminal)\b/i.test(t);
+}
