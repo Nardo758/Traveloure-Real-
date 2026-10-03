@@ -34,6 +34,7 @@ import {
   MapPin,
   ClipboardCheck,
   ExternalLink,
+  FileText,
   Wallet,
   Compass,
   Link2,
@@ -191,8 +192,11 @@ function NeedsResponseSection() {
   const { data: agentRequests, isLoading: agentRequestsLoading } = useQuery<AffiliateBookingRequest[]>({
     queryKey: ["/api/affiliate-booking-requests/expert"],
   });
+  const { data: quotesData, isLoading: quotesLoading } = useQuery<{ quotes: { lifecycle: string }[] }>({
+    queryKey: ["/api/provider/quotes"],
+  });
 
-  const isLoading = bookingsLoading || tripsLoading || coordinationLoading || agentRequestsLoading;
+  const isLoading = bookingsLoading || tripsLoading || coordinationLoading || agentRequestsLoading || quotesLoading;
 
   const pendingBookingsCount = (bookings ?? []).filter((b) => b.status === "pending").length;
   const pendingInvitesCount = (assignedTrips ?? []).filter((t) => t.status === "pending").length;
@@ -203,8 +207,10 @@ function NeedsResponseSection() {
   ).length;
   const pendingAgentRequests = (agentRequests ?? []).filter((r) => r.status === "pending");
   const pendingAgentRequestsCount = pendingAgentRequests.length;
+  const requestedQuotesCount = (quotesData?.quotes ?? []).filter((q) => q.lifecycle === "requested").length;
 
   const rows = [
+    { key: "quotes", count: requestedQuotesCount, label: "quote request", icon: FileText },
     { key: "bookings", count: pendingBookingsCount, label: "booking request", icon: CalendarDays },
     { key: "invites", count: pendingInvitesCount, label: "assignment invite", icon: MapPin },
     { key: "coordination", count: coordinationCount, label: "coordination engagement", icon: ClipboardCheck },
