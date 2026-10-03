@@ -203,7 +203,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   assert.equal(endpointRows.length, 639);
   assert.equal(manifest.rawRegistrationCount, 648);
   assert.equal(manifest.uniqueMethodNormalizedPathCount, 639);
-  // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R272): user-data,
+  // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R273): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 167, "user-data": 224, other: 217 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
