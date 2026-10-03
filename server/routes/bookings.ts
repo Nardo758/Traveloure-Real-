@@ -28,6 +28,7 @@ import {
   requestRevision,
 } from '../services/booking-acceptance.service';
 import { bookingRevisionNoteSchema } from '@shared/schema';
+import { bookingReceiptFromRow } from '../services/booking-receipt';
 import {
   CANONICAL_BOOKING_RAIL,
   LEGACY_BOOKINGS_CLOSED_REASON,
@@ -429,13 +430,20 @@ router.post('/bulk-status', isAuthenticated, async (req, res) => {
           id: serviceBookings.id,
           status: serviceBookings.status,
           trackingNumber: serviceBookings.trackingNumber,
+          totalAmount: serviceBookings.totalAmount,
+          bookingDetails: serviceBookings.bookingDetails,
         })
         .from(serviceBookings)
         .where(and(inArray(serviceBookings.id, unresolved), eq(serviceBookings.travelerId, userId)));
       for (const row of cartRows) {
+        const receipt = bookingReceiptFromRow(row);
         statuses[row.id] = {
           status: row.status ?? 'unknown',
           confirmationCode: row.trackingNumber ?? null,
+          ...(receipt.amountCharged ? { amountCharged: receipt.amountCharged } : {}),
+          ...(receipt.subtotal ? { subtotal: receipt.subtotal } : {}),
+          ...(receipt.conciergeFee ? { conciergeFee: receipt.conciergeFee } : {}),
+          ...(receipt.travelerFee ? { travelerFee: receipt.travelerFee } : {}),
         };
       }
     }

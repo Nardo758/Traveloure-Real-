@@ -43,7 +43,14 @@ export function parseApiRefusal(err: unknown): ApiRefusalBody {
   if (trimmed.startsWith("{")) {
     try {
       const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as ApiRefusalBody;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const body = parsed as ApiRefusalBody;
+        // Quote charge refusals name the reason as `error`. Surfaces read `code`.
+        if (typeof body.code !== "string" && typeof body.error === "string") {
+          body.code = body.error;
+        }
+        return body;
+      }
     } catch {
       // Not JSON after all — fall through and hand back the text as the message.
     }

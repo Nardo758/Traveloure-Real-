@@ -52,6 +52,8 @@ import { formatPlanBookingWindow, parseTripDate } from "@/lib/calendar-date";
 import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRefusalMessage } from "@/lib/api-refusal";
+import StripeCheckout from "@/components/booking/StripeCheckout";
 import { bookingDisplayStatus } from "@/lib/booking-display-status";
 import { refundedBadgeLabel, refundSummaryLine, type RefundSummary } from "@shared/booking-refund-record";
 import { expiredBookingNextStep } from "@/lib/expired-booking";
@@ -131,6 +133,8 @@ interface Booking {
   bookingMetadata?: VisaBookingMetadata;
   status: string;
   totalAmount: string;
+  /** Dollars Stripe took, when a paid stamp exists. Absent on an unpaid row. */
+  amountCharged?: string;
   platformFee: string;
   providerEarnings: string;
   confirmedAt: string | null;
@@ -187,6 +191,17 @@ const displayStatusOf = bookingDisplayStatus;
 // status the same way getStatusDisplay's badges do, so "All (N)" always equals the
 // sum of the tabs — an unmapped-but-real status previously counted in "All" while
 // matching none of the tab filters (visible nowhere but the All list).
+function safeFormat(value: string | Date | null | undefined, pattern: string): string | null {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    return format(d, pattern);
+  } catch {
+    return null;
+  }
+}
+
 const PENDING_STATUSES = ["pending", "payment_pending"];
 const ACTIVE_STATUSES = ["confirmed", "in_progress"];
 const COMPLETED_STATUSES = ["completed", "disputed", "cancelled", "refunded", "failed", "expired", "dispute_lost"];
@@ -250,7 +265,9 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
         <span className="text-sm font-semibold">Visa Application Status</span>
         {metadata.visaStatusUpdatedAt && (
           <span className="text-xs text-muted-foreground ml-auto">
-            Updated {format(new Date(metadata.visaStatusUpdatedAt), "MMM d, yyyy")}
+            {safeFormat(metadata.visaStatusUpdatedAt, "MMM d, yyyy")
+              ? `Updated ${safeFormat(metadata.visaStatusUpdatedAt, "MMM d, yyyy")}`
+              : "Updated"}
           </span>
         )}
       </div>
@@ -791,6 +808,15 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [resumePi, setResumePi] = useState<{
+    clientSecret: string;
+    paymentIntentId: string;
+    amount: number;
+    bookingIds: string[];
+  } | null>(null);
   // R163: every action on this card is gated on the SAME status the badge reads. A booking whose
   // share a Stripe-dashboard refund covered reads `refunded`, so it offers no Cancel, Dispute,
   // Confirm or Review — exactly what a `refunded` row offers today. The server refuses the same
@@ -1027,7 +1053,9 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 </Badge>
               )}
               <span className="text-sm text-muted-foreground">
-                Booked on {format(new Date(booking.createdAt), "MMM d, yyyy")}
+                {safeFormat(booking.createdAt, "MMM d, yyyy")
+                  ? `Booked on ${safeFormat(booking.createdAt, "MMM d, yyyy")}`
+                  : "Booked"}
               </span>
             </div>
 
@@ -1129,7 +1157,9 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 <span className="text-foreground">
                   Balance of ${balanceDue.toFixed(2)} outstanding
                   {/* §13: a missing due date is omitted, never rendered as "due now". */}
-                  {booking.balanceDueAt ? ` — due ${format(new Date(booking.balanceDueAt), "MMM d, yyyy")}` : ""}
+                  {booking.balanceDueAt && safeFormat(booking.balanceDueAt, "MMM d, yyyy")
+                    ? ` — due ${safeFormat(booking.balanceDueAt, "MMM d, yyyy")}`
+                    : ""}
                 </span>
                 {booking.trip ? (
                   <Link
@@ -1185,8 +1215,16 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
           
           <div className="text-right">
             <p className="font-bold text-lg" data-testid={`text-amount-${booking.id}`}>
-              ${parseFloat(booking.totalAmount).toFixed(2)}
+              ${((booking.amountCharged != null && Number.isFinite(parseFloat(booking.amountCharged))
+                ? parseFloat(booking.amountCharged)
+                : parseFloat(booking.totalAmount)) || 0).toFixed(2)}
             </p>
+            {booking.amountCharged &&
+              booking.amountCharged !== parseFloat(booking.totalAmount || "0").toFixed(2) && (
+              <p className="text-xs text-muted-foreground" data-testid={`text-amount-paid-${booking.id}`}>
+                Paid, including fees
+              </p>
+            )}
             {refundSummaryLine(booking.refundSummary) && (
               // R163 amendment: the server's own sentence about what went back — "$40.00 of $80.00
               // refunded", or a shared-payment refund that is never attributed to this one booking.
@@ -1195,6 +1233,38 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               </p>
             )}
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
+              {actionStatus === "payment_pending" && (
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    setResumeOpen(true);
+                    setResumeError(null);
+                    setResumePi(null);
+                    setResuming(true);
+                    try {
+                      const res = await apiRequest("POST", `/api/bookings/${booking.id}/resume-payment`, {});
+                      const data = await res.json();
+                      if (!data.paymentIntent?.clientSecret) {
+                        setResumeError("This payment cannot be resumed. Start checkout again from your cart.");
+                        return;
+                      }
+                      setResumePi({
+                        clientSecret: data.paymentIntent.clientSecret,
+                        paymentIntentId: data.paymentIntent.paymentIntentId,
+                        amount: data.paymentIntent.amount,
+                        bookingIds: Array.isArray(data.bookingIds) ? data.bookingIds : [booking.id],
+                      });
+                    } catch (err) {
+                      setResumeError(apiRefusalMessage(err, "This payment cannot be resumed."));
+                    } finally {
+                      setResuming(false);
+                    }
+                  }}
+                  data-testid={`button-complete-payment-${booking.id}`}
+                >
+                  Complete payment
+                </Button>
+              )}
               {canCancel && (
                 <Button
                   variant="outline"
@@ -1340,6 +1410,66 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               Submit dispute
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resumeOpen}
+        onOpenChange={(open) => {
+          setResumeOpen(open);
+          if (!open) {
+            setResumePi(null);
+            setResumeError(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md max-h-[min(90dvh,800px)] overflow-y-auto"
+          data-testid={`dialog-complete-payment-${booking.id}`}
+        >
+          <DialogHeader>
+            <DialogTitle>Complete payment</DialogTitle>
+            <DialogDescription>
+              This booking is waiting for payment. The amount below is the one already reserved for it.
+            </DialogDescription>
+          </DialogHeader>
+          {resuming && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading payment…
+            </div>
+          )}
+          {resumeError && (
+            <p className="text-sm text-red-700" data-testid={`text-resume-error-${booking.id}`}>
+              {resumeError}
+            </p>
+          )}
+          {resumePi && (
+            <StripeCheckout
+              paymentIntent={resumePi}
+              bookingIds={resumePi.bookingIds}
+              onSuccess={async (paymentIntentId) => {
+                try {
+                  await apiRequest("POST", "/api/bookings/confirm-payment", {
+                    bookingId: booking.id,
+                    paymentIntentId,
+                  });
+                  queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+                  setResumeOpen(false);
+                  toast({ title: "Payment received", description: "This booking is paid." });
+                } catch (err) {
+                  setResumeError(
+                    apiRefusalMessage(
+                      err,
+                      "Payment went through, but we could not confirm it yet. Refresh this page in a moment.",
+                    ),
+                  );
+                }
+              }}
+              onError={(message) => setResumeError(message)}
+              onCancel={() => setResumeOpen(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </Card>

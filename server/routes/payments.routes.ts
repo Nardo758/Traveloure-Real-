@@ -3,9 +3,6 @@ import { getUserId } from "../utils/auth";
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
-// W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
-// The post-booking cart clear below goes through it. Passthrough; behavior identical.
-import * as cartProjection from "../services/cart-projection.service";
 import { markItemPurchased } from "../services/item-routing.service";
 // Ledger `2026-09-18-concierge-handoff` (Locked Decision 51's hand-off paragraph): checkout of a
 // Booking Concierge line creates the plan's partner requests. Mirrors the D6 rails-fee pattern
@@ -744,7 +741,7 @@ async function authorizeAndPromote(
     );
   }
 
-  await promoteAuthorizedCheckout(userId, bookingIds, { clearCart: args.quoteBorn !== true });
+  await promoteAuthorizedCheckout(userId, bookingIds);
 
   // ── B2: the off-session confirm already SUCCEEDED, so payment is a fact, not a promise ──────
   // Drive the SAME shared promotion the webhook and the client fallback drive (§15c: one
@@ -856,10 +853,6 @@ async function authorizeAndPromote(
 async function promoteAuthorizedCheckout(
   userId: string,
   bookingIds: string[],
-  /** Ledger `2026-09-18-quote-born-charge`: the quote-born arm charges ONE already-minted row and
-   *  owns no cart lines, so it passes `clearCart: false`. Omitted ⇒ true ⇒ the cart arm's
-   *  behaviour, unchanged. */
-  opts: { clearCart?: boolean } = {},
 ): Promise<void> {
   if (bookingIds.length === 0) return;
 
@@ -959,20 +952,12 @@ async function promoteAuthorizedCheckout(
     }
   }
 
-  // Cart clear LAST, and only now: while a claim is unauthorized the traveler must still have a
-  // cart to retry from. This single line moving below the Stripe call is what turns "fresh key ⇒
-  // Cart is empty" into a working retry.
-  //
-  // SKIPPED ENTIRELY for the quote-born arm: that charge was never assembled from a cart, so
-  // clearing one would silently discard lines the traveler is still shopping (see the
-  // `quoteBorn` arg doc above).
-  //
-  // A PARTNER CONTENT LINE THE TRAVELER NEVER PUT ON A PLAN IS KEPT (ledger
-  // `2026-09-26-checkout-keeps-partner-lines`): checkout never charges it, so emptying the whole
-  // cart deleted a pick nothing had paid for and nothing else held. Every checked-out line still goes.
-  if (opts.clearCart !== false) {
-    await cartProjection.clearCheckedOutCartLines(userId);
-  }
+  // The cart is NOT cleared here. A PaymentIntent existing is not a charge: a declined card
+  // leaves these rows `payment_pending` and the traveler must still have the lines to retry
+  // (ledger `2026-10-02-checkout-display-equals-charge`). `performPaidCheckoutPromotion` clears
+  // checked-out lines only after a row is actually promoted, and skips `quote-buy-` keys, which
+  // never came from the cart. Partner lines the checkout did not charge stay
+  // (`2026-09-26-checkout-keeps-partner-lines`).
 }
 
 /**
@@ -1016,6 +1001,9 @@ async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
     return res.status(plan.status).json({
       success: false,
       error: plan.code,
+      // `code` is what the client refusal parser reads. `error` stays for callers that already
+      // key on it.
+      code: plan.code,
       message: plan.message,
       ...(plan.expiresAt ? { expiresAt: plan.expiresAt } : {}),
       ...(plan.bookingStatus ? { bookingStatus: plan.bookingStatus } : {}),
@@ -1058,6 +1046,7 @@ async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
       return res.status(409).json({
         success: false,
         error: "quote_charge_in_progress",
+        code: "quote_charge_in_progress",
         message: "A payment for this booking has already been started. Reload and complete that one.",
         retryable: true,
       });
@@ -1088,6 +1077,53 @@ async function chargeQuoteBornBooking(req: any, res: any, userId: string) {
     quoteBorn: true,
     useSavedCard: parsed.data.useSavedCard === true,
   });
+}
+
+/** Itemized charge for a claim the server already holds. Surcharge is inside `total_amount`. */
+function claimChargeDisclosure(rows: Array<{
+  totalAmount: string;
+  platformFee: string | null;
+  depositAmount: string | null;
+  travelerFeeCharged: string | null;
+  travelerChargeConciergeFee: string | null;
+}>): {
+  subtotal: string;
+  platformFee: string;
+  conciergeFee: string;
+  travelSurcharge: string;
+  travelerFee: string;
+  total: string;
+} {
+  let subtotal = 0;
+  let platformFee = 0;
+  let conciergeFee = 0;
+  let travelerFee = 0;
+  let charge = 0;
+  for (const r of rows) {
+    subtotal += parseFloat(r.totalAmount || "0");
+    platformFee += parseFloat(r.platformFee || "0");
+    conciergeFee += parseFloat(r.travelerChargeConciergeFee || "0");
+    const fee = parseFloat(r.travelerFeeCharged || "0");
+    travelerFee += fee;
+    const line =
+      r.depositAmount != null
+        ? parseFloat(r.depositAmount)
+        : travelerChargeForRow({
+            totalAmount: r.totalAmount,
+            platformFee: r.platformFee,
+            conciergeFeeSnapshot: r.travelerChargeConciergeFee,
+          }).amount;
+    charge += line + fee;
+  }
+  const money = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+  return {
+    subtotal: money(subtotal),
+    platformFee: money(platformFee),
+    conciergeFee: money(conciergeFee),
+    travelSurcharge: "0.00",
+    travelerFee: money(travelerFee),
+    total: money(charge),
+  };
 }
 
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
@@ -1156,11 +1192,15 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             .getPaymentIntentClientSecret(authorized.stripePaymentIntentId!)
             .catch(() => null);
           console.info(`[checkout] idempotencyKey=${checkoutKey} already authorized — returning the same PaymentIntent`);
+          const disclosed = priorClaim.filter(
+            (r) => r.stripePaymentIntentId === authorized.stripePaymentIntentId,
+          );
           return res.status(200).json({
             success: true,
             duplicate: true,
             bookings: priorClaim.map((r) => ({ booking: { id: r.id } })),
             ...(pi ? { paymentIntent: pi } : {}),
+            ...claimChargeDisclosure(disclosed.length > 0 ? disclosed : priorClaim),
             note: "This checkout was already authorized — completing the existing payment.",
           });
         }
@@ -2349,6 +2389,75 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
   // §14/§18 — the amount is SERVER-DERIVED from the booking row (`balance_amount`); the acting user
   // is the session; NOTHING is read from req.body. There is no `money-derive-ok` here because there
   // is no client-trusted read to exempt.
+
+  // Resume a card form on a booking that is still `payment_pending` with a live PaymentIntent.
+  // One 404 for absent and not-yours (LD 40). A `failed` attempt is closed (R162) and is not
+  // reopened here — the traveler starts checkout again from the cart.
+  router.post("/api/bookings/:id/resume-payment", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ success: false, error: "unauthenticated" });
+      const bookingId = String(req.params.id || "");
+      const found = await db.execute(sql`
+        SELECT id, status, stripe_payment_intent_id, traveler_id
+        FROM service_bookings
+        WHERE id = ${bookingId}
+        LIMIT 1
+      `);
+      const row = (found.rows as any[])[0];
+      if (!row || String(row.traveler_id) !== userId) {
+        return res.status(404).json({
+          success: false,
+          error: "not_found",
+          code: "not_found",
+          message: "No payment to resume.",
+        });
+      }
+      const closed = row.status === "failed" || row.status === "expired" || row.status === "cancelled" || row.status === "refunded";
+      if (row.status !== "payment_pending" || !row.stripe_payment_intent_id) {
+        return res.status(409).json({
+          success: false,
+          error: closed ? "payment_attempt_closed" : "not_awaiting_payment",
+          code: closed ? "payment_attempt_closed" : "not_awaiting_payment",
+          message: closed
+            ? "This payment attempt is closed. Start checkout again from your cart."
+            : "This booking is not waiting on a card payment.",
+        });
+      }
+      const { stripePaymentService } = await import("../services/stripe-payment.service");
+      const pi = await stripePaymentService
+        .getPaymentIntentClientSecret(String(row.stripe_payment_intent_id))
+        .catch(() => null);
+      if (!pi) {
+        return res.status(409).json({
+          success: false,
+          error: "payment_not_resumable",
+          code: "payment_not_resumable",
+          message: "This payment can no longer be completed on this booking. Start checkout again from your cart.",
+        });
+      }
+      const siblings = await db.execute(sql`
+        SELECT id FROM service_bookings
+        WHERE traveler_id = ${userId}
+          AND stripe_payment_intent_id = ${String(row.stripe_payment_intent_id)}
+      `);
+      const bookingIds = (siblings.rows as any[]).map((r) => String(r.id));
+      return res.json({
+        success: true,
+        paymentIntent: pi,
+        bookingIds: bookingIds.length > 0 ? bookingIds : [bookingId],
+      });
+    } catch (err: any) {
+      console.error("[resume-payment]", err);
+      return res.status(500).json({
+        success: false,
+        error: "resume_failed",
+        code: "resume_failed",
+        message: "Payment could not be resumed.",
+      });
+    }
+  });
+
   router.post("/api/bookings/:id/pay-balance", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;

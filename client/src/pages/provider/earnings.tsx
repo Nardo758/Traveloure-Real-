@@ -74,6 +74,8 @@ interface ProviderEarningsSummary {
     effectiveCents: number;
     source: "platform_floor" | "provider_setting";
   };
+  /** Seller share on paid bookings that have not completed. Omitted when there is none. */
+  awaitingCompletion?: number;
 }
 
 // "Link performance" card (§06a mockup). Reads the S5/S6 short-link rails
@@ -888,6 +890,14 @@ export default function ProviderEarnings() {
                   testId="card-ledger-total"
                 />
               </div>
+              {(earningsSummary?.awaitingCompletion ?? 0) > 0 && (
+                <p className="mt-3 text-sm text-console-darkest" data-testid="banner-awaiting-completion">
+                  <strong>
+                    ${(earningsSummary!.awaitingCompletion ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </strong>{" "}
+                  from paid bookings, released when the booking is completed. This is not in escrow yet.
+                </p>
+              )}
             </CardContent>
           </Card>
 
