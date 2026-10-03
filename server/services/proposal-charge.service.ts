@@ -86,7 +86,7 @@ import { isProposalCatalogPriceStale } from "../config/proposal-staleness.config
 import { optimizerCatalogLivenessWhere } from "./optimizer-baseline.service";
 import { reFinalizeIfCurrentlyFinal } from "./trip-finalize.service";
 import { stripePaymentService } from "./stripe-payment.service";
-import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
+import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 import { itineraryItemIsMoneyCommitted } from "@shared/itinerary-item-money";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 import { CONCIERGE_AI_TASK_BAND, requireFlatCentsBand } from "./fee-resolution.service";
@@ -521,13 +521,14 @@ export async function applyPlanProposal(params: {
       // D3 — REFUSED WITH THE REASON, never skipped. The two existing row-level predicates, called
       // once each; no third expression of either class.
       const protectedIds = named
-        .filter((i) => itineraryItemIsExpertWork(i) || itineraryItemIsMoneyCommitted(i))
+        // R-ah: a LOCKED row is in the machine-protected class beside expert work.
+        .filter((i) => itineraryItemIsMachineProtected(i) || itineraryItemIsMoneyCommitted(i))
         .map((i) => i.id);
       if (protectedIds.length > 0) {
         throw new ProposalApplyRefused(
           "protected_item",
           "This proposal would replace work that is protected: an item carrying your expert's note " +
-            "or authored by them, or an item you have already committed money to. Nothing was changed.",
+            "or authored by them, an item you locked, or an item you have already committed money to. Nothing was changed.",
           protectedIds,
         );
       }

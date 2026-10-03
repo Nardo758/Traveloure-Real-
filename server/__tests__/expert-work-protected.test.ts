@@ -113,7 +113,13 @@ describe("E2 — the WHERE-clause form, ANDed into the rebuild guard", () => {
   it("itineraryItemRebuildDeletable() ANDs the expert-work clause in", () => {
     const m = guardSrc.match(/export function itineraryItemRebuildDeletable\(\): SQL \{[\s\S]*?\n\}/);
     assert.ok(m, "itineraryItemRebuildDeletable definition not found");
-    assert.match(m[0], /itineraryItemNotExpertWork\(\)/);
+    // R-ah (ledger `2026-10-03-item-locks`): through the machine-protected clause, which ANDs the
+    // expert-work clause with the lock — one class, so a lock reaches every machine delete at once.
+    assert.match(m[0], /itineraryItemNotMachineProtected\(\)/);
+    const mp = guardSrc.match(/export function itineraryItemNotMachineProtected\(\): SQL \{[\s\S]*?\n\}/);
+    assert.ok(mp, "itineraryItemNotMachineProtected definition not found");
+    assert.match(mp[0], /itineraryItemNotExpertWork\(\)/);
+    assert.match(mp[0], /isNull\(itineraryItems\.lockedAt\)/);
     // The money protection is untouched — both halves ride the one predicate.
     assert.match(m[0], /notInArray\(itineraryItems\.routingStatus/);
     assert.match(m[0], /isNull\(itineraryItems\.bookingId\)/);
@@ -122,13 +128,13 @@ describe("E2 — the WHERE-clause form, ANDed into the rebuild guard", () => {
 
 describe("E3 — both apply-to-trip replace deletes carry the SAME clause", () => {
   for (const [name, src] of [["plancard.routes.ts", plancardSrc], ["storage.ts", storageSrc]] as const) {
-    it(`${name}: every trip-scoped in_planning replace delete ANDs itineraryItemNotExpertWork()`, () => {
+    it(`${name}: every trip-scoped in_planning replace delete ANDs itineraryItemNotMachineProtected()`, () => {
       const stmts = deleteStatements(src).filter(
         (s) => s.includes("itineraryItems.tripId") && s.includes('"in_planning"'),
       );
       assert.ok(stmts.length >= 1, `${name}: in_planning replace delete not found`);
       for (const s of stmts) {
-        assert.match(s, /itineraryItemNotExpertWork\(\)/, `${name}: replace delete missing the D3 clause:\n${s}`);
+        assert.match(s, /itineraryItemNotMachineProtected\(\)/, `${name}: replace delete missing the D3 + R-ah clause:\n${s}`);
       }
     });
   }
@@ -226,11 +232,20 @@ describe("E7 — ONE class, no third expression (D3, §18 rule 1)", () => {
     );
   });
   it("the SQL clause is referenced only by the guard and the two apply-to-trip delete sites", () => {
+    // R-ah: the expert-work clause is now composed ONCE, inside `itineraryItemNotMachineProtected`
+    // (the guard); the two apply-to-trip deletes reach it through that composition.
     const users = serverFiles(SERVER).filter((f) =>
       readFileSync(f, "utf8").includes("itineraryItemNotExpertWork"),
     );
     assert.deepEqual(
       users.map((f) => f.replace(/\\/g, "/").replace(/^.*\//, "")).sort(),
+      ["itinerary-rebuild-guard.ts"],
+    );
+    const composed = serverFiles(SERVER).filter((f) =>
+      readFileSync(f, "utf8").includes("itineraryItemNotMachineProtected"),
+    );
+    assert.deepEqual(
+      composed.map((f) => f.replace(/\\/g, "/").replace(/^.*\//, "")).sort(),
       ["itinerary-rebuild-guard.ts", "plancard.routes.ts", "storage.ts"],
     );
   });

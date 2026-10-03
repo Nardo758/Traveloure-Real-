@@ -18,7 +18,7 @@
  * a plan, not a basket.
  */
 import type { ReactNode } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { Lock, MoreHorizontal } from "lucide-react";
 import { Link } from "wouter";
 import {
   DropdownMenu,
@@ -50,6 +50,8 @@ export interface ItemRowMenu {
   /** Generic items only: the existing search, with the category preset. */
   findHostHref?: string | null;
   onBuildAround?: () => void;
+  /** R-ah: "Keep this" (unlocked) / "Unlock" (locked) — the owner's own lock. */
+  onToggleLock?: () => void;
 }
 
 export interface ItemRowProps {
@@ -106,6 +108,12 @@ export function ItemRow(props: ItemRowProps) {
 
   const below = (
     <>
+      {a.locked ? (
+        <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" data-testid={`slip-item-locked-${a.id}`}>
+          <Lock className="w-3 h-3" aria-hidden="true" />
+          {ITEM_LOCKED_LABEL}
+        </p>
+      ) : null}
       {place ? (
         <p className="text-xs text-muted-foreground">
           <span data-testid={`slip-item-address-${a.id}`}>{place.text}</span>
@@ -187,14 +195,14 @@ export function ItemRow(props: ItemRowProps) {
             </>
           )}
         </div>
-        {showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} /> : null}
+        {showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} locked={!!a.locked} /> : null}
       </div>
     </div>
   );
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
-  return !!(m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onAskLocal || m.findHostHref || m.onBuildAround);
+  return !!(m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround);
 }
 
 /** The labels, ONCE (spec §3's order). */
@@ -207,9 +215,14 @@ export const ITEM_MENU_LABELS = {
   seeQuestion: "See your question",
   findHost: "Find a host",
   buildAround: "Build my days around this",
+  lock: "Keep this",
+  unlock: "Unlock",
 } as const;
 
-function ItemRowMenuButton({ id, menu, isAnchor }: { id: string; menu: ItemRowMenu; isAnchor: boolean }) {
+/** R-ah: the row's own word for a locked item. Optimize, Regenerate and Build-around leave it in place. */
+export const ITEM_LOCKED_LABEL = "Kept · Optimize and redrafts leave it in place";
+
+function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: ItemRowMenu; isAnchor: boolean; locked: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -232,10 +245,15 @@ function ItemRowMenuButton({ id, menu, isAnchor }: { id: string; menu: ItemRowMe
         {!isAnchor && menu.onMoveDown ? (
           <DropdownMenuItem onSelect={menu.onMoveDown} data-testid={`item-menu-move-down-${id}`}>{ITEM_MENU_LABELS.moveDown}</DropdownMenuItem>
         ) : null}
+        {menu.onToggleLock ? (
+          <DropdownMenuItem onSelect={menu.onToggleLock} data-testid={`item-menu-lock-${id}`}>
+            {locked ? ITEM_MENU_LABELS.unlock : ITEM_MENU_LABELS.lock}
+          </DropdownMenuItem>
+        ) : null}
         {menu.onRemove ? (
           <DropdownMenuItem onSelect={menu.onRemove} data-testid={`item-menu-remove-${id}`}>{ITEM_MENU_LABELS.remove}</DropdownMenuItem>
         ) : null}
-        {(menu.onAskLocal || menu.findHostHref || menu.onBuildAround) && (menu.onSwap || menu.onRemove || menu.onMoveUp || menu.onMoveDown) ? (
+        {(menu.onAskLocal || menu.findHostHref || menu.onBuildAround) && (menu.onSwap || menu.onRemove || menu.onToggleLock || menu.onMoveUp || menu.onMoveDown) ? (
           <DropdownMenuSeparator />
         ) : null}
         {menu.onAskLocal ? (

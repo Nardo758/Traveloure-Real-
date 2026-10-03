@@ -48,6 +48,7 @@ import { and, asc, eq, ilike, inArray, or, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, providerServices } from "@shared/schema";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
+import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 import type { FixedCommitment, ItineraryItem as OptimizerBaselineItem } from "../itinerary-optimizer";
 
 export type { OptimizerBaselineItem };
@@ -186,7 +187,9 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
     // D3: expert work joins the constraint class WHATEVER its routing status — an in_planning
     // row carrying an expert's note, or authored by the expert, is paid human work the optimizer
     // may see (as a fixed point) but never move, replace, or drop.
-    if (item.routingStatus === CONSTRAINT_STATUS || itineraryItemIsExpertWork(item)) {
+    // R-ah (ledger `2026-10-03-item-locks`): a LOCKED row joins the same constraint class — the
+    // optimizer sees it as a fixed point and its output leaves it in place.
+    if (item.routingStatus === CONSTRAINT_STATUS || itineraryItemIsMachineProtected(item)) {
       if (itineraryItemIsExpertWork(item) && item.routingStatus !== CONSTRAINT_STATUS) {
         expertProtected++;
       }

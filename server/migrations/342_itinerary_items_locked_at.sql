@@ -1,0 +1,12 @@
+-- Ledger 2026-10-03-item-locks (R-ah). APPROVED by the decision-maker, Oct 3, 2026.
+-- ADDITIVE ONLY. One nullable column on itinerary_items. No DEFAULT, no CHECK, no index, no FK,
+-- no backfill. Declared in shared/schema.ts (deploy-push durability rule).
+--
+--   locked_at   when the item was locked ("Keep this"). NULL = not locked. A locked item is in the
+--               ONE protected-item class (`itineraryItemIsProtected` / `itineraryItemRebuildDeletable`):
+--               Regenerate, Optimize and Build-around never move or remove it.
+--
+-- Writers: the owner's narrow lock rail (`PUT /api/trips/:tripId/itinerary-items/:itemId/lock`,
+-- .strict() { locked }) and the Moment default (stamped when an item becomes a Moment plan's
+-- primary anchor). `insertItineraryItemSchema` omits the column, so no general body sets it.
+ALTER TABLE itinerary_items ADD COLUMN IF NOT EXISTS locked_at timestamp;

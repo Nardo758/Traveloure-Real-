@@ -108,7 +108,7 @@ export interface AiTaskPromptTrip {
 }
 
 /** Why a row is a CONSTRAINT. Two independent reasons, and a row can carry both. */
-export type AiTaskPromptProtectedReason = "expert_work" | "booked";
+export type AiTaskPromptProtectedReason = "expert_work" | "booked" | "locked";
 
 /**
  * One `itinerary_items` row as the model sees it. The `id` is here so a `replaces` can NAME one —
@@ -256,6 +256,8 @@ export interface BuildAiTaskPromptScopeInput {
     isExpertWork: boolean;
     /** The caller's answer from `itineraryItemIsMoneyCommitted` — never recomputed here (D3). */
     isMoneyCommitted: boolean;
+    /** The caller's answer from `itineraryItemIsLocked` (R-ah). Absent = not locked. */
+    isLocked?: boolean;
   }>;
   events: Array<{
     id: string;
@@ -323,6 +325,7 @@ export function buildAiTaskPromptScope(input: BuildAiTaskPromptScopeInput): AiTa
     const reasons: AiTaskPromptProtectedReason[] = [];
     if (row.isExpertWork) reasons.push("expert_work");
     if (row.isMoneyCommitted) reasons.push("booked");
+    if (row.isLocked) reasons.push("locked");
     if (reasons.length > 0) item.protectedReasons = reasons;
     return item;
   });

@@ -173,7 +173,7 @@ import type {
 } from "./services/market-insights.service";
 import { authStorage } from "./replit_integrations/auth/storage";
 import { logItemTransition, type TransitionActorType } from "./services/item-transition-log.service";
-import { itineraryItemRebuildDeletable, itineraryItemNotExpertWork } from "./services/itinerary-rebuild-guard";
+import { itineraryItemRebuildDeletable, itineraryItemNotMachineProtected } from "./services/itinerary-rebuild-guard";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { resolveTripTimezone } from "./services/trip-timezone";
 import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
@@ -1491,6 +1491,8 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
     contentType: _ct,
     contentId: _cid,
     quantity: _qty,
+    // R-ah (migration 342): the lock is written only by the owner's lock rail and the Moment default.
+    lockedAt: _locked,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
@@ -8956,7 +8958,7 @@ export class DatabaseStorage implements IStorage {
   // severs a real booking from its plan item. Only `in_planning` rows are replaceable.
   // D3 (LD 42, Sep 5 2026): and only in_planning rows that are NOT expert work — a row carrying
   // `expert_note` or `origin='expert'` is paid human work, spared by the ONE expert-work clause
-  // (`itineraryItemNotExpertWork`), never a second predicate.
+  // (`itineraryItemNotMachineProtected` — expert work and, since R-ah, a lock), never a second predicate.
   // DELIBERATELY a NEW method: `deleteItineraryItemsByTrip` keeps its total-wipe semantics for its
   // own (currently zero other) callers — this does not change any existing behaviour.
   async deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }> {
@@ -8971,7 +8973,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(itineraryItems.tripId, tripId),
         eq(itineraryItems.routingStatus, "in_planning"),
-        itineraryItemNotExpertWork(),
+        itineraryItemNotMachineProtected(),
       ))
       .returning({ id: itineraryItems.id });
     // Everything still on the trip after the delete is, by construction, a routed row we preserved.

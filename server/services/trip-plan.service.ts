@@ -931,6 +931,9 @@ export async function assembleTripPlan(
       // adds no write rail: it is a non-money, non-identity fact about the caller's OWN plan,
       // riding the `full` level only — teaser/preview return long before this builder runs.
       ...((item as any).origin ? { origin: (item as any).origin as string } : {}),
+      // R-ah (migration 342): the item is LOCKED ("Keep this") — present only when true, so the
+      // lock survives a reload and the row can offer "Unlock".
+      ...((item as any).lockedAt ? { locked: true as const } : {}),
       // R-w (ledger `2026-10-03-rw-ai-place-text`): a venue-less AI item is a SUPPLY SLOT — derived
       // from the row by the ONE predicate (`isSupplySlot`), present only when true, full level only.
       ...(isSupplySlot(item as any) ? { supplySlot: true as const } : {}),

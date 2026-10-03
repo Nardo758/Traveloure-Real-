@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { setItemLock } from '../services/item-lock.service';
 import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -3060,6 +3061,29 @@ router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, r
   });
 
   // Track searches automatically (what destinations were considered)
+
+/**
+ * R-ah (ledger `2026-10-03-item-locks`, migration 342): "Keep this" / "Unlock". OWNER-only — a lock
+ * is the traveler's own instruction to every machine that rewrites the plan. The body is the narrow
+ * `.strict()` `{ locked }` (§19): the instant is the server's own, never a body field. A plan that
+ * is not the caller's, or an item that is not on it, is ONE 404 (LD 40).
+ */
+const itemLockBody = z.object({ locked: z.boolean() }).strict();
+router.put("/api/trips/:tripId/itinerary-items/:itemId/lock", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId, itemId } = req.params;
+    const parsed = itemLockBody.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ code: "invalid_body", message: "Send { locked: true | false }" });
+    if (!(await verifyTripOwnership(tripId, userId))) return res.status(404).json({ code: "not_found", message: "No such item on this plan" });
+    const out = await setItemLock({ tripId, itemId, locked: parsed.data.locked });
+    if (!out) return res.status(404).json({ code: "not_found", message: "No such item on this plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[item-lock] failed:", err);
+    res.status(500).json({ message: "Couldn't change the lock" });
+  }
+});
 
 router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
