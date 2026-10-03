@@ -37,7 +37,8 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
-import { coordinatesStillPending, hasItemLocation } from "./coordinate-backfill.pure";
+import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
+import { isAreaOnlyLocation } from "@shared/ai-place-text";
 import { isSupplySlot } from "@shared/ai-place-text";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -347,7 +348,7 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
  * canvas map exactly as it already does on the traveler-facing PlanCard.
  */
 export async function resolveMissingItemCoordinates(
-  items: Array<{ id: string; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
+  items: Array<{ id: string; title?: string | null; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
   destination: string | null | undefined,
 ): Promise<boolean> {
   const MAX_PER_REQUEST = 12;
@@ -362,14 +363,14 @@ export async function resolveMissingItemCoordinates(
     // disambiguation SUFFIX on top of a real item-level address, never the sole address. An item
     // with no location stays un-pinned — the honest state.
     if (!hasItemLocation(item)) continue;
-    const address = [item.locationName, item.locationAddress, destination]
-      .filter((p) => p && String(p).trim().length > 0)
-      .join(", ");
+    // Ledger `2026-10-03-no-ward-pins`: an area-only location is led by the item's title, and a
+    // result Google marks as an AREA is refused — never a ward or city centroid as the stop's pin.
+    const address = geocodeQuery(item, destination, isAreaOnlyLocation);
     if (!address) continue;
     attempted.add(item.id);
     try {
       const geo = await geocodeAddress(address);
-      if (!geo) continue;
+      if (!geo || isAreaLevelGeocode(geo)) continue;
       const lat = geo.lat.toString();
       const lng = geo.lng.toString();
       await storage.updateItineraryItemCoordinates(item.id, lat, lng);

@@ -174,3 +174,18 @@ export function isSupplySlot(item: {
     blank(item.bookingId)
   );
 }
+
+/**
+ * Is this location text ONLY an area (a ward, a district, a city)? True when the area cut keeps
+ * all of it — nothing street-level or venue-like was there to drop. Used so an area is never
+ * geocoded as if it were a place (ledger `2026-10-03-no-ward-pins`).
+ */
+export function isAreaOnlyLocation(text: string | null | undefined): boolean {
+  const norm = (text ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(", ");
+  if (!norm) return false;
+  return unverifiedAreaText(norm) === norm;
+}

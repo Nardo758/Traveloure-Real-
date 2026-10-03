@@ -1894,10 +1894,12 @@ export function SlipView({
               </div>
               {slipView === "map" && (
                 <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
+                  {/* Ledger `2026-10-03-no-ward-pins` (decision-maker): the line reads "N of M located".
+                      Located means a real coordinate — never a ward or city centroid. */}
                   <span className="font-semibold text-foreground">
                     {locatedActivities.length} of {allActivities.length}
                   </span>{" "}
-                  stop{allActivities.length === 1 ? "" : "s"} located
+                  located
                 </span>
               )}
             </div>
