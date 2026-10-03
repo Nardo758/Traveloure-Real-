@@ -497,6 +497,43 @@ test.describe("2 · where are you staying", () => {
     expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
   });
 
+  test("§2 step 2 — Getting there with lookup off: the manual time becomes day 1's real arrival anchor", async ({ page }) => {
+    // Surface step 2 (ledger `2026-10-03-surface-step2-tools-tray`). CI runs with the flight lookup OFF
+    // (no FLIGHT_LOOKUP_* config), so the sheet's manual path is what this proves end to end; the
+    // lookup itself is proven with a fake adapter (server/utils/__tests__/flight-lookup.test.ts).
+    await signedInTraveler(page, "getting-there");
+    const tripId = await createTrip(page.request, "Kyoto flights", KYOTO);
+    await createItem(page.request, tripId, "Kiyomizu-dera", 1);
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-travel-anchor-arrival")).toContainText("Add your flight", { timeout: 20_000 });
+    // The placeholder's action opens the Getting there sheet.
+    await testid(page, "slip-anchor-action-travel-arrival").click();
+    await expect(testid(page, "getting-there-sheet")).toBeVisible();
+    await testid(page, "getting-there-arrival-number").fill("JL 61");
+    const looked = await actAndAwait(page, () => testid(page, "getting-there-arrival-lookup").click(), {
+      method: "POST",
+      path: new RegExp(`^/api/trips/${tripId}/flight-lookup$`),
+    });
+    expect(ok2xx(looked)).toBe(true);
+    await expect(testid(page, "getting-there-arrival-manual")).toBeVisible();
+    await testid(page, "getting-there-arrival-time").fill("15:25");
+    await testid(page, "getting-there-arrival-airport").fill("KIX");
+    const added = await actAndAwait(page, () => testid(page, "getting-there-arrival-manual-add").click(), {
+      method: "POST",
+      path: new RegExp(`^/api/trips/${tripId}/anchors$`),
+    });
+    expect(ok2xx(added)).toBe(true);
+    const [row] = await rows<{ anchor_type: string; t: string; location: string | null; buffer_after: number }>(
+      `SELECT anchor_type, to_char(anchor_datetime, 'HH24:MI') AS t, location, buffer_after FROM temporal_anchors WHERE trip_id = $1`,
+      [tripId],
+    );
+    expect(row).toEqual({ anchor_type: "flight_arrival", t: "15:25", location: "KIX", buffer_after: 90 });
+    await page.keyboard.press("Escape");
+    await expect(testid(page, "slip-travel-anchor-arrival")).toHaveAttribute("data-anchor-real", "true");
+    await expect(testid(page, "slip-travel-anchor-arrival")).toContainText("15:25");
+    await expect(testid(page, "slip-anchor-label-travel-arrival")).toHaveText("Anchor · fixed · from Getting there");
+  });
+
   test("§2 A3 — the anchor question opens a set; three places admitted, a fourth refused (cap 3)", async ({ page }) => {
     const tripId = await planWithOccasion(page, "a3-cap", "travel");
     const setId = await openLodgingSetWithThree(page, tripId);

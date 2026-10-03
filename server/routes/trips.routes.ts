@@ -214,6 +214,7 @@ import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { buildItineraryViewOgTags, injectIntoHead } from "../utils/html-head";
 import { sanitizeInput } from "../utils/sanitize";
 import { refuseIfComparisonApplyToCartDisabled } from "../config/comparison-apply-to-cart.config";
+import { lookupFlight } from "../services/flight-lookup/flight-lookup.service";
 
 const router = Router();
 
@@ -1661,6 +1662,31 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     }
   });
 
+
+/**
+ * "GETTING THERE" — the flight schedule LOOKUP (surface spec §5, R-j; ledger
+ * `2026-10-03-surface-step2-tools-tray`). It reads a schedule and returns it; it writes NO anchor —
+ * the client writes the anchor through the EXISTING `POST /api/trips/:tripId/anchors` above, so
+ * there is still one anchor writer. Gated like every other plan write (owner, delegate, a §12
+ * WRITE-status advisor) because a lookup spends a billed call. `.strict()` pick body (§19).
+ * `kind: "off"` ⇒ the sheet takes a manual time; nothing is guessed.
+ */
+const flightLookupBody = z.object({ flightNumber: z.string().trim().min(2).max(10), date: z.string().trim().length(10) }).strict();
+
+router.post("/api/trips/:tripId/flight-lookup", isAuthenticated, async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ message: "Not authenticated" });
+  const parsed = flightLookupBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json(zodErrorBody(parsed.error));
+  const trip = await storage.getTrip(req.params.tripId);
+  if (!trip) return res.status(404).json({ message: "Trip not found" });
+  const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: true });
+  if (denied) return res.status(denied.status).json({ message: denied.message });
+  const result = await lookupFlight({ ...parsed.data, userId });
+  if (result.kind === "invalid") return res.status(400).json(result);
+  if (result.kind === "cap_reached") return res.status(429).json(result);
+  return res.json(result);
+});
 
 router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {

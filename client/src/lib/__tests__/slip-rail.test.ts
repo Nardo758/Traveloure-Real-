@@ -116,7 +116,9 @@ const CARD_ROWS: Record<string, string[]> = {
     "slip-action-message-expert",
     "slip-rail-trip-pass",
   ],
-  plan: ["button-toggle-slip-contracts", "slip-plan-budget"],
+  // Surface step 2 (ledger `2026-10-03-surface-step2-tools-tray`): the contract board left the Plan
+  // card for the tools tray ("Vendors" / "Vendor contracts").
+  plan: ["slip-plan-budget"],
   share: ["slip-action-share", "slip-action-pdf", "slip-action-calendar"],
   finish: [
     "slip-action-finalize-plan",
@@ -328,10 +330,16 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     }
     // The rail is a card grid, not the flat button row it replaces.
     assert.ok(rail.includes('data-testid="slip-rail"'), "the rail itself is addressable");
-    // The Plan card mounts the logistics collapsibles and the contract board — one more mount
-    // each, never a re-implementation.
-    assert.ok(rail.includes("<SlipLogisticsSection"), "guests/party/anchors/organize are re-mounted");
-    assert.ok(rail.includes("<VendorContractBoard"), "the contract board gets its one mount");
+    // SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the rail stops mounting the
+    // logistics pieces and the contract board — they are TOOLS on the slip's tray now, each the
+    // SAME existing component in a sheet. Organize-into-events stays on the Plan card.
+    assert.ok(!rail.includes("<SlipLogisticsSection"), "the logistics section left the rail");
+    assert.ok(!rail.includes("<VendorContractBoard"), "the contract board left the rail");
+    assert.ok(rail.includes("<SlipOrganizeEventsRow"), "organize-into-events stays on the Plan card");
+    const tray = readClient("components/plan/ToolsTray.tsx");
+    for (const c of ["<VendorContractBoard", "<SlipAnchorsTool", "<SlipGuestsTool", "<SlipTravelingParty", "<EnergyBudgetDisplay", "<ScheduleValidator"]) {
+      assert.ok(tray.includes(c), `the tray mounts ${c}`);
+    }
     assert.ok(rail.includes("<TripPassCard"), "Trip Pass is the existing card, moved");
     // STOPS & TIMEZONE — REPAIRED, NOT DELETED (ledger `2026-09-06-slip-conformance`).
     //
