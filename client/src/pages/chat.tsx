@@ -28,6 +28,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 // Locked Decision 40 (lane 3): which thread a /chat URL names, decided in ONE pure function so
 // the canonical `?conversation=` and the legacy id params cannot drift apart (§18 rule 1).
 import { resolveChatUrlTarget } from "@/lib/earner-address";
+import { messageBelongsToPair } from "@/lib/chat-thread";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -598,18 +599,21 @@ export default function Chat() {
     | { kind: "message"; ts: number; chat: NonNullable<typeof chats>[number] }
     | { kind: "event"; ts: number; event: PlanEventNotification };
   const timelineItems = useMemo<TimelineEntry[]>(() => {
-    const msgItems: TimelineEntry[] = (chats ?? []).map((chat) => ({
-      kind: "message",
-      ts: chat.createdAt ? new Date(chat.createdAt).getTime() : 0,
-      chat,
-    }));
+    const otherId = selectedExpert?.id ? String(selectedExpert.id) : "";
+    const msgItems: TimelineEntry[] = (chats ?? [])
+      .filter((chat) => !!user?.id && !!otherId && messageBelongsToPair(chat, user.id, otherId))
+      .map((chat) => ({
+        kind: "message",
+        ts: chat.createdAt ? new Date(chat.createdAt).getTime() : 0,
+        chat,
+      }));
     const eventItems: TimelineEntry[] = planEvents.map((event) => ({
       kind: "event",
       ts: new Date(event.createdAt).getTime(),
       event,
     }));
     return [...msgItems, ...eventItems].sort((a, b) => a.ts - b.ts);
-  }, [chats, planEvents]);
+  }, [chats, planEvents, user?.id, selectedExpert?.id]);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -989,7 +993,7 @@ export default function Chat() {
       <div className="flex-1 min-h-0 px-3 sm:px-6 py-4 md:py-6">
         <div className="flex flex-col md:grid md:grid-cols-3 gap-4 md:gap-6 h-full min-h-0">
           {/* Expert List */}
-          <div className="md:col-span-1 flex-1 md:flex-auto flex flex-col gap-4 min-h-0">
+          <div className={`${selectedExpert ? "hidden md:flex" : "flex"} md:col-span-1 flex-1 md:flex-auto flex-col gap-4 min-h-0`}>
             <div className="relative flex-shrink-0">
               <Input
                 placeholder={isEarner ? "Search conversations..." : "Search experts..."}
@@ -1064,12 +1068,22 @@ export default function Chat() {
           </div>
 
           {/* Chat Area */}
-          <div className="md:col-span-2 flex-1 md:flex-auto min-h-0">
+          <div className={`${selectedExpert ? "flex" : "hidden md:block"} md:col-span-2 flex-1 md:flex-auto min-h-0 flex-col`}>
             <Card className="h-full flex flex-col min-h-0">
               {selectedExpert ? (
                 <>
                   {/* Chat Header */}
                   <div className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="md:hidden shrink-0"
+                      onClick={() => setSelectedExpert(null)}
+                      aria-label="Back to conversations"
+                      data-testid="button-back-to-conversations"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </Button>
                     <Avatar className="w-10 h-10">
                       <AvatarImage src={selectedExpert.avatar} alt={selectedExpert.name} />
                       <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
@@ -1253,6 +1267,7 @@ export default function Chat() {
                             </div>
                           ),
                         )}
+                        <div ref={messagesEndRef} />
                       </div>
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-center py-12">

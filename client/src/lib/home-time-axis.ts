@@ -77,6 +77,20 @@ export function shortDate(row: Pick<UpcomingRow, "date" | "dateKind">): string {
 
 const DUE_KINDS: ReadonlySet<UpcomingKind> = new Set<UpcomingKind>(["booking_unpaid", "balance_due"]);
 
+/** Traveler-facing name of a row. The payload's `source` stays the column that produced it. */
+const KIND_LABEL: Record<UpcomingKind, string> = {
+  booking_unpaid: "Unpaid booking",
+  balance_due: "Balance due",
+  handover: "Handover",
+  trip_start: "Plan start",
+  event: "Event date",
+  occasion_draft: "Occasion draft",
+};
+
+export function upcomingKindLabel(kind: UpcomingKind): string {
+  return KIND_LABEL[kind];
+}
+
 /**
  * The greeting's one derived sentence.
  *   rows empty            → the neutral greeting (no count of anything).

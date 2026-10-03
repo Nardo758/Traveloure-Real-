@@ -1021,7 +1021,7 @@ jobs:
       # that the one exemption (the off-session confirm against a named saved card, which Stripe
       # will not accept automatic methods alongside) still looks the way its reason claims.
       - name: Payment-method posture — wallets on every platform intent (LD 43)
-        run: npx tsx --test server/__tests__/payment-method-posture.test.ts
+        run: npx tsx --test server/__tests__/payment-method-posture.test.ts server/__tests__/saved-card-choice.test.ts
       # The other half of LD 43, client-side. P1-P6 pin the ONE prompt predicate, whose interesting
       # states are the two ways of having NO ANSWER — the vault read still in flight, and the read
       # DEGRADED (`available:false`, which /api/me/payment-methods returns instead of a 500) — both
@@ -2663,7 +2663,7 @@ jobs:
       # calendar, an instant as an instant — no zone invented either way) and the ONE derived
       # greeting sentence, which never says "0 things are due".
       - name: Home time-axis client pins
-        run: npx tsx --test client/src/lib/__tests__/home-time-axis.test.ts
+        run: npx tsx --test client/src/lib/__tests__/home-time-axis.test.ts client/src/lib/__tests__/chat-thread.test.ts client/src/lib/__tests__/checkout-display-polish.test.ts
 
   my-events-fold:
     name: my-events-fold (CLAUDE.md Locked Decision 45 (5) — 2026-09-07-my-events-fold)
