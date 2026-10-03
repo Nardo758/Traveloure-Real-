@@ -124,6 +124,7 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   tripId: "parentage — set by the builder to the buyer's clone trip",
   createdAt: "audit — the clone is created now, not when the author wrote the item",
   updatedAt: "audit — same",
+  lockedAt: "the AUTHOR's instruction to machines on their own plan (R-ah, migration 342) — a buyer's clone starts unlocked and they lock what they choose",
 
   // Lifecycle / routing state. NOT carried, and `routingStatus` is set EXPLICITLY by the builder
   // (this is V-14: the old override named a key drizzle does not read, so the author's value came

@@ -37,6 +37,10 @@ const TRIP = id("trip");
 const OTHER = id("other");
 const MOMENT = id("moment");
 const TRIPS_PLAN = id("trips");
+// The test's OWN occasion rows — never a seeded one (a CI database seeds none). Moment = a day, no
+// guest list; the Trip row is a range with no guests (`experienceGroupFor`).
+const MOMENT_SLUG = `lck-moment-${RUN}`;
+const TRIP_SLUG = `lck-trip-${RUN}`;
 
 async function trip(tripId: string) {
   await db.execute(sql`
@@ -68,6 +72,9 @@ before(async () => {
   }
   await db.execute(sql`INSERT INTO users (id, email, role) VALUES (${OWNER}, ${`${OWNER}@t.test`}, 'traveler')`);
   for (const t of [TRIP, OTHER, MOMENT, TRIPS_PLAN]) await trip(t);
+  await db.execute(sql`INSERT INTO experience_types (id, name, slug, default_duration, default_guests, default_stops)
+    VALUES (${id("et-moment")}, 'Lock moment', ${MOMENT_SLUG}, 'day', false, 'one'),
+           (${id("et-trip")}, 'Lock trip', ${TRIP_SLUG}, 'range', false, 'one')`);
 });
 
 after(async () => {
@@ -78,6 +85,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM funnel_events WHERE trip_id LIKE ${`lck-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM trips WHERE id LIKE ${`lck-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM users WHERE id = ${OWNER}`);
+  await db.execute(sql`DELETE FROM experience_types WHERE slug IN (${MOMENT_SLUG}, ${TRIP_SLUG})`);
   await pool.end();
 });
 
@@ -135,8 +143,8 @@ test("K5 optimize input: a locked row is a fixed commitment", async () => {
 });
 
 test("K6 the Moment default: built-around on a Moment locks; on a Trip it does not", async () => {
-  await pen(MOMENT, "date-night");
-  await pen(TRIPS_PLAN, "vacation-trip-not-a-real-slug");
+  await pen(MOMENT, MOMENT_SLUG);
+  await pen(TRIPS_PLAN, TRIP_SLUG);
   const m = await item(MOMENT, "k6-m", "traveler", { lat: 35.0, lng: 135.77 });
   const t = await item(TRIPS_PLAN, "k6-t", "traveler", { lat: 35.0, lng: 135.77 });
   await promoteAnchor({ tripId: MOMENT, itemId: m, userId: OWNER });
