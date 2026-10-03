@@ -19,30 +19,73 @@ import type { FactDraft, FetchRequest, SourceAdapter } from "./source-adapter";
 import {
   factTtlDays,
   placesCacheMaxDays,
+  placesDetailsAtmosphereCostCents,
   placesDetailsCostCents,
   placesFactsEnabled,
   placesTextSearchCostCents,
 } from "../../config/content-facts.config";
 
 const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
-const FIELD_MASK = [
-  "places.id",
-  "places.displayName",
-  "places.location",
-  "places.regularOpeningHours.weekdayDescriptions",
-  "places.priceLevel",
-  "places.googleMapsUri",
-  "places.reservable",
-  "places.servesVegetarianFood",
-  // Ledger `2026-09-30-places-address`: the two address fields, and nothing else added.
-  "places.formattedAddress",
-  "places.shortFormattedAddress",
-  // Smoke 7 (ledger `2026-10-03-no-ward-pins`): the result's types, so a rename can require a point of interest.
-  "places.types",
-].join(",");
+/**
+ * THE FIELD MASK (decision-maker ruling, Oct 3, 2026, from Replit's SKU read): a call is billed at
+ * the HIGHEST tier any requested field belongs to, so the mask decides the price.
+ *   · DEFAULT — displayName, location, formattedAddress, shortFormattedAddress, regularOpeningHours:
+ *     Google's ENTERPRISE tier (opening hours lift it there). Nothing from Atmosphere. `id` (IDs
+ *     Only), `types` (Essentials — the smoke-7 point-of-interest rename gate) and `googleMapsUri`
+ *     (Pro — the "Google Maps" provenance link) ride along: each sits BELOW Enterprise, so none
+ *     changes the tier. `priceLevel`, `servesVegetarianFood` and every other field are not asked.
+ *   · DINING (the item's need is `dining`) adds `reservable` ONLY — the dining need carries
+ *     reservation policy — which moves THAT call to ENTERPRISE + ATMOSPHERE. No other item asks it.
+ */
+export type PlacesSku = "details_enterprise" | "details_enterprise_atmosphere";
+export const PLACES_BASE_FIELDS = [
+  "id",
+  "displayName",
+  "location",
+  "formattedAddress",
+  "shortFormattedAddress",
+  "regularOpeningHours.weekdayDescriptions",
+  "types",
+  "googleMapsUri",
+] as const;
+/** Atmosphere-tier fields — named so a test can prove the default asks none of them. */
+export const PLACES_ATMOSPHERE_FIELDS = [
+  "reservable",
+  "servesVegetarianFood",
+  "servesBeer",
+  "servesWine",
+  "servesBreakfast",
+  "servesLunch",
+  "servesDinner",
+  "takeout",
+  "delivery",
+  "dineIn",
+  "outdoorSeating",
+  "liveMusic",
+  "goodForChildren",
+  "goodForGroups",
+  "allowsDogs",
+  "restroom",
+  "reviews",
+  "editorialSummary",
+  "paymentOptions",
+  "parkingOptions",
+  "accessibilityOptions",
+  "fuelOptions",
+  "evChargeOptions",
+] as const;
 
-/** R-u: the same fields, for Place Details by ID (the Details mask names fields without `places.`). */
-const DETAILS_FIELD_MASK = FIELD_MASK.split(",").map((f) => f.replace(/^places\./, "")).join(",");
+/** Pure. The fields a Details call asks for this need, and the SKU tier that bills it. */
+export function placesFieldMask(need: ContentNeed): { fields: string[]; sku: PlacesSku } {
+  if (need === "dining") return { fields: [...PLACES_BASE_FIELDS, "reservable"], sku: "details_enterprise_atmosphere" };
+  return { fields: [...PLACES_BASE_FIELDS], sku: "details_enterprise" };
+}
+
+/** The legacy text-search mask: the same fields under `places.`, by need. */
+function textSearchMask(need: ContentNeed): string {
+  return placesFieldMask(need).fields.map((f) => `places.${f}`).join(",");
+}
+
 const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places/";
 
 const COVERS: ReadonlySet<ContentNeed> = new Set<ContentNeed>(["stop.hours", "dining", "neighbourhood"]);
@@ -84,7 +127,7 @@ export class PlacesAdapter implements SourceAdapter {
     if (!text.trim()) return [];
     const res = await this.fetchImpl(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": FIELD_MASK },
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": textSearchMask(req.need) },
       body: JSON.stringify({ textQuery: text, maxResultCount: 1, languageCode: "en" }),
     });
     if (!res.ok) throw new Error(`[places] searchText answered ${res.status}`);
@@ -119,12 +162,15 @@ export class PlacesAdapter implements SourceAdapter {
     const key = this.apiKey();
     if (!this.enabled() || !key) return [];
     const text = [req.query.text, req.query.city].filter(Boolean).join(", ").slice(0, 300);
+    const mask = placesFieldMask(req.need);
     const res = await this.fetchImpl(`${DETAILS_ENDPOINT}${encodeURIComponent(placeId)}?languageCode=en`, {
       method: "GET",
-      headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": DETAILS_FIELD_MASK },
+      headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": mask.fields.join(",") },
     });
     if (!res.ok) throw new Error(`[places] details answered ${res.status}`);
-    return this.draftsFrom(await res.json(), req, text, placesDetailsCostCents());
+    // The cost column follows the call's own SKU tier, and the tier rides each draft for the log.
+    const cost = mask.sku === "details_enterprise_atmosphere" ? placesDetailsAtmosphereCostCents() : placesDetailsCostCents();
+    return this.draftsFrom(await res.json(), req, text, cost).map((d) => ({ ...d, sku: mask.sku }));
   }
 
   private draftsFrom(p: any, req: FetchRequest, text: string, cost: number): FactDraft[] {
@@ -159,13 +205,9 @@ export class PlacesAdapter implements SourceAdapter {
     if (Array.isArray(hours) && hours.length) {
       push({ need: req.need === "dining" ? "dining" : "stop.hours", factType: "hours", value: { weekdayDescriptions: hours.map(String), query: text }, expiresAt: expiry(fetchedAt, factTtlDays("hours")) });
     }
-    if (typeof p.priceLevel === "string" && p.priceLevel !== "PRICE_LEVEL_UNSPECIFIED") {
-      push({ need: req.need, factType: "price", value: { priceLevel: p.priceLevel, query: text }, expiresAt: expiry(fetchedAt, factTtlDays("price")) });
-    }
-    if (req.need === "dining" && (typeof p.reservable === "boolean" || typeof p.servesVegetarianFood === "boolean")) {
-      const v: Record<string, unknown> = { query: text };
-      if (typeof p.reservable === "boolean") v.reservable = p.reservable;
-      if (typeof p.servesVegetarianFood === "boolean") v.servesVegetarianFood = p.servesVegetarianFood;
+    if (req.need === "dining" && typeof p.reservable === "boolean") {
+      // Field-mask ruling: dining asks `reservable` only (no `servesVegetarianFood`).
+      const v: Record<string, unknown> = { query: text, reservable: p.reservable };
       push({ need: "dining", factType: "dining_basics", value: v, expiresAt: expiry(fetchedAt, factTtlDays("dining_basics")) });
     }
     // Ledger `2026-09-30-places-address`: the address as Google gave it, both forms kept verbatim; the

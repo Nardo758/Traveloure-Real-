@@ -75,11 +75,20 @@ export function placesIdLookupCostCents(): number {
 }
 
 /**
- * R-u: the cost of the BILLED fetch by place ID — a Place Details call with the same field set the
- * text search asked for. Defaults to the text-search figure; the operator confirms it in the console.
+ * R-u / field-mask ruling (decision-maker, Oct 3, 2026): the cost of the BILLED fetch by place ID —
+ * a Place Details call whose mask stays in the ENTERPRISE tier (hours lift it there; nothing from
+ * Atmosphere). Google's list price, 2¢; the operator confirms actual billing in the Cloud console.
  */
 export function placesDetailsCostCents(): number {
-  return envNumber("PLACES_DETAILS_COST_CENTS", placesTextSearchCostCents());
+  return envNumber("PLACES_DETAILS_COST_CENTS", 2);
+}
+
+/**
+ * The same call for a DINING item, whose mask adds `reservable` (an Atmosphere field) — Google's
+ * "Place Details Enterprise + Atmosphere" list price, 2.5¢. The operator confirms actual billing.
+ */
+export function placesDetailsAtmosphereCostCents(): number {
+  return envNumber("PLACES_DETAILS_ATMOSPHERE_COST_CENTS", 2.5);
 }
 
 /**
