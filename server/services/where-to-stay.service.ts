@@ -145,6 +145,9 @@ async function neighbourhoodOneLiners(
         and(
           eq(placeFacts.need, "neighbourhood"),
           eq(placeFacts.factType, "description"),
+          // The REGISTRY's line, never Google's: a Places row is display-inside-a-plan data with its
+          // own provenance line, and is not what R-x means by a registry fact.
+          sql`${placeFacts.origin} <> 'places_api'`,
           isNull(placeFacts.supersededBy),
           sql`lower(${placeFacts.placeRef}) IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`,
           sql`(${placeFacts.expiresAt} IS NULL OR ${placeFacts.expiresAt} > now())`,

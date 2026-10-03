@@ -53,7 +53,7 @@ describe("airport leg", () => {
       modes: airportLegModes({ platformCarFits: true }),
       driversHref: "/discover?category=private_transportation",
     };
-    const owner = renderToString(React.createElement(Router, { ssrPath: "/" }, React.createElement(LegRow, { ...props, canBook: true })));
+    const owner = renderToString(React.createElement(Router as any, { ssrPath: "/" }, React.createElement(LegRow, { ...props, canBook: true })));
     assert.match(owner, /data-testid="slip-leg-airport-arrival"/);
     assert.match(text(owner), /KIX → Hotel Kanra/);
     assert.ok(text(owner).indexOf("Private car") < text(owner).indexOf("Train"));
@@ -62,7 +62,7 @@ describe("airport leg", () => {
     assert.match(owner, /<button[^>]*data-testid="slip-leg-book-arrival-rail"/);
     assert.match(owner, /<button[^>]*data-testid="slip-leg-book-arrival-affiliate_transfer"/);
     assert.doesNotMatch(text(owner), /\b\d+\s*(min|minutes|km|mi)\b/);
-    const reader = renderToString(React.createElement(Router, { ssrPath: "/" }, React.createElement(LegRow, { ...props, canBook: false })));
+    const reader = renderToString(React.createElement(Router as any, { ssrPath: "/" }, React.createElement(LegRow, { ...props, canBook: false })));
     assert.doesNotMatch(reader, /slip-leg-book-/);
   });
 

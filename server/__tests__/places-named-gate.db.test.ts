@@ -14,8 +14,9 @@
  *       Kiyomizu-dera, and an answer naming Fushimi Inari is never attached to it
  *   G6  smoke 4 P1: every named item logs its DAY and OUTCOME (attached / unmatched / none), and a
  *       skipped item logs why, so "never attempted" and "attempted and missed" read differently
- *   G12 R-u (surface step 3): two PLANS sharing a place make ONE billed lookup — the second plan's
- *       facts come from the place-ID cache at 0 cost, carrying the original fetch's own checkedAt
+ *   G12 R-u (surface step 3): two PLANS naming one place by DIFFERENT titles make ONE billed lookup —
+ *       the cache key is Google's place ID (resolved by the no-charge IDs-only search), so the
+ *       second plan's facts come from that cache at 0 cost, with the original fetch's own checkedAt
  *   G13 R-u: the allocator reaches ≥ 2 named items on EVERY day within the cap (round-robin across
  *       days before any day's third)
  *
@@ -38,31 +39,50 @@ const TRIP2 = id("trip2");
 const CITY = "Kyoto, Japan";
 const GENERIC = ["Dinner at Local Izakaya", "Lunch at Traditional Restaurant", "Traditional Tea Ceremony Experience"];
 
-/** A fake Places API. `answer(query)` names the place returned; every call is counted. */
+/**
+ * A fake Places API. `answer(query)` names the place returned. R-u (surface step 3): it serves the
+ * no-charge IDs-only search (`X-Goog-FieldMask: places.id`) and the BILLED Place Details by ID.
+ * `state.calls` counts BILLED calls only; `state.idCalls` the free ID resolutions. The place ID is
+ * derived from the ANSWER's name, so two titles naming one place resolve to one ID.
+ */
 function placesFake(
   answer: (query: string) => string,
   opts: { noHours?: (query: string) => boolean; types?: (query: string) => string[] } = {},
 ) {
-  const state = { calls: 0 };
+  const state = { calls: 0, idCalls: 0, billed: [] as string[] };
+  const byId = new Map<string, { q: string; name: string }>();
+  const placeFor = (q: string) => {
+    const name = answer(q);
+    const pid = `${id("place")}-${crypto.createHash("sha1").update(name).digest("hex").slice(0, 10)}`;
+    byId.set(pid, { q, name });
+    return { pid, name };
+  };
+  const full = (pid: string, q: string, name: string) => ({
+    id: pid,
+    displayName: { text: name },
+    location: { latitude: 35.0, longitude: 135.7 },
+    // Smoke 7: Google's types — a point of interest by default; a test can answer an area.
+    types: opts.types?.(q) ?? ["tourist_attraction", "point_of_interest", "establishment"],
+    ...(opts.noHours?.(q) ? {} : { regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] } }),
+  });
   const adapter = new PlacesAdapter(
-    async (_url, init) => {
+    async (url, init) => {
+      if (init.method === "GET") {
+        state.calls += 1;
+        const pid = decodeURIComponent(url.split("/places/")[1].split("?")[0]);
+        const { q, name } = byId.get(pid)!;
+        state.billed.push(q.split(",")[0]);
+        return { ok: true, status: 200, json: async () => full(pid, q, name) };
+      }
+      const q = JSON.parse(init.body!).textQuery as string;
+      const { pid, name } = placeFor(q);
+      if (init.headers["X-Goog-FieldMask"] === "places.id") {
+        state.idCalls += 1;
+        return { ok: true, status: 200, json: async () => ({ places: [{ id: pid }] }) };
+      }
       state.calls += 1;
-      const q = JSON.parse(init.body).textQuery as string;
-      const name = answer(q);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          places: [{
-            id: `${id("place")}-${crypto.createHash("sha1").update(q).digest("hex").slice(0, 10)}`,
-            displayName: { text: name },
-            location: { latitude: 35.0, longitude: 135.7 },
-            // Smoke 7: Google's types — a point of interest by default; a test can answer an area.
-            types: opts.types?.(q) ?? ["tourist_attraction", "point_of_interest", "establishment"],
-            ...(opts.noHours?.(q) ? {} : { regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] } }),
-          }],
-        }),
-      };
+      state.billed.push(q.split(",")[0]);
+      return { ok: true, status: 200, json: async () => ({ places: [full(pid, q, name)] }) };
     },
     () => "test-key",
     () => true,
@@ -246,22 +266,16 @@ test("G7 smoke 5 item 7: a day whose first place stores no hours tries its next 
     { id: id("h3a"), title: "Daisen-in", type: "attraction", dayNumber: 3 },
   ];
   await insertItems(items);
-  const queries: string[] = [];
-  const { adapter } = placesFake(
-    (q) => {
-      queries.push(q.split(",")[0]);
-      return q.split(",")[0];
-    },
-    { noHours: (q) => q.startsWith("Teramachi") },
-  );
+  const { adapter, state } = placesFake((q) => q.split(",")[0], { noHours: (q) => q.startsWith("Teramachi") });
   try {
     await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter] });
   } finally {
     delete process.env.PLACES_LOOKUPS_PER_DRAFT;
   }
   // Day 1's first place had no hours, so day 1's next place is tried BEFORE day 2 — then the
-  // round-robin resumes. The cap (3) is unchanged, so day 3 waits.
-  assert.deepEqual(queries, ["Teramachi Kyogoku", "Entoku-in", "Kodai-ji"]);
+  // round-robin resumes. The cap (3) is unchanged, so day 3 waits. R-u: the cap governs BILLED
+  // fetches — `state.billed` — while a capped item may still resolve its ID for free.
+  assert.deepEqual(state.billed, ["Teramachi Kyogoku", "Entoku-in", "Kodai-ji"]);
   const rows = await factRows(items.map((i) => i.id));
   assert.ok(rows.some((x) => x.item === id("h1b") && x.fact_type === "hours"), "day 1 ends with hours");
   assert.ok(!rows.some((x) => x.item === id("h1a") && x.fact_type === "hours"));
@@ -335,12 +349,14 @@ test("G9 smoke 5 item 8: the run records progress on its draft and ends with not
 
 test("G12 R-u: two plans sharing a place make one billed lookup; the second costs 0", async () => {
   delete process.env.PLACES_LOOKUPS_PER_DRAFT;
-  const title = `Shisen-do ${RUN}`;
-  const a: EnrichItem = { id: id("share-a"), title, type: "attraction", dayNumber: 1 };
+  // Two plans call the SAME place by DIFFERENT titles — the key is the place ID, not the text.
+  const place = `Shisen-do ${RUN}`;
+  const a: EnrichItem = { id: id("share-a"), title: place, type: "attraction", dayNumber: 1 };
   await insertItems([a]);
-  const b: EnrichItem = { id: id("share-b"), title, type: "attraction", dayNumber: 1 };
-  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin) VALUES (${b.id}, ${TRIP2}, 1, ${title}, 'attraction', 'ai')`);
-  const { adapter, state } = placesFake((q) => q.split(",")[0]);
+  const titleB = `Morning at Shisen-do ${RUN} gardens`;
+  const b: EnrichItem = { id: id("share-b"), title: titleB, type: "attraction", dayNumber: 1 };
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin) VALUES (${b.id}, ${TRIP2}, 1, ${titleB}, 'attraction', 'ai')`);
+  const { adapter, state } = placesFake(() => place);
   const r1 = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [a], adapters: [adapter] });
   const r2 = await enrichPlanItems({ tripId: TRIP2, market: "kyoto", city: CITY, items: [b], adapters: [adapter] });
   assert.equal(state.calls, 1, "Places is asked once for the shared place");

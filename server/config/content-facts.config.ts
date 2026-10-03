@@ -66,6 +66,23 @@ export function placesTextSearchCostCents(): number {
 }
 
 /**
+ * R-u (surface step 3): the cost of resolving a query to a PLACE ID — a Text Search whose field mask
+ * is `places.id` alone, which Google prices as "Text Search Essentials (IDs Only)", listed at no
+ * charge. Configurable so the operator can record a different rate if the Cloud console shows one.
+ */
+export function placesIdLookupCostCents(): number {
+  return envNumber("PLACES_ID_LOOKUP_COST_CENTS", 0);
+}
+
+/**
+ * R-u: the cost of the BILLED fetch by place ID — a Place Details call with the same field set the
+ * text search asked for. Defaults to the text-search figure; the operator confirms it in the console.
+ */
+export function placesDetailsCostCents(): number {
+  return envNumber("PLACES_DETAILS_COST_CENTS", placesTextSearchCostCents());
+}
+
+/**
  * A6 (3) — fresh-fetch spend caps (ledger `2026-10-01-a6-tavily-extract`; brief §7, decision 3A).
  * A fresh fetch happens only inside a paid run or an expert action (`mayFetchFresh`), and even
  * then it is capped per plan and per day across all sources. A registry row's own
