@@ -301,6 +301,7 @@ interface EarningsDetails {
     pendingEarnings: number;
     availableEarnings: number;
     paidOut: number;
+    awaitingCompletion?: number;
   };
 }
 
@@ -376,6 +377,14 @@ function MoneyStripSection() {
                 {fmt(summary.paidOut)}
               </p>
             </div>
+            {(summary.awaitingCompletion ?? 0) > 0 && (
+              <div>
+                <p className="text-xs text-console-mid">Paid, released when completed</p>
+                <p className="text-xl font-bold text-console-darkest" data-testid="text-today-awaiting-completion">
+                  {fmt(summary.awaitingCompletion ?? 0)}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

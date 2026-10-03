@@ -20,11 +20,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { quotePaymentOffer } from "@shared/service-quotes";
 
 import {
   QUOTE_CHECKOUT_UNAVAILABLE_NOTE,
   QUOTE_PAY_ACTION_LABEL,
   quoteChargeRefusalLine,
+  quotePaymentOfferSentence,
   quoteAmountLine,
   quoteDepositLine,
   quoteIsAcceptable,
@@ -212,4 +214,30 @@ test("F4: a genuinely zero fee — uncovered charged=0, or a covered wouldHaveBe
     null,
     "a waiver over a real $0 fee is not a claim worth making",
   );
+});
+
+test("P1: a paid booking wins over a lapsed expiry, and an unpaid lapsed quote is not offered again", () => {
+  const past = "2020-01-01T00:00:00.000Z";
+  assert.equal(
+    quotePaymentOffer({ lifecycle: "accepted", bookingId: "b1", bookingStatus: "confirmed", expiresAt: past }),
+    "paid",
+  );
+  assert.equal(
+    quotePaymentOffer({ lifecycle: "accepted", bookingId: "b1", bookingStatus: "refunded", expiresAt: past }),
+    "refunded",
+  );
+  assert.equal(
+    quotePaymentOffer({ lifecycle: "accepted", bookingId: "b1", bookingStatus: "payment_pending", expiresAt: past }),
+    "expired",
+  );
+  assert.equal(
+    quotePaymentOffer(
+      { lifecycle: "accepted", bookingId: "b1", bookingStatus: "payment_pending", expiresAt: "2099-01-01T00:00:00.000Z" },
+      new Date("2026-10-02T00:00:00.000Z"),
+    ),
+    "pay",
+  );
+  assert.match(quotePaymentOfferSentence("paid") ?? "", /paid/);
+  assert.match(quotePaymentOfferSentence("expired") ?? "", /not repriced/);
+  assert.equal(quotePaymentOfferSentence("pay"), QUOTE_CHECKOUT_UNAVAILABLE_NOTE);
 });

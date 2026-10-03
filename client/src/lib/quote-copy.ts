@@ -51,6 +51,8 @@ export interface QuoteCardRow {
    *  could not be resolved — never rendered as "no plan" (§13). */
   tripId?: string;
   tripTitle?: string;
+  /** Server's reading of the accepted booking: pay, already paid, window closed, or refunded. */
+  paymentOffer?: "pay" | "paid" | "expired" | "refunded" | "none";
   /** Ledger `2026-09-20-quote-fee-preaccept`: the server's READ-ONLY list-time disclosure of the
    *  ruled traveler service fee — present on every ISSUED quote (one carrying `amountCents`), absent
    *  on a `requested` row (nothing to fee yet). The SAME shape `quoteTravelerFeeLine` already words
@@ -245,6 +247,24 @@ export const QUOTE_CHECKOUT_UNAVAILABLE_NOTE =
 
 /** The Pay control's own label. One spelling, so the card and any later surface agree (§18 rule 1). */
 export const QUOTE_PAY_ACTION_LABEL = "Pay for this booking";
+
+/** Words the server's `paymentOffer`. Does not decide expiry — the server already did. */
+export function quotePaymentOfferSentence(
+  offer: QuoteCardRow["paymentOffer"],
+): string | null {
+  switch (offer) {
+    case "pay":
+      return QUOTE_CHECKOUT_UNAVAILABLE_NOTE;
+    case "paid":
+      return "This booking is paid. The receipt is on My Bookings.";
+    case "expired":
+      return "This quote's payment window has ended and the price is not repriced. Ask the provider for a new quote — nothing was charged.";
+    case "refunded":
+      return "This booking was refunded. The receipt is on My Bookings.";
+    default:
+      return null;
+  }
+}
 
 /**
  * The server's refusal, worded from its OWN code (§13 — a refusal names WHICH fact refused it, and

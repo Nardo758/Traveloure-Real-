@@ -8,7 +8,8 @@ import {
 } from "@shared/schema";
 import { resolveCommissionRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor } from "../config/earnings-hold.config";
-import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
+import { eq, desc, sql, and, gte, lte, count, sum, inArray } from "drizzle-orm";
+import { paymentOnRecordSql } from "./payment-on-record";
 
 export interface RevenueEvent {
   // `ai_task_fee` (ledger `2026-09-15-d20-d21-proposal-charge`, punchlist D-20/D-21): the AI
@@ -66,6 +67,43 @@ export interface UnifiedRevenueDashboard {
     expertPayouts: number;
     providerPayouts: number;
   }>;
+}
+
+/**
+ * Paid bookings whose seller share has not been minted yet (LD 47: earnings mint at completion).
+ * This is a display figure, never written into the escrow ledger. 0 means omit it (§13).
+ */
+const AWAITING_COMPLETION_STATUSES = [
+  "confirmed",
+  "deposit_paid",
+  "in_progress",
+  "completion_declared",
+  "awaiting_acceptance",
+  "partially_completed",
+] as const;
+
+export async function sumAwaitingCompletionEarnings(providerUserId: string): Promise<number> {
+  const [row] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${serviceBookings.providerEarnings}), 0)`,
+    })
+    .from(serviceBookings)
+    .where(
+      and(
+        eq(serviceBookings.providerId, providerUserId),
+        inArray(serviceBookings.status, [...AWAITING_COMPLETION_STATUSES]),
+        paymentOnRecordSql(serviceBookings.bookingDetails),
+        sql`NOT EXISTS (
+          SELECT 1 FROM provider_earnings pe
+          WHERE pe.source_type = 'booking'
+            AND pe.source_id = ${serviceBookings.id}
+            AND pe.amount >= 0
+        )`,
+      ),
+    );
+  const n = parseFloat(String(row?.total ?? "0"));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 100) / 100;
 }
 
 class RevenueTrackingService {
@@ -276,6 +314,7 @@ class RevenueTrackingService {
 
     const earningsSummary = await storage.getExpertEarningsSummary(expertId);
     const affiliateSummary = await storage.getAffiliateEarningsSummary(expertId);
+    const awaitingCompletion = await sumAwaitingCompletionEarnings(expertId);
 
     return {
       summary: {
@@ -285,6 +324,7 @@ class RevenueTrackingService {
         paidOut: earningsSummary.paidOut,
         totalTips: tips.totalAmount,
         totalAffiliateCommissions: affiliateSummary.total,
+        ...(awaitingCompletion > 0 ? { awaitingCompletion } : {}),
       },
       earnings: earnings.slice(0, 20),
       payouts: payouts.slice(0, 10),
@@ -300,6 +340,7 @@ class RevenueTrackingService {
     ]);
 
     const summary = await storage.getProviderEarningsSummary(providerId);
+    const awaitingCompletion = await sumAwaitingCompletionEarnings(providerId);
 
     const byService: Record<string, number> = {};
     for (const e of earnings) {
@@ -313,6 +354,7 @@ class RevenueTrackingService {
         pendingEarnings: summary.pending,
         availableEarnings: summary.available,
         paidOut: summary.paidOut,
+        ...(awaitingCompletion > 0 ? { awaitingCompletion } : {}),
       },
       byService,
       earnings: earnings.slice(0, 20),

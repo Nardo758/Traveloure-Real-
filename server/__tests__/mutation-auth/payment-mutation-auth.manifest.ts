@@ -40,6 +40,7 @@ export const paymentMutationAuthorizationManifest: readonly PaymentMutationAudit
   // Checkout / booking payment rail.
   { method: "POST", path: "/api/checkout", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/checkout", isAuthenticated', ownership: "session", state: "untested", reason: notYetSafelyMounted },
   { method: "POST", path: "/api/bookings/:id/pay-balance", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/bookings/:id/pay-balance", isAuthenticated', ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
+  { method: "POST", path: "/api/bookings/:id/resume-payment", source: "server/routes/payments.routes.ts", declaration: 'router.post("/api/bookings/:id/resume-payment", isAuthenticated', ownership: "resource", state: "untested", reason: notYetSafelyMounted },
   { method: "POST", path: "/api/bookings/process-cart", source: "server/routes/bookings.ts", declaration: "router.post('/process-cart', isAuthenticated", ownership: "session", state: "untested", reason: notYetSafelyMounted },
   { method: "POST", path: "/api/bookings/confirm-payment", source: "server/routes/bookings.ts", declaration: "router.post('/confirm-payment', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },
   { method: "POST", path: "/api/bookings/refund", source: "server/routes/bookings.ts", declaration: "router.post('/refund', isAuthenticated", ownership: "resource", state: "exercised", reason: exercisedByPaymentsSuite },

@@ -187,7 +187,7 @@ export function AddCardDialog() {
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[min(90dvh,800px)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add a card</DialogTitle>
             <DialogDescription>

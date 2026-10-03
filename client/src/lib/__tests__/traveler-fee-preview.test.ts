@@ -22,10 +22,15 @@ import {
   TRAVELER_FEE_PREVIEW_COVERED_NOTE,
   TRAVELER_FEE_PREVIEW_FINAL_NOTE,
   TRAVELER_FEE_PREVIEW_LABEL,
+  paymentStepTotal,
   travelerFeePreviewAddend,
   travelerFeePreviewDisplay,
   type TravelerFeePreviewTotals,
 } from "../traveler-fee-preview";
+import {
+  clearCheckoutKey,
+  readOrMintCheckoutKey,
+} from "../checkout-idempotency";
 
 const t = (o: Partial<TravelerFeePreviewTotals>): TravelerFeePreviewTotals => ({
   chargedTotal: 0,
@@ -87,6 +92,32 @@ test("F7 the rule computes no fee — it draws the server's figure", () => {
   const d = travelerFeePreviewDisplay(t({ lineCount: 3, chargedTotal: odd, wouldHaveBeenTotal: odd }));
   assert.ok(d && d.kind === "charged");
   assert.equal(d.amount, odd);
+});
+
+test("F9 the payment step prefers the PaymentIntent, then the snapshot, then amountDue", () => {
+  assert.equal(
+    paymentStepTotal({ paymentIntentAmountCents: 13440, snapshotTotal: "126.00", amountDue: "100.00", fallback: 1 }),
+    134.4,
+  );
+  assert.equal(paymentStepTotal({ snapshotTotal: "134.40", amountDue: "100.00", fallback: 1 }), 134.4);
+  assert.equal(paymentStepTotal({ amountDue: "134.40", fallback: 126 }), 134.4);
+  assert.equal(paymentStepTotal({ fallback: 126 }), 126);
+});
+
+test("F10 one checkout key is reused for the same lines and cleared on success", () => {
+  const store = new Map<string, string>();
+  const mem = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => { store.set(k, v); },
+    removeItem: (k: string) => { store.delete(k); },
+  };
+  const first = readOrMintCheckoutKey(mem, ["b", "a"]);
+  const again = readOrMintCheckoutKey(mem, ["a", "b"]);
+  assert.equal(again, first);
+  assert.ok(first && first.length > 0);
+  clearCheckoutKey(mem, ["a", "b"]);
+  const fresh = readOrMintCheckoutKey(mem, ["a", "b"]);
+  assert.notEqual(fresh, first);
 });
 
 test("F8 the cart and the slip both read this module and restate no label", () => {

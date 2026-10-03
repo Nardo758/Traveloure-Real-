@@ -39,14 +39,16 @@ import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import crypto from "crypto";
 import { z } from "zod";
-import { eq, and, isNull, sql, gte, inArray } from "drizzle-orm";
+import { eq, and, isNull, sql, gte, inArray, notInArray } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, readyMadeTrips, shortLinks, serviceBookings } from "@shared/schema";
 import { SHARE_FRAMES, SHARE_FRAME_LABEL, UNTAGGED_FRAME_LABEL, type ShareFrame } from "@shared/share-frames";
 // Ledger 90 (FP-5, M1/M2): the ONE money-bearing status predicate every earner surface shares.
 // Both aggregations below summed EVERY booking row regardless of status, so an unauthorized
 // §15b claim (nothing charged, no PaymentIntent) was reported as revenue.
-import { EARNING_BOOKING_STATUSES } from "@shared/booking-visibility";
+import { CLOSED_BOOKING_STATUSES, EARNING_BOOKING_STATUSES } from "@shared/booking-visibility";
+import { REFUND_RECORD_KEY } from "@shared/booking-refund-record";
+import { OUT_OF_BAND_REFUND_KEY } from "@shared/out-of-band-refund";
 import { paymentOnRecordSql } from "../services/payment-on-record";
 
 const router = Router();
@@ -483,6 +485,11 @@ router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) 
           // "Direct · 1 booking · $95.00" for a never-charged §15b claim, on the same page whose
           // ledger correctly read $0.00.
           inArray(serviceBookings.status, [...EARNING_BOOKING_STATUSES]),
+          notInArray(serviceBookings.status, [...CLOSED_BOOKING_STATUSES]),
+          // A platform refund or an out-of-band Stripe refund is not earnings, even when the
+          // status has not yet flipped to `refunded` (ledger `2026-10-02-checkout-display-equals-charge`).
+          sql`(COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) -> ${REFUND_RECORD_KEY}::text) IS NULL`,
+          sql`(COALESCE(${serviceBookings.bookingDetails}, '{}'::jsonb) -> ${OUT_OF_BAND_REFUND_KEY}::text) IS NULL`,
           // …AND a payment on record (ledger `2026-09-28-no-payment-no-earnings`): the SQL form of the
           // ONE predicate the Money page and payout breakdown read. A status is not a payment.
           paymentOnRecordSql(serviceBookings.bookingDetails),
