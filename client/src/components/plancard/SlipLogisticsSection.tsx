@@ -26,26 +26,21 @@
  *     items and zero events, and step 5 is the only place events are created. The offer appears
  *     once, on a scheduled occasion with no events, and never creates anything on its own.
  */
-import { useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ChevronRight, Loader2, Plane, UserPlus, Users } from "lucide-react";
+import { ArrowRight, Loader2, UserPlus } from "lucide-react";
 import { calendarDateToIso } from "@/lib/calendar-date";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTrip } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   TemporalAnchorManager,
-  ScheduleValidator,
-  EnergyBudgetDisplay,
   AnchorSuggestionsPanel,
   WeddingAnchorPresets,
 } from "@/components/logistics";
 import { GuestInviteManager } from "@/components/GuestInviteManager";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
-import { SlipTravelingParty } from "./SlipTravelingParty";
 import { SlipOrganizeEvents } from "./SlipOrganizeEvents";
 import { canOrganizeIntoEvents } from "@/lib/organize-events";
 import { guestListSetting } from "@/lib/occasion-switches";
@@ -112,22 +107,16 @@ function SlipGuestTotals({ tripId }: { tripId: string }) {
   );
 }
 
-export function SlipLogisticsSection({
-  tripId,
-  planEvents,
-}: {
-  tripId: string;
-  /**
-   * THE PLAN'S EVENTS, HANDED DOWN — the plancard DTO's own `events` array, exactly as the slip
-   * header counts it (ledger `2026-09-05-slip-events-first-render`). It is a PROP and not a second
-   * fetch on purpose: see `eventCount` below.
-   */
-  planEvents?: readonly PlanEvent[];
-}) {
+/**
+ * SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): this file no longer renders a
+ * section on the rail. Its pieces are mounted by the TOOLS TRAY (`client/src/components/plan/ToolsTray.tsx`)
+ * as the group manifest names them — the anchors, the guests, the traveling party — and the
+ * organize-into-events offer stays on the rail's Plan card. Every gate below is unchanged; what
+ * moved is WHERE each piece is mounted, not what it shows or who sees it.
+ */
+export function useSlipLogistics(tripId: string, planEvents?: readonly PlanEvent[]) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [anchorsOpen, setAnchorsOpen] = useState(false);
-  const [guestsOpen, setGuestsOpen] = useState(false);
 
   const { data: trip } = useTrip(tripId);
   const { data: allUserExperiences } = useQuery<UserExperience[]>({
@@ -238,38 +227,29 @@ export function SlipLogisticsSection({
     onError: () => toast({ title: "Could not set up guest list", variant: "destructive" }),
   });
 
+  return {
+    trip,
+    occasion,
+    isHidden,
+    linkedExperience,
+    isEventTrip,
+    anchorTemplateSlug,
+    canOrganize,
+    createGuestListMutation,
+    queryClient,
+  };
+}
+
+/** The plan's fixed points: the anchor manager, its suggestions and the occasion's own presets. */
+export function SlipAnchorsTool({ tripId, planEvents }: { tripId: string; planEvents?: readonly PlanEvent[] }) {
+  const { trip, occasion, anchorTemplateSlug } = useSlipLogistics(tripId, planEvents);
   return (
-    <div className="space-y-3" data-testid="slip-logistics-section">
-      <Collapsible open={anchorsOpen} onOpenChange={setAnchorsOpen}>
-        <CollapsibleTrigger asChild>
-          <Button variant="outline" className="w-full justify-between" data-testid="button-toggle-slip-anchors">
-            {/* ── "MAIN MOMENT & SCHEDULE CHECK" (ledger `2026-09-06-slip-conformance`) ────────
-                Renamed from "Flight, hotel & timing (optional)", because that is not what this
-                row opens. `TemporalAnchorManager` is mounted here with NO `allowedTypes`, so it
-                offers every `temporal_anchors` type the platform has — ceremony, reception,
-                proposal moment, rehearsal, hair & makeup, dinner, meeting and `custom`, which is
-                the type the planning modal writes THE MAIN MOMENT as — beside the flight and
-                hotel ones. Under it sit the schedule validator, the energy budget, the anchor
-                suggestions and the occasion's own schedule-template presets. The old label named
-                two of a dozen anchor types and hid the one a wedding, a proposal or a golf trip
-                is actually built around; the ratified Plan card names this row for what it is. */}
-            <span className="flex items-center gap-2">
-              <Plane className="w-4 h-4 text-blue-600" />
-              Main moment &amp; schedule check
-            </span>
-            <ChevronRight className={`w-4 h-4 transition-transform ${anchorsOpen ? "rotate-90" : ""}`} />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="pt-3 space-y-4">
+    <div className="space-y-4" data-testid="slip-tool-anchors">
           <TemporalAnchorManager
             tripId={tripId}
             title="Flight & hotel times"
             description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
           />
-          <div className="grid md:grid-cols-2 gap-4">
-            <ScheduleValidator tripId={tripId} />
-            <EnergyBudgetDisplay tripId={tripId} />
-          </div>
           <AnchorSuggestionsPanel tripId={tripId} />
           {/*
             THE SCHEDULE-TEMPLATE OFFER IS THE OCCASION'S OWN, NOT THE WEDDING'S (ledger
@@ -297,49 +277,18 @@ export function SlipLogisticsSection({
               eventDate={calendarDateToIso(trip?.startDate)}
             />
           )}
-        </CollapsibleContent>
-      </Collapsible>
+    </div>
+  );
+}
 
-      {/*
-        ORGANIZE INTO EVENTS — the one-time offer. It sits ABOVE the two rosters because it is the
-        thing that gives the plan the events those rosters hang off (an invite belongs to an
-        event, ruling 37). It disappears the moment the plan holds one.
-
-        `existingTitles` reads the SAME ONE source as the count above (the plancard `events`), so
-        the idempotency guard and the eligibility gate can never be looking at different lists.
-      */}
-      {canOrganize && occasion && (
-        <SlipOrganizeEvents
-          tripId={tripId}
-          occasion={occasion}
-          startDate={trip?.startDate as unknown as string | null}
-          endDate={trip?.endDate as unknown as string | null}
-          destination={trip?.destination ?? null}
-          existingTitles={(planEvents ?? []).map((e) => e.title ?? null)}
-          onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] })}
-        />
-      )}
-
-      {/*
-        THE TRAVELING PARTY — who is coming WITH you. Gated only on the hidden-occasion switch
-        (Locked Decision 28): unlike Guests, every plan has a traveling party, so there is no
-        event-trip test here. It is NEVER merged with the guest roster (Locked Decision 37) and
-        the section's own copy says which question each list answers.
-      */}
-      {!isHidden && <SlipTravelingParty tripId={tripId} />}
-
-      {isEventTrip && (
-        <Collapsible open={guestsOpen} onOpenChange={setGuestsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="outline" className="w-full justify-between" data-testid="button-toggle-slip-guests">
-              <span className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" />
-                Guests &amp; invites
-              </span>
-              <ChevronRight className={`w-4 h-4 transition-transform ${guestsOpen ? "rotate-90" : ""}`} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-3">
+/** Guests & invites — the ONE guest manager, for the plan's event (gates unchanged). */
+export function SlipGuestsTool({ tripId, planEvents }: { tripId: string; planEvents?: readonly PlanEvent[] }) {
+  const { trip, isHidden, linkedExperience, createGuestListMutation } = useSlipLogistics(tripId, planEvents);
+  // A hidden occasion has no guest surface at all (Locked Decision 28) — the tray hides the chip,
+  // and this says nothing if it is reached anyway.
+  if (isHidden) return null;
+  return (
+    <div data-testid="slip-tool-guests">
             {linkedExperience ? (
               <div className="space-y-3">
                 {/*
@@ -406,9 +355,26 @@ export function SlipLogisticsSection({
                 </Button>
               </div>
             )}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
     </div>
+  );
+}
+
+/** The one-time "Organize into events" offer — stays on the rail's Plan card (it is not a tool). */
+export function SlipOrganizeEventsRow({ tripId, planEvents }: { tripId: string; planEvents?: readonly PlanEvent[] }) {
+  const { trip, occasion, canOrganize, queryClient } = useSlipLogistics(tripId, planEvents);
+  return (
+    <>
+      {canOrganize && occasion && (
+        <SlipOrganizeEvents
+          tripId={tripId}
+          occasion={occasion}
+          startDate={trip?.startDate as unknown as string | null}
+          endDate={trip?.endDate as unknown as string | null}
+          destination={trip?.destination ?? null}
+          existingTitles={(planEvents ?? []).map((e) => e.title ?? null)}
+          onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] })}
+        />
+      )}
+    </>
   );
 }

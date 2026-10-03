@@ -11,11 +11,12 @@
  * A PLACEHOLDER (step-1 amendment R-aa) is the same row with `fromTool: null`: day 1's "Arrival in
  * <city>" and the last day's "Departure from <city>", carrying an "Add your flight" action. It says
  * NOTHING is fixed yet — no "Anchor · fixed" label on a flight nobody entered (§13). The action is a
- * no-op until step 2 ("Getting there") gives it a rail.
+ * Since step 2 it opens the Getting there sheet.
  */
 import type { ReactNode } from "react";
 import { Anchor } from "lucide-react";
 import { ROUTING_TINTS } from "@/components/plancard/slip-tokens";
+import { anchorWallTime } from "@shared/getting-there";
 
 export interface AnchorRowProps {
   id: string;
@@ -68,21 +69,68 @@ export const TRAVEL_ANCHOR_WORDS = {
   addFlight: "Add your flight",
 } as const;
 
+/** A stored flight anchor, as the slip reads it from `GET /api/trips/:tripId/anchors`. */
+export interface FlightAnchorView {
+  time: string | null;
+  location: string | null;
+  description: string | null;
+}
+
+/** The plan's flight anchor of one direction, or null (the first one — a plan has one flight in, one out). */
+export function flightAnchorFor(
+  anchors: ReadonlyArray<{ anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null }> | undefined,
+  type: "flight_arrival" | "flight_departure",
+): FlightAnchorView | null {
+  const a = (anchors ?? []).find((x) => x.anchorType === type);
+  if (!a) return null;
+  return { time: anchorWallTime(a.anchorDatetime), location: a.location ?? null, description: a.description ?? null };
+}
+
+/** Where a flight anchor was fixed — the AnchorRow's "from <tool>". */
+export const GETTING_THERE_TOOL = "Getting there";
+
 /**
- * Day 1's / the last day's placeholder. `city` is the plan's own destination; with none there is no
- * honest title and nothing renders (§13). "Add your flight" does nothing until step 2.
+ * Day 1's / the last day's travel row. With no flight on the plan it is the step-1 PLACEHOLDER
+ * (R-aa): "Arrival in <city>" with "Add your flight", which opens the Getting there sheet (step 2).
+ * With a flight it is a REAL anchor: the flight's own time, "Anchor · fixed · from Getting there",
+ * and what the flight is. `city` is the plan's own destination; with none there is no honest title
+ * and nothing renders (§13).
  */
-export function TravelAnchorPlaceholder({ kind, city }: { kind: "arrival" | "departure"; city: string | null }) {
+export function TravelAnchorPlaceholder({
+  kind,
+  city,
+  flight = null,
+  onAddFlight,
+}: {
+  kind: "arrival" | "departure";
+  city: string | null;
+  flight?: FlightAnchorView | null;
+  onAddFlight?: () => void;
+}) {
   const name = (city ?? "").split(",")[0].trim();
   if (!name) return null;
+  const title = kind === "arrival" ? TRAVEL_ANCHOR_WORDS.arrival(name) : TRAVEL_ANCHOR_WORDS.departure(name);
+  if (flight) {
+    return (
+      <div className="py-3 px-3" data-testid={`slip-travel-anchor-${kind}`} data-anchor-real="true">
+        <AnchorRow id={`travel-${kind}`} time={flight.time} title={title} fromTool={GETTING_THERE_TOOL}>
+          {[flight.description, flight.location].some(Boolean) ? (
+            <p className="text-xs text-muted-foreground" data-testid={`slip-travel-anchor-${kind}-flight`}>
+              {[flight.description, flight.location].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+        </AnchorRow>
+      </div>
+    );
+  }
   return (
     <div className="py-3 px-3" data-testid={`slip-travel-anchor-${kind}`}>
       <AnchorRow
         id={`travel-${kind}`}
         time={null}
-        title={kind === "arrival" ? TRAVEL_ANCHOR_WORDS.arrival(name) : TRAVEL_ANCHOR_WORDS.departure(name)}
+        title={title}
         fromTool={null}
-        action={{ label: TRAVEL_ANCHOR_WORDS.addFlight, onClick: () => {} }}
+        action={onAddFlight ? { label: TRAVEL_ANCHOR_WORDS.addFlight, onClick: onAddFlight } : null}
       />
     </div>
   );

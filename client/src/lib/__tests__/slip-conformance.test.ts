@@ -227,6 +227,11 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
 };
 
 const ALLOWED_REMOVALS = {
+  "button-toggle-slip-contracts":
+    "surface step 2 (ledger `2026-10-03-surface-step2-tools-tray`) — the contract board left the rail's " +
+    "Plan card for the slip's tools tray: the SAME `VendorContractBoard`, opened by the manifest's " +
+    "\"Vendors\" / \"Vendor contracts\" chip (`tool-chip-vendors`, `tool-chip-vendor_contracts`). The " +
+    "rail stops mounting logistics components (decision-maker brief, step 2).",
   "slip-expert-note":
     "surface step 1 (ledger `2026-10-03-surface-step1-item-row`) — not removed from the page: the " +
     "note now renders through the ONE `ExpertNote` (`components/plan/ExpertNote.tsx`) under its " +
@@ -755,16 +760,17 @@ describe("6 — Stops & timezone opens the ONE modal and restates neither line",
     // The anchors collapsible mounts `TemporalAnchorManager` with NO `allowedTypes`, so it offers
     // every anchor type — including the `custom` one the planning modal writes the MAIN MOMENT as.
     // The old label named two of a dozen and hid the one an occasion is built around.
+    // SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the "Main moment & schedule
+    // check" collapsible is gone — its door is now a tools-tray chip ("The reservation", "The venue",
+    // "Run of show", "The show"). What this pin protects is unchanged: the anchors tool mounts
+    // `TemporalAnchorManager` UNRESTRICTED, so it still offers the `custom` main-moment type.
     const logistics = readClient(LOGISTICS);
-    assert.match(logistics, /Main moment &amp; schedule check/);
-    assert.doesNotMatch(stripComments(logistics), /Flight, hotel &amp; timing/);
     assert.match(logistics, /<TemporalAnchorManager/);
     assert.doesNotMatch(
       logistics.slice(logistics.indexOf("<TemporalAnchorManager")),
       /^[\s\S]{0,400}?allowedTypes/,
       "the mount is unrestricted — which is why the row is not just flights and hotels",
     );
-    // The collapsible's own testid is unchanged: CI and the walkthrough read it.
-    assert.match(logistics, /data-testid="button-toggle-slip-anchors"/);
+    assert.doesNotMatch(stripComments(logistics), /Flight, hotel &amp; timing/);
   });
 });

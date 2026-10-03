@@ -69,8 +69,13 @@ export interface ItemRowProps {
   suggestion?: unknown;
   /** Declared for step 10 (`UpsellLine`); not drawn in step 1. */
   upsell?: unknown;
-  /** This row is a fixed point; `fromTool` names where it was fixed. Anchors carry no Move. */
-  anchor?: { fromTool: string } | null;
+  /**
+   * This row is a fixed point; `fromTool` names where it was fixed. Anchors carry no Move. A null
+   * `fromTool` is a TRAVEL row nothing has fixed yet (step 2 addendum: an AI arrival/departure item
+   * standing in for the placeholder) — glyph and `action`, no "fixed" label. `time` overrides the
+   * item's own (a flight's time); `detail` is one line under the title (what the flight is).
+   */
+  anchor?: { fromTool: string | null; time?: string | null; action?: { label: string; onClick: () => void } | null; detail?: string | null } | null;
   /** The place-facts run is still checking this stop. */
   checkingHours?: boolean;
   menu?: ItemRowMenu | null;
@@ -161,7 +166,18 @@ export function ItemRow(props: ItemRowProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {anchor ? (
-            <AnchorRow id={a.id} time={a.time || null} title={a.name} fromTool={anchor.fromTool}>
+            <AnchorRow
+              id={a.id}
+              time={anchor.time !== undefined ? anchor.time : a.time || null}
+              title={a.name}
+              fromTool={anchor.fromTool}
+              action={anchor.action ?? null}
+            >
+              {anchor.detail ? (
+                <p className="text-xs text-muted-foreground" data-testid={`slip-anchor-detail-${a.id}`}>
+                  {anchor.detail}
+                </p>
+              ) : null}
               {below}
             </AnchorRow>
           ) : (

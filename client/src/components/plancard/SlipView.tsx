@@ -64,7 +64,16 @@ import type { WhereToStayView } from "@shared/where-to-stay";
 import { itemAreaLabel, itemFactsLine } from "@/lib/place-facts";
 import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { DayBlock } from "@/components/plan/DayBlock";
-import { TravelAnchorPlaceholder } from "@/components/plan/AnchorRow";
+import {
+  GETTING_THERE_TOOL,
+  TRAVEL_ANCHOR_WORDS,
+  TravelAnchorPlaceholder,
+  flightAnchorFor,
+  type FlightAnchorView,
+} from "@/components/plan/AnchorRow";
+import { absorbedTravelItemId } from "@shared/getting-there";
+import { ToolsTray } from "@/components/plan/ToolsTray";
+import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostHref } from "@/lib/item-row-menu";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
@@ -739,6 +748,8 @@ function SlipDayItem({
   hasAdvisor,
   expertName,
   anchorFrom,
+  travel = null,
+  onAddFlight,
   highlighted,
   rowRef,
   dayNumber,
@@ -770,6 +781,9 @@ function SlipDayItem({
   expertName: string | null;
   /** Non-null ⇒ this row is a fixed point, fixed by that tool (`anchorFromTool`). */
   anchorFrom: string | null;
+  /** Step 2 addendum: this AI item IS the day's arrival/departure row; `flight` is the plan's, if entered. */
+  travel?: { flight: FlightAnchorView | null } | null;
+  onAddFlight?: () => void;
   highlighted: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
   dayNumber: number | null;
@@ -836,7 +850,19 @@ function SlipDayItem({
       mode={canEditItems ? "edit" : "read"}
       role={isExpertViewer ? "expert" : "traveler"}
       bookingState={slipItemBookingLine(a)}
-      anchor={anchorFrom ? { fromTool: anchorFrom } : null}
+      anchor={
+        anchorFrom
+          ? { fromTool: anchorFrom }
+          : travel
+            ? travel.flight
+              ? {
+                  fromTool: GETTING_THERE_TOOL,
+                  time: travel.flight.time,
+                  detail: [travel.flight.description, travel.flight.location].filter(Boolean).join(" · ") || null,
+                }
+              : { fromTool: null, action: onAddFlight ? { label: TRAVEL_ANCHOR_WORDS.addFlight, onClick: onAddFlight } : null }
+            : null
+      }
       checkingHours={checkingHours}
       menu={menu}
       highlighted={highlighted}
@@ -1673,6 +1699,14 @@ export function SlipView({
   // R-aa: the arrival/departure placeholders belong to a RANGE-shaped plan (`durationShape`); a
   // day-shaped occasion (a date night) has nothing to arrive at.
   const showTravelAnchors = durationShape(occasion) === "range";
+  // Surface step 2: which tool's sheet is open, and the plan's anchors (the SAME query key the
+  // anchor manager and the Getting there sheet read), so a flight added there turns day 1's /
+  // the last day's placeholder into the real anchor row.
+  const [openTool, setOpenTool] = useState<ToolKey | null>(null);
+  const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null }>>({
+    queryKey: [`/api/trips/${tripId}/anchors`],
+    enabled: !!tripId && showTravelAnchors,
+  });
 
   // ── THE PLAN'S BUDGET TOTAL (ledger `2026-09-04-event-budget`) ────────────────────────────
   // DERIVED from the events, never stored — one pure helper, so the line and the fields it sums
@@ -1867,6 +1901,32 @@ export function SlipView({
           order of the two regions depends on the breakpoint's direction. */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8" data-testid="slip-columns">
         <div className={`${tripsAnchor ? "order-1 lg:order-1" : "order-2 lg:order-1"} min-w-0 flex-1 space-y-5`}>
+          {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
+              The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
+              the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
+          {isOwner && data.trip ? (
+            <ToolsTray
+              tripId={tripId}
+              group={experienceGroup}
+              occasionSlug={occasion?.slug ?? null}
+              planEvents={planEvents}
+              isHidden={occasionIsHidden}
+              whereToStay={
+                whereToStay ? (
+                  <WhereToStayPanel tripId={tripId} view={whereToStay} canChoose={canEditItems} />
+                ) : (
+                  <SlipAnchorCompareButton tripId={tripId} />
+                )
+              }
+              trip={{
+                destination: data.trip.destination ?? null,
+                startDate: (data.trip.startDate as any) ?? null,
+                endDate: (data.trip.endDate as any) ?? null,
+              }}
+              openTool={openTool}
+              onOpenToolChange={setOpenTool}
+            />
+          ) : null}
           {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
               These were two stacked rows with the whole rail between them, so the plan's status
               line and the control that changes how the plan is displayed read as unrelated. They
@@ -2044,6 +2104,14 @@ export function SlipView({
           ) : null}
           {daySlots.map((slot, slotIdx) => {
             const slotItems = slot.groups.flatMap((g) => g.items);
+            // Step 2 addendum: an AI arrival on day 1 / departure on the last day IS the travel row —
+            // it takes the glyph and "Add your flight", and the placeholder is not drawn.
+            const arrivalItemId =
+              showTravelAnchors && slot.dayNum === 1 ? absorbedTravelItemId(slotItems, "arrival") : null;
+            const departureItemId =
+              showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum
+                ? absorbedTravelItemId(slotItems, "departure")
+                : null;
             // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
             // no `date` label of its own and no legs, and invents none of the three.
             const day = slot.dayNum != null ? dayByNum.get(slot.dayNum) : undefined;
@@ -2081,8 +2149,13 @@ export function SlipView({
               >
                 {/* R-aa: day 1 opens with the placeholder arrival anchor, the last day closes with the
                     departure one — a range-shaped plan only (a day-shaped occasion has no arrival). */}
-                {showTravelAnchors && slot.dayNum === 1 ? (
-                  <TravelAnchorPlaceholder kind="arrival" city={data.trip?.destination ?? null} />
+                {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? (
+                  <TravelAnchorPlaceholder
+                    kind="arrival"
+                    city={data.trip?.destination ?? null}
+                    flight={flightAnchorFor(tripAnchors, "flight_arrival")}
+                    onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
+                  />
                 ) : null}
                 {slot.groups.map((group) => {
                   const groupItemIds = group.items.map((a) => a.id);
@@ -2105,6 +2178,14 @@ export function SlipView({
                         anchorSetCategory: anchorSetCategory,
                         purchasedAndOptimized: hasOptimized && isPurchasedRow(a),
                       })}
+                      travel={
+                        a.id === arrivalItemId
+                          ? { flight: flightAnchorFor(tripAnchors, "flight_arrival") }
+                          : a.id === departureItemId
+                            ? { flight: flightAnchorFor(tripAnchors, "flight_departure") }
+                            : null
+                      }
+                      onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
                       highlighted={highlighted === a.id}
                       rowRef={(el) => {
                         rowRefs.current[a.id] = el;
@@ -2182,8 +2263,13 @@ export function SlipView({
                     />
                   </div>
                 )}
-                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum ? (
-                  <TravelAnchorPlaceholder kind="departure" city={data.trip?.destination ?? null} />
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? (
+                  <TravelAnchorPlaceholder
+                    kind="departure"
+                    city={data.trip?.destination ?? null}
+                    flight={flightAnchorFor(tripAnchors, "flight_departure")}
+                    onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
+                  />
                 ) : null}
               </DayBlock>
             );

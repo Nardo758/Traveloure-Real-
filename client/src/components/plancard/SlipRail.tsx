@@ -68,12 +68,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-import { VendorContractBoard } from "@/components/logistics/vendor-contract-board";
 import { createComparison, type ComparisonPinnedAnchor } from "@/lib/create-comparison";
 import {
   confirmOptimizationPayment,
@@ -137,7 +135,7 @@ import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { HireExpertDialog } from "./HireExpertDialog";
-import { SlipLogisticsSection } from "./SlipLogisticsSection";
+import { SlipOrganizeEventsRow } from "./SlipLogisticsSection";
 import { TripPassCard } from "./TripPassCard";
 
 // ── card + row chrome ─────────────────────────────────────────────────────────────────────────
@@ -868,7 +866,6 @@ function PlanCard({
   stopsLine: string | null;
   zoneLine: string | null;
 }) {
-  const [contractsOpen, setContractsOpen] = useState(false);
   // Locked Decision 33's opener. No source: the modal reads the plan the traveler is already on,
   // exactly as the header's own `Edit ›` calls it.
   const { open: openPlanModal } = usePlanning();
@@ -896,29 +893,12 @@ function PlanCard({
         />
       )}
 
-      {isOwner && <SlipLogisticsSection tripId={tripId} planEvents={planEvents} />}
-
-      {/* THE CONTRACT BOARD — `vendor_contracts` had four owner-gated read endpoints and, on this
-          plan's own surface, no door at all; it mounted only inside the retired logistics
-          dashboard. One more mount of the existing read-only board (ledger
-          `2026-09-04-plan-islands`), collapsed by default like the anchors beside it. */}
-      {isOwner && (
-        <Collapsible open={contractsOpen} onOpenChange={setContractsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              data-testid="button-toggle-slip-contracts"
-            >
-              <span className="flex items-center gap-2">Vendor contracts</span>
-              <ChevronRight className={`w-4 h-4 transition-transform ${contractsOpen ? "rotate-90" : ""}`} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-3">
-            <VendorContractBoard tripId={tripId} />
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+      {/* SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the logistics pieces this card
+          used to mount (main moment & schedule check, traveling party, guests & invites) and the
+          vendor contract board are now TOOLS on the slip's tools tray, as the group manifest names
+          them. What stays here is what the plan knows about itself: its stops, the organize-into-
+          events offer and the derived budget. */}
+      {isOwner && <SlipOrganizeEventsRow tripId={tripId} planEvents={planEvents} />}
 
       {/* THE BUDGET — stated PER EVENT, plan total DERIVED and never stored (ledger
           `2026-09-04-event-budget`). Rendered only when at least one event states one; the count

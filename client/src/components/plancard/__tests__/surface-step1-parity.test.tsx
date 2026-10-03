@@ -71,7 +71,7 @@ const rendered = days.map((day) => {
     React.createElement(
       DayBlock as any,
       { dayKey: String(day.dayNum), heading: dayBlockHeading({ dayNum: day.dayNum, date: day.date, dateIso: day.dateIso }), stats: null, defaultOpen: true },
-      day.dayNum === 1 ? React.createElement(TravelAnchorPlaceholder, { kind: "arrival", city }) : null,
+      day.dayNum === 1 ? React.createElement(TravelAnchorPlaceholder, { kind: "arrival", city, onAddFlight: () => {} }) : null,
       ...(day.activities ?? []).map((a: any) =>
         React.createElement(ItemRow, {
           key: a.id,
@@ -84,7 +84,7 @@ const rendered = days.map((day) => {
           expertNote: a.expertNote ? { note: a.expertNote, author: null } : null,
         }),
       ),
-      day.dayNum === lastDayNum ? React.createElement(TravelAnchorPlaceholder, { kind: "departure", city }) : null,
+      day.dayNum === lastDayNum ? React.createElement(TravelAnchorPlaceholder, { kind: "departure", city, onAddFlight: () => {} }) : null,
     ),
   );
   return { day, html };

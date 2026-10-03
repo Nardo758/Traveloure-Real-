@@ -223,21 +223,24 @@ test("A7: Stops & timezone opens the ONE planning modal", async ({ page }) => {
   await expect(page.getByTestId("plan-modal")).toBeVisible({ timeout: 15_000 });
 });
 
-test("A8: the Plan card's collapsibles still open", async ({ page }) => {
+test("A8: the tools tray opens the existing tools (surface step 2)", async ({ page }) => {
+  // Ledger `2026-10-03-surface-step2-tools-tray`: the Plan card's logistics collapsibles and the
+  // contract board left the rail; the group manifest's tools open them from the slip's tray.
   const tripId = await registerAndCreateTrip(page, "plan");
   await openSlip(page, tripId);
-  // Renamed by this lane — the row opens the ANCHORS editor, not a flights-and-hotels form.
-  const anchors = page.getByTestId("button-toggle-slip-anchors");
-  await expect(anchors).toContainText("Main moment");
-  await expect(anchors).toHaveAttribute("data-state", "closed");
-  await anchors.click();
-  await expect(anchors).toHaveAttribute("data-state", "open");
-  await expect(page.getByTestId("slip-logistics-section")).toBeVisible();
-
-  const contracts = page.getByTestId("button-toggle-slip-contracts");
-  await expect(contracts).toHaveAttribute("data-state", "closed");
-  await contracts.click();
-  await expect(contracts).toHaveAttribute("data-state", "open");
+  const tray = page.getByTestId("slip-tools-tray");
+  await expect(tray).toBeVisible();
+  // A tool with no existing component is a disabled chip, never an empty sheet.
+  await expect(page.getByTestId("tool-chip-getting_around")).toBeDisabled();
+  await expect(page.getByTestId("tool-chip-getting_around")).toContainText("coming soon");
+  // Pace opens the EXISTING energy budget in a sheet.
+  await page.getByTestId("tool-chip-pace").click();
+  await expect(page.getByTestId("tool-sheet-pace")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("tool-sheet-pace")).toHaveCount(0);
+  // The rail no longer mounts the logistics section.
+  await expect(page.getByTestId("slip-logistics-section")).toHaveCount(0);
+  await expect(page.getByTestId("button-toggle-slip-contracts")).toHaveCount(0);
 });
 
 // ── 4 · the Share card ────────────────────────────────────────────────────────────────────────
