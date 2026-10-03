@@ -28,6 +28,7 @@ import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itiner
 import { flagReviewSignal } from "./review-mutation.service";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 import { assertAiDraftEligible } from "./ai-draft-eligibility";
+import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -348,6 +349,12 @@ export interface SaveGeneratedItinerarySnapshotInput {
   generatedPlan: Record<string, any>;
   canonicalItems: NormalizedGeneratedCanonicalItem[];
   /**
+   * R-w (ledger `2026-10-03-rw-ai-place-text`): the traveler has NO place to stay ("Draft without a
+   * place to stay"), so nothing about lodging is stored — not a row, not a meal, not a suggestion.
+   * Absent ⇒ false. Every draft is sanitised either way (`ai-draft-sanitize`).
+   */
+  noLodging?: boolean;
+  /**
    * Optional. The free draft passes none (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): a
    * draft is not an optimizer run, so no comparison row is created and `comparison` comes back null.
    */
@@ -370,6 +377,15 @@ export async function saveGeneratedItinerarySnapshot(
   // Sequence increments are intentionally outside the snapshot transaction:
   // tracking numbers may have gaps after a rollback, but are never reused.
   const trackingNumber = input.tripId ? null : await storage.generateTrackingNumber("TRV");
+
+  // R-w: AI place and description text is sanitised HERE, at storage, for every caller — the rows
+  // and the stored draft JSON by the same rules (`server/utils/ai-draft-sanitize.ts`).
+  const sanitizeOptions = { noLodging: input.noLodging === true, city: input.trip.destination };
+  input = {
+    ...input,
+    canonicalItems: sanitizeCanonicalItems(input.canonicalItems, sanitizeOptions),
+    generatedPlan: sanitizeGeneratedPlan(input.generatedPlan, sanitizeOptions),
+  };
 
   const result = await db.transaction(async (tx) => {
     let trip: any;
@@ -480,7 +496,9 @@ export async function saveGeneratedItinerarySnapshot(
           dayNumber: activity.dayNumber,
           startTime: activity.time,
           durationMinutes: activity.durationMinutes,
-          locationName: activity.location || input.trip.destination,
+          // R-w: a venue-less item stores NO location — never the plan's city, which the map would
+          // geocode to the city centre and present as the stop's place (§13). It is a supply slot.
+          locationName: activity.location || null,
           estimatedCost: activity.estimatedCost,
           currency: "USD",
           suggestedBy: "ai",

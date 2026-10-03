@@ -340,6 +340,8 @@ export interface PlanCardActivity {
    * and is client-settable on no rail.
    */
   origin?: string | null;
+  /** R-w: an AI-drafted item with no venue (`isSupplySlot`); present only when true. Not drawn yet. */
+  supplySlot?: true;
   /**
    * D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`) — the two LINK columns the
    * item-kind derivation reads, mirroring `TripPlanActivity` (shared/trip-plan.ts):

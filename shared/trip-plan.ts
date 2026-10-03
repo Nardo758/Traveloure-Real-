@@ -370,6 +370,12 @@ export interface TripPlanActivity {
   origin?: string;
 
   /**
+   * R-w (ledger `2026-10-03-rw-ai-place-text`): PRESENT ONLY WHEN TRUE — an AI-drafted item with no
+   * venue of its own (`isSupplySlot`, `@shared/ai-place-text`). Derived per read, never stored.
+   */
+  supplySlot?: true;
+
+  /**
    * ADDITIVE (ruling 2026-09-15, punchlist D-4; ledger `2026-09-15-d4-item-kind-contract`) — the
    * two LINK columns the item-kind derivation reads: `itinerary_items.provider_service_id` (the
    * bookable platform listing) and `itinerary_items.affiliate_product_id` (the partner grounding).

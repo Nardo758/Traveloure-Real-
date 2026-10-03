@@ -182,7 +182,7 @@ export function draftBasisLine(basis: DraftBasis): string | null {
  * no hotel to return to). Pure.
  */
 export const NO_HOTEL_PROMPT_LINE =
-  "The traveler has not chosen a place to stay. Do not add hotel check-in, check-out, return-to-hotel or hotel orientation items. Day 1 may begin with arriving in the city and the last day may end with departing; neither mentions a hotel.";
+  "The traveler has not chosen a place to stay. Do not add hotel check-in, check-out, return-to-hotel or hotel orientation items. Day 1 may begin with arriving in the city and the last day may end with departing; neither mentions a hotel. Do not name any hotel, ryokan, inn or other lodging anywhere in the plan, do not suggest a meal at a hotel (no \"hotel breakfast\"), and return accommodationSuggestions as an empty list.";
 
 const HOTEL_ITEM_WORDING =
   /\bcheck[\s-]?(?:in|out)\b|\bcheckout\b|\bcheckin\b|\b(?:return|back|rest)\s+(?:to|at)\s+(?:the\s+|your\s+)?hotel\b|\bhotel\s+(?:orientation|check)/i;
