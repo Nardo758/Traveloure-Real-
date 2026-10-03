@@ -22,7 +22,8 @@ K3 = item fields, K4 = detail views, K5 = the single-custom-venue anchor rule). 
 file named) · **PARTIAL** · **NOT BUILT** (nothing in code; never implied otherwise).
 
 **The traveler:** signed in, five days in Kyoto in November, no hotel booked, two or three in mind. Occasion `travel`
-(Trips group, §B2 step 3: `range` + no guests ⇒ anchor = hotel, lodging needed). Phone first: every step is described
+(Trips group, §B2 step 3: `range` + no guests ⇒ anchor = hotel; the hotel is optional — recommended after the
+draft, never asked before it, ledger `2026-10-02-smoke4-draft-fixes`). Phone first: every step is described
 at 375px before desktop.
 
 ---
@@ -170,9 +171,14 @@ outward from the hotel set".
 
 - **Built (A5, ledger `2026-09-29-a5-draft-open-set`, under R211):** the held slot and the geography hint are
   live. Appendix B Q2's default is what shipped (the hotels are a hint, never a choice). On an EMPTY slip plan-fit
-  cannot rank (no stops yet), so the draft is built around every located option and says so; with no hotel and no set
-  it asks "Where are you staying?" and offers "Draft without a hotel". Drafted stops gain Places facts (hours, dining
-  basics, coordinates) when the spine is switched on, and the fit lines then have stops to score against.
+  cannot rank (no stops yet), so the draft is built around every located option and says so. Drafted stops gain
+  Places facts (hours, dining basics, coordinates) when the spine is switched on, and the fit lines then have stops to
+  score against.
+- **Amended (smoke test 4, ledger `2026-10-02-smoke4-draft-fixes`):** with no hotel and no set the draft no longer
+  asks first — "Draft it with AI" always drafts (`none_asked`, no hotel wording: day 1 is the arrival, the last day the
+  departure), and the slip then shows **Where to stay** for a 2+ day plan: the city's neighbourhoods ranked by distance
+  to the drafted days ("closest to 4 of your 5 days"), our own hotels under each (or "Hotels coming soon"), and three
+  answers — Stay here, I've got lodging sorted, Skip.
 
 ### Step 5 — Gaps and suggestions fill the days
 

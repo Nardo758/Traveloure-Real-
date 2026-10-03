@@ -126,7 +126,9 @@ describe("nothing sends or saves a count nobody stated (RC-12 source pins)", () 
 
   it("S2: the slip header asks the owner, and the plancard readers invent no 1", () => {
     const view = read("client/src/components/plancard/SlipView.tsx");
-    assert.match(view, /data-testid="slip-meta-ask-party"/);
+    // Smoke 4 B5: the meta line (and its ask) moved into SlipHeaderMeta; SlipView still wires it.
+    const meta = read("client/src/components/plancard/SlipHeaderMeta.tsx");
+    assert.match(meta, /data-testid="slip-meta-ask-party"/);
     assert.match(view, /focusStep: "who"/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     assert.doesNotMatch(rail, /trip\.travelers \|\| 1/);

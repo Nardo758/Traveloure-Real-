@@ -1,4 +1,5 @@
 import { parseDurationTextToMinutes } from "@shared/content-logistics";
+import { visitedPlaceTitle } from "@shared/place-name-gate";
 
 export const DEFAULT_GENERATED_ACTIVITY_DURATION_MINUTES = 60;
 export const MAX_GENERATED_ACTIVITY_DURATION_MINUTES = 24 * 60;
@@ -181,11 +182,14 @@ export function normalizeGeneratedItineraryPayload(
     const activities = (Array.isArray(rawDay?.activities) ? rawDay.activities : [])
       .slice(0, MAX_GENERATED_ACTIVITIES_PER_DAY)
       .map((rawActivity: any) => {
-        const title = normalizeGeneratedText(
+        // P2 (smoke 4, ledger `2026-10-02-smoke4-draft-fixes`): a drafted item visits ONE place. A
+        // "X Alternative: Y" title is the model's free text (no projection writes it); the place
+        // after "Alternative:" is the one being visited, so that is the title the plan keeps.
+        const title = visitedPlaceTitle(normalizeGeneratedText(
           rawActivity?.name ?? rawActivity?.title,
           MAX_GENERATED_TITLE_CHARS,
           "Activity",
-        ) || "Activity";
+        ) || "Activity");
         const description = normalizeGeneratedText(
           rawActivity?.description,
           MAX_GENERATED_DESCRIPTION_CHARS,

@@ -140,17 +140,37 @@ export function planDatesLabel(
  * §13: an unparseable or inverted window says NOTHING (null) — never "0 days".
  */
 export function planSpanLabel(startDate: string | null | undefined, endDate: string | null | undefined): string | null {
-  const day = (v: string | null | undefined): number | null => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((v ?? "").trim());
-    if (!m) return null;
-    const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    return Number.isFinite(t) ? t / 86_400_000 : null;
-  };
-  const s = day(startDate);
-  const e = day(endDate);
-  if (s === null || e === null || e < s) return null;
-  const nights = e - s;
-  const days = nights + 1;
-  const dayWord = `${days} ${days === 1 ? "day" : "days"}`;
+  const nights = planNightCount(startDate, endDate);
+  if (nights === null) return null;
+  const dayWord = planDayCountLabel(startDate, endDate) as string;
   return nights === 0 ? dayWord : `${dayWord} · ${nights} ${nights === 1 ? "night" : "nights"}`;
+}
+
+/** Calendar days of a `YYYY-MM-DD…` value since the epoch, or null when it is not one. */
+function calendarDayIndex(v: string | null | undefined): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((v ?? "").trim());
+  if (!m) return null;
+  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isFinite(t) ? t / 86_400_000 : null;
+}
+
+/** Nights in the window (end − start, calendar dates), or null for an unparseable or inverted one. */
+function planNightCount(startDate: string | null | undefined, endDate: string | null | undefined): number | null {
+  const s = calendarDayIndex(startDate);
+  const e = calendarDayIndex(endDate);
+  if (s === null || e === null || e < s) return null;
+  return e - s;
+}
+
+/**
+ * THE DAY COUNT ALONE — "5 days" for Nov 11–15 (smoke test 4, B5, ledger
+ * `2026-10-02-smoke4-draft-fixes`). The slip header printed the range and a separator with an empty
+ * slot after it; it now prints this. Same calendar-date rule as `planSpanLabel` (§18 rule 1), and
+ * §13 the same way: an unparseable or inverted window says nothing (null), never "0 days".
+ */
+export function planDayCountLabel(startDate: string | null | undefined, endDate: string | null | undefined): string | null {
+  const nights = planNightCount(startDate, endDate);
+  if (nights === null) return null;
+  const days = nights + 1;
+  return `${days} ${days === 1 ? "day" : "days"}`;
 }

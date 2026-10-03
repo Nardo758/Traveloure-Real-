@@ -73,6 +73,9 @@ const readClient = (rel: string) => readFileSync(join(CLIENT_SRC, rel), "utf8");
 
 const RAIL = "components/plancard/SlipRail.tsx";
 const VIEW = "components/plancard/SlipView.tsx";
+// Smoke 4 B5 (ledger `2026-10-02-smoke4-draft-fixes`): the header's meta line moved out of SlipView
+// into its own component so it can be rendered in a test. Same controls, same file-set inventory.
+const HEADER_META = "components/plancard/SlipHeaderMeta.tsx";
 const LOGISTICS = "components/plancard/SlipLogisticsSection.tsx";
 const COMMENTS = "components/plancard/ItemComments.tsx";
 
@@ -164,11 +167,15 @@ const ALLOWED_ADDITIONS = {
   // placeholder, not a new action: it carries no handler, and the zero-omitting rule on the count
   // SEGMENTS is untouched (§13 — four zeroes would be four claims about rows that do not exist).
   "slip-viewbar-empty": "1 — the empty plan's placeholder, so the view toggle still renders",
-  // A LATER ruling's controls, declared (ledger `2026-09-29-a5-draft-open-set`, §M5): the free draft
-  // asks where the traveler is staying on a Trip with no stay and no set, and the traveler's own
-  // answer is "Draft without a hotel". Neither re-wires the Draft button, whose handler is unchanged.
-  "slip-draft-anchor-ask": "A5 — the draft's anchor question, the server's own sentence",
-  "slip-draft-without-anchor": "A5 — the traveler's answer: draft without a hotel (never sent for them)",
+  // Smoke 4 B5 (ledger `2026-10-02-smoke4-draft-fixes`): the header's range and its day count are
+  // their own nodes so a walkthrough can read "5 days" without matching the party or the events.
+  // Text only — no handler.
+  "slip-meta-dates": "B5 — the header's date range, its own node",
+  "slip-meta-days": "B5 — the header's day count, from the plan's own start and end dates",
+  // A5's two ask controls (`slip-draft-anchor-ask`, `slip-draft-without-anchor`) are GONE by a later
+  // ruling (smoke 4 item 5, ledger `2026-10-02-smoke4-draft-fixes`: "Hotel is optional and
+  // recommended after the draft, not asked before it") — "Draft it with AI" always drafts. They
+  // were never on main's inventory, so they leave this list rather than joining the removals.
   // Ledger `2026-09-07-my-events-fold` (Locked Decision 45 (5)). A LATER ruling's card, declared
   // here for the reason this list exists: a control that appears without a named ruling behind it
   // is exactly what the pin refuses. It renders ONLY when this plan has a `coordination_states`
@@ -230,6 +237,7 @@ describe("0 — the relayout lost nothing and re-wired nothing", () => {
   const shipped = inventoryOfFiles([
     join(CLIENT_SRC, VIEW),
     join(CLIENT_SRC, RAIL),
+    join(CLIENT_SRC, HEADER_META),
   ]) as Record<string, string[]>;
   const before = SLIP_ACTIONS_MAIN as Record<string, string[]>;
 

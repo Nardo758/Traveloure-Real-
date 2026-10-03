@@ -12,6 +12,8 @@
  *   POST   /api/trips/:tripId/option-sets/suggest                 §M9 "Suggest places that fit these days"
  *   POST   /api/trips/:tripId/anchor/promote                      M8 "Build my days around this"
  *   POST   /api/trips/:tripId/slip-events                         A4 — E4 `slip_plan_fit_shown` (202)
+ *   GET    /api/trips/:tripId/where-to-stay                       smoke 4 item 5 — the post-draft panel
+ *   POST   /api/trips/:tripId/where-to-stay                       bind: stay here / own / skip
  *
  * §14: the actor is the session; no body carries an identity, a price or a coordinate the server
  * could read from a source row. §19: every body is a `.strict()` object. LD 40: a set, option or
@@ -38,6 +40,7 @@ import {
   reopenOptionSet,
   suggestLodging,
 } from "../services/plan-option-sets.service";
+import { bindWhereToStay, loadWhereToStay } from "../services/where-to-stay.service";
 
 const router = Router();
 
@@ -261,6 +264,51 @@ router.post("/api/trips/:tripId/slip-events", isAuthenticated, async (req: any, 
     // A view that fails to record never fails the view (§15b): logged, answered 202.
     console.error("[option-sets] slip-event write failed:", err);
     res.status(202).json({ accepted: true });
+  }
+});
+
+/**
+ * WHERE TO STAY (smoke test 4, item 5 — ledger `2026-10-02-smoke4-draft-fixes`). The read is the
+ * plan's own (read role); not yours and no such plan are ONE 404 (LD 40). The bind is owner/delegate
+ * (R129's choose role) and goes through the option-set rail above; its body is a `.strict()`
+ * discriminated union naming a row of OUR inventory or the traveler's own words — never a coordinate
+ * or a price (§14, §19).
+ */
+const stayBody = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("stay_here"),
+      hotel: z.object({ kind: z.enum(["hotel_cache", "affiliate"]), id: z.string().min(1).max(64) }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("own"),
+      hotelName: z.string().trim().max(255).nullable().optional(),
+      neighborhoodSlug: z.string().trim().min(1).max(100).nullable().optional(),
+    })
+    .strict(),
+  z.object({ kind: z.literal("skip") }).strict(),
+]);
+
+router.get("/api/trips/:tripId/where-to-stay", isAuthenticated, async (req: any, res) => {
+  try {
+    const view = await loadWhereToStay(req.params.tripId, getUserId(req));
+    if (view.reason === "not_found") return res.status(404).json({ code: "not_found", message: "No such plan" });
+    res.json(view);
+  } catch (err) {
+    fail(res, err, "where-to-stay");
+  }
+});
+
+router.post("/api/trips/:tripId/where-to-stay", isAuthenticated, async (req: any, res) => {
+  const parsed = stayBody.safeParse(req.body ?? {});
+  if (!parsed.success) return badBody(res);
+  try {
+    const out = await bindWhereToStay(req.params.tripId, getUserId(req)!, parsed.data);
+    res.status(201).json(out);
+  } catch (err) {
+    fail(res, err, "where-to-stay bind");
   }
 });
 
