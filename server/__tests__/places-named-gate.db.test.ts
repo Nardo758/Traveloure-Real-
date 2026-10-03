@@ -14,6 +14,10 @@
  *       Kiyomizu-dera, and an answer naming Fushimi Inari is never attached to it
  *   G6  smoke 4 P1: every named item logs its DAY and OUTCOME (attached / unmatched / none), and a
  *       skipped item logs why, so "never attempted" and "attempted and missed" read differently
+ *   G12 R-u (surface step 3): two PLANS sharing a place make ONE billed lookup — the second plan's
+ *       facts come from the place-ID cache at 0 cost, carrying the original fetch's own checkedAt
+ *   G13 R-u: the allocator reaches ≥ 2 named items on EVERY day within the cap (round-robin across
+ *       days before any day's third)
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -30,6 +34,7 @@ const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `png-${RUN}-${s}`;
 const OWNER = id("owner");
 const TRIP = id("trip");
+const TRIP2 = id("trip2");
 const CITY = "Kyoto, Japan";
 const GENERIC = ["Dinner at Local Izakaya", "Lunch at Traditional Restaurant", "Traditional Tea Ceremony Experience"];
 
@@ -88,11 +93,17 @@ before(async () => {
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, event_type)
     VALUES (${TRIP}, ${OWNER}, ${`Gate plan ${RUN}`}, ${CITY}, '2027-11-11', '2027-11-15', 'draft', 'vacation')
   `);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, event_type)
+    VALUES (${TRIP2}, ${OWNER}, ${`Gate plan 2 ${RUN}`}, ${CITY}, '2027-12-01', '2027-12-03', 'draft', 'vacation')
+  `);
 });
 
 after(async () => {
   try {
-    await db.execute(sql`DELETE FROM place_facts WHERE plan_id = ${TRIP} OR place_ref LIKE ${`png-${RUN}-%`}`);
+    await db.execute(sql`DELETE FROM place_facts WHERE plan_id IN (${TRIP}, ${TRIP2}) OR place_ref LIKE ${`png-${RUN}-%`}`);
+    await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${TRIP2}`);
+    await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP2}`);
     await db.execute(sql`DELETE FROM ai_generated_itineraries WHERE trip_id = ${TRIP}`);
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${TRIP}`);
     await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
@@ -320,4 +331,46 @@ test("G9 smoke 5 item 8: the run records progress on its draft and ends with not
   const row = (await db.execute(sql`SELECT facts_lookup FROM ai_generated_itineraries WHERE id = ${draftId}`)).rows[0] as any;
   assert.equal(row.facts_lookup.status, "done");
   assert.deepEqual(row.facts_lookup.pending, []);
+});
+
+test("G12 R-u: two plans sharing a place make one billed lookup; the second costs 0", async () => {
+  delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+  const title = `Shisen-do ${RUN}`;
+  const a: EnrichItem = { id: id("share-a"), title, type: "attraction", dayNumber: 1 };
+  await insertItems([a]);
+  const b: EnrichItem = { id: id("share-b"), title, type: "attraction", dayNumber: 1 };
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin) VALUES (${b.id}, ${TRIP2}, 1, ${title}, 'attraction', 'ai')`);
+  const { adapter, state } = placesFake((q) => q.split(",")[0]);
+  const r1 = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [a], adapters: [adapter] });
+  const r2 = await enrichPlanItems({ tripId: TRIP2, market: "kyoto", city: CITY, items: [b], adapters: [adapter] });
+  assert.equal(state.calls, 1, "Places is asked once for the shared place");
+  assert.equal(r1.looked, 1);
+  assert.equal(r2.looked, 0, "a cached place costs nothing");
+  assert.equal(r2.cached, 1);
+  const rows = (await db.execute(sql`SELECT plan_id, fetched_at FROM place_facts WHERE itinerary_item_id IN (${a.id}, ${b.id}) AND fact_type = 'hours'`)).rows as any[];
+  assert.equal(new Set(rows.map((x) => x.plan_id)).size, 2, "both plans hold the fact");
+  assert.equal(new Set(rows.map((x) => new Date(x.fetched_at).getTime())).size, 1, "with the original fetch's own checkedAt");
+});
+
+test("G13 R-u: every day gets two named items looked up before any day's third", async () => {
+  process.env.PLACES_LOOKUPS_PER_DRAFT = "6";
+  const venues = [
+    [`Hokan-ji ${RUN}`, `Kodai-ji ${RUN}`, `Entoku-in ${RUN}`],
+    [`Daigo-ji ${RUN}`, `Zuishin-in ${RUN}`, `Kanshuji ${RUN}`],
+    [`Enryaku-ji ${RUN}`, `Sanzen-in ${RUN}`, `Jakko-in ${RUN}`],
+  ];
+  const items: EnrichItem[] = [];
+  venues.forEach((day, d) => day.forEach((title, k) => items.push({ id: id(`two-d${d + 1}-${k}`), title, type: "attraction", dayNumber: d + 1 })));
+  await insertItems(items);
+  const { adapter, state } = placesFake((q) => q.split(",")[0]);
+  await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter] });
+  assert.equal(state.calls, 6);
+  const rows = await factRows(items.map((i) => i.id));
+  const perDay = new Map<number, Set<string>>();
+  for (const x of rows.filter((x) => x.fact_type === "hours")) {
+    const d = Number(/-two-d(\d)-\d+$/.exec(x.item)![1]);
+    perDay.set(d, (perDay.get(d) ?? new Set()).add(x.item));
+  }
+  assert.deepEqual([1, 2, 3].map((d) => perDay.get(d)?.size ?? 0), [2, 2, 2], "two named items per day within a cap of six");
+  delete process.env.PLACES_LOOKUPS_PER_DRAFT;
 });

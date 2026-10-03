@@ -32,13 +32,18 @@ import {
   hotelCache,
   itineraryItems,
   optimizerRuns,
+  placeFacts,
   planOptionSets,
+  providerServices,
+  serviceCategories,
   trips,
 } from "@shared/schema";
 import {
   WHERE_TO_STAY_MIN_DAYS,
   distinguishingReasons,
   hotelsByNeighborhood,
+  orderStaysByOrigin,
+  topWonOnTieBreak,
   rankStayNeighborhoods,
   readStoredStayRanking,
   type RankedStayNeighborhood,
@@ -53,6 +58,7 @@ import {
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { loadMatrixReader } from "./travel-time-matrix.service";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
+import { rankFactsByOrigin } from "./upsell-engine.service";
 import {
   OptionSetError,
   addOption,
@@ -106,20 +112,82 @@ async function hasPaidOptimizerRun(tripId: string): Promise<boolean> {
   return !!row;
 }
 
-async function cityNeighborhoodRows(city: string): Promise<StayNeighborhood[]> {
+async function cityNeighborhoodRows(city: string): Promise<Array<StayNeighborhood & { description: string | null }>> {
   const rows = await db
-    .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name, lat: cityNeighborhoods.centroidLat, lng: cityNeighborhoods.centroidLng })
+    .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name, lat: cityNeighborhoods.centroidLat, lng: cityNeighborhoods.centroidLng, description: cityNeighborhoods.description })
     .from(cityNeighborhoods)
     .where(sql`lower(${cityNeighborhoods.city}) = lower(${city})`)
     .orderBy(asc(cityNeighborhoods.slug));
   return rows
-    .map((r) => ({ slug: r.slug, name: r.name, lat: Number(r.lat), lng: Number(r.lng) }))
+    .map((r) => ({ slug: r.slug, name: r.name, lat: Number(r.lat), lng: Number(r.lng), description: r.description ?? null }))
     .filter((n) => Number.isFinite(n.lat) && Number.isFinite(n.lng));
+}
+
+/**
+ * R-x (surface step 3): each ranked neighbourhood's one line. A registry `neighbourhood` fact wins —
+ * a `description` fact under need `neighbourhood`, keyed by the neighbourhood's slug or name,
+ * unexpired and not superseded, best origin first (`rankFactsByOrigin`, the one ranker) — else the
+ * spine's own `city_neighborhoods.description`. Neither ⇒ null, never an invented line (§13).
+ */
+async function neighbourhoodOneLiners(
+  ranked: ReadonlyArray<{ slug: string; name: string }>,
+  spine: ReadonlyArray<{ slug: string; description: string | null }>,
+): Promise<Map<string, { text: string; source: "registry" | "spine" }>> {
+  const out = new Map<string, { text: string; source: "registry" | "spine" }>();
+  if (!ranked.length) return out;
+  const keys = ranked.flatMap((r) => [r.slug.toLowerCase(), r.name.toLowerCase()]);
+  let rows: Array<typeof placeFacts.$inferSelect> = [];
+  try {
+    rows = await db
+      .select()
+      .from(placeFacts)
+      .where(
+        and(
+          eq(placeFacts.need, "neighbourhood"),
+          eq(placeFacts.factType, "description"),
+          isNull(placeFacts.supersededBy),
+          sql`lower(${placeFacts.placeRef}) IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`,
+          sql`(${placeFacts.expiresAt} IS NULL OR ${placeFacts.expiresAt} > now())`,
+        ),
+      );
+  } catch (err) {
+    console.error("[where-to-stay] neighbourhood facts read failed:", (err as Error)?.message ?? err);
+  }
+  for (const r of ranked) {
+    const mine = rows.filter((f) => [r.slug.toLowerCase(), r.name.toLowerCase()].includes(f.placeRef.toLowerCase()));
+    const best = rankFactsByOrigin(mine)[0];
+    const text = typeof (best?.value as any)?.text === "string" ? ((best!.value as any).text as string).trim() : "";
+    if (text) {
+      out.set(r.slug, { text, source: "registry" });
+      continue;
+    }
+    const d = spine.find((n) => n.slug === r.slug)?.description?.trim();
+    if (d) out.set(r.slug, { text: d, source: "spine" });
+  }
+  return out;
 }
 
 /** Our own inventory for a city, located rows only: census hotel anchors + affiliate lodging listings. */
 async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number; lng: number }>> {
-  const [cache, affiliate] = await Promise.all([
+  const [platform, cache, affiliate] = await Promise.all([
+    // R-o: stays LISTED ON TRAVELOURE — the same public read gate every listing surface uses
+    // (approved + active), in the accommodation category, in this city, with a confirmed pin.
+    db
+      .select({ id: providerServices.id, name: providerServices.serviceName, lat: providerServices.latitude, lng: providerServices.longitude })
+      .from(providerServices)
+      .innerJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+      .where(
+        and(
+          eq(serviceCategories.categoryKey, "accommodation"),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+          ilike(providerServices.city, city),
+          isNotNull(providerServices.latitude),
+          isNotNull(providerServices.longitude),
+        ),
+      )
+      .orderBy(asc(providerServices.id))
+      .limit(200),
     db
       .select({ id: hotelCache.id, name: hotelCache.name, lat: hotelCache.latitude, lng: hotelCache.longitude, starRating: hotelCache.starRating })
       .from(hotelCache)
@@ -134,6 +202,12 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
       .limit(500),
   ]);
   const out: Array<StayHotel & { lat: number; lng: number }> = [];
+  for (const p of platform) {
+    const lat = Number(p.lat);
+    const lng = Number(p.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    out.push({ kind: "platform", id: p.id, name: p.name, starRating: null, lat, lng });
+  }
   for (const h of cache) {
     const lat = Number(h.lat);
     const lng = Number(h.lng);
@@ -163,9 +237,11 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const days = dayCount(trip.startDate, trip.endDate);
   if (days === null || days < WHERE_TO_STAY_MIN_DAYS) return empty("single_day", city);
 
+  // Surface step 3: "decided" is asked FIRST, so a Skip on the pre-draft AnchorPanel (a closed
+  // lodging set) keeps the panel away on reload, before and after a draft alike.
+  if (await stayDecided(tripId)) return empty("decided", city);
   const items = await fitItems(tripId);
   if (!items.length) return empty("no_draft", city);
-  if (await stayDecided(tripId)) return empty("decided", city);
 
   const byDay = new Map<number, StayDay>();
   for (const it of items) {
@@ -205,13 +281,23 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   }
   const hotels = city ? await cityHotels(city) : [];
   const placed = hotelsByNeighborhood(hotels, neighborhoods, ranked.map((r) => r.slug));
+  const oneLiners = await neighbourhoodOneLiners(ranked, neighborhoods);
+  const tied = topWonOnTieBreak(ranked);
   return {
     eligible: true,
     city,
     basis,
     hotelsAvailable: hotels.length > 0,
     ...(ranked.length === 0 ? { unranked: neighborhoods.length === 0 ? ("no_neighborhoods" as const) : ("no_located_items" as const) } : {}),
-    neighborhoods: distinguishingReasons(ranked).map((r) => ({ slug: r.slug, name: r.name, reason: r.reason, hotels: placed[r.slug] ?? [] })),
+    neighborhoods: distinguishingReasons(ranked).map((r, i) => ({
+      slug: r.slug,
+      name: r.name,
+      reason: r.reason,
+      // R-o: within this neighbourhood's band, platform-listed stays first.
+      hotels: orderStaysByOrigin(placed[r.slug] ?? []),
+      oneLiner: oneLiners.get(r.slug) ?? null,
+      ...(i === 0 && tied ? { tieBreak: true as const } : {}),
+    })),
   };
 }
 
@@ -243,7 +329,7 @@ async function storeStayRanking(draftId: string, value: StoredStayRanking): Prom
 }
 
 export type StayBinding =
-  | { kind: "stay_here"; hotel: { kind: "hotel_cache" | "affiliate"; id: string } }
+  | { kind: "stay_here"; hotel: { kind: "platform" | "hotel_cache" | "affiliate"; id: string } }
   | { kind: "own"; hotelName?: string | null; neighborhoodSlug?: string | null }
   | { kind: "skip" };
 
@@ -267,7 +353,26 @@ export async function bindWhereToStay(
   if (binding.kind === "stay_here") {
     const [trip] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
     const city = (trip?.destination ?? "").split(",")[0].trim();
-    if (binding.hotel.kind === "hotel_cache") {
+    if (binding.hotel.kind === "platform") {
+      // R-o: a platform-listed stay — the SAME gate the panel lists by (approved, active,
+      // accommodation, this city). The option is the listing itself (`addOption`'s listing source).
+      const [row] = await db
+        .select({ id: providerServices.id })
+        .from(providerServices)
+        .innerJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+        .where(
+          and(
+            eq(providerServices.id, binding.hotel.id),
+            eq(serviceCategories.categoryKey, "accommodation"),
+            eq(providerServices.approvalStatus, "approved"),
+            eq(providerServices.status, "active"),
+            ilike(providerServices.city, city),
+          ),
+        )
+        .limit(1);
+      if (!city || !row) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
+      source = { kind: "listing", providerServiceId: row.id };
+    } else if (binding.hotel.kind === "hotel_cache") {
       // Only a hotel in this plan's own city (the panel's own inventory rule).
       const [h] = await db
         .select({ id: hotelCache.id })

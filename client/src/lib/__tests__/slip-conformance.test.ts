@@ -141,10 +141,12 @@ const ALLOWED_ADDITIONS = {
   // A1 · the Trips frame (ledger `2026-09-29-a1-trips-frame`): the empty Trip's anchor question
   // card carries ONE existing rail each, owner only — the services browse for a stay, or the day-1
   // add control for a fixed dated item (product map §M7).
-  "slip-anchor-browse-stays": "A1 — lodging-first Trip: services browse pre-filtered to accommodation",
+  // Surface step 3 (ledger `2026-10-03-surface-step3-anchor-panel`): the empty Trip's question card
+  // became the ONE `AnchorPanel` (`components/plan/AnchorPanel.tsx`, outside this inventory's file
+  // set). `slip-anchor-question` and `slip-anchor-fallback` live there now, pinned by
+  // `anchor-panel.test.tsx`; the "Browse places to stay" link is gone — the brief's three answers
+  // are Add places I'm considering / I've got lodging sorted / Skip for now.
   "slip-anchor-add-fixed": "A1 — schedule-first Trip: the day-1 add control, as the delegate note uses",
-  "slip-anchor-fallback": "A1 — says out loud that a NULL schedule switch was read as a plain trip (§13)",
-  "slip-anchor-question": "A1 — the empty Trip's first question, in place of \"No items\" (§M2/§M7)",
   // A3b · comparisons on the slip (ledger `2026-09-29-a3b-option-sets-slip`): the open sets sit
   // above the days (golden path Step 2); the controls themselves live in SlipOptionSets.tsx.
   "slip-option-sets": "A3b — the plan's open comparisons and the lodging entry, above the day list",

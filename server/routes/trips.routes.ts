@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { setItemLock } from '../services/item-lock.service';
+import { platformCarFits } from '../services/airport-leg.service';
 import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -1687,6 +1688,23 @@ router.post("/api/trips/:tripId/flight-lookup", isAuthenticated, async (req, res
   if (result.kind === "invalid") return res.status(400).json(result);
   if (result.kind === "cap_reached") return res.status(429).json(result);
   return res.json(result);
+});
+
+/**
+ * R-i (surface step 3): does a platform private car fit this plan's party? The airport ↔ lodging
+ * `LegRow` offers that mode only when this says so. Read gate: the plan's logistics readers.
+ */
+router.get("/api/trips/:tripId/airport-leg", isAuthenticated, async (req, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ message: "Not authenticated" });
+  const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+  if (denied) return res.status(denied.status).json({ message: denied.message });
+  try {
+    res.json({ platformCarFits: await platformCarFits(req.params.tripId) });
+  } catch (err) {
+    console.error("[airport-leg] read failed:", err);
+    res.status(500).json({ message: "Couldn't read transport for this plan" });
+  }
 });
 
 router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
