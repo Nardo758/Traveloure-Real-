@@ -66,6 +66,8 @@ export interface FeeBandRequirement {
 
 export const TRAVELER_SERVICE_FEE_BAND = "traveler_service_fee";
 export const PROVIDER_RAILS_BAND = "provider_rails";
+/** Governs provider commission while active_provider_commission_policy is beta_flat. */
+export const BETA_FLAT_BAND = "beta_flat";
 export const PROVIDER_LIMITED_BAND = "limited";
 export const PROVIDER_MODERATE_BAND = "moderate";
 export const PROVIDER_COMMERCIAL_BAND = "commercial";
@@ -152,6 +154,13 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
     required: true,
     owner: "fee-resolution.service / pricing.routes",
     fallback: failLoud("resolveProviderRate rails branch (fee-resolution.service) and GET /api/pricing"),
+  },
+  {
+    bandKey: BETA_FLAT_BAND,
+    expectedType: "percent",
+    required: true,
+    owner: "fee-resolution.service provider beta policy",
+    fallback: failLoud("resolveProviderRate when active_provider_commission_policy is beta_flat"),
   },
   ...([
     PROVIDER_LIMITED_BAND,

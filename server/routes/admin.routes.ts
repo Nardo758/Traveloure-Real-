@@ -27,6 +27,12 @@ import {
   feeBandMaxAmountClearRuling,
   feeBandPatchBodySchema,
 } from "../services/fee-band-admin.service";
+import { EXPERT_STANDARD_BAND } from "../services/fee-band-requirements";
+import {
+  FEE_POLICY_SETTING_KEYS,
+  feeBandPatchNeedsConfirm,
+  percentBandRateInUnitInterval,
+} from "@shared/fee-policy";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -134,6 +140,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
   serviceCategorySlugToFeeCategory,
+  clearExpertSplitCache,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
@@ -7575,11 +7582,14 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (!parsedBody.success) {
         return res.status(400).json({ error: "Invalid body", errors: parsedBody.error.errors });
       }
-      const { defaultRate, minRate, maxRate, maxAmount, displayName, description, isActive } = parsedBody.data;
+      const { defaultRate, minRate, maxRate, maxAmount, displayName, description, isActive, confirm } = parsedBody.data;
+      if (feeBandPatchNeedsConfirm(parsedBody.data) && confirm !== true) {
+        return res.status(400).json({ error: "Confirm the change before saving", code: "confirmation_required" });
+      }
 
       // Fetch current row for audit + validation context.
       const current = await db.execute(sql`
-        SELECT band_key, CAST(default_rate AS FLOAT) AS default_rate,
+        SELECT band_key, rate_type, CAST(default_rate AS FLOAT) AS default_rate,
                CAST(min_rate AS FLOAT) AS min_rate, CAST(max_rate AS FLOAT) AS max_rate,
                CAST(max_amount AS FLOAT) AS max_amount, is_active
         FROM fee_bands WHERE band_key = ${bandKey} LIMIT 1
@@ -7640,6 +7650,13 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (nextMax !== null && nextDefault > nextMax) {
         return res.status(400).json({ error: "default_rate above max_rate", nextDefault, nextMax });
       }
+      if (before.rate_type === "percent") {
+        for (const [field, value] of [["defaultRate", defaultRate], ["minRate", minRate], ["maxRate", maxRate]] as const) {
+          if (typeof value === "number" && !percentBandRateInUnitInterval(value)) {
+            return res.status(400).json({ error: "Percent bands store a fraction from 0 to 1", field, code: "percent_out_of_range" });
+          }
+        }
+      }
 
       await db.execute(sql`
         UPDATE fee_bands
@@ -7655,6 +7672,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           updated_at   = NOW()
         WHERE band_key = ${bandKey}
       `);
+      if (bandKey === EXPERT_STANDARD_BAND) clearExpertSplitCache();
 
       // ── The platform Booking Concierge listing's price is EDITABLE FROM THIS PANEL ──────
       // Ledger `2026-09-21-platform-concierge-price-editable`. Migration 313 seeded this band AND
@@ -7892,6 +7910,9 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       const { settingValue } = req.body;
       if (!settingKey) return res.status(400).json({ error: "Invalid settingKey" });
       if (typeof settingValue !== "string") return res.status(400).json({ error: "settingValue must be a string" });
+      if ((FEE_POLICY_SETTING_KEYS as readonly string[]).includes(settingKey) && req.body?.confirm !== true) {
+        return res.status(400).json({ error: "Confirm the change before saving", code: "confirmation_required" });
+      }
 
       // Boolean flags from /admin/system must be exactly "true"/"false" so the
       // enforcement middleware never misreads a junk value.

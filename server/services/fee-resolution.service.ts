@@ -8,8 +8,9 @@
  * band could not change what a service charged — ruling 32's defeated proof).
  *
  * D1 (structure C, "split & disclosed"):
- *   · Provider commission resolves via `service_categories.commission_band_key` → `fee_bands`
- *     (limited .12 | moderate .08 | commercial .06 | premium .04).
+ *   · Provider commission follows `active_provider_commission_policy`. `beta_flat` (and a
+ *     missing policy) reads the `beta_flat` band. `tiered` reads
+ *     `service_categories.commission_band_key`. An unknown policy throws.
  *   · `traveler_service_fee` 0.07, capped by the band's own `max_amount` ($25) — the cap is band
  *     data, enforced here, never a constant in code (ruling 32).
  *   · `provider_rails` 0.08 resolves as **min(category band, rails)** so rails can never exceed a
@@ -26,7 +27,9 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import type { FeeRateSource } from "@shared/schema";
+import { providerCommissionPolicy, travelerServiceFeeAmount } from "@shared/fee-policy";
 import {
+  BETA_FLAT_BAND,
   CONCIERGE_AI_TASK_BAND,
   CONCIERGE_BOOKING_CAP_BAND,
   CONCIERGE_BOOKING_PERCENT_BAND,
@@ -42,6 +45,7 @@ import {
   TRAVELER_SERVICE_FEE_BAND,
 } from "./fee-band-requirements";
 export {
+  BETA_FLAT_BAND,
   CONCIERGE_AI_TASK_BAND,
   CONCIERGE_BOOKING_CAP_BAND,
   CONCIERGE_BOOKING_PERCENT_BAND,
@@ -172,8 +176,11 @@ export interface ResolvedProviderRate {
  *      case. It wins, but ONLY through here, and it is stamped `rate_source='entity_override'` with
  *      no `band_id`, so the ledger never attributes an overridden rate to a band that did not
  *      produce it.
- *   2. Category band (D1), optionally min()'d with `provider_rails` when the booking is rails.
- * There is no step 3. A category with no band is unreachable by construction (R1+R2) and throws.
+ *   2. While the provider policy is `beta_flat`, the `beta_flat` band. A category is still
+ *      required (the line must name a real category) but its tier key is not the rate.
+ *   3. While the policy is `tiered`, the category band, optionally min()'d with `provider_rails`.
+ * An unknown policy throws. A tiered category with no band throws. There is no expert_standard
+ * fallback on this path.
  */
 export async function resolveProviderRate(input: ProviderRateInput): Promise<ResolvedProviderRate> {
   const { categoryId, providerId, isRails = false } = input;
@@ -201,7 +208,6 @@ export async function resolveProviderRate(input: ProviderRateInput): Promise<Res
     }
   }
 
-  // ── 2. Category band (D1) ──────────────────────────────────────────────────────────────────
   if (!categoryId) {
     throw new BandResolutionError(
       "(none)",
@@ -211,23 +217,42 @@ export async function resolveProviderRate(input: ProviderRateInput): Promise<Res
   const catRes = await db.execute(sql`
     SELECT commission_band_key FROM service_categories WHERE id = ${categoryId} LIMIT 1
   `);
-  const bandKey = (catRes.rows?.[0] as { commission_band_key: string | null } | undefined)?.commission_band_key;
-  if (!bandKey) {
-    // Unreachable by construction after R1+R2 (backfill + NOT NULL + create/activate validation).
-    // If this fires, the guard has been breached — which is exactly what fail-loud is for.
+  const categoryRow = catRes.rows?.[0] as { commission_band_key: string | null } | undefined;
+  if (!categoryRow) {
     throw new BandResolutionError(
-      "(category has no band)",
-      `service_categories.commission_band_key is empty for categoryId=${categoryId} — R2 makes this state unreachable, so this is a breached guard, not a fallback case`,
+      "(none)",
+      `no service_categories row for categoryId=${categoryId}`,
     );
   }
-  const categoryBand = await requireBand(bandKey);
+  const policy = providerCommissionPolicy(await readProviderCommissionPolicy());
+  if (policy === "unknown") {
+    throw new BandResolutionError(
+      "(unknown policy)",
+      "active_provider_commission_policy is neither beta_flat nor tiered — refusing to price the line",
+    );
+  }
 
-  // ── 2b. Rails: min(category band, rails), plus the traveler-fee waiver (D1) ─────────────────
+  // Beta: the governing band is beta_flat. A category whose tier key is empty still prices,
+  // because the tier key is not the rate while this policy is on.
+  let governing: BandRow;
+  if (policy === "beta_flat") {
+    governing = await requireBand(BETA_FLAT_BAND);
+  } else {
+    const bandKey = categoryRow.commission_band_key;
+    if (!bandKey) {
+      throw new BandResolutionError(
+        "(category has no band)",
+        `service_categories.commission_band_key is empty for categoryId=${categoryId} — under tiered policy this is a breached guard, not a fallback case`,
+      );
+    }
+    governing = await requireBand(bandKey);
+  }
+
   if (isRails) {
     const railsBand = await requireBand(PROVIDER_RAILS_BAND);
-    // min() so rails NEVER raises a premium provider's rate: a 0.04 provider stays at 0.04.
-    const railsWins = railsBand.rate < categoryBand.rate;
-    const chosen = railsWins ? railsBand : categoryBand;
+    // min() so rails NEVER raises the governing rate.
+    const railsWins = railsBand.rate < governing.rate;
+    const chosen = railsWins ? railsBand : governing;
     return {
       platformRate: chosen.rate,
       providerShareRate: 1 - chosen.rate,
@@ -235,19 +260,29 @@ export async function resolveProviderRate(input: ProviderRateInput): Promise<Res
       bandKey: chosen.bandKey,
       rateSource: railsWins ? "rails" : "band",
       railsApplied: true,
-      travelerFeeWaived: true, // the provider's quotable pitch: "book through my link, skip the service fee"
+      travelerFeeWaived: true,
     };
   }
 
   return {
-    platformRate: categoryBand.rate,
-    providerShareRate: 1 - categoryBand.rate,
-    bandId: categoryBand.id,
-    bandKey: categoryBand.bandKey,
+    platformRate: governing.rate,
+    providerShareRate: 1 - governing.rate,
+    bandId: governing.id,
+    bandKey: governing.bandKey,
     rateSource: "band",
     railsApplied: false,
     travelerFeeWaived: false,
   };
+}
+
+async function readProviderCommissionPolicy(): Promise<string | null> {
+  const res = await db.execute(sql`
+    SELECT setting_value FROM platform_settings
+     WHERE setting_key = 'active_provider_commission_policy'
+     LIMIT 1
+  `);
+  const value = (res.rows?.[0] as { setting_value?: unknown } | undefined)?.setting_value;
+  return typeof value === "string" ? value : null;
 }
 
 export interface ResolvedTravelerFee {
@@ -284,15 +319,14 @@ export async function resolveTravelerServiceFee(
       waived: true,
     };
   }
-  const uncapped = round2(subtotal * band.rate);
-  const capped = band.maxAmount !== null && uncapped > band.maxAmount ? band.maxAmount : uncapped;
+  const priced = travelerServiceFeeAmount(subtotal, band.rate, band.maxAmount);
   return {
-    amount: capped,
+    amount: priced.amount,
     rate: band.rate,
     bandId: band.id,
     bandKey: band.bandKey,
     rateSource: "band",
-    capApplied: capped !== uncapped,
+    capApplied: priced.capApplied,
     waived: false,
   };
 }
