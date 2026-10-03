@@ -32,3 +32,28 @@ jobs:
         # Literal globs (not a find/mapfile list) so scripts/check-test-files-wired.cjs can see these
         # files are run. Both depths that hold tests today are named; a deeper directory must be added here.
         run: npx tsx --test --test-concurrency=1 server/automations/__tests__/*.test.ts server/automations/*/__tests__/*.test.ts
+
+  signup-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      RUN_AUTH_JOURNEY_DB_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start isolated PostgreSQL
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Set up isolated development schema
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      - name: Exercise randomized signup HTTP, outbox and concurrency evidence without real email
+        # No web server/drain is booted, no live Resend key, and the only transport is intercepted.
+        run: npx tsx --test --test-concurrency=1 server/__tests__/signup-journey.db.test.ts

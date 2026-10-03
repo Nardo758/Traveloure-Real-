@@ -7,7 +7,7 @@ import {
   wrapEmailProviderTransport,
 } from "../producer-index";
 
-test("messaging producer definitions register ten unique active boundaries", () => {
+test("messaging producer definitions register fourteen unique active boundaries", () => {
   const registry = createAutomationRegistry(producerAutomations);
   assert.deepEqual(Array.from(registry.byId.keys()), [
     "messaging.auth-password-reset-email",
@@ -20,6 +20,10 @@ test("messaging producer definitions register ten unique active boundaries", () 
     "messaging.activity-email",
     "messaging.guest-invite-send",
     "messaging.email-provider-transport",
+    "messaging.verify-reminder-1h",
+    "messaging.verify-reminder-1d",
+    "messaging.verify-reminder-3d",
+    "messaging.already-have-account",
   ]);
   assert.equal(producerAutomations.every((node) => node.trigger.kind === "event"), true);
   const transport = producerAutomations.find((node) => node.id === "messaging.email-provider-transport")!;

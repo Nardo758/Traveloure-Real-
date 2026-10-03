@@ -2,9 +2,12 @@ import type { Express } from "express";
 import { z } from "zod";
 import crypto from "crypto";
 import { db } from "../../db";
-import { users, passwordResetTokens, emailVerificationTokens } from "@shared/models/auth";
+import { users, passwordResetTokens } from "@shared/models/auth";
 import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
-import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
+import { sendPasswordResetEmail, getAppBaseUrl } from "../../services/email.service";
+import { completeSignupVerification, issueSignupVerification, registerSignupAccount } from "../../services/signup-journey.service";
+import { SIGNUP_PUBLIC_RESPONSE } from "../../services/signup-email-payloads";
+import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
@@ -52,8 +55,9 @@ const registerSchema = z.object({
   // Cap password length too: bcrypt only reads the first 72 bytes, and an unbounded
   // password is a cheap CPU-DoS vector (hashing a multi-MB string). 8..200 is ample.
   password: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
-  firstName: z.string().trim().min(1, "First name is required").max(100, "First name is too long"),
-  lastName: z.string().trim().min(1, "Last name is required").max(100, "Last name is too long"),
+  firstName: z.string().trim().max(100, "First name is too long").optional().default(""),
+  lastName: z.string().trim().max(100, "Last name is too long").optional().default(""),
+  language: z.string().trim().max(35).optional(),
   userType: z.enum(validUserTypes).optional().default("user"), // accepted but ignored server-side
 });
 
@@ -86,100 +90,41 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
-      const { email, password, firstName, lastName } = validation.data;
+      const { email, password, firstName, lastName, language } = validation.data;
       // userType from request body is intentionally ignored — all new accounts
       // start as role='user'. Role upgrades happen via approved application forms.
 
-      // Check if user already exists
-      const existingUser = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, email.toLowerCase()))
-        .then((r) => r[0]);
-
-      if (existingUser) {
-        return res.status(400).json({
-          message: "An account with this email already exists",
-        });
-      }
-
-      // Hash password
+      // Always pay the hash cost, irrespective of whether the account exists.
       const hashedPassword = await hashPassword(password);
 
-      // Create user with terms accepted at registration time
-      const [newUser] = await db
-        .insert(users)
-        .values({
+      // Account + verification token + outbox rows commit atomically.
+      const result = await registerSignupAccount({
           email: email.toLowerCase(),
           password: hashedPassword,
           firstName,
           lastName,
-          role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
-          authProvider: "email",
+          ...(language ? { preferences: { settings: { language } } } : {}),
           termsAcceptedAt: new Date(),
           privacyAcceptedAt: new Date(),
           termsVersion: CURRENT_TERMS_VERSION,
           privacyVersion: CURRENT_PRIVACY_VERSION,
-        })
-        .returning();
+        }, crypto.randomUUID());
 
       // Fire-and-forget: T1 funnel event (includes paid-acquisition attribution)
-      trackFunnelEvent({
-        userId: newUser.id,
+      if (result.createdUserId) trackFunnelEvent({
+        userId: result.createdUserId,
         eventType: "account_created",
         funnelStage: "T1_ACCOUNT_CREATED",
         source: (req.body.source as string) || "direct",
         refToken: (req.body.refToken as string) || undefined,
       }).catch(() => { /* fire-and-forget funnel event — never blocks signup */ });
 
-      // Fire-and-forget verification email. Failure here MUST NOT block signup —
-      // the user can request a resend later. RESEND_API_KEY absence is logged
-      // inside sendEmailVerificationEmail.
-      issueAndSendVerification(newUser.id, newUser.email!, newUser.firstName ?? null).catch(
-        (err) => console.error("[auth/register] verification email issue failed:", err)
+      // No conditional session cookie, user object or redirect: those would
+      // reveal account existence despite neutral copy.
+      if (result.outboxId !== null) deliverQueuedEmail(result.outboxId).catch(
+        (err) => console.error("[auth/register] outbox delivery deferred:", err)
       );
-
-      // Fire-and-forget welcome email. Sent after verification so the two emails
-      // don't race into the same inbox second. Failure is non-fatal.
-      sendWelcomeEmail({ toEmail: newUser.email!, firstName: newUser.firstName ?? null }).catch(
-        (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
-      );
-
-      // Log the user in — regenerate the session ID first to prevent fixation.
-      const sessionUser = {
-        claims: {
-          sub: newUser.id,
-          email: newUser.email,
-          first_name: newUser.firstName,
-          last_name: newUser.lastName,
-          role: newUser.role,
-        },
-        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
-      };
-
-      req.session.regenerate((regenErr) => {
-        if (regenErr) {
-          console.error("Session regeneration error after registration:", regenErr);
-          return res.status(500).json({ message: "Failed to create session" });
-        }
-        (req as any).login(sessionUser, (err: any) => {
-          if (err) {
-            console.error("Login error after registration:", err);
-            return res.status(500).json({ message: "Failed to create session" });
-          }
-          
-          res.status(201).json({
-            message: "Account created successfully",
-            user: {
-              id: newUser.id,
-              email: newUser.email,
-              firstName: newUser.firstName,
-              lastName: newUser.lastName,
-              role: newUser.role,
-            },
-          });
-        });
-      });
+      res.status(201).json(SIGNUP_PUBLIC_RESPONSE);
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Failed to create account" });
@@ -438,22 +383,6 @@ export function setupEmailAuth(app: Express): void {
   // Same token shape + storage pattern as the password-reset flow: raw token
   // sent via email, only the sha256 hash persisted, single-use + TTL.
 
-  const VERIFY_TOKEN_TTL_HOURS = 24;
-
-  async function issueAndSendVerification(userId: string, email: string, firstName: string | null) {
-    const raw = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashToken(raw);
-    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000);
-    await db.insert(emailVerificationTokens).values({ userId, tokenHash, expiresAt });
-    const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
-    await sendEmailVerificationEmail({
-      toEmail: email,
-      firstName,
-      verifyUrl,
-      expiresInHours: VERIFY_TOKEN_TTL_HOURS,
-    });
-  }
-
   // POST /api/auth/send-verification — authenticated; (re)issues a token to the
   // caller's email. Used by the "Resend verification email" UI button.
   app.post("/api/auth/send-verification", async (req, res) => {
@@ -469,16 +398,8 @@ export function setupEmailAuth(app: Express): void {
       if (user.emailVerified) {
         return res.status(200).json({ message: "Email already verified." });
       }
-      // Burn any prior unused tokens for this user — only the newest link
-      // should be valid.
-      await db
-        .update(emailVerificationTokens)
-        .set({ usedAt: new Date() })
-        .where(and(
-          eq(emailVerificationTokens.userId, userId),
-          isNull(emailVerificationTokens.usedAt),
-        ));
-      await issueAndSendVerification(userId, user.email, user.firstName ?? null);
+      const outboxId = await issueSignupVerification(userId);
+      await deliverQueuedEmail(outboxId);
       return res.status(200).json({
         message: "Verification email sent. Check your inbox.",
       });
@@ -503,27 +424,15 @@ export function setupEmailAuth(app: Express): void {
           errors: parsed.error.errors,
         });
       }
-      const tokenHash = hashToken(parsed.data.token);
-      const now = new Date();
-      const tokenRow = await db
-        .select()
-        .from(emailVerificationTokens)
-        .where(and(
-          eq(emailVerificationTokens.tokenHash, tokenHash),
-          isNull(emailVerificationTokens.usedAt),
-          gt(emailVerificationTokens.expiresAt, now),
-        ))
-        .then((r) => r[0]);
-      if (!tokenRow) {
+      const result = await completeSignupVerification(parsed.data.token);
+      if (!result.verified) {
         return res.status(400).json({
           message: "This verification link is invalid or has expired. Please request a new one.",
         });
       }
-      await db.update(users).set({ emailVerified: now }).where(eq(users.id, tokenRow.userId));
-      await db
-        .update(emailVerificationTokens)
-        .set({ usedAt: now })
-        .where(eq(emailVerificationTokens.id, tokenRow.id));
+      deliverQueuedEmail(result.outboxId).catch(
+        (err) => console.error("[auth/verify-email] welcome delivery deferred:", err)
+      );
       return res.json({ message: "Email verified successfully." });
     } catch (error) {
       console.error("Verify email error:", error);

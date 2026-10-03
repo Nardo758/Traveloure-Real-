@@ -148,7 +148,7 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
     // Fall through: still attempt delivery so at least this attempt has a chance.
   }
 
-  await attemptDelivery(outboxId, params, { attemptCount: 0, maxAttempts: 6 });
+  await attemptDelivery(outboxId, params, { attemptCount: 0, maxAttempts: 6 }, params.metadata);
 
   return outboxId;
 }
@@ -179,7 +179,8 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
  * are therefore invisible to this CTE until their lease expires — preventing
  * concurrent delivery.
  *
- * Never throws.
+ * Signup guard/persistence failures propagate; the existing drain catches them
+ * and leaves the processing lease recoverable rather than sending unguarded.
  *
  * RETURN SHAPE (lane: internal-jobs-hardening, L4): `{ drained }` — the number of rows this pass
  * claimed and attempted. It used to return void, which the internal-job endpoint could not tell
@@ -205,6 +206,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     reply_to:      string | null;
     attempt_count: number;
     max_attempts:  number;
+    metadata:      Record<string, unknown>;
   };
 
   let claimed: ClaimedRow[];
@@ -235,7 +237,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       FROM   candidates c
       WHERE  o.id = c.id
       RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
-                o.from_address, o.reply_to, o.attempt_count, o.max_attempts
+                 o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.metadata
     `);
     claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
@@ -257,7 +259,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     await attemptDelivery(row.id, params, {
       attemptCount: row.attempt_count,
       maxAttempts:  row.max_attempts,
-    });
+    }, row.metadata);
   }
 
   return { drained: claimed.length };
@@ -303,8 +305,27 @@ export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainO
 async function attemptDelivery(
   outboxId: number | null,
   params: SendEmailParams,
-  current: { attemptCount: number; maxAttempts: number }
+  current: { attemptCount: number; maxAttempts: number },
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
+  if (outboxId !== null) {
+    if (metadata?.signupJourney === true) {
+      const { guardSignupDelivery } = await import("./signup-journey.service");
+      await guardSignupDelivery(
+        outboxId, metadata as import("./signup-journey.service").SignupMetadata,
+        (options) => attemptDeliveryImpl(outboxId, { ...params, ...options }, current),
+      );
+      return;
+    }
+  }
+  await attemptDeliveryImpl(outboxId, params, current);
+}
+
+async function attemptDeliveryImpl(
+  outboxId: number | null,
+  params: SendEmailParams,
+  current: { attemptCount: number; maxAttempts: number },
+): Promise<SendEmailResult> {
   const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
   const maxAttempts  = current.maxAttempts;
   const toStr        = Array.isArray(params.to) ? params.to.join(", ") : params.to;
@@ -325,7 +346,7 @@ async function attemptDelivery(
     result = { ok: false, error: message };
   }
 
-  if (outboxId === null) return; // no row to update
+  if (outboxId === null) return result; // no row to update
 
   try {
     if (result.ok) {
@@ -379,6 +400,27 @@ async function attemptDelivery(
       "[email-outbox] failed to update outbox row after delivery attempt"
     );
   }
+  return result;
+}
+
+/** Immediate delivery of a committed scheduled row, through the SAME claim/send pipeline. */
+export async function deliverQueuedEmail(outboxId: number): Promise<void> {
+  const claimed = await db.execute(sql`
+    UPDATE email_outbox SET status='processing', retry_after=NOW() + INTERVAL '10 minutes', updated_at=NOW()
+    WHERE id=${outboxId} AND status IN ('pending','failed')
+      AND (retry_after IS NULL OR retry_after <= NOW())
+    RETURNING id,to_email,subject,html,text_body,reply_to,attempt_count,max_attempts,metadata
+  `);
+  const row = claimed.rows[0] as {
+    id: number; to_email: string; subject: string; html: string; text_body: string | null;
+    reply_to: string | null; attempt_count: number; max_attempts: number; metadata: Record<string, unknown>;
+  } | undefined;
+  if (!row) return;
+  await attemptDelivery(row.id, {
+    to: row.to_email, subject: row.subject, html: row.html,
+    ...(row.text_body ? { text: row.text_body } : {}),
+    ...(row.reply_to ? { replyTo: row.reply_to } : {}),
+  }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts }, row.metadata);
 }
 
 // ── Booking confirmation shortcut ─────────────────────────────────────────────

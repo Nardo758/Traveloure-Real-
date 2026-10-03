@@ -22,8 +22,6 @@ import { Resend } from "resend";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { dispatchMessagingProducer, wrapEmailProviderTransport } from "../automations/messaging/producer-index";
 import { authPasswordResetEmailAutomation } from "../automations/messaging/auth-password-reset-email";
-import { authVerificationEmailAutomation } from "../automations/messaging/auth-verification-email";
-import { authWelcomeEmailAutomation } from "../automations/messaging/auth-welcome-email";
 import { planDeliveredEmailAutomation } from "../automations/messaging/plan-delivered-email";
 import { planApprovedEmailAutomation } from "../automations/messaging/plan-approved-email";
 import { planChangesRequestedEmailAutomation } from "../automations/messaging/plan-changes-requested-email";
@@ -87,6 +85,10 @@ export interface SendEmailParams {
   replyTo?: string;
   /** Optional files, including vendor coordination calendar invitations. */
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
+  /** Durable outbox key, forwarded to the existing provider's deduplication API. */
+  idempotencyKey?: string;
+  /** Account-security mail must not be suppressed by the general notification switch. */
+  securityCritical?: boolean;
 }
 
 export interface SendEmailResult {
@@ -105,9 +107,10 @@ export interface SendEmailResult {
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   // Admin-controlled kill switch (/admin/system → "Email Notifications").
   // Gates all system notification emails sent through this generic sender.
-  // Auth-critical emails (password reset, email verification) call Resend
-  // directly and are intentionally NOT gated by this flag.
-  const notificationsEnabled = await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
+  // Outbox-backed signup security mail explicitly bypasses this flag.
+  // The existing password-reset sender remains separate until Part 2.
+  const notificationsEnabled = params.securityCritical === true ||
+    await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
   if (!notificationsEnabled) {
     console.log(
       `[email] sendEmail skipped — email_notifications_enabled=false (subject="${params.subject}")`
@@ -143,7 +146,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       ...(params.text ? { text: params.text } : {}),
       replyTo: replyTo,
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
-    });
+    }, params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined);
 
     if (error) {
       console.error("[email] sendEmail Resend error:", {
@@ -699,24 +702,7 @@ interface EmailVerificationParams {
   expiresInHours: number;
 }
 
-export async function sendEmailVerificationEmail(params: EmailVerificationParams): Promise<void> {
-  return dispatchMessagingProducer(
-    authVerificationEmailAutomation,
-    dispatchMessagingEvent,
-    "auth.verification_email",
-    params,
-    {},
-    () => sendEmailVerificationEmailAction(params),
-  );
-}
-
-async function sendEmailVerificationEmailAction(params: EmailVerificationParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.warn("[email] RESEND_API_KEY not set — verification email NOT sent to", params.toEmail);
-    return;
-  }
-
+export function buildEmailVerificationPayload(params: EmailVerificationParams): SendEmailParams {
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -755,15 +741,12 @@ async function sendEmailVerificationEmailAction(params: EmailVerificationParams)
     `If you didn't sign up for Traveloure, you can safely ignore this email.`,
   ].join("\n");
 
-  await client.emails.send({
-    from: getFromAddress(),
+  return {
     to: params.toEmail,
     subject: "Confirm your Traveloure email",
     text,
     html,
-  });
-
-  console.log(`[email] Verification link sent to ${params.toEmail}`);
+  };
 }
 
 // ─── Booking Decline ────────────────────────────────────────────────────────
@@ -1384,29 +1367,15 @@ interface WelcomeEmailParams {
 }
 
 /**
- * Fire-and-forget welcome email sent immediately after a new account is created.
- * Introduces the platform, surfaces the three core actions (plan a trip, browse
- * experts, explore hidden gems), and gives a direct CTA to the dashboard.
- * Safe to call without awaiting — all errors are caught internally.
+ * Compatibility entry for OAuth callers. Never sends directly and never sends
+ * welcome before verified state exists; unverified accounts enter verification.
  */
 export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void> {
-  return dispatchMessagingProducer(
-    authWelcomeEmailAutomation,
-    dispatchMessagingEvent,
-    "auth.welcome_email",
-    params,
-    {},
-    () => sendWelcomeEmailAction(params),
-  );
+  const { ensureWelcomeForEmail } = await import("./signup-journey.service");
+  await ensureWelcomeForEmail(params.toEmail);
 }
 
-async function sendWelcomeEmailAction(params: WelcomeEmailParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping welcome email for", params.toEmail);
-    return;
-  }
-
+export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailParams {
   const firstName = params.firstName?.trim() || null;
   const greeting = firstName ? `Hi ${escHtml(firstName)},` : "Hi there,";
   const baseUrl = getAppBaseUrl();
@@ -1496,18 +1465,11 @@ async function sendWelcomeEmailAction(params: WelcomeEmailParams): Promise<void>
     `Questions? Just reply to this email.`,
   ].join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: `Welcome to Traveloure — let's plan your next adventure`,
-      html,
-      text,
-    });
-    console.log(`[email] Welcome email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Welcome email failed (non-fatal):", err);
-  }
+  return {
+    to: params.toEmail,
+    subject: `Welcome to Traveloure — let's plan your next adventure`,
+    html, text,
+  };
 }
 
 // ─── Payment-failed email ─────────────────────────────────────────────────────

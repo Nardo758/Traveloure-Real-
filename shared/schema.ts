@@ -11926,7 +11926,7 @@ export const emailOutbox = pgTable("email_outbox", {
   textBody:     text("text_body"),
   fromAddress:  text("from_address"),
   replyTo:      text("reply_to"),
-  // pending | sent | failed | dead
+  // pending | processing | sent | failed | dead | cancelled (signup journey)
   status:       varchar("status", { length: 16 }).notNull().default("pending"),
   attemptCount: integer("attempt_count").notNull().default(0),
   maxAttempts:  integer("max_attempts").notNull().default(5),

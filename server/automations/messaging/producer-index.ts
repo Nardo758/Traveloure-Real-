@@ -1,7 +1,7 @@
 import type { AutomationContext, AutomationDefinition } from "../contract";
 import { authPasswordResetEmailAutomation } from "./auth-password-reset-email";
-import { authVerificationEmailAutomation } from "./auth-verification-email";
-import { authWelcomeEmailAutomation } from "./auth-welcome-email";
+import { authVerificationEmailAutomation } from "./signup/verify-email";
+import { authWelcomeEmailAutomation } from "./signup/welcome-email";
 import { planDeliveredEmailAutomation } from "./plan-delivered-email";
 import { planApprovedEmailAutomation } from "./plan-approved-email";
 import { planChangesRequestedEmailAutomation } from "./plan-changes-requested-email";
@@ -9,6 +9,7 @@ import { planSuggestionEmailAutomation } from "./plan-suggestion-email";
 import { activityEmailAutomation } from "./activity-email";
 import { guestInviteSendAutomation } from "./guest-invite-send";
 import { emailProviderTransportAutomation } from "./email-provider-transport";
+import { additionalSignupAutomations } from "./signup-index";
 
 export const producerAutomations = [
   authPasswordResetEmailAutomation,
@@ -21,6 +22,7 @@ export const producerAutomations = [
   activityEmailAutomation,
   guestInviteSendAutomation,
   emailProviderTransportAutomation,
+  ...additionalSignupAutomations,
 ] as const;
 
 export type MessagingEventDispatcher = <T>(

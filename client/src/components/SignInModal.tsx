@@ -32,7 +32,7 @@ export function SignInModal({
   description: descriptionProp,
   returnTo,
 }: SignInModalProps) {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   // Ruling 60 Phase A: the sign-in title/description are OVERRIDABLE by the caller (a
   // context-specific prompt like "Sign in to save this trip"). Only the DEFAULTS are chrome and
   // therefore translated — a caller-supplied string is passed through untouched, because the
@@ -42,6 +42,7 @@ export function SignInModal({
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [signupSubmitted, setSignupSubmitted] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
@@ -56,7 +57,7 @@ export function SignInModal({
   const queryClient = useQueryClient();
 
   // Clear inline error whenever the user switches sign-in mode
-  useEffect(() => { setAuthError(null); }, [mode]);
+  useEffect(() => { setAuthError(null); setSignupSubmitted(false); }, [mode, open]);
 
   const migrateGuestCart = async () => {
     try {
@@ -118,7 +119,7 @@ export function SignInModal({
       const endpoint = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
       const body = mode === "signin"
         ? { email: formData.email, password: formData.password }
-        : formData;
+        : { ...formData, language: i18n.resolvedLanguage || i18n.language };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -133,11 +134,16 @@ export function SignInModal({
         throw new Error(data.message || "Authentication failed");
       }
 
+      if (mode === "signup") {
+        setSignupSubmitted(true);
+        return;
+      }
+
       await Promise.all([migrateGuestCart(), claimGuestConcierge()]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
 
       toast({
-        title: mode === "signin" ? "Welcome back!" : "Account created!",
+        title: "Welcome back!",
         description: data.message,
       });
 
@@ -202,7 +208,15 @@ export function SignInModal({
           </DialogDescription>
         </DialogHeader>
 
-        {mode === "reset" && resetSent ? (
+        {mode === "signup" && signupSubmitted ? (
+          <div className="space-y-4 py-4" role="status" data-testid="signup-check-inbox">
+            <h3 className="font-semibold">{t("modal.signupSentTitle")}</h3>
+            <p className="text-sm text-muted-foreground">
+              {t("modal.signupSentBody")}
+            </p>
+            <Button variant="outline" onClick={() => setMode("signin")}>{t("modal.backToSignIn")}</Button>
+          </div>
+        ) : mode === "reset" && resetSent ? (
           <div className="py-6 text-center space-y-3">
             <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
               <Mail className="h-6 w-6 text-green-600" />

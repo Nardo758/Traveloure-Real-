@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
-  const { t } = useTranslation("auth");
+  const { t, i18n } = useTranslation("auth");
   const [, setLocation] = useLocation();
 
   const params = new URLSearchParams(window.location.search);
@@ -13,6 +13,7 @@ export function SignupPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -34,6 +35,7 @@ export function SignupPage() {
           password: form.password,
           refToken,
           source,
+          language: i18n.resolvedLanguage || i18n.language,
           // NOTE: NO role field — server always assigns "user"
         }),
       });
@@ -42,7 +44,7 @@ export function SignupPage() {
         setError(data.message || t("signupPage.failed"));
         return;
       }
-      setLocation("/dashboard");
+      setSubmitted(true);
     } catch {
       setError(t("signupPage.genericError"));
     } finally {
@@ -53,6 +55,17 @@ export function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md">
+        {submitted ? (
+          <div role="status" data-testid="signup-check-inbox">
+            <h1 className="text-xl font-semibold text-gray-900 mb-4">{t("modal.signupSentTitle")}</h1>
+            <p className="text-sm text-gray-600 mb-4">
+              {t("modal.signupSentBody")}
+            </p>
+            <button className="text-sm underline" onClick={() => setLocation("/?signin=true")}>
+              {t("modal.backToSignIn")}
+            </button>
+          </div>
+        ) : <>
         <h1 className="text-xl font-semibold text-gray-900 mb-6">
           {t("signupPage.title")}
         </h1>
@@ -128,6 +141,7 @@ export function SignupPage() {
             {t("signupPage.referral", { token: refToken })}
           </p>
         )}
+        </>}
       </div>
     </div>
   );
