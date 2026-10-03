@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/639**; remaining: **639**.
-- Admin: **0/167**; payments: **0/31**; user-data: **0/224**; other: **0/217**.
+- **Tested: 0/640**; remaining: **640**.
+- Admin: **0/168**; payments: **0/31**; user-data: **0/224**; other: **0/217**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `da0859c4b2e37afe0f08ff8797ad98278f114d1b4284a5cffc89f90f17090602`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `ebfbe53d6e3689799b8c38d51064acaca16e8ef71b21be42384b64426a746089`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -106,7 +106,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/admin/categories/:id | admin | admin-role | server/routes/admin.routes.ts:3667 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/contact-submissions/:id | admin | admin-role | server/routes/admin.routes.ts:2806 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/content-placement-rules/:id | admin | admin-role | server/routes/admin.routes.ts:8394 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/content-sources/:id | admin | admin-role | server/routes/content-sources.routes.ts:55 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/content-sources/:id | admin | admin-role | server/routes/content-sources.routes.ts:58 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/event-packages/:id | admin | admin-role | server/routes/admin.routes.ts:8644 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/evidence-thresholds/:key | admin | admin-role | server/routes/neighborhood-claims.routes.ts:310 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/expert-applications/:id/rejection-reason | admin | admin-role | server/routes/admin.routes.ts:3042 | Not run: evidence manifest SHA-256 is stale. |
@@ -237,9 +237,10 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/admin/categories/:categoryId/subcategories | admin | admin-role | server/routes/admin.routes.ts:3791 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-placement-rules | admin | admin-role | server/routes/admin.routes.ts:8383 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-placement-rules/auto-index | admin | admin-role | server/routes/admin.routes.ts:8419 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content-sources | admin | admin-role | server/routes/content-sources.routes.ts:45 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content-sources/:id/activate | admin | admin-role | server/routes/content-sources.routes.ts:63 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content-sources/:id/deactivate | admin | admin-role | server/routes/content-sources.routes.ts:71 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content-sources | admin | admin-role | server/routes/content-sources.routes.ts:48 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content-sources/:id/activate | admin | admin-role | server/routes/content-sources.routes.ts:66 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content-sources/:id/deactivate | admin | admin-role | server/routes/content-sources.routes.ts:74 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content-sources/:id/public-ok | admin | admin-role | server/routes/content-sources.routes.ts:82 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content/:trackingNumber/moderate | admin | admin-role | server/routes/admin.routes.ts:4455 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content/flags/:flagId/resolve | admin | admin-role | server/routes/admin.routes.ts:4508 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content/register | admin | admin-role | server/routes/admin.routes.ts:4400 | Not run: evidence manifest SHA-256 is stale. |

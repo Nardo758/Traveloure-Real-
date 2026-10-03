@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **648** raw mounted mutation registrations and **639** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **649** raw mounted mutation registrations and **640** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+93** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+94** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 167; user-data 224; other 217.
-Boundary totals: admin-role 167; session-self 329; resource-owner 97; signature 6; public-or-system 40; unknown 0.
+Category totals: payments 31; admin 168; user-data 224; other 217.
+Boundary totals: admin-role 168; session-self 329; resource-owner 97; signature 6; public-or-system 40; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -42,10 +42,11 @@ Boundary totals: admin-role 167; session-self 329; resource-owner 97; signature 
 | DELETE | `/api/admin/content-placement-rules/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8406` | unknown | unknown |
 | PATCH | `/api/admin/content-placement-rules/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8394` | unknown | unknown |
 | POST | `/api/admin/content-placement-rules/auto-index` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8419` | unknown | unknown |
-| POST | `/api/admin/content-sources` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:45` | unknown | unknown |
-| PATCH | `/api/admin/content-sources/:id` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:55` | unknown | unknown |
-| POST | `/api/admin/content-sources/:id/activate` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:63` | unknown | unknown |
-| POST | `/api/admin/content-sources/:id/deactivate` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:71` | unknown | unknown |
+| POST | `/api/admin/content-sources` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:48` | unknown | unknown |
+| PATCH | `/api/admin/content-sources/:id` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:58` | unknown | unknown |
+| POST | `/api/admin/content-sources/:id/activate` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:66` | unknown | unknown |
+| POST | `/api/admin/content-sources/:id/deactivate` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:74` | unknown | unknown |
+| POST | `/api/admin/content-sources/:id/public-ok` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:82` | unknown | unknown |
 | POST | `/api/admin/content/:trackingNumber/moderate` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4455` | unknown | unknown |
 | POST | `/api/admin/content/flags/:flagId/resolve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4508` | unknown | unknown |
 | POST | `/api/admin/content/register` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4400` | unknown | unknown |

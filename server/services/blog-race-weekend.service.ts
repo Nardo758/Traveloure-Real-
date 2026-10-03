@@ -31,7 +31,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { claudeService } from "./claude.service";
 import { BlogError, createPost } from "./blog-posts.service";
 import { loadEventGuideFacts, type EventGuideFacts } from "./blog-event-facts.service";
-import { blogSlugExists, checkPlatformDraft, promptFacts, type EventGuideDeps, type RawDraft } from "./blog-event-guide.service";
+import { blogSlugExists, checkPlatformDraft, eventPostSources, promptFacts, type EventGuideDeps, type RawDraft } from "./blog-event-guide.service";
 import { getMarketByKey } from "./trend-engine/operating-markets";
 import { loadLegResolver } from "./travel-time.service";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
@@ -152,7 +152,7 @@ export async function draftRaceWeekend(
       body: checked.body,
       marketSlug: market.marketKey,
       cityEventId: facts.event.id,
-      sources: facts.event.ticketUrl ? [{ url: facts.event.ticketUrl, title: "Tickets", retrievedAt: new Date() }] : [],
+      sources: eventPostSources(facts),
     }, actorId, deps);
   } catch (e) {
     if (e instanceof BlogError && e.code === "slug_taken") throw new BlogError("already_drafted", 409);

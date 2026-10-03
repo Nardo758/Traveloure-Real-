@@ -5,6 +5,10 @@
  * The page mirrors the server and restates none of its rules: the need choices come from the shared
  * vocabulary (`CONTENT_NEEDS` + `CONTENT_SUB_NEEDS`), "Activate" draws only when the server says the
  * viewer may activate, and the terms-check date is shown as the server stamped it.
+ *
+ * "May appear on public pages" (ruling R-p, ledger `2026-10-03-official-facts-public-ok`) is enabled
+ * only when the shared `publicOkEligibleSource` says so (official + terms checked) AND the viewer is
+ * the designated reviewer; the answer, who gave it and when are shown as the server stamped them.
  */
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { CONTENT_NEEDS, LICENSE_CLASSES, SOURCE_ADAPTERS, subNeedsOf } from "@shared/content-facts";
+import { CONTENT_NEEDS, LICENSE_CLASSES, SOURCE_ADAPTERS, publicOkEligibleSource, subNeedsOf } from "@shared/content-facts";
 import type { ContentSource } from "@shared/schema";
 
 interface RegistryResponse {
@@ -107,6 +111,13 @@ export default function AdminContentSources() {
       setEditingId(null);
       refresh();
     },
+    onError,
+  });
+
+  const setPublic = useMutation({
+    mutationFn: ({ id, publicOk }: { id: string; publicOk: boolean }) =>
+      apiRequest("POST", `/api/admin/content-sources/${id}/public-ok`, { publicOk }),
+    onSuccess: refresh,
     onError,
   });
 
@@ -214,6 +225,12 @@ export default function AdminContentSources() {
                   <p className="text-xs text-muted-foreground mt-1">
                     {s.termsCheckedAt ? `Terms checked ${new Date(s.termsCheckedAt).toLocaleDateString()}` : "Terms not checked"}
                   </p>
+                  <PublicOkControl
+                    source={s}
+                    viewerMayActivate={data.viewerMayActivate}
+                    pending={setPublic.isPending}
+                    onChange={(publicOk) => setPublic.mutate({ id: s.id, publicOk })}
+                  />
                   <div className="flex gap-2 mt-2">
                     <Button size="sm" variant="outline" onClick={() => { setEditingId(s.id); setDraft(fromRow(s)); }}>Edit</Button>
                     {!s.active && data.viewerMayActivate && (
@@ -234,5 +251,55 @@ export default function AdminContentSources() {
         </Card>
       </div>
     </AdminLayout>
+  );
+}
+
+/**
+ * "May appear on public pages" — ruling R-p. Enabled only for an official, terms-checked source and
+ * only for the designated reviewer. NULL renders as "not answered", never as "no".
+ */
+function PublicOkControl({
+  source,
+  viewerMayActivate,
+  pending,
+  onChange,
+}: {
+  source: ContentSource;
+  viewerMayActivate: boolean;
+  pending: boolean;
+  onChange: (publicOk: boolean) => void;
+}) {
+  const eligible = publicOkEligibleSource(source);
+  const enabled = eligible && viewerMayActivate && !pending;
+  const why = !eligible
+    ? source.licenseClass !== "official"
+      ? "Only an official source can be marked for public pages."
+      : "Check the terms first."
+    : !viewerMayActivate
+      ? "Only the designated reviewer can change this."
+      : null;
+  const answered = source.publicOk === true ? "yes" : source.publicOk === false ? "no" : "not answered";
+  return (
+    <div className="mt-2" data-testid={`public-ok-${source.id}`}>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox
+          checked={source.publicOk === true}
+          disabled={!enabled}
+          onCheckedChange={(c) => onChange(c === true)}
+          data-testid={`checkbox-public-ok-${source.id}`}
+        />
+        May appear on public pages
+      </label>
+      <p className="text-xs text-muted-foreground pl-6">
+        Hours, closures, ticketing, transit and event facts only, always shown with "from {source.name}" and the date checked.
+        Descriptions and tips stay inside plans.
+      </p>
+      <p className="text-xs text-muted-foreground pl-6" data-testid={`text-public-ok-state-${source.id}`}>
+        {source.publicOkCheckedAt
+          ? `Answered ${answered} on ${new Date(source.publicOkCheckedAt).toLocaleDateString()}`
+          : "Not answered"}
+        {why ? ` · ${why}` : ""}
+      </p>
+    </div>
   );
 }

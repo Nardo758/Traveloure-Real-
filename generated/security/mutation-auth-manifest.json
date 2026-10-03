@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 648,
-  "rawRegistrationCount": 648,
-  "uniqueMethodNormalizedPathCount": 639,
-  "distinctMethodPathCount": 639,
+  "mutationCount": 649,
+  "rawRegistrationCount": 649,
+  "uniqueMethodNormalizedPathCount": 640,
+  "distinctMethodPathCount": 640,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -145,12 +145,12 @@
   ],
   "categoryTotals": {
     "payments": 31,
-    "admin": 167,
+    "admin": 168,
     "user-data": 224,
     "other": 217
   },
   "boundaryTotals": {
-    "admin-role": 167,
+    "admin-role": 168,
     "session-self": 329,
     "resource-owner": 97,
     "signature": 6,
@@ -159,7 +159,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 102,
+    "delta": 103,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -797,7 +797,7 @@
       "path": "/api/admin/content-sources",
       "effectivePath": "/api/admin/content-sources",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 45,
+      "line": 48,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -816,7 +816,7 @@
       "path": "/api/admin/content-sources/:id",
       "effectivePath": "/api/admin/content-sources/:id",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 55,
+      "line": 58,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -835,7 +835,7 @@
       "path": "/api/admin/content-sources/:id/activate",
       "effectivePath": "/api/admin/content-sources/:id/activate",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 63,
+      "line": 66,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -854,7 +854,26 @@
       "path": "/api/admin/content-sources/:id/deactivate",
       "effectivePath": "/api/admin/content-sources/:id/deactivate",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 71,
+      "line": 74,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/content-sources/:id/public-ok",
+      "path": "/api/admin/content-sources/:id/public-ok",
+      "effectivePath": "/api/admin/content-sources/:id/public-ok",
+      "source": "server/routes/content-sources.routes.ts",
+      "line": 82,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [

@@ -7,6 +7,8 @@
  *   PATCH /api/admin/content-sources/:id                general edit (strips terms + activation)
  *   POST  /api/admin/content-sources/:id/activate       allowlisted activator only; stamps the check
  *   POST  /api/admin/content-sources/:id/deactivate     any admin
+ *   POST  /api/admin/content-sources/:id/public-ok      allowlisted activator only; `{ publicOk }`,
+ *                                                       official + terms-checked rows only (ruling R-p)
  */
 import { Router, type Response } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -19,6 +21,7 @@ import {
   deactivateContentSource,
   editContentSource,
   listContentSources,
+  setContentSourcePublicOk,
 } from "../services/content-sources.service";
 
 const router = Router();
@@ -71,6 +74,14 @@ router.post("/api/admin/content-sources/:id/activate", isAuthenticated, async (r
 router.post("/api/admin/content-sources/:id/deactivate", isAuthenticated, async (req, res) => {
   try {
     res.json({ source: await deactivateContentSource(req.params.id) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.post("/api/admin/content-sources/:id/public-ok", isAuthenticated, async (req, res) => {
+  try {
+    res.json({ source: await setContentSourcePublicOk(req.params.id, req.body, getUserId(req) ?? null) });
   } catch (err) {
     fail(res, err);
   }

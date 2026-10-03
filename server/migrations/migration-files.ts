@@ -1897,4 +1897,8 @@ export const MIGRATION_FILES = [
   // nullable jsonb columns; NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL; declared in shared/schema.ts.
   // APPROVED Oct 3, 2026.
   "340_draft_stay_ranking_and_lookup_progress.sql",
+  // 341 — content_sources.public_ok + its audit pair (ledger 2026-10-03-official-facts-public-ok,
+  // ruling R-p). Three nullable columns, no DEFAULT/CHECK/index/FK, no backfill. Declared in
+  // shared/schema.ts. APPROVED Oct 3, 2026.
+  "341_content_sources_public_ok.sql",
 ] as const;

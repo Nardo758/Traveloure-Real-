@@ -12,6 +12,7 @@ import {
   blogIndexNoindex,
   blogPostNoindex,
   bodyParagraphs,
+  blogSourceView,
   bylinePath,
   canAskTheLocal,
   publishedLabel,
@@ -52,5 +53,22 @@ test("B4 the pages show no counts, render no HTML, and never address a person by
   }
   const post = read("../../pages/blog-post.tsx");
   assert.match(post, /blogPostSlug/, "Ask the local uses the blogPostSlug address");
-  assert.match(post, /BLOG_SOURCE_LINK_REL/);
+  assert.match(post, /blogSourceView\(s\)/, "every source line renders from the one view (which carries BLOG_SOURCE_LINK_REL)");
+});
+
+test("B5 render: an official-source fact's source line reads 'from <source> — checked <date>' and links to the fact's URL (ruling R-p)", () => {
+  const v = blogSourceView({ url: "https://kyoto.travel/en/x", title: "from Kyoto City Official Travel Guide", publisher: "checked 2 Oct 2026" });
+  assert.deepEqual(v, {
+    href: "https://kyoto.travel/en/x",
+    text: "from Kyoto City Official Travel Guide",
+    detail: "checked 2 Oct 2026",
+    rel: "nofollow noopener noreferrer",
+  });
+  assert.equal(blogSourceView({ url: "https://x.example/" }).text, "https://x.example/", "no title ⇒ the URL itself");
+  assert.equal(blogSourceView({ url: "https://x.example/", publisher: "  " }).detail, null);
+  const post = read("../../pages/blog-post.tsx");
+  assert.match(post, /href=\{v\.href\}/);
+  assert.match(post, /rel=\{v\.rel\}/);
+  assert.match(post, /\{v\.text\}/);
+  assert.match(post, /— \{v\.detail\}/);
 });

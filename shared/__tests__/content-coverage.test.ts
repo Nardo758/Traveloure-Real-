@@ -12,6 +12,9 @@
  *   S7  terms older than 180 days are flagged (flag only — the source stays active in the report);
  *       a never-checked source is listed; stored values that are not ours are named
  *   S8  a market with no stated requirement says so and flags nothing as required
+ *   S9  ruling R-p: a row's public-eligible sources are active + official + terms-checked + public_ok;
+ *       public_ok on an editorial, inactive or unchecked source, or a NULL answer, is not eligible;
+ *       the markdown names the eligible source, or says "plan-only" for a covered row with none
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -109,4 +112,26 @@ test("S8: a market with no stated requirement says so", () => {
   assert.equal(r.requirementsStated, false);
   assert.ok(r.rows.every((x) => x.requirement === "unstated" && x.gap === null));
   assert.match(renderCoverageMarkdown(r), /No coverage requirement is stated/);
+});
+
+test("S9: the public-eligible column (ruling R-p)", () => {
+  const base = { market: "kyoto", doesNotCover: [], termsCheckedAt: "2026-10-01T00:00:00Z" };
+  const rows: CoverageSourceRow[] = [
+    { ...base, id: "kyoto_official", name: "Kyoto official", covers: ["stop.hours"], active: true, licenseClass: "official", publicOk: true },
+    { ...base, id: "kyoto_unanswered", name: "Unanswered", covers: ["stop.hours", "dining"], active: true, licenseClass: "official", publicOk: null },
+    { ...base, id: "kyoto_editorial", name: "Editorial", covers: ["stop.ticketing"], active: true, licenseClass: "editorial", publicOk: true },
+    { ...base, id: "kyoto_inactive", name: "Inactive", covers: ["lodging"], active: false, licenseClass: "official", publicOk: true },
+    { ...base, id: "kyoto_unchecked", name: "Unchecked", covers: ["transport.local"], active: true, licenseClass: "official", publicOk: true, termsCheckedAt: null },
+  ];
+  const r = buildCoverageReport("kyoto", rows);
+  const pub = (need: string) => r.rows.find((x) => x.need === need)!.publicEligible;
+  assert.deepEqual(pub("stop.hours"), ["kyoto_official"]);
+  assert.deepEqual(pub("dining"), [], "a NULL answer is not yes");
+  assert.deepEqual(pub("stop.ticketing"), [], "an editorial source is never eligible");
+  assert.deepEqual(pub("lodging"), [], "an inactive source is never eligible");
+  assert.deepEqual(pub("transport.local"), [], "a source with no terms check is never eligible");
+  const md = renderCoverageMarkdown(r);
+  assert.match(md, /\| public-eligible \| gap \|/);
+  assert.match(md, /`stop\.hours` \| required \|.*\| `kyoto_official` \|/);
+  assert.match(md, /`dining` \| required \|.*\| plan-only \|/);
 });

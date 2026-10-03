@@ -2327,6 +2327,17 @@ This document captures architectural decisions to maintain consistency across co
     optimizer run (ledger `2026-10-01-a9-paid-run-fresh-fetch`): one pass after the run is recorded,
     over the plan's located items within its dates, never awaited (§15b), never for a Trip Pass or a
     free re-run; its cost reaches the run through the `runId` tag on `api_usage_logs`.
+    **OFFICIAL-SOURCE FACTS MAY APPEAR ON PUBLIC PAGES, ATTRIBUTED (ruling R-p, Oct 3, 2026 — ledger
+    `2026-10-03-official-facts-public-ok`; migration 341, APPROVED by the decision-maker Oct 3, 2026).** Amends the
+    `isPublishable` sentence above: a `crawled` fact IS publishable when its source is `official` AND
+    `content_sources.public_ok = true` AND its type is hours, closure, ticketing_rule, transit or event
+    (`isOfficialPublicFact`); description and tip never qualify this way and stay plan-only until an
+    expert verifies them. `public_ok` (+ `_checked_at`/`_by`, nullable, no DEFAULT/CHECK/index/FK) has
+    ONE writer — the activator's `POST /api/admin/content-sources/:id/public-ok`, one atomic
+    conditional requiring official + a terms check; a terms-bound edit clears it. Wherever such a fact
+    renders publicly it carries "from <source name>" → its `source_url` and "checked <date>"
+    (`publicFactAttribution`); one that cannot be attributed is dropped (`mustOmitOnPublicPage`). No
+    fetching changed.
     **AN EXPERT CONFIRMS A CRAWLED FACT INTO A NEW VERIFIED NUGGET (ledger `2026-10-01-a6-expert-confirm`).**
     `isConfirmableFact` admits only an unverified `crawled` fact outside partner/restricted licenses —
     never a Places fact, which would otherwise become publishable Google data. The confirm writes a NEW
