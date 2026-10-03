@@ -8,6 +8,7 @@
  * with no dates has no weekday to name, so the hours line is omitted rather than guessed.
  */
 import type { FactView } from "@shared/content-facts";
+import { unverifiedAreaText } from "@shared/ai-place-text";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -16,30 +17,11 @@ export function pinLocationText(location: string | null | undefined, origin?: st
   return origin === "ai" ? unverifiedAreaText(location) : (location ?? "").trim() || null;
 }
 
-/** Words that name an administrative area — a segment carrying one is a ward, district or city. */
-const AREA_WORD = /\b(ward|wards|ku|district|prefecture|city|county|borough|province|region|area)\b|-ku\b|-shi\b|-fu\b|-ken\b/i;
-/** Street-level words (a road, a block, a numbered lot) — a segment carrying one is never an area. */
-const STREET_WORD =
-  /\b(street|st|road|rd|avenue|ave|lane|ln|boulevard|blvd|drive|dr|way|alley|path|walk|dori|dōri|doori|chome|chōme|cho|chō|machi|banchi|go)\b|-(dori|dōri|doori|chome|chōme|cho|chō|machi)\b/i;
-
 /**
- * Pure. The ward/area part of an UNVERIFIED location string, or null when it names none. Postcodes
- * are removed; then a comma segment with a digit (a lot, a block) or a street word is dropped. The
- * FIRST segment — where a draft puts the venue or its street — is kept only when it names an
- * administrative area or is the whole string ("Gion"); later segments (ward, city, country) are kept.
- * Order is kept; nothing is invented.
+ * The ward/area cut now lives in `@shared/ai-place-text` — the ONE rule that storage (R-w, ledger
+ * `2026-10-03-rw-ai-place-text`) and display share (§18 rule 1). Re-exported for this module's readers.
  */
-export function unverifiedAreaText(text: string | null | undefined): string | null {
-  const segs = (text ?? "")
-    .split(",")
-    .map((p) => p.replace(/〒?\s*\d{3}-?\d{4}\b|\b\d{5}(?:-\d{4})?\b/g, "").trim())
-    .filter(Boolean);
-  const kept = segs.filter((seg, i) => {
-    if (/\d/.test(seg) || STREET_WORD.test(seg)) return false;
-    return i > 0 || segs.length === 1 || AREA_WORD.test(seg);
-  });
-  return kept.length ? kept.join(", ") : null;
-}
+export { unverifiedAreaText };
 
 // ── Surface spec v1.2 §3 (step 1, ledger `2026-10-03-surface-step1-item-row`) ───────────────────
 

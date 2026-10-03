@@ -63,6 +63,7 @@ import {
   type HeldSlot,
 } from "@shared/draft-basis";
 import { draftBasisInputs } from "../services/plan-option-sets.service";
+import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { healthFlags, healthEgressFlags } from "../services/runtime-flags";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -4857,9 +4858,31 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           ).map(({ dayNumber: _d, title, ...a }: any) => ({ ...a, name: title })),
         }));
       }
+      // R-w (ledger `2026-10-03-rw-ai-place-text`): the draft is sanitised BEFORE it is saved or
+      // answered, so the stored rows, the stored draft JSON and this response carry the same text.
+      // The snapshot writer runs the same pass again (idempotent) for its other callers.
+      const noLodging = draftBasis.kind === "none_asked";
+      {
+        const o = { noLodging, city: destination };
+        normalizedResult.canonicalItems = sanitizeCanonicalItems(normalizedResult.canonicalItems, o).map((it) => ({ ...it, name: it.title }));
+        const cleaned = sanitizeGeneratedPlan(
+          {
+            itineraryData: normalizedResult.dailyItinerary,
+            summary: normalizedResult.summary,
+            travelTips: normalizedResult.travelTips,
+            accommodationSuggestions: normalizedResult.accommodationSuggestions,
+          },
+          o,
+        );
+        normalizedResult.dailyItinerary = cleaned.itineraryData;
+        normalizedResult.summary = cleaned.summary;
+        normalizedResult.travelTips = cleaned.travelTips;
+        normalizedResult.accommodationSuggestions = cleaned.accommodationSuggestions;
+      }
       const snapshot = await saveGeneratedItinerarySnapshot({
         userId,
         tripId: resolvedTripId || null,
+        noLodging,
         trip: {
           title: normalizedResult.title || `${destination} Trip`,
           destination,

@@ -38,6 +38,7 @@
  */
 
 import { coordinatesStillPending, hasItemLocation } from "./coordinate-backfill.pure";
+import { isSupplySlot } from "@shared/ai-place-text";
 import { db } from "../db";
 import { storage } from "../storage";
 import { providerServices, serviceBookings, tripExpertAdvisors, tripTransactions } from "@shared/schema";
@@ -923,6 +924,9 @@ export async function assembleTripPlan(
       // adds no write rail: it is a non-money, non-identity fact about the caller's OWN plan,
       // riding the `full` level only — teaser/preview return long before this builder runs.
       ...((item as any).origin ? { origin: (item as any).origin as string } : {}),
+      // R-w (ledger `2026-10-03-rw-ai-place-text`): a venue-less AI item is a SUPPLY SLOT — derived
+      // from the row by the ONE predicate (`isSupplySlot`), present only when true, full level only.
+      ...(isSupplySlot(item as any) ? { supplySlot: true as const } : {}),
 
       // D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`): the two LINK columns
       // the item-kind derivation reads. PRESENT ONLY WHEN THE ROW REALLY NAMES ONE — the same
