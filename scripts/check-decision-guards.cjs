@@ -25,6 +25,12 @@
  *       the pair must still agree, and `scripts/assign-r-numbers.cjs --write` numbers it as the last
  *       step before merge. `--require-assigned` (run on pushes to main only) fails while any `R?`
  *       remains, so a forgotten assignment is seen on the first main build, never silently kept.
+ *   (e) ORDER (ledger `2026-10-03-r-number-order`): from the first row citing R`R_ORDER_FLOOR` or
+ *       above, every later numbered row must cite a HIGHER number than the one before it in file
+ *       order, so the ledger reads R269, R270, R271 … top to bottom. `R?` rows are skipped (they
+ *       carry no number yet); once numbered they must sit after every lower number. Rows above the
+ *       floor's first row are history whose order was never enforced and is not checked — the
+ *       floor is the stated limit, not an exemption list.
  *   NEGATIVE SPACE: a lane-LOCAL R series that predates the global numbering (the partner-demand
  *   lane's R1–R38) is not a global R-id; its rows are exempted BY NAME in the ledger's own
  *   `## Lane-local R numbering` section. The lint is silent while that list matches the ledger and
@@ -144,8 +150,13 @@ function rowCells(line) {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(" | ").map((c) => c.trim());
 }
 
+/** Ordering is enforced from this R-number on (rule e). Earlier rows are unchecked history. */
+const R_ORDER_FLOOR = 269;
+
 function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   const failures = [];
+  let orderStarted = false;
+  let prevOrdered = null; // { n, id } of the last numbered row once ordering has started
   const exempted = [];
   const frozen = new Set();
   const cited = new Map(); // n -> [row ids]
@@ -176,6 +187,13 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
     if (cite) {
       const n = Number(cite[1]);
       cited.set(n, [...(cited.get(n) ?? []), id]);
+      if (!orderStarted && n >= R_ORDER_FLOOR) orderStarted = true;
+      if (orderStarted) {
+        if (prevOrdered && n <= prevOrdered.n) {
+          failures.push(`Out-of-order R-number: ${id} cites R${n} after ${prevOrdered.id} (R${prevOrdered.n}) — from R${R_ORDER_FLOOR} on, rows must ascend in file order (ledger \`2026-10-03-r-number-order\`). Move the row, never renumber a merged one.`);
+        }
+        prevOrdered = { n, id };
+      }
     }
   }
   // The list is only honest while it matches the ledger: a listed row that is gone, or no longer
@@ -330,15 +348,25 @@ function selfTest() {
   const qLedger = ledgerText + "\n| 2026-01-06-q | 2026-01-06 | [advisory] | **R? — Q.** | numeric citation R? |";
   const ok15 = lint({ ledgerText: qLedger, workflowText }).failures.length === lint({ ledgerText, workflowText }).failures.length
     && lint({ ledgerText: qLedger, workflowText, requireAssigned: true }).failures.some((f) => f.includes("Unassigned R-number"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15) {
+  // (l) ORDER: the exact sequence that once passed (R274, R273, R270, R269, R271, R272) now fails;
+  // the ascending sequence passes; rows below the floor that precede it are unchecked history; an R?
+  // row between numbered rows is skipped.
+  const row = (slug, n) => `| 2026-01-01-${slug} | 2026-01-01 | [advisory] | **R${n} — X.** | numeric citation R${n} |`;
+  const rBad = lintRNumbers([274, 273, 270, 269, 271, 272].map((n) => row(`o${n}`, n)).join("\n"), {});
+  const rAsc = lintRNumbers([200, 150, 269, 270, "?", 271, 272].map((n) => row(`a${n}`, n)).join("\n"), {});
+  const rLate = lintRNumbers([269, 271, 270].map((n) => row(`l${n}`, n)).join("\n"), {});
+  const ok16 = rBad.failures.filter((f) => f.startsWith("Out-of-order")).length === 3
+    && rAsc.failures.length === 0
+    && rLate.failures.some((f) => f.includes("R270") && f.includes("R271"));
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, rBad: rBad.failures, rAsc: rAsc.failures, rLate: rLate.failures,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor)");
   process.exit(0);
 }
 
