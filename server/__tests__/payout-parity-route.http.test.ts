@@ -287,11 +287,11 @@ before(async () => {
   // isProviderRole branch fires for R5, PLUS a per-expert EXP-OVR override: the correct
   // provider-source resolution ({source:'provider', providerId}) never passes expertId so the
   // override is IGNORED, while the historical misroute ({category, expertId}) would apply it —
-  // that asymmetry is R5's discriminator (live bands are otherwise all 0.25, indistinguishable).
+  // that asymmetry is R5's discriminator. 80% is neither the beta provider share (90%) nor a tier share.
   await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name, role, commission_override_expert_share_percent)
     VALUES (${ids.expert}, ${`ppr-${RUN}-expert@t.test`}, 'PPR', 'Expert', 'expert', NULL),
-           (${ids.provider}, ${`ppr-${RUN}-provider@t.test`}, 'PPR', 'Provider', 'service_provider', 90)
+           (${ids.provider}, ${`ppr-${RUN}-provider@t.test`}, 'PPR', 'Provider', 'service_provider', 80)
   `);
 });
 
@@ -463,7 +463,7 @@ test("R5: provider-owned service routes through the provider-source branch (isPr
   assert.ok(Number(expected.stamped) > 0, "provider-source recipe expectation must be a positive payout");
 
   // Belt-and-braces discriminator: the provider user carries a per-expert EXP-OVR override
-  // (90%). The correct provider-source branch omits expertId so the override is IGNORED; the
+  // (80%). The correct provider-source branch omits expertId so the override is IGNORED; the
   // historical misroute ({category, expertId: ownerId}) would APPLY it. If the two figures were
   // equal, this test could not distinguish the branches and the parity claim would be vacuous.
   const misrouted = await recipeExpectation(price, undefined, { source: "expert", expertId: ids.provider });

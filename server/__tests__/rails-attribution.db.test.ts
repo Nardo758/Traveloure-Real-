@@ -34,7 +34,8 @@ import {
   railsSnapshot,
 } from "../services/rails-attribution.service";
 import { recordRailsFeeLedger, railsCommissionLedgerKey } from "../services/fee-ledger.service";
-import { requireBand, round2, PROVIDER_RAILS_BAND, TRAVELER_SERVICE_FEE_BAND } from "../services/fee-resolution.service";
+import { requireBand, round2, BETA_FLAT_BAND, PROVIDER_RAILS_BAND, TRAVELER_SERVICE_FEE_BAND } from "../services/fee-resolution.service";
+import { providerCommissionPolicy } from "@shared/fee-policy";
 
 const SUFFIX = `railsattr-${process.pid}`;
 const BAND_UNDER_TEST = "moderate";
@@ -235,15 +236,27 @@ test("R5: the ref cannot carry a rate — the rate provably comes from fee_bands
 test("R6: a premium band under rails wins — rails never raises the rate", async () => {
   const rails = await requireBand(PROVIDER_RAILS_BAND);
   const cheaper = round2(rails.rate / 2);
-  await db.execute(sql`UPDATE fee_bands SET default_rate = ${cheaper} WHERE band_key = ${BAND_UNDER_TEST}`);
+  // The resolver min()s rails against the band the live policy actually charges:
+  // the category tier while tiered, beta_flat otherwise.
+  const policyRow = await db.execute(sql`
+    SELECT setting_value FROM platform_settings WHERE setting_key = 'active_provider_commission_policy' LIMIT 1
+  `);
+  const policy = providerCommissionPolicy((policyRow.rows[0] as { setting_value?: string } | undefined)?.setting_value);
+  const governingKey = policy === "tiered" ? BAND_UNDER_TEST : BETA_FLAT_BAND;
+  const prior = (await requireBand(governingKey)).rate;
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${cheaper} WHERE band_key = ${governingKey}`);
 
-  const r = await resolveRailsForItem(itemArgs());
-  assert.equal(r.attributed, true, "a premium provider still books on the rails lane");
-  assert.equal(r.rate!.platformRate, cheaper, "the cheaper category band survives");
-  assert.ok(r.rate!.platformRate <= rails.rate);
-  assert.equal(r.rate!.rateSource, "band", "the band that decided the rate is the one stamped");
-  assert.equal(r.rate!.railsApplied, true);
-  assert.equal(r.travelerFeeWaiver!.waived, true, "the waiver is the LANE's, not the band's — it still applies");
+  try {
+    const r = await resolveRailsForItem(itemArgs());
+    assert.equal(r.attributed, true, "a premium provider still books on the rails lane");
+    assert.equal(r.rate!.platformRate, cheaper, "the cheaper governing band survives");
+    assert.ok(r.rate!.platformRate <= rails.rate);
+    assert.equal(r.rate!.rateSource, "band", "the band that decided the rate is the one stamped");
+    assert.equal(r.rate!.railsApplied, true);
+    assert.equal(r.travelerFeeWaiver!.waived, true, "the waiver is the LANE's, not the band's — it still applies");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${prior} WHERE band_key = ${governingKey}`);
+  }
 });
 
 /**

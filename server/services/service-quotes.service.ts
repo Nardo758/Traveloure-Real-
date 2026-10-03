@@ -54,6 +54,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { providerServices, serviceBookings, serviceQuotes, trips, type ServiceQuote } from "@shared/schema";
+import { quoteOwnerShareForAccept } from "@shared/fee-policy";
 import { isProviderRole } from "@shared/roles";
 import {
   SERVICE_QUOTE_CURRENCY,
@@ -165,6 +166,27 @@ export async function resolveQuoteOwnerShareRate(opts: {
   if (!(direct.resolved && direct.rate) && legacy === null) return null;
   const { shareRate } = pickOwnerShareRate({ direct, legacyShareRate: legacy ?? Number.NaN });
   return Number.isFinite(shareRate) && shareRate >= 0 && shareRate <= 1 ? shareRate : null;
+}
+
+/** The share to freeze onto a quote at issue. A miss refuses the issue. */
+async function pinQuoteOwnerShare(serviceId: string): Promise<{ ok: true; rate: number } | QuoteRefusal> {
+  const service = await storage.getProviderServiceById(serviceId);
+  if (!service) return refuse(404, "listing_not_found", "Listing not found.");
+  const owner = service.userId ? await storage.getUser(service.userId) : undefined;
+  const categorySlug = service.categoryId
+    ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+    : null;
+  const rate = await resolveQuoteOwnerShareRate({
+    serviceId: service.id,
+    ownerUserId: service.userId ?? null,
+    ownerRole: owner?.role ?? null,
+    categoryId: service.categoryId ?? null,
+    categorySlug,
+  });
+  if (rate === null) {
+    return refuse(503, "rate_unavailable", "This quote cannot be issued right now. Please try again shortly.");
+  }
+  return { ok: true, rate };
 }
 
 // ─── Projection ───────────────────────────────────────────────────────────────────────────────
@@ -564,6 +586,10 @@ export async function issueQuote(input: {
   const expiresAt = quoteExpiresAt(validity.days, now);
   const note = input.note && input.note.trim().length > 0 ? input.note.trim() : null;
   const { quote, serviceName } = ctx;
+  // Pin the owner's share at issue so a later band edit does not reprice this quote.
+  // A re-quote is a new row and gets a new pin. Failure refuses the issue.
+  const pinned = await pinQuoteOwnerShare(quote.serviceId);
+  if (!pinned.ok) return pinned;
 
   if (quote.status === "requested") {
     const [row] = await db
@@ -576,6 +602,7 @@ export async function issueQuote(input: {
         quotedBy: input.actorUserId,
         quotedAt: now,
         expiresAt,
+        ownerShareRate: pinned.rate.toFixed(6),
         updatedAt: now,
       })
       .where(and(eq(serviceQuotes.id, quote.id), eq(serviceQuotes.status, "requested")))
@@ -601,6 +628,7 @@ export async function issueQuote(input: {
             quotedBy: input.actorUserId,
             quotedAt: now,
             expiresAt,
+            ownerShareRate: pinned.rate.toFixed(6),
           })
           .returning();
         // §15: the statement is the guard. If the traveler accepted the old offer between our read
@@ -829,13 +857,15 @@ export async function acceptQuote(input: {
     const categorySlug = service.categoryId
       ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
       : null;
-    const ownerShareRate = await resolveQuoteOwnerShareRate({
+    const liveShare = await resolveQuoteOwnerShareRate({
       serviceId: service.id,
       ownerUserId: service.userId ?? null,
       ownerRole: owner?.role ?? null,
       categoryId: service.categoryId ?? null,
       categorySlug,
     });
+    // A share pinned at issue wins. NULL (issued before the column) uses the live band.
+    const ownerShareRate = quoteOwnerShareForAccept(quote.ownerShareRate, liveShare);
     if (ownerShareRate === null) {
       logger.error(
         { quoteId: quote.id, serviceId: service.id, categorySlug },

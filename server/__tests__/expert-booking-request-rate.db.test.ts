@@ -188,9 +188,11 @@ test("B1: an expert-booking-request records platform_fee/provider_earnings from 
 
 test("B2: flip the band → the NEXT booking's recorded economics move, with no service-row touch", async () => {
   const before = await resolveProviderRate({ categoryId });
+  assert.ok(before.bandKey, "the resolver must name the band it charged");
   const rateBefore = await readServiceRate(serviceId); // NULL for a provider row (Step 2)
   const edited = round2(before.platformRate * 2);
-  await db.execute(sql`UPDATE fee_bands SET default_rate = ${String(edited)} WHERE band_key = ${BAND}`);
+  // Edit the band the live policy actually charges (beta_flat while beta, the category tier while tiered).
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${String(edited)} WHERE band_key = ${before.bandKey}`);
   try {
     const after = await resolveProviderRate({ categoryId });
     assert.equal(after.platformRate, edited, "the band edit must reach the resolver");
@@ -199,7 +201,7 @@ test("B2: flip the band → the NEXT booking's recorded economics move, with no 
     assert.equal(econ.fee.toFixed(2), round2(100 * edited).toFixed(2), "the booking must record the EDITED band rate");
     assert.notEqual(econ.fee.toFixed(2), round2(100 * before.platformRate).toFixed(2), "the economics must actually have moved");
   } finally {
-    await db.execute(sql`UPDATE fee_bands SET default_rate = ${String(bandOriginalRate)} WHERE band_key = ${BAND}`);
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${String(before.platformRate)} WHERE band_key = ${before.bandKey}`);
   }
   assert.equal(await readServiceRate(serviceId), rateBefore, "no service row was touched to move the rate");
 });

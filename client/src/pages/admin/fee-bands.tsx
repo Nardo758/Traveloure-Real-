@@ -34,6 +34,7 @@ import {
   isKnownFeeBandRateType,
   type FeeBandRateType,
 } from "@shared/fee-band-display";
+import { FEE_POLICY_SETTING_KEYS, percentBandRateInUnitInterval } from "@shared/fee-policy";
 
 interface FeeBandDeactivation {
   allowed: boolean;
@@ -79,6 +80,7 @@ function BandRow({ band }: { band: FeeBand }) {
   // V-4: "" means NO CAP (NULL), which is a different fact from a cap of 0 and is stored as such.
   const [maxAmount, setMaxAmount] = useState(band.max_amount === null ? "" : String(band.max_amount));
   const [isActive, setIsActive] = useState(band.is_active);
+  const [pendingConfirm, setPendingConfirm] = useState(false);
 
   const display = FEE_BAND_RATE_TYPE_DISPLAY[band.rate_type as FeeBandRateType] ?? null;
   const isPercent = band.rate_type === "percent";
@@ -92,22 +94,26 @@ function BandRow({ band }: { band: FeeBand }) {
   const deactivationBlocked = band.is_active && !band.deactivation.allowed;
   const pendingDeactivation = band.is_active && !isActive;
 
+  const parsedRate = parseFloat(defaultRate);
+  const rateInvalid = isPercent && !percentBandRateInUnitInterval(parsedRate);
+  const capInvalid = showsCap && parsedCap !== null && !(Number.isFinite(parsedCap) && parsedCap >= 0);
   const dirty =
-    parseFloat(defaultRate) !== band.default_rate ||
+    parsedRate !== band.default_rate ||
     (showsCap && capChanged) ||
     isActive !== band.is_active;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, unknown> = { defaultRate: parseFloat(defaultRate), isActive };
+      const body: Record<string, unknown> = { defaultRate: parseFloat(defaultRate), isActive, confirm: true };
       // Only send the cap when it CHANGED: an omitted field means "leave unchanged", and sending
       // an unchanged null would ask the server to clear a cap the operator never touched.
       if (showsCap && capChanged) body.maxAmount = parsedCap;
       return apiRequest("PATCH", `/api/admin/fee-bands/${band.band_key}`, body);
     },
     onSuccess: () => {
+      setPendingConfirm(false);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/fee-bands"] });
-      toast({ title: "Band saved", description: `${band.band_key} updated. Live within 60 s.` });
+      toast({ title: "Band saved", description: `${band.band_key} updated. New bookings and newly issued quotes use it.` });
     },
     onError: (err: any) => {
       toast({
@@ -205,7 +211,19 @@ function BandRow({ band }: { band: FeeBand }) {
         <Button
           size="sm"
           disabled={!dirty || saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
+          onClick={() => {
+            if (rateInvalid || capInvalid) {
+              toast({
+                title: "Check the numbers",
+                description: rateInvalid
+                  ? "A percent band stores a fraction from 0 to 1. 0.10 is 10%."
+                  : "The cap must be zero or greater.",
+                variant: "destructive",
+              });
+              return;
+            }
+            setPendingConfirm(true);
+          }}
           data-testid={`fee-band-save-${band.band_key}`}
         >
           <Save className="w-3 h-3 mr-1" />
@@ -217,6 +235,29 @@ function BandRow({ band }: { band: FeeBand }) {
       {/* V-5 — the consequence, stated by the SERVER and only rendered here. A band that cannot be
           switched off says so with its reason permanently visible; a band that can says what takes
           over the moment the operator flips the switch, before they press Save. */}
+      {isPercent && (
+        <p className="text-[11px] text-gray-500" data-testid={`fee-band-percent-${band.band_key}`}>
+          Stored as a fraction. Current value is {Number.isFinite(band.default_rate) ? `${(band.default_rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%` : "—"}.
+        </p>
+      )}
+      {pendingConfirm && (
+        <div className="border border-gray-300 rounded-md p-2.5 space-y-2" data-testid={`fee-band-confirm-${band.band_key}`}>
+          <p className="text-xs text-gray-800">
+            Save {band.band_key}: rate {String(band.default_rate)} → {String(parsedRate)}
+            {showsCap && capChanged ? `; cap ${band.max_amount === null ? "uncapped" : String(band.max_amount)} → ${parsedCap === null ? "uncapped" : String(parsedCap)}` : ""}
+            {isActive !== band.is_active ? `; active ${String(band.is_active)} → ${String(isActive)}` : ""}.
+            This applies to new bookings and newly issued quotes. Existing bookings, quotes, and payouts keep the rate they were priced at.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()} data-testid={`fee-band-confirm-save-${band.band_key}`}>
+              Confirm
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPendingConfirm(false)} data-testid={`fee-band-confirm-cancel-${band.band_key}`}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       {(deactivationBlocked || pendingDeactivation) && (
         <div className="border border-amber-300 bg-amber-50 rounded-md p-2.5 flex items-start gap-2" data-testid={`fee-band-consequence-${band.band_key}`}>
           <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -232,14 +273,18 @@ function PolicyToggle({ setting }: { setting: PlatformSetting }) {
   const { toast } = useToast();
   const [value, setValue] = useState(setting.setting_value);
   const dirty = value !== setting.setting_value;
+  const needsConfirm = (FEE_POLICY_SETTING_KEYS as readonly string[]).includes(setting.setting_key);
+  const [pendingConfirm, setPendingConfirm] = useState(false);
 
   const saveMutation = useMutation({
     mutationFn: async (newValue: string) => {
       return apiRequest("PATCH", `/api/admin/platform-settings/${setting.setting_key}`, {
         settingValue: newValue,
+        ...(needsConfirm ? { confirm: true } : {}),
       });
     },
     onSuccess: () => {
+      setPendingConfirm(false);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
       toast({
         title: "Policy updated",
@@ -302,7 +347,7 @@ function PolicyToggle({ setting }: { setting: PlatformSetting }) {
         <Button
           size="sm"
           disabled={!dirty || saveMutation.isPending}
-          onClick={() => saveMutation.mutate(value)}
+          onClick={() => (needsConfirm ? setPendingConfirm(true) : saveMutation.mutate(value))}
           data-testid={`platform-setting-save-${setting.setting_key}`}
         >
           <Save className="w-3 h-3 mr-1" />
@@ -310,6 +355,21 @@ function PolicyToggle({ setting }: { setting: PlatformSetting }) {
         </Button>
       </div>
 
+      {pendingConfirm && (
+        <div className="mt-3 border border-gray-300 rounded-md p-3 space-y-2" data-testid={`platform-setting-confirm-${setting.setting_key}`}>
+          <p className="text-xs text-gray-800">
+            Save {setting.setting_key}: {setting.setting_value} → {value}. New bookings use the new policy. Existing bookings and issued quotes stay as they were priced.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate(value)} data-testid={`platform-setting-confirm-save-${setting.setting_key}`}>
+              Confirm
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setPendingConfirm(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       {isPolicy && value === "tiered" && setting.setting_value === "beta_flat" && (
         <div className="mt-3 border border-amber-300 bg-amber-50 rounded-md p-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -415,9 +475,37 @@ export default function FeeBandsAdminPage() {
           means — the unit differs by rate type. "Cap $" is the DOLLAR ceiling the resolver applies
           to a computed amount; blank means uncapped, which is a different setting from a cap of 0.
           A band a charge path cannot survive without cannot be switched off here, and one that can
-          says what takes over. Edits are audit-logged and take effect within 60 s.
+          says what takes over. Saving asks you to confirm, writes an audit row, and applies to
+          new bookings and newly issued quotes. Category overrides live on Category Fees and
+          apply when the policy is tiered.
         </p>
       </div>
+
+      <Card className="border-gray-200" data-testid="fee-beta-summary">
+        <CardHeader>
+          <CardTitle className="text-base">What new bookings use</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p data-testid="fee-policy-current">
+            Provider policy: <code>{(settings ?? []).find((s) => s.setting_key === "active_provider_commission_policy")?.setting_value ?? "not set"}</code>
+          </p>
+          <ul className="space-y-1">
+            {["beta_flat", "limited", "moderate", "commercial", "premium", "expert_standard", "expert_new", "traveler_service_fee", "expert_concierge_booking", "expert_concierge_booking_expert_share"].map((key) => {
+              const row = (bands ?? []).find((b) => b.band_key === key);
+              if (!row) return null;
+              const percent = row.rate_type === "percent" && Number.isFinite(row.default_rate)
+                ? ` (${(row.default_rate * 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%)`
+                : "";
+              const cap = row.max_amount === null ? "" : `; cap $${row.max_amount}`;
+              return (
+                <li key={key} data-testid={`fee-spotlight-${key}`}>
+                  <code>{key}</code> {row.is_active ? "active" : "inactive"}: {row.default_rate}{percent}{cap}
+                </li>
+              );
+            })}
+          </ul>
+        </CardContent>
+      </Card>
 
       {/* Platform policy settings */}
       <Card className="border-gray-200" data-testid="card-platform-settings">
