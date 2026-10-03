@@ -1543,7 +1543,8 @@ export function SlipView({
    */
   const { data: guestRoster } = useQuery<{ totals?: { invited?: number } }>({
     queryKey: [`/api/trips/${tripId}/guests`],
-    enabled: !!tripId,
+    // Guest emails and dietary notes are owner-tier (LD 37). A delegate does not request them.
+    enabled: !!tripId && data.tripRole === "owner",
     staleTime: 30_000,
     retry: false,
   });
@@ -2245,7 +2246,7 @@ export function SlipView({
       {/* Row 11 (relocated): expert-suggestion accept/decline. Pre-final it acts on the live plan
           here; the same component mounts on the finalized Trip Card (PlanCard full) where accepting
           auto-creates a new final version. Renders nothing when there are no suggestions. */}
-      <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" />
+      <ExpertSuggestionsPanel tripId={tripId} className="border-t border-border pt-5" canReview={isOwner} />
 
       {/* Board #329: the owner's saved places in this plan's cities — how "Plan this city" brings
           its places in. The owner's own list, so owner only; renders nothing when none match. */}
