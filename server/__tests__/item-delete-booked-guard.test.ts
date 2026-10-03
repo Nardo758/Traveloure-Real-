@@ -177,7 +177,9 @@ describe("N1 — no new route", () => {
         const m = line.match(/(?:app|router)\.(get|post|patch|put|delete)\("(\/api\/trips\/:tripId\/itinerary(?:-items[^"]*|\/reorder))"/);
         // The expert fresh-facts action (ledger `2026-10-01-a6-tavily-extract`) shares the item path
         // prefix but is a content-facts lookup, not an item CRUD rail; it is named here, never matched.
-        if (m && !m[2].endsWith("/:itemId/fresh-facts")) found.add(`${m[1].toUpperCase()} ${m[2]}`);
+        // The owner's lock rail (ruling R-ah, ledger `2026-10-03-item-locks`, migration 342) is the
+        // same: a ruled, single-column writer of `locked_at`, not an item CRUD rail. Named, never matched.
+        if (m && !m[2].endsWith("/:itemId/fresh-facts") && !m[2].endsWith("/:itemId/lock")) found.add(`${m[1].toUpperCase()} ${m[2]}`);
       }
     }
     assert.deepEqual(
