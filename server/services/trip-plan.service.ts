@@ -38,7 +38,7 @@
  */
 
 import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
-import { isAreaOnlyLocation } from "@shared/ai-place-text";
+import { isAreaOnlyLocation, rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { isSupplySlot } from "@shared/ai-place-text";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -348,7 +348,7 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
  * canvas map exactly as it already does on the traveler-facing PlanCard.
  */
 export async function resolveMissingItemCoordinates(
-  items: Array<{ id: string; title?: string | null; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
+  items: Array<{ id: string; title?: string | null; origin?: string | null; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
   destination: string | null | undefined,
 ): Promise<boolean> {
   const MAX_PER_REQUEST = 12;
@@ -363,6 +363,9 @@ export async function resolveMissingItemCoordinates(
     // disambiguation SUFFIX on top of a real item-level address, never the sole address. An item
     // with no location stays un-pinned — the honest state.
     if (!hasItemLocation(item)) continue;
+    // Ledger `2026-10-03-no-ward-pins` (smoke 7): an AI row whose only location is an AREA never
+    // gets a row coordinate — its pin, if any, is Google's location fact (LD 57), read at the DTO.
+    if (!rowCoordinatesTrusted(item)) continue;
     // Ledger `2026-10-03-no-ward-pins`: an area-only location is led by the item's title, and a
     // result Google marks as an AREA is refused — never a ward or city centroid as the stop's pin.
     const address = geocodeQuery(item, destination, isAreaOnlyLocation);
@@ -856,8 +859,11 @@ export async function assembleTripPlan(
       location: item.locationName || item.locationAddress || "",
       // Emitted as lat/lng to match the PlanCardActivity client contract so pins read coordinates
       // directly (no client-side geocoding).
-      lat: item.latitude ? parseFloat(item.latitude.toString()) : null,
-      lng: item.longitude ? parseFloat(item.longitude.toString()) : null,
+      // Ledger `2026-10-03-no-ward-pins` (smoke 7): an AI row whose only location is an AREA has no
+      // trusted row coordinate (a legacy ward centroid is never a pin); its pin, if any, is
+      // Google's location fact, applied behind the plancard gate (`applyGooglePins`).
+      lat: item.latitude && rowCoordinatesTrusted(item as any) ? parseFloat(item.latitude.toString()) : null,
+      lng: item.longitude && rowCoordinatesTrusted(item as any) ? parseFloat(item.longitude.toString()) : null,
       mapsUrl: placeMapsUrl(item.googlePlaceId),
       meetingPoint: item.providerServiceId
         ? (meetingPointByServiceId[item.providerServiceId] ?? null)

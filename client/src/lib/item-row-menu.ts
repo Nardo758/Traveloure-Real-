@@ -59,6 +59,12 @@ export const ASK_LOCAL_WORDS = {
     city
       ? `Saved. No local expert is live in ${city} yet — your question is recorded, and nothing was charged.`
       : "Saved. No local expert is live here yet — your question is recorded, and nothing was charged.",
+  /** Smoke 7 item 4: the row's standing line once a question is saved (read from the interest row). */
+  savedRow: (city: string | null) =>
+    city ? `Question saved · we'll tell you when a ${city} local joins` : "Question saved · we'll tell you when a local joins",
+  /** …and the ⋯ entry that replaces "Ask a local about this" on that row. */
+  seeQuestion: "See your question",
+  yourQuestion: "Your question",
 } as const;
 
 /** Is any local expert live in the plan's city, by the door's own overview read? */

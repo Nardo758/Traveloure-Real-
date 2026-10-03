@@ -10,14 +10,15 @@ import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
 import { ConciergeCard } from "@/components/marketplace/concierge-card";
-import { plancardRefetchInterval } from "@/lib/plancard-refetch";
+import { PLAN_LOAD_RATE_LIMITED, planLoadErrorKind, plancardRefetchInterval } from "@/lib/plancard-refetch";
+import { Button } from "@/components/ui/button";
 
 export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const searchStr = useSearch();
   const highlightItemId = new URLSearchParams(searchStr).get("item");
 
-  const { data, isLoading, isError } = useQuery<SlipData>({
+  const { data, isLoading, error, refetch, isFetching } = useQuery<SlipData>({
     // The plancard is LIVE by default (ledger `2026-09-26-slip-renders-live`); only the Trip Card asks
     // for its frozen final (`{ surface: "card" }`), under its own cache key.
     queryKey: [`/api/trips/${tripId}/plancard`],
@@ -36,9 +37,21 @@ export default function SlipViewPage() {
     );
   }
 
-  if (isError || !data) {
+  // Smoke 7: a plan already on screen stays on screen when a re-read fails; and a rate limit says
+  // so, with a retry — it is never shown as "may not exist" (`planLoadErrorKind`).
+  if (!data) {
+    if (error && planLoadErrorKind(error) === "rate_limited") {
+      return (
+        <div className="max-w-2xl mx-auto p-6 text-center" data-testid="slip-load-rate-limited">
+          <h2 className="text-xl font-semibold text-foreground">{PLAN_LOAD_RATE_LIMITED}</h2>
+          <Button className="mt-3" onClick={() => void refetch()} disabled={isFetching} data-testid="slip-load-retry">
+            Try again
+          </Button>
+        </div>
+      );
+    }
     return (
-      <div className="max-w-2xl mx-auto p-6 text-center">
+      <div className="max-w-2xl mx-auto p-6 text-center" data-testid="slip-load-unavailable">
         <h2 className="text-xl font-semibold text-foreground">Couldn't load this plan</h2>
         <p className="text-sm text-muted-foreground mt-1">
           It may not exist, or you may not have access to it.

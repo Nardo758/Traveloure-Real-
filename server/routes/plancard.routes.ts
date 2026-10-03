@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { factsForTrip, pendingFactLookups } from "../services/content-facts/place-facts.service";
+import { applyGooglePins } from "@shared/ai-place-text";
+import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import {
@@ -717,12 +719,16 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // "Send to expert" on, so a surface never offers an edge the server will refuse and never labels
     // an item "with your expert" when nobody is. `false` is an answer (no expert), not an unknown.
     const expertAssigned = await tripHasWriteAccessAdvisor(tripId);
+    // Smoke 7 item 4 (ledger `2026-10-03-no-ward-pins`): the questions THIS viewer saved through "Ask
+    // a local about this" — their own rows only, present only when there is one.
+    const savedQuestions = await savedItemQuestions(tripId, userId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
       tripRole: plan.plancard.tripRole,
       trip: plan.plancard.trip,
-      days: plan.days,
+      // Ledger `2026-10-03-no-ward-pins` (smoke 7): untrusted AI rows take Google's located point.
+      days: applyGooglePins(plan.days as any[], placeFacts as any),
       changeLog: plan.plancard.changeLog,
       metrics: plan.plancard.metrics,
       optimizationDelta: plan.plancard.optimizationDelta,
@@ -767,6 +773,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // until it is absent. Without it, items past the cap drew no "Build my days around this".
       ...((plan as any).coordinatesPending === true ? { coordinatesPending: true } : {}),
       ...(factsPendingItemIds.length ? { factsPendingItemIds } : {}),
+      ...(Object.keys(savedQuestions.items).length ? { savedQuestions } : {}),
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {

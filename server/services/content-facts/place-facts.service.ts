@@ -33,7 +33,7 @@ import { sourcesForNeed } from "./places-adapter";
 import { LookupScheduler } from "./lookup-scheduler.pure";
 import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
-import { matchNamesItem, namedPlaceTokens, placeLookupText } from "@shared/place-name-gate";
+import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea } from "@shared/place-name-gate";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
 import { getTavilyClient } from "../tavily-client";
@@ -135,6 +135,8 @@ function namedByDay(items: readonly EnrichItem[], city: string | null): Map<numb
   for (const item of items) {
     const tokens = namedPlaceTokens(item, city);
     if (tokens.size === 0) continue;
+    // Smoke 7: a title naming an area ("… District", "… Photo Stop", "… Walk") is never looked up.
+    if (titleNamesAnArea(item.title)) continue;
     const day = item.dayNumber ?? 1;
     const list = byDay.get(day) ?? [];
     list.push({ item, tokens });
@@ -165,6 +167,9 @@ export function attachableDrafts(drafts: FactDraft[], tokens: ReadonlySet<string
 /** Pure. The place's display name from an ATTACHED answer (its `location` fact), else null. */
 export function attachedDisplayName(kept: readonly FactDraft[]): string | null {
   const loc = kept.find((d) => d.factType === "location");
+  // Smoke 7: rename ONLY to a point of interest — an area- or street-typed answer (or one with no
+  // types, e.g. a cache row from before types were stored) never renames the item.
+  if (!isPointOfInterest(loc?.value?.types as unknown[] | undefined)) return null;
   const name = typeof loc?.value?.name === "string" ? (loc.value.name as string).trim() : "";
   return name || null;
 }
@@ -214,6 +219,7 @@ function outcomeOf(drafts: readonly FactDraft[], kept: readonly FactDraft[]): "a
  */
 async function renameToDisplayName(tripId: string, item: EnrichItem, name: string): Promise<boolean> {
   if (name === item.title) return false;
+  if (titleNamesAnArea(item.title)) return false; // smoke 7: an area-named item is never renamed
   try {
     const r = await db
       .update(itineraryItems)

@@ -138,11 +138,30 @@ function loopbackSkip(req: Request): boolean {
   return process.env.RATE_LIMIT_LOOPBACK_SKIP === "1" && isLoopback(req);
 }
 
+/**
+ * The slip's own plan read, `GET /api/trips/:tripId/plancard` (smoke 7, ledger
+ * `2026-10-03-no-ward-pins`). While a draft's place facts are being checked the slip re-reads it
+ * every 2 s (`plancard-refetch`), which on its own spent a third of the general per-IP budget and,
+ * with the page's other reads, tipped a traveler into a 429 on their own plan. It is therefore NOT
+ * counted against the general budget and has its own (`plancardReadRateLimiter`): generous enough
+ * for the poll and a couple of open tabs, still a ceiling. Path relative to the `/api` mount.
+ */
+export function isPlancardRead(req: Pick<Request, "method" | "path">): boolean {
+  return req.method === "GET" && /^\/trips\/[^/]+\/plancard\/?$/.test(req.path);
+}
+
 export const generalRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 100,
   keyGenerator: (req) => `general:${req.ip || "unknown"}`,
-  skip: loopbackSkip,
+  skip: (req) => loopbackSkip(req) || isPlancardRead(req),
+});
+
+export const plancardReadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 180,
+  keyGenerator: (req) => `plancard:${req.ip || "unknown"}`,
+  skip: (req) => !isPlancardRead(req) || loopbackSkip(req),
 });
 
 export const aiRateLimiter = createRateLimiter({

@@ -66,6 +66,7 @@ import {
   globalErrorHandler,
   notFoundHandler,
   generalRateLimiter,
+  plancardReadRateLimiter,
   aiRateLimiter,
   searchRateLimiter,
   authRateLimiter,
@@ -123,6 +124,8 @@ app.use(express.urlencoded({ extended: false }) as RequestHandler);
 app.use(metricsMiddleware() as RequestHandler);
 
 app.use("/api", generalRateLimiter as RequestHandler);
+// Smoke 7: the slip's plancard poll has its own budget (`isPlancardRead`), never the general one.
+app.use("/api", plancardReadRateLimiter as RequestHandler);
 app.use("/api/ai", aiRateLimiter as RequestHandler);
 app.use("/api/admin", adminRateLimiter as RequestHandler);
 app.use("/api/admin", queryCounterMiddleware as RequestHandler);

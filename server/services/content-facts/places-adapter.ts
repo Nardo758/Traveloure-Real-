@@ -27,6 +27,8 @@ const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
+  // Smoke 7 (ledger `2026-10-03-no-ward-pins`): the result's types, so a rename can require a point of interest.
+  "places.types",
   "places.location",
   "places.regularOpeningHours.weekdayDescriptions",
   "places.priceLevel",
@@ -105,7 +107,8 @@ export class PlacesAdapter implements SourceAdapter {
     const push = (d: Omit<FactDraft, keyof typeof base | "costCents">) =>
       out.push({ ...base, ...d, costCents: out.length === 0 ? cost : 0 });
     if (located) {
-      push({ need: req.need, factType: "location", value: { lat, lng, name, query: text }, expiresAt: expiry(fetchedAt, factTtlDays("location")) });
+      const types = Array.isArray(p.types) ? p.types.map(String) : [];
+      push({ need: req.need, factType: "location", value: { lat, lng, name, query: text, types }, expiresAt: expiry(fetchedAt, factTtlDays("location")) });
     }
     const hours = p.regularOpeningHours?.weekdayDescriptions;
     if (Array.isArray(hours) && hours.length) {
