@@ -23,6 +23,7 @@
  *     only a `custom` option's title and pin come from the body, and a half pin is refused.
  */
 import crypto from "node:crypto";
+import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { and, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage, stripItineraryItemRoutingFields } from "../storage";
@@ -435,6 +436,10 @@ export async function promoteAnchor(input: { tripId: string; itemId: string; use
     if (trip.finalizedAt) throw new OptionSetError(409, "plan_finalized", "Reopen the plan to change what it's built around");
     const [item] = await tx.select().from(itineraryItems).where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId))).limit(1);
     if (!item) throw new OptionSetError(404, "not_found", "No such item on this plan");
+    // Smoke 7: an untrusted row coordinate (an AI area-only stop) is not a place to build around.
+    if (!rowCoordinatesTrusted(item as any)) {
+      throw new OptionSetError(409, "not_located_or_dated", "Only a located, dated item can anchor the plan");
+    }
     if (item.latitude == null || item.longitude == null || item.dayNumber == null) {
       throw new OptionSetError(409, "not_located_or_dated", "Only a located, dated item can anchor the plan");
     }
@@ -501,15 +506,26 @@ export async function reopenOptionSet(input: { tripId: string; setId: string; us
 /** The plan's stops plan-fit scores against: every item that is not itself a place to stay. */
 export async function fitItems(tripId: string): Promise<FitItem[]> {
   const rows = await db
-    .select({ id: itineraryItems.id, dayNumber: itineraryItems.dayNumber, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
+    .select({
+      id: itineraryItems.id,
+      dayNumber: itineraryItems.dayNumber,
+      lat: itineraryItems.latitude,
+      lng: itineraryItems.longitude,
+      origin: itineraryItems.origin,
+      locationName: itineraryItems.locationName,
+      locationAddress: itineraryItems.locationAddress,
+    })
     .from(itineraryItems)
     .where(and(eq(itineraryItems.tripId, tripId), ne(itineraryItems.itemType, "accommodation")));
   // A5 (ledger `2026-09-29-a5-draft-open-set`): an item with no coordinates of its own counts as
   // located when an unexpired `location` fact places it (a drafted stop the Places spine found). The
   // fact is never copied onto the item row, where it would outlive Google's 30-day cache.
-  const factPoints = rows.some((r) => !toPoint(r.lat, r.lng)) ? await factPointsForTrip(tripId) : new Map();
+  // Smoke 7: an AI stop whose stored location is only an area never trusts its row's coordinates
+  // (`rowCoordinatesTrusted`) — Google's location fact is its only place.
+  const own = (r: (typeof rows)[number]) => (rowCoordinatesTrusted(r) ? toPoint(r.lat, r.lng) : null);
+  const factPoints = rows.some((r) => !own(r)) ? await factPointsForTrip(tripId) : new Map();
   return rows.map((r) => {
-    const p = toPoint(r.lat, r.lng) ?? factPoints.get(r.id) ?? null;
+    const p = own(r) ?? factPoints.get(r.id) ?? null;
     return { dayNumber: r.dayNumber ?? null, lat: p?.lat ?? null, lng: p?.lng ?? null };
   });
 }

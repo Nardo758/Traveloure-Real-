@@ -22,7 +22,7 @@
  */
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems, providerServices, trips, users } from "@shared/schema";
+import { funnelEvents, itineraryItems, providerServices, trips, users } from "@shared/schema";
 import { isEarnerRole } from "@shared/roles";
 import {
   HELP_LEVELS,
@@ -239,6 +239,41 @@ export async function recordExpertDoorEvent(input: {
     props.count = (await expertPicker(input.tripId, input.userId, input.level)).experts.length;
   }
   await trackFunnelEvent({ userId: input.userId, tripId: input.tripId, eventType: input.type, funnelStage: "SLIP", eventData: props });
+}
+
+/**
+ * Smoke 7 item 4 (ledger `2026-10-03-no-ward-pins`): the questions THIS viewer saved through "Ask a
+ * local about this", read back from their own `expert_interest` rows (the one record — nothing new is
+ * stored). Scoped to the session user (§14 applied to reads); the latest row per item wins. The city
+ * is the plan's market, `null` when the plan has none (§13 — the copy then names no city).
+ */
+export async function savedItemQuestions(
+  tripId: string,
+  userId: string,
+): Promise<{ cityName: string | null; items: Record<string, { question: string | null; savedAt: string }> }> {
+  const rows = await db
+    .select({ properties: funnelEvents.properties, createdAt: funnelEvents.createdAt })
+    .from(funnelEvents)
+    .where(
+      and(
+        eq(funnelEvents.tripId, tripId),
+        eq(funnelEvents.userId, userId),
+        eq(funnelEvents.eventType, "expert_interest"),
+        sql`${funnelEvents.properties}->>'itemId' IS NOT NULL`,
+      ),
+    )
+    .orderBy(funnelEvents.createdAt);
+  const items: Record<string, { question: string | null; savedAt: string }> = {};
+  for (const r of rows) {
+    const p = (r.properties ?? {}) as { itemId?: unknown; question?: unknown };
+    if (typeof p.itemId !== "string") continue;
+    items[p.itemId] = {
+      question: typeof p.question === "string" ? p.question : null,
+      savedAt: new Date(r.createdAt as any).toISOString(),
+    };
+  }
+  if (Object.keys(items).length === 0) return { cityName: null, items };
+  return { cityName: (await planMarket(tripId)).cityName, items };
 }
 
 /** The request rail's row (`expert_request_sent`), written only when the request names a plan. */

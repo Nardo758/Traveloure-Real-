@@ -132,3 +132,27 @@ export function matchNamesItem(
   const shared = own.filter((t) => itemTokens.has(t)).length;
   return shared >= 1 && shared * 2 > own.length;
 }
+
+/**
+ * SMOKE 7 (ledger `2026-10-03-no-ward-pins`): a title that names an AREA or a way of moving through
+ * one — "Fushimi Sake District", "Yasaka Pagoda Photo Stop", "Gion Walk" — is not one place. A text
+ * search for it returns whichever venue ranks first (smoke 7 renamed such items to a shop), so it is
+ * NOT looked up and therefore never renamed. Case-insensitive, whole words. ONE home (§18 rule 1).
+ */
+const AREA_TITLE_WORDS = /\b(district|ward|area|neighbou?rhood|streets?|photo\s+stop|photo\s+spot|walk)\b/i;
+export function titleNamesAnArea(title: string | null | undefined): boolean {
+  return AREA_TITLE_WORDS.test(title ?? "");
+}
+
+/** Google place types that make a result ONE point of interest — the only kind a rename may adopt. */
+const POI_TYPES = new Set(["point_of_interest", "establishment", "tourist_attraction"]);
+/** Types that say the result is an AREA (a locality, a ward, a street) — never a rename target. */
+const AREA_TYPES = new Set([
+  "locality", "sublocality", "sublocality_level_1", "sublocality_level_2", "neighborhood", "colloquial_area",
+  "administrative_area_level_1", "administrative_area_level_2", "administrative_area_level_3", "route", "political", "postal_code", "country",
+]);
+/** Pure. True only when Google typed the result as a point of interest and not as an area. Unknown types ⇒ false. */
+export function isPointOfInterest(types: readonly unknown[] | null | undefined): boolean {
+  const t = (types ?? []).map(String);
+  return t.some((x) => POI_TYPES.has(x)) && !t.some((x) => AREA_TYPES.has(x));
+}

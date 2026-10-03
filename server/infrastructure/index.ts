@@ -3,6 +3,7 @@ export { createHealthRouter } from "./health";
 export {
   createRateLimiter,
   generalRateLimiter,
+  plancardReadRateLimiter,
   aiRateLimiter,
   searchRateLimiter,
   authRateLimiter,

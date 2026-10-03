@@ -34,7 +34,10 @@ const CITY = "Kyoto, Japan";
 const GENERIC = ["Dinner at Local Izakaya", "Lunch at Traditional Restaurant", "Traditional Tea Ceremony Experience"];
 
 /** A fake Places API. `answer(query)` names the place returned; every call is counted. */
-function placesFake(answer: (query: string) => string, opts: { noHours?: (query: string) => boolean } = {}) {
+function placesFake(
+  answer: (query: string) => string,
+  opts: { noHours?: (query: string) => boolean; types?: (query: string) => string[] } = {},
+) {
   const state = { calls: 0 };
   const adapter = new PlacesAdapter(
     async (_url, init) => {
@@ -49,6 +52,8 @@ function placesFake(answer: (query: string) => string, opts: { noHours?: (query:
             id: `${id("place")}-${crypto.createHash("sha1").update(q).digest("hex").slice(0, 10)}`,
             displayName: { text: name },
             location: { latitude: 35.0, longitude: 135.7 },
+            // Smoke 7: Google's types — a point of interest by default; a test can answer an area.
+            types: opts.types?.(q) ?? ["tourist_attraction", "point_of_interest", "establishment"],
             ...(opts.noHours?.(q) ? {} : { regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] } }),
           }],
         }),
@@ -266,6 +271,37 @@ test("G8 smoke 5 item 9: an attached Google name replaces the drafted title — 
   assert.equal(await title(off.id), "Shisen-do", "unmatched ⇒ never renamed");
   assert.equal(await title(renamedByTraveler.id), "My garden visit", "a traveler's rename is never overwritten");
   assert.equal(r.renamed, 1);
+});
+
+test("G10 smoke 7: an area-named title is never looked up and never renamed", async () => {
+  const district: EnrichItem = { id: id("dist"), title: "Fushimi Sake District", type: "attraction", dayNumber: 2 };
+  const photo: EnrichItem = { id: id("photo"), title: "Yasaka Pagoda Photo Stop", type: "attraction", dayNumber: 2 };
+  await insertItems([district, photo]);
+  const queries: string[] = [];
+  const { adapter, state } = placesFake((q) => {
+    queries.push(q);
+    return "Kizakura Kappa Country"; // what smoke 7 renamed an area item to
+  });
+  const r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [district, photo], adapters: [adapter] });
+  assert.equal(state.calls, 0, "no lookup for either");
+  assert.deepEqual(queries, []);
+  assert.equal(r.renamed, 0);
+  const titles = (await db.execute(sql`SELECT title FROM itinerary_items WHERE id IN (${district.id}, ${photo.id}) ORDER BY title`)).rows.map((x: any) => x.title);
+  assert.deepEqual(titles, ["Fushimi Sake District", "Yasaka Pagoda Photo Stop"]);
+  assert.deepEqual(await factRows([district.id, photo.id]), []);
+});
+
+test("G11 smoke 7: a rename adopts only a point of interest — a street- or area-typed answer never renames", async () => {
+  // The answer MATCHES the item (its words are all in the title), so it attaches — and without the
+  // point-of-interest rule it would rename "Sannenzaka Lane" to "Sannenzaka".
+  const item: EnrichItem = { id: id("street"), title: "Sannenzaka Lane", type: "attraction", dayNumber: 3 };
+  await insertItems([item]);
+  const { adapter } = placesFake(() => "Sannenzaka", { types: () => ["route"] });
+  const r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [item], adapters: [adapter] });
+  const title = ((await db.execute(sql`SELECT title FROM itinerary_items WHERE id = ${item.id}`)).rows[0] as any).title;
+  assert.equal(title, "Sannenzaka Lane");
+  assert.equal(r.renamed, 0);
+  assert.ok((await factRows([item.id])).length > 0, "the facts still attach — only the rename is withheld");
 });
 
 test("G9 smoke 5 item 8: the run records progress on its draft and ends with nothing pending", async () => {

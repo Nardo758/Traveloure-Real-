@@ -37,3 +37,13 @@ export function showsCheckingHours(
 ): boolean {
   return !hasFactLine && Array.isArray(pending) && pending.includes(itemId);
 }
+
+/**
+ * Smoke 7 (ledger `2026-10-03-no-ward-pins`): what a failed plan load SAYS. A 429 is "slow down",
+ * never "this plan may not exist" — the not-found copy on a rate limit told a traveler their own
+ * plan was gone. Errors arrive as "<status>: <body>" (`throwIfResNotOk`). Pure.
+ */
+export const PLAN_LOAD_RATE_LIMITED = "Too many requests — give it a moment";
+export function planLoadErrorKind(err: unknown): "rate_limited" | "unavailable" {
+  return /^429\b/.test(String((err as { message?: string } | null)?.message ?? err ?? "")) ? "rate_limited" : "unavailable";
+}

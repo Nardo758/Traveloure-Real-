@@ -40,6 +40,8 @@ export type ItemRowRouting = "own" | "with_expert";
 
 /** The ⋯ menu's actions. An absent handler is an absent entry — never a greyed one (§13). */
 export interface ItemRowMenu {
+  /** Smoke 7 item 4: a question is already saved on this row ⇒ the entry reads "See your question". */
+  askLocalSaved?: boolean;
   onSwap?: () => void;
   onMoveUp?: (() => void) | null;
   onMoveDown?: (() => void) | null;
@@ -186,6 +188,7 @@ export const ITEM_MENU_LABELS = {
   moveDown: "Move down",
   remove: "Remove",
   askLocal: "Ask a local about this",
+  seeQuestion: "See your question",
   findHost: "Find a host",
   buildAround: "Build my days around this",
 } as const;
@@ -220,7 +223,7 @@ function ItemRowMenuButton({ id, menu, isAnchor }: { id: string; menu: ItemRowMe
           <DropdownMenuSeparator />
         ) : null}
         {menu.onAskLocal ? (
-          <DropdownMenuItem onSelect={menu.onAskLocal} data-testid={`item-menu-ask-local-${id}`}>{ITEM_MENU_LABELS.askLocal}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={menu.onAskLocal} data-testid={`item-menu-ask-local-${id}`}>{menu.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}</DropdownMenuItem>
         ) : null}
         {menu.findHostHref ? (
           <DropdownMenuItem asChild data-testid={`item-menu-find-host-${id}`}>

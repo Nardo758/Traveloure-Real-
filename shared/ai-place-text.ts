@@ -174,3 +174,63 @@ export function isSupplySlot(item: {
     blank(item.bookingId)
   );
 }
+
+/**
+ * Is this location text ONLY an area (a ward, a district, a city)? True when the area cut keeps
+ * all of it — nothing street-level or venue-like was there to drop. Used so an area is never
+ * geocoded as if it were a place (ledger `2026-10-03-no-ward-pins`).
+ */
+export function isAreaOnlyLocation(text: string | null | undefined): boolean {
+  const norm = (text ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(", ");
+  if (!norm) return false;
+  return unverifiedAreaText(norm) === norm;
+}
+
+/**
+ * SMOKE 7 (ledger `2026-10-03-no-ward-pins`): are an item ROW's own coordinates a real place? Not
+ * for an AI stop whose stored location is only an AREA — R-w stores that, and the only thing that
+ * could have put coordinates on such a row is a geocode of the ward or the city (the centroid smoke 7
+ * showed as pins). Such a stop is located ONLY by Google: its Places location fact. Every reader of
+ * "is this stop located" asks this ONE predicate — the plancard's pins and its "N of M located",
+ * plan-fit, the coordinate backfill and "Build my days around this" (§18 rule 1).
+ */
+export function rowCoordinatesTrusted(item: {
+  origin?: string | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
+}): boolean {
+  if (item.origin !== "ai") return true;
+  const own = [item.locationName, item.locationAddress].filter((v) => (v ?? "").trim());
+  // No location at all ⇒ nothing was geocoded from an area; whatever coordinate the row holds came
+  // from elsewhere (a listing, a placement) and is not a centroid.
+  if (own.length === 0) return true; // a venue-less AI stop has no place of its own
+  return !own.every((v) => isAreaOnlyLocation(v));
+}
+
+/**
+ * Ledger `2026-10-03-no-ward-pins` (smoke 7): an activity whose row coordinate is not trusted takes
+ * its pin from Google's own `location` fact (origin `places_api`) — never a centroid, and never
+ * copied onto the row (LD 57). Such a pin is marked `pinSource: "places"`; nothing is promotable
+ * from it, because "Build my days around this" needs a coordinate the ROW holds. Pure; mutates
+ * nothing — returns new day objects.
+ */
+export function applyGooglePins<
+  A extends { id: string; lat: number | null; lng: number | null },
+  D extends { activities: A[] },
+>(days: D[], placeFacts: Record<string, Array<{ factType: string; origin: string; value: Record<string, unknown> }>>): D[] {
+  return days.map((d) => ({
+    ...d,
+    activities: d.activities.map((a) => {
+      if (a.lat != null && a.lng != null) return a;
+      const loc = (placeFacts[a.id] ?? []).find((f) => f.factType === "location" && f.origin === "places_api");
+      const lat = Number(loc?.value?.lat);
+      const lng = Number(loc?.value?.lng);
+      if (!loc || !Number.isFinite(lat) || !Number.isFinite(lng)) return a;
+      return { ...a, lat, lng, pinSource: "places" as const };
+    }),
+  }));
+}

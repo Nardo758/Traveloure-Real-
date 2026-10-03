@@ -1110,6 +1110,65 @@ test.describe("5 · gaps and suggestions", () => {
   });
 });
 
+// ── smoke 7 · the item row's ⋯ menu and "Ask a local" ─────────────────────────────────────────
+// Ledger `2026-10-03-no-ward-pins` (smoke 7 items 4 and 5): the menu opens on a POINTER click and on
+// a TAP, not only from the keyboard; a saved question stands on the row, read back from the
+// traveler's own interest row, so it survives a reload, and the ⋯ entry then reads "See your question".
+async function kyotoPlanWithOneItem(page: Page, label: string): Promise<{ tripId: string; itemId: string; anyLive: boolean }> {
+  await signedInTraveler(page, label);
+  const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
+  const itemId = await createItem(page.request, tripId, "Nishiki Market");
+  const help = await page.request.get(`${BASE_URL}/api/trips/${tripId}/expert-help`);
+  const body = help.ok() ? await help.json() : null;
+  const anyLive = !!body?.levels?.some((l: { expertCount: number }) => l.expertCount > 0);
+  return { tripId, itemId, anyLive };
+}
+
+test.describe("smoke 7 · ask a local", () => {
+  test("smoke 7 — ⋯ opens on a pointer click; a saved question stands on the row after a reload", async ({ page }) => {
+    const { tripId, itemId, anyLive } = await kyotoPlanWithOneItem(page, "ask");
+    test.skip(anyLive, "a Kyoto local is live on this database — the entry opens the expert door instead");
+    await page.goto(`/plans/${tripId}`);
+    const trigger = testid(page, `item-menu-${itemId}`);
+    await expect(trigger).toBeVisible({ timeout: 20_000 });
+    await trigger.click();
+    const entry = testid(page, `item-menu-ask-local-${itemId}`);
+    await expect(entry).toBeVisible();
+    await expect(entry).toHaveText("Ask a local about this");
+    await entry.click();
+    await testid(page, `item-ask-local-input-${itemId}`).fill("Which stall has the best tamagoyaki?");
+    const status = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, `item-ask-local-save-${itemId}`).click();
+      },
+      { method: "POST", path: /^\/api\/trips\/[^/]+\/slip-events$/ },
+    );
+    expect(ok2xx(status), `saving the question answered ${status}`).toBe(true);
+    const standing = testid(page, `item-ask-local-standing-${itemId}`);
+    await expect(standing).toContainText("Question saved · we'll tell you when a Kyoto local joins", { timeout: 15_000 });
+
+    await page.reload();
+    await expect(standing).toContainText("Question saved · we'll tell you when a Kyoto local joins", { timeout: 20_000 });
+    await testid(page, `item-menu-${itemId}`).click();
+    await expect(testid(page, `item-menu-ask-local-${itemId}`)).toHaveText("See your question");
+    await testid(page, `item-menu-ask-local-${itemId}`).click();
+    await expect(testid(page, `item-ask-local-question-${itemId}`)).toContainText("Which stall has the best tamagoyaki?");
+  });
+});
+
+test.describe("smoke 7 · ⋯ on touch", () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+  test("smoke 7 — ⋯ opens on a tap", async ({ page }) => {
+    const { tripId, itemId } = await kyotoPlanWithOneItem(page, "tap");
+    await page.goto(`/plans/${tripId}`);
+    const trigger = testid(page, `item-menu-${itemId}`);
+    await expect(trigger).toBeVisible({ timeout: 20_000 });
+    await trigger.tap();
+    await expect(testid(page, `item-menu-remove-${itemId}`)).toBeVisible({ timeout: 5_000 });
+  });
+});
+
 // ── §6 · paid run ─────────────────────────────────────────────────────────────────────────────
 test.describe("6 · paid run", () => {
   test("§6 today — the free preview and the run fee render on the slip before any charge", async ({ page }) => {

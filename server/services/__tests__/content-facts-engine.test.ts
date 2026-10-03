@@ -112,6 +112,8 @@ test("P5: the address — two fields added to the mask, both forms kept, neither
     "places.id", "places.displayName", "places.location", "places.regularOpeningHours.weekdayDescriptions",
     "places.priceLevel", "places.googleMapsUri", "places.reservable", "places.servesVegetarianFood",
     "places.formattedAddress", "places.shortFormattedAddress",
+    // Smoke 7 (ledger `2026-10-03-no-ward-pins`): the result's types — a rename needs a point of interest.
+    "places.types",
   ]);
   const addr = both.find((f) => f.factType === "address")!;
   assert.deepEqual(addr.value, { query: "Kinkaku-ji, Kyoto, Japan", formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto, 603-8361, Japan", shortFormattedAddress: "1 Kinkakujicho, Kita Ward" });

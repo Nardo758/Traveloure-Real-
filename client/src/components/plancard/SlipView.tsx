@@ -200,6 +200,8 @@ export interface SlipData extends PlanCardData {
   placeFacts?: Record<string, FactView[]>;
   /** Smoke 5 item 8 — item ids the latest draft's place-facts run is still checking (present only when non-empty). */
   factsPendingItemIds?: string[];
+  /** Smoke 7 item 4: the viewer's own saved "Ask a local" questions, by item (present only when any). */
+  savedQuestions?: { cityName: string | null; items: Record<string, { question: string | null; savedAt: string }> };
   /** The §4 diary — last 20 log rows, newest first. Absent on pre-BUILD-1 responses. */
   recentTransitions?: TripPlanTransition[];
   /**
@@ -687,7 +689,11 @@ function ItemAskLocalPanel({ tripId, itemId, onClose }: { tripId: string; itemId
       const overview = queryClient.getQueryData<{ market?: { cityName: string | null } }>([`/api/trips/${tripId}/expert-help`]);
       return overview?.market?.cityName ?? null;
     },
-    onSuccess: (city) => setSavedCity(city),
+    onSuccess: (city) => {
+      setSavedCity(city);
+      // Smoke 7 item 4: the saved state is read back from the plan, so it survives a reload.
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
     onError: () => toast({ title: "Couldn't save your question", variant: "destructive" }),
   });
   if (savedCity !== undefined) {
@@ -743,6 +749,8 @@ function SlipDayItem({
   dateIso = null,
   checkingHours = false,
   onOpenExpertDoor,
+  savedQuestion = null,
+  savedCity = null,
 }: {
   tripId: string;
   activity: PlanCardActivity;
@@ -769,10 +777,14 @@ function SlipDayItem({
   groupItemIds: readonly string[];
   /** R-m: "Ask a local about this" with no advisor on the plan opens the expert door. */
   onOpenExpertDoor: () => void;
+  /** Smoke 7 item 4: the viewer's saved question on this item, if any, and the plan's market city. */
+  savedQuestion?: { question: string | null } | null;
+  savedCity?: string | null;
 }) {
   const a = activity;
   const [askSignal, setAskSignal] = useState(0);
   const [askLocalOpen, setAskLocalOpen] = useState(false);
+  const [questionOpen, setQuestionOpen] = useState(false);
   const askLocal = async () => {
     // R-r: one read (the door's own overview, shared cache) decides door vs. recorded interest.
     try {
@@ -804,7 +816,14 @@ function SlipDayItem({
         // R-m: an advisor on the plan ⇒ the item's own thread; none ⇒ the expert door, which opens
         // whether or not any expert serves the market (the door says so itself). Owner only — the
         // door is the owner's to open.
-        onAskLocal: hasAdvisor ? () => setAskSignal((n) => n + 1) : isOwner ? () => void askLocal() : undefined,
+        onAskLocal: hasAdvisor
+          ? () => setAskSignal((n) => n + 1)
+          : savedQuestion
+            ? () => setQuestionOpen((v) => !v)
+            : isOwner
+              ? () => void askLocal()
+              : undefined,
+        askLocalSaved: !hasAdvisor && !!savedQuestion,
         findHostHref: findHostHref({ name: a.name, type: a.type, locationName: a.location }, { city, tripId }),
         onBuildAround: promotable ? promote : undefined,
       }
@@ -840,7 +859,19 @@ function SlipDayItem({
           openSignal={askSignal}
         />
       )}
-      {askLocalOpen ? <ItemAskLocalPanel tripId={tripId} itemId={a.id} onClose={() => setAskLocalOpen(false)} /> : null}
+      {savedQuestion && !hasAdvisor ? (
+        <div className="mt-1" data-testid={`item-ask-local-standing-${a.id}`}>
+          <p className="text-xs text-muted-foreground">{ASK_LOCAL_WORDS.savedRow(savedCity)}</p>
+          {questionOpen ? (
+            <p className="mt-1 text-xs" data-testid={`item-ask-local-question-${a.id}`}>
+              <span className="text-muted-foreground">{ASK_LOCAL_WORDS.yourQuestion}: </span>
+              {savedQuestion.question ?? ""}
+            </p>
+          ) : null}
+        </div>
+      ) : askLocalOpen ? (
+        <ItemAskLocalPanel tripId={tripId} itemId={a.id} onClose={() => setAskLocalOpen(false)} />
+      ) : null}
       {actions.panel}
     </ItemRow>
   );
@@ -1894,10 +1925,12 @@ export function SlipView({
               </div>
               {slipView === "map" && (
                 <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
+                  {/* Ledger `2026-10-03-no-ward-pins` (decision-maker): the line reads "N of M located".
+                      Located means a real coordinate — never a ward or city centroid. */}
                   <span className="font-semibold text-foreground">
                     {locatedActivities.length} of {allActivities.length}
                   </span>{" "}
-                  stop{allActivities.length === 1 ? "" : "s"} located
+                  located
                 </span>
               )}
             </div>
@@ -2085,9 +2118,14 @@ export function SlipView({
                         slot.dayNum != null &&
                         a.lat != null &&
                         a.lng != null &&
+                        // Ledger `2026-10-03-no-ward-pins`: a pin read from Google's fact is never
+                        // the row's own coordinate, which promotion needs (LD 57).
+                        (a as { pinSource?: string }).pinSource !== "places" &&
                         a.id !== anchorItemId
                       }
                       onOpenExpertDoor={() => setExpertDoorState("open")}
+                      savedQuestion={data.savedQuestions?.items[a.id] ?? null}
+                      savedCity={data.savedQuestions?.cityName ?? null}
                     />
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
