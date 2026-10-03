@@ -3,7 +3,7 @@
  * ledger `2026-10-03-surface-step1-item-row`).
  *   F1  the facts line, VERBATIM: "<Wkd> · <hours> · Google Maps · checked <d Mon>"
  *   F2  no plan date ⇒ no facts line (a weekday is never guessed); no hours fact ⇒ none
- *   F3  a stale fact says so; an unparseable checkedAt drops only the "checked" segment
+ *   F3  a stale fact says so; no checkedAt ⇒ the provenance line's own date, else no "checked" segment
  *   P1  place line: a Google-checked address shows its WARD/AREA with the Maps attribution
  *   P2  place line (R-ab): otherwise the location AS STORED, whoever wrote it — no client rewrite
  *   P3  place line: nothing stored and no Google fact ⇒ null
@@ -34,7 +34,10 @@ test("F2: no date, no weekday; no hours fact, no line", () => {
 
 test("F3: stale and unknown-checked facts", () => {
   assert.equal(itemFactsLine([{ ...hours, stale: true }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct (may have changed)");
-  assert.equal(itemFactsLine([{ ...hours, checkedAt: null }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps");
+  // No `checkedAt` on the wire (an older build's payload) ⇒ the date the server's provenance line states.
+  assert.equal(itemFactsLine([{ ...hours, checkedAt: null }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct");
+  assert.equal(itemFactsLine([{ ...hours, checkedAt: null, provenance: "Google Maps · checked 30 Sept 2026" }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 30 Sep");
+  assert.equal(itemFactsLine([{ ...hours, checkedAt: null, provenance: "Google Maps" }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps");
   assert.equal(factCheckedLabel("not a date"), null);
 });
 

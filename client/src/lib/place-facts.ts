@@ -54,6 +54,18 @@ export function factCheckedLabel(checkedAt: string | null | undefined): string |
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 }
 
+/**
+ * "3 Oct" out of the server's own provenance line ("Google Maps · checked 3 Oct 2026"), for a fact
+ * read before `checkedAt` was on the wire (a payload from an older build). The server's words, never
+ * a guessed date; no "checked" segment ⇒ null.
+ */
+export function provenanceCheckedLabel(provenance: string | null | undefined): string | null {
+  const m = /checked (\d{1,2}) ([A-Za-z]{3})/.exec(provenance ?? "");
+  if (!m) return null;
+  const mon = MON.find((x) => x.toLowerCase() === m[2].toLowerCase());
+  return mon ? `${Number(m[1])} ${mon}` : null;
+}
+
 /** The source's name as the server wrote it on the provenance line ("Google Maps", "A local expert", …). */
 function sourceName(provenance: string): string {
   const i = provenance.indexOf(" · ");
@@ -78,7 +90,7 @@ export function itemFactsLine(
   if (!line) return null;
   const hoursText = line.slice(WEEKDAYS[dow].length + 1).trim();
   if (!hoursText) return null;
-  const checked = factCheckedLabel(hours.checkedAt);
+  const checked = factCheckedLabel(hours.checkedAt) ?? provenanceCheckedLabel(hours.provenance);
   const parts = [WKD[dow], hoursText, sourceName(hours.provenance)];
   if (checked) parts.push(`checked ${checked}`);
   return { text: parts.join(" · ") + (hours.stale ? " (may have changed)" : ""), sourceUrl: hours.sourceUrl };

@@ -25,6 +25,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { DayBlock } from "../../plan/DayBlock";
@@ -35,7 +36,7 @@ import { itemFactsLine, itemPlaceLine } from "@/lib/place-facts";
 
 (globalThis as any).React = React;
 
-const FIXTURE = process.env.SURFACE_PARITY_FIXTURE ?? path.resolve(__dirname, "../../../../../server/__tests__/fixtures/smoke6-plancard.json");
+const FIXTURE = process.env.SURFACE_PARITY_FIXTURE ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../../server/__tests__/fixtures/smoke6-plancard.json");
 /** Smoke 6's plan held 24 items; an override fixture (local harness check) states no count. */
 const EXPECTED_ITEMS = process.env.SURFACE_PARITY_FIXTURE ? null : 24;
 const payload = JSON.parse(readFileSync(FIXTURE, "utf8"));
@@ -125,7 +126,8 @@ describe("surface step 1 — parity against the stored smoke plan", () => {
           continue;
         }
         withLine++;
-        assert.equal(got, want.text);
+        // Google writes U+202F before "AM"/"PM"; the rendered text is compared whitespace-normalised.
+        assert.equal(got, want.text.replace(/\s+/g, " ").trim());
         assert.match(got!, /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) · .+ · Google Maps · checked \d{1,2} [A-Z][a-z]{2}( \(may have changed\))?$/);
       }
     }
