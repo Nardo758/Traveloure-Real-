@@ -89,9 +89,9 @@ export async function populateBookingOptionsForLeg(
       description: provider.serviceDescription,
       modeType: leg.recommendedMode,
       iconType: getModeIcon(leg.recommendedMode),
-      priceDisplay: `$${price}`,
-      priceCentsLow: price * 100,
-      priceCentsHigh: price * 100,
+      priceDisplay: price === null ? "Request quote" : `$${price}`,
+      priceCentsLow: price === null ? undefined : Math.round(price * 100),
+      priceCentsHigh: price === null ? undefined : Math.round(price * 100),
       currency: "USD",
       estimatedMinutes: leg.estimatedDurationMinutes,
       rating: provider.ratingAvg,
@@ -478,8 +478,10 @@ async function findAffiliateTransportOptions(
     title: `${fromName} → ${toName}`,
     description: "Book trains, buses & ferries with 12Go",
     modeType: "transit",
-    priceDisplay: "From $5",
-    priceCentsLow: 500,
+    // No partner payload states a price for a route search, and no admin config holds one, so none
+    // is shown (ledger `2026-10-03-transport-price-literals` — "From $5" was a literal).
+    priceDisplay: "Compare prices",
+    priceCentsLow: null,
     priceCentsHigh: null,
     pricePerPerson: true,
     currency: "USD",
@@ -515,8 +517,8 @@ async function findAffiliateTransportOptions(
       title: `Rent a car in ${destination}`,
       description: "Compare 500+ rental providers with DiscoverCars",
       modeType: "car",
-      priceDisplay: "From $25/day",
-      priceCentsLow: 2_500,
+      priceDisplay: "Compare prices",
+      priceCentsLow: null,
       priceCentsHigh: null,
       pricePerPerson: false,
       currency: "USD",
@@ -535,8 +537,8 @@ async function findAffiliateTransportOptions(
       title: `${fromName} → ${toName}`,
       description: "Search flights with Kiwi.com",
       modeType: "flight",
-      priceDisplay: "From $50",
-      priceCentsLow: 5_000,
+      priceDisplay: "Compare prices",
+      priceCentsLow: null,
       priceCentsHigh: null,
       pricePerPerson: true,
       currency: "USD",
@@ -803,15 +805,15 @@ function getRideshareAppsForDestination(destination: string): any[] {
   // Destination-specific rideshare availability
   const rideshareProfiles: Record<string, any[]> = {
     paris: [
-      { name: "uber", displayName: "Uber", icon: "🚕", baseCostPerKm: 1.5, flagFall: 3.0 },
-      { name: "bolt", displayName: "Bolt", icon: "🚗", baseCostPerKm: 1.2, flagFall: 2.5 },
+      { name: "uber", displayName: "Uber", icon: "🚕" },
+      { name: "bolt", displayName: "Bolt", icon: "🚗" },
     ],
     mumbai: [
-      { name: "uber", displayName: "Uber", icon: "🚕", baseCostPerKm: 0.3, flagFall: 1.0 },
-      { name: "ola", displayName: "Ola", icon: "🚗", baseCostPerKm: 0.25, flagFall: 0.8 },
+      { name: "uber", displayName: "Uber", icon: "🚕" },
+      { name: "ola", displayName: "Ola", icon: "🚗" },
     ],
     kyoto: [
-      { name: "uber", displayName: "Uber Japan", icon: "🚕", baseCostPerKm: 3.0, flagFall: 5.0 },
+      { name: "uber", displayName: "Uber Japan", icon: "🚕" },
     ],
     // ... more destinations
   };
@@ -822,23 +824,11 @@ function getRideshareAppsForDestination(destination: string): any[] {
 /**
  * Gets available multi-day passes for destination
  */
-function getAvailablePassesForDestination(destination: string): any[] {
-  const passData: Record<string, any[]> = {
-    paris: [
-      {
-        source: "12go",
-        title: "Paris Navigo Week Pass",
-        description: "Unlimited metro, bus, RER (zones 1-3) for 7 days",
-        icon: "🚇",
-        pricePerPerson: 30,
-        validDays: 7,
-        affiliateUrl: "https://12go.asia/en/travel/paris-metro-pass",
-      },
-    ],
-    // ... more passes
-  };
-
-  return passData[destination.toLowerCase()] || [];
+function getAvailablePassesForDestination(_destination: string): any[] {
+  // Ledger `2026-10-03-transport-price-literals`: the hard-coded pass catalog (a "Paris Navigo Week
+  // Pass" at a literal $30) is REMOVED. A pass returns when a partner payload or an admin-configured
+  // row states its price — never as a literal here (§13).
+  return [];
 }
 
 /**
@@ -860,35 +850,29 @@ function buildRideshareDeepLink(app: any, leg: any): string {
 }
 
 /**
- * Estimates rideshare price based on distance
+ * Rideshare price: NOT ESTIMATED (ledger `2026-10-03-transport-price-literals`). The old estimate
+ * multiplied hard-coded per-app, per-city rates by a 1.5 "surge" — figures no partner gave us. The
+ * app quotes its own price; we show none (§13).
  */
-function estimateRidesharePrice(app: any, distanceMeters: number): { low: number; high: number; display: string } {
-  const distanceKm = distanceMeters / 1000;
-  const baseCost = app.flagFall + app.baseCostPerKm * distanceKm;
-  const withSurge = baseCost * 1.5; // Assume possible surge pricing
-
-  return {
-    low: Math.round(baseCost * 100),
-    high: Math.round(withSurge * 100),
-    display: `$${baseCost.toFixed(0)}-${withSurge.toFixed(0)}`,
-  };
+function estimateRidesharePrice(_app: any, _distanceMeters: number): { low: number | undefined; high: number | undefined; display: string } {
+  return { low: undefined, high: undefined, display: "Price shown in the app" };
 }
 
 /**
- * Calculates provider price for a leg distance.
+ * Calculates provider price for a leg distance — FROM THE LISTING ONLY (ledger
+ * `2026-10-03-transport-price-literals`):
  * - fixed price: returned directly
- * - variable price: treated as per-km rate
- * - no price set: estimated at $2/km, $5 minimum
+ * - variable price: the listing's own per-km rate × the leg distance
+ * - no price set: NULL — never an invented "$2/km, $5 minimum" (§13/§14). The option then shows
+ *   "Request quote", and the platform checkout refuses it rather than charging a guess.
  */
-function calculateProviderPrice(provider: any, distanceMeters: number): number {
+function calculateProviderPrice(provider: any, distanceMeters: number): number | null {
   const distanceKm = distanceMeters / 1000;
-  if (provider.price && provider.priceType === "fixed") {
-    return Math.round(parseFloat(String(provider.price)) * 100) / 100;
-  }
-  if (provider.price && provider.priceType === "variable") {
-    return Math.max(5, Math.round(parseFloat(String(provider.price)) * distanceKm * 100) / 100);
-  }
-  return Math.max(5, Math.round(distanceKm * 2 * 100) / 100);
+  const listed = provider.price != null ? parseFloat(String(provider.price)) : NaN;
+  if (!Number.isFinite(listed) || listed <= 0) return null;
+  if (provider.priceType === "fixed") return Math.round(listed * 100) / 100;
+  if (provider.priceType === "variable") return Math.round(listed * distanceKm * 100) / 100;
+  return null;
 }
 
 /**

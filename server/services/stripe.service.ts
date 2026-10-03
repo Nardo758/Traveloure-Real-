@@ -117,8 +117,13 @@ export async function createTransportBookingCheckout(
 
   const userEmail = user?.email || undefined;
 
-  // Calculate line items for Stripe
-  const priceCents = option.priceCentsLow || 0;
+  // Calculate line items for Stripe. Ledger `2026-10-03-transport-price-literals` (§14): the option's
+  // OWN listed price, or no checkout at all — never an estimate and never $0 (second layer; the
+  // route refuses first with 409 no_listed_price).
+  if (!option.priceCentsLow || option.priceCentsLow <= 0) {
+    throw new Error("Booking option has no listed price");
+  }
+  const priceCents = option.priceCentsLow;
   const totalAmount = priceCents * travelers;
 
   // ── Traveler service fee (ruling 2026-09-02, path 4) ──────────────────────────────────────────
