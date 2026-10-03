@@ -29,7 +29,7 @@ import {
 import { rankFactsByOrigin } from "../upsell-engine.service";
 import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
-import { sourcesForNeed } from "./places-adapter";
+import { PlacesAdapter, sourcesForNeed } from "./places-adapter";
 import { LookupScheduler } from "./lookup-scheduler.pure";
 import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
@@ -72,16 +72,17 @@ export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | n
 type FactRow = typeof placeFacts.$inferSelect;
 
 /**
- * An unexpired Places answer to the SAME query, from any plan: reused for this item at zero cost,
- * keeping the ORIGINAL `fetched_at` and `expires_at`, so a copy never extends Google's 30-day window.
+ * R-u (surface step 3): a place ID an earlier answer to this SAME query text already resolved — a
+ * free shortcut to the ID (no API call at all). Never the cache key itself: the key is the ID.
  */
-async function cachedForQuery(query: string): Promise<FactDraft[] | null> {
+async function knownPlaceIdForQuery(query: string): Promise<string | null> {
   const [hit] = await db
     .select({ placeRef: placeFacts.placeRef })
     .from(placeFacts)
     .where(
       and(
         eq(placeFacts.origin, "places_api"),
+        eq(placeFacts.placeRefKind, "place_id"),
         eq(placeFacts.factType, "location"),
         sql`${placeFacts.value}->>'query' = ${query}`,
         sql`${placeFacts.expiresAt} > now()`,
@@ -89,7 +90,21 @@ async function cachedForQuery(query: string): Promise<FactDraft[] | null> {
       ),
     )
     .limit(1);
-  if (!hit) return null;
+  return hit?.placeRef ?? null;
+}
+
+/**
+ * R-u: THE CACHE, KEYED BY PLACE ID. Every unexpired Places fact for this place, from ANY plan,
+ * reused at zero cost and keeping its ORIGINAL `fetched_at` and `expires_at` — so a copy never
+ * extends Google's 30-day window and every plan shows the fetch's own checkedAt.
+ */
+async function cachedForPlaceId(placeId: string): Promise<FactDraft[] | null> {
+  return cachedRowsForPlace(placeId);
+}
+
+async function cachedRowsForPlace(placeId: string): Promise<FactDraft[] | null> {
+  if (!placeId) return null;
+  const hit = { placeRef: placeId };
   const rows = await db
     .select()
     .from(placeFacts)
@@ -126,6 +141,8 @@ export interface EnrichItem {
   type: string | null;
   /** The plan day the item sits on; absent ⇒ day 1 (the budget is shared across days, never by order). */
   dayNumber?: number | null;
+  /** R-u: the item's own stored Google place ID, when it has one — the cache key with no lookup. */
+  googlePlaceId?: string | null;
   locationName?: string | null;
 }
 
@@ -271,10 +288,8 @@ export async function enrichPlanItems(input: {
       const { item, tokens } = next.entry;
       const day = next.day;
       try {
-        if (summary.looked >= cap) {
-          logSkipped(ids(item), day, "cap");
-          continue;
-        }
+        // The cap is checked again below for the BILLED fetch only; a cache hit after the cap is free.
+        const capReached = summary.looked >= cap;
         const need = needForItemType(item.type);
         const adapters = sourcesForNeed(need, input.market, input.adapters);
         if (!adapters.length) {
@@ -288,14 +303,36 @@ export async function enrichPlanItems(input: {
         const started = Date.now();
         let drafts: FactDraft[];
         let cache: "hit" | "miss";
-        const cached = await cachedForQuery(query);
+        const req = { need, market: input.market, query: { text: lookupText, city: input.city }, budgetCents: 0 };
+        const adapter = adapters[0] as SourceAdapter & Partial<Pick<PlacesAdapter, "resolvePlaceId" | "fetchByPlaceId">>;
+        // R-u (surface step 3): THE CACHE KEY IS GOOGLE'S PLACE ID. Resolve it without a billed call —
+        // the item's own stored ID, else an ID this exact query already resolved to, else the
+        // no-charge IDs-only search — then reuse that place's facts from ANY plan at zero cost. Only a
+        // miss is billed (Place Details by ID), and only that spends the cap.
+        const placeId =
+          item.googlePlaceId ||
+          (await knownPlaceIdForQuery(query)) ||
+          (adapter.resolvePlaceId ? await adapter.resolvePlaceId(req) : null);
+        const cached = placeId ? await cachedForPlaceId(placeId) : null;
         if (cached) {
           summary.cached += 1;
           drafts = cached;
           cache = "hit";
-        } else {
+        } else if (capReached) {
+          logSkipped(ids(item), day, "cap");
+          continue;
+        } else if (placeId && adapter.fetchByPlaceId) {
           summary.looked += 1;
-          drafts = await adapters[0].fetch({ need, market: input.market, query: { text: lookupText, city: input.city }, budgetCents: 0 });
+          drafts = await adapter.fetchByPlaceId(placeId, req);
+          cache = "miss";
+        } else if (!adapter.resolvePlaceId) {
+          // An adapter with no ID step (a test double, a future source): the text fetch, billed.
+          summary.looked += 1;
+          drafts = await adapter.fetch(req);
+          cache = "miss";
+        } else {
+          // Google answered no place for this query: nothing to look up, nothing spent.
+          drafts = [];
           cache = "miss";
         }
         const kept = attachableDrafts(drafts, tokens, input.city);

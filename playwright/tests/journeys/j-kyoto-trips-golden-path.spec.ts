@@ -441,7 +441,7 @@ async function openLodgingSetWithThree(page: Page, tripId: string): Promise<stri
 
 test.describe("2 · where are you staying", () => {
 
-  test("§2 A1 — an empty Travel slip asks 'Where are you staying?' and offers the stays browse", async ({ page }) => {
+  test("§2 A1 / step 3 — an empty Travel slip's AnchorPanel asks 'Where are you staying?', offers three answers, and Skip never returns", async ({ page }) => {
     const tripId = await planWithOccasion(page, "a1-stay", "travel");
     const read = await actAndAwait(page, async () => { await page.goto(`/plans/${tripId}`); }, { method: "GET", path: new RegExp(`^/api/trips/${tripId}$`) });
     expect(ok2xx(read)).toBe(true);
@@ -450,8 +450,24 @@ test.describe("2 · where are you staying", () => {
     await expect(card).toHaveAttribute("data-anchor-kind", "lodging");
     await expect(card).toContainText("Where are you staying?");
     await expect(testid(page, "slip-empty-items")).toHaveCount(0);
-    const browse = testid(page, "slip-anchor-browse-stays");
-    await expect(browse).toHaveAttribute("href", new RegExp(`accommodation.*${tripId}|${tripId}.*accommodation`));
+    // Surface step 3: the manifest's question, marked optional, with exactly the three answers.
+    await expect(testid(page, "anchor-panel-optional")).toHaveText("Optional");
+    await expect(testid(page, "slip-anchor-compare")).toHaveText("Add places I'm considering");
+    await expect(testid(page, "where-to-stay-own")).toHaveText("I've got lodging sorted");
+    await expect(testid(page, "where-to-stay-skip")).toHaveText("Skip for now");
+    await expect(testid(page, "slip-anchor-browse-stays")).toHaveCount(0);
+    const skip = await actAndAwait(
+      page,
+      async () => {
+        await testid(page, "where-to-stay-skip").click();
+      },
+      { method: "POST", path: new RegExp(`^/api/trips/${tripId}/where-to-stay$`) },
+    );
+    expect(ok2xx(skip), `skip answered ${skip}`).toBe(true);
+    await page.reload();
+    await expect(testid(page, "slip-header")).toBeVisible({ timeout: 20_000 });
+    await expect(testid(page, "slip-anchor-question")).toHaveCount(0);
+    expect((await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json()).reason).toBe("decided");
   });
 
   test("§2 A1 — a golf trip (schedule on) asks what is fixed first; lodging is secondary (M7)", async ({ page }) => {
@@ -1032,14 +1048,18 @@ test.describe("4 · free draft around the set", () => {
     expect(again.neighborhoods.map((n: any) => n.slug)).toEqual(view.neighborhoods.map((n: any) => n.slug));
 
     await page.reload();
-    const panel = testid(page, "where-to-stay-panel");
-    await expect(panel).toBeVisible({ timeout: 20_000 });
-    for (const n of view.neighborhoods) {
-      await expect(testid(page, `where-to-stay-reason-${n.slug}`)).toHaveText(n.reason);
-    }
-    // CI seeds no hotel inventory (R211), so each neighbourhood says so rather than inventing one.
-    if (!view.hotelsAvailable) {
-      await expect(page.locator('[data-testid^="where-to-stay-coming-soon-"]')).toHaveCount(3);
+    // Surface step 3, R-y: with NO stay near any option (CI seeds no hotel inventory — R211) the panel
+    // collapses to one line naming the top area; the three-option panel needs at least one stay.
+    if (view.neighborhoods.every((n: any) => n.hotels.length === 0)) {
+      const line = testid(page, "anchor-panel-collapsed-line");
+      await expect(line).toBeVisible({ timeout: 20_000 });
+      await expect(line).toContainText(`Best area for these days: ${view.neighborhoods[0].name}`);
+      await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
+    } else {
+      await expect(testid(page, "where-to-stay-panel")).toBeVisible({ timeout: 20_000 });
+      for (const n of view.neighborhoods) {
+        if (n.reason) await expect(testid(page, `where-to-stay-reason-${n.slug}`)).toHaveText(n.reason);
+      }
     }
     await expect(testid(page, "where-to-stay-no-neighborhoods")).toHaveCount(0);
     // Smoke 5 item 2: the panel is the ONE lodging surface — the legacy inline card never shows.
@@ -1060,6 +1080,7 @@ test.describe("4 · free draft around the set", () => {
     await testid(page, "slip-day-toggle-2").click();
     await expect(page.getByText("Stop on day 2")).toBeVisible({ timeout: 20_000 });
     await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
+    await expect(testid(page, "anchor-panel-collapsed")).toHaveCount(0);
     await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
     expect((await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json()).reason).toBe("decided");
   });

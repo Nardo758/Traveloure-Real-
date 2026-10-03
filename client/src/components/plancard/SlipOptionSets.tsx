@@ -165,7 +165,7 @@ export function optionSetGlance(set: Pick<SlipOptionSet, "label" | "categoryKey"
 }
 
 /** Start a lodging comparison from the empty slip's anchor question ("I'm deciding"). */
-export function SlipAnchorCompareButton({ tripId }: { tripId: string }) {
+export function SlipAnchorCompareButton({ tripId, label = "I'm deciding — compare places" }: { tripId: string; label?: string }) {
   const { toast } = useToast();
   const create = useMutation({
     mutationFn: async () =>
@@ -181,7 +181,7 @@ export function SlipAnchorCompareButton({ tripId }: { tripId: string }) {
       disabled={create.isPending}
       data-testid="slip-anchor-compare"
     >
-      I'm deciding — compare places
+      {label}
     </Button>
   );
 }

@@ -59,7 +59,10 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { SlipRail } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
-import { WhereToStayPanel } from "./WhereToStayPanel";
+import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPanel";
+import { LegRow } from "@/components/plan/LegRow";
+import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
+import { manifestFor } from "@shared/group-manifest";
 import type { WhereToStayView } from "@shared/where-to-stay";
 import { itemAreaLabel, itemFactsLine } from "@/lib/place-facts";
 import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
@@ -113,7 +116,6 @@ import {
   experienceGroupFor,
   resolvedTripsAnchor,
   tripsAnchorLine,
-  tripsAnchorQuestion,
   tripsAnchorState,
   type TripsAnchor,
 } from "@shared/experience-group";
@@ -315,68 +317,6 @@ function expertFirstName(data: SlipData): string | null {
  */
 
 // ── SlipHeader ─────────────────────────────────────────────────────────────────────────
-
-/**
- * A1 — THE EMPTY TRIP'S FIRST QUESTION (ledger `2026-09-29-a1-trips-frame`; product map §M2 Trips
- * row as amended by §M7). Rendered ONLY on an empty slip of a Trips plan, in place of "No items on
- * this plan yet". The words come from ONE home (`tripsAnchorQuestion`); the action is an EXISTING
- * rail and the OWNER's alone (D16):
- *   · lodging — "Browse places to stay": the services browse pre-filtered to `accommodation` with
- *     this plan's id, so Add to plan lands on the ruling 39 rail. Comparing up to three places is
- *     A3b's comparison ("I'm deciding — compare places") sits beside it.
- *   · fixed item — the day-1 add control, the same one the delegate's empty-plan note uses.
- * When `default_schedule` was not set, the card says the plan was treated as a plain trip (§13).
- */
-function SlipAnchorQuestion({
-  tripId,
-  anchor,
-  isOwner,
-  hasOpenLodgingSet,
-}: {
-  tripId: string;
-  anchor: TripsAnchor;
-  isOwner: boolean;
-  /** A3b: a lodging comparison is already open (its card sits above), so "I'm deciding" is not offered twice. */
-  hasOpenLodgingSet: boolean;
-}) {
-  const q = tripsAnchorQuestion(anchor);
-  return (
-    <div className="p-4 space-y-3" data-testid="slip-anchor-question" data-anchor-kind={anchor.kind}>
-      <h2 className={`${SLIP_TITLE_FONT_CLASS} text-xl font-semibold text-foreground`}>{q.question}</h2>
-      <p className="text-sm text-muted-foreground">{q.detail}</p>
-      {anchor.fromFallback ? (
-        <p className="text-xs text-muted-foreground" data-testid="slip-anchor-fallback">
-          This occasion doesn't say whether it has a fixed schedule, so the plan starts from where you stay.
-        </p>
-      ) : null}
-      {isOwner ? (
-        anchor.kind === "lodging" ? (
-          <div className="flex flex-wrap gap-2">
-            {/* A3b (ledger `2026-09-29-a3b-option-sets-slip`): "I'm deciding" opens a comparison of
-                up to three places — the golden path's Step 2 answer. Browsing stays the "I know
-                where" answer, on the ruling 39 rail. */}
-            {hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} />}
-            <Link
-              href={servicesBrowseHref("accommodation", tripId)}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-md border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted/40"
-              data-testid="slip-anchor-browse-stays"
-            >
-              Browse places to stay
-            </Link>
-          </div>
-        ) : (
-          <SlipAddItemControl
-            tripId={tripId}
-            dayNumber={1}
-            userExperienceId={null}
-            label={SLIP_ADD_DAY_LABEL}
-            testId="slip-anchor-add-fixed"
-          />
-        )
-      ) : null}
-    </div>
-  );
-}
 
 function SlipHeader({
   data,
@@ -1608,15 +1548,16 @@ export function SlipView({
   const hasOpenLodgingSet = optionSets.some((st) => st.status === "open" && st.categoryKey === "accommodation");
   const planActivities = sortedDays.flatMap((d) => d.activities ?? []);
   const hasStayItem = planActivities.some((act) => act.type === "accommodation");
-  // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Where to stay", recommended AFTER the
-  // draft. The server decides eligibility (2+ days, a draft exists, nothing decided yet) — the client
-  // only asks once the plan has items, and restates none of the rule.
-  const nonStayItemCount = planActivities.filter((act) => act.type !== "accommodation").length;
+  // Surface step 3 (ledger `2026-10-03-surface-step3-anchor-panel`): the ONE AnchorPanel reads the
+  // same view before AND after the draft — `no_draft` is its empty state, an eligible view its
+  // drafted state, and `decided` (a stay, a comparison, or a Skip) means no panel. Asked whenever the
+  // plan has no stay item; the server decides the rest and the client restates none of it.
   const whereToStayQuery = useQuery<WhereToStayView>({
     queryKey: [`/api/trips/${tripId}/where-to-stay`],
-    enabled: !!tripId && nonStayItemCount > 0 && !hasStayItem,
+    enabled: !!tripId && !hasStayItem,
   });
   const whereToStay = whereToStayQuery.data?.eligible ? whereToStayQuery.data : null;
+  const anchorPanelEmpty = !hasStayItem && whereToStayQuery.data?.reason === "no_draft";
   // Smoke 5 items 6/8: when the draft's lookups finish, its stops' coordinates have landed — re-ask
   // Where to stay once, which then ranks on them and stores that order for the draft.
   const factsPendingCount = data.factsPendingItemIds?.length ?? 0;
@@ -1670,6 +1611,22 @@ export function SlipView({
   // is not the traveler's answer (§13) — the frame applies only when the occasion resolved to a row.
   const experienceGroup = experienceGroupFor(occasion);
   const tripsAnchor: TripsAnchor | null = resolvedTripsAnchor(occasion);
+  // Surface step 3: the ONE lodging surface, in either state. Its question is the group manifest's.
+  const renderAnchorPanel = (stage: "empty" | "drafted") => (
+    <AnchorPanel
+      tripId={tripId}
+      stage={stage}
+      question={manifestFor(experienceGroup, occasion?.slug ?? null).anchorQuestion}
+      anchorKind={tripsAnchor?.kind ?? "lodging"}
+      fromFallback={!!tripsAnchor?.fromFallback}
+      view={whereToStay}
+      canChoose={canEditItems}
+      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} />}
+      addFixedControl={
+        <SlipAddItemControl tripId={tripId} dayNumber={1} userExperienceId={null} label={SLIP_ADD_DAY_LABEL} testId="slip-anchor-add-fixed" />
+      }
+    />
+  );
 
   /**
    * ── THE DAY SLOTS (ledger `2026-09-05-slip-events-first-render`) ──────────────────────────────
@@ -1726,6 +1683,46 @@ export function SlipView({
     queryKey: [`/api/trips/${tripId}/anchors`],
     enabled: !!tripId && showTravelAnchors,
   });
+  // R-i (surface step 3): the airport ↔ stay leg — only with a flight in that direction AND a stay.
+  const { toast: legToast } = useToast();
+  const stayName = planActivities.find((act) => act.type === "accommodation")?.name ?? null;
+  const hasAnyFlight = !!flightAnchorFor(tripAnchors, "flight_arrival") || !!flightAnchorFor(tripAnchors, "flight_departure");
+  const { data: airportLeg } = useQuery<{ platformCarFits: boolean }>({
+    queryKey: [`/api/trips/${tripId}/airport-leg`],
+    enabled: !!tripId && showTravelAnchors && hasAnyFlight && !!stayName,
+  });
+  const legRequest = useMutation({
+    mutationFn: async (input: { direction: "arrival" | "departure"; airport: string | null }) => {
+      const city = (data.trip?.destination ?? "").split(",")[0].trim();
+      const from = input.direction === "arrival" ? input.airport || `${city} airport` : stayName || city;
+      const to = input.direction === "arrival" ? stayName || city : input.airport || `${city} airport`;
+      return (
+        await apiRequest("POST", "/api/affiliate-booking-requests", {
+          tripId,
+          itemName: airportLegLine(input.direction, stayName ?? city, input.airport),
+          partnerRoute: { partner: "12go", origin: from, destination: to },
+        })
+      ).json();
+    },
+    onSuccess: () => legToast({ title: "Booking request sent — a booking agent will arrange it and add it to your plan" }),
+    onError: () => legToast({ title: "Couldn't send the booking request", variant: "destructive" }),
+  });
+  const renderAirportLeg = (direction: "arrival" | "departure") => {
+    const flight = flightAnchorFor(tripAnchors, direction === "arrival" ? "flight_arrival" : "flight_departure");
+    if (!showsAirportLeg({ hasFlight: !!flight, stayName })) return null;
+    return (
+      <LegRow
+        direction={direction}
+        stayName={stayName!}
+        airport={flight?.location ?? null}
+        modes={airportLegModes({ platformCarFits: !!airportLeg?.platformCarFits })}
+        canBook={isOwner}
+        driversHref={servicesBrowseHref("private_transportation", tripId)}
+        busy={legRequest.isPending}
+        onRequest={() => legRequest.mutate({ direction, airport: flight?.location ?? null })}
+      />
+    );
+  };
 
   // ── THE PLAN'S BUDGET TOTAL (ledger `2026-09-04-event-budget`) ────────────────────────────
   // DERIVED from the events, never stored — one pure helper, so the line and the fields it sums
@@ -1932,7 +1929,7 @@ export function SlipView({
               isHidden={occasionIsHidden}
               whereToStay={
                 whereToStay ? (
-                  <WhereToStayPanel tripId={tripId} view={whereToStay} canChoose={canEditItems} />
+                  renderAnchorPanel("drafted")
                 ) : (
                   <SlipAnchorCompareButton tripId={tripId} />
                 )
@@ -2077,7 +2074,9 @@ export function SlipView({
           onDismiss={() => setExpertDoorState("dismissed")}
         />
       ) : null}
-      {whereToStay ? <WhereToStayPanel tripId={tripId} view={whereToStay} canChoose={canEditItems} /> : null}
+      {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
+          collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
+      {whereToStay ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
@@ -2105,9 +2104,7 @@ export function SlipView({
               before the plan has answered — so the sentence waits for `occasionResolved` (the ONE
               signal, from the hook that owns the lookup) and a neutral placeholder stands in its
               place. The placeholder states nothing; it is not an empty state and never says one. */}
-          {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor ? (
-            <SlipAnchorQuestion tripId={tripId} anchor={tripsAnchor} isOwner={isOwner} hasOpenLodgingSet={hasOpenLodgingSet} />
-          ) : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
+          {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor && anchorPanelEmpty ? null : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
             <p
               className="text-sm text-muted-foreground p-4 text-center"
               data-testid="slip-empty-items"
@@ -2176,9 +2173,13 @@ export function SlipView({
                     onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
                   />
                 ) : null}
+                {/* R-i: airport → stay, between the arrival anchor and the first stop. */}
+                {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? renderAirportLeg("arrival") : null}
                 {slot.groups.map((group) => {
                   const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
+                    <Fragment key={a.id}>
+                    {a.id === departureItemId ? renderAirportLeg("departure") : null}
                     <SlipDayItem
                       key={a.id}
                       tripId={tripId}
@@ -2226,6 +2227,8 @@ export function SlipView({
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
                       savedCity={data.savedQuestions?.cityName ?? null}
                     />
+                    {a.id === arrivalItemId ? renderAirportLeg("arrival") : null}
+                    </Fragment>
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
                   // not an "unassigned" bucket, and a label here would be a name nobody wrote (§13).
@@ -2281,6 +2284,8 @@ export function SlipView({
                     />
                   </div>
                 )}
+                {/* R-i: stay → airport, before the departure anchor. */}
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? renderAirportLeg("departure") : null}
                 {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? (
                   <TravelAnchorPlaceholder
                     kind="departure"

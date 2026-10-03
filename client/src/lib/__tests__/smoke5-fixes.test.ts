@@ -30,7 +30,9 @@ test("S1 item 2: the legacy lodging card is gone; the panel is the only lodging 
   const sets = read("../../components/plancard/SlipOptionSets.tsx");
   assert.doesNotMatch(slip, /SlipLodgingEntry/);
   assert.doesNotMatch(sets, /SlipLodgingEntry|slip-lodging-entry|Compare places to stay|Suggest places that fit/);
-  assert.match(slip, /<WhereToStayPanel /);
+  // Surface step 3: the ONE lodging surface is now `AnchorPanel` (both states).
+  assert.match(slip, /<AnchorPanel\b/);
+  assert.doesNotMatch(slip, /WhereToStayPanel|SlipAnchorQuestion/);
 });
 
 test("S2 item 4: the AI finish lands on the minted plan first; the form refreshes that slip", () => {

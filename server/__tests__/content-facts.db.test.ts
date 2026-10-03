@@ -101,19 +101,28 @@ test("C1: the engine's order picks the fact; every view carries provenance", asy
   assert.match(places.provenance, /^Google Maps · checked/);
 });
 
+/**
+ * R-u (surface step 3): a fake Google serving the no-charge IDs-only search (uncounted) and the
+ * billed Place Details by ID (`onBilled`) — and the legacy full text search, also billed.
+ */
+function googleFake(place: Record<string, any>, onBilled: () => void) {
+  return async (_url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
+    if (init.method === "GET") {
+      onBilled();
+      return { ok: true, status: 200, json: async () => place };
+    }
+    if (init.headers["X-Goog-FieldMask"] === "places.id") return { ok: true, status: 200, json: async () => ({ places: [{ id: place.id }] }) };
+    onBilled();
+    return { ok: true, status: 200, json: async () => ({ places: [place] }) };
+  };
+}
+
 test("C2: the cache answers a repeated query at zero cost and never extends the expiry", async () => {
   let calls = 0;
+  const place = { id: id("kinkaku"), displayName: { text: "Kinkaku-ji" }, location: { latitude: 35.0394, longitude: 135.7292 }, regularOpeningHours: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } };
   const adapter = new PlacesAdapter(
-    async () => {
-      calls += 1;
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          places: [{ id: id("kinkaku"), displayName: { text: "Kinkaku-ji" }, location: { latitude: 35.0394, longitude: 135.7292 }, regularOpeningHours: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } }],
-        }),
-      };
-    },
+    // R-u: the IDs-only search is free and uncounted; the billed call is Place Details by ID.
+    googleFake(place, () => { calls += 1; }),
     () => "test-key",
     () => true,
   );
@@ -196,6 +205,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // gate, because its output is a public post — so it keeps ONLY what `isPublishable` allows
     // (platform-owned or expert-verified; never Places, crawled or partner), pinned by blog-event-guide E3.
     "server/services/blog-event-facts.service.ts",
+    // Surface step 3 (ledger `2026-10-03-surface-step3-anchor-panel`, R-x): the AnchorPanel's
+    // neighbourhood one-liner — a REGISTRY `neighbourhood` description fact (origin <> places_api), read
+    // only inside `loadWhereToStay`, behind the plan's own read gate (`planRole(…, "read")`).
+    "server/services/where-to-stay.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];
@@ -230,10 +243,7 @@ test("C6: a cached answer from before the address lane is reused as-is — no ca
   ], { planId: null, itemId: null });
   let calls = 0;
   const adapter = new PlacesAdapter(
-    async () => {
-      calls += 1;
-      return { ok: true, status: 200, json: async () => ({ places: [{ id: place, displayName: { text: "Tofuku-ji" }, formattedAddress: "15 Honmachi, Higashiyama Ward, Kyoto" }] }) };
-    },
+    googleFake({ id: place, displayName: { text: "Tofuku-ji" }, formattedAddress: "15 Honmachi, Higashiyama Ward, Kyoto" }, () => { calls += 1; }),
     () => "test-key",
     () => true,
   );

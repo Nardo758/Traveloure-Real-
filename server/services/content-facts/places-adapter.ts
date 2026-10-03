@@ -19,6 +19,7 @@ import type { FactDraft, FetchRequest, SourceAdapter } from "./source-adapter";
 import {
   factTtlDays,
   placesCacheMaxDays,
+  placesDetailsCostCents,
   placesFactsEnabled,
   placesTextSearchCostCents,
 } from "../../config/content-facts.config";
@@ -40,9 +41,13 @@ const FIELD_MASK = [
   "places.types",
 ].join(",");
 
+/** R-u: the same fields, for Place Details by ID (the Details mask names fields without `places.`). */
+const DETAILS_FIELD_MASK = FIELD_MASK.split(",").map((f) => f.replace(/^places\./, "")).join(",");
+const DETAILS_ENDPOINT = "https://places.googleapis.com/v1/places/";
+
 const COVERS: ReadonlySet<ContentNeed> = new Set<ContentNeed>(["stop.hours", "dining", "neighbourhood"]);
 
-type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
+type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<any>;
@@ -57,7 +62,9 @@ function expiry(fetchedAt: Date, ttlDays: number | null): Date {
 export class PlacesAdapter implements SourceAdapter {
   readonly id = "google_places";
   constructor(
-    private readonly fetchImpl: FetchLike = (url, init) => fetch(url, init) as any,
+    // A GET (Place Details) carries no body — Node's fetch refuses one.
+    private readonly fetchImpl: FetchLike = (url, init) =>
+      fetch(url, init.method === "GET" ? { method: "GET", headers: init.headers } : (init as any)) as any,
     private readonly apiKey: () => string | undefined = () => process.env.GOOGLE_MAPS_API_KEY,
     private readonly enabled: () => boolean = placesFactsEnabled,
   ) {}
@@ -83,8 +90,45 @@ export class PlacesAdapter implements SourceAdapter {
     if (!res.ok) throw new Error(`[places] searchText answered ${res.status}`);
     const body = await res.json();
     const p = Array.isArray(body?.places) ? body.places[0] : null;
+    return this.draftsFrom(p, req, text, placesTextSearchCostCents());
+  }
+
+  /**
+   * R-u (surface step 3): resolve a query to Google's PLACE ID — a Text Search asking for `places.id`
+   * ONLY (Google's no-charge "IDs Only" SKU). The place ID is the cache key: facts are then reused by
+   * ID across every plan, whatever each plan called the place. Null when nothing answers.
+   */
+  async resolvePlaceId(req: FetchRequest): Promise<string | null> {
+    const key = this.apiKey();
+    if (!this.enabled() || !key) return null;
+    const text = [req.query.text, req.query.city].filter(Boolean).join(", ").slice(0, 300);
+    if (!text.trim()) return null;
+    const res = await this.fetchImpl(ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": "places.id" },
+      body: JSON.stringify({ textQuery: text, maxResultCount: 1, languageCode: "en" }),
+    });
+    if (!res.ok) throw new Error(`[places] searchText (ids) answered ${res.status}`);
+    const body = await res.json();
+    const id = Array.isArray(body?.places) ? body.places[0]?.id : null;
+    return typeof id === "string" && id ? id : null;
+  }
+
+  /** R-u: the BILLED fetch, by place ID (Place Details) — only on a cache miss. */
+  async fetchByPlaceId(placeId: string, req: FetchRequest): Promise<FactDraft[]> {
+    const key = this.apiKey();
+    if (!this.enabled() || !key) return [];
+    const text = [req.query.text, req.query.city].filter(Boolean).join(", ").slice(0, 300);
+    const res = await this.fetchImpl(`${DETAILS_ENDPOINT}${encodeURIComponent(placeId)}?languageCode=en`, {
+      method: "GET",
+      headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": DETAILS_FIELD_MASK },
+    });
+    if (!res.ok) throw new Error(`[places] details answered ${res.status}`);
+    return this.draftsFrom(await res.json(), req, text, placesDetailsCostCents());
+  }
+
+  private draftsFrom(p: any, req: FetchRequest, text: string, cost: number): FactDraft[] {
     const fetchedAt = new Date();
-    const cost = placesTextSearchCostCents();
     if (!p?.id) return [];
     const lat = Number(p.location?.latitude);
     const lng = Number(p.location?.longitude);

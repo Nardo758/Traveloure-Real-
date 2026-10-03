@@ -145,10 +145,55 @@ function compareNeighborhoodNames(a: StayNeighborhood, b: StayNeighborhood): num
 }
 
 export interface StayHotel {
-  kind: "hotel_cache" | "affiliate";
+  /**
+   * `platform` (surface step 3, R-o): a stay LISTED ON TRAVELOURE — an approved, active
+   * `provider_services` row in the accommodation category — badged "Traveloure stay".
+   * `hotel_cache` / `affiliate`: partner inventory, booked via the concierge or a deep link.
+   */
+  kind: "platform" | "hotel_cache" | "affiliate";
   id: string;
   name: string;
   starRating: number | null;
+}
+
+/** R-o: the badge a platform-listed stay carries. */
+export const PLATFORM_STAY_BADGE = "Traveloure stay";
+
+/**
+ * R-o (surface step 3). Pure and STABLE: within one plan-fit band — the stays of ONE ranked
+ * neighbourhood, which share that neighbourhood's fit — platform-listed stays come before partner
+ * stays; each group keeps the order it arrived in (distance, then name). Never re-ranks across bands.
+ */
+export function orderStaysByOrigin<H extends Pick<StayHotel, "kind">>(stays: readonly H[]): H[] {
+  return [...stays.filter((h) => h.kind === "platform"), ...stays.filter((h) => h.kind !== "platform")];
+}
+
+/** The top option's note when it tied on day-count and won on total distance (surface step 3). */
+export const STAY_TIE_BREAK_NOTE = "shortest overall distance to your stops (est.)";
+
+/**
+ * Surface step 3: was the TOP option decided by the tie-break? True when the first two options are
+ * closest to the same number of days — the order then came from total straight-line distance
+ * (`rankStayNeighborhoods`), which the top option says once and the rest say nothing about.
+ */
+export function topWonOnTieBreak(ranked: ReadonlyArray<{ closestDays: number }>): boolean {
+  return ranked.length >= 2 && ranked[0].closestDays === ranked[1].closestDays;
+}
+
+/**
+ * R-y (surface step 3). How the drafted panel renders: `options` (up to three neighbourhoods with
+ * their stays) only when AT LEAST ONE option has a stay; with none — zero own inventory near any of
+ * them — it collapses to one line naming the top area. Nothing ranked ⇒ `unranked` (the panel says
+ * why, §13).
+ */
+export function anchorPanelMode(neighborhoods: ReadonlyArray<{ hotels: readonly unknown[] }>): "options" | "collapsed" | "unranked" {
+  if (!neighborhoods.length) return "unranked";
+  return neighborhoods.some((n) => n.hotels.length > 0) ? "options" : "collapsed";
+}
+
+/** R-y: the collapsed panel's one line. The one-liner is omitted when there is none (§13). */
+export function collapsedStayLine(top: { name: string; oneLiner?: { text: string } | null }): string {
+  return ["Best area for these days: " + top.name, top.oneLiner?.text ?? null].filter(Boolean).join(" · ");
 }
 
 /**
@@ -236,7 +281,20 @@ export interface WhereToStayView {
   /** True when the city has ANY hotel in our own inventory. False ⇒ "hotels coming soon". */
   hotelsAvailable: boolean;
   /** `reason` is null when the option is tied with a neighbour (smoke 5 item 6) — the name stands alone. */
-  neighborhoods: Array<{ slug: string; name: string; reason: string | null; hotels: StayHotel[] }>;
+  neighborhoods: Array<{
+    slug: string;
+    name: string;
+    reason: string | null;
+    hotels: StayHotel[];
+    /**
+     * R-x (surface step 3): the neighbourhood's one line — a registry `neighbourhood` fact when one
+     * exists (`source: "registry"`), else the spine's own description (`city_neighborhoods.description`,
+     * `source: "spine"`). Null when neither says anything (§13 — no invented line).
+     */
+    oneLiner: { text: string; source: "registry" | "spine" } | null;
+    /** Present (true) on the TOP option only, when it won the day-count tie on total distance. */
+    tieBreak?: true;
+  }>;
   /**
    * Why `neighborhoods` is empty on an eligible view — two different facts, said differently (§13):
    * the city has no neighbourhood rows, or none of the plan's items is on the map yet. Absent when
