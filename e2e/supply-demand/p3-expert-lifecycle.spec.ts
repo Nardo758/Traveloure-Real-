@@ -217,19 +217,21 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   expect(expertItem, 'approved suggestion materialized as an itinerary_items row').toBeTruthy();
   expect(expertItem.origin, "approved suggestion item is stamped origin='expert'").toBe('expert');
   expect(a4i.some((r) => r.title === drop.title), 'rejected suggestion never becomes an item').toBeFalsy();
-  const originBadge = testid(page, `badge-origin-${expertItem.id}`);
-  const badgeText = (await appears(originBadge, 8000)) ? (await originBadge.innerText()).trim() : null;
+  // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`; amends LD 42 D23 on the SLIP): the
+  // slip's `ItemRow` draws no origin chip — origin stays a stored fact (asserted above). The chip
+  // still renders on the Trip Card (`ActivitiesSection`), which step 1 does not touch.
+  const originChips = await page.locator('[data-testid^="badge-origin-"]').count();
   file3({
     id: 'P3-L1-ORIGIN-CHIP',
     journey: J,
-    step: 'approve: item origin chip',
+    step: 'approve: item origin on the slip',
     class: 'INVISIBLE_RESULT',
-    severity: (badgeText ?? '').toLowerCase() === 'from your expert' ? 'PASS' : 'P2',
+    severity: originChips === 0 && expertItem.origin === 'expert' ? 'PASS' : 'P2',
     known: null,
-    title: `Approved suggestion's item carries the "from your expert" chip on the slip (read: ${JSON.stringify(badgeText)})`,
-    expected: 'LD 42 D23: badge-origin-<itemId> reads "from your expert" for origin=\'expert\'',
-    actual: `itinerary_items.origin=${expertItem.origin}; chip text=${JSON.stringify(badgeText)}`,
-    where: 'client/src/components/plancard/ActivitiesSection.tsx OriginBadge; server/routes/booking-actions.ts:1245',
+    title: `Approved suggestion's item is stored origin='expert' and the slip row draws no origin chip (chips on slip: ${originChips})`,
+    expected: "origin='expert' stored; surface step 1: no origin chip on the slip's ItemRow",
+    actual: `itinerary_items.origin=${expertItem.origin}; origin chips on slip=${originChips}`,
+    where: 'client/src/components/plan/ItemRow.tsx; server/routes/booking-actions.ts:1245',
     evidence: { shot: 'pass3/shots/L1-07-traveler-slip-after-reject-approve.png', db: d4i.ref },
     behavioural: true,
   });

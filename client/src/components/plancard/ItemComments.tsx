@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, ChevronDown, ChevronUp, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ export function ItemComments({
   className,
   label,
   hideCount,
+  openSignal = 0,
 }: {
   tripId: string;
   itemId: string;
@@ -72,11 +73,19 @@ export function ItemComments({
    * ever displays a count derived from anywhere but the thread it describes.
    */
   hideCount?: boolean;
+  /**
+   * Surface step 1: the slip's ⋯ "Ask a local about this" opens THIS thread when the plan has an
+   * advisor. Each increment opens it; 0 (the default) changes nothing for the other mounts.
+   */
+  openSignal?: number;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
+  useEffect(() => {
+    if (openSignal > 0) setOpen(true);
+  }, [openSignal]);
 
   const commentsUrl = `/api/trips/${tripId}/items/${itemId}/comments`;
 

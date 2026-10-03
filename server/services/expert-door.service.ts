@@ -22,7 +22,7 @@
  */
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { providerServices, trips, users } from "@shared/schema";
+import { itineraryItems, providerServices, trips, users } from "@shared/schema";
 import { isEarnerRole } from "@shared/roles";
 import {
   HELP_LEVELS,
@@ -207,10 +207,34 @@ export type ExpertDoorEvent = (typeof EXPERT_DOOR_EVENTS)[number];
  * RECOMPUTED here (the value is never taken from the client). A plan the caller may not choose for
  * is ONE 404.
  */
-export async function recordExpertDoorEvent(input: { tripId: string; userId: string; type: ExpertDoorEvent; level: HelpLevel }): Promise<void> {
+export async function recordExpertDoorEvent(input: {
+  tripId: string;
+  userId: string;
+  type: ExpertDoorEvent;
+  level: HelpLevel;
+  /**
+   * R-r (surface step 1, ledger `2026-10-03-surface-step1-item-row`): "Ask a local about this" on an
+   * item, in a city with no live expert, records WHICH item and the traveler's question with the
+   * interest row. Nothing is charged. The item must be on THIS plan — one 404 otherwise (LD 40).
+   */
+  itemId?: string;
+  question?: string;
+}): Promise<void> {
   await assertChooser(input.tripId, input.userId);
+  if (input.itemId) {
+    const [row] = await db
+      .select({ id: itineraryItems.id })
+      .from(itineraryItems)
+      .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId)))
+      .limit(1);
+    if (!row) throw notFound();
+  }
   const market = await planMarket(input.tripId);
   const props: Record<string, unknown> = { level: input.level, tier: levelTier(input.level), market: market.key };
+  if (input.type === "expert_interest" && input.itemId) {
+    props.itemId = input.itemId;
+    if (input.question) props.question = input.question;
+  }
   if (input.type === "expert_picker_shown") {
     props.count = (await expertPicker(input.tripId, input.userId, input.level)).experts.length;
   }

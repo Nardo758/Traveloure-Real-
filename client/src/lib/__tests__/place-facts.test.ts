@@ -1,89 +1,73 @@
 /**
- * The slip's fact line (ledger `2026-09-29-a5-draft-open-set`).
- *   L1  hours for the plan day's own weekday, with the server's provenance line and source link
- *   L2  no date ⇒ no hours line (a weekday is never guessed); price and dining basics still show
- *   L3  no facts ⇒ nothing
- *   A1  address: the stored formattedAddress first, with the Maps attribution beside it
- *   A2  address: shortFormattedAddress when no formatted one was stored
- *   A3  address: no stored address ⇒ the draft's own text, with NO attribution
- *   A4  address: nothing at all ⇒ null
+ * The slip's item lines (ledger `2026-09-29-a5-draft-open-set`; surface spec v1.2 §3, step 1 —
+ * ledger `2026-10-03-surface-step1-item-row`).
+ *   F1  the facts line, VERBATIM: "<Wkd> · <hours> · Google Maps · checked <d Mon>"
+ *   F2  no plan date ⇒ no facts line (a weekday is never guessed); no hours fact ⇒ none
+ *   F3  a stale fact says so; no checkedAt ⇒ the provenance line's own date, else no "checked" segment
+ *   P1  place line: a Google-checked address shows its WARD/AREA with the Maps attribution
+ *   P2  place line (R-ab): otherwise the location AS STORED, whoever wrote it — no client rewrite
+ *   P3  place line: nothing stored and no Google fact ⇒ null
+ *   P4  the day header's area is named only from a Google-located place
+ *   U1  unverifiedAreaText (the ward/area cut the map pin and P1 share) keeps areas, drops streets
+ *   M1  the map pin still cuts AI text to its ward/area
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { itemAddressLine, itemFactLine, pinLocationText } from "../place-facts";
+import { factCheckedLabel, itemAreaLabel, itemFactsLine, itemPlaceLine, pinLocationText, unverifiedAreaText } from "../place-facts";
 
-const base = { need: "stop.hours", origin: "places_api", sourceUrl: "https://maps.google.com/?cid=1", provenance: "Google Maps · checked 29 Sept 2026", stale: false, publishable: false } as const;
-const hours = { ...base, factType: "hours", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM", "Tuesday: Closed"] } } as any;
-const price = { ...base, factType: "price", value: { priceLevel: "PRICE_LEVEL_MODERATE" } } as any;
-const dining = { ...base, need: "dining", factType: "dining_basics", value: { reservable: true, servesVegetarianFood: false } } as any;
+const base = { need: "stop.hours", origin: "places_api", sourceUrl: "https://maps.google.com/?cid=1", provenance: "Google Maps · checked 2 Oct 2026", stale: false, publishable: false, checkedAt: "2026-10-02T08:00:00.000Z" } as const;
+const hours = { ...base, factType: "hours", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM", "Wednesday: Open 24 hours"] } } as any;
+const address = (value: Record<string, unknown>, origin = "places_api") => ({ ...base, need: "stop.address", factType: "address", origin, value }) as any;
 
-test("L1: the day's weekday, with provenance", () => {
-  // 2027-05-04 is a Tuesday.
-  assert.deepEqual(itemFactLine([hours, price], "2027-05-04"), {
-    text: "Tue: Closed · $$",
-    provenance: "Google Maps · checked 29 Sept 2026",
-    sourceUrl: "https://maps.google.com/?cid=1",
-  });
+test("F1: the facts line verbatim", () => {
+  assert.deepEqual(itemFactsLine([hours], "2026-11-11"), { text: "Wed · Open 24 hours · Google Maps · checked 2 Oct", sourceUrl: base.sourceUrl });
+  assert.equal(itemFactsLine([hours], "2026-11-09")!.text, "Mon · 9:00 AM – 5:00 PM · Google Maps · checked 2 Oct");
+  assert.equal(factCheckedLabel("2026-10-02T23:59:00.000Z"), "2 Oct");
 });
 
-test("L2: no date ⇒ no hours; other facts still show", () => {
-  assert.equal(itemFactLine([hours, dining], null)!.text, "takes reservations");
-  assert.equal(itemFactLine([hours], null), null);
+test("F2: no date, no weekday; no hours fact, no line", () => {
+  assert.equal(itemFactsLine([hours], null), null);
+  assert.equal(itemFactsLine([hours], "2026-11-10"), null, "Tuesday is not in the stored hours — nothing guessed");
+  assert.equal(itemFactsLine(undefined, "2026-11-11"), null);
+  assert.equal(itemFactsLine([address({ formattedAddress: "x" })], "2026-11-11"), null);
 });
 
-test("L3: nothing", () => {
-  assert.equal(itemFactLine(undefined, "2027-05-04"), null);
-  assert.equal(itemFactLine([], "2027-05-04"), null);
+test("F3: stale and unknown-checked facts", () => {
+  assert.equal(itemFactsLine([{ ...hours, stale: true }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct (may have changed)");
+  // No `checkedAt` on the wire (an older build's payload) ⇒ the date the server's provenance line states.
+  assert.equal(itemFactsLine([{ ...hours, checkedAt: null }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct");
+  assert.equal(itemFactsLine([{ ...hours, checkedAt: null, provenance: "Google Maps · checked 30 Sept 2026" }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 30 Sep");
+  assert.equal(itemFactsLine([{ ...hours, checkedAt: null, provenance: "Google Maps" }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps");
+  assert.equal(factCheckedLabel("not a date"), null);
 });
 
-const address = (value: Record<string, unknown>) => ({ ...base, factType: "address", value } as any);
-
-test("A1: formatted first, attributed", () => {
-  assert.deepEqual(itemAddressLine([hours, address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto", shortFormattedAddress: "1 Kinkakujicho" })], "Kinkaku-ji"), {
-    text: "1 Kinkakujicho, Kita Ward, Kyoto",
-    provenance: "Google Maps · checked 29 Sept 2026",
-    sourceUrl: "https://maps.google.com/?cid=1",
-  });
+test("P1: a Google-checked address shows its ward/area, attributed", () => {
+  const line = itemPlaceLine([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: "anything" });
+  assert.deepEqual(line, { text: "Kita Ward, Kyoto", provenance: "Google Maps", sourceUrl: base.sourceUrl });
 });
 
-test("A2: short when no formatted", () => {
-  assert.equal(itemAddressLine([address({ shortFormattedAddress: "1 Kinkakujicho" })], "Kinkaku-ji")!.text, "1 Kinkakujicho");
+test("P2: otherwise the location as stored (R-ab — sanitising is a storage rule, R-w)", () => {
+  assert.deepEqual(itemPlaceLine(undefined, { location: "Gion" }), { text: "Gion", provenance: null, sourceUrl: null });
+  assert.equal(itemPlaceLine([address({ formattedAddress: "x" }, "crawled")], { location: "12 Imadegawa-dori, Kyoto" })!.text, "12 Imadegawa-dori, Kyoto", "a non-Google address fact is not used");
 });
 
-test("A3: the draft's own text carries no attribution", () => {
-  assert.deepEqual(itemAddressLine([hours, address({ formattedAddress: " " })], " Kita Ward "), { text: "Kita Ward", provenance: null, sourceUrl: null });
-  assert.deepEqual(itemAddressLine(undefined, "Gion"), { text: "Gion", provenance: null, sourceUrl: null });
+test("P3: nothing ⇒ null (smoke 6 'Uji Green Tea Experience' — no location)", () => {
+  assert.equal(itemPlaceLine(undefined, { location: "" }), null);
+  assert.equal(itemPlaceLine([hours], { location: "  " }), null);
 });
 
-test("A4: nothing ⇒ null", () => {
-  assert.equal(itemAddressLine([hours], null), null);
-  assert.equal(itemAddressLine(undefined, "  "), null);
+test("P4: the day header names an area only from a Google-located place", () => {
+  assert.equal(itemAreaLabel([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: null }), "Kita Ward");
+  assert.equal(itemAreaLabel(undefined, { location: "Gion" }), null);
 });
 
-test("A5 (smoke 5): an unverified street address renders its ward/area only", () => {
-  // The AI drafted "Philosopher's Path Walk" at a street that is not the path.
-  const drafted = "Imadegawa-dori, Sakyo Ward, Kyoto 606-8306, Japan";
-  const line = itemAddressLine(undefined, drafted, "ai")!;
-  assert.equal(line.text, "Sakyo Ward, Kyoto, Japan");
-  assert.equal(line.provenance, null);
-  assert.doesNotMatch(line.text, /Imadegawa|dori|606/);
-  assert.deepEqual(itemAddressLine(undefined, "2 Shishigatani Honenin-cho, Sakyo-ku, Kyoto", "ai"), { text: "Sakyo-ku, Kyoto", provenance: null, sourceUrl: null });
-  assert.equal(itemAddressLine(undefined, "Imadegawa-dori", "ai"), null, "a bare street names no area");
-  assert.equal(itemAddressLine(undefined, "123 Main Street", "ai"), null);
-  assert.equal(itemAddressLine(undefined, "Philosopher's Path Walk, Sakyo Ward, Kyoto", "ai")!.text, "Sakyo Ward, Kyoto", "a venue name is not an area");
+test("U1: unverifiedAreaText keeps areas, drops streets and venues", () => {
+  assert.equal(unverifiedAreaText("2 Shishigatani Honenin-cho, Sakyo-ku, Kyoto"), "Sakyo-ku, Kyoto");
+  assert.equal(unverifiedAreaText("Imadegawa-dori"), null);
+  assert.equal(unverifiedAreaText("Philosopher's Path Walk, Sakyo Ward, Kyoto"), "Sakyo Ward, Kyoto");
 });
 
-test("A6 (smoke 5): a street-level address renders only from a Google-checked fact", () => {
-  const google = address({ formattedAddress: "Tetsugaku-no-michi, Sakyo Ward, Kyoto 606-8406" });
-  assert.equal(itemAddressLine([google], "Imadegawa-dori, Sakyo Ward, Kyoto", "ai")!.text, "Tetsugaku-no-michi, Sakyo Ward, Kyoto 606-8406");
-  // An address fact from any other origin is not Google-checked: the street is cut as for the draft.
-  const crawled = { ...address({ formattedAddress: "Imadegawa-dori 12, Sakyo Ward, Kyoto" }), origin: "crawled", provenance: "Web page" };
-  assert.deepEqual(itemAddressLine([crawled], "Imadegawa-dori, Sakyo Ward, Kyoto", "ai"), { text: "Sakyo Ward, Kyoto", provenance: null, sourceUrl: null });
-});
-
-test("A7 (smoke 5): words a person typed are theirs; the map pin follows the row's rule", () => {
-  assert.equal(itemAddressLine(undefined, "12 Imadegawa-dori, Kyoto", "traveler")!.text, "12 Imadegawa-dori, Kyoto");
-  assert.equal(itemAddressLine(undefined, "12 Imadegawa-dori, Kyoto", "expert")!.text, "12 Imadegawa-dori, Kyoto");
+test("M1: the map pin keeps its AI ward/area cut", () => {
   assert.equal(pinLocationText("Imadegawa-dori, Sakyo Ward, Kyoto", "ai"), "Sakyo Ward, Kyoto");
   assert.equal(pinLocationText("12 Imadegawa-dori, Kyoto", "traveler"), "12 Imadegawa-dori, Kyoto");
 });

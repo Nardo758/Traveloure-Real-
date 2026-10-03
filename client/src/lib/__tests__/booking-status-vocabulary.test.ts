@@ -162,8 +162,9 @@ test("P1 source pin: the Booked pill and the 'booked' line are drawn for `booked
   assert.equal(badge.split("BOOKED_TINT.label").length - 1, 1, "exactly one Booked pill");
 
   const slip = read("../../components/plancard/SlipView.tsx");
-  const lineStart = slip.indexOf("function secondaryLine(");
-  const line = slip.slice(lineStart, slip.indexOf("function SlipItemRow(", lineStart));
+  // Surface step 1: the slip row's booking line is `slipItemBookingLine` (read by `ItemRow`).
+  const lineStart = slip.indexOf("export function slipItemBookingLine(");
+  const line = slip.slice(lineStart, slip.indexOf("function SlipDayItem(", lineStart));
   const notesFirst = line.indexOf('if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];');
   const bookedWord = line.indexOf("`booked · #${ref}`");
   assert.ok(notesFirst >= 0 && bookedWord > notesFirst, "the not-booked notes return before the 'booked' line");

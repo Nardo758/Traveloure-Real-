@@ -41,7 +41,8 @@ const read = (rel: string) => readFileSync(path.join(REPO, rel), "utf8");
 const PILL_HOME = "client/src/components/plancard/ActivitiesSection.tsx";
 const RENDER_SITES = [
   PILL_HOME,
-  "client/src/components/plancard/SlipView.tsx",
+  // The slip LEFT this list with surface step 1 (ledger `2026-10-03-surface-step1-item-row`): its
+  // `ItemRow` draws no status pills at all (R-l), so it labels no kind. Pinned below.
   "client/src/pages/cart.tsx",
   "client/src/pages/ready-made-detail.tsx",
 ] as const;
@@ -75,13 +76,12 @@ test("D2 — every surface that labels a plan item reads the one module, directl
   }
 });
 
-test("D2 — the slip and the PlanCard full stage both MOUNT the one chip component", () => {
+test("D2 — the PlanCard full stage MOUNTS the one chip component; the slip row draws no pills", () => {
   // The Trip Card is the PlanCard full stage plus a rail (LD 45 (6) — one page, no tab shell), so
   // mounting the chip in the full-stage activity row is what puts it on the frozen plan too.
-  assert.ok(
-    read("client/src/components/plancard/SlipView.tsx").includes("<ItemKindBadge activity={a} />"),
-    "the slip item row mounts the chip",
-  );
+  // Surface step 1: the slip's `ItemRow` carries no routing, kind or origin pill.
+  const slip = read("client/src/components/plancard/SlipView.tsx");
+  assert.ok(!slip.includes("<ItemKindBadge") && !slip.includes("<RoutingBadge") && !slip.includes("<OriginBadge"), "no pills on the slip row");
   assert.ok(
     read(PILL_HOME).includes("<ItemKindBadge activity={a} />"),
     "the PlanCard full stage's activity row mounts the chip",
@@ -116,10 +116,10 @@ test("D2 — the site list is DERIVED: no other client file writes a kind word o
 // ── D3 — a kind is not a routing status (LD 44) ─────────────────────────────────────────────────
 
 test("D3 — the kind chip and the routing pill are drawn as two chips, not folded into one", () => {
-  const slip = read("client/src/components/plancard/SlipView.tsx");
-  const routingAt = slip.indexOf("<RoutingBadge activity={a} showPlanning");
-  const kindAt = slip.indexOf("<ItemKindBadge activity={a} />");
-  assert.ok(routingAt > -1 && kindAt > -1, "both chips render on the slip row");
+  const card = read(PILL_HOME);
+  const routingAt = card.indexOf("<RoutingBadge");
+  const kindAt = card.indexOf("<ItemKindBadge activity={a} />");
+  assert.ok(routingAt > -1 && kindAt > -1, "both chips render on the Trip Card row");
   assert.notEqual(routingAt, kindAt);
 });
 

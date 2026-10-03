@@ -227,6 +227,11 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
 };
 
 const ALLOWED_REMOVALS = {
+  "slip-expert-note":
+    "surface step 1 (ledger `2026-10-03-surface-step1-item-row`) — not removed from the page: the " +
+    "note now renders through the ONE `ExpertNote` (`components/plan/ExpertNote.tsx`) under its " +
+    "item, with the SAME `slip-expert-note` testid. It left the slip's FILE SET, which is all this " +
+    "inventory reads. It carries no handler.",
   "slip-tracking-ref":
     "4 — the working header prints no slip number and no version. `planVersion` is the " +
     "transition-log ROW COUNT and reads as a released version it is not; the only version a " +

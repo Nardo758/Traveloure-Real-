@@ -1,0 +1,70 @@
+/**
+ * Surface step 1 — the pure rules under `DayBlock`, `ItemRow`'s ⋯ menu and `AnchorRow` (surface spec
+ * v1.2 §3/§10; rulings R-l, R-r, R-aa; ledger `2026-10-03-surface-step1-item-row`).
+ *   H1 day heading "<Wkd> · <Mon d>"; no date ⇒ "Day N"; an event-only undated slot ⇒ "Undated"
+ *   H2 day stats "N stops · <areas> · hours on K"; absent areas / zero hours are omitted, never "0"
+ *   M1 "Find a host" only on a GENERIC item whose type maps to a category, with that category preset
+ *   M2 a named place, or a type with no hireable counterpart, gets no "Find a host"
+ *   M3 the anchor's "from <tool>": Where to stay / Build my days around this / your booking / none
+ *   M4 R-r: "Ask a local" reads the door's overview — any live local ⇒ the door
+ *   A1 R-aa: the arrival/departure words, and a placeholder never claims "fixed"
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { DAY_AREAS_MAX, dayBlockHeading, dayBlockStats } from "../plan-day";
+import { ASK_LOCAL_WORDS, FIND_A_HOST_CATEGORY, anchorFromTool, anyLocalLive, findHostHref } from "../item-row-menu";
+import { anchorLabel, TRAVEL_ANCHOR_WORDS } from "../../components/plan/AnchorRow";
+import { ITEM_MENU_LABELS } from "../../components/plan/ItemRow";
+
+test("H1: the day heading", () => {
+  assert.equal(dayBlockHeading({ dayNum: 1, dateIso: "2026-11-11" }), "Wed · Nov 11");
+  assert.equal(dayBlockHeading({ dayNum: 3, dateIso: null }), "Day 3");
+  assert.equal(dayBlockHeading({ dayNum: 3, date: "Nov 13", dateIso: "garbage" }), "Day 3 · Nov 13");
+  assert.equal(dayBlockHeading({ dayNum: null, dateIso: null }), "Undated");
+});
+
+test("H2: the day stats", () => {
+  assert.equal(dayBlockStats({ stops: 5, areas: ["Higashiyama", null, "Sakyo", "Higashiyama"], hoursOn: 4 }), "5 stops · Higashiyama, Sakyo · hours on 4");
+  assert.equal(dayBlockStats({ stops: 1, areas: [], hoursOn: 0 }), "1 stop");
+  assert.equal(dayBlockStats({ stops: 0, areas: [], hoursOn: 0 }), null);
+  assert.equal(dayBlockStats({ stops: 6, areas: ["a", "b", "c", "d"], hoursOn: 0 }), `6 stops · ${["a", "b", "c"].slice(0, DAY_AREAS_MAX).join(", ")}`);
+});
+
+test("M1: Find a host on a generic item, category preset", () => {
+  const href = findHostHref({ name: "Dinner", type: "meal", locationName: null }, { city: "Kyoto, Japan", tripId: "t1" });
+  assert.ok(href && href.startsWith("/services?"));
+  const q = new URLSearchParams(href!.split("?")[1]);
+  assert.equal(q.get("categoryKey"), FIND_A_HOST_CATEGORY.meal);
+  assert.equal(q.get("tripId"), "t1");
+});
+
+test("M2: no Find a host for a named place or an unhireable type", () => {
+  assert.equal(findHostHref({ name: "Kinkaku-ji visit", type: "activity", locationName: null }, { city: "Kyoto", tripId: "t1" }), null);
+  assert.equal(findHostHref({ name: "Free time", type: "free_time" }, { city: "Kyoto", tripId: "t1" }), null);
+  assert.equal(findHostHref({ name: "Dinner", type: null }, { city: "Kyoto", tripId: "t1" }), null);
+});
+
+test("M3: where an anchor was fixed", () => {
+  assert.equal(anchorFromTool({ isPrimaryAnchor: true, anchorSetCategory: "accommodation", purchasedAndOptimized: false }), "Where to stay");
+  assert.equal(anchorFromTool({ isPrimaryAnchor: true, anchorSetCategory: null, purchasedAndOptimized: false }), "Build my days around this");
+  assert.equal(anchorFromTool({ isPrimaryAnchor: false, anchorSetCategory: null, purchasedAndOptimized: true }), "your booking");
+  assert.equal(anchorFromTool({ isPrimaryAnchor: false, anchorSetCategory: null, purchasedAndOptimized: false }), null);
+  assert.equal(anchorLabel("Where to stay"), "Anchor · fixed · from Where to stay");
+});
+
+test("M4: Ask a local — a live local opens the door, none records the question", () => {
+  assert.equal(anyLocalLive({ levels: [{ expertCount: 0 }, { expertCount: 2 }] }), true);
+  assert.equal(anyLocalLive({ levels: [{ expertCount: 0 }] }), false);
+  assert.equal(anyLocalLive(null), false);
+  assert.match(ASK_LOCAL_WORDS.saved("Kyoto"), /Kyoto.*nothing was charged/);
+  assert.doesNotMatch(ASK_LOCAL_WORDS.saved("Kyoto"), /notify|we'll tell you|email/i, "no promise of a notification nothing sends");
+  assert.deepEqual(Object.values(ITEM_MENU_LABELS).slice(0, 4), ["Swap", "Move up", "Move down", "Remove"]);
+  assert.equal(ITEM_MENU_LABELS.askLocal, "Ask a local about this");
+  assert.equal(ITEM_MENU_LABELS.findHost, "Find a host");
+});
+
+test("A1: the travel placeholders", () => {
+  assert.equal(TRAVEL_ANCHOR_WORDS.arrival("Kyoto"), "Arrival in Kyoto");
+  assert.equal(TRAVEL_ANCHOR_WORDS.departure("Kyoto"), "Departure from Kyoto");
+  assert.equal(TRAVEL_ANCHOR_WORDS.addFlight, "Add your flight");
+});

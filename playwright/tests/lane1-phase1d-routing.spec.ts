@@ -271,7 +271,12 @@ test.describe("Lane 1 Phase 1d — Trip Card routing UI (browser)", () => {
   // the surface that now owns item rows, `/plans/:tripId`, whose rows are `slip-item-${id}` and
   // whose routing controls are the SAME shared `RoutingActions` (ActivitiesSection.tsx), so every
   // button/badge/link selector below is untouched.
-  test("owner sees routing actions on the plan slip; Add to checkout flips the badge and reveals Go to checkout", async ({ page }) => {
+  // SURFACE STEP 1 (R-l; ledger `2026-10-03-surface-step1-item-row`): the slip's `ItemRow` carries
+  // NO per-item routing control and no routing pill — the draft is a plan, not a basket. The owner
+  // still reaches checkout through the plan-level Finish / Finalize rail, which drives the SAME
+  // `/route` edge asserted here, so the invariant (an owner's in_planning item lands in the cart) is
+  // kept and the per-row button is asserted ABSENT.
+  test("the plan slip offers no per-item routing control; the route edge still lands the item in the cart", async ({ page }) => {
     const email = `e2e-p1d-ui-owner-${uid()}@example.com`;
     await registerUser(page.request, email, "UiOwner", "Traveler");
     const tripId = await createTrip(page.request);
@@ -279,28 +284,16 @@ test.describe("Lane 1 Phase 1d — Trip Card routing UI (browser)", () => {
 
     await page.goto(`${BASE_URL}/plans/${tripId}`);
     await page.waitForSelector(`[data-testid="slip-item-${itemId}"]`, { timeout: 30_000 });
+    await expect(page.locator('[data-testid^="button-route-"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="badge-routing-"]')).toHaveCount(0);
 
-    // With NO expert on the plan the owner is not offered "Send to expert" (ledger
-    // `2026-09-26-send-to-expert-needs-expert`) — only the checkout edge.
-    await expect(page.locator(`[data-testid="button-route-send-expert-${itemId}"]`)).toHaveCount(0);
-    const addToCheckoutBtn = page.locator(`[data-testid="button-route-add-checkout-${itemId}"]`);
-    await expect(addToCheckoutBtn).toBeVisible();
-
-    // No badge yet — in_planning renders no badge noise (§1 W7 rendering rule).
-    await expect(page.locator(`[data-testid="badge-routing-checkout-${itemId}"]`)).toHaveCount(0);
-
-    await addToCheckoutBtn.click();
-
-    // Badge flips to "In checkout"; the checkout link appears; the in_planning-only buttons
-    // are gone (replaced by "Remove from checkout").
-    await expect(page.locator(`[data-testid="badge-routing-checkout-${itemId}"]`)).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator(`[data-testid="link-go-to-checkout-${itemId}"]`)).toBeVisible();
-    await expect(page.locator(`[data-testid="button-route-remove-checkout-${itemId}"]`)).toBeVisible();
-    await expect(page.locator(`[data-testid="button-route-add-checkout-${itemId}"]`)).toHaveCount(0);
-
-    // The link really goes to the cart and the item is really there.
-    await page.locator(`[data-testid="link-go-to-checkout-${itemId}"]`).click();
-    await page.waitForURL(/\/cart/, { timeout: 15_000 });
+    const routed = await page.request.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/route`, {
+      data: { to: "ready_for_checkout" },
+    });
+    expect(routed.status()).toBe(200);
+    await page.reload();
+    await page.waitForSelector(`[data-testid="slip-item-${itemId}"]`, { timeout: 30_000 });
+    await expect(page.locator('[data-testid^="button-route-"]')).toHaveCount(0);
 
     const cartRow = sql(`SELECT id FROM cart_items WHERE itinerary_item_id = '${itemId}'`);
     expect(cartRow).toBeTruthy();

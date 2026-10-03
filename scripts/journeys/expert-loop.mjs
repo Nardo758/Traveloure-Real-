@@ -235,11 +235,16 @@ async function main() {
     await runStep(
       "Traveler: send item to expert (in_planning -> with_expert)",
       async () => {
+        // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`, R-l): the slip's `ItemRow`
+        // carries no per-item routing control or pill any more — routing to the expert is a
+        // plan-level act (Finalize, and the handoff in step 7). The traveler's session drives the
+        // SAME `/route` edge the old button called; the slip is still loaded to prove the row renders.
         await travelerPage.goto(`/plans/${TRIP_ID}`);
         await waitVisible(travelerPage, `slip-item-${ITEM_A}`);
-        const btn = await waitVisible(travelerPage, `button-route-send-expert-${ITEM_A}`);
-        await travelerPage.click(btn);
-        await waitVisible(travelerPage, `badge-routing-with-expert-${ITEM_A}`);
+        const routed = await travelerPage.request.post(`/api/trips/${TRIP_ID}/items/${ITEM_A}/route`, {
+          data: { to: "with_expert" },
+        });
+        if (!routed.ok()) throw new Error(`route to with_expert answered ${routed.status()}`);
 
         const row = await dbOne(
           pg,
@@ -250,7 +255,7 @@ async function main() {
           throw new Error(`expected routing_status='with_expert', got '${row?.routing_status}'`);
         }
         return {
-          ui: `badge-routing-with-expert-${ITEM_A} visible on /plans/${TRIP_ID} (the slip — canonical owner planning surface)`,
+          ui: `slip-item-${ITEM_A} visible on /plans/${TRIP_ID}; routed by the traveler's session (no per-item control on the slip since surface step 1)`,
           db: `itinerary_items.routing_status = 'with_expert' for ${ITEM_A}`,
         };
       },

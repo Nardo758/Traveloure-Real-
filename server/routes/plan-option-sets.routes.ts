@@ -96,9 +96,19 @@ const slipEventBody = z.discriminatedUnion("type", [
   // The expert door (ledger `2026-09-29-expert-door`): the level chosen, the picker shown (its count
   // RECOMPUTED server-side) and the interest recorded when no expert offers the level. The market is
   // the plan's own; the client names only the level.
-  ...(["expert_help_level_chosen", "expert_picker_shown", "expert_interest"] as const).map((t) =>
+  ...(["expert_help_level_chosen", "expert_picker_shown"] as const).map((t) =>
     z.object({ type: z.literal(t), level: z.enum(HELP_LEVELS) }).strict(),
   ),
+  // R-r (surface step 1): the item-level "Ask a local about this" names the item and may carry the
+  // question. Both optional, so the door's own interest row is unchanged.
+  z
+    .object({
+      type: z.literal("expert_interest"),
+      level: z.enum(HELP_LEVELS),
+      itemId: z.string().min(1).max(64).optional(),
+      question: z.string().trim().min(1).max(500).optional(),
+    })
+    .strict(),
 ] as any);
 
 function fail(res: any, err: unknown, what: string) {
@@ -255,7 +265,14 @@ router.post("/api/trips/:tripId/slip-events", isAuthenticated, async (req: any, 
       const { type: _type, ...event } = body;
       await recordPlanFitShown({ tripId: req.params.tripId, userId: getUserId(req)!, ...event });
     } else {
-      await recordExpertDoorEvent({ tripId: req.params.tripId, userId: getUserId(req)!, type: body.type, level: body.level });
+      await recordExpertDoorEvent({
+        tripId: req.params.tripId,
+        userId: getUserId(req)!,
+        type: body.type,
+        level: body.level,
+        itemId: body.itemId,
+        question: body.question,
+      });
     }
     res.status(202).json({ accepted: true });
   } catch (err) {
