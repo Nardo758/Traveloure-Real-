@@ -210,8 +210,8 @@ interface StripeCheckoutProps {
   onCancel: () => void;
   /**
    * R162: close the form after a declined attempt instead of letting the traveler re-confirm the SAME
-   * PaymentIntent. Set by the cart checkout, whose booking is marked `failed` (final) on a decline.
-   * Other flows (Trip Pass, optimizer, …) keep same-intent retries.
+   * PaymentIntent. The cart checkout leaves this unset so a still-pending booking can retry the same
+   * intent (ledger `2026-10-02-checkout-display-equals-charge`). A `failed` attempt stays closed.
    */
   singleAttempt?: boolean;
 }

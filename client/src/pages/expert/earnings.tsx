@@ -80,6 +80,8 @@ interface EarningsDetails {
     paidOut: number;
     totalTips: number;
     totalAffiliateCommissions: number;
+    /** Seller share on paid bookings that have not completed. Omitted when there is none. */
+    awaitingCompletion?: number;
   };
   earnings: ExpertEarningRow[];
   payouts: ExpertPayoutRow[];
@@ -227,6 +229,18 @@ export default function ExpertEarnings() {
             testId="card-earnings-total"
           />
         </div>
+
+        {(summary?.awaitingCompletion ?? 0) > 0 && (
+          <div
+            className="rounded-lg border border-console-light bg-console-bg px-4 py-3 text-sm text-console-darkest"
+            data-testid="banner-awaiting-completion"
+          >
+            <strong>
+              ${(summary!.awaitingCompletion ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </strong>{" "}
+            from paid bookings, released when the booking is completed. This is not in escrow yet.
+          </div>
+        )}
 
         <EarningsBySourcePanel />
 

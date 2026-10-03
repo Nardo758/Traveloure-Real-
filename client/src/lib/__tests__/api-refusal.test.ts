@@ -58,6 +58,12 @@ test("R7: the named fields the rails emit survive the round trip", () => {
   assert.equal(component.currentStatus, "completed");
 });
 
+test("R8: a body that names the code as error still yields that code", () => {
+  const body = parseApiRefusal(new Error('409: {"message":"This quote expired.","error":"quote_expired"}'));
+  assert.equal(body.code, "quote_expired");
+  assert.equal(body.message, "This quote expired.");
+});
+
 test("M1-M2: the message helper prefers the server's sentence", () => {
   assert.equal(
     apiRefusalMessage(new Error('409: {"message":"This quote expired."}'), "fallback"),

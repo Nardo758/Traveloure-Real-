@@ -21,6 +21,7 @@ import { describeCompletionDeclaration } from "@shared/declared-completion-windo
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
 import { outOfBandFullyRefundedBookingIds, refundSummariesFor } from "./services/out-of-band-refund.service";
+import { bookingReceiptFromRow } from "./services/booking-receipt";
 import {
   normalizeGeneratedActivityDurationMinutes,
   normalizeGeneratedDayNumber,
@@ -274,7 +275,7 @@ import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes, tripParticipantCreateSchema } from "./routes/content.routes";
 import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
-import { composeTravelerCharge, travelerChargeForRow } from "./services/traveler-charge";
+import { cartAmountDue, composeTravelerCharge, travelerChargeForRow } from "./services/traveler-charge";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -6629,8 +6630,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // `declared: false`, never a zero.
       const acceptance = await describeAcceptance(booking.id);
       const completionDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
+      const receipt = bookingReceiptFromRow(booking);
       return {
         ...booking,
+        ...(receipt.amountCharged ? { amountCharged: receipt.amountCharged } : {}),
         // #533: a service booking's reference is its `tracking_number`, minted at birth — the
         // same value `POST /api/bookings/bulk-status` already answers as `confirmationCode`. My
         // Bookings read a `confirmationCode` field this row never had, so every confirmed booking
@@ -9312,6 +9315,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // R144: null ⇒ the key is OMITTED (§13 — an unresolvable band, or no line to fee, is no answer,
     // never a $0 fee). The ONE resolver computes it; this read writes nothing.
     const travelerFeePreview = await buildTravelerFeePreview(travelerFeePreviewLines);
+    // The figure Book & Pay and the card form must equal. `total` stays pre-fee (V7). Omitted
+    // when fee lines exist and the band did not resolve — never claim the pre-fee total is the charge.
+    const amountDue = cartAmountDue({
+      subtotal,
+      conciergeFee: conciergeFeeTotal,
+      surchargeTotal,
+      previewCharged: travelerFeePreview ? travelerFeePreview.chargedTotal : null,
+      hadFeeLines: travelerFeePreviewLines.length > 0,
+    });
 
     res.json({
       items,
@@ -9332,6 +9344,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         surchargeTotal,
         travelerFee: 0,
       }).toFixed(2),
+      // Present when the charge is knowable. Equals `total` plus the preview's charged fee.
+      ...(amountDue != null ? { amountDue } : {}),
       itemCount: items.length,
       // s13: OMITTED when empty, so a fully-priced cart is unchanged. When present it is the
       // honest statement that `subtotal`/`total` do not cover these lines and checkout will
