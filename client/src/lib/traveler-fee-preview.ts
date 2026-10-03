@@ -92,3 +92,24 @@ export function travelerFeePreviewDisplay(
 export function travelerFeePreviewAddend(display: TravelerFeePreviewDisplay | null): number {
   return display && display.kind === "charged" ? display.amount : 0;
 }
+
+/**
+ * The number labeled Total once the traveler is paying. Prefers the PaymentIntent cents — that
+ * is what Stripe will charge — then the checkout snapshot, then the cart's `amountDue`. An
+ * optimization estimate is never subtracted: it is not part of this charge.
+ */
+export function paymentStepTotal(args: {
+  paymentIntentAmountCents?: number | null;
+  snapshotTotal?: string | null;
+  amountDue?: string | null;
+  fallback: number;
+}): number {
+  if (args.paymentIntentAmountCents != null && Number.isFinite(args.paymentIntentAmountCents)) {
+    return Math.round(args.paymentIntentAmountCents) / 100;
+  }
+  const snap = args.snapshotTotal != null ? parseFloat(args.snapshotTotal) : NaN;
+  if (Number.isFinite(snap)) return snap;
+  const due = args.amountDue != null ? parseFloat(args.amountDue) : NaN;
+  if (Number.isFinite(due)) return due;
+  return args.fallback;
+}

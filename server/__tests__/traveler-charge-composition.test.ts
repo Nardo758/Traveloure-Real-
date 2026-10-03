@@ -55,10 +55,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  cartAmountDue,
   composeTravelerCharge,
   travelerChargeForRow,
   TRAVELER_CHARGE_SNAPSHOT_KEY,
 } from "../services/traveler-charge";
+import { bookingReceiptFromRow } from "../services/booking-receipt";
 // Imported from fee-band-requirements.ts DIRECTLY, never from commission.ts: this file's dedicated
 // CI job sets no DATABASE_URL (it is documented and proven DB-free), and commission.ts imports
 // `../db` at module load — pulling it in here would break that job at import time regardless of
@@ -388,5 +390,63 @@ describe("A3 — the call sites (a composition is worth what its callers are)", 
     assert.match(payments, /markStripeAttempt\(bookingIds, `pi-\$\{checkoutKey\}`\)/);
     assert.match(payments, /await stampAuthorization\(bookingIds, paymentIntent\.paymentIntentId\)/);
     assert.match(payments, /checkoutKey,\n\s*\{ offSession: args\.useSavedCard === true \}/);
+  });
+
+  it("S13 the displayed payable total is amountDue, and the cart clears only after a paid promotion", () => {
+    assert.match(routes, /cartAmountDue\(\{/);
+    assert.match(cartPage, /paymentStepTotal\(\{/);
+    assert.ok(
+      !/clearCheckedOutCartLines/.test(payments),
+      "opening the card form must not empty the cart",
+    );
+    const claim = read("server/services/checkout-claim.service.ts");
+    assert.match(claim, /clearCartAfterPaidPromotion/);
+  });
+});
+
+describe("amountDue — the figure the cart may call the charge", () => {
+  it("includes the previewed traveler fee and leaves a waived fee at zero", () => {
+    assert.equal(
+      cartAmountDue({ subtotal: 120, conciergeFee: 6, surchargeTotal: 0, previewCharged: 8.4, hadFeeLines: true }),
+      "134.40",
+    );
+    assert.equal(
+      cartAmountDue({ subtotal: 120, conciergeFee: 6, surchargeTotal: 0, previewCharged: 0, hadFeeLines: true }),
+      "126.00",
+    );
+  });
+
+  it("omits the figure when fee lines exist and the band did not answer", () => {
+    assert.equal(
+      cartAmountDue({ subtotal: 120, conciergeFee: 6, surchargeTotal: 0, previewCharged: null, hadFeeLines: true }),
+      null,
+    );
+  });
+
+  it("equals the pre-fee total when nothing was feeable", () => {
+    assert.equal(
+      cartAmountDue({ subtotal: 50, conciergeFee: 0, surchargeTotal: 0, previewCharged: null, hadFeeLines: false }),
+      "50.00",
+    );
+  });
+});
+
+describe("booking receipt — the charged amount, present only when stamped", () => {
+  it("reads the paid stamp and the itemized lines, and omits a row with no stamp", () => {
+    const receipt = bookingReceiptFromRow({
+      totalAmount: "120.00",
+      bookingDetails: {
+        paidCharge: { status: "confirmed", amount: 134.4, at: "2026-10-02T00:00:00.000Z" },
+        travelerCharge: { conciergeFee: "6.00" },
+        travelerServiceFee: { charged: 8.4, waived: false },
+      },
+    });
+    assert.equal(receipt.amountCharged, "134.40");
+    assert.equal(receipt.subtotal, "120.00");
+    assert.equal(receipt.conciergeFee, "6.00");
+    assert.equal(receipt.travelerFee, "8.40");
+    assert.deepEqual(bookingReceiptFromRow({ totalAmount: "120.00", bookingDetails: {} }), {
+      subtotal: "120.00",
+    });
   });
 });

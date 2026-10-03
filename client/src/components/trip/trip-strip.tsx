@@ -66,7 +66,7 @@ export function TripStrip() {
   // visible step reachable from its rail (`resolvePlanSteps`; CLAUDE.md Locked Decision 33).
   const { open: openPlanModal } = usePlanning();
 
-  const { data: cart } = useQuery<{ itemCount: number; total: string }>({
+  const { data: cart } = useQuery<{ itemCount: number; total: string; amountDue?: string }>({
     queryKey: ["/api/cart"],
     staleTime: 30_000,
   });
@@ -114,7 +114,7 @@ export function TripStrip() {
   // to add in. (A partner line carries no price, so it counts as an item and adds nothing to the
   // total, which is the server's statement and not a $0 claim about the partner's price.)
   const cartCount = cart?.itemCount || 0;
-  const cartTotal = parseFloat(cart?.total || "0");
+  const cartTotal = parseFloat(cart?.amountDue ?? cart?.total ?? "0");
 
   const hasContext = Object.keys(ctx).some(
     (k) => ["destination", "startDate", "endDate", "travelers", "experienceType", "tripId"].includes(k) && (ctx as any)[k],
@@ -298,7 +298,10 @@ export function TripStrip() {
             <span style={{ color: "var(--earn-ink)" }}>{cartCount}</span>
             <span aria-hidden="true" style={{ color: "var(--earn-faint)" }}>·</span>
             <span style={{ color: "var(--earn-teal-ink)" }}>
-              ${cartTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              ${cartTotal.toLocaleString(undefined, {
+                minimumFractionDigits: Number.isInteger(cartTotal) ? 0 : 2,
+                maximumFractionDigits: 2,
+              })}
             </span>
           </Link>
         )}

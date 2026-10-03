@@ -41,6 +41,7 @@ import {
   quoteDepositLine,
   quoteIsAcceptable,
   quotePlanLine,
+  quotePaymentOfferSentence,
   quoteStateCopy,
   quoteTravelerFeeLine,
   quoteValidityLine,
@@ -136,6 +137,7 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
    * composes the charge from the row the accept rail wrote and answers with the PaymentIntent it
    * created; this page renders THAT answer and never states a figure of its own.
    */
+  const [payRefusal, setPayRefusal] = useState<string | null>(null);
   const pay = useMutation({
     mutationFn: async (bookingId: string) => {
       const res = await apiRequest("POST", "/api/checkout", { quoteBookingId: bookingId });
@@ -148,6 +150,7 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
       };
     },
     onSuccess: (data, bookingId) => {
+      setPayRefusal(null);
       if (!data.paymentIntent?.clientSecret) {
         // §13: no clientSecret is NOT "paid" — it is no answer, and the sheet does not open.
         toast({
@@ -164,16 +167,17 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
         coveredByTripPass: data.coveredByTripPass,
       });
     },
-    onError: (err: unknown) =>
+    onError: (err: unknown) => {
+      const line =
+        quoteChargeRefusalLine(parseApiRefusal(err), formatDay) ??
+        apiRefusalMessage(err, "This booking could not be paid for right now.");
+      setPayRefusal(line);
       toast({
         variant: "destructive",
         title: "Payment not started",
-        // The server's OWN refusal — `quote_expired` carries its expiry, and this page repeats it
-        // rather than recomputing a deadline (the same rule the validity line follows).
-        description:
-          quoteChargeRefusalLine(parseApiRefusal(err), formatDay) ??
-          apiRefusalMessage(err, "This booking could not be paid for right now."),
-      }),
+        description: line,
+      });
+    },
   });
 
   /**
@@ -266,10 +270,17 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
               {q.lifecycle === "accepted" && (
                 <div className="rounded-md border bg-muted/30 px-3 py-2 space-y-2" data-testid={`quote-accepted-${q.id}`}>
                   {depositLine && <p className="text-sm">{depositLine}</p>}
-                  <p className="text-xs text-muted-foreground">{QUOTE_CHECKOUT_UNAVAILABLE_NOTE}</p>
-                  {/* §13: an accepted row whose booking id did not come back gets the note and NO
-                      pay control — a Pay button with nothing to address is worse than none. */}
-                  {!q.bookingId ? null : paying?.bookingId === q.bookingId ? (
+                  <p className="text-xs text-muted-foreground" data-testid={`quote-payment-offer-${q.id}`}>
+                    {quotePaymentOfferSentence(q.paymentOffer) ?? QUOTE_CHECKOUT_UNAVAILABLE_NOTE}
+                  </p>
+                  {payRefusal && (
+                    <p className="text-sm text-destructive" data-testid={`quote-pay-refusal-${q.id}`}>
+                      {payRefusal}
+                    </p>
+                  )}
+                  {/* Pay only while the server says this booking is still unpaid and inside the
+                      window. A confirmed booking and an expired quote draw no button. */}
+                  {(q.paymentOffer ?? (q.bookingId ? "pay" : "none")) !== "pay" || !q.bookingId ? null : paying?.bookingId === q.bookingId ? (
                     <>
                       {/* Ledger `2026-09-19-quote-born-traveler-fee`: shown BEFORE the traveler
                           completes the Payment Element below — the server's own figures, read

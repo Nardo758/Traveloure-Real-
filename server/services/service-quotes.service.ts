@@ -53,13 +53,15 @@
  */
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { providerServices, serviceQuotes, trips, type ServiceQuote } from "@shared/schema";
+import { providerServices, serviceBookings, serviceQuotes, trips, type ServiceQuote } from "@shared/schema";
 import { quoteOwnerShareForAccept } from "@shared/fee-policy";
 import { isProviderRole } from "@shared/roles";
 import {
   SERVICE_QUOTE_CURRENCY,
   centsToAmount,
   quoteLifecycle,
+  quotePaymentOffer,
+  type QuotePaymentOffer,
   type ServiceQuoteLifecycle,
 } from "@shared/service-quotes";
 
@@ -228,6 +230,11 @@ export interface ServiceQuoteView {
    * fee — never rendered as a $0 fee).
    */
   travelerServiceFee?: TravelerServiceFeeSnapshot;
+  /**
+   * Present on an accepted quote only. `paid` means the linked booking is already charged,
+   * so the surface must not also say "not paid yet".
+   */
+  paymentOffer?: QuotePaymentOffer;
 }
 
 const iso = (d: Date | string | null | undefined): string | undefined => {
@@ -245,6 +252,7 @@ export function presentQuote(
    *  or undefined when the caller does not compute one (every caller but `listQuotesForTraveler`
    *  today — the owner list, and every mutation result, have no traveler-facing fee to disclose). */
   travelerServiceFee?: TravelerServiceFeeSnapshot,
+  bookingStatus?: string | null,
 ): ServiceQuoteView {
   const view: ServiceQuoteView = {
     id: row.id,
@@ -267,7 +275,20 @@ export function presentQuote(
   const declinedAt = iso(row.declinedAt); if (declinedAt) view.declinedAt = declinedAt;
   const withdrawnAt = iso(row.withdrawnAt); if (withdrawnAt) view.withdrawnAt = withdrawnAt;
   if (row.supersededBy) view.supersededBy = row.supersededBy;
-  if (row.bookingId) view.bookingId = row.bookingId;
+  if (row.bookingId) {
+    view.bookingId = row.bookingId;
+    if (view.lifecycle === "accepted") {
+      view.paymentOffer = quotePaymentOffer(
+        {
+          lifecycle: view.lifecycle,
+          bookingId: row.bookingId,
+          bookingStatus: bookingStatus ?? null,
+          expiresAt: row.expiresAt,
+        },
+        now,
+      );
+    }
+  }
   if (row.tripId) {
     view.tripId = row.tripId;
     if (tripTitle) view.tripTitle = tripTitle;
@@ -360,17 +381,23 @@ async function resolveListTravelerServiceFee(quote: ServiceQuote): Promise<Trave
  */
 export async function listQuotesForTraveler(travelerId: string): Promise<ServiceQuoteView[]> {
   const rows = await db
-    .select({ quote: serviceQuotes, serviceName: providerServices.serviceName, tripTitle: trips.title })
+    .select({
+      quote: serviceQuotes,
+      serviceName: providerServices.serviceName,
+      tripTitle: trips.title,
+      bookingStatus: serviceBookings.status,
+    })
     .from(serviceQuotes)
     .innerJoin(providerServices, eq(providerServices.id, serviceQuotes.serviceId))
     .leftJoin(trips, eq(trips.id, serviceQuotes.tripId))
+    .leftJoin(serviceBookings, eq(serviceBookings.id, serviceQuotes.bookingId))
     .where(eq(serviceQuotes.travelerId, travelerId))
     .orderBy(desc(serviceQuotes.createdAt));
   const now = new Date();
   return Promise.all(
     rows.map(async (r) => {
       const travelerServiceFee = await resolveListTravelerServiceFee(r.quote);
-      return presentQuote(r.quote, r.serviceName, now, r.tripTitle, travelerServiceFee);
+      return presentQuote(r.quote, r.serviceName, now, r.tripTitle, travelerServiceFee, r.bookingStatus);
     }),
   );
 }
