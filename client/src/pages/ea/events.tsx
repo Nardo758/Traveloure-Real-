@@ -28,6 +28,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { wallClockIso } from "@/lib/ea-event-time";
+import { eaEventMatchesPerson, eaPersonOptions, type EaRosterClient } from "@/lib/ea-people";
 
 interface EaEvent {
   id: string; title: string; executiveId?: string | null; executiveName?: string; type?: string;
@@ -70,16 +72,20 @@ export default function EAEvents() {
   const { data: executives = [] } = useQuery<EaExecutive[]>({
     queryKey: ["/api/ea/executives"],
   });
+  const { data: clients = [] } = useQuery<EaRosterClient[]>({
+    queryKey: ["/api/ea/clients"],
+  });
+  const people = eaPersonOptions(executives, clients);
 
   const createMutation = useMutation({
     mutationFn: () => {
-      const exec = executives.find((e) => e.id === form.executiveId);
+      const person = people.find((p) => p.key === form.executiveId);
       return apiRequest("POST", "/api/ea/events", {
         title: form.title,
-        executiveId: form.executiveId || undefined,
-        executiveName: exec?.name || undefined,
+        executiveId: person?.executiveId || undefined,
+        executiveName: person?.name || undefined,
         type: form.type,
-        date: form.date ? `${form.date}T${form.time || "00:00"}` : undefined,
+        date: form.date ? wallClockIso(form.date, form.time) ?? undefined : undefined,
         venue: form.venue || undefined,
         guests: form.guests ? Number(form.guests) : undefined,
         notes: form.notes || undefined,
@@ -120,7 +126,10 @@ export default function EAEvents() {
 
   const filteredEvents = events.filter((e) => {
     if (search && !`${e.title} ${e.venue ?? ""}`.toLowerCase().includes(search.toLowerCase())) return false;
-    if (executiveFilter !== "all" && e.executiveId !== executiveFilter) return false;
+    if (executiveFilter !== "all") {
+      const person = people.find((p) => p.key === executiveFilter);
+      if (!person || !eaEventMatchesPerson(e, person)) return false;
+    }
     if (typeFilter !== "all" && e.type !== typeFilter) return false;
     if (statusFilter !== "all" && e.status !== statusFilter) return false;
     return true;
@@ -172,11 +181,11 @@ export default function EAEvents() {
                         <SelectValue placeholder="Select executive" />
                       </SelectTrigger>
                       <SelectContent>
-                        {executives.length === 0 && (
-                          <div className="px-2 py-1.5 text-xs text-gray-400">No executives added yet</div>
+                        {people.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-gray-400">No clients or executives yet</div>
                         )}
-                        {executives.map((exec) => (
-                          <SelectItem key={exec.id} value={exec.id}>{exec.name}</SelectItem>
+                        {people.map((person) => (
+                          <SelectItem key={person.key} value={person.key}>{person.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -285,8 +294,8 @@ export default function EAEvents() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Executives</SelectItem>
-              {executives.map((exec) => (
-                <SelectItem key={exec.id} value={exec.id}>{exec.name}</SelectItem>
+              {people.map((person) => (
+                <SelectItem key={person.key} value={person.key}>{person.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

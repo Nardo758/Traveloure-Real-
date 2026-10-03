@@ -78,6 +78,7 @@ import {
   updateGeneratedItineraryData,
   getTravelerProfile,
 } from '../services/booking-actions.service';
+import { isManagingEaForTrip } from '../services/ea-plan-delegate.service';
 
 const router = Router();
 
@@ -1036,6 +1037,8 @@ router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, re
 /**
  * GET /api/trips/:id/suggestions
  * Return all expert suggestions for a trip. Trip owner sees all; expert sees their own.
+ * A managing executive assistant (LD 52) reads the plan they are building — the same read as
+ * the owner. Approving a suggestion stays on the owner-only PATCH below.
  */
 router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
@@ -1049,8 +1052,9 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
     if (!owner) {
       expert = await isExpertAssignedToTrip(id, userId);
     }
+    const delegate = !owner && !expert && await isManagingEaForTrip(id, userId);
 
-    if (!owner && !expert) {
+    if (!owner && !expert && !delegate) {
       const exists = await tripExistsById(id);
       if (!exists) return res.status(404).json({ error: 'Trip not found' });
       return res.status(403).json({ error: 'Access denied' });

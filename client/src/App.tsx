@@ -9,6 +9,7 @@ import { BrowseShell } from "@/components/browse-shell";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
+import { PlanPageShell } from "@/components/plan-page-shell";
 import { useAuth } from "@/hooks/use-auth";
 import { PenBinder } from "@/components/pen-binder";
 import { useLocale } from "@/hooks/use-locale";
@@ -705,7 +706,7 @@ function Router() {
       <Route path="/plans/:tripId">
         {() => (
           <PageErrorBoundary fallbackHeading="Plan Not Found">
-            <DashboardLayout><ProtectedRoute component={SlipViewPage} /></DashboardLayout>
+            <PlanPageShell><ProtectedRoute component={SlipViewPage} /></PlanPageShell>
           </PageErrorBoundary>
         )}
       </Route>

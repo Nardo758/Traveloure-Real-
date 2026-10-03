@@ -512,6 +512,14 @@ jobs:
             echo "--- TZ=$tz ---"
             TZ="$tz" npx tsx --test client/src/lib/__tests__/trip-date-local-parse.test.ts
           done
+      # QA M1/M2: EA event wall-clock offset, accepted-client options, and the delegate read split.
+      - name: EA dates, people and delegate reads
+        run: |
+          for tz in America/New_York Asia/Tokyo UTC; do
+            echo "--- TZ=$tz ---"
+            TZ="$tz" npx tsx --test client/src/lib/__tests__/ea-event-time.test.ts client/src/lib/__tests__/ea-people.test.ts
+          done
+          npx tsx --test server/__tests__/ea-delegate-reads.test.ts
       # QA F3: the SAME date-only defect on the Guest Invites caption — `user_experiences.event_date`
       # is a DATE column, so `new Date("2026-10-10")` showed every viewer west of UTC the 9th, a
       # day that can fall outside the plan's own range. Three timezones for the same reason.

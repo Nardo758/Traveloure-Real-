@@ -74,6 +74,7 @@ import {
   Globe,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import { parseTripDate } from "@/lib/calendar-date";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
@@ -2220,10 +2221,10 @@ export default function CartPage() {
                                   <Calendar className="w-3 h-3" />
                                   {format(parseISO(roomStay.checkIn), "MMM d")} → {format(parseISO(roomStay.checkOut), "MMM d")}
                                 </span>
-                              ) : item.scheduledDate ? (
+                              ) : parseTripDate(item.scheduledDate) ? (
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
-                                  {format(new Date(item.scheduledDate), "PPP")}
+                                  {format(parseTripDate(item.scheduledDate)!, "PPP")}
                                 </span>
                               ) : null}
                             </div>
@@ -2240,7 +2241,7 @@ export default function CartPage() {
                                 Time slot held at checkout:{" "}
                                 {item.slot?.date
                                   ? format(new Date(`${item.slot.date}T00:00:00`), "PPP")
-                                  : format(new Date(item.scheduledDate), "PPP")}
+                                  : format(parseTripDate(item.scheduledDate) ?? new Date(item.scheduledDate), "PPP")}
                                 {item.slot?.startTime && (
                                   <span>
                                     {" · "}{item.slot.startTime}
