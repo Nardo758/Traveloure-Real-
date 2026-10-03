@@ -2218,9 +2218,8 @@ export function SlipView({
                         slot.dayNum != null &&
                         a.lat != null &&
                         a.lng != null &&
-                        // Ledger `2026-10-03-no-ward-pins`: a pin read from Google's fact is never
-                        // the row's own coordinate, which promotion needs (LD 57).
-                        (a as { pinSource?: string }).pinSource !== "places" &&
+                        // Ledger `2026-10-03-build-around-places`: a Google pin (`pinSource:
+                        // "places"`) is promotable too — the server reads the live fact, never copies it.
                         a.id !== anchorItemId
                       }
                       onOpenExpertDoor={() => setExpertDoorState("open")}

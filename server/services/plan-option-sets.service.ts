@@ -99,7 +99,21 @@ export async function listOptionSets(tripId: string): Promise<OptionSetView[]> {
   const sets = await db.select().from(planOptionSets).where(eq(planOptionSets.tripId, tripId)).orderBy(planOptionSets.createdAt);
   if (!sets.length) return [];
   const opts = await db.select().from(planOptions).where(inArray(planOptions.setId, sets.map((s) => s.id))).orderBy(planOptions.position);
-  return sets.map((s) => ({ ...s, options: opts.filter((o) => o.setId === s.id) }));
+  // Ledger `2026-10-03-build-around-places`: a `places_fact` option holds no coordinate; its point is
+  // the set's item's LIVE Google location fact, read here — the ONE option reader every plan-fit and
+  // compare consumer goes through. A lapsed or absent fact leaves it unlocated (§13), never guessed.
+  const needsFact = opts.some((o) => o.locationPrecision === "places_fact" && o.latitude == null);
+  const points = needsFact ? await factPointsForTrip(tripId) : null;
+  return sets.map((s) => ({
+    ...s,
+    options: opts
+      .filter((o) => o.setId === s.id)
+      .map((o) => {
+        if (o.locationPrecision !== "places_fact" || o.latitude != null || !s.itineraryItemId) return o;
+        const p = points?.get(s.itineraryItemId);
+        return p ? { ...o, latitude: String(p.lat), longitude: String(p.lng) } : o;
+      }),
+  }));
 }
 
 /** Open sets on a plan — Finalize is refused while any exists (R125). */
@@ -436,17 +450,20 @@ export async function promoteAnchor(input: { tripId: string; itemId: string; use
   if (!(await planRole(input.tripId, input.userId, "choose"))) throw notFound();
   // R-ah: the item a MOMENT plan is built around is locked by default.
   const isMoment = await planIsMoment(input.tripId);
+  // The item's live Google point, if any — read, never written onto a row (LD 57).
+  const factPoint = (await factPointsForTrip(input.tripId)).get(input.itemId) ?? null;
   const result = await db.transaction(async (tx) => {
     const [trip] = await tx.select({ finalizedAt: trips.finalizedAt }).from(trips).where(eq(trips.id, input.tripId)).for("update");
     if (!trip) throw notFound();
     if (trip.finalizedAt) throw new OptionSetError(409, "plan_finalized", "Reopen the plan to change what it's built around");
     const [item] = await tx.select().from(itineraryItems).where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId))).limit(1);
     if (!item) throw new OptionSetError(404, "not_found", "No such item on this plan");
-    // Smoke 7: an untrusted row coordinate (an AI area-only stop) is not a place to build around.
-    if (!rowCoordinatesTrusted(item as any)) {
-      throw new OptionSetError(409, "not_located_or_dated", "Only a located, dated item can anchor the plan");
-    }
-    if (item.latitude == null || item.longitude == null || item.dayNumber == null) {
+    // Ledger `2026-10-03-build-around-places`: an item is located by its OWN trusted row coordinate,
+    // or else by Google's live location fact — which is READ here and never copied (LD 57): the
+    // option then stores no coordinate and resolves the point at read time (`listOptionSets`).
+    const rowPoint = rowCoordinatesTrusted(item as any) && item.latitude != null && item.longitude != null;
+    const factLocated = !rowPoint && !!factPoint;
+    if ((!rowPoint && !factLocated) || item.dayNumber == null) {
       throw new OptionSetError(409, "not_located_or_dated", "Only a located, dated item can anchor the plan");
     }
     const toCategory = item.itemType === "accommodation" ? "accommodation" : (item.itemType ?? null);
@@ -475,7 +492,10 @@ export async function promoteAnchor(input: { tripId: string; itemId: string; use
       });
       await tx.insert(planOptions).values({
         id: optId, setId, position: 1, sourceKind: "incumbent", title: item.title, locationName: item.locationName ?? null,
-        latitude: item.latitude, longitude: item.longitude, locationPrecision: "exact", providerServiceId: item.providerServiceId ?? null,
+        latitude: rowPoint ? item.latitude : null,
+        longitude: rowPoint ? item.longitude : null,
+        locationPrecision: rowPoint ? "exact" : "places_fact",
+        providerServiceId: item.providerServiceId ?? null,
         addedByUserId: input.userId, addedByRole: "traveler",
       });
     }

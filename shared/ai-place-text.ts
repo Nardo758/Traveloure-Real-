@@ -214,9 +214,9 @@ export function rowCoordinatesTrusted(item: {
 /**
  * Ledger `2026-10-03-no-ward-pins` (smoke 7): an activity whose row coordinate is not trusted takes
  * its pin from Google's own `location` fact (origin `places_api`) — never a centroid, and never
- * copied onto the row (LD 57). Such a pin is marked `pinSource: "places"`; nothing is promotable
- * from it, because "Build my days around this" needs a coordinate the ROW holds. Pure; mutates
- * nothing — returns new day objects.
+ * copied onto the row (LD 57). Such a pin is marked `pinSource: "places"`. "Build my days around
+ * this" is offered on it: the promote reads the same live fact and stores no coordinate (ledger
+ * `2026-10-03-build-around-places`). Pure; mutates nothing — returns new day objects.
  */
 export function applyGooglePins<
   A extends { id: string; lat: number | null; lng: number | null },
