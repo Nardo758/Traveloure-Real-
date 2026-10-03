@@ -27,6 +27,7 @@ import { handleStripePaymentSuccess } from './stripe.service';
 import { enqueueBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
+import { resolveSavedCardChargeId } from './saved-card-choice';
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
@@ -401,7 +402,24 @@ class StripePaymentService {
     const result = await this.withResolvedCustomer(userId, async (customerId) => {
       const [customer, methods] = await Promise.all([
         stripe.customers.retrieve(customerId),
-        stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
+        (async () => {
+          const collected: Stripe.PaymentMethod[] = [];
+          let startingAfter: string | undefined;
+          // Stripe's default page is 10. Stopping there hid every later card, so the
+          // traveler could not remove them (payments QA bug 6).
+          for (let page = 0; page < 10; page++) {
+            const batch = await stripe.paymentMethods.list({
+              customer: customerId,
+              type: 'card',
+              limit: 100,
+              ...(startingAfter ? { starting_after: startingAfter } : {}),
+            });
+            collected.push(...batch.data);
+            if (!batch.has_more || batch.data.length === 0) break;
+            startingAfter = batch.data[batch.data.length - 1]?.id;
+          }
+          return { data: collected };
+        })(),
       ]);
       const defaultPm =
         !('deleted' in customer) && customer.invoice_settings?.default_payment_method
@@ -469,6 +487,8 @@ class StripePaymentService {
       metadata: Record<string, string>;
       description: string;
       idempotencyKey: string;
+      /** A card the traveler named. Ignored when it is not one of theirs. */
+      paymentMethodId?: string;
     },
   ): Promise<
     | { status: 'succeeded'; paymentIntentId: string }
@@ -477,7 +497,7 @@ class StripePaymentService {
   > {
     if (!this.isReady()) return { status: 'no_saved_method' };
     const { defaultPaymentMethodId, methods } = await this.listSavedPaymentMethods(userId);
-    const paymentMethodId = defaultPaymentMethodId ?? methods[0]?.id;
+    const paymentMethodId = resolveSavedCardChargeId(methods, defaultPaymentMethodId, params.paymentMethodId);
     if (!paymentMethodId) return { status: 'no_saved_method' };
     const customerId = await this.getOrCreateCustomer(userId);
     if (!customerId) return { status: 'no_saved_method' };
@@ -557,7 +577,7 @@ class StripePaymentService {
     isDeposit: boolean = false,
     currency: string = 'usd',
     idempotencyKey?: string,
-    options?: { offSession?: boolean; isBalance?: boolean }
+    options?: { offSession?: boolean; isBalance?: boolean; savedPaymentMethodId?: string }
   ) {
     try {
       // Get user details
@@ -604,7 +624,11 @@ class StripePaymentService {
       if (options?.offSession) {
         try {
           const { defaultPaymentMethodId, methods } = await this.listSavedPaymentMethods(userId);
-          offSessionMethodId = defaultPaymentMethodId ?? methods[0]?.id ?? null;
+          offSessionMethodId = resolveSavedCardChargeId(
+            methods,
+            defaultPaymentMethodId,
+            options?.savedPaymentMethodId,
+          );
         } catch {
           offSessionMethodId = null; // treat a lookup failure as "no saved card", never as an error
         }

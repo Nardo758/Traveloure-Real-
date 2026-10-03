@@ -55,13 +55,20 @@ export function AvailableNowToggle() {
             ? `Available until ${untilLabel(data.until)} — click to turn off`
             : `Show travelers you're around for the next ${data.windowMinutes} minutes`
       }
-      className="flex items-center gap-1.5 h-[28px] px-2.5 rounded-full border text-[11px] font-medium transition-colors disabled:opacity-60"
+      className="flex items-center gap-1.5 h-[28px] px-2.5 rounded-full border text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors disabled:opacity-60"
       style={
         on
           ? { background: "rgba(34,197,94,0.10)", borderColor: "rgba(34,197,94,0.35)", color: "#15803D" }
           : { background: "#FFFFFF", borderColor: "#E8E8E2", color: "#7A7A72" }
       }
       aria-pressed={on}
+      aria-label={
+        data.onVacation
+          ? "On vacation"
+          : on
+            ? `Available now until ${untilLabel(data.until)}`
+            : "Go available"
+      }
       data-testid="toggle-available-now"
     >
       <span
@@ -69,7 +76,10 @@ export function AvailableNowToggle() {
         style={{ background: on ? "#22C55E" : "#AEAEA6" }}
         aria-hidden
       />
-      {data.onVacation ? "On vacation" : on ? `Available now · until ${untilLabel(data.until)}` : "Go available"}
+      <span className="sm:hidden">{data.onVacation ? "Away" : on ? "On" : "Available"}</span>
+      <span className="hidden sm:inline">
+        {data.onVacation ? "On vacation" : on ? `Available now · until ${untilLabel(data.until)}` : "Go available"}
+      </span>
     </button>
   );
 }

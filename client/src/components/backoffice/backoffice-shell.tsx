@@ -97,10 +97,10 @@ export function BackofficeShell({
         {sidebar}
         <div className="flex flex-col flex-1 min-w-0">
           <header
-            className="flex items-center justify-between h-[52px] px-5 sticky top-0 z-40 bg-white"
+            className="flex items-center justify-between gap-2 h-[52px] px-3 sm:px-5 sticky top-0 z-40 bg-white"
             style={{ borderBottom: "1px solid #E8E8E2" }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <SidebarTrigger
                 className="h-8 w-8 rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
                 style={{ border: "1px solid #E8E8E2" }}
@@ -108,7 +108,7 @@ export function BackofficeShell({
               />
               {title && (
                 <h1
-                  className="text-[16px] font-semibold"
+                  className="text-[16px] font-semibold truncate min-w-0"
                   style={{ color: "#1A1A18", letterSpacing: -0.3 }}
                   data-testid="text-page-title"
                 >
@@ -116,7 +116,7 @@ export function BackofficeShell({
                 </h1>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {statusBadge}
               {/* Ruling 60 Phase A: the 🌐 quick-switch, mounted on the SHARED console shell so
                   the provider, expert and EA consoles get the one selector rather than three. */}
