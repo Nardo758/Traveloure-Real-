@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { greetingSentence, relativeDayLabel, rowDay, type UpcomingRow } from "../home-time-axis";
+import { greetingSentence, relativeDayLabel, rowDay, upcomingKindLabel, type UpcomingKind, type UpcomingRow } from "../home-time-axis";
 
 const now = new Date(2026, 8, 29, 9, 0, 0); // Sep 29 2026, 09:00 local
 
@@ -55,6 +55,17 @@ test("H4: first row is a plan start ⇒ '<plan> in N days.' plus a due clause on
   assert.equal(greetingSentence(startFirst, now), "Kyoto in 3 days.");
   const oneDue = [row({ kind: "balance_due", date: "2026-09-30" }), row({ kind: "trip_start", date: "2026-10-02" })];
   assert.equal(greetingSentence(oneDue, now), "x — tomorrow. One thing is due before you go.");
+});
+
+test("H6: the traveler label names the kind and never a column", () => {
+  const kinds: UpcomingKind[] = ["booking_unpaid", "balance_due", "handover", "trip_start", "event", "occasion_draft"];
+  for (const kind of kinds) {
+    const label = upcomingKindLabel(kind);
+    assert.equal(label.length > 0, true);
+    assert.doesNotMatch(label, /trips\.|service_bookings|user_experiences|occasion_drafts/);
+  }
+  assert.equal(upcomingKindLabel("handover"), "Handover");
+  assert.equal(upcomingKindLabel("trip_start"), "Plan start");
 });
 
 test("H5: never '0 things are due' — an event-only axis carries no count clause", () => {

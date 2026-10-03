@@ -952,10 +952,14 @@ export default function CartPage() {
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });
-  const defaultSavedCard = savedMethodsData?.available
-    ? (savedMethodsData.methods.find((m) => m.id === savedMethodsData.defaultPaymentMethodId) ??
-       savedMethodsData.methods[0] ?? null)
-    : null;
+  const savedMethods = savedMethodsData?.available ? savedMethodsData.methods : [];
+  const [payWithNewCard, setPayWithNewCard] = useState(false);
+  const [chosenCardId, setChosenCardId] = useState<string | null>(null);
+  // One-click charges a card the traveler chose: their default, or one they picked in the
+  // list below. The newest vaulted card is not a stand-in for a missing default.
+  const selectedSavedCard = payWithNewCard
+    ? null
+    : savedMethods.find((m) => m.id === (chosenCardId ?? savedMethodsData?.defaultPaymentMethodId)) ?? null;
 
   const convertToItineraryMutation = useMutation({
     mutationFn: async (payload: {
@@ -1083,7 +1087,9 @@ export default function CartPage() {
         // B2: ask for the off-session confirm only when a vaulted card is known to exist. The
         // server re-verifies independently (a stale/false claim here degrades to the interactive
         // sheet, never an error) and derives every amount from the claimed rows (§14).
-        useSavedCard: !!defaultSavedCard,
+        ...(selectedSavedCard
+          ? { useSavedCard: true, savedPaymentMethodId: selectedSavedCard.id }
+          : {}),
         // S4: raw captured short-link code; the SERVER derives the attribution source
         // (direct | link | cross_sell) — the client never asserts it.
         ...(getAcquisitionRef() ? { ref: getAcquisitionRef() } : {}),
@@ -1151,7 +1157,7 @@ export default function CartPage() {
         ).catch(() => {});
         toast({
           title: "Booked & paid",
-          description: `Charged to your saved ${defaultSavedCard?.brand ?? "card"} •••• ${defaultSavedCard?.last4 ?? ""}.`,
+          description: `Charged to your saved ${selectedSavedCard?.brand ?? "card"} •••• ${selectedSavedCard?.last4 ?? ""}.`,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
@@ -2036,7 +2042,7 @@ export default function CartPage() {
                       <span className="font-medium">
                         Preview: up to {cartNudge.estimatedSavingsPct}% savings
                         {cartNudge.estimatedCostDelta < 0 && (
-                          <> (~{formatPrice(Math.abs(cartNudge.estimatedCostDelta / 100))} less)</>
+                          <> (~{formatPrice(Math.abs(cartNudge.estimatedCostDelta))} less)</>
                         )}
                       </span>
                       {/* D5 (UX audit Jul 29): "Plan score" shown with no explanation of what
@@ -2591,7 +2597,7 @@ export default function CartPage() {
                             <p className="text-xs text-muted-foreground">Potential savings</p>
                             {optimizationPreview.estimatedCostDelta < 0 && (
                               <p className="text-xs text-green-600 font-medium mt-0.5">
-                                ~{formatPrice(Math.abs(optimizationPreview.estimatedCostDelta / 100))} less
+                                ~{formatPrice(Math.abs(optimizationPreview.estimatedCostDelta))} less
                               </p>
                             )}
                           </div>
@@ -3051,7 +3057,7 @@ export default function CartPage() {
                           <Badge variant="secondary">Selected</Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Your payment information is processed securely. We do not store your card details.
+                          Your payment information is processed securely. Card details are stored by Stripe, not on Traveloure.
                         </p>
                       </CardContent>
                     </Card>
@@ -3208,10 +3214,10 @@ export default function CartPage() {
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                               Processing...
                             </>
-                          ) : defaultSavedCard ? (
+                          ) : selectedSavedCard ? (
                             <>
                               <CheckCircle className="w-4 h-4 mr-2" />
-                              {`Book & Pay — ${defaultSavedCard.brand} •••• ${defaultSavedCard.last4}`}
+                              {`Book & Pay — ${selectedSavedCard.brand} •••• ${selectedSavedCard.last4}`}
                             </>
                           ) : (
                             <>
@@ -3220,7 +3226,44 @@ export default function CartPage() {
                             </>
                           )}
                         </Button>
-                        {defaultSavedCard && (
+                        {savedMethods.length > 0 && (
+                          <div className="w-full space-y-2" data-testid="saved-card-picker">
+                            {!payWithNewCard && (
+                              <Select
+                                value={selectedSavedCard?.id}
+                                onValueChange={(id) => {
+                                  setPayWithNewCard(false);
+                                  setChosenCardId(id);
+                                }}
+                              >
+                                <SelectTrigger className="w-full" data-testid="select-saved-card">
+                                  <SelectValue placeholder="Choose a saved card" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {savedMethods.map((method) => (
+                                    <SelectItem key={method.id} value={method.id}>
+                                      {method.brand} •••• {method.last4}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <button
+                                type="button"
+                                className="text-primary underline-offset-2 hover:underline"
+                                onClick={() => setPayWithNewCard((current) => !current)}
+                                data-testid="button-use-different-card"
+                              >
+                                {payWithNewCard ? "Use a saved card" : "Use a different card"}
+                              </button>
+                              <Link href="/profile#payment-methods" className="text-muted-foreground underline-offset-2 hover:underline">
+                                Manage saved cards
+                              </Link>
+                            </div>
+                          </div>
+                        )}
+                        {selectedSavedCard && (
                           <p className="text-xs text-muted-foreground text-center w-full">
                             One click — your saved card is charged immediately. No further steps.
                           </p>

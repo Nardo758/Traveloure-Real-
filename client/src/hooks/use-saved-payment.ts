@@ -7,8 +7,8 @@
  * guests, and callers here (cart optimize, my-events pay) already gate their own actions on
  * `user` from useAuth, so we ask for that same signal rather than importing useAuth here.
  *
- * Honest states only (§13): no card / Stripe unavailable both resolve to hasDefault=false,
- * never a fabricated placeholder.
+ * Honest states only (§13): no card, no marked default, and Stripe unavailable all resolve
+ * to hasDefault=false. The newest vaulted card is not treated as a default.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -37,10 +37,10 @@ export function useSavedPayment(enabled: boolean = true) {
   });
 
   const methods = data?.methods ?? [];
-  const defaultCard =
-    (data?.defaultPaymentMethodId && methods.find((m) => m.id === data.defaultPaymentMethodId)) ||
-    methods[0] ||
-    null;
+  // A default is a card the traveler marked. The newest vaulted card is not one.
+  const defaultCard = data?.defaultPaymentMethodId
+    ? methods.find((m) => m.id === data.defaultPaymentMethodId) ?? null
+    : null;
 
   return {
     available: data?.available ?? false,

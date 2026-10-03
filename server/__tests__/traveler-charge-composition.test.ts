@@ -389,7 +389,10 @@ describe("A3 — the call sites (a composition is worth what its callers are)", 
   it("S12 the money spine is untouched (§15/§15b)", () => {
     assert.match(payments, /markStripeAttempt\(bookingIds, `pi-\$\{checkoutKey\}`\)/);
     assert.match(payments, /await stampAuthorization\(bookingIds, paymentIntent\.paymentIntentId\)/);
-    assert.match(payments, /checkoutKey,\n\s*\{ offSession: args\.useSavedCard === true \}/);
+    assert.match(
+      payments,
+      /checkoutKey,\n\s*\{ offSession: args\.useSavedCard === true, savedPaymentMethodId: args\.savedPaymentMethodId \}/,
+    );
   });
 
   it("S13 the displayed payable total is amountDue, and the cart clears only after a paid promotion", () => {
