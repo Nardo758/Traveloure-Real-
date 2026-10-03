@@ -224,7 +224,11 @@ describe("R9-R11 — one mapping, one place (§18 rule 1)", () => {
     const slip = read("client", "src", "components", "plancard", "SlipView.tsx");
     assert.match(pills, /import\s*\{\s*itemOriginChip\s*\}\s*from\s*["']@\/lib\/item-origin["']/);
     assert.match(stripComments(pills), /export function OriginBadge\(/);
-    assert.match(stripComments(slip), /<OriginBadge\s+activity=\{a\}\s*\/>/);
+    // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`; LD 42 D23 amended on the slip): the
+    // slip's `ItemRow` draws NO origin chip — the Trip Card (`ActivitiesSection`) is the one surface
+    // that still draws it, through the helper above, until steps 6–7.
+    assert.doesNotMatch(stripComments(slip), /<OriginBadge\b/);
+    assert.doesNotMatch(stripComments(slip), /itemOriginChip/);
   });
 });
 

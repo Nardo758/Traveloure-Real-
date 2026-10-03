@@ -106,7 +106,7 @@ async function activityOf(tripId: string, itemId: string): Promise<any> {
   return { plan, a };
 }
 
-/** The kind chip exactly as the client computes it (`ItemKindBadge`, `SlipItemRow`). */
+/** The kind chip exactly as the client computes it (`ItemKindBadge` on the Trip Card). */
 function kindOf(a: any): string {
   return itemKind({
     bookingId: a.booking?.id ?? null,
