@@ -57,10 +57,13 @@ describe("config completeness", () => {
     }
   });
 
-  it("beta_flat stays deactivated (migration 178, ruling D2)", async () => {
-    // getBand only returns active bands; a non-null result means someone
-    // reactivated the superseded beta band, which charge paths must not see.
+  it("beta_flat is active for the beta period (R273 amends ruling 49)", async () => {
+    // getBand only returns active bands. Migration 178 deactivated this row;
+    // migration 338 turns it back on, and charge paths must see it.
     const band = await getBand("beta_flat");
-    expect(band, "beta_flat must remain inactive").toBeNull();
+    expect(band, "beta_flat must be active").not.toBeNull();
+    expect(band!.rateType).toBe("percent");
+    expect(band!.rate).toBeGreaterThan(0);
+    expect(band!.rate).toBeLessThanOrEqual(1);
   });
 });
