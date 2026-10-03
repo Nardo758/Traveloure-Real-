@@ -9,6 +9,7 @@
  *   R5 nothing printed is a distance or a travel time
  *   R6 §13 — a city that HAS neighbourhoods but a plan with nothing on the map says the latter, never
  *      "no neighbourhoods for Kyoto"; a city with none says that
+ *   R7 smoke 5 item 6 — a tied option (reason null) shows its name alone, with no reason element
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/where-to-stay-panel.test.tsx
  */
@@ -44,7 +45,7 @@ describe("Where to stay panel", () => {
     for (const n of NO_INVENTORY.neighborhoods) {
       assert.match(html, new RegExp(`data-testid="where-to-stay-neighborhood-${n.slug}"`));
       assert.match(html, new RegExp(`data-testid="where-to-stay-coming-soon-${n.slug}"`));
-      assert.ok(text(html).includes(n.reason));
+      assert.ok(text(html).includes(n.reason!));
     }
     assert.equal(text(html).split(HOTELS_COMING_SOON).length - 1, 3);
     assert.doesNotMatch(html, /where-to-stay-stay-/);
@@ -77,5 +78,20 @@ describe("Where to stay panel", () => {
     assert.doesNotMatch(noStops, /don't have neighbourhoods/);
     const noRows = text(render({ ...NO_INVENTORY, neighborhoods: [], unranked: "no_neighborhoods" }));
     assert.ok(noRows.includes("We don't have neighbourhoods for Kyoto yet."));
+  });
+
+  it("R7 a tied option shows its name alone", () => {
+    const tied: WhereToStayView = {
+      ...NO_INVENTORY,
+      neighborhoods: [
+        { slug: "gion", name: "Gion", reason: null, hotels: [] },
+        { slug: "pontocho", name: "Pontocho", reason: null, hotels: [] },
+        { slug: "arashiyama", name: "Arashiyama", reason: "closest to 1 of your 5 days", hotels: [] },
+      ],
+    };
+    const html = render(tied);
+    assert.doesNotMatch(html, /where-to-stay-reason-gion|where-to-stay-reason-pontocho/);
+    assert.match(html, /where-to-stay-reason-arashiyama/);
+    assert.ok(text(html).includes("Gion") && text(html).includes("Pontocho"));
   });
 });

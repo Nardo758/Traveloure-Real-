@@ -4528,6 +4528,11 @@ export const aiGeneratedItineraries = pgTable("ai_generated_itineraries", {
   provider: varchar("provider", { length: 20 }).default("grok"),
   status: varchar("status", { length: 20 }).default("generated"),
   feedback: jsonb("feedback").default({}),
+  // Migration 340 (ledger 2026-10-03-smoke5-fixes): the draft's Where-to-stay ranking, computed once
+  // per draft and read back on reload (NULL = not computed yet), and its place-facts lookup progress
+  // (NULL = no run recorded). Nullable, no default, no check.
+  whereToStay: jsonb("where_to_stay"),
+  factsLookup: jsonb("facts_lookup"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -14,7 +14,7 @@
 import crypto from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { contentSources, placeFacts } from "@shared/schema";
+import { contentSources, itineraryItems, placeFacts } from "@shared/schema";
 import {
   asFactOrigin,
   factProvenanceLine,
@@ -30,6 +30,9 @@ import { rankFactsByOrigin } from "../upsell-engine.service";
 import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { sourcesForNeed } from "./places-adapter";
+import { LookupScheduler } from "./lookup-scheduler.pure";
+import { LookupProgress } from "./lookup-progress";
+import { pendingLookupItemIds } from "./lookup-progress.pure";
 import { matchNamesItem, namedPlaceTokens, placeLookupText } from "@shared/place-name-gate";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
@@ -126,15 +129,8 @@ export interface EnrichItem {
   locationName?: string | null;
 }
 
-/**
- * Pure. Which items are looked up, in what order (ledger `2026-09-30-places-named-gate`):
- *   · only items that NAME a place (`namedPlaceTokens` non-empty) — a generic "Lunch at Traditional
- *     Restaurant" is never looked up;
- *   · round-robin ACROSS DAYS — every day's first named item, then every day's second, … — so the
- *     per-draft budget reaches the last day instead of being spent on the first two in plan order
- *     (production smoke test 3: 11/11 items with hours on days 1–2, 0/19 on days 3–5).
- */
-export function lookupOrder(items: readonly EnrichItem[], city: string | null): Array<{ item: EnrichItem; tokens: Set<string> }> {
+/** Pure. The named items, grouped by plan day (absent day ⇒ day 1), in plan order within a day. */
+function namedByDay(items: readonly EnrichItem[], city: string | null): Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>> {
   const byDay = new Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>>();
   for (const item of items) {
     const tokens = namedPlaceTokens(item, city);
@@ -144,16 +140,19 @@ export function lookupOrder(items: readonly EnrichItem[], city: string | null): 
     list.push({ item, tokens });
     byDay.set(day, list);
   }
-  const days = Array.from(byDay.keys()).sort((a, b) => a - b);
+  return byDay;
+}
+
+/**
+ * Pure. Which items are looked up, in what order, when every lookup attaches hours (ledger
+ * `2026-09-30-places-named-gate`): only items that NAME a place, round-robin ACROSS DAYS. The live
+ * run uses the same `LookupScheduler`, which may pull a day's next item forward (smoke 5 item 7).
+ */
+export function lookupOrder(items: readonly EnrichItem[], city: string | null): Array<{ item: EnrichItem; tokens: Set<string> }> {
+  const s = new LookupScheduler(namedByDay(items, city));
   const out: Array<{ item: EnrichItem; tokens: Set<string> }> = [];
-  for (let round = 0; ; round++) {
-    let any = false;
-    for (const d of days) {
-      const e = byDay.get(d)![round];
-      if (e) { out.push(e); any = true; }
-    }
-    if (!any) return out;
-  }
+  for (let n = s.next(); n; n = s.next()) out.push(n.entry);
+  return out;
 }
 
 /** Pure. The drafts of ONE Places answer, only when its matched name names the item; else none. */
@@ -163,37 +162,69 @@ export function attachableDrafts(drafts: FactDraft[], tokens: ReadonlySet<string
   return matchNamesItem(name, tokens, city) ? drafts : [];
 }
 
+/** Pure. The place's display name from an ATTACHED answer (its `location` fact), else null. */
+export function attachedDisplayName(kept: readonly FactDraft[]): string | null {
+  const loc = kept.find((d) => d.factType === "location");
+  const name = typeof loc?.value?.name === "string" ? (loc.value.name as string).trim() : "";
+  return name || null;
+}
+
 /**
  * ONE info line per lookup ATTEMPT (decision-maker, Sep 30, 2026 — the spine logged failures only):
- * the place id, cache hit or miss, and latency. No query text and no plan id, so the log carries no
- * traveler content. A lookup that found no place logs `place_id=none`.
+ * the plan and item ids, the item's day, the OUTCOME, the place id, cache hit or miss, and latency.
+ * No query text and no title, so the log carries no traveler content — only opaque ids.
  *
- * SMOKE 4 (P1, ledger `2026-10-02-smoke4-draft-fixes`): the line now also carries the item's DAY and
- * its OUTCOME — `attached` (facts recorded), `unmatched` (a place came back but did not name the
- * item, so nothing was attached) or `none` (no place came back). Before this, an answer rejected by
- * the name gate logged as `lookup ok`, and an item skipped (unnamed, past the cap, no adapter) logged
- * nothing, so a day with no hours could not be told "never attempted" from "attempted and missed".
- * Skips now log one `skipped` line each with their reason.
+ * SMOKE 4 (P1, ledger `2026-10-02-smoke4-draft-fixes`): `attached` (facts recorded), `unmatched` (a
+ * place came back but did not name the item) or `none` (no place came back); skips log one
+ * `skipped` line each with their reason.
+ *
+ * SMOKE 5 (ledger `2026-10-03-smoke5-fixes`): every line now carries `plan_id` and `item_id`. Before
+ * this a line could not be tied to the item it was about, so Ryoan-ji's three stored facts had no
+ * line anyone could find. The two writers that stored facts with NO line at all — the paid-run /
+ * expert fresh fetch (`fetchFreshFactsForItem`) and a failed lookup — now log too, with the same ids.
  */
 function logLookup(
+  ids: { planId: string; itemId: string },
   drafts: readonly FactDraft[],
   cache: "hit" | "miss",
   startedMs: number,
   day: number,
   outcome: "attached" | "unmatched" | "none",
+  extra: { facts: number; hours: boolean; renamed: boolean },
 ): void {
   const placeId = drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? "none";
   console.info(
-    `[place-facts] lookup day=${day} outcome=${outcome} place_id=${placeId} cache=${cache} latency_ms=${Date.now() - startedMs}`,
+    `[place-facts] lookup plan_id=${ids.planId} item_id=${ids.itemId} day=${day} outcome=${outcome} place_id=${placeId} cache=${cache} facts=${extra.facts} hours=${extra.hours ? 1 : 0} renamed=${extra.renamed ? 1 : 0} latency_ms=${Date.now() - startedMs}`,
   );
 }
 
-function logSkipped(day: number, reason: "unnamed" | "cap" | "no_adapter"): void {
-  console.info(`[place-facts] skipped day=${day} reason=${reason}`);
+function logSkipped(ids: { planId: string; itemId: string }, day: number, reason: "unnamed" | "cap" | "no_adapter"): void {
+  console.info(`[place-facts] skipped plan_id=${ids.planId} item_id=${ids.itemId} day=${day} reason=${reason}`);
 }
 
 function outcomeOf(drafts: readonly FactDraft[], kept: readonly FactDraft[]): "attached" | "unmatched" | "none" {
   return kept.length ? "attached" : drafts.length ? "unmatched" : "none";
+}
+
+/**
+ * SMOKE 5 item 9: an attached Google answer names the place, so the drafted item takes that name
+ * ("Bamboo Groove" → "Arashiyama Bamboo Grove"). ONE conditional UPDATE: only the AI's own row
+ * (`origin = 'ai'`), only while it still carries the title the draft gave it — a traveler's rename
+ * in the meantime is never overwritten. Never called for an unmatched or empty answer. Never throws.
+ */
+async function renameToDisplayName(tripId: string, item: EnrichItem, name: string): Promise<boolean> {
+  if (name === item.title) return false;
+  try {
+    const r = await db
+      .update(itineraryItems)
+      .set({ title: name })
+      .where(and(eq(itineraryItems.id, item.id), eq(itineraryItems.tripId, tripId), eq(itineraryItems.title, item.title), eq(itineraryItems.origin, "ai")))
+      .returning({ id: itineraryItems.id });
+    return r.length > 0;
+  } catch (err) {
+    console.error(`[place-facts] rename failed plan_id=${tripId} item_id=${item.id}:`, (err as Error)?.message ?? err);
+    return false;
+  }
 }
 
 /**
@@ -202,9 +233,14 @@ function outcomeOf(drafts: readonly FactDraft[], kept: readonly FactDraft[]): "a
  * lookup is logged and that item simply has no facts.
  *
  * THE CAP is `placesLookupsPerDraft()` — a COST cap, so it counts BILLED lookups only (a cache reuse
- * costs nothing and no longer spends it), and it is spent in `lookupOrder` (named places only, across
- * all days). A Places answer whose matched name is not in the item is dropped (`attachableDrafts`):
- * the call was spent, and nothing is recorded, because nothing true about THIS item came back (§13).
+ * costs nothing and no longer spends it), and it is spent in `LookupScheduler` order (named places
+ * only, across all days, a day's next item pulled forward when its first attached place has no
+ * hours). A Places answer whose matched name is not in the item is dropped (`attachableDrafts`): the
+ * call was spent, and nothing is recorded, because nothing true about THIS item came back (§13).
+ *
+ * PROGRESS (smoke 5 item 8): with a `draftId`, the run records which items are still being checked
+ * on the draft's own row (`ai_generated_itineraries.facts_lookup`), so the slip can say "checking
+ * hours…" and re-read until the run says done — on whichever server instance answers the read.
  */
 export async function enrichPlanItems(input: {
   tripId: string;
@@ -212,53 +248,70 @@ export async function enrichPlanItems(input: {
   city: string | null;
   items: EnrichItem[];
   adapters?: SourceAdapter[];
-}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number }> {
-  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0 };
+  draftId?: string | null;
+}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number }> {
+  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0 };
+  const ids = (item: EnrichItem) => ({ planId: input.tripId, itemId: item.id });
+  const progress = input.draftId ? new LookupProgress(input.draftId) : null;
   try {
     const cap = placesLookupsPerDraft();
-    const order = lookupOrder(input.items, input.city);
-    summary.unnamed = input.items.length - order.length;
-    const ordered = new Set(order.map((o) => o.item));
-    for (const it of input.items) if (!ordered.has(it)) logSkipped(it.dayNumber ?? 1, "unnamed");
-    for (const { item, tokens } of order) {
-      const day = item.dayNumber ?? 1;
-      if (summary.looked >= cap) {
-        logSkipped(day, "cap");
-        continue;
-      }
-      const need = needForItemType(item.type);
-      const adapters = sourcesForNeed(need, input.market, input.adapters);
-      if (!adapters.length) {
-        logSkipped(day, "no_adapter");
-        continue;
-      }
-      // P2 (smoke 4): the visited place only — a two-place "A Alternative: B" title searched whole
-      // returns A's facts for a visit to B.
-      const lookupText = placeLookupText(item.title);
-      const query = [lookupText, input.city].filter(Boolean).join(", ").slice(0, 300);
+    const byDay = namedByDay(input.items, input.city);
+    const named = new Set(Array.from(byDay.values()).flat().map((e) => e.item));
+    summary.unnamed = input.items.length - named.size;
+    for (const it of input.items) if (!named.has(it)) logSkipped(ids(it), it.dayNumber ?? 1, "unnamed");
+    await progress?.start(Array.from(named).map((i) => i.id));
+    const scheduler = new LookupScheduler(byDay);
+    for (let next = scheduler.next(); next; next = scheduler.next()) {
+      const { item, tokens } = next.entry;
+      const day = next.day;
       try {
+        if (summary.looked >= cap) {
+          logSkipped(ids(item), day, "cap");
+          continue;
+        }
+        const need = needForItemType(item.type);
+        const adapters = sourcesForNeed(need, input.market, input.adapters);
+        if (!adapters.length) {
+          logSkipped(ids(item), day, "no_adapter");
+          continue;
+        }
+        // P2 (smoke 4): the visited place only — a two-place "A Alternative: B" title searched whole
+        // returns A's facts for a visit to B.
+        const lookupText = placeLookupText(item.title);
+        const query = [lookupText, input.city].filter(Boolean).join(", ").slice(0, 300);
         const started = Date.now();
+        let drafts: FactDraft[];
+        let cache: "hit" | "miss";
         const cached = await cachedForQuery(query);
         if (cached) {
           summary.cached += 1;
-          const kept = attachableDrafts(cached, tokens, input.city);
-          if (!kept.length) summary.unmatched += 1;
-          summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
-          logLookup(cached, "hit", started, day, outcomeOf(cached, kept));
-          continue;
+          drafts = cached;
+          cache = "hit";
+        } else {
+          summary.looked += 1;
+          drafts = await adapters[0].fetch({ need, market: input.market, query: { text: lookupText, city: input.city }, budgetCents: 0 });
+          cache = "miss";
         }
-        summary.looked += 1;
-        const drafts = await adapters[0].fetch({ need, market: input.market, query: { text: lookupText, city: input.city }, budgetCents: 0 });
         const kept = attachableDrafts(drafts, tokens, input.city);
         if (drafts.length && !kept.length) summary.unmatched += 1;
-        summary.recorded += await recordFacts(kept, { planId: input.tripId, itemId: item.id });
-        logLookup(drafts, "miss", started, day, outcomeOf(drafts, kept));
+        const recorded = await recordFacts(kept, { planId: input.tripId, itemId: item.id });
+        summary.recorded += recorded;
+        const hasHours = kept.some((d) => d.factType === "hours");
+        const display = kept.length ? attachedDisplayName(kept) : null;
+        const renamed = display ? await renameToDisplayName(input.tripId, item, display) : false;
+        if (renamed) summary.renamed += 1;
+        scheduler.report(day, { attached: kept.length > 0, hasHours });
+        logLookup(ids(item), drafts, cache, started, day, outcomeOf(drafts, kept), { facts: recorded, hours: hasHours, renamed });
       } catch (err) {
-        console.error("[place-facts] lookup failed for an item:", (err as Error)?.message ?? err);
+        console.error(`[place-facts] lookup failed plan_id=${input.tripId} item_id=${item.id} day=${day}:`, (err as Error)?.message ?? err);
+      } finally {
+        await progress?.done(item.id);
       }
     }
   } catch (err) {
-    console.error("[place-facts] enrichment failed:", (err as Error)?.message ?? err);
+    console.error(`[place-facts] enrichment failed plan_id=${input.tripId}:`, (err as Error)?.message ?? err);
+  } finally {
+    await progress?.finish();
   }
   return summary;
 }
@@ -383,6 +436,11 @@ export async function fetchFreshFactsForItem(input: {
     budgetCents: budget.budgetCents,
   });
   const recorded = await recordFacts(drafts, { planId: input.tripId, itemId: input.item.id });
+  // Smoke 5: this writer stored facts with no log line at all; it now logs the same ids the draft's
+  // lookups do (no query text, no title).
+  console.info(
+    `[place-facts] fresh_fetch plan_id=${input.tripId} item_id=${input.item.id} source_id=${source.id} outcome=${adapter.lastOutcome ?? "no_facts"} facts=${recorded}`,
+  );
   return { recorded, outcome: adapter.lastOutcome ?? "no_facts", sourceId: source.id, refused: adapter.lastRefused };
 }
 
@@ -456,6 +514,24 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
       .where(and(eq(placeFacts.id, fact.id), isNull(placeFacts.supersededBy)))
       .returning({ id: placeFacts.id });
     if (!claimed.length) throw new FactConfirmError("already_superseded", 409);
+    // Smoke 5: the last fact writer with no log line (ids only, no content).
+    console.info(`[place-facts] confirmed plan_id=${fact.planId} item_id=${fact.itineraryItemId} fact_id=${fact.id} nugget_fact_id=${nuggetId}`);
     return { nuggetId };
   });
+}
+
+/**
+ * Smoke 5 item 8: the item ids the plan's LATEST draft is still looking up (migration 340), via the
+ * one pure reader. Plan-scoped; the caller has already authorized the viewer. Never throws — a read
+ * that fails reports nothing pending, which only means the slip stops saying "checking".
+ */
+export async function pendingFactLookups(tripId: string, now: Date = new Date()): Promise<string[]> {
+  try {
+    const r = await db.execute(
+      sql`SELECT facts_lookup FROM ai_generated_itineraries WHERE trip_id = ${tripId} ORDER BY created_at DESC NULLS LAST LIMIT 1`,
+    );
+    return pendingLookupItemIds((r.rows[0] as any)?.facts_lookup ?? null, now);
+  } catch {
+    return [];
+  }
 }

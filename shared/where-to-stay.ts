@@ -65,8 +65,12 @@ export function stayReason(closestDays: number, locatedDays: number): string {
 }
 
 /**
- * Pure. Ranks the neighbourhoods against the plan's located days. A cost that cannot answer a pair
- * makes the whole ranking fall back to straight line, so two units are never mixed.
+ * Pure and DETERMINISTIC (smoke 5, item 1). The same plan ranks the same way on every call, whatever
+ * order the rows arrive in: neighbourhoods and each day's points are put in a canonical order first,
+ * so a floating-point sum never depends on query order. Ranking: most days closest, then the LOWEST
+ * TOTAL STRAIGHT-LINE DISTANCE (always straight line, even when a travel-time cost decides "closest"),
+ * then neighbourhood name, then slug. A cost that cannot answer a pair makes the whole ranking fall
+ * back to straight line, so two units are never mixed.
  */
 export function rankStayNeighborhoods(input: {
   neighborhoods: readonly StayNeighborhood[];
@@ -74,15 +78,20 @@ export function rankStayNeighborhoods(input: {
   cost?: StayCost;
   top?: number;
 }): { ranked: RankedStayNeighborhood[]; basis: "straight_line" | "travel_time" } {
-  const days = input.days.filter((d) => d.points.length > 0);
-  if (!input.neighborhoods.length || !days.length) return { ranked: [], basis: "straight_line" };
+  const byPoint = (a: StayPoint, b: StayPoint) => a.lat - b.lat || a.lng - b.lng;
+  const days = input.days
+    .filter((d) => d.points.length > 0)
+    .map((d) => ({ dayNumber: d.dayNumber, points: [...d.points].sort(byPoint) }))
+    .sort((a, b) => a.dayNumber - b.dayNumber);
+  const neighborhoods = [...input.neighborhoods].sort(compareNeighborhoodNames);
+  if (!neighborhoods.length || !days.length) return { ranked: [], basis: "straight_line" };
 
   const score = (cost: StayCost): number[][] | null => {
     // mean[d][n]
     const out: number[][] = [];
     for (const d of days) {
       const row: number[] = [];
-      for (const n of input.neighborhoods) {
+      for (const n of neighborhoods) {
         let sum = 0;
         for (const p of d.points) {
           const c = cost(n, p);
@@ -96,25 +105,29 @@ export function rankStayNeighborhoods(input: {
     return out;
   };
 
+  const straight = score(straightLineCost)!;
   let basis: "straight_line" | "travel_time" = "straight_line";
   let means = input.cost ? score(input.cost) : null;
   if (means) basis = "travel_time";
-  else means = score(straightLineCost)!;
+  else means = straight;
 
-  const closest = new Array(input.neighborhoods.length).fill(0);
-  const total = new Array(input.neighborhoods.length).fill(0);
-  for (const row of means) {
+  const closest = new Array(neighborhoods.length).fill(0);
+  const total = new Array(neighborhoods.length).fill(0);
+  for (let d = 0; d < means.length; d++) {
+    const row = means[d];
     let best = 0;
     for (let i = 0; i < row.length; i++) {
-      total[i] += row[i];
-      if (row[i] < row[best] || (row[i] === row[best] && input.neighborhoods[i].name < input.neighborhoods[best].name)) best = i;
+      total[i] += straight[d][i];
+      if (i === 0) continue;
+      // A tie on the deciding cost goes to the shorter straight line, then the earlier name.
+      if (row[i] < row[best] || (row[i] === row[best] && straight[d][i] < straight[d][best])) best = i;
     }
     closest[best] += 1;
   }
 
-  const ranked = input.neighborhoods
+  const ranked = neighborhoods
     .map((n, i) => ({ n, closest: closest[i], total: total[i] }))
-    .sort((a, b) => b.closest - a.closest || a.total - b.total || a.n.name.localeCompare(b.n.name))
+    .sort((a, b) => b.closest - a.closest || a.total - b.total || compareNeighborhoodNames(a.n, b.n))
     .slice(0, input.top ?? WHERE_TO_STAY_TOP)
     .map(({ n, closest: c }) => ({
       slug: n.slug,
@@ -124,6 +137,11 @@ export function rankStayNeighborhoods(input: {
       reason: stayReason(c, days.length),
     }));
   return { ranked, basis };
+}
+
+/** Name, then slug — a total order, so two rows with one name still sort the same way every time. */
+function compareNeighborhoodNames(a: StayNeighborhood, b: StayNeighborhood): number {
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
 }
 
 export interface StayHotel {
@@ -163,9 +181,48 @@ export function hotelsByNeighborhood<H extends StayHotel & Partial<StayPoint>>(
   return Object.fromEntries(
     Object.entries(out).map(([s, list]) => [
       s,
-      list.sort((a, b) => a.m - b.m || a.h.name.localeCompare(b.h.name)).slice(0, perNeighborhood).map((x) => x.h),
+      list.sort((a, b) => a.m - b.m || (a.h.name < b.h.name ? -1 : a.h.name > b.h.name ? 1 : a.h.id < b.h.id ? -1 : a.h.id > b.h.id ? 1 : 0)).slice(0, perNeighborhood).map((x) => x.h),
     ]),
   );
+}
+
+/**
+ * Smoke 5 item 6. Pure. The reason line renders only when it DISTINGUISHES an option from its
+ * neighbours: two options closest to the same number of days are tied, and a tied option shows its
+ * neighbourhood name alone (§13 — "closest to 2 of your 5 days" on two rows says nothing about
+ * either). Order and every other field are unchanged.
+ */
+export function distinguishingReasons<R extends { closestDays: number; reason: string }>(ranked: readonly R[]): Array<Omit<R, "reason"> & { reason: string | null }> {
+  return ranked.map((r, i) => {
+    const tiedPrev = i > 0 && ranked[i - 1].closestDays === r.closestDays;
+    const tiedNext = i < ranked.length - 1 && ranked[i + 1].closestDays === r.closestDays;
+    return { ...r, reason: tiedPrev || tiedNext ? null : r.reason };
+  });
+}
+
+/**
+ * Smoke 5 item 6 (migration 340, `ai_generated_itineraries.where_to_stay`). The ranking is computed
+ * ONCE per draft and stored on the draft's row; every reload reads it back, so the order a traveler
+ * saw is the order they see again. A new draft is a new row and ranks afresh.
+ */
+export interface StoredStayRanking {
+  draftId: string;
+  computedAt: string;
+  basis: "straight_line" | "travel_time";
+  ranked: RankedStayNeighborhood[];
+}
+
+/** Pure. A stored ranking for THIS draft, or null (absent, another draft's, or unreadable — never guessed). */
+export function readStoredStayRanking(value: unknown, draftId: string): StoredStayRanking | null {
+  const v = value as Partial<StoredStayRanking> | null;
+  if (!v || v.draftId !== draftId || !Array.isArray(v.ranked) || !v.ranked.length) return null;
+  if (v.basis !== "straight_line" && v.basis !== "travel_time") return null;
+  const ok = v.ranked.every(
+    (r) => r && typeof r.slug === "string" && typeof r.name === "string" && Number.isInteger(r.closestDays) && Number.isInteger(r.locatedDays),
+  );
+  if (!ok) return null;
+  // The reason is re-derived from the stored counts, so its wording has ONE author (`stayReason`).
+  return { ...(v as StoredStayRanking), ranked: v.ranked.map((r) => ({ ...r, reason: stayReason(r.closestDays, r.locatedDays) })) };
 }
 
 export type WhereToStayIneligible = "not_found" | "single_day" | "no_draft" | "decided";
@@ -178,7 +235,8 @@ export interface WhereToStayView {
   basis: "straight_line" | "travel_time";
   /** True when the city has ANY hotel in our own inventory. False ⇒ "hotels coming soon". */
   hotelsAvailable: boolean;
-  neighborhoods: Array<{ slug: string; name: string; reason: string; hotels: StayHotel[] }>;
+  /** `reason` is null when the option is tied with a neighbour (smoke 5 item 6) — the name stands alone. */
+  neighborhoods: Array<{ slug: string; name: string; reason: string | null; hotels: StayHotel[] }>;
   /**
    * Why `neighborhoods` is empty on an eligible view — two different facts, said differently (§13):
    * the city has no neighbourhood rows, or none of the plan's items is on the map yet. Absent when

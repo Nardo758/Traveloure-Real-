@@ -62,6 +62,7 @@ import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { WhereToStayPanel } from "./WhereToStayPanel";
 import type { WhereToStayView } from "@shared/where-to-stay";
 import { itemAddressLine, itemFactLine } from "@/lib/place-facts";
+import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { showsSchedule } from "@/lib/occasion-switches";
@@ -111,7 +112,6 @@ import { SlipAddItemControl, SlipItemTools } from "./SlipItemTools";
 import { SLIP_DELEGATE_NOTE, canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
 import {
   SlipAnchorCompareButton,
-  SlipLodgingEntry,
   SlipOptionSetCard,
   SlipPromoteAnchorButton,
   primaryAnchorItemId,
@@ -193,6 +193,8 @@ export interface SlipData extends PlanCardData {
   trip?: SlipTrip;
   /** A5 — each item's facts with their provenance, keyed by item id (server-projected; absent ⇒ none). */
   placeFacts?: Record<string, FactView[]>;
+  /** Smoke 5 item 8 — item ids the latest draft's place-facts run is still checking (present only when non-empty). */
+  factsPendingItemIds?: string[];
   /** The §4 diary — last 20 log rows, newest first. Absent on pre-BUILD-1 responses. */
   recentTransitions?: TripPlanTransition[];
   /**
@@ -714,11 +716,14 @@ function SlipItemRow({
   promotable = false,
   facts,
   dateIso = null,
+  checkingHours = false,
 }: {
   tripId: string;
   activity: PlanCardActivity;
   /** A5 — this item's facts (server-projected), and the plan day's date the hours are read for. */
   facts?: FactView[];
+  /** Smoke 5 item 8: the draft's place-facts run is still checking this item (`showsCheckingHours`). */
+  checkingHours?: boolean;
   dateIso?: string | null;
   /** M8 (A3b): this located, dated row may become what the plan is built around — decided by the caller. */
   promotable?: boolean;
@@ -747,8 +752,9 @@ function SlipItemRow({
 }) {
   const a = activity;
   const factLine = itemFactLine(facts, dateIso);
-  // Ledger `2026-09-30-places-address`: Places address (formatted → short) with its attribution, else the draft's text.
-  const address = itemAddressLine(facts, a.location);
+  // Ledger `2026-09-30-places-address`: Places address (formatted → short) with its attribution, else the item's text
+  // — cut to its ward/area when the AI wrote it (smoke 5 item 3, `2026-10-03-smoke5-fixes`).
+  const address = itemAddressLine(facts, a.location, a.origin);
   const purchased = isPurchasedRow(a);
   const secondary = secondaryLine(a, expertName, expertAssigned);
   // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
@@ -905,6 +911,12 @@ function SlipItemRow({
           ) : (
             <span data-testid={`slip-item-facts-source-${a.id}`}>{factLine.provenance}</span>
           )}
+        </p>
+      ) : checkingHours ? (
+        // Smoke 5 item 8: the lookup for this stop has not finished; the line it will fill says so
+        // rather than showing nothing (the slip re-reads until it lands — `plancard-refetch`).
+        <p className="mt-1 text-xs text-muted-foreground italic" data-testid={`slip-item-facts-checking-${a.id}`}>
+          {CHECKING_HOURS_LABEL}
         </p>
       ) : null}
       {/* M8 (A3b): a full-width line under the row, so on a phone it never squeezes the item's name. */}
@@ -1600,7 +1612,6 @@ export function SlipView({
   const hasOpenLodgingSet = optionSets.some((st) => st.status === "open" && st.categoryKey === "accommodation");
   const planActivities = sortedDays.flatMap((d) => d.activities ?? []);
   const hasStayItem = planActivities.some((act) => act.type === "accommodation");
-  const locatedStops = planActivities.filter((act) => act.type !== "accommodation" && act.lat != null && act.lng != null).length;
   // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Where to stay", recommended AFTER the
   // draft. The server decides eligibility (2+ days, a draft exists, nothing decided yet) — the client
   // only asks once the plan has items, and restates none of the rule.
@@ -1610,6 +1621,16 @@ export function SlipView({
     enabled: !!tripId && nonStayItemCount > 0 && !hasStayItem,
   });
   const whereToStay = whereToStayQuery.data?.eligible ? whereToStayQuery.data : null;
+  // Smoke 5 items 6/8: when the draft's lookups finish, its stops' coordinates have landed — re-ask
+  // Where to stay once, which then ranks on them and stores that order for the draft.
+  const factsPendingCount = data.factsPendingItemIds?.length ?? 0;
+  const prevFactsPending = useRef(factsPendingCount);
+  useEffect(() => {
+    if (prevFactsPending.current > 0 && factsPendingCount === 0) {
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
+    }
+    prevFactsPending.current = factsPendingCount;
+  }, [factsPendingCount, tripId]);
 
   // ── DAY → EVENT → ITEMS (migration 277; ledger `2026-09-04-slip-events`) ──────────────────
   // TWO conditions, both real, and neither is guessed:
@@ -2020,15 +2041,16 @@ export function SlipView({
       {whereToStay ? <WhereToStayPanel tripId={tripId} view={whereToStay} canChoose={canEditItems} /> : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
-      {optionSets.some((st) => st.status === "open" || (st.status === "chosen" && (st.easierCount ?? 0) > 0)) ||
-      (tripsAnchor && !whereToStay && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 && canWriteSets) ? (
+      {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
+          you staying? / Compare places to stay / Suggest places") is GONE — on a drafted plan the
+          Where-to-stay panel above is the ONE lodging surface. That card rendered whenever the panel
+          did not, so a traveler who answered "Skip" (the server then reports the stay as decided)
+          got the old card back on every reload. */}
+      {optionSets.some((st) => st.status === "open" || (st.status === "chosen" && (st.easierCount ?? 0) > 0)) ? (
         <div className="space-y-3" data-testid="slip-option-sets">
           {optionSets.map((st) => (
             <SlipOptionSetCard key={st.id} tripId={tripId} set={st} canWrite={canWriteSets} canChoose={canEditItems} />
           ))}
-          {tripsAnchor && !whereToStay && !hasStayItem && !hasOpenLodgingSet && daySlots.length > 0 ? (
-            <SlipLodgingEntry tripId={tripId} locatedStops={locatedStops} canWrite={canWriteSets} />
-          ) : null}
         </div>
       ) : null}
       <Card>
@@ -2111,6 +2133,7 @@ export function SlipView({
                       tripId={tripId}
                       activity={a}
                       facts={data.placeFacts?.[a.id]}
+                      checkingHours={showsCheckingHours(a.id, data.factsPendingItemIds, !!itemFactLine(data.placeFacts?.[a.id], slot.dateIso ?? null))}
                       dateIso={slot.dateIso ?? null}
                       isOwner={isOwner}
                       canEditItems={canEditItems}

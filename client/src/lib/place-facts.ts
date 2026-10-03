@@ -63,17 +63,57 @@ export interface ItemAddressLine {
 }
 
 /**
- * The item's address line (ledger `2026-09-30-places-address`). Pure. ONE chain, in this order:
- * the stored Places `address` fact's `formattedAddress`, then its `shortFormattedAddress` — both
- * shown WITH the Maps attribution beside them — and only then the draft's own location text, which
- * is the plan's words and carries no attribution (§13: an address Google did not give is never
- * labelled as Google's). Nothing at all ⇒ null.
+ * The item's address line (ledger `2026-09-30-places-address`; amended smoke 5 item 3, ledger
+ * `2026-10-03-smoke5-fixes`). Pure. ONE chain, in this order:
+ *   1. a stored address fact CHECKED BY GOOGLE (`origin: "places_api"`) — its `formattedAddress`, then
+ *      its `shortFormattedAddress` — shown WITH the Maps attribution beside it. This is the ONLY way a
+ *      street-level address reaches the slip;
+ *   2. otherwise the item's own location text, shown with no attribution. When the AI wrote it
+ *      (`origin: "ai"`) it is UNVERIFIED and is cut to its WARD/AREA (`unverifiedAreaText`): the AI
+ *      drafted "Philosopher's Path Walk" at a street that was not the path, so the street is never
+ *      printed and the ward still is (§13). Words a person typed (traveler, expert, assistant) are
+ *      theirs and are shown as written.
+ * Nothing at all ⇒ null.
  */
-export function itemAddressLine(facts: readonly FactView[] | undefined, draftText: string | null | undefined): ItemAddressLine | null {
-  const fact = facts?.find((f) => f.factType === "address");
+export function itemAddressLine(
+  facts: readonly FactView[] | undefined,
+  draftText: string | null | undefined,
+  origin?: string | null,
+): ItemAddressLine | null {
+  const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
   const pick = (k: string) => (typeof fact?.value?.[k] === "string" ? String(fact.value[k]).trim() : "");
   const stored = pick("formattedAddress") || pick("shortFormattedAddress");
   if (fact && stored) return { text: stored, provenance: fact.provenance, sourceUrl: fact.sourceUrl };
-  const draft = (draftText ?? "").trim();
-  return draft ? { text: draft, provenance: null, sourceUrl: null } : null;
+  const text = origin === "ai" ? unverifiedAreaText(draftText) : (draftText ?? "").trim() || null;
+  return text ? { text, provenance: null, sourceUrl: null } : null;
+}
+
+/** The map pin's location line: the same rule as the row's unattributed text (AI ⇒ ward/area only). */
+export function pinLocationText(location: string | null | undefined, origin?: string | null): string | null {
+  return origin === "ai" ? unverifiedAreaText(location) : (location ?? "").trim() || null;
+}
+
+/** Words that name an administrative area — a segment carrying one is a ward, district or city. */
+const AREA_WORD = /\b(ward|wards|ku|district|prefecture|city|county|borough|province|region|area)\b|-ku\b|-shi\b|-fu\b|-ken\b/i;
+/** Street-level words (a road, a block, a numbered lot) — a segment carrying one is never an area. */
+const STREET_WORD =
+  /\b(street|st|road|rd|avenue|ave|lane|ln|boulevard|blvd|drive|dr|way|alley|path|walk|dori|dōri|doori|chome|chōme|cho|chō|machi|banchi|go)\b|-(dori|dōri|doori|chome|chōme|cho|chō|machi)\b/i;
+
+/**
+ * Pure. The ward/area part of an UNVERIFIED location string, or null when it names none. Postcodes
+ * are removed; then a comma segment with a digit (a lot, a block) or a street word is dropped. The
+ * FIRST segment — where a draft puts the venue or its street — is kept only when it names an
+ * administrative area or is the whole string ("Gion"); later segments (ward, city, country) are kept.
+ * Order is kept; nothing is invented.
+ */
+export function unverifiedAreaText(text: string | null | undefined): string | null {
+  const segs = (text ?? "")
+    .split(",")
+    .map((p) => p.replace(/〒?\s*\d{3}-?\d{4}\b|\b\d{5}(?:-\d{4})?\b/g, "").trim())
+    .filter(Boolean);
+  const kept = segs.filter((seg, i) => {
+    if (/\d/.test(seg) || STREET_WORD.test(seg)) return false;
+    return i > 0 || segs.length === 1 || AREA_WORD.test(seg);
+  });
+  return kept.length ? kept.join(", ") : null;
 }

@@ -722,6 +722,11 @@ export interface FullTripPlan {
    * null) on producers/levels that don't emit it, so pre-existing consumers are unaffected.
    */
   recentTransitions?: TripPlanTransition[];
+  /**
+   * Smoke 5 item 5 (ledger `2026-10-03-smoke5-fixes`) — present only when TRUE: this read's
+   * coordinate backfill stopped at its per-request cap with locatable items it never tried.
+   */
+  coordinatesPending?: true;
   plancard: TripPlanPlancardExtras;
 }
 
