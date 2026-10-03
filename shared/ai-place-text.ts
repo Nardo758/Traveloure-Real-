@@ -205,7 +205,9 @@ export function rowCoordinatesTrusted(item: {
 }): boolean {
   if (item.origin !== "ai") return true;
   const own = [item.locationName, item.locationAddress].filter((v) => (v ?? "").trim());
-  if (own.length === 0) return false; // a venue-less AI stop has no place of its own
+  // No location at all ⇒ nothing was geocoded from an area; whatever coordinate the row holds came
+  // from elsewhere (a listing, a placement) and is not a centroid.
+  if (own.length === 0) return true; // a venue-less AI stop has no place of its own
   return !own.every((v) => isAreaOnlyLocation(v));
 }
 

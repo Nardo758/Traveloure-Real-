@@ -7,8 +7,9 @@
  *   N3  isAreaOnlyLocation: an area is area-only; a venue or street in the string is not
  *   N4  wiring: the backfill refuses an area-level result and builds its query through geocodeQuery
  *   N5  the slip's map line reads "N of M located"
- *   N6  rowCoordinatesTrusted: an AI row whose only location is an area (or none) holds no trusted
- *       coordinate; a traveler/expert row, or an AI row naming a venue, does
+ *   N6  rowCoordinatesTrusted: an AI row whose only location is an area holds no trusted coordinate
+ *       (the ward-centroid case); a traveler/expert row, an AI row naming a venue, or one with no
+ *       location at all (nothing was geocoded from an area) does
  *   N7  applyGooglePins: an unpinned activity takes Google's `places_api` location fact, marked
  *       pinSource "places"; any other origin, a malformed value or no fact leaves it unpinned
  *   N8  wiring: the assembler blanks untrusted row coordinates, the backfill skips them, the
@@ -70,7 +71,7 @@ test("N5: the slip's map line reads 'N of M located'", () => {
 
 test("N6: rowCoordinatesTrusted", () => {
   assert.equal(rowCoordinatesTrusted({ origin: "ai", locationName: "Higashiyama Ward, Kyoto" }), false);
-  assert.equal(rowCoordinatesTrusted({ origin: "ai", locationName: null, locationAddress: "" }), false);
+  assert.equal(rowCoordinatesTrusted({ origin: "ai", locationName: null, locationAddress: "" }), true);
   assert.equal(rowCoordinatesTrusted({ origin: "ai", locationName: "Kiyomizu-dera, Higashiyama Ward" }), true);
   assert.equal(rowCoordinatesTrusted({ origin: "traveler", locationName: "Higashiyama Ward" }), true);
   assert.equal(rowCoordinatesTrusted({ origin: "expert", locationName: null }), true);
