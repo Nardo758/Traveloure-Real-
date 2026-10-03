@@ -10,6 +10,10 @@
  *   - a recommended need or sub-need with no active source (12Go excludes rail ⇒ the JR gap shows);
  *   - a source past `terms_checked_at + 180 d` — FLAG ONLY (a6-design §2: auto-deactivating a
  *     source silently changes plans), and a source with no terms check at all.
+ * Ruling R-p (ledger `2026-10-03-official-facts-public-ok`): each row also lists its PUBLIC-ELIGIBLE
+ * sources — active, covering, `official` and `public_ok` (`publicOkEligibleSource` + the answer) —
+ * so the market gate shows which required needs could appear on public pages. Plan-only coverage is
+ * still coverage; this column says nothing about whether a fact has been fetched yet.
  *
  * §13: a market with no stated requirement says so; its needs are listed `unstated`, never
  * presumed required or presumed optional. A source whose stored values are not ours is reported
@@ -18,6 +22,7 @@
 import {
   CONTENT_NEEDS,
   isContentNeedKey,
+  publicOkEligibleSource,
   sourceNeedStanding,
   subNeedsOf,
   type ContentNeed,
@@ -55,6 +60,14 @@ export interface CoverageSourceRow {
   doesNotCover: readonly unknown[] | null;
   active: boolean;
   termsCheckedAt: Date | string | null;
+  /** Ruling R-p. Absent ⇒ read as not answered, never as yes. */
+  licenseClass?: string | null;
+  publicOk?: boolean | null;
+}
+
+/** Active, official, terms-checked and answered YES to public pages (ruling R-p). */
+export function isPublicEligibleSource(s: CoverageSourceRow): boolean {
+  return s.active && s.publicOk === true && publicOkEligibleSource(s);
 }
 
 export interface CoverageCell { sourceId: string; standing: NeedStanding }
@@ -66,6 +79,8 @@ export interface CoverageRow {
   cells: CoverageCell[];
   /** Active sources whose standing is `covers` or `partial`. */
   activeCovering: string[];
+  /** Of those, the ones whose facts may appear on public pages (ruling R-p). */
+  publicEligible: string[];
   /** Set when this row is a gap the gate cares about. */
   gap: "required_uncovered" | "required_sub_uncovered" | "recommended_uncovered" | null;
 }
@@ -97,13 +112,16 @@ export function buildCoverageReport(market: string, allSources: readonly Coverag
     const activeCovering = sources
       .filter((s, i) => s.active && (cells[i].standing === "covers" || cells[i].standing === "partial"))
       .map((s) => s.id);
+    const publicEligible = sources
+      .filter((s, i) => isPublicEligibleSource(s) && (cells[i].standing === "covers" || cells[i].standing === "partial"))
+      .map((s) => s.id);
     const requirement = reqs ? (reqs[(parent ?? need) as ContentNeed] ?? "unstated") : "unstated";
     let gap: CoverageRow["gap"] = null;
     if (activeCovering.length === 0) {
       if (requirement === "required") gap = parent ? "required_sub_uncovered" : "required_uncovered";
       else if (requirement === "recommended") gap = "recommended_uncovered";
     }
-    return { need, parent, requirement, cells, activeCovering, gap };
+    return { need, parent, requirement, cells, activeCovering, publicEligible, gap };
   };
 
   const rows: CoverageRow[] = [];
@@ -146,14 +164,21 @@ export function renderCoverageMarkdown(r: CoverageReport): string {
   out.push(`# Content coverage — ${r.market}`, "");
   if (!r.requirementsStated) out.push(`_No coverage requirement is stated for \`${r.market}\`; every need is listed as unstated._`, "");
   if (r.sources.length === 0) out.push("_No registry rows apply to this market (market or global)._", "");
-  const head = ["need", "requirement", ...r.sources.map((s) => `${s.id}${s.active ? "" : " (inactive)"}`), "gap"];
+  const head = ["need", "requirement", ...r.sources.map((s) => `${s.id}${s.active ? "" : " (inactive)"}`), "public-eligible", "gap"];
   out.push(`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`);
   for (const row of r.rows) {
     const label = row.parent ? `&nbsp;&nbsp;↳ \`${row.need}\`` : `\`${row.need}\``;
     const gap = row.gap === "required_uncovered" ? "**no active source**" : row.gap === "required_sub_uncovered" ? "**sub-need uncovered**" : row.gap === "recommended_uncovered" ? "no active source (recommended)" : "";
-    out.push(`| ${[label, row.requirement, ...row.cells.map((c) => CELL[c.standing]), gap].join(" | ")} |`);
+    const pub = row.publicEligible.length ? row.publicEligible.map((id) => `\`${id}\``).join(", ") : row.activeCovering.length ? "plan-only" : "";
+    out.push(`| ${[label, row.requirement, ...row.cells.map((c) => CELL[c.standing]), pub, gap].join(" | ")} |`);
   }
-  out.push("", "Legend: ✓ covers · ◐ covers, but excludes a sub-need · ✗ explicitly not covered.", "");
+  out.push(
+    "",
+    "Legend: ✓ covers · ◐ covers, but excludes a sub-need · ✗ explicitly not covered. " +
+      "public-eligible: active official sources marked public_ok (hours, closures, ticketing, transit and event facts only); " +
+      "plan-only: covered, but nothing may appear on public pages.",
+    "",
+  );
   if (r.staleTerms.length) {
     out.push(`## Terms checked more than ${TERMS_STALE_AFTER_DAYS} days ago (flag only)`, "");
     for (const s of r.staleTerms) out.push(`- \`${s.sourceId}\` — checked ${s.termsCheckedAt.slice(0, 10)} (${s.ageDays} days)`);

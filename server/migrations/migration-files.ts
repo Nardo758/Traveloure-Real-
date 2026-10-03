@@ -1892,4 +1892,8 @@ export const MIGRATION_FILES = [
   // guarded UPDATE matched nothing. DATA ONLY: insert-if-missing on 033's column list, then
   // 338's guarded UPDATE and policy upsert. No DEFAULT, CHECK, index, or FK.
   "339_beta_flat_band_insert.sql",
+  // 341 — content_sources.public_ok + its audit pair (ledger 2026-10-03-official-facts-public-ok,
+  // ruling R-p). Three nullable columns, no DEFAULT/CHECK/index/FK, no backfill. Declared in
+  // shared/schema.ts. HELD for the founder's ruling. (340 is claimed by another lane.)
+  "341_content_sources_public_ok.sql",
 ] as const;

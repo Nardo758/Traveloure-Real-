@@ -276,10 +276,32 @@ async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[
     );
 }
 
-function toView(r: FactRow, now: Date): FactView | null {
+/** The registry fields `isPublishable`'s official-source path reads (ruling R-p), keyed by source id. */
+type SourceFacts = { name: string; licenseClass: string; publicOk: boolean | null };
+async function sourcesFor(rows: FactRow[]): Promise<Map<string, SourceFacts>> {
+  const ids = Array.from(new Set(rows.map((r) => r.sourceId).filter((x): x is string => !!x)));
+  if (ids.length === 0) return new Map();
+  const found = await db
+    .select({ id: contentSources.id, name: contentSources.name, licenseClass: contentSources.licenseClass, publicOk: contentSources.publicOk })
+    .from(contentSources)
+    .where(inArray(contentSources.id, ids));
+  return new Map(found.map((s) => [s.id, { name: s.name, licenseClass: s.licenseClass, publicOk: s.publicOk }]));
+}
+
+function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new Map()): FactView | null {
   const origin = asFactOrigin(r.origin);
   if (!origin) return null;
-  const f = { origin, license: r.license, verifiedAt: r.verifiedAt, fetchedAt: r.fetchedAt, expiresAt: r.expiresAt };
+  const src = r.sourceId ? sources.get(r.sourceId) : undefined;
+  const f = {
+    origin,
+    license: r.license,
+    verifiedAt: r.verifiedAt,
+    fetchedAt: r.fetchedAt,
+    expiresAt: r.expiresAt,
+    factType: r.factType,
+    sourceLicenseClass: src?.licenseClass ?? null,
+    sourcePublicOk: src?.publicOk ?? null,
+  };
   return {
     id: r.id,
     confirmable: isConfirmableFact({ origin, license: r.license, verifiedAt: r.verifiedAt }),
@@ -300,6 +322,7 @@ function toView(r: FactRow, now: Date): FactView | null {
  */
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
   const rows = await rowsForTrip(tripId);
+  const sources = await sourcesFor(rows);
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
     if (!r.itineraryItemId) continue;
@@ -313,7 +336,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     const views: FactView[] = [];
     for (const r of rankFactsByOrigin(list, now)) {
       if (seen.has(r.factType)) continue;
-      const v = toView(r, now);
+      const v = toView(r, now, sources);
       if (!v) continue;
       seen.add(r.factType);
       views.push(v);

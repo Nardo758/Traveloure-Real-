@@ -7,10 +7,25 @@
  *   F3  the provenance line names the source and the check date, and says when a fact may have changed
  *   F4  a source is activatable only with a terms check AND a license class
  *   F5  needForItemType: a meal is dining, anything else a stop's hours
+ *   F6  ruling R-p (ledger `2026-10-03-official-facts-public-ok`): a crawled fact is publishable ONLY
+ *       when its source is official AND public_ok AND the type is hours/closure/ticketing_rule/
+ *       transit/event — one test per failing branch, including public_ok + description → false
+ *   F7  the public attribution: "from <source>" + the fact's own URL + "checked <date>"; none for a
+ *       platform fact; a crawled-official fact missing its name, URL or date is OMITTED from a public page
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canActivateSource, factProvenanceLine, isPublishable, needForItemType, originTier } from "../content-facts";
+import {
+  PUBLIC_OK_FACT_TYPES,
+  canActivateSource,
+  factProvenanceLine,
+  isOfficialPublicFact,
+  isPublishable,
+  mustOmitOnPublicPage,
+  needForItemType,
+  originTier,
+  publicFactAttribution,
+} from "../content-facts";
 
 test("F1: isPublishable is derived from origin + license only", () => {
   assert.equal(isPublishable({ origin: "places_api", license: "restricted" }), false);
@@ -56,4 +71,63 @@ test("F5: needForItemType", () => {
   assert.equal(needForItemType("Lunch"), "dining");
   assert.equal(needForItemType("attraction"), "stop.hours");
   assert.equal(needForItemType(null), "stop.hours");
+});
+
+const officialHours = {
+  origin: "crawled",
+  license: "official",
+  factType: "hours",
+  sourceLicenseClass: "official",
+  sourcePublicOk: true,
+  fetchedAt: "2026-10-03T08:00:00Z",
+};
+
+test("F6: the official-source path, branch by branch", () => {
+  assert.equal(isPublishable(officialHours), true, "official + public_ok + hours");
+  for (const t of PUBLIC_OK_FACT_TYPES) assert.equal(isPublishable({ ...officialHours, factType: t }), true, t);
+  // fact type
+  assert.equal(isPublishable({ ...officialHours, factType: "description" }), false, "a public_ok source's description never qualifies");
+  assert.equal(isPublishable({ ...officialHours, factType: "tip" }), false, "a tip never qualifies");
+  for (const t of ["price", "location", "dining_basics", "address", null, "made_up"]) {
+    assert.equal(isPublishable({ ...officialHours, factType: t as any }), false, String(t));
+  }
+  // public_ok
+  assert.equal(isPublishable({ ...officialHours, sourcePublicOk: false }), false, "answered no");
+  assert.equal(isPublishable({ ...officialHours, sourcePublicOk: null }), false, "never answered");
+  assert.equal(isPublishable({ ...officialHours, sourcePublicOk: undefined }), false, "source not joined");
+  // source license class
+  for (const c of ["editorial", "partner", "restricted", null]) {
+    assert.equal(isPublishable({ ...officialHours, sourceLicenseClass: c }), false, `source ${c}`);
+  }
+  // the fact's own license still vetoes
+  assert.equal(isPublishable({ ...officialHours, license: "partner" }), false);
+  assert.equal(isPublishable({ ...officialHours, license: "restricted" }), false);
+  // origin: the path is crawled-only; Places and a traveler note never ride it
+  for (const o of ["places_api", "traveler_note", "hotel_cache"]) {
+    assert.equal(isPublishable({ ...officialHours, origin: o }), false, o);
+  }
+  // unchanged branches
+  assert.equal(isPublishable({ origin: "gem" }), true);
+  assert.equal(isPublishable({ origin: "expert_nugget", verifiedAt: new Date() }), true);
+  assert.equal(isPublishable({ origin: "expert_nugget" }), false);
+  assert.equal(isOfficialPublicFact({ origin: "gem", factType: "hours", sourceLicenseClass: "official", sourcePublicOk: true }), false);
+});
+
+test("F7: a public crawled-official fact carries from <source>, its URL and the check date", () => {
+  const f = { ...officialHours, sourceName: "Kyoto City Official Travel Guide", sourceUrl: "https://kyoto.travel/en/x" };
+  assert.deepEqual(publicFactAttribution(f), {
+    label: "from Kyoto City Official Travel Guide",
+    sourceName: "Kyoto City Official Travel Guide",
+    sourceUrl: "https://kyoto.travel/en/x",
+    checked: "checked 3 Oct 2026",
+  });
+  assert.equal(mustOmitOnPublicPage(f), false);
+  assert.equal(publicFactAttribution({ origin: "gem", sourceName: "x", sourceUrl: "https://x" }), null, "a platform fact needs no attribution");
+  assert.equal(mustOmitOnPublicPage({ origin: "gem" }), false);
+  for (const missing of [{ sourceName: null }, { sourceUrl: null }, { sourceName: "  " }, { fetchedAt: null }]) {
+    const g = { ...f, ...missing };
+    assert.equal(publicFactAttribution(g), null);
+    assert.equal(mustOmitOnPublicPage(g), true, "an unattributable crawled fact is never shown");
+  }
+  assert.equal(mustOmitOnPublicPage({ ...f, factType: "description" }), true);
 });

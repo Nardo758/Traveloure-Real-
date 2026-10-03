@@ -12128,6 +12128,13 @@ export const contentSources = pgTable("content_sources", {
   addedBy: varchar("added_by").references(() => users.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Migration 341 (ruling R-p, ledger 2026-10-03-official-facts-public-ok). TRUE = an OFFICIAL
+  // source's hours/closure/ticketing/transit/event facts may appear on public pages with
+  // attribution. NULL = never answered, FALSE = answered no; both keep its facts plan-only. ONE
+  // writer (setContentSourcePublicOk), never a general edit. No DEFAULT/CHECK/index/FK.
+  publicOk: boolean("public_ok"),
+  publicOkCheckedAt: timestamp("public_ok_checked_at"),
+  publicOkCheckedBy: varchar("public_ok_checked_by"),
 }, (table) => ({
   marketIdx: index("idx_content_sources_market").on(table.market),
 }));
