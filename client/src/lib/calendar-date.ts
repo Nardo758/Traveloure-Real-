@@ -85,6 +85,29 @@ export const SHORT_TRIP_RANGE_SEPARATOR = "–";
  * §13: an end that is not stated is omitted rather than guessed; the output shape is unchanged
  * from the inline version it replaces (an unparseable half contributes an empty string).
  */
+/**
+ * The plan window on a booking group ("Nov 20 – Nov 23, 2026").
+ *
+ * `trips.start_date` / `end_date` are DATE columns. The wire is sometimes the bare day and
+ * sometimes that day at UTC midnight (`2026-11-20T00:00:00.000Z`). `new Date` of either shape
+ * is the previous local day west of UTC. `parseCalendarDate` keeps the calendar day in the
+ * string, which is the day the traveler chose.
+ *
+ * §13: a missing half is omitted rather than guessed.
+ */
+export function formatPlanBookingWindow(
+  start: string | Date | null | undefined,
+  end: string | Date | null | undefined,
+): string | null {
+  const a = parseCalendarDate(start);
+  const b = parseCalendarDate(end);
+  if (!a || !b) return null;
+  const day = { month: "short", day: "numeric" } as const;
+  const left = a.toLocaleDateString("en-US", day);
+  const right = b.toLocaleDateString("en-US", { ...day, year: "numeric" });
+  return `${left} – ${right}`;
+}
+
 export function formatShortTripRange(
   start: string | Date | null | undefined,
   end: string | Date | null | undefined,

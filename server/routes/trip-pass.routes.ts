@@ -33,6 +33,7 @@ function isAuthenticated(req: any, res: any, next: any) {
   next();
 }
 
+/** Owner only. A managing EA builds the plan and does not buy the pass (LD 52). */
 async function ownedTrip(tripId: string, userId: string) {
   const [trip] = await db
     .select({ id: trips.id, userId: trips.userId, title: trips.title })
