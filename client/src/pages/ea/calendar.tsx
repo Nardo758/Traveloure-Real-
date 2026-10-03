@@ -25,6 +25,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDelegateToAi } from "./use-ea-ai-delegate";
+import { eaPersonOptions, type EaRosterClient } from "@/lib/ea-people";
 
 interface EaEvent {
   id: string; title: string; executiveId?: string | null; executiveName?: string; type?: string;
@@ -72,6 +73,8 @@ export default function EACalendar() {
 
   const { data: events = [] } = useQuery<EaEvent[]>({ queryKey: ["/api/ea/events"] });
   const { data: executives = [] } = useQuery<EaExecutive[]>({ queryKey: ["/api/ea/executives"] });
+  const { data: clients = [] } = useQuery<EaRosterClient[]>({ queryKey: ["/api/ea/clients"] });
+  const people = eaPersonOptions(executives, clients);
   const { data: prefs } = useQuery<EaPreferences>({ queryKey: ["/api/ea/preferences"] });
 
   const statusMutation = useMutation({
@@ -205,8 +208,8 @@ export default function EACalendar() {
                 )}
               </div>
               <div className="flex items-center gap-4 text-sm">
-                {executives.length > 0 && (
-                  <Badge className="bg-yellow-100 text-yellow-700">{executives.length} executive{executives.length !== 1 ? "s" : ""}</Badge>
+                {people.length > 0 && (
+                  <Badge className="bg-yellow-100 text-yellow-700">{people.length} {people.length !== 1 ? "people" : "person"}</Badge>
                 )}
               </div>
             </div>
@@ -226,18 +229,18 @@ export default function EACalendar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {executives.length === 0 && (
+                  {people.length === 0 && (
                     <tr>
                       <td colSpan={8} className="text-center py-8 text-[#7A7A72] text-sm">
-                        No executives added yet — add executives to see their calendars here
+                        No clients or executives yet — accept a client, or add an executive, to see their calendar here
                       </td>
                     </tr>
                   )}
-                  {executives.map((exec) => (
-                    <tr key={exec.id} className="border-b hover:bg-gray-50" data-testid={`calendar-row-${exec.id}`}>
-                      <td className="p-3 text-sm font-medium text-gray-900">{exec.name}</td>
+                  {people.map((person) => (
+                    <tr key={person.key} className="border-b hover:bg-gray-50" data-testid={`calendar-row-${person.key}`}>
+                      <td className="p-3 text-sm font-medium text-gray-900">{person.name}</td>
                       {weekDays.map((day) => {
-                        const dayEvents = eventsForExecOnDay(exec.id, exec.name, day);
+                        const dayEvents = eventsForExecOnDay(person.executiveId ?? "", person.name, day);
                         return (
                           <td key={day.toISOString()} className="p-3 text-center">
                             {dayEvents.length > 0 && (

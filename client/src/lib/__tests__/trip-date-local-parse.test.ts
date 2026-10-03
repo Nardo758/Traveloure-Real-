@@ -24,7 +24,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { parseTripDate, parseTripDateOrInvalid } = await import("../calendar-date");
+const { parseTripDate, parseTripDateOrInvalid, formatPlanBookingWindow, parseCalendarDate } = await import("../calendar-date");
 
 const TZ = process.env.TZ ?? "(unset)";
 
@@ -80,6 +80,22 @@ test(`a Date instance passes through untouched [TZ=${TZ}]`, () => {
   const src = new Date(2026, 10, 10, 13, 45);
   const d = parseTripDate(src);
   assert.equal(d!.getTime(), src.getTime());
+});
+
+test(`a Nov 20–23 plan window stays Nov 20–23, including UTC-midnight wire [TZ=${TZ}]`, () => {
+  const bare = formatPlanBookingWindow("2026-11-20", "2026-11-23");
+  const midnightZ = formatPlanBookingWindow("2026-11-20T00:00:00.000Z", "2026-11-23T00:00:00.000Z");
+  assert.equal(bare, "Nov 20 – Nov 23, 2026");
+  assert.equal(midnightZ, bare);
+  assert.equal(parseCalendarDate("2026-11-20T00:00:00.000Z")!.getDate(), 20);
+});
+
+test(`my-bookings plan header uses the calendar-day reader [TZ=${TZ}]`, async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../pages/my-bookings.tsx", import.meta.url), "utf8");
+  assert.match(src, /formatPlanBookingWindow/);
+  assert.doesNotMatch(src, /new Date\(plan\.startDate\)/);
+  assert.doesNotMatch(src, /new Date\(plan\.endDate\)/);
 });
 
 test(`parseTripDateOrInvalid: same day, and invalid input still yields an Invalid Date [TZ=${TZ}]`, () => {
