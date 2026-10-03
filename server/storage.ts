@@ -2619,11 +2619,12 @@ export class DatabaseStorage implements IStorage {
     assertPriceBasisValue((service as any).priceBasis, "createProviderService");
     const trackingNumber = await this.generateTrackingNumber('TRV');
     // F2 born-state clamp (approval lifecycle D1a): a create can NEVER produce an approved listing.
-    // The client-supplied approvalStatus (insertProviderServiceSchema still exposes it — the mass-assign
-    // twin of marketplace Gap 2) is clamped server-side to the non-approved born set: an explicit 'draft'
-    // (ServiceForm save-as-draft) is honored, everything else — including a client-sent 'approved'/'rejected'
-    // or an omitted value — is forced to 'submitted' (the review-queue entry state). Never trust the client
-    // for approval; approval only happens via the admin queue (/api/admin/provider-services approve/reject).
+    // `insertProviderServiceSchema` OMITS approvalStatus (§19). The create route re-admits only
+    // `saveIntent: "draft"` (`shared/listing-save-intent.ts`) and passes `approvalStatus: "draft"`
+    // here. An explicit 'draft' is honored. Everything else — including a client-sent
+    // 'approved'/'rejected' that somehow arrived, or an omitted value — is forced to 'submitted'
+    // (the review-queue entry state). Never trust the client for approval; approval only happens
+    // via the admin queue (/api/admin/provider-services approve/reject).
     const bornApprovalStatus = (service as any).approvalStatus === 'draft' ? 'draft' : 'submitted';
 
     // §14 posture applied to catalog linkage (§17 offering-first provider create): a client-sent

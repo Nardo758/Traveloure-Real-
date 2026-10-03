@@ -39,6 +39,7 @@ import { apiRefusalMessage, parseApiRefusal } from "@/lib/api-refusal";
 import { useToast } from "@/hooks/use-toast";
 import {
   quoteAmountLine,
+  quoteIsDeclinable,
   quoteIsIssuable,
   quoteIsWithdrawable,
   quoteIssueRefusalLine,
@@ -168,10 +169,16 @@ export function SellerQuotesPanel() {
   });
 
   const withdraw = useMutation({
-    mutationFn: (quoteId: string) => apiRequest("POST", `/api/provider/quotes/${quoteId}/withdraw`, {}),
-    onSuccess: () => {
+    mutationFn: ({ quoteId }: { quoteId: string; declined: boolean }) =>
+      apiRequest("POST", `/api/provider/quotes/${quoteId}/withdraw`, {}),
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/quotes"] });
-      toast({ title: "Offer withdrawn", description: "The traveler can no longer accept it." });
+      toast({
+        title: vars.declined ? "Request declined" : "Offer withdrawn",
+        description: vars.declined
+          ? "The traveler is told you declined."
+          : "The traveler can no longer accept it.",
+      });
     },
     onError: (err: unknown) =>
       toast({
@@ -237,11 +244,22 @@ export function SellerQuotesPanel() {
                     {q.lifecycle === "expired" ? "Send a new price" : "Send a price"}
                   </Button>
                 )}
+                {quoteIsDeclinable(q) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => withdraw.mutate({ quoteId: q.id, declined: true })}
+                    disabled={withdraw.isPending}
+                    data-testid={`button-decline-quote-${q.id}`}
+                  >
+                    Decline request
+                  </Button>
+                )}
                 {quoteIsWithdrawable(q) && (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => withdraw.mutate(q.id)}
+                    onClick={() => withdraw.mutate({ quoteId: q.id, declined: false })}
                     disabled={withdraw.isPending}
                     data-testid={`button-withdraw-quote-${q.id}`}
                   >

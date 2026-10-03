@@ -24,7 +24,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { listingPriceGate } from "../services/listing-price-gate";
+import { listingPriceGate, listingReviewReadiness } from "../services/listing-price-gate";
 
 const REPO_ROOT = process.cwd();
 
@@ -56,6 +56,26 @@ test("P3 · every OTHER price type is unchanged: a null/zero/negative/non-numeri
       );
     }
   }
+});
+
+test("R1 · review needs a category, including a custom quote", () => {
+  const missing = listingReviewReadiness({ categoryId: "  ", priceType: "custom_quote", price: null });
+  assert.equal(missing.ok, false);
+  if (!missing.ok) assert.equal(missing.code, "CATEGORY_REQUIRED");
+});
+
+test("R2 · review needs a positive price except custom_quote, and a draft-shaped zero fails", () => {
+  const zero = listingReviewReadiness({ categoryId: "cat-1", priceType: "fixed", price: "0" });
+  assert.equal(zero.ok, false);
+  if (!zero.ok) assert.equal(zero.code, "PRICE_REQUIRED");
+  assert.deepEqual(
+    listingReviewReadiness({ categoryId: "cat-1", priceType: "custom_quote", price: null }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    listingReviewReadiness({ categoryId: "cat-1", priceType: "fixed", price: "40.00" }),
+    { ok: true },
+  );
 });
 
 test("P4 · a positive price on an ordinary priceType still passes — byte-identical to the gate this replaces", () => {

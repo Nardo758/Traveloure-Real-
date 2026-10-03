@@ -20,6 +20,7 @@ import {
   Loader2,
   AlertCircle,
   Plane,
+  FileText,
 } from "lucide-react";
 import { Link } from "wouter";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
@@ -259,6 +260,12 @@ export default function ProviderDashboard() {
     queryKey: ["/api/provider/booking-requests"],
   });
 
+  const { data: quotesData } = useQuery<{ quotes: { lifecycle: string }[] }>({
+    queryKey: ["/api/provider/quotes"],
+    enabled: !!user,
+  });
+  const requestedQuoteCount = (quotesData?.quotes ?? []).filter((q) => q.lifecycle === "requested").length;
+
   const { data: vacationStatus } = useQuery<VacationStatus>({
     queryKey: ["/api/me/vacation"],
     enabled: !!user,
@@ -396,6 +403,25 @@ export default function ProviderDashboard() {
 
         {/* Welcome Section — the "N this month" subtitle was removed: it exactly duplicated
             the "This Month" KPI two rows below (§13, no reason to say the same number twice). */}
+        {requestedQuoteCount > 0 && (
+          <div
+            className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex-wrap"
+            data-testid="banner-quote-requests"
+          >
+            <div className="flex items-center gap-2 text-xs text-amber-800">
+              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>
+                {requestedQuoteCount} quote request{requestedQuoteCount === 1 ? "" : "s"} waiting
+              </span>
+            </div>
+            <Link href="/provider/inbox">
+              <Button variant="outline" size="sm" className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100" data-testid="link-quote-requests-inbox">
+                Open Inbox <ChevronRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        )}
+
         <h2 className="text-lg font-bold text-console-darkest" data-testid="text-welcome">
           Welcome back!
         </h2>

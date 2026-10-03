@@ -68,6 +68,7 @@ async function readOnce(res: Response): Promise<{ status: number; body: any; tex
 }
 
 let provider = { id: "", email: "", cookie: "" };
+let componentCategoryId = "";
 
 async function verifyProviderForm(userId: string, email: string): Promise<void> {
   const existing = await db.execute(sql`SELECT id FROM service_provider_forms WHERE user_id = ${userId} LIMIT 1`);
@@ -121,6 +122,7 @@ async function mkComponent(deliveryMethod: string, extra: Record<string, unknown
     price: "40.00",
     deliveryMethod,
     status: "active",
+    categoryId: componentCategoryId,
     ...publishDefaultsFor(deliveryMethod),
     ...extra,
   }));
@@ -160,6 +162,16 @@ before(async () => {
   const health = await fetch(`${BASE_URL}/api/health`).catch(() => null);
   assert.ok(health && health.ok, `dev server must be running on ${BASE_URL}`);
   await assertDisposableDb();
+  const found = await db.execute(sql`
+    SELECT id FROM service_categories
+     WHERE category_key IS NOT NULL
+       AND COALESCE(requires_background_check, false) = false
+       AND COALESCE(insurance_band, 0) < 2
+     ORDER BY category_key
+     LIMIT 1
+  `);
+  componentCategoryId = String((found.rows as { id?: string }[])[0]?.id ?? "");
+  assert.ok(componentCategoryId, "a service category must exist so a review-ready component can name one");
   await createProvider();
 });
 

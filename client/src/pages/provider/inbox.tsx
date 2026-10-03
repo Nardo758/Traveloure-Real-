@@ -28,6 +28,7 @@ import {
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { QaSessionPanel } from "@/components/live/QaSessionPanel";
+import { SellerQuotesPanel } from "@/components/quotes/SellerQuotesPanel";
 // Ledger 90 (FP-5, X1/I1): the ONE booking-visibility predicate, shared with Today, Customers,
 // the Money page and the server aggregations. See shared/booking-visibility.ts for why.
 import {
@@ -700,6 +701,10 @@ function QueueSection({
 
   return (
     <div className="space-y-6" data-testid="section-inbox-queue">
+      <section className="space-y-3" data-testid="section-inbox-quotes">
+        <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide">Quote requests</h2>
+        <SellerQuotesPanel />
+      </section>
       <StatsRow bookings={bookings} actionable={actionable} awaitingPayment={awaitingPayment} />
 
       <section>

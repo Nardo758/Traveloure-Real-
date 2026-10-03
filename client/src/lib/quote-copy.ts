@@ -90,7 +90,7 @@ const QUOTE_STATE_COPY: Record<string, QuoteStateCopy> = {
     label: "Requested",
     tone: "waiting",
     traveler: "You asked for a price. Nothing is booked or charged — the provider answers with an amount and how long it stands.",
-    seller: "A traveler asked for a price on this listing. Issue an amount and the window it stands for.",
+    seller: "A traveler asked for a price on this listing. Send a price, or decline the request.",
   },
   quoted: {
     label: "Quoted",
@@ -158,6 +158,11 @@ export function quoteIsAcceptable(row: QuoteCardRow): boolean {
 /** Whether the seller's WITHDRAW may draw. `requested` has no offer to take back. */
 export function quoteIsWithdrawable(row: QuoteCardRow): boolean {
   return row.lifecycle === "quoted";
+}
+
+/** Whether the seller may decline a request that has no offer yet. Same withdraw rail. */
+export function quoteIsDeclinable(row: QuoteCardRow): boolean {
+  return row.lifecycle === "requested";
 }
 
 /** Whether the seller's ISSUE may draw — a first offer, or a re-quote of a dead one. */
