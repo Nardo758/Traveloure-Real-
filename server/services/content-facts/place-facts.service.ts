@@ -364,6 +364,7 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
     origin,
     sourceUrl: r.sourceUrl ?? null,
     provenance: factProvenanceLine(f, now),
+    checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
     stale: isFactStale(f, now),
     publishable: isPublishable(f),
   };

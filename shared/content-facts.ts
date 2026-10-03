@@ -360,6 +360,11 @@ export interface FactView {
   origin: FactOrigin;
   sourceUrl: string | null;
   provenance: string;
+  /**
+   * When the fact was checked (its `fetched_at`, ISO), for the `ItemRow` facts line's "checked <d
+   * Mon>" (surface spec v1.2 §3). Null when the row carries no fetch time. Additive key.
+   */
+  checkedAt?: string | null;
   stale: boolean;
   publishable: boolean;
 }

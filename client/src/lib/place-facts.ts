@@ -1,6 +1,7 @@
 /**
- * The slip's line for an item's facts (A5; ledger `2026-09-29-a5-draft-open-set`; content sourcing
- * brief §3: a fact is never shown without its provenance). Pure. The facts and their provenance
+ * The slip's lines for an item's facts (A5; ledger `2026-09-29-a5-draft-open-set`; content sourcing
+ * brief §3: a fact is never shown without its provenance; surface spec v1.2 §3 — `itemFactsLine` and
+ * `itemPlaceLine` below replaced `itemFactLine`/`itemAddressLine` in step 1). Pure. The facts and their provenance
  * lines are the SERVER's (`placeFacts` on the plancard read); this only picks the words to show.
  *
  * §13: hours are shown for the plan DAY's own weekday, and only when the day has a date — a plan
@@ -9,84 +10,6 @@
 import type { FactView } from "@shared/content-facts";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-const PRICE_LEVEL: Record<string, string> = {
-  PRICE_LEVEL_FREE: "Free",
-  PRICE_LEVEL_INEXPENSIVE: "$",
-  PRICE_LEVEL_MODERATE: "$$",
-  PRICE_LEVEL_EXPENSIVE: "$$$",
-  PRICE_LEVEL_VERY_EXPENSIVE: "$$$$",
-};
-
-export interface ItemFactLine {
-  text: string;
-  provenance: string;
-  sourceUrl: string | null;
-}
-
-export function itemFactLine(facts: readonly FactView[] | undefined, dateIso: string | null): ItemFactLine | null {
-  if (!facts?.length) return null;
-  const parts: string[] = [];
-  const used: FactView[] = [];
-  const hours = facts.find((f) => f.factType === "hours");
-  const days = Array.isArray(hours?.value?.weekdayDescriptions) ? (hours!.value.weekdayDescriptions as unknown[]).map(String) : [];
-  if (hours && days.length && dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
-    const weekday = WEEKDAYS[new Date(`${dateIso}T12:00:00Z`).getUTCDay()];
-    const line = days.find((d) => d.startsWith(`${weekday}:`));
-    if (line) {
-      parts.push(line.replace(`${weekday}:`, `${weekday.slice(0, 3)}:`).trim());
-      used.push(hours);
-    }
-  }
-  const price = facts.find((f) => f.factType === "price");
-  const level = price ? PRICE_LEVEL[String(price.value?.priceLevel ?? "")] : undefined;
-  if (price && level) {
-    parts.push(level);
-    used.push(price);
-  }
-  const dining = facts.find((f) => f.factType === "dining_basics");
-  if (dining) {
-    if (dining.value?.reservable === true) parts.push("takes reservations");
-    if (dining.value?.servesVegetarianFood === true) parts.push("vegetarian options");
-    if (dining.value?.reservable === true || dining.value?.servesVegetarianFood === true) used.push(dining);
-  }
-  if (!parts.length) return null;
-  const first = used[0];
-  return { text: parts.join(" · "), provenance: first.provenance, sourceUrl: first.sourceUrl };
-}
-
-export interface ItemAddressLine {
-  text: string;
-  /** The server's provenance line, present ONLY when the address is a stored Places fact. */
-  provenance: string | null;
-  sourceUrl: string | null;
-}
-
-/**
- * The item's address line (ledger `2026-09-30-places-address`; amended smoke 5 item 3, ledger
- * `2026-10-03-smoke5-fixes`). Pure. ONE chain, in this order:
- *   1. a stored address fact CHECKED BY GOOGLE (`origin: "places_api"`) — its `formattedAddress`, then
- *      its `shortFormattedAddress` — shown WITH the Maps attribution beside it. This is the ONLY way a
- *      street-level address reaches the slip;
- *   2. otherwise the item's own location text, shown with no attribution. When the AI wrote it
- *      (`origin: "ai"`) it is UNVERIFIED and is cut to its WARD/AREA (`unverifiedAreaText`): the AI
- *      drafted "Philosopher's Path Walk" at a street that was not the path, so the street is never
- *      printed and the ward still is (§13). Words a person typed (traveler, expert, assistant) are
- *      theirs and are shown as written.
- * Nothing at all ⇒ null.
- */
-export function itemAddressLine(
-  facts: readonly FactView[] | undefined,
-  draftText: string | null | undefined,
-  origin?: string | null,
-): ItemAddressLine | null {
-  const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
-  const pick = (k: string) => (typeof fact?.value?.[k] === "string" ? String(fact.value[k]).trim() : "");
-  const stored = pick("formattedAddress") || pick("shortFormattedAddress");
-  if (fact && stored) return { text: stored, provenance: fact.provenance, sourceUrl: fact.sourceUrl };
-  const text = origin === "ai" ? unverifiedAreaText(draftText) : (draftText ?? "").trim() || null;
-  return text ? { text, provenance: null, sourceUrl: null } : null;
-}
 
 /** The map pin's location line: the same rule as the row's unattributed text (AI ⇒ ward/area only). */
 export function pinLocationText(location: string | null | undefined, origin?: string | null): string | null {
@@ -116,4 +39,73 @@ export function unverifiedAreaText(text: string | null | undefined): string | nu
     return i > 0 || segs.length === 1 || AREA_WORD.test(seg);
   });
   return kept.length ? kept.join(", ") : null;
+}
+
+// ── Surface spec v1.2 §3 (step 1, ledger `2026-10-03-surface-step1-item-row`) ───────────────────
+
+const WKD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2 Oct" — the day a fact was checked, in UTC (the server stamps `checkedAt` in UTC). Null ⇒ unknown. */
+export function factCheckedLabel(checkedAt: string | null | undefined): string | null {
+  const ms = checkedAt ? Date.parse(checkedAt) : NaN;
+  if (!Number.isFinite(ms)) return null;
+  const d = new Date(ms);
+  return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+}
+
+/** The source's name as the server wrote it on the provenance line ("Google Maps", "A local expert", …). */
+function sourceName(provenance: string): string {
+  const i = provenance.indexOf(" · ");
+  return (i >= 0 ? provenance.slice(0, i) : provenance).trim();
+}
+
+/**
+ * Pure. The `ItemRow` facts line, VERBATIM per spec §3: "<Wkd> · <hours> · <source> · checked <d Mon>",
+ * e.g. "Wed · Open 24 hours · Google Maps · checked 2 Oct". Only the plan DAY's own weekday is read
+ * (§13: no date, no weekday — the line is omitted rather than guessed), and only from an hours fact.
+ * " (may have changed)" follows a stale fact. Null when there is nothing true to say.
+ */
+export function itemFactsLine(
+  facts: readonly FactView[] | undefined,
+  dateIso: string | null,
+): { text: string; sourceUrl: string | null } | null {
+  const hours = facts?.find((f) => f.factType === "hours");
+  if (!hours || !dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  const days = Array.isArray(hours.value?.weekdayDescriptions) ? (hours.value.weekdayDescriptions as unknown[]).map(String) : [];
+  const dow = new Date(`${dateIso}T12:00:00Z`).getUTCDay();
+  const line = days.find((d) => d.startsWith(`${WEEKDAYS[dow]}:`));
+  if (!line) return null;
+  const hoursText = line.slice(WEEKDAYS[dow].length + 1).trim();
+  if (!hoursText) return null;
+  const checked = factCheckedLabel(hours.checkedAt);
+  const parts = [WKD[dow], hoursText, sourceName(hours.provenance)];
+  if (checked) parts.push(`checked ${checked}`);
+  return { text: parts.join(" · ") + (hours.stale ? " (may have changed)" : ""), sourceUrl: hours.sourceUrl };
+}
+
+/**
+ * Pure. The `ItemRow` PLACE line (spec §3; step-1 amendment R-ab). The order:
+ *   1. a Google-checked (`places_api`) address fact — its WARD/AREA, with the Maps attribution;
+ *   2. the item's location AS STORED — sanitising AI-written place text is a STORAGE rule (R-w, its own
+ *      server lane), never a second client-side rewrite of it;
+ *   3. nothing.
+ */
+export function itemPlaceLine(
+  facts: readonly FactView[] | undefined,
+  item: { location?: string | null },
+): { text: string; provenance: string | null; sourceUrl: string | null } | null {
+  const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
+  const raw = fact ? String(fact.value?.formattedAddress ?? fact.value?.shortFormattedAddress ?? "") : "";
+  const area = raw ? unverifiedAreaText(raw) : null;
+  if (fact && area) return { text: area, provenance: sourceName(fact.provenance), sourceUrl: fact.sourceUrl };
+  const stored = (item.location ?? "").trim();
+  return stored ? { text: stored, provenance: null, sourceUrl: null } : null;
+}
+
+/** Pure. The ward/area a row sits in, for the day header's "<areas>" — from the same place line. */
+export function itemAreaLabel(facts: readonly FactView[] | undefined, item: { location?: string | null }): string | null {
+  const place = itemPlaceLine(facts, item);
+  if (!place?.provenance) return null; // only a Google-located ward names an area of the city
+  return place.text.split(",")[0].trim() || null;
 }

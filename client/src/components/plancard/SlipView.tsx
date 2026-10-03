@@ -49,7 +49,7 @@ import {
   type PlanCardTransport,
   type RoutingStatus,
 } from "./plancard-types";
-import { ItemBookingActionLink, ItemKindBadge, OriginBadge, RoutingActions, RoutingBadge } from "./ActivitiesSection";
+import { ItemBookingActionLink } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { SlipSavedPlaces } from "./SlipSavedPlaces";
@@ -61,11 +61,16 @@ import { SlipRail } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { WhereToStayPanel } from "./WhereToStayPanel";
 import type { WhereToStayView } from "@shared/where-to-stay";
-import { itemAddressLine, itemFactLine } from "@/lib/place-facts";
+import { itemAreaLabel, itemFactsLine } from "@/lib/place-facts";
+import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
+import { DayBlock } from "@/components/plan/DayBlock";
+import { TravelAnchorPlaceholder } from "@/components/plan/AnchorRow";
+import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
+import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostHref } from "@/lib/item-row-menu";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
-import { showsSchedule } from "@/lib/occasion-switches";
+import { durationShape, showsSchedule } from "@/lib/occasion-switches";
 import {
   buildSlipDaySlots,
   countPlanEvents,
@@ -108,12 +113,12 @@ import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 // LD 42 rows 1.6 / S1 / S2 / D16 (ledger `2026-09-05-slip-own-your-plan`): the owner's own hands on
 // their own plan. The RULES are pure and live in `@/lib/slip-item-tools`; the buttons and the four
 // existing rails they call live in `SlipItemTools.tsx`. Nothing here restates either (§18 rule 1).
-import { SlipAddItemControl, SlipItemTools } from "./SlipItemTools";
+import { SlipAddItemControl, useSlipItemActions } from "./SlipItemTools";
 import { SLIP_DELEGATE_NOTE, canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
 import {
   SlipAnchorCompareButton,
   SlipOptionSetCard,
-  SlipPromoteAnchorButton,
+  usePromoteAnchor,
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
@@ -297,17 +302,6 @@ function expertFirstName(data: SlipData): string | null {
  * either there is nothing to name and the heading says exactly that (§13). It is NEVER given
  * "Day 1": a slot that exists because an event has no date must not be labelled with a day.
  */
-function slipDayHeading(day: {
-  dayNum: number | null;
-  date?: string | null;
-  dateIso?: string | null;
-}): string {
-  const parsed = parseTripDate(day.dateIso ?? null);
-  if (parsed) return format(parsed, "EEEE · MMM d");
-  if (day.dayNum == null) return SLIP_UNDATED_SLOT_HEADING;
-  // No machine date. Keep the pre-existing heading verbatim, including its own date-when-present.
-  return `Day ${day.dayNum}${day.date ? ` · ${day.date}` : ""}`;
-}
 
 // ── SlipHeader ─────────────────────────────────────────────────────────────────────────
 
@@ -653,61 +647,92 @@ function SlipStatusStrip({ activities }: { activities: PlanCardActivity[] }) {
   );
 }
 
-// ── ExpertNoteBlock ────────────────────────────────────────────────────────────────────
+// ── Item rows (surface spec v1.2 step 1, ledger `2026-10-03-surface-step1-item-row`) ──────────
+//
+// The slip renders `DayBlock`s of `ItemRow`s (`@/components/plan`). What LEFT the row in step 1: the
+// three status pills (routing · kind · origin), the per-item "Add to checkout"/"Send to expert"
+// routing actions (R-l — the draft is a plan, not a basket), the "Build my days around this" link
+// under the row (now a ⋯ entry), and `SlipItemTools`' second copy of the row (edit/move/delete are ⋯
+// entries over the SAME rails, via `useSlipItemActions`). `ExpertNoteBlock` became `ExpertNote`.
 
-function ExpertNoteBlock({ note, expertName }: { note: string; expertName: string | null }) {
-  // Bordered inset, teal label, NEVER truncated to invisibility (full note body renders).
-  return (
-    <div
-      className="mt-2 rounded-md border-l-2 bg-muted/30 px-3 py-2"
-      style={{ borderLeftColor: EXPERT_NOTE_TINT.border }}
-      data-testid="slip-expert-note"
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: EXPERT_NOTE_TINT.fg }}>
-        Note from {expertName || "your expert"}
+/**
+ * The row's booking line — the ONE reading of its linked booking (R145/R154). "booked" is written for
+ * `booked` ALONE; every not-booked state says what happened (§13). Routing states ("with your expert",
+ * "awaiting checkout") are NOT booking facts and are no longer said on the slip row (step 7 draws
+ * routing as "with [expert]").
+ */
+export function slipItemBookingLine(a: PlanCardActivity): string | null {
+  const bookingState = itemBookingState(a);
+  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
+  if (isPurchasedRow(a)) {
+    const ref = a.confirmationNumber || (a.booking ? a.booking.id.slice(0, 8) : null);
+    return ref ? `booked · #${ref}` : "booked";
+  }
+  return null;
+}
+
+/** R-r — the item-level question when no local is live in the city. Existing rail, nothing charged. */
+function ItemAskLocalPanel({ tripId, itemId, onClose }: { tripId: string; itemId: string; onClose: () => void }) {
+  const { toast } = useToast();
+  const [question, setQuestion] = useState("");
+  const [savedCity, setSavedCity] = useState<string | null | undefined>(undefined);
+  const save = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/trips/${tripId}/slip-events`, {
+        type: "expert_interest",
+        level: "question",
+        itemId,
+        question: question.trim(),
+      });
+      const overview = queryClient.getQueryData<{ market?: { cityName: string | null } }>([`/api/trips/${tripId}/expert-help`]);
+      return overview?.market?.cityName ?? null;
+    },
+    onSuccess: (city) => setSavedCity(city),
+    onError: () => toast({ title: "Couldn't save your question", variant: "destructive" }),
+  });
+  if (savedCity !== undefined) {
+    return (
+      <p className="mt-2 text-xs text-muted-foreground" data-testid={`item-ask-local-saved-${itemId}`}>
+        {ASK_LOCAL_WORDS.saved(savedCity)}
       </p>
-      <p className="text-sm text-foreground whitespace-pre-wrap">{note}</p>
+    );
+  }
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-border p-2" data-testid={`item-ask-local-${itemId}`}>
+      <label className="block text-xs text-muted-foreground" htmlFor={`item-ask-local-input-${itemId}`}>
+        {ASK_LOCAL_WORDS.prompt}
+      </label>
+      <textarea
+        id={`item-ask-local-input-${itemId}`}
+        className="w-full rounded-md border border-border bg-background p-2 text-sm"
+        rows={2}
+        maxLength={500}
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        data-testid={`item-ask-local-input-${itemId}`}
+      />
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => save.mutate()} disabled={!question.trim() || save.isPending} data-testid={`item-ask-local-save-${itemId}`}>
+          {ASK_LOCAL_WORDS.save}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClose} data-testid={`item-ask-local-cancel-${itemId}`}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }
 
-// ── Item + logistics rows ──────────────────────────────────────────────────────────────
-
-function secondaryLine(a: PlanCardActivity, expertName: string | null, expertAssigned: boolean): string | null {
-  // R145/R154: the ONE reading of the linked booking. "booked" is written for `booked` ALONE — a
-  // disputed booking is purchased for counts but reads "Under review", and every not-booked state
-  // says what happened (§13) — never "booked", never silence.
-  const bookingState = itemBookingState(a);
-  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
-  if (isPurchasedRow(a)) {
-    // "booked" + confirmation ref ONLY when a real ref exists (item's own confirmationNumber,
-    // else the real booking row's short id) — no ref → just "booked", never a placeholder.
-    const ref = a.confirmationNumber || (a.booking ? a.booking.id.slice(0, 8) : null);
-    return ref ? `booked · #${ref}` : "booked";
-  }
-  if (a.routingStatus === "with_expert") {
-    // Nobody is assigned: never "with your expert" (ledger `2026-09-26-send-to-expert-needs-expert`).
-    if (!expertAssigned) return "Not with an expert — none is assigned to this plan";
-    // Render a name ONLY when the DTO actually carries one — never invented.
-    return expertName ? `With ${expertName}` : "With your expert";
-  }
-  if (a.routingStatus === "ready_for_checkout") {
-    return a.cost > 0 ? `$${a.cost.toLocaleString()} · awaiting checkout` : "awaiting checkout";
-  }
-  // in_planning: the DTO carries no traveler-note field — blank is the honest render (§13).
-  return null;
-}
-
-function SlipItemRow({
+function SlipDayItem({
   tripId,
   activity,
+  city,
   isOwner,
   canEditItems,
   isExpertViewer,
   hasAdvisor,
-  expertAssigned,
   expertName,
-  hasOptimized,
+  anchorFrom,
   highlighted,
   rowRef,
   dayNumber,
@@ -717,12 +742,13 @@ function SlipItemRow({
   facts,
   dateIso = null,
   checkingHours = false,
+  onOpenExpertDoor,
 }: {
   tripId: string;
   activity: PlanCardActivity;
-  /** A5 — this item's facts (server-projected), and the plan day's date the hours are read for. */
+  /** The plan's destination — what "a generic item" is read against (`findHostHref`). */
+  city: string | null;
   facts?: FactView[];
-  /** Smoke 5 item 8: the draft's place-facts run is still checking this item (`showsCheckingHours`). */
   checkingHours?: boolean;
   dateIso?: string | null;
   /** M8 (A3b): this located, dated row may become what the plan is built around — decided by the caller. */
@@ -731,201 +757,92 @@ function SlipItemRow({
   /** LD 52 (C): the owner's item tools, shared with the delegate (`canEditPlanItems`). */
   canEditItems: boolean;
   isExpertViewer: boolean;
-  /**
-   * S3 — an advisor in a §12 access status is on this plan. Resolved ONCE by `SlipView` (see the
-   * note beside `hasAdvisor` there) and handed down, never re-asked per row: a per-row advisor
-   * query would be N requests for one fact about the plan.
-   */
+  /** S3 — an advisor in a §12 access status is on this plan (resolved once by `SlipView`). */
   hasAdvisor: boolean;
-  /** An advisor in a §12 WRITE status is on the plan (`SlipData.expertAssigned`). */
-  expertAssigned: boolean;
   expertName: string | null;
-  hasOptimized: boolean;
+  /** Non-null ⇒ this row is a fixed point, fixed by that tool (`anchorFromTool`). */
+  anchorFrom: string | null;
   highlighted: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
-  /** The plan day this row sits on — `null` for a slot the events alone brought into being. */
   dayNumber: number | null;
-  /** The DAY's ordered ids (what the reorder rail rewrites) and this row's GROUP's ordered ids
-   *  (what "up" and "down" mean on screen). Both are needed; see `reorderedDayItemIds`. */
   dayItemIds: readonly string[];
   groupItemIds: readonly string[];
+  /** R-m: "Ask a local about this" with no advisor on the plan opens the expert door. */
+  onOpenExpertDoor: () => void;
 }) {
   const a = activity;
-  const factLine = itemFactLine(facts, dateIso);
-  // Ledger `2026-09-30-places-address`: Places address (formatted → short) with its attribution, else the item's text
-  // — cut to its ward/area when the AI wrote it (smoke 5 item 3, `2026-10-03-smoke5-fixes`).
-  const address = itemAddressLine(facts, a.location, a.origin);
-  const purchased = isPurchasedRow(a);
-  const secondary = secondaryLine(a, expertName, expertAssigned);
-  // D16 — OWNER ONLY, and the money rules of the ratified `ItemRow` artboard: a paid row carries no
-  // tools at all, a booked row keeps reorder and edit and loses ✕. Decided by the ONE shared
-  // predicate the DELETE rail refuses on (`@shared/itinerary-item-money`), never a second copy.
+  const [askSignal, setAskSignal] = useState(0);
+  const [askLocalOpen, setAskLocalOpen] = useState(false);
+  const askLocal = async () => {
+    // R-r: one read (the door's own overview, shared cache) decides door vs. recorded interest.
+    try {
+      const overview = await queryClient.fetchQuery<{ levels: { expertCount: number }[] }>({
+        queryKey: [`/api/trips/${tripId}/expert-help`],
+      });
+      if (anyLocalLive(overview)) return onOpenExpertDoor();
+    } catch {
+      /* no answer ⇒ ask the question here; nothing is charged either way */
+    }
+    setAskLocalOpen(true);
+  };
+  // D16 — the money rules of the ratified `ItemRow` artboard, decided by the ONE shared predicate the
+  // DELETE rail refuses on: a paid row carries no tools, a booked row keeps reorder and edit, loses ✕.
   const tools = slipItemTools({
     isOwner: canEditItems,
     routingStatus: a.routingStatus ?? null,
     bookingId: a.booking?.id ?? null,
   });
-  const showActions =
-    (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
-
+  const actions = useSlipItemActions({ tripId, itemId: a.id, tools, dayNumber, dayItemIds, groupItemIds });
+  const promote = usePromoteAnchor(tripId, a.id);
+  const showThread = hasAdvisor && (isOwner || isExpertViewer);
+  const menu: ItemRowMenu | null = canEditItems
+    ? {
+        onSwap: actions.onSwap,
+        onMoveUp: actions.onMoveUp,
+        onMoveDown: actions.onMoveDown,
+        onRemove: actions.onRemove,
+        // R-m: an advisor on the plan ⇒ the item's own thread; none ⇒ the expert door, which opens
+        // whether or not any expert serves the market (the door says so itself). Owner only — the
+        // door is the owner's to open.
+        onAskLocal: hasAdvisor ? () => setAskSignal((n) => n + 1) : isOwner ? () => void askLocal() : undefined,
+        findHostHref: findHostHref({ name: a.name, type: a.type, locationName: a.location }, { city, tripId }),
+        onBuildAround: promotable ? promote : undefined,
+      }
+    : null;
   return (
-    <div
-      ref={rowRef}
-      className={`py-3 px-3 rounded-lg transition-shadow ${
-        highlighted ? "ring-2 ring-primary/60 bg-primary/5" : ""
-      }`}
-      data-testid={`slip-item-${a.id}`}
+    <ItemRow
+      item={a}
+      facts={facts}
+      dateIso={dateIso}
+      mode={canEditItems ? "edit" : "read"}
+      role={isExpertViewer ? "expert" : "traveler"}
+      bookingState={slipItemBookingLine(a)}
+      anchor={anchorFrom ? { fromTool: anchorFrom } : null}
+      checkingHours={checkingHours}
+      menu={menu}
+      highlighted={highlighted}
+      rowRef={rowRef}
+      bookingAction={
+        // R154: the owner's one action on a disputed (View booking) or failed (Try again) row.
+        isOwner && itemBookingAction(a) ? <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} /> : null
+      }
+      expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
     >
-      {/* Below `sm` the chips sit ABOVE the name, and the name wraps instead of truncating: at
-          390 px three chips beside it left the name a few letters wide ("Ya…"), and the name is
-          what a traveler reads (ledger `2026-09-29-slip-item-name-390`). From `sm` up the row is
-          unchanged: chips on the right, the name truncated to one line. */}
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground flex items-start gap-1.5">
-            {/* Spec B anchor glyph: purchased items are the plan's fixed points once a real
-                optimization was applied. */}
-            {purchased && hasOptimized && (
-              <Anchor className="w-3.5 h-3.5 flex-shrink-0" style={{ color: ROUTING_TINTS.purchased.fg }} data-testid={`slip-anchor-${a.id}`} />
-            )}
-            <span className="min-w-0 break-words sm:truncate" data-testid={`slip-item-name-${a.id}`}>{a.name}</span>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {a.time ? a.time : null}
-            {a.time && address ? " · " : null}
-            {address ? <span data-testid={`slip-item-address-${a.id}`}>{address.text}</span> : null}
-            {address?.provenance ? (
-              <>
-                {" · "}
-                {address.sourceUrl ? (
-                  <a href={address.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline" data-testid={`slip-item-address-source-${a.id}`}>
-                    {address.provenance}
-                  </a>
-                ) : (
-                  <span data-testid={`slip-item-address-source-${a.id}`}>{address.provenance}</span>
-                )}
-              </>
-            ) : null}
-          </p>
-          {secondary && <p className="text-xs text-muted-foreground mt-0.5">{secondary}</p>}
-          {/* R154: the owner's one action on a disputed (View booking) or failed (Try again) row. */}
-          {isOwner && itemBookingAction(a) && (
-            <div className="mt-1.5">
-              <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
-            </div>
-          )}
-          {purchased && hasOptimized && (
-            <p className="text-xs text-muted-foreground italic">fixed point — plan built around it</p>
-          )}
-          {/* NOTE (§13): per-item move annotations ("day 1 → day 5 · rationale") have NO data
-              source on this DTO — apply does not persist variant move metadata onto
-              itinerary_items — so none render. Real data only. */}
-          {a.expertNote && <ExpertNoteBlock note={a.expertNote} expertName={expertName} />}
-          {/* ── S3 · "ASK YOUR EXPERT ABOUT THIS" (ledger `2026-09-06-slip-small-additions`) ─────
-              The ratified `ItemRow` artboard draws this directly under the Expert Note block, and
-              it is the EXISTING per-item thread (`ItemComments`, migration 165 — the same
-              component the Trip Card's ActivitiesSection and the Workstation's item editor mount,
-              against the same `GET/POST /api/trips/:tripId/items/:itemId/comments` rails). One
-              component, one more mount; a second per-item thread beside it would be the drift
-              class §18 rule 1 names, and it is how the traveler's question and the expert's answer
-              would end up in two places.
-
-              DRAWN ONLY WHEN THERE IS SOMEBODY TO ASK, and for the two people who are on the
-              conversation: the OWNER and the ADVISOR. With no advisor on the plan the line is
-              ABSENT, not greyed — there is nobody it could address (§13), which is the artboard's
-              own annotation and the same posture the rail's expert row takes.
-
-              NO FABRICATED COUNT. The component's toggle shows a count from its OWN real per-item
-              read, never from this DTO: the plancard activity carries no comment count, and a
-              number derived here would be a guess. An empty thread reads "No comments yet". */}
-          {hasAdvisor && (isOwner || isExpertViewer) && (
-            <ItemComments
-              tripId={tripId}
-              itemId={a.id}
-              className="mt-2"
-              /* The ratified `ItemRow` artboard's own words, held once in `@/lib/slip-item-tools`
-                 beside the slip's other row labels — the component keeps its default for the two
-                 mounts (Trip Card, Workstation) this ruling did not touch. */
-              label={SLIP_ASK_EXPERT_LABEL}
-              /* And NO count on this mount: the artboard draws none and the plancard activity
-                 carries none, so any number here could only come from somewhere other than the
-                 thread it describes (§13). The real count still renders inside the open thread. */
-              hideCount
-            />
-          )}
-          {showActions && (
-            <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`slip-routing-actions-${a.id}`}>
-              <RoutingActions
-                tripId={tripId}
-                itemId={a.id}
-                routingStatus={a.routingStatus}
-                hasBooking={!!a.booking}
-                actor={isOwner ? "owner" : "expert"}
-                expertAssigned={expertAssigned}
-              />
-            </div>
-          )}
-          {/* S2 — ↑ ↓ ✎ ✕. The component renders nothing at all when the toolset is empty, so an
-              advisor's row and a paid row are byte-identical to what they were before this lane. */}
-          <SlipItemTools
-            tripId={tripId}
-            itemId={a.id}
-            tools={tools}
-            dayNumber={dayNumber}
-            dayItemIds={dayItemIds}
-            groupItemIds={groupItemIds}
-          />
-        </div>
-        {/* Status pill right-aligned — the SAME RoutingBadge every surface renders (ruling 8);
-            the slip shows the neutral Planning pill too (showPlanning).
-
-            THE ORIGIN CHIP SITS BESIDE IT, AFTER IT, exactly as the ratified `ItemRow` artboard
-            draws the cluster (callout ②): the routing pill answers WHERE THE ITEM IS, the origin
-            chip answers WHO PUT IT THERE, and they are two taxonomies rather than one — which is
-            why the chip is a second pill and never a fourth routing value. Both render from the
-            DTO alone; `OriginBadge` returns null (no chip, no gap) for an item whose `origin` was
-            never stamped, so a legacy plan's rows are byte-identical to before this lane (§13).
-
-            AND THE KIND CHIP IS THE THIRD TAXONOMY (ruling 2026-09-15, punchlist D-4; ledger
-            `2026-09-15-d4-item-kind-contract`): the routing pill says WHERE the item is, the origin
-            chip says WHO put it there, and `ItemKindBadge` says HOW IT CAN BE OBTAINED — included /
-            book separately / partner booking / recommended. Three questions, three chips; folding
-            the kind into the routing pill would make it a fifth routing value, which it is not
-            (LD 44 — a kind and a routing status are never merged). It is DERIVED from the row's own
-            link columns on every render and stored nowhere, so it cannot drift from what checkout
-            charges; unlike the other two it is total, so every item wears exactly one. */}
-        <div className="order-first flex flex-wrap items-center gap-1.5 sm:order-none sm:flex-shrink-0">
-          <RoutingBadge activity={a} showPlanning expertAssigned={expertAssigned} />
-          <ItemKindBadge activity={a} />
-          <OriginBadge activity={a} />
-        </div>
-      </div>
-      {factLine ? (
-        <p className="mt-1 text-xs text-muted-foreground" data-testid={`slip-item-facts-${a.id}`}>
-          {factLine.text}
-          {" · "}
-          {factLine.sourceUrl ? (
-            <a href={factLine.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline" data-testid={`slip-item-facts-source-${a.id}`}>
-              {factLine.provenance}
-            </a>
-          ) : (
-            <span data-testid={`slip-item-facts-source-${a.id}`}>{factLine.provenance}</span>
-          )}
-        </p>
-      ) : checkingHours ? (
-        // Smoke 5 item 8: the lookup for this stop has not finished; the line it will fill says so
-        // rather than showing nothing (the slip re-reads until it lands — `plancard-refetch`).
-        <p className="mt-1 text-xs text-muted-foreground italic" data-testid={`slip-item-facts-checking-${a.id}`}>
-          {CHECKING_HOURS_LABEL}
-        </p>
-      ) : null}
-      {/* M8 (A3b): a full-width line under the row, so on a phone it never squeezes the item's name. */}
-      {promotable ? (
-        <div className="mt-1">
-          <SlipPromoteAnchorButton tripId={tripId} itemId={a.id} />
-        </div>
-      ) : null}
-    </div>
+      {/* S3 — "Ask your expert about this": the EXISTING per-item thread (`ItemComments`), drawn only
+          when there is somebody to ask, for the two people on the conversation. No count (§13). */}
+      {showThread && (
+        <ItemComments
+          tripId={tripId}
+          itemId={a.id}
+          className="mt-2"
+          label={SLIP_ASK_EXPERT_LABEL}
+          hideCount
+          openSignal={askSignal}
+        />
+      )}
+      {askLocalOpen ? <ItemAskLocalPanel tripId={tripId} itemId={a.id} onClose={() => setAskLocalOpen(false)} /> : null}
+      {actions.panel}
+    </ItemRow>
   );
 }
 
@@ -1608,6 +1525,9 @@ export function SlipView({
   const optionSetsQuery = useOptionSets(tripId, true);
   const optionSets = optionSetsQuery.data?.sets ?? [];
   const anchorItemId = primaryAnchorItemId(optionSets);
+  // Step 1: which tool fixed the primary anchor (`anchorFromTool`) — the set it came from.
+  const anchorSetCategory =
+    optionSets?.find((s) => s.itineraryItemId === anchorItemId && s.anchorRole === "primary")?.categoryKey ?? null;
   const canWriteSets = canEditItems || (isExpertViewer && data.expertAssigned === true);
   const hasOpenLodgingSet = optionSets.some((st) => st.status === "open" && st.categoryKey === "accommodation");
   const planActivities = sortedDays.flatMap((d) => d.activities ?? []);
@@ -1715,6 +1635,13 @@ export function SlipView({
     () => new Map(sortedDays.map((d) => [d.dayNum, d])),
     [sortedDays],
   );
+  // Step 1 (`DayBlock`): the first day starts open, and so does the day a `?item=` link points into;
+  // every other day is collapsed until the traveler opens it. Keyed by slot; a toggle is remembered.
+  const [dayOpen, setDayOpen] = useState<Record<string, boolean>>({});
+  const lastDayNum = sortedDays.length ? sortedDays[sortedDays.length - 1].dayNum : null;
+  // R-aa: the arrival/departure placeholders belong to a RANGE-shaped plan (`durationShape`); a
+  // day-shaped occasion (a date night) has nothing to arrive at.
+  const showTravelAnchors = durationShape(occasion) === "range";
 
   // ── THE PLAN'S BUDGET TOTAL (ledger `2026-09-04-event-budget`) ────────────────────────────
   // DERIVED from the events, never stored — one pure helper, so the line and the fields it sums
@@ -2082,7 +2009,8 @@ export function SlipView({
               <div className="h-4 rounded bg-muted animate-pulse w-1/2" />
             </div>
           ) : null}
-          {daySlots.map((slot) => {
+          {daySlots.map((slot, slotIdx) => {
+            const slotItems = slot.groups.flatMap((g) => g.items);
             // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
             // no `date` label of its own and no legs, and invents none of the three.
             const day = slot.dayNum != null ? dayByNum.get(slot.dayNum) : undefined;
@@ -2106,42 +2034,44 @@ export function SlipView({
               tripStartDate: data.trip?.startDate ?? null,
             });
             return (
-              <div key={slot.key} className="py-2 first:pt-0 last:pb-0">
-                {/* THE DAY HEADING NAMES THE DAY (re-audit A17, the ratified `Slip` artboard's
-                    "Friday · Oct 2"). A traveler reads a plan by the days of the week it falls on;
-                    "Day 1" is the plan's internal index and tells them nothing they can act on.
-                    §13 — the ordinal is the FALLBACK, not the decoration: a plan whose start date
-                    is unknown has no weekday to name (`dateIso` is null and `dayDateIso` never
-                    guesses one), and it keeps "Day 1" rather than being given a weekday. A slot the
-                    EVENTS alone brought into being has no ordinal at all, so an undated one reads
-                    "Undated" — our knowledge, never a day we picked for it. */}
-                <p
-                  className="px-3 pt-1 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                  data-testid={`slip-day-heading-${slot.dayNum ?? slot.key}`}
-                >
-                  {slipDayHeading({
-                    dayNum: slot.dayNum,
-                    date: day?.date ?? null,
-                    dateIso: slot.dateIso,
-                  })}
-                </p>
+              <DayBlock
+                key={slot.key}
+                dayKey={String(slot.dayNum ?? slot.key)}
+                heading={dayBlockHeading({ dayNum: slot.dayNum, date: day?.date ?? null, dateIso: slot.dateIso })}
+                stats={dayBlockStats({
+                  stops: slotItems.length,
+                  areas: slotItems.map((a) => itemAreaLabel(data.placeFacts?.[a.id], a)),
+                  hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
+                })}
+                open={dayOpen[slot.key] ?? (slotIdx === 0 || (!!highlightItemId && slotItems.some((a) => a.id === highlightItemId)))}
+                onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
+              >
+                {/* R-aa: day 1 opens with the placeholder arrival anchor, the last day closes with the
+                    departure one — a range-shaped plan only (a day-shaped occasion has no arrival). */}
+                {showTravelAnchors && slot.dayNum === 1 ? (
+                  <TravelAnchorPlaceholder kind="arrival" city={data.trip?.destination ?? null} />
+                ) : null}
                 {slot.groups.map((group) => {
                   const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
-                    <SlipItemRow
+                    <SlipDayItem
                       key={a.id}
                       tripId={tripId}
                       activity={a}
+                      city={data.trip?.destination ?? null}
                       facts={data.placeFacts?.[a.id]}
-                      checkingHours={showsCheckingHours(a.id, data.factsPendingItemIds, !!itemFactLine(data.placeFacts?.[a.id], slot.dateIso ?? null))}
+                      checkingHours={showsCheckingHours(a.id, data.factsPendingItemIds, !!itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null))}
                       dateIso={slot.dateIso ?? null}
                       isOwner={isOwner}
                       canEditItems={canEditItems}
                       isExpertViewer={isExpertViewer}
                       hasAdvisor={hasAdvisor}
-                      expertAssigned={data.expertAssigned === true}
                       expertName={expertName}
-                      hasOptimized={hasOptimized}
+                      anchorFrom={anchorFromTool({
+                        isPrimaryAnchor: a.id === anchorItemId,
+                        anchorSetCategory: anchorSetCategory,
+                        purchasedAndOptimized: hasOptimized && isPurchasedRow(a),
+                      })}
                       highlighted={highlighted === a.id}
                       rowRef={(el) => {
                         rowRefs.current[a.id] = el;
@@ -2157,6 +2087,7 @@ export function SlipView({
                         a.lng != null &&
                         a.id !== anchorItemId
                       }
+                      onOpenExpertDoor={() => setExpertDoorState("open")}
                     />
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
@@ -2213,7 +2144,10 @@ export function SlipView({
                     />
                   </div>
                 )}
-              </div>
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum ? (
+                  <TravelAnchorPlaceholder kind="departure" city={data.trip?.destination ?? null} />
+                ) : null}
+              </DayBlock>
             );
           })}
         </CardContent>

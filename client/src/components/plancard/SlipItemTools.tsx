@@ -23,7 +23,7 @@
  */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, X } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -221,9 +221,19 @@ export function SlipAddItemControl({
   );
 }
 
-// ── S2: edit, remove, reorder — the row's own tools ────────────────────────────────────────────
+// ── S2: edit, remove, reorder — now the row's ⋯ menu ────────────────────────────────────────────
 
-export function SlipItemTools({
+/**
+ * Surface spec v1.2 step 1 (ledger `2026-10-03-surface-step1-item-row`): the row no longer carries
+ * an icon strip (↑ ↓ ✎ ✕) beside a second copy of itself. The SAME four rails are reached from the
+ * `ItemRow` ⋯ menu — Swap opens the edit form (the PATCH rail), Move up / Move down call the reorder
+ * rail, Remove asks first and then calls the DELETE rail. Nothing is re-derived: the URLs and bodies
+ * are still `@/lib/slip-item-tools`'s, and the toolset still comes from `slipItemTools` (D16 and the
+ * money rules), so an advisor's row and a paid row get no entries.
+ *
+ * Returns the menu handlers (absent ⇒ no entry) and the inline panel the menu opens.
+ */
+export function useSlipItemActions({
   tripId,
   itemId,
   tools,
@@ -238,7 +248,13 @@ export function SlipItemTools({
   dayNumber: number | null;
   dayItemIds: readonly string[];
   groupItemIds: readonly string[];
-}) {
+}): {
+  onSwap?: () => void;
+  onMoveUp: (() => void) | null;
+  onMoveDown: (() => void) | null;
+  onRemove?: () => void;
+  panel: JSX.Element | null;
+} {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -333,147 +349,109 @@ export function SlipItemTools({
   };
 
   const canMove = (direction: -1 | 1) =>
-    dayNumber != null && canReorderInDirection({ dayItemIds, groupItemIds, itemId, direction });
-
-  if (!tools.reorder && !tools.edit && !tools.remove) return null;
-
-  const iconButton =
-    "inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground";
+    tools.reorder &&
+    !reorderMutation.isPending &&
+    dayNumber != null &&
+    canReorderInDirection({ dayItemIds, groupItemIds, itemId, direction });
 
   const body = current ? buildSlipEditItemBody(current, loaded ?? current) : null;
 
-  return (
-    <div className="mt-1.5" data-testid={`slip-item-tools-${itemId}`}>
-      <div className="flex items-center gap-0.5">
-        {tools.reorder && (
-          <>
-            <button
-              type="button"
-              className={iconButton}
-              disabled={!canMove(-1) || reorderMutation.isPending}
-              onClick={() => move(-1)}
-              aria-label="Move up"
-              title="Move up"
-              data-testid={`slip-item-up-${itemId}`}
-            >
-              <ArrowUp className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              className={iconButton}
-              disabled={!canMove(1) || reorderMutation.isPending}
-              onClick={() => move(1)}
-              aria-label="Move down"
-              title="Move down"
-              data-testid={`slip-item-down-${itemId}`}
-            >
-              <ArrowDown className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
-        {tools.edit && (
-          <button
-            type="button"
-            className={iconButton}
-            onClick={() => {
-              setValues(null);
-              setEditing((v) => !v);
-            }}
-            aria-label="Edit"
-            title="Edit"
-            data-testid={`slip-item-edit-${itemId}`}
+  const panel =
+    confirmingDelete || editing ? (
+      <div data-testid={`slip-item-tools-${itemId}`}>
+        {/* Deleting a row is not undoable from this surface, so it asks first. */}
+        {confirmingDelete && (
+          <div
+            className="mt-1.5 flex items-center gap-2 text-xs text-foreground"
+            data-testid={`slip-item-remove-confirm-${itemId}`}
           >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
+            <span>{SLIP_DELETE_CONFIRM_LABEL}</span>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-6 px-2 text-[11px]"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate()}
+              data-testid={`slip-item-remove-yes-${itemId}`}
+            >
+              {deleteMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+              Remove
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => setConfirmingDelete(false)}
+              data-testid={`slip-item-remove-no-${itemId}`}
+            >
+              Keep
+            </Button>
+          </div>
         )}
-        {tools.remove && (
-          <button
-            type="button"
-            className={iconButton}
-            onClick={() => setConfirmingDelete(true)}
-            aria-label="Remove"
-            title="Remove"
-            data-testid={`slip-item-remove-${itemId}`}
+
+        {editing && (
+          <div
+            className="mt-2 rounded-md border border-border bg-background p-2.5"
+            data-testid={`slip-item-edit-form-${itemId}`}
           >
-            <X className="w-3.5 h-3.5" />
-          </button>
+            {!current ? (
+              <p className="text-xs text-muted-foreground" data-testid={`slip-item-edit-loading-${itemId}`}>
+                {rowsLoading ? "Loading this item…" : "This item's details aren't available right now."}
+              </p>
+            ) : (
+              <>
+                <ItemFields
+                  values={current}
+                  onChange={setValues}
+                  idPrefix={`slip-item-edit-input-${itemId}`}
+                />
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="h-7 px-3 text-xs"
+                    disabled={!body || editMutation.isPending}
+                    onClick={() => body && editMutation.mutate(body)}
+                    data-testid={`slip-item-edit-save-${itemId}`}
+                  >
+                    {editMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                    Save
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => {
+                      setValues(null);
+                      setEditing(false);
+                    }}
+                    data-testid={`slip-item-edit-cancel-${itemId}`}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
+    ) : null;
 
-      {/* Deleting a row is not undoable from this surface, so it asks first. */}
-      {confirmingDelete && (
-        <div
-          className="mt-1.5 flex items-center gap-2 text-xs text-foreground"
-          data-testid={`slip-item-remove-confirm-${itemId}`}
-        >
-          <span>{SLIP_DELETE_CONFIRM_LABEL}</span>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-6 px-2 text-[11px]"
-            disabled={deleteMutation.isPending}
-            onClick={() => deleteMutation.mutate()}
-            data-testid={`slip-item-remove-yes-${itemId}`}
-          >
-            {deleteMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
-            Remove
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2 text-[11px]"
-            onClick={() => setConfirmingDelete(false)}
-            data-testid={`slip-item-remove-no-${itemId}`}
-          >
-            Keep
-          </Button>
-        </div>
-      )}
-
-      {editing && (
-        <div
-          className="mt-2 rounded-md border border-border bg-background p-2.5"
-          data-testid={`slip-item-edit-form-${itemId}`}
-        >
-          {!current ? (
-            <p className="text-xs text-muted-foreground" data-testid={`slip-item-edit-loading-${itemId}`}>
-              {rowsLoading ? "Loading this item…" : "This item's details aren't available right now."}
-            </p>
-          ) : (
-            <>
-              <ItemFields
-                values={current}
-                onChange={setValues}
-                idPrefix={`slip-item-edit-input-${itemId}`}
-              />
-              <div className="mt-2 flex items-center gap-2">
-                <Button
-                  size="sm"
-                  className="h-7 px-3 text-xs"
-                  disabled={!body || editMutation.isPending}
-                  onClick={() => body && editMutation.mutate(body)}
-                  data-testid={`slip-item-edit-save-${itemId}`}
-                >
-                  {editMutation.isPending && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
-                  Save
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => {
-                    setValues(null);
-                    setEditing(false);
-                  }}
-                  data-testid={`slip-item-edit-cancel-${itemId}`}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return {
+    onSwap: tools.edit
+      ? () => {
+          setValues(null);
+          setConfirmingDelete(false);
+          setEditing(true);
+        }
+      : undefined,
+    onMoveUp: canMove(-1) ? () => move(-1) : null,
+    onMoveDown: canMove(1) ? () => move(1) : null,
+    onRemove: tools.remove
+      ? () => {
+          setEditing(false);
+          setConfirmingDelete(true);
+        }
+      : undefined,
+    panel,
+  };
 }

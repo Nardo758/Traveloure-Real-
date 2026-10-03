@@ -788,7 +788,7 @@ test.describe("3 · the compare view (A4)", () => {
 
 // ── §4 · free draft around the set ────────────────────────────────────────────────────────────
 test.describe("4 · free draft around the set", () => {
-  test("§4 today — Draft it with AI on an empty slip writes origin='ai' items and an 'AI draft' chip", async ({ page }) => {
+  test("§4 today — Draft it with AI on an empty slip writes origin='ai' items, drawn as plain rows (no pills, surface step 1)", async ({ page }) => {
     // Ledger `2026-09-28-kyoto-s4-draft-ci`: the job's server runs with E2E_AI_STUB=1, the ONE
     // explicit stand-in for the draft model (ai-generation.service.ts; refused where ENVIRONMENT=PROD, and it
     // names itself `e2e-ai-stub` on every cost row). Everything after the model call is real code.
@@ -842,7 +842,12 @@ test.describe("4 · free draft around the set", () => {
       .toEqual([{ stage: "SLIP", properties: { outcome: "drafted", itemsWritten: items.length, heldSlots: 0 } }]);
 
     await page.reload();
-    await expect(testid(page, `badge-origin-${items[0].id}`)).toHaveText(/AI draft/, { timeout: 20_000 });
+    // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`): the slip's `ItemRow` draws no
+    // status pills — origin stays a stored fact (asserted above), never a chip on the row.
+    // The FIRST day is the one open by default, so the row read is one of day 1's.
+    const first = [...items].sort((a, b) => (a.day_number ?? 0) - (b.day_number ?? 0))[0];
+    await expect(testid(page, `slip-item-${first.id}`)).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-testid^="badge-origin-"]')).toHaveCount(0);
 
     // LD 41 (b): the plan is no longer empty, so a second free draft is refused (409) before any
     // model call — and the refusal is its own E6 row, with no count.
@@ -1014,6 +1019,8 @@ test.describe("4 · free draft around the set", () => {
     expect(ok2xx(skip), `skip answered ${skip}`).toBe(true);
     await page.reload();
     await expect(testid(page, "slip-header")).toBeVisible({ timeout: 20_000 });
+    // Surface step 1: only the first day opens by default; day 2 is opened by its header.
+    await testid(page, "slip-day-toggle-2").click();
     await expect(page.getByText("Stop on day 2")).toBeVisible({ timeout: 20_000 });
     await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
     await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
@@ -1285,11 +1292,11 @@ function seedKyotoExpert(label: string, opts: { ungated?: boolean } = {}): { exp
   return JSON.parse(line);
 }
 
-type DoorRow = { level: string | null; tier: string | null; market: string | null; count: number | null };
+type DoorRow = { level: string | null; tier: string | null; market: string | null; count: number | null; itemId: string | null; question: string | null };
 async function doorRows(tripId: string, type: string): Promise<DoorRow[]> {
   return rows<DoorRow>(
     `SELECT properties->>'level' AS level, properties->>'tier' AS tier, properties->>'market' AS market,
-            (properties->>'count')::int AS count
+            (properties->>'count')::int AS count, properties->>'itemId' AS "itemId", properties->>'question' AS question
        FROM funnel_events WHERE trip_id = $1 AND event_type = $2 ORDER BY created_at`,
     [tripId, type],
   );
@@ -1351,6 +1358,29 @@ test.describe("7 · a local expert checks the plan", () => {
     expect((await doorRows(tripId, "expert_interest"))[0]).toMatchObject({ level: "plan", tier: "planning", market: "jaipur" });
     expect((await doorRows(tripId, "expert_help_level_chosen"))[0]).toMatchObject({ level: "plan", tier: "planning" });
     expect((await doorRows(tripId, "expert_picker_shown"))[0]).toMatchObject({ level: "plan", count: 0 });
+  });
+
+  test("§7 R-r — with no local live in the city, ⋯ Ask a local about this records the item and the question, charging nothing", async ({ page }) => {
+    // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`).
+    await signedInTraveler(page, "ask-local");
+    const tripId = await createTrip(page.request, "Jaipur ask", "Jaipur, India");
+    const itemId = await createItem(page.request, tripId, "Amber Fort", 1);
+    await page.goto(`/plans/${tripId}`);
+    await testid(page, `item-menu-${itemId}`).click();
+    await testid(page, `item-menu-ask-local-${itemId}`).click();
+    await testid(page, `item-ask-local-input-${itemId}`).fill("Is the elephant ride still running?");
+    const saved = await actAndAwait(page, () => testid(page, `item-ask-local-save-${itemId}`).click(), {
+      method: "POST",
+      path: new RegExp(`^/api/trips/${tripId}/slip-events$`),
+    });
+    expect(ok2xx(saved)).toBe(true);
+    await expect(testid(page, `item-ask-local-saved-${itemId}`)).toContainText("nothing was charged");
+    expect((await doorRows(tripId, "expert_interest"))[0]).toMatchObject({
+      level: "question",
+      market: "jaipur",
+      itemId,
+      question: "Is the elephant ride still running?",
+    });
   });
 
   test("§7 expert door — the picker shows only byline-gated experts who list the level", async ({ page }) => {

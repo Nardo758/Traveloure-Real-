@@ -439,7 +439,12 @@ export function SlipOptionSetCard({
 }
 
 /** M8 — "Build my days around this" on a located, dated item that is not already the anchor. */
-export function SlipPromoteAnchorButton({ tripId, itemId }: { tripId: string; itemId: string }) {
+/**
+ * M8 (A3b) — "Build my days around this". Since surface step 1 (ledger
+ * `2026-10-03-surface-step1-item-row`) it is an entry in the row's ⋯ menu, not a link under the row:
+ * same rail (`POST /anchor/promote`), same toasts; the menu calls `promote()`.
+ */
+export function usePromoteAnchor(tripId: string, itemId: string): () => void {
   const { toast } = useToast();
   const promote = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/trips/${tripId}/anchor/promote`, { itemId })).json(),
@@ -449,15 +454,7 @@ export function SlipPromoteAnchorButton({ tripId, itemId }: { tripId: string; it
     },
     onError: (e) => toast({ title: serverMessage(e, "Couldn't change what the plan is built around"), variant: "destructive" }),
   });
-  return (
-    <button
-      type="button"
-      className="whitespace-nowrap text-xs underline text-muted-foreground hover:text-foreground min-h-[32px]"
-      onClick={() => promote.mutate()}
-      disabled={promote.isPending}
-      data-testid={`slip-item-promote-${itemId}`}
-    >
-      Build my days around this
-    </button>
-  );
+  return () => {
+    if (!promote.isPending) promote.mutate();
+  };
 }

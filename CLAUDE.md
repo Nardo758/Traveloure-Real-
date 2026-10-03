@@ -1383,6 +1383,15 @@ This document captures architectural decisions to maintain consistency across co
     channel only, NULL omitted and never rendered as an author (§13) — through the ONE mapping
     `client/src/lib/item-origin.ts`; **no schema change, no migration and no new writer**, the
     column stays server-stamped at create and client-settable nowhere.
+    **AMENDED ON THE SLIP BY SURFACE STEP 1 (decision-maker, Oct 3, 2026 — surface spec v1.2 §3/§10,
+    ledger `2026-10-03-surface-step1-item-row`):** the slip renders `DayBlock`s of the ONE `ItemRow`
+    (`client/src/components/plan/`), which draws NO status pills — no routing pill, no kind chip, no
+    origin chip — and no per-item checkout control (R-l). Origin stays the stored, server-stamped fact
+    this entry describes; the Trip Card (`ActivitiesSection`) keeps its chips until steps 6–7 move it
+    onto `ItemRow`. "Ask a local about this" (R-r) opens the expert door where a local is live and,
+    where none is, records the item and the question on the EXISTING `expert_interest` funnel row
+    (`POST /api/trips/:tripId/slip-events`, item verified on the plan, nothing charged); the
+    notification when supply goes live is not built.
 
     **D6 IS NOW APPLIED ON THE EVENT HEADER (ledger `2026-09-06-slip-conformance`).** D6 ruled that
     the two role questions have two catalogs and are never merged; until this lane the event

@@ -308,7 +308,8 @@ describe("A1 — the slip renders the tools through the owner-gated predicate", 
     // flag (`canEditItems` = `canEditPlanItems(slipViewer(tripRole))`), never an inline role check.
     assert.match(slipViewSrc, /slipItemTools\(\{\s*\n?\s*isOwner: canEditItems,/);
     assert.match(slipViewSrc, /const canEditItems = canEditPlanItems\(viewer\);/);
-    assert.match(slipViewSrc, /<SlipItemTools/);
+    // Surface step 1: the tools are the row's ⋯ entries, through the hook over the SAME rails.
+    assert.match(slipViewSrc, /useSlipItemActions\(\{ tripId, itemId: a\.id, tools,/);
     // The row passes the SHARED money facts, not a re-derived local rule.
     assert.match(slipViewSrc, /routingStatus: a\.routingStatus \?\? null,/);
     assert.match(slipViewSrc, /bookingId: a\.booking\?\.id \?\? null,/);
