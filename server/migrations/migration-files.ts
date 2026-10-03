@@ -1887,4 +1887,9 @@ export const MIGRATION_FILES = [
   // service_quotes.owner_share_rate (nullable, no default, no check, no index, no backfill).
   // Declared in shared/schema.ts. DATA plus ADD COLUMN IF NOT EXISTS.
   "338_beta_rollout_fees.sql",
+  // 339 — insert beta_flat when 033's seed never ran (ledger 2026-10-03-beta-flat-band-insert).
+  // 051 stamped 001–050 without executing them, so production has no beta_flat row and 338's
+  // guarded UPDATE matched nothing. DATA ONLY: insert-if-missing on 033's column list, then
+  // 338's guarded UPDATE and policy upsert. No DEFAULT, CHECK, index, or FK.
+  "339_beta_flat_band_insert.sql",
 ] as const;

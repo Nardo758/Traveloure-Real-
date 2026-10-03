@@ -76,3 +76,10 @@ This is review-branch work only. The canonical traveler-confirmation prerequisit
 is carried explicitly because the fetched origin/main did not contain that repair.
 No merge, publish, production job execution, or production data/schema edit is
 part of this task. Rollout follows human review and the founder's publish procedure.
+
+## Migration rules
+
+SQL data migrations under `server/migrations/` (added 2026-10-03 with migration 339;
+the sections above are the automation-registry contract and are unchanged):
+
+- A DATA migration that UPDATEs rows must insert-if-missing or the PR must include a production read proving the rows exist.
