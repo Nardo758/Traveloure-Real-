@@ -35,7 +35,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; className?: string }) {
+export function ExpertSuggestionsPanel({
+  tripId,
+  className,
+  canReview = true,
+}: {
+  tripId: string;
+  className?: string;
+  /** Approve and decline stay with the plan owner. A delegate may read the list. */
+  canReview?: boolean;
+}) {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
@@ -155,7 +164,7 @@ export function ExpertSuggestionsPanel({ tripId, className }: { tripId: string; 
                 )}
               </div>
             </div>
-            {suggestion.status === "pending" && (
+            {suggestion.status === "pending" && canReview && (
               <div className="flex gap-2 mt-3 pt-3 border-t border-border">
                 <Button
                   size="sm"

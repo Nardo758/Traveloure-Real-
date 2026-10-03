@@ -2114,7 +2114,10 @@ This document captures architectural decisions to maintain consistency across co
     of `authorizeTripLogistics` (read AND write, like a write-status advisor) and of the trip GET /
     PATCH, the items read, the inline item create and the plancard read, where it renders as
     `tripRole: "delegate"`; it is **never** in `authorizeTripOwnerTier` (guest PII, money between
-    people) and reaches no payment rail — the executive approves, books and pays (LD 42 D19). An
+    people) and reaches no payment rail — the executive approves, books and pays (LD 42 D19). The
+    managing assistant may READ the plan's expert suggestions (`GET /api/trips/:id/suggestions`);
+    approving one stays the owner's. The guest roster and Trip Pass stay on the owner tier, and
+    the slip does not request them for a delegate. An
     assistant's item is stamped `origin = 'assistant'`, which regenerate spares like `traveler` and
     which draws NO origin chip (never "you added", never a fourth artboard label). On the slip the
     delegate gets the owner's item tools and "Browse services" and nothing else (`canEditPlanItems`,

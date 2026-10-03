@@ -23,6 +23,8 @@
  *     that is the cross-link F10 asks for, in the direction the data can actually support.
  */
 
+import { parseCalendarDate } from "@/lib/calendar-date";
+
 /** The plan facts a booking row carries — exactly `BOOKING_TRIP_FIELDS`, server-projected. */
 export interface BookingPlanRef {
   id: string;
@@ -76,8 +78,9 @@ export function planGroupLabel(plan: BookingPlanRef | null): string {
 
 function startTime(plan: BookingPlanRef | null): number | null {
   if (!plan?.startDate) return null;
-  const t = new Date(plan.startDate).getTime();
-  return Number.isFinite(t) ? t : null;
+  // DATE columns sort by the calendar day in the string, not by UTC midnight.
+  const day = parseCalendarDate(plan.startDate);
+  return day ? day.getTime() : null;
 }
 
 export function groupBookingsByPlan<B extends GroupableBooking, P extends GroupablePurchase>(
