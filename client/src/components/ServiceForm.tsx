@@ -1640,19 +1640,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (role === "provider") {
         payload.includesExpertNotes = formData.includesExpertNotes;
         payload.contentAffinityTags = formData.contentAffinityTags;
-        payload.status = submitAction === "publish" ? "active" : "draft";
         if (formData.serviceOfferingTypeId) {
           payload.serviceOfferingTypeId = formData.serviceOfferingTypeId;
         }
-      } else {
-        // Expert: approvalStatus for workflow. (The tier FK moved up beside the offering KEY —
-        // one selection writes both, on either role branch.)
-        if (submitAction === "draft") {
-          payload.approvalStatus = "draft";
-          payload.status = "draft";
-        } else if (submitAction === "submit") {
-          payload.approvalStatus = "submitted";
-          payload.status = "draft";
+      }
+      // Save-as-Draft is `saveIntent`, not `approvalStatus`. The insert schema omits
+      // approvalStatus (§19), so a client-sent draft status never reached storage and every
+      // create was born into the review queue. `draft` stays private. `submit` is the expert
+      // review entry (the PATCH rail still reads approvalStatus for that transition).
+      if (submitAction === "draft") {
+        payload.saveIntent = "draft";
+        payload.status = "draft";
+      } else if (submitAction === "submit") {
+        payload.saveIntent = "submit";
+        payload.approvalStatus = "submitted";
+        payload.status = "draft";
+      } else if (role === "provider") {
+        // Publish is review entry. A draft saved on the way stays `draft` unless this
+        // write names `approvalStatus: submitted` — that is the PATCH rail's
+        // leaving-draft predicate. Status `active` alone updates the live flag and
+        // leaves the listing out of the admin queue.
+        payload.saveIntent = "submit";
+        payload.approvalStatus = "submitted";
+        payload.status = "active";
+      }
+
+      if (submitAction !== "draft") {
+        if (!formData.categoryId) {
+          throw new Error("Pick a category before submitting for review. Save as draft to finish later.");
+        }
+        const quotePriced = formData.priceType === "Custom quote";
+        const priceNum = Number(priceScalar);
+        if (!quotePriced && !(Number.isFinite(priceNum) && priceNum > 0)) {
+          throw new Error("Set a price greater than zero before submitting for review. Save as draft to finish later.");
         }
       }
       // revisionsIncluded is shared (expert + provider)

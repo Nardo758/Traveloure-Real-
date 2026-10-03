@@ -2976,6 +2976,7 @@ procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md`
 - The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
   **F2-CLOSED (migration 111):** offerings are now born `submitted` — `provider_services.approval_status` defaults `"submitted"`
   at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). Approval-lifecycle history (§1/D1a) archived in `docs/findings/CLAUDE_MD_ARCHIVE.md`.
+  **An explicit `saveIntent: "draft"` is the exception (ledger `2026-10-02-listing-draft-and-quote-inbox`):** that pick is born `approval_status='draft'` and stays out of the review queue. A create that does not send it — including `status: "draft"` with no save intent — is still born `submitted`. Entering review requires a category and, except `custom_quote`, a positive price.
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 

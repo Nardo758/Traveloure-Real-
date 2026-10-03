@@ -20,7 +20,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readTripIdParam, resolveTargetTripId, serviceDetailHref } from "../trip-target";
+import { quoteRequestTripId, readTripIdParam, resolveTargetTripId, serviceDetailHref } from "../trip-target";
 
 const TRIP_URL = "11111111-1111-4111-8111-111111111111";
 const TRIP_CTX = "22222222-2222-4222-8222-222222222222";
@@ -77,4 +77,12 @@ test("H3 the href round-trips back through the resolver (grid → detail is one 
 
 test("H4 ids are encoded into the query string", () => {
   assert.equal(serviceDetailHref("svc-1", "a b&c=d"), "/services/svc-1?tripId=a%20b%26c%3Dd");
+});
+
+test("Q1 a quote request names only the URL trip", () => {
+  assert.equal(quoteRequestTripId(`?tripId=${TRIP_URL}`), TRIP_URL);
+  assert.equal(quoteRequestTripId(`tripId=${TRIP_URL}`), TRIP_URL);
+  assert.equal(quoteRequestTripId(""), "");
+  assert.equal(quoteRequestTripId("?q=kyoto"), "");
+  assert.equal(quoteRequestTripId("?tripId=%20%20"), "");
 });

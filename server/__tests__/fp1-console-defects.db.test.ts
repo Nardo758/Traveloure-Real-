@@ -330,7 +330,15 @@ test("N-B7: a pdf listing cannot PUBLISH with no deliverable (draft still saves)
   const draft = await createListing({ deliveryMethod: "pdf", price: "18.00", status: "draft" });
   assert.equal(draft.status, 201, "a draft with no deliverable still saves — the gate is publish-only");
 
-  const publishAttempt = await createListing({ deliveryMethod: "pdf", price: "18.00", status: "active" });
+  // Review readiness requires a category before the deliverable gate. Name the
+  // ungated Custom / Other row this file already publishes with, so the refusal
+  // is the missing file.
+  const publishAttempt = await createListing({
+    deliveryMethod: "pdf",
+    price: "18.00",
+    status: "active",
+    categoryId: customCategoryId,
+  });
   assert.equal(publishAttempt.status, 400, `publish with no deliverable must be refused: ${publishAttempt.text}`);
   assert.equal(publishAttempt.body?.code, "DELIVERABLE_FILE_REQUIRED");
 

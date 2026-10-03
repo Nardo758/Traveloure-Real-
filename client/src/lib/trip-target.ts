@@ -46,6 +46,18 @@ export function resolveTargetTripId(search: string | null | undefined, context?:
   return fromContext;
 }
 
+/**
+ * The plan a quote request may name.
+ *
+ * Only the URL `?tripId=` counts. Ambient TripContext is the trip the traveler
+ * was planning earlier, not a choice they made on this listing page — filing a
+ * request under it attached quotes to an unrelated older plan (roles-dev QA M8).
+ * Add-to-plan and the cart still use `resolveTargetTripId`.
+ */
+export function quoteRequestTripId(search: string | null | undefined): string {
+  return readTripIdParam(search);
+}
+
 /** Read a `tripId` query parameter out of a search string. Empty/whitespace-only reads as absent. */
 export function readTripIdParam(search: string | null | undefined): string {
   if (!search) return "";

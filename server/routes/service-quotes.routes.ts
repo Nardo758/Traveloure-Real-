@@ -54,7 +54,7 @@ async function notifyQuoteRequested(serviceId: string, travelerId: string, quote
       message: `${actorName ?? "A traveler"} asked you for a quote for ${service.serviceName}.`,
       relatedId: quoteId,
       relatedType: "quote",
-      data: { workspacePath: earnerConsolePath(owner?.role, "catalog") },
+      data: { workspacePath: earnerConsolePath(owner?.role, "inbox") },
       dedupeKey: `quote-requested:${quoteId}`,
     } as any);
     if (!inserted) return;
@@ -63,7 +63,7 @@ async function notifyQuoteRequested(serviceId: string, travelerId: string, quote
       kind: "quote_request",
       actorName,
       subject: service.serviceName,
-      destination: "catalog",
+      destination: "inbox",
     });
   } catch (err) {
     console.error("[service-quotes] seller notify failed (non-fatal):", err);

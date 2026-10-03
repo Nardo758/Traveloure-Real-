@@ -53,3 +53,37 @@ export function listingPriceGate(opts: {
   }
   return { ok: true };
 }
+
+export type ListingReviewReadiness =
+  | { ok: true }
+  | { ok: false; code: "CATEGORY_REQUIRED" | "PRICE_REQUIRED"; message: string };
+
+/**
+ * What a listing needs before it ENTERS REVIEW. A private draft is never judged.
+ * Category is required for every price type, including `custom_quote`. Price uses
+ * `listingPriceGate` — the same exemption — so a quote-priced listing is not asked
+ * for a number the quote will set.
+ */
+export function listingReviewReadiness(opts: {
+  categoryId: unknown;
+  priceType: string | null | undefined;
+  price: unknown;
+}): ListingReviewReadiness {
+  const category = typeof opts.categoryId === "string" ? opts.categoryId.trim() : "";
+  if (!category) {
+    return {
+      ok: false,
+      code: "CATEGORY_REQUIRED",
+      message: "Pick a category before submitting for review. Save as draft to finish later.",
+    };
+  }
+  const priceGate = listingPriceGate({ priceType: opts.priceType, price: opts.price });
+  if (!priceGate.ok) {
+    return {
+      ok: false,
+      code: "PRICE_REQUIRED",
+      message: "Set a price greater than zero before submitting for review. Save as draft to finish later.",
+    };
+  }
+  return { ok: true };
+}

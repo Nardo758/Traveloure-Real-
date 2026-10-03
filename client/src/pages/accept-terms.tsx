@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { getRoleHomePath } from "@/lib/role-utils";
 import { FileText, Shield, Loader2 } from "lucide-react";
 
 export default function AcceptTermsPage() {
@@ -33,7 +34,7 @@ export default function AcceptTermsPage() {
         title: "Welcome to Traveloure!",
         description: "Thank you for accepting our terms. You now have full access to the platform.",
       });
-      setLocation("/dashboard");
+      setLocation(getRoleHomePath(user?.role ?? ""));
     },
     onError: (error: any) => {
       toast({
@@ -52,7 +53,7 @@ export default function AcceptTermsPage() {
 
   useEffect(() => {
     if (user?.termsAcceptedAt && user?.privacyAcceptedAt) {
-      setLocation("/dashboard");
+      setLocation(getRoleHomePath(user?.role ?? ""));
     }
   }, [user, setLocation]);
 

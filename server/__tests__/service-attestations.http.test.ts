@@ -755,8 +755,9 @@ test("D9-G7: GRANDFATHERING — an already-ACTIVE listing is never touched by th
 });
 
 test("D9-G8: §13 — an UNDECIDABLE attestation never gates (the platform cannot demand it)", async () => {
-  // No category ⇒ title_claim is OMITTED WITH A REASON, not applicable. The in-person one still
-  // applies on the method axis alone, so affirming just that must be enough to publish.
+  // No category leaves title_claim omitted with a reason. A publish still has to name a
+  // category first (review readiness), so the refusal is that missing category — never an
+  // attestation the platform cannot decide.
   const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
     serviceName: `D9 gate undecidable ${RUN}`,
     description: "gate fixture",
@@ -768,10 +769,11 @@ test("D9-G8: §13 — an UNDECIDABLE attestation never gates (the platform canno
     status: "active",
     affirmAttestations: ["in_person_safety_basics"],
   });
-  assert.equal(res.status, 201, await res.clone().text());
-  const created: any = await res.json();
-  createdServiceIds.push(created.id);
-  assert.equal(created.status, "active", "an omitted-with-reason key must not block a publish");
+  const body: any = await res.json();
+  assert.equal(res.status, 400, JSON.stringify(body));
+  assert.equal(body.code, "CATEGORY_REQUIRED");
+  assert.notEqual(body.code, "ATTESTATION_GATE");
+  assert.notEqual(body.code, "ATTESTATION_UNDECIDABLE");
 });
 
 // ── SS-5c: the soft warning (ruling 69 disposition 5) ───────────────────────────────────────
