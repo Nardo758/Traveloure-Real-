@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "da0859c4b2e37afe0f08ff8797ad98278f114d1b4284a5cffc89f90f17090602",
+  "manifestSha256": "ebfbe53d6e3689799b8c38d51064acaca16e8ef71b21be42384b64426a746089",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 639,
-    "remaining": 639,
+    "total": 640,
+    "remaining": 640,
     "categories": {
       "payments": {
         "tested": 0,
@@ -19,7 +19,7 @@
       },
       "admin": {
         "tested": 0,
-        "total": 167
+        "total": 168
       },
       "user-data": {
         "tested": 0,
@@ -1594,7 +1594,7 @@
       "path": "/api/admin/content-sources/:id",
       "effectivePath": "/api/admin/content-sources/:id",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 55,
+      "line": 58,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4338,7 +4338,7 @@
       "path": "/api/admin/content-sources",
       "effectivePath": "/api/admin/content-sources",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 45,
+      "line": 48,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4360,7 +4360,7 @@
       "path": "/api/admin/content-sources/:id/activate",
       "effectivePath": "/api/admin/content-sources/:id/activate",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 63,
+      "line": 66,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4382,7 +4382,7 @@
       "path": "/api/admin/content-sources/:id/deactivate",
       "effectivePath": "/api/admin/content-sources/:id/deactivate",
       "source": "server/routes/content-sources.routes.ts",
-      "line": 71,
+      "line": 74,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4395,6 +4395,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/content-sources/:id/deactivate",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/content-sources/:id/public-ok",
+      "path": "/api/admin/content-sources/:id/public-ok",
+      "effectivePath": "/api/admin/content-sources/:id/public-ok",
+      "source": "server/routes/content-sources.routes.ts",
+      "line": 82,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/admin/content-sources/:id/public-ok",
       "tested": false,
       "reason": "Not run: evidence manifest SHA-256 is stale."
     },

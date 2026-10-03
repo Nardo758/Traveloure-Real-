@@ -13,6 +13,12 @@
  *               `terms_checked_by = session` and `active = true` in ONE atomic conditional that also
  *               requires a license class and a non-empty `covers` (`canActivateSource`'s rule, in SQL).
  *   deactivate  any admin; the safe direction. The terms check stays on the row as history.
+ *   public_ok   ruling R-p (ledger `2026-10-03-official-facts-public-ok`, migration 341): the SAME
+ *               allowlisted activator answers "may this source's facts appear on public pages", in
+ *               ONE atomic conditional that requires `license_class = 'official'` AND a terms check
+ *               on the row, and stamps `public_ok_checked_at = now()` / `_by = session`. A general
+ *               edit never sets it (not in the pick), and an edit that clears the terms check clears
+ *               the answer with it — a stale answer never vouches for new terms.
  *
  * `covers` / `does_not_cover` admit only needs and named sub-needs (`admitNeedList`); free text is
  * refused by name. `does_not_cover` is mandatory (brief §5: gaps are data) — an empty list is an
@@ -154,6 +160,10 @@ export async function editContentSource(id: string, body: unknown): Promise<Cont
       set.termsCheckedAt = null;
       set.termsCheckedBy = null;
       set.active = false;
+      // The public answer was given against the old terms (ruling R-p): it goes with them.
+      set.publicOk = null;
+      set.publicOkCheckedAt = null;
+      set.publicOkCheckedBy = null;
     }
     if (Object.keys(set).length === 0) return cur;
     const [row] = await tx.update(contentSources).set(set).where(eq(contentSources.id, id)).returning();
@@ -182,6 +192,34 @@ export async function activateContentSource(id: string, actorId: string | null):
   const [cur] = await db.select().from(contentSources).where(eq(contentSources.id, id));
   if (!cur) throw new ContentSourceError("not_found", 404);
   throw new ContentSourceError("not_activatable", 409, { reason: "needs a license class and at least one covered need" });
+}
+
+/** The body of the public_ok rail: exactly one boolean (§19 — `.strict()`, nothing else admitted). */
+export const publicOkBody = z.object({ publicOk: z.boolean() }).strict();
+
+/**
+ * Ruling R-p: record whether an OFFICIAL, terms-checked source's facts may appear on public pages.
+ * ONE atomic conditional (§15): the row must be `official` and carry a terms check IN THE SAME
+ * STATEMENT, so a concurrent edit that clears the check cannot be overtaken. `false` is recorded
+ * too, with who and when — "answered no" is a different fact from "never answered" (NULL).
+ */
+export async function setContentSourcePublicOk(id: string, body: unknown, actorId: string | null): Promise<ContentSourceRow> {
+  if (!mayActivateContentSource(actorId)) throw new ContentSourceError("not_activator", 403);
+  const parsed = publicOkBody.safeParse(body);
+  if (!parsed.success) throw zodFail(parsed.error);
+  const [row] = await db
+    .update(contentSources)
+    .set({ publicOk: parsed.data.publicOk, publicOkCheckedAt: sql`now()`, publicOkCheckedBy: actorId })
+    .where(sql`${contentSources.id} = ${id}
+      AND ${contentSources.licenseClass} = 'official'
+      AND ${contentSources.termsCheckedAt} IS NOT NULL`)
+    .returning();
+  if (row) return row;
+  const [cur] = await db.select().from(contentSources).where(eq(contentSources.id, id));
+  if (!cur) throw new ContentSourceError("not_found", 404);
+  throw new ContentSourceError("not_public_eligible", 409, {
+    reason: cur.licenseClass !== "official" ? "license class is not official" : "terms not checked",
+  });
 }
 
 export async function deactivateContentSource(id: string): Promise<ContentSourceRow> {

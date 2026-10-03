@@ -85,6 +85,22 @@ export function canAskTheLocal(post: Pick<PublicBlogPost, "byline"> | null | und
 /** Outbound source links: attribution, not endorsement, and no referrer handed to a third party. */
 export const BLOG_SOURCE_LINK_REL = "nofollow noopener noreferrer";
 
+/**
+ * What one source line renders: the link text (its title, else the URL), where it links, and the
+ * detail after the dash (the publisher). An official-source fact's source arrives server-built as
+ * title "from <source name>" + publisher "checked <date>" (ruling R-p, ledger
+ * `2026-10-03-official-facts-public-ok`), so it renders "from <source> — checked <date>" linking to
+ * the fact's own URL. The page renders from THIS and restates nothing.
+ */
+export function blogSourceView(s: { url: string; title?: string | null; publisher?: string | null }): {
+  href: string;
+  text: string;
+  detail: string | null;
+  rel: string;
+} {
+  return { href: s.url, text: s.title?.trim() || s.url, detail: s.publisher?.trim() || null, rel: BLOG_SOURCE_LINK_REL };
+}
+
 /** One label per reaction kind — keyed by the shared vocabulary, so a new kind cannot go unlabelled. */
 export const BLOG_REACTION_LABELS: Record<BlogReactionKind, string> = {
   useful: "Useful",

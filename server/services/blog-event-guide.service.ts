@@ -41,7 +41,17 @@ export const EVENT_GUIDE_SYSTEM_PROMPT = [
  */
 export function promptFacts(facts: EventGuideFacts) {
   const { id: _id, ticketUrl: _t, ...event } = facts.event;
-  return { ...facts, event };
+  // The attribution links go to the post's source list, never to the model (ruling R-p).
+  const { venueFactSources: _s, ...rest } = facts;
+  return { ...rest, event };
+}
+
+/** The post's sources: the ticket page, then one "from <official source>" per attributed venue fact. */
+export function eventPostSources(facts: EventGuideFacts) {
+  return [
+    ...(facts.event.ticketUrl ? [{ url: facts.event.ticketUrl, title: "Tickets", retrievedAt: new Date() }] : []),
+    ...facts.venueFactSources.filter((s) => s.url !== facts.event.ticketUrl),
+  ];
 }
 
 /** Pure. A stable, unique slug per event: `event-weekend-<first date>-<title words>`. */
@@ -127,7 +137,7 @@ export async function draftEventWeekendGuide(eventId: string, actorId: string | 
       body: checked.body,
       marketSlug: facts.event.marketKey,
       cityEventId: facts.event.id,
-      sources: facts.event.ticketUrl ? [{ url: facts.event.ticketUrl, title: "Tickets", retrievedAt: new Date() }] : [],
+      sources: eventPostSources(facts),
     }, actorId, deps);
   } catch (e) {
     if (e instanceof BlogError && e.code === "slug_taken") throw new BlogError("already_drafted", 409);

@@ -14,7 +14,7 @@ import type { BlogReactionKind } from "@shared/blog";
 import {
   BLOG_REACTION_LABELS,
   BLOG_REACTION_ORDER,
-  BLOG_SOURCE_LINK_REL,
+  blogSourceView,
   blogPostNoindex,
   bodyParagraphs,
   bylinePath,
@@ -102,15 +102,18 @@ function PostBody({ post }: { post: PublicBlogPost }) {
         <section className="mt-10" data-testid="section-blog-sources">
           <h2 className="text-lg font-semibold">Sources</h2>
           <ol className="mt-3 space-y-3 list-decimal pl-5">
-            {post.sources.map((s, i) => (
-              <li key={i}>
-                <a href={s.url} target="_blank" rel={BLOG_SOURCE_LINK_REL} className="underline">
-                  {s.title || s.url}
-                </a>
-                {s.publisher && <span className="text-muted-foreground"> — {s.publisher}</span>}
-                {s.quote && <blockquote className="mt-1 border-l-2 pl-3 text-muted-foreground italic">{s.quote}</blockquote>}
-              </li>
-            ))}
+            {post.sources.map((s, i) => {
+              const v = blogSourceView(s);
+              return (
+                <li key={i} data-testid={`blog-source-${i}`}>
+                  <a href={v.href} target="_blank" rel={v.rel} className="underline">
+                    {v.text}
+                  </a>
+                  {v.detail && <span className="text-muted-foreground"> — {v.detail}</span>}
+                  {s.quote && <blockquote className="mt-1 border-l-2 pl-3 text-muted-foreground italic">{s.quote}</blockquote>}
+                </li>
+              );
+            })}
           </ol>
         </section>
       )}

@@ -186,6 +186,31 @@ export interface FactLike {
   verifiedAt?: Date | string | null;
   fetchedAt?: Date | string | null;
   expiresAt?: Date | string | null;
+  /** The row's `fact_type` — read only by the official-source path below. */
+  factType?: string | null;
+  /** The fact's SOURCE row, joined by `source_id` — read only by the official-source path below. */
+  sourceLicenseClass?: string | null;
+  sourcePublicOk?: boolean | null;
+}
+
+/**
+ * Ruling R-p (2026-10-03, ledger `2026-10-03-official-facts-public-ok`): the ONLY fact types an
+ * official source's crawled fact may carry onto a public page. Operational facts a venue states about
+ * itself. `description` and `tip` NEVER qualify by this path — prose stays plan-only until an expert
+ * verifies it (§8's flywheel).
+ */
+export const PUBLIC_OK_FACT_TYPES = ["hours", "closure", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
+
+/**
+ * The official-source path, on its own so a surface can ask whether a publishable fact owes the
+ * "from <source> · checked <date>" attribution: a CRAWLED fact whose source is `official` AND marked
+ * `public_ok` at terms check, of an operational fact type. Every condition is required; NULL is no.
+ */
+export function isOfficialPublicFact(fact: FactLike): boolean {
+  if (fact.origin !== "crawled") return false;
+  if (fact.license === "partner" || fact.license === "restricted") return false;
+  if (fact.sourceLicenseClass !== "official" || fact.sourcePublicOk !== true) return false;
+  return (PUBLIC_OK_FACT_TYPES as readonly string[]).includes(fact.factType ?? "");
 }
 
 const PLATFORM_OWNED: ReadonlySet<string> = new Set(["platform_listing", "gem", "event"]);
@@ -200,11 +225,16 @@ const PLATFORM_OWNED: ReadonlySet<string> = new Set(["platform_listing", "gem", 
  *   · expert_nugget ⇒ true only once VERIFIED (`verified_at`), the flywheel's last step (§8).
  *   · platform_listing / gem / event ⇒ true.
  *   · a partner or restricted license ⇒ false whatever the origin says.
+ *   · AMENDED by ruling R-p (ledger `2026-10-03-official-facts-public-ok`): a `crawled` fact IS
+ *     publishable when its source is `official` AND marked `public_ok` AND the fact type is one of
+ *     `PUBLIC_OK_FACT_TYPES` (`isOfficialPublicFact`). It then carries "from <source> · checked
+ *     <date>" wherever it renders (`publicFactAttribution`). Everything else is unchanged.
  */
 export function isPublishable(fact: FactLike): boolean {
   const origin = fact.origin ?? "";
   if (fact.license === "partner" || fact.license === "restricted") return false;
   if (origin === "expert_nugget") return fact.verifiedAt != null && String(fact.verifiedAt) !== "";
+  if (origin === "crawled") return isOfficialPublicFact(fact);
   return PLATFORM_OWNED.has(origin);
 }
 
@@ -246,6 +276,47 @@ export function factProvenanceLine(fact: FactLike & { sourceName?: string | null
   const d = new Date(at);
   const label = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   return `${name}${verified} · checked ${label}${isFactStale(fact, now) ? " (may have changed)" : ""}`;
+}
+
+/**
+ * What a PUBLIC page renders beside a publishable crawled-official fact (ruling R-p): "from <source
+ * name>" linking to the fact's own `source_url`, and "checked <date>". Null for any fact that is not
+ * on the official-source path — platform-owned and verified facts render as they always have. A fact
+ * with no `source_url`, no source name or no fetch date gets NO attribution object, and a surface must then not
+ * render the fact at all (`mustOmitOnPublicPage`): an unattributed crawled fact is never shown.
+ */
+export interface PublicFactAttribution {
+  label: string;
+  sourceName: string;
+  sourceUrl: string;
+  checked: string;
+}
+export function publicFactAttribution(
+  fact: FactLike & { sourceName?: string | null; sourceUrl?: string | null },
+): PublicFactAttribution | null {
+  if (!isOfficialPublicFact(fact)) return null;
+  const name = fact.sourceName?.trim();
+  const url = fact.sourceUrl?.trim();
+  if (!name || !url) return null;
+  const at = toMs(fact.fetchedAt);
+  if (at === null) return null;
+  const checked = `checked ${new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`;
+  return { label: `from ${name}`, sourceName: name, sourceUrl: url, checked };
+}
+
+/** A public page drops a fact that is publishable only by the official path but cannot be attributed. */
+export function mustOmitOnPublicPage(fact: FactLike & { sourceName?: string | null; sourceUrl?: string | null }): boolean {
+  if (!isPublishable(fact)) return true;
+  return isOfficialPublicFact(fact) && publicFactAttribution(fact) === null;
+}
+
+/**
+ * Ruling R-p: may a source be ASKED "may its facts appear on public pages" — an `official` license
+ * class and a terms check on the row. The server's atomic conditional states the same two conditions
+ * in SQL; the admin control reads this, so the surface never restates the rule (§18 rule 1).
+ */
+export function publicOkEligibleSource(src: { licenseClass?: string | null; termsCheckedAt?: Date | string | null }): boolean {
+  return src.licenseClass === "official" && toMs(src.termsCheckedAt ?? null) !== null;
 }
 
 /** Brief §5: no source goes active without a terms check and a license class. */

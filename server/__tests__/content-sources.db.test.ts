@@ -13,6 +13,12 @@
  *   R7  deactivation keeps the terms check as history
  *   R8  a row with no valid license class cannot be activated (409), and an unknown id is 404
  *   R9  every route the router declares sits under /api/admin (the §2 blanket guard)
+ *   R10 ruling R-p: public_ok is set only by the activator, only on an official + terms-checked row,
+ *       and stamps now() + the actor; `false` is recorded too; an editorial or unchecked row is 409;
+ *       a body with anything but `publicOk` is refused (.strict)
+ *   R11 a general edit cannot set public_ok or its stamps; an edit that clears the terms check clears
+ *       the public answer with it; a notes edit keeps it
+ *   R12 create refuses public_ok (.strict); a new row is born NOT ANSWERED (NULL), never false
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards.
  */
@@ -30,6 +36,7 @@ import {
   createContentSource,
   deactivateContentSource,
   editContentSource,
+  setContentSourcePublicOk,
 } from "../services/content-sources.service";
 
 const RUN = crypto.randomUUID().slice(0, 8).replace(/-/g, "");
@@ -164,6 +171,50 @@ test("R8: no valid license class ⇒ 409; unknown id ⇒ 404", async () => {
 test("R9: every registry route sits under /api/admin", () => {
   const src = fs.readFileSync(path.join(process.cwd(), "server", "routes", "content-sources.routes.ts"), "utf8");
   const paths = [...src.matchAll(/router\.(get|post|patch|put|delete)\(\s*"([^"]+)"/g)].map((m) => m[2]);
-  assert.equal(paths.length, 5);
+  assert.equal(paths.length, 6);
   assert.ok(paths.every((p) => p.startsWith("/api/admin/content-sources")), paths.join(", "));
+});
+
+test("R10: public_ok — activator only, official + terms-checked only, stamped; false recorded too", async () => {
+  await createContentSource(base(sid("r10")), otherAdmin);
+  await refused(setContentSourcePublicOk(sid("r10"), { publicOk: true }, founder), "not_public_eligible", 409);
+  await activateContentSource(sid("r10"), founder);
+  await refused(setContentSourcePublicOk(sid("r10"), { publicOk: true }, otherAdmin), "not_activator", 403);
+  await refused(setContentSourcePublicOk(sid("r10"), { publicOk: true, active: true }, founder), "invalid_body", 400);
+  await refused(setContentSourcePublicOk(sid("r10"), {}, founder), "invalid_body", 400);
+  const before = Date.now();
+  const yes = await setContentSourcePublicOk(sid("r10"), { publicOk: true }, founder);
+  assert.equal(yes.publicOk, true);
+  assert.equal(yes.publicOkCheckedBy, founder);
+  assert.ok(yes.publicOkCheckedAt && Math.abs(new Date(yes.publicOkCheckedAt).getTime() - before) < 120_000);
+  const no = await setContentSourcePublicOk(sid("r10"), { publicOk: false }, founder);
+  assert.equal(no.publicOk, false, "answered no is recorded, not erased");
+  assert.equal(no.publicOkCheckedBy, founder);
+
+  await createContentSource({ ...base(sid("r10ed")), licenseClass: "editorial" }, otherAdmin);
+  await activateContentSource(sid("r10ed"), founder);
+  await refused(setContentSourcePublicOk(sid("r10ed"), { publicOk: true }, founder), "not_public_eligible", 409);
+  await refused(setContentSourcePublicOk(sid("nope"), { publicOk: true }, founder), "not_found", 404);
+});
+
+test("R11: a general edit cannot set public_ok; clearing the terms check clears it", async () => {
+  await createContentSource(base(sid("r11")), otherAdmin);
+  await activateContentSource(sid("r11"), founder);
+  await setContentSourcePublicOk(sid("r11"), { publicOk: true }, founder);
+  const stripped = await editContentSource(sid("r11"), { notes: "n", publicOk: false, publicOkCheckedBy: otherAdmin } as any);
+  assert.equal(stripped.publicOk, true, "the general edit strips public_ok");
+  assert.equal(stripped.publicOkCheckedBy, founder);
+  const moved = await editContentSource(sid("r11"), { licenseClass: "editorial" });
+  assert.equal(moved.termsCheckedAt, null);
+  assert.equal(moved.publicOk, null, "the answer goes with the terms check it was given under");
+  assert.equal(moved.publicOkCheckedAt, null);
+  assert.equal(moved.publicOkCheckedBy, null);
+});
+
+test("R12: create refuses public_ok; a new source is born with public_ok NOT ANSWERED", async () => {
+  await refused(createContentSource({ ...base(sid("r12x")), publicOk: true } as any, otherAdmin), "invalid_body", 400);
+  const row = await createContentSource(base(sid("r12")), otherAdmin);
+  assert.equal(row.publicOk, null);
+  assert.equal(row.publicOkCheckedAt, null);
+  assert.equal(row.publicOkCheckedBy, null);
 });

@@ -31,7 +31,7 @@ async function main() {
   try {
     await client.query("SET default_transaction_read_only = on");
     const { rows } = await client.query(
-      `select id, name, market, covers, does_not_cover, active, terms_checked_at
+      `select id, name, market, covers, does_not_cover, active, terms_checked_at, license_class, public_ok
          from content_sources
         where market is null or lower(btrim(market)) = lower(btrim($1))
         order by (market is null), id`,
@@ -41,7 +41,7 @@ async function main() {
       market,
       rows.map((r) => ({
         id: r.id, name: r.name, market: r.market, covers: r.covers, doesNotCover: r.does_not_cover,
-        active: r.active, termsCheckedAt: r.terms_checked_at,
+        active: r.active, termsCheckedAt: r.terms_checked_at, licenseClass: r.license_class, publicOk: r.public_ok,
       })),
     );
     process.stdout.write(json ? JSON.stringify(report, null, 2) + "\n" : renderCoverageMarkdown(report) + "\n");

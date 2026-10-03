@@ -9,8 +9,13 @@
  *                 ticket link survives only when `ticketUrlRefusal` finds nothing wrong with it, so a
  *                 resale host (R208) or a partner host never reaches a post.
  *   · venue     — `place_facts` about this event (`place_ref_kind = 'event_id'`), current only, and ONLY
- *                 those `isPublishable` allows (platform-owned or expert-verified). Places, crawled and
- *                 partner facts are display-inside-a-plan only (LD 57) and are never read here.
+ *                 those `isPublishable` allows (platform-owned, expert-verified, or — ruling R-p, ledger
+ *                 `2026-10-03-official-facts-public-ok` — a crawled fact from an OFFICIAL source marked
+ *                 public_ok, of an operational type). Places, partner and other crawled facts stay
+ *                 display-inside-a-plan only (LD 57). A crawled-official fact carries its attribution
+ *                 into `venueFactSources` ("from <source>" → its URL, "checked <date>"), which every
+ *                 generator writes as a post source; one it cannot attribute is dropped
+ *                 (`mustOmitOnPublicPage`), never shown bare.
  *   · stayNear  — the market's neighbourhoods in the ORDER the travel-time matrix ranks them from the
  *                 venue, matrix-backed cells only. THE MINUTES ARE DISCARDED HERE (decision-maker
  *                 ruling, Sep 30, 2026: "Posts may say 'closest' / 'a short ride' but never a number
@@ -22,8 +27,8 @@
  */
 import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm";
 import { db } from "../db";
-import { cityEvents, cityNeighborhoods, placeFacts, type CityEvent } from "@shared/schema";
-import { isPublishable, asFactOrigin } from "@shared/content-facts";
+import { cityEvents, cityNeighborhoods, contentSources, placeFacts, type CityEvent } from "@shared/schema";
+import { asFactOrigin, mustOmitOnPublicPage, publicFactAttribution } from "@shared/content-facts";
 import { ticketUrlRefusal } from "@shared/city-events";
 import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
@@ -50,6 +55,12 @@ export interface EventGuideFacts {
   };
   /** Publishable facts about the venue/event, as plain text. Empty = none publishable yet. */
   venueFacts: Array<{ factType: string; text: string }>;
+  /**
+   * Ruling R-p: one post source per official source a venue fact came from — "from <source>" linking
+   * to the fact's URL, "checked <date>" as the publisher line. NEVER in the prompt (`promptFacts`
+   * omits it): the draft carries no links, the post's source list does.
+   */
+  venueFactSources: Array<{ url: string; title: string; publisher: string; retrievedAt: Date }>;
   /** Closest neighbourhoods first, by the matrix's ORDER only. No minutes, ever. */
   stayNear: Array<{ rank: number; neighbourhood: string }>;
   /** Other live events in the same city that week. */
@@ -103,13 +114,35 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
   const ticketUrl = row.ticketUrl && ticketUrlRefusal(row.ticketUrl, hosts) === null ? row.ticketUrl : null;
 
   const factRows = await db
-    .select()
+    .select({ fact: placeFacts, sourceName: contentSources.name, sourceLicenseClass: contentSources.licenseClass, sourcePublicOk: contentSources.publicOk })
     .from(placeFacts)
+    .leftJoin(contentSources, eq(contentSources.id, placeFacts.sourceId))
     .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), isNull(placeFacts.supersededBy)));
-  const venueFacts = factRows
-    .filter((f) => asFactOrigin(f.origin) !== null && isPublishable({ origin: f.origin as any, license: f.license, verifiedAt: f.verifiedAt }))
-    .map((f) => ({ factType: f.factType, text: factText(f.value) }))
-    .filter((f) => f.text !== "");
+  const venueFacts: EventGuideFacts["venueFacts"] = [];
+  const venueFactSources: EventGuideFacts["venueFactSources"] = [];
+  for (const r of factRows) {
+    const f = r.fact;
+    if (asFactOrigin(f.origin) === null) continue;
+    const view = {
+      origin: f.origin,
+      license: f.license,
+      verifiedAt: f.verifiedAt,
+      fetchedAt: f.fetchedAt,
+      factType: f.factType,
+      sourceLicenseClass: r.sourceLicenseClass,
+      sourcePublicOk: r.sourcePublicOk,
+      sourceName: r.sourceName,
+      sourceUrl: f.sourceUrl,
+    };
+    if (mustOmitOnPublicPage(view)) continue;
+    const text = factText(f.value);
+    if (text === "") continue;
+    venueFacts.push({ factType: f.factType, text });
+    const credit = publicFactAttribution(view);
+    if (credit && !venueFactSources.some((s) => s.url === credit.sourceUrl)) {
+      venueFactSources.push({ url: credit.sourceUrl, title: credit.label, publisher: credit.checked, retrievedAt: new Date(f.fetchedAt) });
+    }
+  }
 
   let stayNear: EventGuideFacts["stayNear"] = [];
   if (card.marketKey && row.venueLat != null && row.venueLng != null) {
@@ -161,6 +194,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
       ticketUrl,
     },
     venueFacts,
+    venueFactSources,
     stayNear,
     alsoOn,
   };
