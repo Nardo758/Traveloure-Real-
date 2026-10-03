@@ -597,10 +597,13 @@ function BuildCard({
       )}
 
       {/* TRIP PASS — the entitlement that covers AI runs on this trip. The EXISTING card, moved
-          into the card whose actions it covers; one component, never a second purchase rail. */}
-      <div data-testid="slip-rail-trip-pass">
-        <TripPassCard tripId={tripId} />
-      </div>
+          into the card whose actions it covers; one component, never a second purchase rail.
+          Purchase is the owner's (LD 52 — a helper never pays), so a delegate does not mount it. */}
+      {isOwner ? (
+        <div data-testid="slip-rail-trip-pass">
+          <TripPassCard tripId={tripId} />
+        </div>
+      ) : null}
 
       <BuildAroundDialog
         open={buildAroundOpen}

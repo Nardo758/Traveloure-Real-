@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
+import { formatPlanBookingWindow, parseTripDate } from "@/lib/calendar-date";
 import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -696,7 +697,7 @@ function BookingGroups({
         const plan = group.plan;
         const dates =
           plan?.startDate && plan?.endDate
-            ? `${format(new Date(plan.startDate), "MMM d")} – ${format(new Date(plan.endDate), "MMM d, yyyy")}`
+            ? formatPlanBookingWindow(plan.startDate, plan.endDate)
             : null;
         return (
           <section key={group.key} className="space-y-3" data-testid={`plan-group-${group.key}`}>
@@ -807,8 +808,9 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // confirm/dispute behavior. For `confirmed` the actions only appear once the service has
   // plausibly been delivered (scheduled day over, else 24h past acceptance) — the server
   // enforces the same gate (slot-aware) authoritatively.
-  const deliveryRefMs = booking.bookingDetails?.scheduledDate
-    ? new Date(booking.bookingDetails.scheduledDate).getTime()
+  const scheduledDay = parseTripDate(booking.bookingDetails?.scheduledDate);
+  const deliveryRefMs = scheduledDay
+    ? scheduledDay.getTime()
     : new Date(booking.confirmedAt ?? booking.createdAt).getTime();
   const confirmedAndDelivered = actionStatus === "confirmed" && Date.now() >= deliveryRefMs + 24 * 60 * 60 * 1000;
   // Ledger `2026-09-28-no-payment-no-earnings`: the paid predicate governs MONEY — a booking with no
@@ -1142,10 +1144,10 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             )}
 
             <div className="text-sm text-muted-foreground space-y-1">
-              {booking.bookingDetails?.scheduledDate && (
+              {scheduledDay && (
                 <div className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  Scheduled: {format(new Date(booking.bookingDetails.scheduledDate), "PPP")}
+                  Scheduled: {format(scheduledDay, "PPP")}
                 </div>
               )}
               {booking.bookingDetails?.notes && (
