@@ -43,6 +43,9 @@ This document captures architectural decisions to maintain consistency across co
    `active_provider_commission_policy` is `beta_flat`, new provider bookings read the `beta_flat` band;
    the four tier bands stay defined and active so an admin can flip the policy to `tiered` without a
    deploy. Ruling 49's deactivation of `beta_flat` is amended by that ledger row.
+   **Migration 339** (ledger `2026-10-03-beta-flat-band-insert`) inserts the `beta_flat` row when it
+   is missing — 051 stamped 001–050 without running them, so production never received 033's seed
+   and 338's UPDATE matched nothing — then repeats 338's guarded reactivation and policy upsert.
 9. **Routing realities (corrected Aug 7, 2026 — decision-maker ratified).** `server/routes/experts.routes.ts` is now
    **MOUNTED and live** (`app.use` in `server/routes.ts`; the dark-endpoint repairs landed it — the earlier
    "imported-but-unmounted" note was stale). The **unmounted-router guard** (`scripts/check-unmounted-routers.cjs`,
