@@ -14,7 +14,13 @@ export type AnchorRole = (typeof ANCHOR_ROLES)[number];
 
 export const CHOSEN_VIA = ["choose", "version_whole", "version_stop"] as const;
 
-export const LOCATION_PRECISIONS = ["exact", "neighborhood_centroid"] as const;
+/**
+ * `places_fact` (ledger `2026-10-03-build-around-places`): the option is a Google-located plan item.
+ * Its row stores NO coordinate (LD 57 — a Places point is never copied); the option reader resolves
+ * the point from the item's live `places_api` location fact, with that fact's own checkedAt and cache
+ * window. The reference is the set's `itinerary_item_id` → the fact row's `place_ref`.
+ */
+export const LOCATION_PRECISIONS = ["exact", "neighborhood_centroid", "places_fact"] as const;
 
 /** §E2: a set holds at most three candidates — "two or three places in mind". */
 export const OPTION_SET_CAP = 3;

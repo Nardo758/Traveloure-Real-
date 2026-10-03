@@ -108,7 +108,8 @@ test("N8: wiring", () => {
   const route = readFileSync(path.join(repo, "server/routes/plancard.routes.ts"), "utf8");
   assert.match(route, /days: applyGooglePins\(plan\.days/);
   const slip = readFileSync(path.join(repo, "client/src/components/plancard/SlipView.tsx"), "utf8");
-  assert.match(slip, /pinSource !== "places"/);
+  // Ledger `2026-10-03-build-around-places`: a Google pin is promotable (the server reads the fact).
+  assert.doesNotMatch(slip, /pinSource !== "places"/);
   const sets = readFileSync(path.join(repo, "server/services/plan-option-sets.service.ts"), "utf8");
   assert.match(sets, /rowCoordinatesTrusted\(item as any\)/);
 });
