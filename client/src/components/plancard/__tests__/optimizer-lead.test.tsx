@@ -40,7 +40,7 @@ describe("OptimizerLead", () => {
     assert.ok(t.indexOf("closed") < t.indexOf("crosses") && t.indexOf("crosses") < t.indexOf("walking"));
     assert.equal((html.match(/data-testid="optimizer-finding-/g) ?? []).length, 3);
     assert.match(t, /three versions built around where you stay/);
-    assert.match(t, /A re-run within 24 hours of a completed optimization is free\./);
+    assert.match(t, /After a run, re-timing a day on the versions board is free for 24 hours\./);
   });
 
   it("R2 one finding with its caveat", () => {

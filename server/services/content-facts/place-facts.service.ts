@@ -507,6 +507,44 @@ export async function factPointsForTrip(tripId: string, now: Date = new Date()):
 }
 
 /**
+ * Step 6 R-aq: each plan item's Google place id and point, from its own unexpired, unsuperseded facts
+ * — what the photo resolver keys its Wikimedia cache on and searches near. Read here, the one reader
+ * of `place_facts` (content-facts C5), never in the photo service.
+ */
+export type PlaceRefView = {
+  placeId: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** R297: the first cached Google photo REFERENCE for the place (never an image), else null. */
+  photoRef: { name: string; authors: Array<{ displayName: string; uri: string | null }> } | null;
+};
+export async function placeRefsForTrip(tripId: string, itemIds: string[], now: Date = new Date()): Promise<Map<string, PlaceRefView>> {
+  const rows = (await rowsForTrip(tripId, itemIds)).filter((r) => !isFactStale(r, now));
+  const out = new Map<string, PlaceRefView>();
+  for (const r of rows) {
+    if (!r.itineraryItemId) continue;
+    const cur = out.get(r.itineraryItemId) ?? { placeId: null, lat: null, lng: null, photoRef: null };
+    if (!cur.photoRef && r.factType === "photo_ref") {
+      const first = Array.isArray((r.value as any)?.photos) ? (r.value as any).photos[0] : null;
+      if (first && typeof first.name === "string" && first.name) {
+        cur.photoRef = { name: first.name, authors: Array.isArray(first.authors) ? first.authors : [] };
+      }
+    }
+    if (!cur.placeId && r.placeRefKind === "place_id") cur.placeId = r.placeRef;
+    if (cur.lat == null && r.factType === "location") {
+      const lat = Number((r.value as any)?.lat);
+      const lng = Number((r.value as any)?.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        cur.lat = lat;
+        cur.lng = lng;
+      }
+    }
+    out.set(r.itineraryItemId, cur);
+  }
+  return out;
+}
+
+/**
  * A6 (3) — ONE fresh lookup for ONE plan item through the registry (ledger
  * `2026-10-01-a6-tavily-extract`). The basis is `mayFetchFresh(ctx)`: the free draft gets NO budget
  * and never reaches here with one. The first ACTIVE `tavily_extract` row that covers the item's

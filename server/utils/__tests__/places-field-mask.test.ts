@@ -6,6 +6,9 @@
  *   F2 a restaurant (need `dining`) adds exactly `reservable`, and nothing else; tier Enterprise + Atmosphere
  *   F3 the Details call sends that mask, prices the cost column by its tier, and tags each draft with it
  *   F4 config defaults: ID lookup 0¢, Details 2¢ (list prices; Replit confirms actual billing)
+ *   F6 R297: `photos` is in the mask, the billed tier is UNCHANGED (Enterprise; Enterprise + Atmosphere
+ *      for dining), the cost column is unchanged, and the references are stored as a `photo_ref` fact
+ *      with the other facts (same place-ID key, same 30-day TTL)
  *   F5 smoke 8 item 2: every call asks languageCode=en; the area comes from addressComponents (ward,
  *      sublocality_level_1, locality) — with Tenryu-ji's JAPANESE formattedAddress the area is still
  *      "Ukyo Ward, Kyoto", and no components ⇒ no area (the formatted string is never parsed)
@@ -129,4 +132,52 @@ test("F5 languageCode=en on every call; the area comes from addressComponents, n
   );
   const noArea = (await plain.fetchByPlaceId("ChIJ-x", req)).find((d) => d.factType === "address")!;
   assert.equal("area" in noArea.value, false);
+});
+
+test("F6 R297: photos in the mask; the billed tier and cost are unchanged; the references are cached", async () => {
+  delete process.env.PLACES_DETAILS_COST_CENTS;
+  delete process.env.PLACES_DETAILS_ATMOSPHERE_COST_CENTS;
+  delete process.env.PLACE_FACT_TTL_DAYS_PHOTO_REF;
+  for (const need of ["stop.hours", "neighbourhood"] as const) {
+    const m = placesFieldMask(need);
+    assert.ok(m.fields.includes("photos"), `photos asked for ${need}`);
+    assert.equal(m.sku, "details_enterprise", "photos does not raise the tier above Enterprise");
+  }
+  assert.equal(placesFieldMask("dining").sku, "details_enterprise_atmosphere", "dining keeps its tier");
+  const masks: string[] = [];
+  const a = new PlacesAdapter(
+    async (_url, init) => {
+      masks.push(init.headers["X-Goog-FieldMask"]);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: "ChIJ-kinkaku",
+          displayName: { text: "Kinkaku-ji" },
+          location: { latitude: 35.0394, longitude: 135.7292 },
+          photos: [
+            { name: "places/ChIJ-kinkaku/photos/A", authorAttributions: [{ displayName: "Jane", uri: "https://maps.google.com/c/1" }] },
+            { name: "places/ChIJ-kinkaku/photos/B", authorAttributions: [] },
+            { name: "places/ChIJ-kinkaku/photos/C" },
+            { name: "places/ChIJ-kinkaku/photos/D" },
+          ],
+        }),
+      };
+    },
+    () => "k",
+    () => true,
+  );
+  const drafts = await a.fetchByPlaceId("ChIJ-kinkaku", { need: "stop.hours", market: "kyoto", query: { text: "Kinkaku-ji", city: "Kyoto" }, budgetCents: 0 });
+  assert.ok(masks[0].split(",").includes("photos"));
+  assert.equal(drafts.reduce((n, d) => n + d.costCents, 0), 2, "the call costs what it cost before");
+  assert.ok(drafts.every((d) => d.sku === "details_enterprise"));
+  const ref = drafts.find((d) => d.factType === "photo_ref")!;
+  assert.ok(ref, "the references are stored with the facts");
+  assert.equal(ref.placeRefKind, "place_id");
+  assert.equal(ref.placeRef, "ChIJ-kinkaku", "same place-ID key");
+  assert.deepEqual((ref.value as any).photos.map((p: any) => p.name), ["places/ChIJ-kinkaku/photos/A", "places/ChIJ-kinkaku/photos/B", "places/ChIJ-kinkaku/photos/C"]);
+  assert.deepEqual((ref.value as any).photos[0].authors, [{ displayName: "Jane", uri: "https://maps.google.com/c/1" }]);
+  const loc = drafts.find((d) => d.factType === "location")!;
+  assert.equal(ref.expiresAt!.getTime(), loc.expiresAt!.getTime(), "same 30-day TTL as the place's other facts");
+  assert.equal(Math.round((ref.expiresAt!.getTime() - ref.fetchedAt.getTime()) / 86_400_000), 30);
 });
