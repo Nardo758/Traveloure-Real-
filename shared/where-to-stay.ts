@@ -174,6 +174,8 @@ export interface StayHotel {
   id: string;
   name: string;
   starRating: number | null;
+  /** Step 6 R-aq: the option card's thumbnail — a platform listing's own image only; absent ⇒ none. */
+  photo?: { source: "ours"; url: string; licence: null; attribution: string; sourceUrl: null } | null;
 }
 
 /** R-o: the badge a platform-listed stay carries. */

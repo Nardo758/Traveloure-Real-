@@ -161,10 +161,12 @@ test("P1 source pin: the Booked pill and the 'booked' line are drawn for `booked
   assert.ok(guard >= 0 && tint > guard, "BOOKED_TINT is drawn only inside the `booked` guard");
   assert.equal(badge.split("BOOKED_TINT.label").length - 1, 1, "exactly one Booked pill");
 
-  const slip = read("../../components/plancard/SlipView.tsx");
-  // Surface step 1: the slip row's booking line is `slipItemBookingLine` (read by `ItemRow`).
-  const lineStart = slip.indexOf("export function slipItemBookingLine(");
-  const line = slip.slice(lineStart, slip.indexOf("function SlipDayItem(", lineStart));
+  // Surface step 1: the row's booking line is `slipItemBookingLine` (read by `ItemRow`); step 6 moved
+  // it to `item-booking-state` so the Trip Card reads the same rule (the slip re-exports it).
+  const lib = read("../item-booking-state.ts");
+  const lineStart = lib.indexOf("export function slipItemBookingLine(");
+  assert.ok(lineStart >= 0, "slipItemBookingLine located");
+  const line = lib.slice(lineStart);
   const notesFirst = line.indexOf('if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];');
   const bookedWord = line.indexOf("`booked · #${ref}`");
   assert.ok(notesFirst >= 0 && bookedWord > notesFirst, "the not-booked notes return before the 'booked' line");

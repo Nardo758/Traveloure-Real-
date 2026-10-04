@@ -392,7 +392,6 @@ test("T9: the run plan — a fresh payment keys on it, a reused one records noth
     "a regenerate reusing the comparison's recorded payment is not a new charge",
   );
   assert.deepEqual(optimizerRunTollPlan({ authorized: true, basis: "trip_pass" }, mint), { basis: "trip_pass", runId: "run-1" });
-  assert.deepEqual(optimizerRunTollPlan({ authorized: true, basis: "free_rerun" }, mint), { basis: "free_rerun", runId: "run-1" });
 });
 
 test("T10: a non-positive price writes nothing and says why — never a $0 row", async () => {

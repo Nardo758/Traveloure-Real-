@@ -33,6 +33,8 @@ const TYPE_TO_KEY: Record<string, NotificationPreferenceKey> = {
   itinerary_item_added: "itineraryUpdate",
   expert_suggestion: "itineraryUpdate",
   trip_card_ready: "itineraryUpdate",
+  // Step 6 R-ad: the T-3 re-check found a conflict — pushed once per plan.
+  trip_recheck_conflict: "itineraryUpdate",
   assistant_plan_created: "itineraryUpdate",
   // Money
   payout_processed: "paymentReceived",

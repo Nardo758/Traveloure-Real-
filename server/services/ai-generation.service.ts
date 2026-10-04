@@ -23,6 +23,7 @@ import { calculateAnthropicCost, trackAnthropicResponse } from "./ai-cost-tracke
 import { formatGeneratedItinerarySpecialRequests } from "../utils/generated-itinerary";
 import { AI_MEAL_PROMPT_LINE, AI_PLACE_PROMPT_LINE, aiEventPromptLine, type CoveringEvent } from "@shared/ai-place-text";
 import { coveringEventsForTrip } from "./content-facts/covering-events";
+import { seasonPromptLineForTrip } from "./content-facts/season-facts";
 import { buildStubItinerary } from "./ai-draft-stub";
 
 // Lazy Anthropic client for the itinerary draft (it runs its own configurable draft tier)
@@ -530,6 +531,8 @@ IMPORTANT: Incorporate this real-time intelligence into your recommendations. Pr
       request.coveringEvents ??
       (await coveringEventsForTrip({ destination: request.destination, startDate: request.dates.start, endDate: request.dates.end }));
     const eventsLine = aiEventPromptLine(request.dates.start, request.dates.end, coveringEvents);
+    // R-bc (step 6): the season facts for the trip's months, so out-of-season things are not proposed.
+    const seasonLine = await seasonPromptLineForTrip({ destination: request.destination, startDate: request.dates.start, endDate: request.dates.end });
 
     const userPrompt = `Create a complete travel itinerary:
 
@@ -546,7 +549,7 @@ ${request.dietaryRestrictions?.length ? `- Dietary: ${request.dietaryRestriction
 ${request.mobilityConsiderations?.length ? `- Mobility: ${request.mobilityConsiderations.join(", ")}` : ""}
 ${formatGeneratedItinerarySpecialRequests(request.specialRequests)}
 - Events: ${eventsLine}
-${travelPulseSection}${request.immovableConstraints || ""}
+${seasonLine ? `- Season: ${seasonLine}\n` : ""}${travelPulseSection}${request.immovableConstraints || ""}
 
 Create a detailed, actionable itinerary that incorporates the real-time destination intelligence above.`;
 

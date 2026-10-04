@@ -17,11 +17,11 @@
 import { openSetSlotsForRun } from "../services/version-options.service";
 import { versionPerOptionEnabled } from "../config/version-options.config";
 import { Router } from "express";
-import { coversAction } from "../services/trip-entitlement.service";
+import { coversAction, tripPassRunsStatus } from "../services/trip-entitlement.service";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { complexityTier } from "../services/smart-sequencing.service";
 import {
@@ -59,14 +59,26 @@ function buildOptimizationFeeIdempotencyKey(
  * Body: { items: [{serviceType, price?, duration?, dayNumber?}[]], eventType?, travelers? }
  * Returns heuristic estimate + fee — no LLM, no auth required.
  */
-router.post("/api/optimization-preview", async (req, res) => {
+// R297 (decision-maker ruling, Oct 4, 2026): SESSION-GATED, like every other plan route. The rail
+// had no sign-in requirement — a pre-existing gap the free-re-run removal exposed (its only session
+// read was that check). It computes findings over a plan's items, so it carries plan READ access: a
+// signed-in caller, and when the body names a plan (`tripId`), the same read gate the trip-addressed
+// GET below runs.
+router.post("/api/optimization-preview", isAuthenticated, async (req, res) => {
   try {
     const { items = [], eventType, travelers = 1 } = req.body;
+    const userId = getUserId(req)!;
+    // The plan the body NAMES (a read target, never an actor — the actor is the session, §14).
+    const namedTripId = typeof req.body?.tripId === "string" && req.body.tripId ? req.body.tripId : null;
+    if (namedTripId) {
+      const denied = await authorizeTripLogistics(namedTripId, userId, "POST /api/optimization-preview");
+      if (denied) return res.status(denied.status).json({ error: denied.message });
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "items array is required" });
     }
-    // Security-audit finding 15 (2026-09-01): no auth by design, and `items` had no ceiling —
+    // Security-audit finding 15 (2026-09-01): `items` had no ceiling (the rail was then unauthenticated) —
     // CPU amplification behind only the IP limiter and the 10 MB body cap. Capped at the
     // platform's own itinerary-list ceiling (MAX_GENERATED_LIST_ITEMS = 100,
     // utils/generated-itinerary.ts) — no real plan exceeds it.
@@ -106,23 +118,10 @@ router.post("/api/optimization-preview", async (req, res) => {
     const { estimatedSavingsPct, estimatedCostDelta, estimatedScheduleTighteningPct } =
       legacyPreviewExtrapolation(preview);
 
-    // Check free re-run for authenticated users
-    let freeRerun = false;
-    const userId = getUserId(req)!;
-    if (userId) {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const [recent] = await db
-        .select({ id: itineraryComparisons.id })
-        .from(itineraryComparisons)
-        .where(
-          and(
-            eq(itineraryComparisons.userId, userId),
-            gte(itineraryComparisons.optimizedAt, cutoff)
-          )
-        )
-        .limit(1);
-      if (recent) freeRerun = true;
-    }
+    // R-ac (step 6): the unlimited 24-hour full re-run is retired — another full run is paid, or
+    // covered by a Trip Pass up to its cap. `freeRerun` stays on the payload, always false, so older
+    // clients read "not free" rather than an absent key.
+    const freeRerun = false;
 
     return res.json({
       estimatedSavingsPct,
@@ -296,6 +295,8 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
     // moment, or it states a price the platform will not charge. `false` here means "no active
     // pass covers this run", which is exactly what the charge path will decide.
     const coveredByTripPass = tripId ? await coversAction(String(tripId), "optimizer_run") : false;
+    // R-ac (step 6): the pass's run allowance on this trip, for "N runs left" (absent ⇒ no pass).
+    const tripPassRuns = tripId ? await tripPassRunsStatus(String(tripId)) : null;
 
     return res.json({
       complexityTier: tier,
@@ -304,6 +305,7 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
       creditTowardCoordination: fee.creditTowardCoordination,
       aiDisabled: fee.isDisabled,
       coveredByTripPass,
+      ...(tripPassRuns ? { tripPassRuns } : {}),
     });
   } catch (err: any) {
     console.error("[optimization-fee] error:", err);
@@ -422,22 +424,8 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
     }
 
-    // 24-hour free re-run check
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [recent] = await db
-      .select({ id: itineraryComparisons.id, optimizedAt: itineraryComparisons.optimizedAt })
-      .from(itineraryComparisons)
-      .where(
-        and(
-          eq(itineraryComparisons.userId, userId),
-          gte(itineraryComparisons.optimizedAt, cutoff)
-        )
-      )
-      .limit(1);
-
-    if (recent) {
-      return res.json({ freeRerun: true, feeCents: 0, comparisonId: recent.id });
-    }
+    // (The 24-hour free re-run is retired — R-ac, step 6. A run past a Trip Pass's cap, or with no
+    //  pass, is charged here.)
 
     // FP-1: durable Stripe Customer (users.stripe_customer_id, migration 146) — replaces the
     // per-request customers.list({email}) lookup this endpoint previously carried.

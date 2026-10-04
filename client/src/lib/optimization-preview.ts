@@ -76,6 +76,19 @@ export interface OptimizationFeeQuote {
   aiDisabled: boolean;
   /** SERVER truth (`coversAction(tripId, "optimizer_run")`) — never inferred client-side. */
   coveredByTripPass: boolean;
+  /** R-ac (step 6): the Trip Pass's run allowance on this trip; absent ⇒ no active pass. */
+  tripPassRuns?: { cap: number; used: number; left: number };
+}
+
+/**
+ * R-ac (step 6): the pass holder's run line — "4 of 5 Trip Pass runs left", or, with none left, that
+ * the next run is paid (the CTA then carries the band fee). Null without a pass (§13: nothing claimed).
+ */
+export function tripPassRunsLine(fee: OptimizationFeeQuote | null | undefined): string | null {
+  const r = fee?.tripPassRuns;
+  if (!r) return null;
+  if (r.left <= 0) return `Your Trip Pass's ${r.cap} runs are used · the next run is a paid run`;
+  return `${r.left} of ${r.cap} Trip Pass ${r.cap === 1 ? "run" : "runs"} left`;
 }
 
 // ── The line ────────────────────────────────────────────────────────────────────────────────
@@ -119,6 +132,9 @@ export function formatMoneyCents(cents: number, currency: string): string {
  * render THIS sentence — two surfaces wording the rule separately is how they came to disagree
  * ("free within 24 hours" on one, "charged on confirm" on the other) (§18 rule 1).
  */
-export const OPTIMIZE_RERUN_RULE = "A re-run within 24 hours of a completed optimization is free.";
+// R-ac (step 6): the unlimited 24-hour full re-run is retired. What stays free after a run is re-timing
+// a day on the versions board (smart-sequencing, no model call); another full run is paid, or covered
+// by a Trip Pass up to its cap.
+export const OPTIMIZE_RERUN_RULE = "After a run, re-timing a day on the versions board is free for 24 hours.";
 
 // The fee chip's sentence moved onto the card's CTA (`optimizeCtaLabel`, `components/plan/OptimizerLead`).

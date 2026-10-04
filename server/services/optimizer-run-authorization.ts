@@ -51,13 +51,11 @@ export const OPTIMIZATION_FREE_RERUN_MS = 24 * 60 * 60 * 1000;
  * WHY the optimizer may run. Recorded honestly wherever the run is reported — a pass-covered run
  * and a free re-run are different facts and must never be reported as each other (§13).
  */
-export type OptimizerRunBasis = "trip_pass" | "free_rerun" | "paid";
+export type OptimizerRunBasis = "trip_pass" | "paid";
 
 export type OptimizerRunAuthorization =
   /** An active Trip Pass on THIS trip covers the run (ruling 2026-08-29-trip-pass). No charge, no claim. */
   | { authorized: true; basis: "trip_pass" }
-  /** The caller completed an optimization inside the documented 24h window. No charge, no claim. */
-  | { authorized: true; basis: "free_rerun" }
   /**
    * A verified optimization payment authorizes the run. `claimRequired` says whether the caller
    * still has to record it: false = the PI is ALREADY on the comparison row (regenerate case (b),
@@ -81,8 +79,6 @@ export type OptimizerPaymentVerification =
 export interface OptimizerRunAuthorizationDeps {
   /** `coversAction(tripId, "optimizer_run")` — server-side entitlement read; the client never asserts coverage. */
   tripPassCoversRun: (tripId: string) => Promise<boolean>;
-  /** `storage.getRecentOptimizationRun(userId, cutoff)` reduced to the only thing the decision needs. */
-  hasRecentOptimizationRun: (userId: string, cutoff: Date) => Promise<boolean>;
   /** `verifyOptimizationPayment` — Stripe retrieve, PI→user/target binding, server-re-derived amount. */
   verifyPayment: (params: {
     userId: string;
@@ -136,10 +132,9 @@ export async function resolveOptimizerRunAuthorization(
     return { authorized: true, basis: "trip_pass" };
   }
 
-  // 2. The documented 24h free re-run.
-  if (await deps.hasRecentOptimizationRun(input.userId, cutoff)) {
-    return { authorized: true, basis: "free_rerun" };
-  }
+  // 2. (Retired, step 6 — R-ac.) The unlimited 24-hour full re-run is gone: after a paid run the free
+  //    work is the version board's day re-times (smart-sequencing, no model call); another FULL run is
+  //    paid, or covered by a Trip Pass up to its cap (`coversAction`).
 
   // 3. This comparison's own payment, verified at create and still inside the window.
   const recordedPaymentId = normalizeId(input.recordedPaymentId);

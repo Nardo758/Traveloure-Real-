@@ -250,7 +250,7 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
     // R-o: stays LISTED ON TRAVELOURE — the same public read gate every listing surface uses
     // (approved + active), in the accommodation category, in this city, with a confirmed pin.
     db
-      .select({ id: providerServices.id, name: providerServices.serviceName, lat: providerServices.latitude, lng: providerServices.longitude })
+      .select({ id: providerServices.id, name: providerServices.serviceName, lat: providerServices.latitude, lng: providerServices.longitude, image: providerServices.serviceImage })
       .from(providerServices)
       .innerJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
       .where(
@@ -283,7 +283,18 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
     const lat = Number(p.lat);
     const lng = Number(p.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-    out.push({ kind: "platform", id: p.id, name: p.name, starRating: null, lat, lng });
+    // Step 6 R-aq: a platform stay's thumbnail is OUR listing's own image (the first source), with
+    // its attribution; partner stays carry none — their images are not among R-aq's sources.
+    const image = typeof p.image === "string" && /^https?:\/\//i.test(p.image) ? p.image : null;
+    out.push({
+      kind: "platform",
+      id: p.id,
+      name: p.name,
+      starRating: null,
+      lat,
+      lng,
+      ...(image ? { photo: { source: "ours" as const, url: image, licence: null, attribution: "From the host's listing", sourceUrl: null } } : {}),
+    });
   }
   for (const h of cache) {
     const lat = Number(h.lat);
