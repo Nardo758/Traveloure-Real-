@@ -1918,7 +1918,7 @@ export const MIGRATION_FILES = [
   // columns only, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. HELD for the founder's ruling.
   "346_place_photos.sql",
   // 349 — expert_question_answers (work plan L1-13; R-bj). New table, PK only, all columns nullable,
-  // no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. HELD for the founder's ruling.
+  // no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   // (347–348 are other work-plan lanes, in their own PRs; 346 is place_photos.)
   "349_expert_question_answers.sql",
 ] as const;
