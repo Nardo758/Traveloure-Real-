@@ -187,3 +187,46 @@ export async function seedReadyMadeHero(readyMadeId: string): Promise<void> {
     ],
   );
 }
+
+/**
+ * seedReadyMadeConfirmedLegs — TEST-FIXTURE-ONLY write, the same R-1 class as `seedReadyMadeHero`.
+ * The ready-made publish gate (R-ax, ledger `2026-10-04-ready-made-leg-gate`) needs a confirmed leg
+ * with a chosen mode between every pair of consecutive LOCATED stops. The real path is
+ * `POST /api/trips/:tripId/transport-legs/generate` then the author's confirm; with no Google key
+ * and the travel-time service off (this CI), the engine routes nothing and reports every pair
+ * `route_unavailable`. This seeds ONE confirmed `walk` leg for each such pair still lacking a picked
+ * leg — the same pairing the gate reads (consecutive items per day in (sort_order, start_time)
+ * order) — AFTER the real path was driven. Every call site logs it as a SPEC_DIVERGENCE/P3 finding.
+ * Returns the number of legs seeded.
+ */
+export async function seedReadyMadeConfirmedLegs(tripId: string): Promise<number> {
+  const res = await db().query(
+    `WITH ordered AS (
+       SELECT id, title, day_number, latitude, longitude,
+              LEAD(id) OVER w AS next_id, LEAD(title) OVER w AS next_title,
+              LEAD(latitude) OVER w AS next_lat, LEAD(longitude) OVER w AS next_lng
+         FROM itinerary_items
+        WHERE trip_id = $1
+       WINDOW w AS (PARTITION BY day_number ORDER BY sort_order NULLS LAST, start_time NULLS LAST)
+     ), gaps AS (
+       SELECT o.* FROM ordered o
+        WHERE o.next_id IS NOT NULL
+          AND o.latitude IS NOT NULL AND o.longitude IS NOT NULL
+          AND o.next_lat IS NOT NULL AND o.next_lng IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM transport_legs l
+             WHERE l.trip_id = $1 AND l.variant_id IS NULL AND l.day_number = o.day_number
+               AND l.from_activity_id = o.id AND l.to_activity_id = o.next_id
+               AND l.proposal_status = 'confirmed' AND l.user_selected_mode IS NOT NULL)
+     )
+     INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
+                                 to_activity_id, to_name, to_lat, to_lng, distance_meters, distance_display,
+                                 recommended_mode, estimated_duration_minutes, proposal_status, user_selected_mode)
+     SELECT gen_random_uuid()::text, $1, day_number, 0, id, title, latitude::float8, longitude::float8,
+            next_id, next_title, next_lat::float8, next_lng::float8, 0, 'e2e seeded', 'walk', 10, 'confirmed', 'walk'
+       FROM gaps
+     RETURNING id`,
+    [tripId],
+  );
+  return res.rowCount ?? 0;
+}

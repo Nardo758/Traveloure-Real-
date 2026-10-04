@@ -145,7 +145,7 @@ import {
 } from "../services/trip-plan.service";
 import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
 // §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
-import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
+import { getTripTransportLegs, isTripScopedLeg, legResponseRow } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 // Phase 1c — "build around a location": rank anchor candidates for the Optimize popup (the read
 // rail). The pinned-anchor WRITE is resolved on the live POST /generate handler in server/routes.ts.
@@ -2242,7 +2242,8 @@ router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res
       }
 
       const includeProposed = req.query.includeProposed === "1" || req.query.includeProposed === "true";
-      const tripScopedLegs = await getTripTransportLegs(tripId, { includeProposed });
+      // LD 40: no users.id leaves in a leg row (`checked_by`, migration 347).
+      const tripScopedLegs = (await getTripTransportLegs(tripId, { includeProposed })).map(legResponseRow);
 
       const selectedVariant = await storage.getSelectedVariantByTrip(tripId);
       if (!selectedVariant?.selectedVariantId) {
@@ -2289,6 +2290,9 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
           leg.tripId,
           userId,
           "PATCH /api/transport-legs/:legId/mode (trip-scoped)",
+          // §12: re-moding a trip-scoped leg is a plan write — never a `pending` advisor
+          // (ledger `2026-10-04-leg-write-access`).
+          { requireWriteAccess: true },
         );
         if (denied) return res.status(denied.status).json({ error: denied.message });
       }

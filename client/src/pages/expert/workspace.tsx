@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 // L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
-import { CHAUFFEURED_MODES, isChauffeuredMode } from "@shared/trip-plan";
+import { isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { parseApiErrorMessage } from "@/lib/api-error";
 // W5-A (QA_PUNCH_LIST item 19) — the discovery-layer candidate-pin publish/subscribe store. Every
@@ -1852,21 +1852,8 @@ interface TripTransportLegsResponse { legs: TripTransportLeg[]; variantId: strin
 interface GenerateLegsSkip { dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string; reason: "missing_coordinates"; }
 interface GenerateLegsResult { tripId: string; proposalStatus: "proposed"; created: number; keptConfirmed: number; replacedProposed: number; skipped: GenerateLegsSkip[]; }
 
-/** The mode picker's option set for ONE leg — never a hand-typed full vocabulary. It unions this
- *  leg's own engine-computed recommendation + alternatives (guaranteed valid against the server's
- *  SELECTABLE_TRANSPORT_MODES enum, since both are derived from the same destination-profile
- *  data the server reads) with the exact shared CHAUFFEURED_MODES constant (imported from
- *  @shared/trip-plan, not retyped) so a chauffeured option is always offered even on a leg the
- *  engine didn't recommend one for — matching the brief's "taxi/rideshare/private_driver/…" ask
- *  without drifting from what PATCH actually accepts. */
-function legModeOptions(leg: TripTransportLeg): string[] {
-  const set = new Set<string>();
-  set.add(leg.recommendedMode);
-  (leg.alternativeModes ?? []).forEach((a) => set.add(a.mode));
-  CHAUFFEURED_MODES.forEach((m) => set.add(m));
-  if (leg.userSelectedMode) set.add(leg.userSelectedMode);
-  return Array.from(set).sort();
-}
+// The mode picker's option set for ONE leg is `legModeOptions` (@shared/trip-plan, work plan L1-10):
+// the same rule the leg-review read returns, so the two pickers cannot disagree.
 
 function transportModeLabel(mode: string): string {
   return TRANSPORT_MODE_LABELS[mode] || mode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
