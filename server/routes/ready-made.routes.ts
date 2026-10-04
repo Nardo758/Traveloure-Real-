@@ -21,7 +21,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
 import { readyMadeLegLines } from "../services/trip-transport-legs.service";
-import { readinessAdvisory, type ReadinessLine } from "../services/ready-made-readiness";
+import { readinessAdvisory, stopPhotoStates, type ReadinessLine } from "../services/ready-made-readiness";
 import { factsForTrip } from "../services/content-facts/place-facts.service";
 import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, temporalAnchors, users, adminNotifications } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -636,6 +636,7 @@ export async function readyMadeReadiness(
     items,
     legAdvisory: readyMadeLegLines(items, legs).advisory,
     factTypesByItem,
+    photoStateByItem: await stopPhotoStates(listing.sourceTripId, items),
     anchors,
     buildStartDate: build?.startDate ? String(build.startDate) : null,
     durationDays: listing.durationDays,

@@ -174,11 +174,26 @@ export function anchorConflicts(anchors: readonly AnchorWindow[], items: readonl
       if (!item.startTime || !item.dayNumber) continue;
       const itemStart = new Date(`${item.date || ""}T${item.startTime}`).getTime();
       const itemEnd = item.endTime ? new Date(`${item.date || ""}T${item.endTime}`).getTime() : itemStart + (item.durationMinutes || 60) * 60000;
-      if (itemStart < bufferEnd && itemEnd > bufferStart) {
+      // A flight is a one-way edge, not only a window (R-aa, step 6): nothing may start before you are
+      // out of the arrival airport, and nothing may run past the time to leave for a departure — a stop
+      // AFTER take-off is a conflict too, not only one overlapping the buffer.
+      const isArrival = anchor.anchorType === "flight_arrival";
+      const isDeparture = anchor.anchorType === "flight_departure";
+      const conflicts = isDeparture
+        ? itemEnd > bufferStart
+        : isArrival
+          ? itemStart < bufferEnd
+          : itemStart < bufferEnd && itemEnd > bufferStart;
+      if (conflicts) {
         out.push({
           anchorId: anchor.id,
           anchorType: anchor.anchorType,
-          conflict: `Activity "${item.title}" overlaps with ${anchor.anchorType} buffer zone (${anchor.description || ""})`,
+          conflict:
+            isDeparture && itemStart >= anchorTime
+              ? `Activity "${item.title}" starts after take-off (${anchor.description || ""})`
+              : isArrival && itemStart < anchorTime
+                ? `Activity "${item.title}" starts before landing (${anchor.description || ""})`
+                : `Activity "${item.title}" overlaps with ${anchor.anchorType} buffer zone (${anchor.description || ""})`,
           dayNumber: item.dayNumber ?? null,
         });
       }
@@ -347,4 +362,20 @@ export function leadDeltaLine(input: {
   return s > 0
     ? `After Optimize: ${input.formatMoney(s)} less than the draft${pctPart}`
     : `After Optimize: ${input.formatMoney(-s)} more than the draft${pctPart}`;
+}
+
+// ── Step 6 R-ay: the free plan's prompt at Finalize and on its card ───────────────────────────────
+export const ADD_TRAVEL_TIMES = "Add travel times";
+
+/**
+ * Pure. On Finalize, a plan with no run sees its free findings once more as the prompt ("2 stops may
+ * not be reachable in time · Add travel times"); the card carries the same line under its day strip.
+ * Reachability findings (closed on arrival, timed entries that clash) count STOPS; otherwise the
+ * first finding's own line is used. No findings ⇒ null (nothing claimed, §13).
+ */
+export function freeFindingsPromptLine(findings: readonly Finding[] | null | undefined): string | null {
+  if (!findings?.length) return null;
+  const reach = findings.filter((f) => f.kind === "closed_on_arrival" || f.kind === "timed_entry_conflict").reduce((n, f) => n + f.count, 0);
+  if (reach > 0) return `${reach} ${reach === 1 ? "stop" : "stops"} may not be reachable in time · ${ADD_TRAVEL_TIMES}`;
+  return `${findingLine(findings[0])} · ${ADD_TRAVEL_TIMES}`;
 }

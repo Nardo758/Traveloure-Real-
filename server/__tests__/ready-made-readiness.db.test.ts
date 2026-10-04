@@ -4,8 +4,10 @@
  *
  *   B1  `blocking` equals the `missing` body a refused submit returns, line for line (one function)
  *   A1  `advisory` names: the unlocated stop (leg_location), each located non-lodging stop with no
- *       hours on file (itemId), the pending photo check, an anchor outside the build's days (anchorId)
- *       and an activity inside an anchor's buffer (anchorId, dayNumber)
+ *       hours on file (itemId), each stop whose photo is not on hand (itemId), an anchor outside the
+ *       build's days (anchorId) and an activity inside an anchor's buffer (anchorId, dayNumber)
+ *   P2  photos, from the cache only: a cached Commons photo clears the line, a remembered miss says
+ *       "no photo found", a never-looked stop says "not looked up yet"
  *   A2  advisory lines never block: once the blocking list is empty the submit succeeds
  *   S1  someone who is not the author gets 404
  *   U1  `readinessAdvisory` pure cases: an item with an hours fact and a lodging item are not flagged
@@ -27,7 +29,8 @@ import { sql } from "drizzle-orm";
 process.env.STRIPE_SECRET_KEY ||= "sk_test_ready_made_readiness";
 const { db } = await import("../db");
 const readyMadeRoutes = (await import("../routes/ready-made.routes")).default;
-const { readinessAdvisory, PHOTO_CHECK_PENDING_LINE } = await import("../services/ready-made-readiness");
+const { readinessAdvisory } = await import("../services/ready-made-readiness");
+const { photoCacheKey } = await import("../services/place-photos.service");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -127,7 +130,9 @@ test("A1: advisory lines name what they are about", async () => {
   const by = (req: string) => adv.filter((l) => l.requirement === req);
   assert.deepEqual(by("leg_location").map((l) => l.message), ["Day 1: Unnamed tea house has no location"]);
   assert.deepEqual(by("hours").map((l) => l.itemId).sort(), [ids.a, ids.b].sort(), "located non-lodging stops only");
-  assert.deepEqual(by("photos"), [PHOTO_CHECK_PENDING_LINE]);
+  // Neither stop has a listing image, a cached Google reference or a cached Commons row: both are
+  // "not looked up yet" — never "no photo" (§13).
+  assert.deepEqual(by("photos").map((l) => [l.itemId, /looked up yet/.test(l.message)]).sort(), [[ids.a, true], [ids.b, true]].sort());
   assert.deepEqual(by("anchor_window").map((l) => l.anchorId), [ids.outWindow]);
   assert.deepEqual(by("schedule").map((l) => [l.anchorId, l.dayNumber]), [[ids.inWindow, 1]]);
   assert.match(by("schedule")[0].message, /Yasaka Shrine/);
@@ -143,6 +148,22 @@ test("A2: advisory lines never block a submit", async () => {
   assert.ok(r.body.advisory.length > 0);
   const submit = await call(ids.author, "POST", `/api/expert/ready-made/${ids.listing}/submit`);
   assert.equal(submit.status, 200, JSON.stringify(submit.body));
+});
+
+test("P2: the photo line reads the cache only", async () => {
+  const key = (title: string, lat: number, lng: number) => photoCacheKey({ name: title, placeId: null, lat, lng })!;
+  const kA = key("Kiyomizu-dera", 34.9949, 135.785);
+  const kB = key("Yasaka Shrine", 35.0037, 135.7785);
+  await db.execute(sql`INSERT INTO place_photos (id, place_id, source, url_or_asset, checked_at, created_at) VALUES
+    (${`${ids.a}-ph`}, ${kA}, 'wikimedia', 'https://upload.wikimedia.org/x.jpg', now(), now()),
+    (${`${ids.b}-ph`}, ${kB}, 'wikimedia', NULL, now(), now())`);
+  try {
+    const r = await call(ids.author, "GET", `/api/expert/ready-made/${ids.listing}/readiness`);
+    const photos = (r.body.advisory as any[]).filter((l) => l.requirement === "photos");
+    assert.deepEqual(photos.map((l) => [l.itemId, l.message]), [[ids.b, "Day 1: no photo found for Yasaka Shrine"]]);
+  } finally {
+    await db.execute(sql`DELETE FROM place_photos WHERE id IN (${`${ids.a}-ph`}, ${`${ids.b}-ph`})`);
+  }
 });
 
 test("S1: not the author ⇒ 404", async () => {

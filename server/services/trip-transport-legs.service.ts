@@ -39,6 +39,7 @@ import {
   type UserTransportPrefs,
 } from "./transport-leg-calculator";
 import { haversineMeters } from "@shared/geo";
+import { isPickedLeg } from "@shared/leg-picked";
 import { defaultLegMode, LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { ResolvedLeg } from "@shared/leg-resolution";
 import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
@@ -229,11 +230,6 @@ export function consecutiveStopPairs<T extends { dayNumber: number; latitude?: u
     }
   }
   return out;
-}
-
-/** A leg "picked" under R-ax: confirmed, with the author's chosen mode. */
-export function isPickedLeg(leg: { proposalStatus?: string | null; userSelectedMode?: string | null }): boolean {
-  return leg.proposalStatus === "confirmed" && !!leg.userSelectedMode;
 }
 
 export type ReadyMadeLegLine = {

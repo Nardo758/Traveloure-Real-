@@ -9,7 +9,9 @@
  * STATED LIMITS (§13):
  *  · "legs not checked in 90 days" needs `transport_legs.checked_at` (migration 346, L1-1), which is
  *    not on this branch's base — it is not reported here.
- *  · photos: `place_photos` does not exist yet (slip step 6); one line says so instead of a check.
+ *  · photos (step 6, `place_photos`): read from what is already on hand — the listing's own image, a
+ *    cached Google photo reference, a cached Commons row — and NEVER by a network call from this read.
+ *    A stop whose photo was never looked up is "not checked yet", never "no photo" (§13).
  */
 import { anchorConflicts } from "@shared/optimizer-lead";
 import { isLodgingItem } from "@shared/where-to-stay";
@@ -26,10 +28,11 @@ export type ReadinessLine = {
   anchorId?: string;
 };
 
-export const PHOTO_CHECK_PENDING_LINE: ReadinessLine = {
-  requirement: "photos",
-  message: "Photo checks arrive with the stop photo picker (slip step 6)",
-};
+/**
+ * A stop's photo as far as this read can tell without fetching: `has` (ours, a cached Google
+ * reference or a cached Commons photo), `none` (looked, nothing usable), `unchecked` (never looked).
+ */
+export type StopPhotoState = "has" | "none" | "unchecked";
 
 type Item = {
   id: string;
@@ -67,6 +70,8 @@ export function readinessAdvisory(input: {
   legAdvisory: readonly ReadyMadeLegLine[];
   /** item id → the fact types the plan already holds for it (`factsForTrip`). */
   factTypesByItem: ReadonlyMap<string, ReadonlySet<string>>;
+  /** item id → its photo state (`stopPhotoStates`); an item absent from the map is not a photo stop. */
+  photoStateByItem?: ReadonlyMap<string, StopPhotoState>;
   anchors: readonly Anchor[];
   buildStartDate: string | null;
   durationDays: number;
@@ -81,7 +86,16 @@ export function readinessAdvisory(input: {
     out.push({ requirement: "hours", message: `Day ${i.dayNumber}: ${i.title} has no opening hours checked`, dayNumber: i.dayNumber, itemId: i.id });
   }
 
-  out.push(PHOTO_CHECK_PENDING_LINE);
+  for (const i of input.items) {
+    const state = input.photoStateByItem?.get(i.id);
+    if (!state || state === "has") continue;
+    out.push({
+      requirement: "photos",
+      message: state === "none" ? `Day ${i.dayNumber}: no photo found for ${i.title}` : `Day ${i.dayNumber}: ${i.title}'s photo hasn't been looked up yet`,
+      dayNumber: i.dayNumber,
+      itemId: i.id,
+    });
+  }
 
   if (input.buildStartDate) {
     const first = input.buildStartDate.slice(0, 10);
@@ -100,6 +114,47 @@ export function readinessAdvisory(input: {
     for (const c of anchorConflicts(input.anchors, scheduled)) {
       out.push({ requirement: "schedule", message: c.conflict, anchorId: c.anchorId, ...(c.dayNumber != null ? { dayNumber: c.dayNumber } : {}) });
     }
+  }
+  return out;
+}
+
+/**
+ * The photo state of each located, non-lodging stop, from the cache only (no Commons search, no Google
+ * call). Reads the SAME inputs as the plan's photo read (`GET /api/trips/:tripId/place-photos`): the
+ * listing image, the cached Google photo reference (`placeRefsForTrip`) and the `place_photos` row
+ * through `photoCacheKey` and the service's own cache read.
+ */
+export async function stopPhotoStates(
+  tripId: string,
+  items: ReadonlyArray<Item & { providerServiceId?: string | null }>,
+): Promise<Map<string, StopPhotoState>> {
+  const { db } = await import("../db");
+  const { providerServices } = await import("@shared/schema");
+  const { inArray } = await import("drizzle-orm");
+  const { placeRefsForTrip } = await import("./content-facts/place-facts.service");
+  const { defaultPhotoDeps, photoCacheKey } = await import("./place-photos.service");
+  const stops = items.filter((i) => located(i) && !isLodgingItem({ type: i.itemType ?? null, title: i.title }));
+  const out = new Map<string, StopPhotoState>();
+  if (!stops.length) return out;
+  const serviceIds = stops.map((i) => i.providerServiceId).filter((x): x is string => !!x);
+  const images = serviceIds.length
+    ? new Map(
+        (await db.select({ id: providerServices.id, image: providerServices.serviceImage }).from(providerServices).where(inArray(providerServices.id, serviceIds))).map(
+          (r) => [r.id, r.image] as const,
+        ),
+      )
+    : new Map<string, string | null>();
+  const refs = await placeRefsForTrip(tripId, stops.map((i) => i.id));
+  for (const i of stops) {
+    const own = i.providerServiceId ? images.get(i.providerServiceId) : null;
+    const ref = refs.get(i.id);
+    if ((own && /^https?:\/\//i.test(own)) || ref?.photoRef) {
+      out.set(i.id, "has");
+      continue;
+    }
+    const key = photoCacheKey({ name: i.title, placeId: ref?.placeId ?? null, lat: ref?.lat ?? Number(i.latitude), lng: ref?.lng ?? Number(i.longitude) });
+    const cached = key ? await defaultPhotoDeps.cacheGet(key) : undefined;
+    out.set(i.id, cached ? "has" : cached === null ? "none" : "unchecked");
   }
   return out;
 }

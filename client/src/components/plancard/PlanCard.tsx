@@ -29,6 +29,7 @@ import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
 import { slipAdvisorName } from "@/lib/slip-rail";
 import { UpNextHero } from "./UpNextHero";
+import { TripCardDays } from "./TripCardDays";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
@@ -967,6 +968,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   // The ONE advisor-name reading (`slipAdvisorName`, §18 rule 1) off the owner-gated advisor row
   // this component already fetches; null ⇒ no advisor line on the header (§13).
   const advisorName = slipAdvisorName(advisor);
+  // Step 6: the Trip Card surface (the page's frozen-final read-out) — the only mount that renders
+  // `TripCardDays` and drops planning controls.
+  const cardSurface = routingReadOnly && !embedded && stage === "full";
   // "X of Y located" for the selected day — the map's own predicate (§18 rule 1); null ⇒ no label.
   const mapLocatedLabel = locatedCountLabel(day?.activities);
 
@@ -1138,6 +1142,30 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
         {(embedded || viewMode === "card") ? (
           <>
+            {/* Step 6 (spec §2.5, §10 — ledger `2026-10-04-step6-trip-card`): the TRIP CARD renders its
+                days on the SAME DayBlock + ItemRow the slip uses (read mode), Today first, with
+                provenance, the T-3 banner, Navigate and photos — `TripCardDays`. Every other mount
+                (the workstation embed, the itinerary pages) keeps the day selector below. */}
+            {cardSurface ? (
+              <>
+                <UpNextHero tripId={trip.id} day={day} legs={dayLegs} timezone={planTimezone} datesConfirmed={planDatesConfirmed} />
+                <TripCardDays
+                  tripId={trip.id}
+                  destination={trip.destination ?? null}
+                  days={days}
+                  timeZone={planTimezone}
+                  placeFacts={(plancardData as any)?.placeFacts}
+                  finalizedAt={(plancardData?.trip as any)?.finalizedAt ?? null}
+                  finalVersion={finalVersion}
+                  finalCard={plancardData?.finalCard ?? null}
+                  optimized={!!lastOptimizedAt}
+                  showTravelMinutes={(plancardData as any)?.travelTimesShown === true}
+                  advisorName={advisorName}
+                  isOwner={isOwner}
+                />
+              </>
+            ) : (
+            <>
             {/* metric strip moved onto the photo hero (redesign Phase 2, option C) */}
 
             {!embedded && (
@@ -1237,6 +1265,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               </div>
             </div>
 
+            </>
+            )}
+
             {/* CLAUDE.md §18 item 4 — Map preview / Transport / Budget / Change history /
                 trip-level expert note, collapsed-by-default, below the day list. */}
             <CollapsedSections
@@ -1282,7 +1313,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
             {/* CON-A.P7 / N3: expert-escalation CTA — after content, before bottom bar (mockup v3).
                 Suppressed in the Workstation embed — the expert IS the expert. */}
-            {!isViewer && !embedded && stage === "full" && (
+            {!isViewer && !embedded && stage === "full" && !cardSurface && (
               <div className="px-3 sm:px-5 pt-2">
                 <EscalationCTA
                   tripId={trip.id}

@@ -44,7 +44,7 @@ function Framing({ scene }: { scene: MapScene }) {
   return null;
 }
 
-/** Neighbourhood shading while the AnchorPanel is open — a soft disc at each centroid. */
+/** Neighbourhood shading — a soft disc at each centroid (stronger while the AnchorPanel is open). */
 function Areas({ scene }: { scene: MapScene }) {
   const map = useMap();
   useEffect(() => {
@@ -56,15 +56,15 @@ function Areas({ scene }: { scene: MapScene }) {
           center: { lat: a.lat, lng: a.lng },
           radius: 700,
           strokeColor: ANCHOR_COLOR,
-          strokeOpacity: 0.35,
+          strokeOpacity: scene.areaStyle.strokeOpacity,
           strokeWeight: 1,
           fillColor: ANCHOR_COLOR,
-          fillOpacity: 0.08,
+          fillOpacity: scene.areaStyle.fillOpacity,
           clickable: false,
         }),
     );
     return () => circles.forEach((c) => c.setMap(null));
-  }, [map, scene.areas]);
+  }, [map, scene.areas, scene.areaStyle]);
   return null;
 }
 
