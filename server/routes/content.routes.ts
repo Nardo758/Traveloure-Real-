@@ -4354,7 +4354,7 @@ router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
   // response as "no location", not a crash (client/src/components/provider/catalog-map-view.tsx,
   // client/src/pages/experience-template.tsx).
 
-  // R299: session required — every call spends a Maps request (Geocoding / Places), and a public
+  // R300: session required — every call spends a Maps request (Geocoding / Places), and a public
   // endpoint that spends money is an abuse vector whatever its daily cap (decision-maker, Oct 4).
 router.post("/api/geocode", isAuthenticated, async (req, res) => {
     try {
@@ -6451,7 +6451,7 @@ router.get("/api/serp/partnerships", isAuthenticated, async (req, res) => {
   // ============================================
 
 
-  // R299: session required — every call spends a Maps request (Geocoding / Places), and a public
+  // R300: session required — every call spends a Maps request (Geocoding / Places), and a public
   // endpoint that spends money is an abuse vector whatever its daily cap (decision-maker, Oct 4).
 router.get("/api/geocode", isAuthenticated, async (req, res) => {
     try {
@@ -6473,7 +6473,7 @@ router.get("/api/geocode", isAuthenticated, async (req, res) => {
   // ============================================
 
 
-  // R299: session required — every call spends a Maps request (Geocoding / Places), and a public
+  // R300: session required — every call spends a Maps request (Geocoding / Places), and a public
   // endpoint that spends money is an abuse vector whatever its daily cap (decision-maker, Oct 4).
 router.get("/api/search/experiences", isAuthenticated, async (req, res) => {
     try {

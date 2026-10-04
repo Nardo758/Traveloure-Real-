@@ -1,5 +1,5 @@
 /**
- * THE browser's Google Maps key (R299, ledger `2026-10-04-maps-session-and-browser-key`). Every Maps
+ * THE browser's Google Maps key (R300, ledger `2026-10-04-maps-session-and-browser-key`). Every Maps
  * JavaScript load reads this one value, never `import.meta.env` directly.
  *
  *   1. `GOOGLE_MAPS_BROWSER_KEY` — the browser key, restricted apart from the server key
