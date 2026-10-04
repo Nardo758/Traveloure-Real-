@@ -3351,9 +3351,9 @@ jobs:
       - name: query-userid-reads-guard · Public user-id guard
         if: ${{ !cancelled() }}
         run: node scripts/check-public-user-id.cjs
-      - name: query-userid-reads-guard · Proposal comparison map pin
+      - name: query-userid-reads-guard · Plan comparison ref pin
         if: ${{ !cancelled() }}
-        run: npx tsx --test client/src/lib/__tests__/proposal-comparison-map.test.ts
+        run: npx tsx --test client/src/lib/__tests__/plan-comparison-ref.test.ts
       - name: query-userid-reads-guard · Experience-template plan door pin
         if: ${{ !cancelled() }}
         run: npx tsx --test client/src/lib/__tests__/template-plan-door.test.ts

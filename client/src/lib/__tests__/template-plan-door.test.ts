@@ -31,7 +31,7 @@
  *          address is a registered route.
  *   D1-D3  no invented date survives anywhere in the file, and the comparison the two remaining
  *          legacy call sites still build now REFUSES a missing date instead of filling it in.
- *   R1-R4  the ribbon hands off: one handler, three renderings, the slip when the page is bound
+ *   R1-R4  the ribbon hands off: one handler, two renderings, the slip when the page is bound
  *          to a plan and the ONE planning modal when it is not — and it quotes no fee, calls no
  *          pay gate and mints no comparison of its own.
  *   S1     the modal is opened with the ratified door source shape, not a fourth one.
@@ -173,7 +173,7 @@ describe("R — the Itinerary Preview control", () => {
     }
   });
 
-  it("R4: all three renderings of the control share that one handler", () => {
+  it("R4: both renderings of the control share that one handler", () => {
     for (const testid of ["button-generate-ribbon", "button-generate-ribbon-mobile"]) {
       const at = pageSrc.indexOf(`data-testid="${testid}"`);
       assert.notEqual(at, -1, `${testid} must still exist`);
@@ -181,8 +181,9 @@ describe("R — the Itinerary Preview control", () => {
       assert.match(block, /onClick=\{openItineraryPreviewDoor\}/);
       assert.equal(/onClick=\{createComparison\}/.test(block), false);
     }
-    // Desktop ribbon, mobile ribbon, and the twin floating over the mobile map.
-    assert.equal(pageSrc.split("onClick={openItineraryPreviewDoor}").length - 1, 3);
+    // Desktop ribbon and mobile ribbon. The twin that floated over the mobile map went with that
+    // map (surface step 5 retired the template page's two mobile map mounts).
+    assert.equal(pageSrc.split("onClick={openItineraryPreviewDoor}").length - 1, 2);
   });
 });
 

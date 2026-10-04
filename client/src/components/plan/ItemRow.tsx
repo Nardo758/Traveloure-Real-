@@ -49,6 +49,8 @@ export interface ItemRowMenu {
   onAskLocal?: () => void;
   /** Generic items only: the existing search, with the category preset. */
   findHostHref?: string | null;
+  /** Step 5: on the slip, "Find a host" opens the map's Browse layer filtered to the item's category. */
+  onFindHost?: () => void;
   onBuildAround?: () => void;
   /** R-ah: "Keep this" (unlocked) / "Unlock" (locked) — the owner's own lock. */
   onToggleLock?: () => void;
@@ -259,7 +261,11 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
         {menu.onAskLocal ? (
           <DropdownMenuItem onSelect={menu.onAskLocal} data-testid={`item-menu-ask-local-${id}`}>{menu.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}</DropdownMenuItem>
         ) : null}
-        {menu.findHostHref ? (
+        {menu.findHostHref && menu.onFindHost ? (
+          <DropdownMenuItem onSelect={menu.onFindHost} data-testid={`item-menu-find-host-${id}`}>
+            {ITEM_MENU_LABELS.findHost}
+          </DropdownMenuItem>
+        ) : menu.findHostHref ? (
           <DropdownMenuItem asChild data-testid={`item-menu-find-host-${id}`}>
             <Link href={menu.findHostHref}>{ITEM_MENU_LABELS.findHost}</Link>
           </DropdownMenuItem>

@@ -77,7 +77,7 @@ import { Anchor } from "lucide-react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
 import type { SlipData } from "@/components/plancard/SlipView";
-import { ProposalComparisonMap } from "@/components/plancard/ProposalComparisonMap";
+import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import {
   sumLegMinutes,
@@ -1786,29 +1786,18 @@ export default function ItineraryComparisonPage() {
                   );
                 })()}
 
-                {/* LD 41 (ledger 2026-09-05-comparison-map-baseline-compare): the board's map
-                    carries the traveler's OWN plan as its first tab, so a proposal can be read
-                    against the thing it proposes to change. The baseline is the SAME
-                    `source === "user"` variant the baseline COLUMN renders (`userVariant`) — one
-                    source, two surfaces — and it is omitted honestly when the comparison has no
-                    baseline variant at all (§13), which also removes the compare toggle. */}
-                <ProposalComparisonMap
-                  proposals={[
-                    ...(userVariant
-                      ? [{
-                          id: userVariant.id,
-                          name: userVariant.name,
-                          items: userVariant.items,
-                          isBaseline: true,
-                        }]
-                      : []),
-                    ...aiVariants.map((variant, index) => ({
-                      id: variant.id,
-                      name: variant.name || `Proposal ${index + 1}`,
-                      items: variant.items,
-                    })),
-                  ]}
-                />
+                {/* Surface step 5 (ledger `2026-10-04-surface-step5-map-versions`): the board's map is the
+                    ONE map — `MapControlCenter`'s Draft / A / B / C toggle — inside the versions
+                    board (4a/4b/4c). A comparison with no plan behind it (guest/cart) has no
+                    versions to adopt into, so it draws no board (§13). */}
+                {slipTripId && slipPlancard?.days ? (
+                  <VersionsBoard
+                    tripId={slipTripId}
+                    destination={slipPlancard.trip?.destination ?? ""}
+                    days={slipPlancard.days}
+                    onPaidRun={() => setLocation(`/plans/${slipTripId}`)}
+                  />
+                ) : null}
 
                 {/* B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): while a run is in progress
                     the original plan is still the plan — say so and let the traveler leave with it.

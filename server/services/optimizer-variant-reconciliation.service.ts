@@ -16,8 +16,10 @@ function normalizedName(value: string | null | undefined): string {
  */
 export function isSameOptimizerItem(
   baseline: ItineraryItem,
-  emitted: Pick<SequencedActivity, "providerServiceId" | "name">,
+  emitted: Pick<SequencedActivity, "providerServiceId" | "name"> & { sourceItemId?: string },
 ): boolean {
+  // Step 5: a stop that names the plan item it keeps is matched by that id, decisively.
+  if (baseline.planItemId && emitted.sourceItemId) return emitted.sourceItemId === baseline.planItemId;
   if (
     baseline.providerServiceId &&
     emitted.providerServiceId === baseline.providerServiceId
@@ -32,6 +34,7 @@ export function isSameOptimizerItem(
 function carryThroughBaselineItem(item: ItineraryItem): ReconciledVariantActivity {
   return {
     id: item.id,
+    ...(item.planItemId ? { sourceItemId: item.planItemId } : {}),
     providerServiceId: item.providerServiceId,
     latitude: item.latitude,
     longitude: item.longitude,
@@ -79,6 +82,11 @@ export function reconcileVariantWithBaseline(
 
     if (matchedIndex >= 0) {
       matchedEmittedIndexes.add(matchedIndex);
+      // Step 5: a stop matched to a plan item by listing or title carries that item's id too.
+      const emitted = emittedItems[matchedIndex];
+      if (!emitted.sourceItemId && baselineItem.planItemId) {
+        emittedItems[matchedIndex] = { ...emitted, sourceItemId: baselineItem.planItemId };
+      }
     } else {
       carried.push(carryThroughBaselineItem(baselineItem));
     }

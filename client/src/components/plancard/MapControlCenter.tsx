@@ -1,81 +1,59 @@
-import * as React from "react";
-import { pinLocationText } from "@/lib/place-facts";
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { APIProvider, Map, InfoWindow, useMap } from "@vis.gl/react-google-maps";
-import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
-import { Polyline } from "@/components/ui/map-polyline";
+/**
+ * `MapControlCenter` — THE map (surface step 5; spec v1.2 §2.3; rulings R-b, R-d; ledger
+ * `2026-10-04-surface-step5-map-versions`). One component, two LAYERS, versions as a toggle, two
+ * RENDERERS:
+ *
+ *   · PLAN LAYER: the selected day's stops numbered in day order (located stops only — an area stop
+ *     is listed under "Not on the map yet", never guessed onto the map), straight connectors in day
+ *     order (routed legs with their minutes only when the travel-time service is on), the anchor
+ *     marker always visible, neighbourhood shading while the AnchorPanel is open. Day chips above; a
+ *     bottom sheet of the day's stops below, selection synced both ways.
+ *   · BROWSE LAYER (toggle): listings and partner places around the plan with their own coordinates,
+ *     as hollow teal markers; a card with "Add" writes `itinerary_items` (LD 39). Hosts have no
+ *     coordinates, so they are a list in the sheet, never pins. "Find a host" opens this layer
+ *     filtered to the item's category.
+ *   · VERSIONS: with a run, a Draft / A / B / C toggle redraws the day — moved stops gold, dropped
+ *     ones ghosted, the anchor moving with the version. A day matched by name says so.
+ *   · RENDERERS (ruling 9): Google when a key is present and the script loads; Leaflet/OSM otherwise
+ *     — automatic, once per page load, with "Map by OpenStreetMap". Both draw the SAME scene
+ *     (`buildMapScene` → `sceneMarkers`), so they never disagree.
+ *
+ * This component owns the data; the renderers only draw. It fabricates no coordinate (§13).
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Layers, MapPin, MessageSquare, Plus } from "lucide-react";
+import { SiApple, SiGoogle } from "react-icons/si";
 import { Button } from "@/components/ui/button";
-import { SiGoogle, SiApple } from "react-icons/si";
-import {
-  Layers, MapPin, Check, CalendarPlus, MessageSquare,
-} from "lucide-react";
-import {
-  TYPE_COLORS, ModeIcon,
-  type PlanCardDay, type PlanCardActivity, type PlanCardTransport,
-} from "./plancard-types";
-import { getModePolylineStyle, getModeColor } from "@/lib/transport-modes";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { type PlanCardActivity, type PlanCardDay } from "./plancard-types";
+import { getModeColor } from "@/lib/transport-modes";
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
-import { clampFramingZoom, mapFraming } from "@/lib/map-framing";
-
-interface MapControlCenterProps {
-  tripId: string;
-  tripDestination: string;
-  days: PlanCardDay[];
-  selectedDay: number;
-  onSelectDay: (i: number) => void;
-  /**
-   * CLAUDE.md §21 (ratified Aug 9, 2026) — the TRAVELER-FACING trip-level note
-   * (`trips.expert_traveler_note`, migration 187), passed down from the plancard fetch PlanCard
-   * already owns. Bug fix, same ruling: the notes-layer panel below previously fetched the
-   * PRIVATE `/api/trips/:id/expert-notes` endpoint directly and rendered `trips.expert_notes`
-   * (the Workstation's private build notes) here — an unintentional leak to the trip owner,
-   * closed by reading the correct field from this prop instead.
-   */
-  expertTravelerNote?: string | null;
-  /** Compact read-only canvas for proposal comparison; hides PlanCard-specific controls. */
-  compact?: boolean;
-  /** Proposal maps connect located stops in emitted order without claiming a routed journey. */
-  connectorMode?: "transport" | "sequence";
-  /**
-   * LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`) — an OPTIONAL second, MUTED
-   * series drawn beneath the primary one, so the review board can show a proposal against the
-   * traveler's own plan on ONE map rather than forking a second map component (§18 rule 1).
-   * Its connectors are straight DASHED sequence lines exactly like the primary series' — never
-   * travel routing, and no distance or duration is derived from either (§13, LD 22c). Only the
-   * stops the caller already located are passed; this component fabricates no coordinate.
-   */
-  secondarySeries?: SecondaryMapSeries | null;
-}
-
-export interface SecondaryMapSeries {
-  id: string;
-  label: string;
-  activities: PlanCardActivity[];
-}
-
-interface GeocodedActivity extends PlanCardActivity {
-  resolvedLat: number;
-  resolvedLng: number;
-}
+import {
+  buildMapScene,
+  type BrowsePlace,
+  type MapAnchor,
+  type MapArea,
+  type MapVersion,
+} from "@/lib/map-scene";
+import { MAP_FALLBACK_NOTICE, useMapRenderer } from "@/lib/map-renderer";
+import { browseAddBody, hostRows, listingPlaces, partnerPlaces } from "@/lib/browse-supply";
+import { SceneMapGoogle } from "./map/SceneMapGoogle";
+import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
+import type { SceneLeg } from "./map/scene-legs";
 
 const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
 /**
- * ONE located-pin predicate (§18 rule 1) — the pin layer, the viewport framing and the
- * initial-center derivation all read it. A stop with no coordinates is simply not mapped;
- * this component fabricates no coordinate (§13).
+ * ONE located-pin predicate (§18 rule 1) — the pin layer, the view bar's count and the slip's
+ * located/unlocated split all read it. A stop with no coordinates is simply not mapped (§13).
  */
-export function isLocated(a: PlanCardActivity): boolean {
-  return a.lat != null && a.lng != null;
+export function isLocated(a: Pick<PlanCardActivity, "lat" | "lng">): boolean {
+  return typeof a.lat === "number" && typeof a.lng === "number" && Number.isFinite(a.lat) && Number.isFinite(a.lng);
 }
 
-/**
- * "X of Y located" for a day — the view bar's Map label (ledger `2026-09-07-trip-card-one-page`,
- * brief §7 anatomy). Reads the SAME predicate the pin layer reads, so the label and the map can
- * never disagree about which stops are on it (§18 rule 1). NULL when the day has no stops at all
- * — a label about zero stops is not drawn.
- */
+/** "X of Y located" for a day — reads the SAME predicate the pin layer reads. Null for no stops. */
 export function locatedCountLabel(activities: readonly PlanCardActivity[] | undefined): string | null {
   const total = activities?.length ?? 0;
   if (total === 0) return null;
@@ -83,326 +61,32 @@ export function locatedCountLabel(activities: readonly PlanCardActivity[] | unde
   return `${located} of ${total} located`;
 }
 
-// LD 41 comparison series styling. A dashed Google polyline is a zero-opacity stroke plus a
-// repeating dash symbol (the same shape `transport-modes.ts` uses for walking legs).
-const SECONDARY_SERIES_COLOR = "#94A3B8";
-const SECONDARY_DASH: google.maps.Symbol = { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 };
-
-function MapContent({
-  activities,
-  transports,
-  destination,
-  layers,
-  selectedPinId,
-  onSelectPin,
-  tripId,
-  connectorMode,
-  secondaryActivities,
-  fallbackCenter,
-}: {
-  activities: PlanCardActivity[];
-  transports: PlanCardTransport[];
-  destination: string;
-  layers: { activities: boolean; transport: boolean; expertNotes: boolean };
-  selectedPinId: string | null;
-  onSelectPin: (id: string | null) => void;
+export interface MapControlCenterProps {
   tripId: string;
-  connectorMode: "transport" | "sequence";
-  /** LD 41: the comparison series' already-located stops (empty when nothing is compared). */
-  secondaryActivities: PlanCardActivity[];
-  /** L4: the server-geocoded DESTINATION center, resolved by the OUTER component (which needs
-   *  it to decide whether mounting a map canvas is honest at all). Null = no honest center. */
-  fallbackCenter: { lat: number; lng: number } | null;
-}) {
-  const map = useMap();
-  // Pins read coordinates directly from the server response. Coordinates are
-  // resolved-on-write and persisted server-side (plancard GET emits lat/lng), so
-  // the PlanCard never geocodes client-side. Activities without coordinates are
-  // simply not pinned. No second geocode path lives here.
-  const geocodedActivities = useMemo<GeocodedActivity[]>(
-    () =>
-      (activities || [])
-        .filter(isLocated)
-        .map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! })),
-    [activities],
-  );
-
-  // LD 41 comparison series — same §13 filter, no second coordinate rail.
-  const geocodedSecondary = useMemo<GeocodedActivity[]>(
-    () =>
-      (secondaryActivities || [])
-        .filter(isLocated)
-        .map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! })),
-    [secondaryActivities],
-  );
-
-  useEffect(() => {
-    if (!map || typeof google === "undefined" || !google.maps) return;
-    // Both series share ONE viewport: a compare view that framed only the proposal would
-    // silently crop the plan it is being compared with.
-    const framed = [...geocodedActivities, ...geocodedSecondary];
-    // Smoke 8 item 5: framing never zooms past the district — one pin is centred at district
-    // zoom, and a fit over several is clamped to it once it settles (`mapFraming`).
-    const framing = mapFraming(framed.map((a) => ({ lat: a.resolvedLat, lng: a.resolvedLng })));
-    if (framing.kind === "center") {
-      map.setCenter(framing.center);
-      map.setZoom(framing.zoom);
-    } else if (framing.kind === "bounds") {
-      const bounds = new google.maps.LatLngBounds();
-      framed.forEach((a) => {
-        bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
-      });
-      google.maps.event.addListenerOnce(map, "idle", () => {
-        const clamped = clampFramingZoom(map.getZoom(), framing.maxZoom);
-        if (clamped !== null) map.setZoom(clamped);
-      });
-      map.fitBounds(bounds, 60);
-    } else if (fallbackCenter) {
-      map.setCenter(fallbackCenter);
-      map.setZoom(13);
-    }
-  }, [map, geocodedActivities, geocodedSecondary, fallbackCenter]);
-
-  const expertNoteActivities = geocodedActivities.filter(a => a.expertNote && a.expertNote.trim().length > 0);
-
-  return (
-    <>
-      {/* LD 41 comparison series, drawn first so the focused series sits on top of it. Dashed,
-          muted, and labelled as SEQUENCE by the caller's legend — never a routed journey. */}
-      {layers.activities && geocodedSecondary.length > 1 &&
-        geocodedSecondary.slice(0, -1).map((activity, index) => {
-          const nextActivity = geocodedSecondary[index + 1];
-          return (
-            <Polyline
-              key={`secondary-sequence-${activity.id}-${nextActivity.id}`}
-              path={[
-                { lat: activity.resolvedLat, lng: activity.resolvedLng },
-                { lat: nextActivity.resolvedLat, lng: nextActivity.resolvedLng },
-              ]}
-              strokeColor={SECONDARY_SERIES_COLOR}
-              strokeOpacity={0}
-              strokeWeight={2}
-              icons={[{ icon: SECONDARY_DASH, offset: "0", repeat: "14px" }]}
-            />
-          );
-        })}
-
-      {layers.activities && geocodedSecondary.map((activity) => (
-        <MapMarker
-          key={`secondary-${activity.id}`}
-          position={{ lat: activity.resolvedLat, lng: activity.resolvedLng }}
-          title={activity.name}
-        >
-          <div className="flex flex-col items-center" data-testid={`map-secondary-pin-${activity.id}`}>
-            <div
-              className="rounded-lg px-2 py-1 whitespace-nowrap border border-dashed"
-              style={{
-                backgroundColor: "hsl(var(--card))",
-                borderColor: SECONDARY_SERIES_COLOR,
-                opacity: 0.9,
-              }}
-            >
-              <div className="text-[10px] font-semibold" style={{ color: SECONDARY_SERIES_COLOR }}>
-                {activity.name}
-              </div>
-            </div>
-            <div
-              className="w-2.5 h-2.5 rounded-full -mt-0.5 border"
-              style={{ backgroundColor: "hsl(var(--card))", borderColor: SECONDARY_SERIES_COLOR }}
-            />
-          </div>
-        </MapMarker>
-      ))}
-
-      {connectorMode === "sequence" && layers.activities && geocodedActivities.length > 1 &&
-        geocodedActivities.slice(0, -1).map((activity, index) => {
-          const nextActivity = geocodedActivities[index + 1];
-          return (
-            <Polyline
-              key={`sequence-${activity.id}-${nextActivity.id}`}
-              path={[
-                { lat: activity.resolvedLat, lng: activity.resolvedLng },
-                { lat: nextActivity.resolvedLat, lng: nextActivity.resolvedLng },
-              ]}
-              strokeColor="#64748B"
-              strokeOpacity={0.55}
-              strokeWeight={2}
-            />
-          );
-        })}
-
-      {layers.transport && geocodedActivities.length > 1 && transports.map((tr, i) => {
-        const fromActivity = geocodedActivities.find((a) => a.location === tr.from || a.name === tr.fromName) || geocodedActivities[i];
-        const toActivity = geocodedActivities.find((a) => a.location === tr.to || a.name === tr.toName) || geocodedActivities[i + 1];
-        if (!fromActivity || !toActivity) return null;
-        // Derive the leg's mode from the persisted leg record (userSelectedMode ??
-        // recommendedMode), NOT from any local component state. tr.mode is the
-        // server-computed equivalent and stays as a final fallback for legs that
-        // lack the explicit fields (e.g. generated-itinerary fallback legs). After
-        // a mode change + /plancard invalidate, this restyles on its own.
-        const activeMode = tr.userSelectedMode ?? tr.recommendedMode ?? tr.mode;
-        const style = getModePolylineStyle(activeMode);
-        const midLat = (fromActivity.resolvedLat + toActivity.resolvedLat) / 2;
-        const midLng = (fromActivity.resolvedLng + toActivity.resolvedLng) / 2;
-        return (
-          <React.Fragment key={`route-${tr.id}`}>
-            <Polyline
-              path={[
-                { lat: fromActivity.resolvedLat, lng: fromActivity.resolvedLng },
-                { lat: toActivity.resolvedLat, lng: toActivity.resolvedLng },
-              ]}
-              strokeColor={style.strokeColor}
-              strokeOpacity={style.strokeOpacity}
-              strokeWeight={style.strokeWeight}
-              icons={style.icons}
-            />
-            {tr.duration && GOOGLE_MAPS_MAP_ID && (
-              <MapMarker position={{ lat: midLat, lng: midLng }}>
-                <div
-                  className="px-1.5 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap shadow-md border"
-                  style={{
-                    backgroundColor: "hsl(var(--card))",
-                    borderColor: style.strokeColor ?? undefined,
-                    color: style.strokeColor ?? undefined,
-                  }}
-                  data-testid={`map-route-duration-${tr.id}`}
-                >
-                  {tr.duration}m
-                </div>
-              </MapMarker>
-            )}
-          </React.Fragment>
-        );
-      })}
-
-      {layers.activities && geocodedActivities.map((activity) => {
-        const tc = TYPE_COLORS[activity.type] || TYPE_COLORS.attraction;
-        return (
-          <MapMarker
-            key={activity.id}
-            position={{ lat: activity.resolvedLat, lng: activity.resolvedLng }}
-            title={activity.name}
-            onClick={() => onSelectPin(activity.id)}
-          >
-            <div className="flex flex-col items-center" data-testid={`map-pin-${activity.id}`}>
-              <div
-                className="rounded-lg px-2.5 py-1.5 shadow-lg border-2 whitespace-nowrap"
-                style={{
-                  backgroundColor: "hsl(var(--card))",
-                  borderColor: tc.dot,
-                  boxShadow: `0 4px 20px ${tc.dot}30`,
-                }}
-              >
-                <div className="text-[11px] font-bold text-foreground" data-testid={`map-pin-name-${activity.id}`}>{activity.name}</div>
-                <div className="text-[10px] text-muted-foreground" data-testid={`map-pin-time-${activity.id}`}>{activity.time}</div>
-              </div>
-              <div
-                className="w-3.5 h-3.5 rounded-full -mt-0.5 border-2"
-                style={{
-                  backgroundColor: tc.dot,
-                  borderColor: "hsl(var(--card))",
-                  boxShadow: `0 0 12px ${tc.dot}50`,
-                }}
-              />
-            </div>
-          </MapMarker>
-        );
-      })}
-
-      {layers.expertNotes && expertNoteActivities.map((activity) => (
-        <MapMarker
-          key={`note-${activity.id}`}
-          position={{ lat: activity.resolvedLat + 0.0002, lng: activity.resolvedLng + 0.0002 }}
-          title={`Expert tip: ${activity.expertNote}`}
-          onClick={() => onSelectPin(`note-${activity.id}`)}
-        >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center shadow-md border-2 border-amber-400 bg-amber-50 dark:bg-amber-950"
-            title={`Expert tip: ${activity.expertNote}`}
-            data-testid={`map-expert-note-pin-${activity.id}`}
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-          </div>
-        </MapMarker>
-      ))}
-
-      {selectedPinId && (() => {
-        const isNote = selectedPinId.startsWith("note-");
-        const actId = isNote ? selectedPinId.replace("note-", "") : selectedPinId;
-        const pin = geocodedActivities.find((a) => a.id === actId);
-        if (!pin) return null;
-
-        if (isNote && pin.expertNote) {
-          return (
-            <InfoWindow
-              position={{ lat: pin.resolvedLat + 0.0002, lng: pin.resolvedLng + 0.0002 }}
-              onCloseClick={() => onSelectPin(null)}
-            >
-              <div className="p-1 min-w-[160px] max-w-[240px]" data-testid={`map-expert-note-window-${pin.id}-${tripId}`}>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <MessageSquare className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                  <span className="font-bold text-sm text-amber-700">Expert Tip</span>
-                </div>
-                <div className="text-xs font-semibold text-gray-700 mb-0.5">{pin.name}</div>
-                <div className="text-xs text-gray-600 italic leading-snug">{pin.expertNote}</div>
-              </div>
-            </InfoWindow>
-          );
-        }
-
-        const tc = TYPE_COLORS[pin.type] || TYPE_COLORS.attraction;
-        return (
-          <InfoWindow
-            position={{ lat: pin.resolvedLat, lng: pin.resolvedLng }}
-            onCloseClick={() => onSelectPin(null)}
-          >
-            <div className="p-1 min-w-[140px]" data-testid={`map-info-window-${pin.id}-${tripId}`}>
-              <div className="font-bold text-sm" data-testid={`map-info-name-${pin.id}`}>{pin.name}</div>
-              <div className="text-xs mt-0.5 flex items-center gap-1 text-muted-foreground" data-testid={`map-info-location-${pin.id}`}>
-                {/* Smoke 5 item 3: an AI-written location shows its ward/area only — the same rule as the row. */}
-                <MapPin className="w-3 h-3" /> {pinLocationText(pin.location, pin.origin)}
-              </div>
-              <div className="flex gap-2 mt-1 items-center">
-                <span className="text-xs" data-testid={`map-info-time-${pin.id}`}>{pin.time}</span>
-                <span
-                  className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
-                  style={{ backgroundColor: `${tc.dot}20`, color: tc.dot }}
-                  data-testid={`map-info-type-${pin.id}`}
-                >
-                  {pin.type}
-                </span>
-                {pin.cost > 0 && (
-                  <span className="text-xs font-semibold text-green-600 dark:text-green-400" data-testid={`map-info-cost-${pin.id}`}>${pin.cost}</span>
-                )}
-              </div>
-              {pin.expertNote && (
-                <div className="mt-1.5 p-1.5 bg-amber-50 rounded text-[10px] text-amber-700 italic border border-amber-200">
-                  💡 {pin.expertNote}
-                </div>
-              )}
-            </div>
-          </InfoWindow>
-        );
-      })()}
-    </>
-  );
-}
-
-class MapErrorBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  render() {
-    if (this.state.hasError) return this.props.fallback;
-    return this.props.children;
-  }
+  tripDestination: string;
+  days: PlanCardDay[];
+  selectedDay: number;
+  onSelectDay: (i: number) => void;
+  /** §21: the TRAVELER-FACING trip-level note (`trips.expert_traveler_note`). */
+  expertTravelerNote?: string | null;
+  compact?: boolean;
+  /** No Browse layer and no Add — a surface that shows a plan without changing it. */
+  readOnly?: boolean;
+  /** The plan's anchor (stay / reservation / venue) — always drawn when located. */
+  anchor?: MapAnchor | null;
+  /** Neighbourhood centroids; shaded only while `showAreas` (the AnchorPanel is open). */
+  areas?: MapArea[] | null;
+  showAreas?: boolean;
+  /** A run's versions: the Draft / A / B / C toggle. */
+  versions?: MapVersion[] | null;
+  /** Controlled Browse layer (e.g. "Find a host" opens it filtered to a category). */
+  browse?: { open: boolean; categoryKey: string | null } | null;
+  onBrowseChange?: (next: { open: boolean; categoryKey: string | null }) => void;
+  /** Routed legs and their minutes — only when the travel-time service is on (R-h). */
+  showTravelMinutes?: boolean;
+  /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
+  versionKey?: string;
+  onVersionChange?: (key: string) => void;
 }
 
 export function MapControlCenter({
@@ -413,328 +97,368 @@ export function MapControlCenter({
   onSelectDay,
   expertTravelerNote,
   compact = false,
-  connectorMode = "transport",
-  secondarySeries = null,
+  readOnly = false,
+  anchor = null,
+  areas = null,
+  showAreas = false,
+  versions = null,
+  browse: browseControlled = null,
+  onBrowseChange,
+  showTravelMinutes = false,
+  versionKey: versionKeyControlled,
+  onVersionChange,
 }: MapControlCenterProps) {
-  const [layers, setLayers] = useState({ activities: true, transport: true, expertNotes: true });
-  const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [planLayer, setPlanLayer] = useState(true);
+  const [browseLocal, setBrowseLocal] = useState<{ open: boolean; categoryKey: string | null }>({ open: false, categoryKey: null });
+  const browseState = browseControlled ?? browseLocal;
+  const setBrowse = (next: { open: boolean; categoryKey: string | null }) => {
+    setBrowseLocal(next);
+    onBrowseChange?.(next);
+  };
+  const browseOn = !readOnly && browseState.open;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedBrowseId, setSelectedBrowseId] = useState<string | null>(null);
+  const [versionKeyLocal, setVersionKeyLocal] = useState<string>("draft");
+  const versionKey = versionKeyControlled ?? versionKeyLocal;
+  const setVersionKey = (k: string) => {
+    setVersionKeyLocal(k);
+    onVersionChange?.(k);
+  };
+  const { renderer, onGoogleLoad, onGoogleError } = useMapRenderer(MAPS_API_KEY.length > 0);
 
   const day = days[selectedDay];
+  const dayNumber = day?.dayNum ?? null;
+  const version = versions?.find((v) => v.key === versionKey) ?? null;
+  const city = (tripDestination ?? "").split(",")[0].trim();
 
-  // L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): the map NEVER defaults to
-  // Null Island (0,0) — a canvas that opens there is a map of nowhere wearing the plan's name
-  // (§13). The initial center is the day's first LOCATED stop; a day with no located stops asks
-  // the ONE server geocode path (GET /api/geocode — the same one the Expert Workspace uses) for
-  // the destination; until one of those answers, no map canvas is mounted.
-  const dayActivities = day?.activities ?? [];
-  const comparisonActivities = secondarySeries?.activities ?? [];
-  const firstLocated = [...dayActivities, ...comparisonActivities].find(isLocated) ?? null;
-  const { data: geocodedDestination, isLoading: geocodingDestination } = useQuery<{ lat?: number; lng?: number }>({
+  // ── Browse supply (the EXISTING public reads; only while the layer is on) ───────────────────
+  const { data: categories } = useQuery<Array<{ id: string; categoryKey?: string | null }>>({
+    queryKey: ["/api/service-categories"],
+    enabled: browseOn && !!browseState.categoryKey,
+    staleTime: 5 * 60_000,
+  });
+  const categoryId = browseState.categoryKey ? categories?.find((c) => c.categoryKey === browseState.categoryKey)?.id ?? null : null;
+  const listingsUrl = `/api/services?location=${encodeURIComponent(city)}${categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : ""}`;
+  const { data: listings } = useQuery<any[]>({ queryKey: [listingsUrl], enabled: browseOn && !!city && (!browseState.categoryKey || !!categories) });
+  const partnerUrl = `/api/affiliate/products?city=${encodeURIComponent(city)}&limit=100`;
+  const { data: partner } = useQuery<{ products?: any[] }>({ queryKey: [partnerUrl], enabled: browseOn && !!city });
+  const { data: experts } = useQuery<any[]>({
+    queryKey: ["/api/experts", { location: city }],
+    enabled: browseOn && !!city,
+    queryFn: async () => {
+      const res = await fetch(`/api/experts?location=${encodeURIComponent(city)}`);
+      if (!res.ok) throw new Error("Failed to fetch experts");
+      return res.json();
+    },
+  });
+  const browsePlaces: BrowsePlace[] = useMemo(
+    () => (browseOn ? [...listingPlaces(listings), ...partnerPlaces(partner?.products, browseState.categoryKey)] : []),
+    [browseOn, listings, partner, browseState.categoryKey],
+  );
+  const hosts = browseOn ? hostRows(experts).slice(0, 8) : [];
+  const selectedBrowse = browsePlaces.find((b) => `${b.kind}:${b.id}` === selectedBrowseId) ?? null;
+
+  const add = useMutation({
+    mutationFn: async (place: BrowsePlace) =>
+      (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, browseAddBody(place, dayNumber ?? 1))).json(),
+    onSuccess: (_out, place) => {
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: `Added ${place.name} to day ${dayNumber ?? 1}` });
+      setSelectedBrowseId(null);
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't add that", description: e?.message }),
+  });
+
+  // ── The scene ────────────────────────────────────────────────────────────────────────────────
+  const planStops = (day?.activities ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    time: a.time ?? null,
+    lat: a.lat ?? null,
+    lng: a.lng ?? null,
+    expertNote: a.expertNote ?? null,
+    supplySlot: !!(a as any).supplySlot,
+  }));
+  const scene = buildMapScene({
+    dayNumber,
+    planStops,
+    version,
+    planAnchor: anchor,
+    areas,
+    showAreas,
+    browse: browsePlaces,
+    layers: { plan: planLayer, browse: browseOn },
+  });
+  const dayDiff = version && dayNumber != null ? version.days.find((d) => d.dayNumber === dayNumber) ?? null : null;
+
+  // Routed legs (and their minutes) only when the travel-time service is on; otherwise the scene's
+  // straight connector is the only line, and no minute is drawn (R-h).
+  const legs: SceneLeg[] = useMemo(() => {
+    if (!showTravelMinutes || version || !day?.transports?.length) return [];
+    const located = (day.activities ?? []).filter(isLocated);
+    return day.transports
+      .map((tr, i) => {
+        const from = located.find((a) => a.location === tr.from || a.name === tr.fromName) ?? located[i];
+        const to = located.find((a) => a.location === tr.to || a.name === tr.toName) ?? located[i + 1];
+        if (!from || !to) return null;
+        const mode = tr.userSelectedMode ?? tr.recommendedMode ?? tr.mode;
+        return {
+          id: tr.id,
+          from: { lat: from.lat!, lng: from.lng! },
+          to: { lat: to.lat!, lng: to.lng! },
+          color: getModeColor(mode),
+          durationLabel: tr.duration ? `${tr.duration}m` : null,
+        };
+      })
+      .filter((l): l is SceneLeg => !!l);
+  }, [showTravelMinutes, version, day]);
+
+  // The initial center: the first pin, else the anchor, else the server-geocoded destination. No
+  // honest center ⇒ no canvas (never Null Island, §13).
+  const firstPoint = scene.pins[0] ?? (scene.anchor ? { lat: scene.anchor.lat, lng: scene.anchor.lng } : null);
+  const { data: geocoded, isLoading: geocoding } = useQuery<{ lat?: number; lng?: number }>({
     queryKey: ["/api/geocode", tripDestination],
     queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(tripDestination)}`).then((r) => r.json()),
-    enabled: !!tripDestination && !firstLocated,
+    enabled: !!tripDestination && !firstPoint,
     staleTime: Infinity,
   });
-  const destinationCenter =
-    geocodedDestination?.lat != null && geocodedDestination?.lng != null
-      ? { lat: geocodedDestination.lat, lng: geocodedDestination.lng }
+  const center = firstPoint
+    ? { lat: firstPoint.lat, lng: firstPoint.lng }
+    : geocoded?.lat != null && geocoded?.lng != null
+      ? { lat: geocoded.lat, lng: geocoded.lng }
       : null;
-  const initialCenter = firstLocated
-    ? { lat: firstLocated.lat!, lng: firstLocated.lng! }
-    : destinationCenter;
 
-  const toggleLayer = useCallback((key: "activities" | "transport" | "expertNotes") => {
-    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
-  // Handlers extracted to ./day-map-actions.ts (shared with the collapsed "Map preview"
-  // section) — thin wrappers here just bind the current day/destination.
-  function handleGoogleMaps() {
-    openDayInMaps(day, tripDestination, "google");
-  }
-
-  function handleAppleMaps() {
-    openDayInMaps(day, tripDestination, "apple");
-  }
-
-  function handleAddToCalendar() {
-    addDayToCalendar(day, tripDestination);
-  }
-
-  const routeSummary = useMemo(() => {
-    if (!day?.transports || !day?.activities) return [];
-    return day.transports.map((tr, i) => {
-      const fromAct = day.activities.find((a) => a.id === tr.from) || day.activities[i];
-      const toAct = day.activities.find((a) => a.id === tr.to) || day.activities[i + 1];
-      return { transport: tr, fromName: fromAct?.name || tr.fromName || tr.from, toName: toAct?.name || tr.toName || tr.to };
-    });
-  }, [day]);
+  useEffect(() => {
+    setSelectedId(null);
+  }, [selectedDay, versionKey]);
 
   if (!day) return null;
 
-  const activitiesCount = day.activities?.length || 0;
-  const transportsCount = day.transports?.length || 0;
-  const expertNotesCount = (day.activities || []).filter(a => a.expertNote && a.expertNote.trim()).length;
-  const hasApiKey = MAPS_API_KEY.length > 0;
-
+  const canvasHeight = compact ? "h-[360px]" : "h-[420px]";
   return (
-    <div data-testid={`map-control-center-${tripId}`}>
-      {hasApiKey ? (
-        <div
-          className={`relative overflow-hidden ${compact ? "h-[360px] rounded-xl" : "h-[420px]"}`}
-          data-testid={`map-area-${tripId}`}
-        >
-          {initialCenter ? (
-            <MapErrorBoundary
-              fallback={
-                <div className="h-full bg-muted flex items-center justify-center">
-                  <p className="text-muted-foreground text-sm">Map unavailable</p>
-                </div>
-              }
+    <div data-testid={`map-control-center-${tripId}`} data-map-renderer={renderer}>
+      {/* ── Day chips · version toggle · layers ─────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border" data-testid={`map-toolbar-${tripId}`}>
+        <div className="flex flex-wrap gap-1" data-testid={`map-day-selector-${tripId}`}>
+          {days.map((d, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onSelectDay(i)}
+              aria-pressed={selectedDay === i}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border ${selectedDay === i ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+              data-testid={`map-day-btn-${d.dayNum}-${tripId}`}
             >
-              <APIProvider apiKey={MAPS_API_KEY}>
-                <Map
-                  mapId={GOOGLE_MAPS_MAP_ID}
-                  style={{ width: "100%", height: "100%" }}
-                  defaultZoom={13}
-                  defaultCenter={initialCenter}
-                  gestureHandling="greedy"
-                  disableDefaultUI={false}
-                  zoomControl={true}
-                  mapTypeControl={false}
-                  streetViewControl={false}
-                  fullscreenControl={false}
-                >
-                  <MapContent
-                    activities={day.activities || []}
-                    transports={day.transports || []}
-                    destination={tripDestination}
-                    layers={layers}
-                    selectedPinId={selectedPinId}
-                    onSelectPin={setSelectedPinId}
-                    tripId={tripId}
-                    connectorMode={connectorMode}
-                    secondaryActivities={secondarySeries?.activities ?? []}
-                    fallbackCenter={destinationCenter}
-                  />
-                </Map>
-              </APIProvider>
-            </MapErrorBoundary>
+              Day {d.dayNum}
+            </button>
+          ))}
+        </div>
+        {versions?.length ? (
+          <div className="flex gap-1 rounded-full border border-border p-0.5" role="group" aria-label="Version" data-testid={`map-version-toggle-${tripId}`}>
+            {[{ key: "draft", label: "Draft" }, ...versions.map((v) => ({ key: v.key, label: v.label }))].map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                aria-pressed={versionKey === v.key}
+                onClick={() => setVersionKey(v.key)}
+                className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${versionKey === v.key ? "bg-foreground text-background" : "text-muted-foreground"}`}
+                data-testid={`map-version-${v.key === "draft" ? "draft" : v.label}`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="ml-auto flex items-center gap-1" data-testid={`layer-controls-${tripId}`}>
+          <Layers className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+          <button
+            type="button"
+            aria-pressed={planLayer}
+            onClick={() => setPlanLayer((v) => !v)}
+            className={`px-2.5 py-0.5 rounded-full text-xs border ${planLayer ? "border-foreground text-foreground" : "border-border text-muted-foreground"}`}
+            data-testid={`map-layer-plan-${tripId}`}
+          >
+            Plan
+          </button>
+          {!readOnly ? (
+            <button
+              type="button"
+              aria-pressed={browseOn}
+              onClick={() => setBrowse({ open: !browseOn, categoryKey: browseOn ? null : browseState.categoryKey })}
+              className={`px-2.5 py-0.5 rounded-full text-xs border ${browseOn ? "border-teal-600 text-teal-700" : "border-border text-muted-foreground"}`}
+              data-testid={`map-layer-browse-${tripId}`}
+            >
+              Browse
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {dayDiff?.matchedByName ? (
+        <p className="px-3 py-1 text-[11px] text-muted-foreground" data-testid="map-version-matched-by-name">
+          Matched by name — this day's stops are paired by their names, not their ids.
+        </p>
+      ) : null}
+
+      {/* ── The canvas ──────────────────────────────────────────────────────────────────────── */}
+      <div className={`relative overflow-hidden ${canvasHeight}`} data-testid={`map-area-${tripId}`}>
+        {center ? (
+          renderer === "google" ? (
+            <SceneMapGoogle
+              apiKey={MAPS_API_KEY}
+              onLoad={onGoogleLoad}
+              onError={onGoogleError}
+              scene={scene}
+              center={center}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onSelectBrowse={(id) => setSelectedBrowseId(browsePlaces.find((b) => b.id === id) ? `${browsePlaces.find((b) => b.id === id)!.kind}:${id}` : null)}
+              legs={legs}
+            />
           ) : (
-            /* §13: no located stops and no geocoded destination = no honest center, so no map
-               canvas at all — never a Null Island default. */
-            <div className="h-full bg-muted flex items-center justify-center px-4 text-center">
-              <p className="text-muted-foreground text-sm" data-testid={`map-no-center-${tripId}`}>
-                {geocodingDestination
-                  ? `Locating ${tripDestination}…`
-                  : "No mapped stops for this day yet"}
-              </p>
-            </div>
-          )}
-
-          {!compact && <div className="absolute top-4 left-4 flex gap-1 z-10" data-testid={`map-day-selector-${tripId}`}>
-            {days.map((d, i) => (
-              <button
-                key={i}
-                onClick={() => onSelectDay(i)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-sm transition-all border-0 cursor-pointer ${
-                  selectedDay === i
-                    ? "bg-primary text-primary-foreground shadow-lg"
-                    : "bg-card/90 text-muted-foreground hover:text-foreground hover:bg-card"
-                }`}
-                data-testid={`map-day-btn-${d.dayNum}-${tripId}`}
-              >
-                Day {d.dayNum}
-              </button>
-            ))}
-          </div>}
-
-          {!compact && <div className="absolute top-4 right-4 bg-card/90 backdrop-blur-sm rounded-xl px-4 py-2.5 z-10 shadow-lg" data-testid={`map-day-info-${tripId}`}>
-            <div className="text-sm font-bold text-foreground" data-testid={`map-day-date-${tripId}`}>{day.date}</div>
-            <div className="text-xs text-muted-foreground" data-testid={`map-day-label-${tripId}`}>{day.label}</div>
-          </div>}
-        </div>
-      ) : (
-        <div className={`${compact ? "h-[360px]" : "h-[420px]"} bg-muted/50 flex flex-col items-center justify-center gap-3`} data-testid={`map-placeholder-${tripId}`}>
-          <MapPin className="w-12 h-12 text-muted-foreground/30" />
-          <p className="text-muted-foreground text-sm">Map unavailable — add VITE_GOOGLE_MAPS_API_KEY</p>
-          <div className="flex gap-1 z-10">
-            {days.map((d, i) => (
-              <button
-                key={i}
-                onClick={() => onSelectDay(i)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-0 cursor-pointer transition-all ${
-                  selectedDay === i
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-                data-testid={`map-day-btn-${d.dayNum}-${tripId}`}
-              >
-                Day {d.dayNum}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!compact && <div className="bg-muted/30 px-5 py-4 border-t border-border" data-testid={`layer-controls-${tripId}`}>
-        <div className="flex justify-between items-center mb-3.5 flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-foreground uppercase tracking-wider">
-            <Layers className="w-4 h-4" /> Map Layers
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              size="sm"
-              variant="default"
-              onClick={handleGoogleMaps}
-              className="text-[11px] gap-1.5 h-7"
-              data-testid={`map-btn-google-${tripId}`}
-            >
-              <SiGoogle className="w-3 h-3" /> Google Maps
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAppleMaps}
-              className="text-[11px] gap-1.5 h-7"
-              data-testid={`map-btn-apple-${tripId}`}
-            >
-              <SiApple className="w-3 h-3" /> Apple Maps
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAddToCalendar}
-              className="text-[11px] gap-1.5 h-7"
-              data-testid={`map-btn-calendar-${tripId}`}
-            >
-              <CalendarPlus className="w-3 h-3" /> Add to Calendar
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex gap-3 flex-wrap">
-          <button
-            onClick={() => toggleLayer("activities")}
-            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 min-w-[140px] ${
-              layers.activities
-                ? "border-blue-500 bg-blue-500/10 dark:bg-blue-500/15"
-                : "border-border bg-muted/20 hover:bg-muted/40"
-            }`}
-            data-testid={`toggle-activities-layer-${tripId}`}
-          >
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center text-primary-foreground ${
-                layers.activities ? "bg-blue-500" : "bg-muted-foreground/30"
-              }`}
-            >
-              {layers.activities ? <Check className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
-            </div>
-            <div className="text-left">
-              <div className={`text-[13px] font-bold ${layers.activities ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`} data-testid={`text-activities-layer-${tripId}`}>
-                Activities
-              </div>
-              <div className="text-[11px] text-muted-foreground" data-testid={`text-activities-count-${tripId}`}>
-                {activitiesCount} stop{activitiesCount !== 1 ? "s" : ""}
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => toggleLayer("transport")}
-            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 min-w-[140px] ${
-              layers.transport
-                ? "border-green-500 bg-green-500/10 dark:bg-green-500/15"
-                : "border-border bg-muted/20 hover:bg-muted/40"
-            }`}
-            data-testid={`toggle-transport-layer-${tripId}`}
-          >
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center text-primary-foreground ${
-                layers.transport ? "bg-green-500" : "bg-muted-foreground/30"
-              }`}
-            >
-              {layers.transport ? <Check className="w-4 h-4" /> : <ModeIcon mode="train" className="w-4 h-4" />}
-            </div>
-            <div className="text-left">
-              <div className={`text-[13px] font-bold ${layers.transport ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`} data-testid={`text-transport-layer-${tripId}`}>
-                Transport
-              </div>
-              <div className="text-[11px] text-muted-foreground" data-testid={`text-transport-count-${tripId}`}>
-                {transportsCount} leg{transportsCount !== 1 ? "s" : ""}
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => toggleLayer("expertNotes")}
-            className={`flex-1 p-3 rounded-xl cursor-pointer transition-all flex items-center gap-3 border-2 min-w-[140px] ${
-              layers.expertNotes
-                ? "border-amber-500 bg-amber-500/10 dark:bg-amber-500/15"
-                : "border-border bg-muted/20 hover:bg-muted/40"
-            }`}
-            data-testid={`toggle-expert-notes-layer-${tripId}`}
-          >
-            <div
-              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                layers.expertNotes ? "bg-amber-500 text-white" : "bg-muted-foreground/30 text-primary-foreground"
-              }`}
-            >
-              {layers.expertNotes ? <Check className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-            </div>
-            <div className="text-left">
-              <div className={`text-[13px] font-bold ${layers.expertNotes ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} data-testid={`text-expert-notes-layer-${tripId}`}>
-                Expert Notes
-              </div>
-              <div className="text-[11px] text-muted-foreground" data-testid={`text-expert-notes-count-${tripId}`}>
-                {expertNotesCount} tip{expertNotesCount !== 1 ? "s" : ""}
-              </div>
-            </div>
-          </button>
-        </div>
-
-        {layers.transport && routeSummary.length > 0 && (
-          <div className="mt-3.5 p-3 rounded-xl bg-muted/30 border border-border/50" data-testid={`route-summary-${tripId}`}>
-            <div className="flex gap-1.5 flex-wrap items-center">
-              {routeSummary.map((rs, i) => (
-                <div key={rs.transport.id} className="flex items-center gap-1.5">
-                  {i === 0 && (
-                    <span className="text-[11px] text-muted-foreground font-medium truncate max-w-[100px]" data-testid={`route-from-${rs.transport.id}-${tripId}`}>{rs.fromName}</span>
-                  )}
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold"
-                    style={{
-                      backgroundColor: `${getModeColor(rs.transport.mode)}20`,
-                      color: getModeColor(rs.transport.mode),
-                    }}
-                    data-testid={`route-leg-${rs.transport.id}-${tripId}`}
-                  >
-                    <ModeIcon mode={rs.transport.mode} className="w-3 h-3" /> {rs.transport.duration}m
-                  </span>
-                  <span className="text-[11px] text-muted-foreground font-medium truncate max-w-[100px]" data-testid={`route-to-${rs.transport.id}-${tripId}`}>{rs.toName}</span>
-                  {i < routeSummary.length - 1 && (
-                    <span className="text-muted-foreground/30 mx-0.5">-</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {layers.expertNotes && expertTravelerNote?.trim() && (
-          <div
-            className="mt-3.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30"
-            data-testid={`expert-notes-panel-${tripId}`}
-          >
-            <div className="flex items-center gap-1.5 mb-1.5 text-amber-700 dark:text-amber-400 text-xs font-bold uppercase tracking-wider">
-              <MessageSquare className="w-3.5 h-3.5" /> Expert Notes
-            </div>
-            <p className="text-[13px] text-foreground/80 whitespace-pre-wrap leading-relaxed" data-testid={`expert-notes-panel-body-${tripId}`}>
-              {expertTravelerNote}
+            <SceneMapLeaflet
+              scene={scene}
+              center={center}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onSelectBrowse={(id) => setSelectedBrowseId(browsePlaces.find((b) => b.id === id) ? `${browsePlaces.find((b) => b.id === id)!.kind}:${id}` : null)}
+              legs={legs}
+            />
+          )
+        ) : (
+          <div className="h-full bg-muted flex items-center justify-center px-4 text-center">
+            <p className="text-muted-foreground text-sm" data-testid={`map-no-center-${tripId}`}>
+              {geocoding ? `Locating ${tripDestination}…` : "No mapped stops for this day yet"}
             </p>
           </div>
         )}
-      </div>}
+        {renderer === "leaflet" && center ? (
+          <p className="absolute bottom-1 left-1 z-[500] rounded bg-card/90 px-1.5 py-0.5 text-[10px] text-muted-foreground" data-testid="map-fallback-notice">
+            {MAP_FALLBACK_NOTICE}
+          </p>
+        ) : null}
+      </div>
+
+      {/* ── The bottom sheet: the day's stops, selection synced both ways ─────────────────────── */}
+      <div className="border-t border-border px-3 py-2 space-y-2" data-testid={`map-sheet-${tripId}`}>
+        <ol className="space-y-1">
+          {scene.list.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => setSelectedId(s.located ? s.id : null)}
+                aria-selected={selectedId === s.id}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${selectedId === s.id ? "bg-muted" : "hover:bg-muted/50"}`}
+                data-testid={`map-sheet-stop-${s.id}`}
+                data-pin-state={s.state}
+              >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-[10px] font-bold text-background">{s.n}</span>
+                <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                {s.state === "moved" ? <span className="text-[10px] font-semibold text-amber-700">moved</span> : null}
+                {s.state === "added" ? <span className="text-[10px] font-semibold text-teal-700">new</span> : null}
+                {s.time ? <span className="text-xs text-muted-foreground tabular-nums">{s.time}</span> : null}
+              </button>
+            </li>
+          ))}
+        </ol>
+        {dayDiff?.dropped.length ? (
+          <p className="text-xs text-muted-foreground" data-testid="map-sheet-dropped">
+            Dropped in this version: {dayDiff.dropped.map((id) => planStops.find((p) => p.id === id)?.name).filter(Boolean).join(", ")}
+          </p>
+        ) : null}
+        {scene.notOnMap.length ? (
+          <div data-testid="map-not-on-map">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Not on the map yet</p>
+            <ul className="text-xs text-muted-foreground">
+              {scene.notOnMap.map((s) => (
+                <li key={s.id} data-testid={`map-not-on-map-${s.id}`}>
+                  {s.name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* ── Browse: the selected place's card, the places, and hosts (never pins) ─────────── */}
+        {browseOn ? (
+          <div className="space-y-2 border-t border-border pt-2" data-testid="map-browse-panel">
+            {browseState.categoryKey ? (
+              <p className="text-xs text-muted-foreground" data-testid="map-browse-filter">
+                Showing {browseState.categoryKey.replace(/_/g, " ")} ·{" "}
+                <button type="button" className="underline" onClick={() => setBrowse({ open: true, categoryKey: null })} data-testid="map-browse-clear-filter">
+                  show everything
+                </button>
+              </p>
+            ) : null}
+            {selectedBrowse ? (
+              <div className="rounded-md border border-teal-600/40 p-2 space-y-1" data-testid="map-browse-card">
+                <p className="text-sm font-semibold">{selectedBrowse.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {[selectedBrowse.kind === "listing" ? "Traveloure listing" : "Partner place", selectedBrowse.category, selectedBrowse.priceLabel].filter(Boolean).join(" · ")}
+                </p>
+                <Button size="sm" onClick={() => add.mutate(selectedBrowse)} disabled={add.isPending} data-testid="map-browse-add">
+                  <Plus className="mr-1 h-3.5 w-3.5" /> Add to day {dayNumber ?? 1}
+                </Button>
+              </div>
+            ) : null}
+            <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+              {browsePlaces.map((b) => (
+                <li key={`${b.kind}:${b.id}`}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded px-2 py-0.5 text-left text-xs hover:bg-muted/50"
+                    onClick={() => setSelectedBrowseId(`${b.kind}:${b.id}`)}
+                    data-testid={`map-browse-row-${b.kind}-${b.id}`}
+                  >
+                    <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-teal-500" aria-hidden="true" />
+                    <span className="flex-1 truncate">{b.name}</span>
+                    {b.lat == null ? <span className="text-[10px] text-muted-foreground">not on the map</span> : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {hosts.length ? (
+              <div data-testid="map-browse-hosts">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Local hosts</p>
+                <ul className="text-xs">
+                  {hosts.map((h) => (
+                    <li key={h.id} data-testid={`map-browse-host-${h.id}`}>
+                      <a className="underline" href={h.handle ? `/s/${h.handle}` : `/experts/${h.id}`}>
+                        {h.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!compact ? (
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-[11px]" onClick={() => openDayInMaps(day, tripDestination, "google")} data-testid={`map-btn-google-${tripId}`}>
+              <SiGoogle className="w-3 h-3" /> Google Maps
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-[11px]" onClick={() => openDayInMaps(day, tripDestination, "apple")} data-testid={`map-btn-apple-${tripId}`}>
+              <SiApple className="w-3 h-3" /> Apple Maps
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-[11px]" onClick={() => addDayToCalendar(day, tripDestination)} data-testid={`map-btn-calendar-${tripId}`}>
+              Add to Calendar
+            </Button>
+          </div>
+        ) : null}
+        {expertTravelerNote?.trim() ? (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3" data-testid={`expert-notes-panel-${tripId}`}>
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+              <MessageSquare className="w-3.5 h-3.5" /> Expert Notes
+            </div>
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/80" data-testid={`expert-notes-panel-body-${tripId}`}>
+              {expertTravelerNote}
+            </p>
+          </div>
+        ) : null}
+        {!center && !geocoding ? <MapPin className="hidden" aria-hidden="true" /> : null}
+      </div>
     </div>
   );
 }

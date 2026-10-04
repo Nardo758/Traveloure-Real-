@@ -2381,6 +2381,9 @@ export const itineraryVariantItems = pgTable("itinerary_variant_items", {
   replacementReason: text("replacement_reason"),
   metadata: jsonb("metadata").default({}),
   sortOrder: integer("sort_order").default(0),
+  // Migration 343 (step 5): the plan item this stop came from. NULL = no link (older run, or a stop
+  // the version added). No DEFAULT/CHECK/index/FK.
+  sourceItemId: varchar("source_item_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -5948,6 +5951,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Optimize and Build-around never move or remove it. No DEFAULT, no CHECK; written ONLY by the
   // owner's lock rail and the Moment default, and omitted from `insertItineraryItemSchema` (§19).
   lockedAt: timestamp("locked_at"),
+  // Migration 343 (step 5): the optimizer run and version an ADOPTED day came from. Written only by
+  // apply-days. NULL = not adopted from a version. No DEFAULT/CHECK/index/FK.
+  sourceRunId: varchar("source_run_id"),
+  sourceVariantId: varchar("source_variant_id"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -6303,7 +6310,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -12185,3 +12192,16 @@ export const placeFacts = pgTable("place_facts", {
 
 export type ContentSource = typeof contentSources.$inferSelect;
 export type PlaceFact = typeof placeFacts.$inferSelect;
+
+// Migration 344 (step 5, R-ac): one row per FREE day re-time on the versions board. created_at is set
+// by the app (no DEFAULT). No CHECK, no index, no FK. Read and written only by version-board.service.
+export const planDayRetimes = pgTable("plan_day_retimes", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id").notNull(),
+  runId: varchar("run_id"),
+  variantId: varchar("variant_id"),
+  day: integer("day").notNull(),
+  userId: varchar("user_id").notNull(),
+  createdAt: timestamp("created_at").notNull(),
+});
+export type PlanDayRetime = typeof planDayRetimes.$inferSelect;

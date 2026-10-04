@@ -2,13 +2,14 @@
  * The `ItemRow` ⋯ menu's two plan-reading decisions — PURE (surface spec v1.2 §3, step 1; ledger
  * `2026-10-03-surface-step1-item-row`).
  *
- * "Find a host" is offered on a GENERIC item only — one that names no particular place (the SAME
+ * "Find a host" is offered on EVERY generic item — one that names no particular place (the SAME
  * `namedPlaceTokens` the server's place-facts lookup gates on, so "generic" means one thing on both
- * sides, §18 rule 1) — and opens the EXISTING `/services` search with the item's category preset. The
- * category comes from the item's own `item_type` (the `itineraryItemTypeEnum` value set) through the
- * table below; a type with no hireable counterpart (free time, a meeting, a checkpoint) gets NO entry,
- * never an unfiltered browse dressed up as a preset (§13). The Browse layer replaces the target in
- * step 8; the decision of WHICH items offer it stays here.
+ * sides, §18 rule 1) — WHATEVER ITS TYPE (R-w; step 5 ruling 7). The category preset comes from the
+ * item's type through the table below, which reads BOTH spellings a row can arrive in — the raw
+ * `item_type` and the plancard's mapped type (`mapItemType`: activity → attraction, meal → dining).
+ * The slip passes the MAPPED type, so the old raw-only table offered "Find a host" on transport and
+ * stays alone (verified, ledger `2026-10-04-surface-step5-map-versions`). A type with no hireable
+ * counterpart still gets "Find a host", unfiltered — said as a browse, not as a preset.
  */
 import { namedPlaceTokens } from "@shared/place-name-gate";
 import { buildServicesBrowseHref } from "@/lib/services-browse";
@@ -16,19 +17,27 @@ import { buildServicesBrowseHref } from "@/lib/services-browse";
 /** `itinerary_items.item_type` → `service_categories.category_key`. Absent ⇒ no "Find a host". */
 export const FIND_A_HOST_CATEGORY: Readonly<Record<string, string>> = {
   activity: "activity_provider",
+  attraction: "activity_provider",
+  sightseeing: "activity_provider",
+  tour: "activity_provider",
+  entertainment: "activity_provider",
   meal: "dining_venue",
+  dining: "dining_venue",
   transport: "private_transportation",
   accommodation: "accommodation",
 };
+
+/** The category a generic item's "Find a host" presets, or null (an unfiltered browse). */
+export function findHostCategory(type: string | null | undefined): string | null {
+  return (type && FIND_A_HOST_CATEGORY[type]) || null;
+}
 
 export function findHostHref(
   item: { name: string; type?: string | null; locationName?: string | null },
   ctx: { city: string | null | undefined; tripId: string },
 ): string | null {
-  const categoryKey = item.type ? FIND_A_HOST_CATEGORY[item.type] : undefined;
-  if (!categoryKey) return null;
   if (namedPlaceTokens({ title: item.name, locationName: item.locationName ?? null }, ctx.city).size > 0) return null;
-  return buildServicesBrowseHref({ categoryKey, tripId: ctx.tripId, location: ctx.city ?? null });
+  return buildServicesBrowseHref({ categoryKey: findHostCategory(item.type), tripId: ctx.tripId, location: ctx.city ?? null });
 }
 
 /**
