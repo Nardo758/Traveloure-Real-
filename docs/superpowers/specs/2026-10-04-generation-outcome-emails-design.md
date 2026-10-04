@@ -79,9 +79,12 @@ The live suite passed on 2026-10-04 in approximately six minutes and twenty-four
 - The operator confirmed on 2026-10-04 that all six messages arrived in Inbox, not Spam.
 - New sends were limited to the approved persisted recipient. The harness blocked unrelated
   recipients and used development links, rather than links to production-only data.
-- One isolated development QA account and six labeled comparison fixtures remain available
-  for checking the messages. No production fixtures, payment, Trip Pass, wallet, or credit
-  changes were made. This run did not exercise checkout or certify unchanged billing flows.
+- After the operator confirmed Inbox receipt and authorized cleanup, the isolated development
+  QA account and all six labeled comparison fixtures were deleted in one guarded transaction.
+  Verification found zero remaining QA accounts, comparisons, or variants. All six delivery
+  audit records were retained byte-for-byte unchanged. The test-email links no longer resolve
+  to fixture data. No production fixtures, payment, Trip Pass, wallet, or credit changes were
+  made. This run did not exercise checkout or certify unchanged billing flows.
 - The local harness is in `.local/tests/itinerary-outcomes-live.vitest.ts`; output evidence is
   in `/tmp/itinerary-outcomes-live.log`. No recipient address or credentials belong in this doc.
 
