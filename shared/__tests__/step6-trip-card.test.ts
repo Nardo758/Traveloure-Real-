@@ -66,8 +66,12 @@ function deps(over: Partial<PhotoResolveDeps> & { googleCalls?: { n: number }; c
     ...over,
   };
 }
+<<<<<<< HEAD
 // R297: Google is asked only with a photo REFERENCE already in the facts cache.
 const kinkaku = { name: "Kinkaku-ji", placeId: "ChIJ-kinkaku", lat: 35.0394, lng: 135.7292, photoRef: { name: "places/ChIJ-kinkaku/photos/A", authors: [] } };
+=======
+const kinkaku = { name: "Kinkaku-ji", placeId: "ChIJ-kinkaku", lat: 35.0394, lng: 135.7292 };
+>>>>>>> origin/main
 
 test("T3 R-aq: photo order — ours, then a cached Commons hit, then Google live (a miss), else none", async () => {
   assert.equal((await resolvePlacePhoto({ ...kinkaku, ownImage: "https://cdn.example/listing.jpg" }, deps()))!.source, "ours");

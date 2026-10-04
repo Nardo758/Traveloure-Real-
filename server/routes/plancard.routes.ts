@@ -618,8 +618,11 @@ router.get("/api/trips/:tripId/place-photos", isAuthenticated, async (req, res) 
           lat: ref?.lat ?? num(r.lat),
           lng: ref?.lng ?? num(r.lng),
           ownImage: r.serviceImage ?? null,
+<<<<<<< HEAD
           // R297: the cached Google photo reference, if the regular lookup stored one — never fetched here.
           photoRef: ref?.photoRef ?? null,
+=======
+>>>>>>> origin/main
         };
       }),
     );
