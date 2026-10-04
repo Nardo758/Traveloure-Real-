@@ -363,7 +363,7 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
   // health probe raises.
   router.get("/api/health", async (_req, res) => {
     const build = getBuildInfo();
-    // Ledger `2026-09-30-health-flags`: four operator switches as booleans only — never a value.
+    // Ledger `2026-09-30-health-flags` (+ `2026-10-04-health-flight-flag`): operator switches as booleans only — never a value.
     const flags = healthFlags();
     const egress = healthEgressFlags();
     try {
