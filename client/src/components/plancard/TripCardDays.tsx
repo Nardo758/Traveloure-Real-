@@ -37,6 +37,7 @@ import type { FactView } from "@shared/content-facts";
 import type { FinalCardMeta } from "@shared/trip-card-final";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
+import { getUpNextInfo, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -87,6 +88,13 @@ export function TripCardDays(props: TripCardDaysProps) {
   const today = days.find((d) => isCardToday(d, todayIso)) ?? null;
   const todayIds = (today?.activities ?? []).map((a) => a.id);
   const livePhotos = usePlacePhotos(tripId, sheetFor ? [...todayIds, sheetFor.id] : todayIds);
+  // R297: today's now-line and the visited tick — the SAME temporal engine the old card rows used
+  // (`plancard-temporal`), read in the plan's zone; visited is device-local and writes nothing.
+  const [visited, toggleVisited] = useVisitedActivities(tripId, today ?? undefined);
+  const liveNow = useLiveNow();
+  const now = props.now ?? liveNow;
+  const todayLegs = [...(today?.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0)) as any[];
+  const upNext = today ? getUpNextInfo(today, todayLegs, now, visited, timeZone) : null;
   const stored = props.finalCard?.photos ?? {};
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 
@@ -221,6 +229,15 @@ export function TripCardDays(props: TripCardDaysProps) {
           >
             {acts.map((a, idx) => (
               <Fragment key={a.id}>
+                {isToday && upNext?.showNowLine && idx === upNext.upNextIndex ? (
+                  <div className="flex items-center gap-2 px-3 py-1" data-testid="now-line">
+                    <div className="flex-1 h-px bg-red-400/60" />
+                    <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full border border-red-200 dark:border-red-800">
+                      {nowHHMM(now)} now
+                    </span>
+                    <div className="flex-1 h-px bg-red-400/60" />
+                  </div>
+                ) : null}
                 <ItemRow
                   item={a}
                   facts={props.placeFacts?.[a.id]}
@@ -233,6 +250,7 @@ export function TripCardDays(props: TripCardDaysProps) {
                   photo={isToday ? photoOf(a.id) : null}
                   navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, props.destination)}
                   onOpenDetails={() => setSheetFor(a)}
+                  visited={isToday ? { checked: visited.has(a.id), onToggle: () => toggleVisited(a.id) } : null}
                 />
                 {legs[idx] && idx < acts.length - 1 ? <LegLine leg={legs[idx]} showMinutes={props.showTravelMinutes} /> : null}
               </Fragment>

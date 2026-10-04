@@ -95,6 +95,12 @@ export interface PhotoPlace {
   lng: number | null;
   /** A platform listing's own image, when the item is one. */
   ownImage?: string | null;
+  /**
+   * R297: a Google photo REFERENCE from the facts cache (stored by the regular Places lookup). The
+   * resolver never fetches one: with none cached, the Google source is skipped and the stop falls
+   * through to "none" until the next regular lookup stores one.
+   */
+  photoRef?: { name: string; authors: ReadonlyArray<{ displayName: string; uri: string | null }> } | null;
 }
 
 /** The `place_photos` cache key: the Google place id when known, else name + rounded point. */
@@ -109,8 +115,9 @@ export interface PhotoResolveDeps {
   cacheGet: (key: string) => Promise<PhotoView | null | undefined>;
   cacheSet: (key: string, photo: PhotoView | null) => Promise<void>;
   commons: (p: PhotoPlace) => Promise<CommonsCandidate[] | null>;
-  /** Live Google photo; called only when the cap allows. Never stored. */
-  googleLive: ((p: PhotoPlace) => Promise<PhotoView | null>) | null;
+  /** Live Google photo from a CACHED reference — the Place Photo media call only; called only when the
+   *  cap allows. Never stored. */
+  googleLive: ((p: PhotoPlace & { photoRef: NonNullable<PhotoPlace["photoRef"]> }) => Promise<PhotoView | null>) | null;
   googleAllowed: () => Promise<boolean>;
   wikimediaEnabled: () => boolean;
 }
@@ -143,9 +150,10 @@ export async function resolvePlacePhoto(p: PhotoPlace, deps: PhotoResolveDeps): 
       /* a failed Commons read is a miss */
     }
   }
-  if (deps.googleLive && p.placeId) {
+  // R297: only with a reference already in the facts cache — the resolver never asks Places for one.
+  if (deps.googleLive && p.photoRef?.name) {
     try {
-      if (await deps.googleAllowed()) return await deps.googleLive(p);
+      if (await deps.googleAllowed()) return await deps.googleLive({ ...p, photoRef: p.photoRef });
     } catch {
       /* a failed live photo is a miss */
     }

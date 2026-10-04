@@ -19,7 +19,7 @@
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
 import type { ReactNode } from "react";
-import { Lock, MoreHorizontal, Navigation } from "lucide-react";
+import { CheckCircle2, Circle, Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
 import {
   DropdownMenu,
@@ -111,6 +111,8 @@ export interface ItemRowProps {
   photo?: PhotoView | null;
   /** Step 6 R-ay: read mode's Navigate — a Google Maps directions deep link, no API call. */
   navigateHref?: string | null;
+  /** R297: the Trip Card's today rows — the traveler's own "visited" tick (device-local, no write). */
+  visited?: { checked: boolean; onToggle: () => void } | null;
 }
 
 export function ItemRow(props: ItemRowProps) {
@@ -120,7 +122,19 @@ export function ItemRow(props: ItemRowProps) {
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
 
   const titleLine = (
-    <p className="font-medium text-foreground flex items-start gap-1.5">
+    <p className={`font-medium flex items-start gap-1.5 ${props.visited?.checked ? "text-muted-foreground line-through" : "text-foreground"}`}>
+      {props.visited ? (
+        <button
+          type="button"
+          onClick={props.visited.onToggle}
+          className={`flex-shrink-0 -my-1 p-1 ${props.visited.checked ? "text-green-600" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
+          title={props.visited.checked ? "Mark as not visited" : "Mark as visited"}
+          aria-pressed={props.visited.checked}
+          data-testid={`button-visited-${a.id}`}
+        >
+          {props.visited.checked ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+        </button>
+      ) : null}
       {a.time ? (
         <span className="text-muted-foreground font-normal tabular-nums" data-testid={`slip-item-time-${a.id}`}>
           {a.time}

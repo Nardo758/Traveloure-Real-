@@ -4,7 +4,8 @@
  *   PLACE_PHOTOS_WIKIMEDIA_ENABLED  — Commons lookups (free, cached); OFF unless "1" (like every
  *                                     outbound source here — CI and dev make no network call by default)
  *   PLACE_PHOTOS_RECHECK_DAYS       — how long a Commons answer (hit or miss) is reused (default 30)
- *   PLACE_PHOTOS_DAILY_CAP          — live Google Place Photo calls per UTC day (default 0 = OFF until
+ *   PLACE_PHOTOS_DAILY_CAP          — Place Photo (media) requests per UTC day — that call ONLY; the
+ *                                     regular Details lookup stores the reference (default 0 = OFF until
  *                                     the operator verifies Place Photo pricing and sets it)
  *   PLACE_PHOTOS_COST_CENTS         — what one live photo call is recorded as costing (default 0)
  * Google also needs the Places spine on (`PLACE_FACTS_PLACES_ENABLED=1` + `GOOGLE_MAPS_API_KEY`).
