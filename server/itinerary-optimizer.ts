@@ -174,6 +174,10 @@ export interface ItineraryItem {
    *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
    *  sets this; cart/inline baselines have no routing status and leave it undefined. */
   mustRetain?: boolean;
+  /** Step 5 (migration 343): the PLAN item (`itinerary_items.id`) this baseline stop is. Set only by
+   *  the trip-backed loader; a cart/inline baseline has none. Copied onto the baseline variant item
+   *  and returned per stop by the model, so the versions board diffs a day by item id. */
+  planItemId?: string;
 }
 
 /**
@@ -215,6 +219,8 @@ interface OptimizedVariant {
     isReplacement: boolean;
     replacementReason?: string;
     originalServiceId?: string;
+    /** Step 5: the [S#] tag of the plan stop this stop keeps; null for a new stop. */
+    sourceRef?: string | null;
   }[];
   metrics: {
     totalCost: number;
@@ -1046,6 +1052,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           // Lane 5a Defect 3: carry the catalog link when the caller supplied one (cart-sourced
           // baselines have it; inline/external ones do not → NULL, never a guess).
           providerServiceId: item.providerServiceId ?? null,
+          // Step 5 (migration 343): the plan item this baseline stop IS (trip-backed loader only).
+          sourceItemId: item.planItemId ?? null,
           dayNumber: item.dayNumber || 1,
           timeSlot: item.timeSlot || "morning",
           // B9 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the baseline IS the plan, so it
@@ -1212,8 +1220,15 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       `${s.id}|${s.name}|${s.type}|$${s.price}|${s.rating}★|${s.location}`
     ).join('\n');
 
-    const compactBaseline = baselineItems.map(item =>
-      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration != null ? `${item.duration}min` : "duration needed"}, ${item.location || 'TBD'})`
+    // Step 5 (migration 343): each plan stop carries a short reference the model returns per stop
+    // ("sourceRef"), so a version's stop links back to the plan item it keeps. Plan item ids never
+    // enter the prompt — the reference is positional and resolved here.
+    const sourceRefToPlanItemId = new Map<string, string>();
+    baselineItems.forEach((item, i) => {
+      if (item.planItemId) sourceRefToPlanItemId.set(`S${i + 1}`, item.planItemId);
+    });
+    const compactBaseline = baselineItems.map((item, i) =>
+      `${item.planItemId ? `[S${i + 1}] ` : ""}Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration != null ? `${item.duration}min` : "duration needed"}, ${item.location || 'TBD'})`
     ).join('\n');
 
     // ── Marquee / signature item detection ────────────────────────────────────
@@ -1328,6 +1343,7 @@ Rules for all three variants:
 4. Provide clear reasoning for each change
 5. Preserve all PROTECTED ITEMS exactly — never replace, remove, or move them
 6. Cover all trip days, auto-filling any empty days with contextually appropriate activities
+7. When a stop KEEPS one of the user's items (the same place), set "sourceRef" to that item's [S#] tag; a new or replacement stop has "sourceRef": null. Use each tag at most once per variant.
 
 Respond with valid JSON in this exact format:
 {
@@ -1352,7 +1368,8 @@ Respond with valid JSON in this exact format:
           "travelTimeFromPrevious": null,
           "isReplacement": true,
           "replacementReason": "Similar experience at 30% lower cost",
-          "originalServiceId": "service-id-if-applicable"
+          "originalServiceId": "service-id-if-applicable",
+          "sourceRef": "S1"
         }
       ],
       "metrics": {
@@ -1454,7 +1471,18 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
 
     await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
+      // Step 5: each tag resolves to its plan item once per variant (a repeated tag links only the first).
+      const usedRefs = new Set<string>();
+      const resolveSourceRef = (raw: unknown): string | undefined => {
+        if (typeof raw !== "string") return undefined;
+        const ref = raw.trim().toUpperCase();
+        const planItemId = sourceRefToPlanItemId.get(ref);
+        if (!planItemId || usedRefs.has(ref)) return undefined;
+        usedRefs.add(ref);
+        return planItemId;
+      };
       const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
+        sourceItemId: resolveSourceRef(item.sourceRef),
         providerServiceId: resolveOriginalServiceId(item.originalServiceId),
         name: item.name,
         serviceType: item.serviceType,
@@ -1635,6 +1663,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
               // Lane 5a Defect 3: the catalog link, validated above against the services actually
               // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
               providerServiceId: item.providerServiceId ?? null,
+              // Step 5 (migration 343): the plan item this stop keeps, validated above; NULL for a new stop.
+              sourceItemId: item.sourceItemId ?? null,
               // The linked catalog row's real coordinates; NULL/NULL for an unlinked item (§13).
               latitude: item.latitude != null
                 ? item.latitude.toString()

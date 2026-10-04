@@ -967,6 +967,9 @@ export function getSequencingRulesDisplay() {
 // Activity with sequencing metadata
 export interface SequencedActivity {
   id?: string;
+  /** Step 5 (migration 343): the plan item (`itinerary_items.id`) this stop keeps, when it keeps one.
+   *  Carried through reordering by the spreads; persisted as `itinerary_variant_items.source_item_id`. */
+  sourceItemId?: string;
   /** Lane 5a Defect 3: the `provider_services.id` behind this activity, when it has one.
    *  Carried through reordering/anchoring so the variant-item insert can persist the catalog
    *  link. Undefined for an AI-invented or external activity (§13 — NULL, never a guess). */
@@ -1190,32 +1193,9 @@ export function reorderDayActivities(
     }
   }
   
-  // Step 4: Recalculate times with proper spacing
-  let currentTime = 8 * 60; // Start at 8 AM in minutes
-  sequencedActivities = sequencedActivities.map((activity, index) => {
-    const duration = activity.duration || 60;
-    const startHour = Math.floor(currentTime / 60);
-    const startMin = currentTime % 60;
-    const endMinutes = currentTime + duration;
-    const endHour = Math.floor(endMinutes / 60);
-    const endMin = endMinutes % 60;
-    
-    // Update current time with buffer
-    const buffer = index < sequencedActivities.length - 1 ? 30 : 0; // 30 min buffer between activities
-    currentTime = endMinutes + buffer;
-    
-    // Determine time slot based on start hour
-    let timeSlot = 'morning';
-    if (startHour >= 12 && startHour < 17) timeSlot = 'afternoon';
-    else if (startHour >= 17) timeSlot = 'evening';
-    
-    return {
-      ...activity,
-      startTime: `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`,
-      endTime: `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`,
-      timeSlot
-    };
-  });
+  // Step 4: Recalculate times with proper spacing (the ONE spacing rule, shared with the
+  // keep-the-order re-time below — step 5, R-ac).
+  sequencedActivities = spaceDayTimes(sequencedActivities, 8 * 60);
   
   // Step 5: Generate methodology notes
   const methodologyNotes: MethodologyNote[] = [];
@@ -1257,6 +1237,51 @@ export function reorderDayActivities(
     methodologyNotes,
     sequencingScore: Math.max(0, Math.round(sequencingScore))
   };
+}
+
+/**
+ * THE spacing rule: stops in the given order, each for its own duration (default 60 min), with a
+ * 30-minute gap between them, starting at `startMinutes` (minutes after midnight). Used by
+ * `reorderDayActivities` after it orders a day, and by `retimeDayInOrder`, which keeps the order.
+ */
+export function spaceDayTimes<T extends SequencedActivity>(activities: T[], startMinutes: number): T[] {
+  let currentTime = startMinutes;
+  return activities.map((activity, index) => {
+    const duration = activity.duration || 60;
+    const startHour = Math.floor(currentTime / 60);
+    const startMin = currentTime % 60;
+    const endMinutes = currentTime + duration;
+    const endHour = Math.floor(endMinutes / 60);
+    const endMin = endMinutes % 60;
+    const buffer = index < activities.length - 1 ? 30 : 0; // 30 min buffer between activities
+    currentTime = endMinutes + buffer;
+    let timeSlot = 'morning';
+    if (startHour >= 12 && startHour < 17) timeSlot = 'afternoon';
+    else if (startHour >= 17) timeSlot = 'evening';
+    return {
+      ...activity,
+      startTime: `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`,
+      endTime: `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`,
+      timeSlot,
+    };
+  });
+}
+
+/**
+ * Step 5 (R-ac) — RE-TIME ONE DAY IN THE TRAVELER'S ORDER. No reordering, no model call: the day
+ * starts where its first stop already starts (else 08:00) and each stop keeps its own duration
+ * (its duration, else its own start→end, else 60). Pure.
+ */
+export function retimeDayInOrder<T extends SequencedActivity>(activities: T[]): T[] {
+  if (!activities.length) return activities;
+  const withDurations = activities.map((a) => {
+    if (a.duration) return a;
+    const s = a.startTime ? timeToMinutes(a.startTime) : NaN;
+    const e = a.endTime ? timeToMinutes(a.endTime) : NaN;
+    return Number.isFinite(s) && Number.isFinite(e) && e > s ? { ...a, duration: e - s } : a;
+  });
+  const first = withDurations[0].startTime ? timeToMinutes(withDurations[0].startTime) : NaN;
+  return spaceDayTimes(withDurations, Number.isFinite(first) ? first : 8 * 60);
 }
 
 // Helper: Calculate variance in intensity (lower is better for pacing)

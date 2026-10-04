@@ -207,6 +207,8 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
     const index = baselineItems.length;
     baselineItems.push({
       id: item.id,
+      // Step 5 (migration 343): this baseline stop IS this plan item.
+      planItemId: item.id,
       // The catalog link the whole Lane 5a thread exists to preserve — carried straight through to
       // the baseline variant insert. NULL/undefined for a free-text item, never a guess (§13).
       providerServiceId: item.providerServiceId ?? undefined,

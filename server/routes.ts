@@ -246,6 +246,7 @@ import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
 import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
+import versionsRoutes from "./routes/versions.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
@@ -1254,6 +1255,8 @@ export async function registerRoutes(
   // and the admin "Add market" flow (paths under /api/admin/markets — §2 blanket requireAdmin
   // on the /api/admin prefix is the auth).
   app.use(marketsRoutes);
+  // Surface step 5: the versions board — read, per-day apply, day re-time (R-ac).
+  app.use(versionsRoutes);
   app.use(adminMarketsRoutes);
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
