@@ -23,8 +23,10 @@
  * still only one decision.
  */
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
+import { itineraryItems } from "@shared/schema";
+import { PLAN_ANCHOR_ITEM_TYPES } from "@shared/draft-basis";
 import {
   decideAiDraftEligibility,
   isUntouchedAiDraftFromCounts,
@@ -59,17 +61,31 @@ function intFrom(row: any, key: string): number {
 }
 
 /**
- * COUNT EVERY ROW, IN EVERY STATUS — see the pure module's note for why this is a bare `COUNT(*)`
- * and deliberately NOT the rebuild guard's deletable predicate.
+ * COUNT EVERY NON-ANCHOR ROW, IN EVERY STATUS — see the pure module's note for why this is NOT the
+ * rebuild guard's deletable predicate. Smoke 9 S9-1: a LODGING ANCHOR row (`PLAN_ANCHOR_ITEM_TYPES`)
+ * is not an item — a plan holding only its stay (and its flights, which are `temporal_anchors`, and
+ * its airport legs, which are derived) is still empty to draft. The plancard carries this same
+ * number (`draftItemCount`) so the slip's "Draft it with AI" reads the server's answer.
  */
 export async function countTripItineraryItems(
   tripId: string,
   exec: EligibilityExecutor = db,
 ): Promise<number> {
   const result = await exec.execute(
-    sql`SELECT COUNT(*)::int AS count FROM itinerary_items WHERE trip_id = ${tripId}`,
+    sql`SELECT COUNT(*)::int AS count FROM itinerary_items
+        WHERE trip_id = ${tripId} AND ${itineraryItemNotPlanAnchor()}`,
   );
   return intFrom((result as any)?.rows?.[0], "count");
+}
+
+/**
+ * Smoke 9 S9-1 — the ONE SQL spelling of "this row is not the plan's lodging anchor", read by the
+ * count above AND by both draft rebuild deletes, so a draft that is allowed to run on a plan holding
+ * only its stay can never delete that stay (§18 rule 1).
+ */
+export function itineraryItemNotPlanAnchor(): SQL {
+  const anchors = sql.join(PLAN_ANCHOR_ITEM_TYPES.map((t) => sql`${t}`), sql`, `);
+  return sql`(${itineraryItems.itemType} IS NULL OR lower(btrim(${itineraryItems.itemType})) NOT IN (${anchors}))`;
 }
 
 /**

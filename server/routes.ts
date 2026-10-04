@@ -64,6 +64,7 @@ import { parseAiJsonObjectOrThrow } from "./utils/ai-json";
 import {
   resolveAiDraftEligibility,
   aiDraftRefusalBody,
+  itineraryItemNotPlanAnchor,
   AI_DRAFT_REFUSAL_STATUS,
 } from "./services/ai-draft-eligibility";
 import {
@@ -1987,6 +1988,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             ),
           ),
           itineraryItemRebuildDeletable(),
+          // Smoke 9 S9-1: the plan's lodging anchor is what the draft is built around — never rebuilt.
+          itineraryItemNotPlanAnchor(),
         ),
       );
 

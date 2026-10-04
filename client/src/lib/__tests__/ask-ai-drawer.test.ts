@@ -263,7 +263,10 @@ test("C12 (LD 41 (b)) — on an EMPTY plan the drawer defers to the free draft a
   // prop and never counts items of its own (§18 rule 1 — a third copy of LD 41 (b)'s rule).
   assert.doesNotMatch(MODULE, /itemCount|activities\.length/);
   assert.doesNotMatch(DRAWER, /activities\.length/);
-  assert.match(RAIL, /aiAction=\{slipBuildAiAction\(activities\.length\)\}/);
+  // Smoke 9 S9-1: the rail resolves the ONE action once — from the server's draft-gate count — and
+  // passes it down; the drawer still reads it as a prop.
+  assert.match(RAIL, /const aiAction = slipBuildAiAction\(slipDraftItemCount\(planGate\?\.draftItemCount, activities\.length\)\);/);
+  assert.match(RAIL, /aiAction=\{aiAction\}/);
 });
 
 test("C13 (rule 3, the record) — §13: an applied row with no recorded ids says nothing, never '0 items'", () => {

@@ -73,9 +73,10 @@ import {
   TravelAnchorPlaceholder,
   flightAnchorFor,
   flightRowText,
+  AnchorConflictLine,
   type FlightAnchorView,
 } from "@/components/plan/AnchorRow";
-import { absorbedTravelItemId } from "@shared/getting-there";
+import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
@@ -1562,6 +1563,7 @@ export function SlipView({
   // Smoke 8 item 1: a "Skip for now" dismisses the panel for the state it was pressed in; the
   // tray's "Where to stay" opens the full chooser whenever the stay is undecided (`anchorSurfaces`).
   const anchorSurface = anchorSurfaces(whereToStayQuery.data, hasStayItem);
+  const [optimizerSlot, setOptimizerSlot] = useState<HTMLDivElement | null>(null);
   const anchorPanelEmpty = anchorSurface.slip === "empty";
   // Smoke 5 items 6/8: when the draft's lookups finish, its stops' coordinates have landed — re-ask
   // Where to stay once, which then ranks on them and stores that order for the draft.
@@ -1617,7 +1619,13 @@ export function SlipView({
   const experienceGroup = experienceGroupFor(occasion);
   const tripsAnchor: TripsAnchor | null = resolvedTripsAnchor(occasion);
   // Surface step 3: the ONE lodging surface, in either state. Its question is the group manifest's.
-  const renderAnchorPanel = (stage: "empty" | "drafted" | "chooser") => (
+  // Smoke 9 S9-2: the plan's lodging set (open or chosen, the primary first), for the tray's CHANGE form.
+  const lodgingSet = (() => {
+    const sets = optionSets.filter((st) => st.categoryKey === "accommodation" && (st.status === "open" || st.status === "chosen"));
+    const pick = sets.find((st) => st.anchorRole === "primary") ?? sets[0];
+    return pick ? { id: pick.id, status: pick.status } : null;
+  })();
+  const renderAnchorPanel = (stage: "empty" | "drafted" | "chooser" | "change") => (
     <AnchorPanel
       tripId={tripId}
       stage={stage}
@@ -1625,6 +1633,7 @@ export function SlipView({
       anchorKind={tripsAnchor?.kind ?? "lodging"}
       fromFallback={!!tripsAnchor?.fromFallback}
       view={whereToStay}
+      lodgingSet={lodgingSet}
       canChoose={canEditItems}
       addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} />}
       addFixedControl={
@@ -1932,7 +1941,13 @@ export function SlipView({
               occasionSlug={occasion?.slug ?? null}
               planEvents={planEvents}
               isHidden={occasionIsHidden}
-              whereToStay={anchorSurface.trayChooser ? renderAnchorPanel("chooser") : <SlipAnchorCompareButton tripId={tripId} />}
+              whereToStay={
+                anchorSurface.trayChooser
+                  ? renderAnchorPanel("chooser")
+                  : anchorSurface.trayChange
+                    ? renderAnchorPanel("change")
+                    : <SlipAnchorCompareButton tripId={tripId} />
+              }
               trip={{
                 destination: data.trip.destination ?? null,
                 startDate: (data.trip.startDate as any) ?? null,
@@ -1942,6 +1957,9 @@ export function SlipView({
               onOpenToolChange={setOpenTool}
             />
           ) : null}
+          {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
+              width. The rail renders its OptimizerLead into this slot (a portal; its state stays there). */}
+          {isOwner ? <div ref={setOptimizerSlot} data-testid="slip-optimizer-slot" /> : null}
           {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
               These were two stacked rows with the whole rail between them, so the plan's status
               line and the control that changes how the plan is displayed read as unrelated. They
@@ -2127,6 +2145,16 @@ export function SlipView({
               showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum
                 ? absorbedTravelItemId(slotItems, "departure")
                 : null;
+            // Smoke 9 S9-5: stops sitting outside the flight (before it lands / after it leaves).
+            const stopTimes = slotItems.map((a) => ({ id: a.id, startTime: a.time, endTime: a.endTime ?? null }));
+            const arrivalConflict =
+              showTravelAnchors && slot.dayNum === 1
+                ? flightTimeConflictLine("arrival", flightAnchorFor(tripAnchors, "flight_arrival")?.time, stopTimes, arrivalItemId)
+                : null;
+            const departureConflict =
+              showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum
+                ? flightTimeConflictLine("departure", flightAnchorFor(tripAnchors, "flight_departure")?.time, stopTimes, departureItemId)
+                : null;
             // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
             // no `date` label of its own and no legs, and invents none of the three.
             const day = slot.dayNum != null ? dayByNum.get(slot.dayNum) : undefined;
@@ -2172,6 +2200,7 @@ export function SlipView({
                     onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
                   />
                 ) : null}
+                {!arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                 {/* R-i: airport → stay, between the arrival anchor and the first stop. */}
                 {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? renderAirportLeg("arrival") : null}
                 {slot.groups.map((group) => {
@@ -2226,6 +2255,8 @@ export function SlipView({
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
                       savedCity={data.savedQuestions?.cityName ?? null}
                     />
+                    {a.id === arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
+                    {a.id === departureItemId ? <AnchorConflictLine kind="departure" text={departureConflict} /> : null}
                     {a.id === arrivalItemId ? renderAirportLeg("arrival") : null}
                     </Fragment>
                   ));
@@ -2276,6 +2307,7 @@ export function SlipView({
                     onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
                   />
                 ) : null}
+                {!departureItemId ? <AnchorConflictLine kind="departure" text={departureConflict} /> : null}
                 {/* S1's second control: the plan's ONE implicit unnamed event has no header to hang
                     an add on, and a day with no events has no event header at all. `null` is that
                     event — a real answer, not an absence (Locked Decision 29) — so the day-level
@@ -2369,6 +2401,7 @@ export function SlipView({
               budgetLine={budgetLine}
               stopsLine={stopsLine}
               zoneLine={zoneLine}
+              optimizerSlot={optimizerSlot}
             />
           </div>
         )}
