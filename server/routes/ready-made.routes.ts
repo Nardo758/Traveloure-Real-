@@ -21,7 +21,9 @@ import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
 import { readyMadeLegLines } from "../services/trip-transport-legs.service";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users, adminNotifications } from "@shared/schema";
+import { readinessAdvisory, type ReadinessLine } from "../services/ready-made-readiness";
+import { factsForTrip } from "../services/content-facts/place-facts.service";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, temporalAnchors, users, adminNotifications } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
@@ -603,6 +605,45 @@ export async function assertReadyMadeComplete(
 }
 
 /**
+ * R-bi (work plan L1-9, enhancement 1): the readiness read. `blocking` IS the publish gate's own output
+ * (`assertReadyMadeComplete` — submit and admin approve call it too), so the checklist and a refused
+ * submit can never disagree; `advisory` never stops a submit (`readinessAdvisory`). Every line carries
+ * what it is about (day, item, the leg's stops, anchor) so a checklist can jump to it.
+ */
+export async function readyMadeReadiness(
+  listing: ReadyMadeCompletenessListing,
+): Promise<{ blocking: ReadyMadeRequirementLine[]; advisory: ReadinessLine[] }> {
+  const blocking = await assertReadyMadeComplete(listing);
+  const [items, legs, anchors, facts, [build]] = await Promise.all([
+    storage.getItineraryItems(listing.sourceTripId),
+    db
+      .select({
+        id: transportLegs.id,
+        dayNumber: transportLegs.dayNumber,
+        fromActivityId: transportLegs.fromActivityId,
+        toActivityId: transportLegs.toActivityId,
+        proposalStatus: transportLegs.proposalStatus,
+        userSelectedMode: transportLegs.userSelectedMode,
+      })
+      .from(transportLegs)
+      .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId))),
+    db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, listing.sourceTripId)),
+    factsForTrip(listing.sourceTripId),
+    db.select({ startDate: trips.startDate }).from(trips).where(eq(trips.id, listing.sourceTripId)).limit(1),
+  ]);
+  const factTypesByItem = new Map(Object.entries(facts).map(([itemId, views]) => [itemId, new Set(views.map((v) => v.factType as string))]));
+  const advisory = readinessAdvisory({
+    items,
+    legAdvisory: readyMadeLegLines(items, legs).advisory,
+    factTypesByItem,
+    anchors,
+    buildStartDate: build?.startDate ? String(build.startDate) : null,
+    durationDays: listing.durationDays,
+  });
+  return { blocking, advisory };
+}
+
+/**
  * Material fields — a change to any of these on an APPROVED listing drops it back to
  * `submitted` for re-review (the §10 A3 rule, widened past price because a ready-made
  * trip's headline claims ARE the product: what it's called, how long it runs, what it
@@ -702,6 +743,23 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
   } catch (err: any) {
     console.error("[ready-made] patch error:", err);
     res.status(500).json({ message: "Failed to update listing", error: err.message });
+  }
+});
+
+/**
+ * GET /api/expert/ready-made/:id/readiness — the author's checklist (work plan L1-9; R-bi). Author
+ * only; anyone else gets the same 404 as every other author-scoped listing read.
+ */
+router.get("/api/expert/ready-made/:id/readiness", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+    res.json(await readyMadeReadiness(listing));
+  } catch (err: any) {
+    console.error("[ready-made] readiness failed:", err);
+    res.status(500).json({ message: "Failed to load the readiness checklist" });
   }
 });
 
