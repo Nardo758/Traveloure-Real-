@@ -346,6 +346,13 @@ router.post(
         return res.status(400).json({ error: "Not a platform booking option" });
       }
 
+      // Ledger `2026-10-03-transport-price-literals` (§14): the charge is the option's OWN listed
+      // price. A listing that states none has no price to charge — refused before any row or Stripe
+      // call, never charged an estimate (the old "$2/km, $5 minimum") or $0.
+      if (!option.priceCentsLow || option.priceCentsLow <= 0) {
+        return res.status(409).json({ error: "This option has no listed price — request a quote instead", code: "no_listed_price" });
+      }
+
       // Per-leg platform options carry transportLegId but not variantId.
       // Resolve the variant via the leg when the option has no direct variantId.
       let variantId = option.variantId;
