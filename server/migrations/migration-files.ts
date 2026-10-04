@@ -1904,4 +1904,8 @@ export const MIGRATION_FILES = [
   // 342 — itinerary_items.locked_at (ledger 2026-10-03-item-locks, ruling R-ah). One nullable
   // column, no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. APPROVED Oct 3, 2026.
   "342_itinerary_items_locked_at.sql",
+  // 345 — feedback_events (ledger 2026-10-04-feedback-phase-a). New table, all columns nullable, no
+  // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. SQL HELD for the founder's ruling before
+  // merge. (343/344 are reserved by surface step 5, which lands separately.)
+  "345_feedback_events.sql",
 ] as const;

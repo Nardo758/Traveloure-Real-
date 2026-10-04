@@ -50,6 +50,7 @@ import {
   Wrench,
   RefreshCw,
   Newspaper,
+  MessageSquareText,
 } from "lucide-react";
 
 // D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
@@ -128,6 +129,7 @@ const menuGroups = [
     label: "System",
     items: [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
+      { title: "Feedback", href: "/admin/feedback", icon: MessageSquareText },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
       // Data hub links the one-off backfill tools (neighborhoods, gem photos).
       { title: "Data", href: "/admin/data", icon: Database },

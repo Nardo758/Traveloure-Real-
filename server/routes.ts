@@ -245,6 +245,7 @@ import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
 import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
+import feedbackRoutes from "./routes/feedback.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
@@ -1253,6 +1254,8 @@ export async function registerRoutes(
   // and the admin "Add market" flow (paths under /api/admin/markets — §2 blanket requireAdmin
   // on the /api/admin prefix is the auth).
   app.use(marketsRoutes);
+  // Feedback at the moments it means something (ledger 2026-10-04-feedback-phase-a).
+  app.use(feedbackRoutes);
   app.use(adminMarketsRoutes);
 
   // Optimization routes - heuristic preview + payment-gated AI optimization

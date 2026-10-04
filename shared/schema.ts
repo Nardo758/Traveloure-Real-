@@ -12185,3 +12185,22 @@ export const placeFacts = pgTable("place_facts", {
 
 export type ContentSource = typeof contentSources.$inferSelect;
 export type PlaceFact = typeof placeFacts.$inferSelect;
+
+// Migration 345 (ledger 2026-10-04-feedback-phase-a): feedback captured at the moments it means
+// something, as registry codes (shared/feedback.ts) plus one free-text field. One row per plan per
+// moment per user (app-enforced, see feedback.service). created_at is set by the app. No DEFAULT,
+// CHECK, index or FK. Never read by a public surface.
+export const feedbackEvents = pgTable("feedback_events", {
+  id: varchar("id").primaryKey(),
+  planId: varchar("plan_id"),
+  userId: varchar("user_id"),
+  surface: text("surface"),
+  moment: text("moment"),
+  code: text("code"),
+  text: text("text"),
+  groupKey: text("group_key"),
+  city: text("city"),
+  buildSha: text("build_sha"),
+  createdAt: timestamp("created_at"),
+});
+export type FeedbackEvent = typeof feedbackEvents.$inferSelect;
