@@ -1534,7 +1534,7 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
     await expect(testid(page, "card-provenance")).toContainText("Finalized");
     for (const id of [a, b]) {
       await expect(testid(page, `slip-item-${id}`)).toHaveAttribute("data-item-mode", "read");
-      await expect(testid(page, `slip-item-navigate-${id}`)).toHaveAttribute("href", /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&destination=/);
+      await expect(testid(page, `slip-item-navigate-${id}`)).toHaveAttribute("href", /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&/);
     }
     await expect(page.locator('[data-testid^="item-menu-"]')).toHaveCount(0);
 

@@ -1,3 +1,5 @@
+import { buildGoogleMapsDeepLink, type Place } from "@/lib/maps";
+
 /**
  * The Trip Card's pure rules (surface spec v1.3.4 §2.5, R-ay; step 6 — ledger
  * `2026-10-04-step6-trip-card`). The card renders the frozen final on the SAME `DayBlock` and
@@ -38,38 +40,32 @@ export interface NavigableStop {
 const located = (s: NavigableStop): s is NavigableStop & { lat: number; lng: number } =>
   typeof s.lat === "number" && typeof s.lng === "number" && Number.isFinite(s.lat) && Number.isFinite(s.lng);
 
-const place = (s: NavigableStop, city: string | null | undefined): string | null => {
-  if (located(s)) return `${s.lat},${s.lng}`;
+/** The stop as the ONE maps handoff reads it — a located stop by its point, else by name + city. */
+const asPlace = (s: NavigableStop, city: string | null | undefined): Place | null => {
   const name = (s.name ?? "").trim();
-  if (!name) return null;
   const c = (city ?? "").split(",")[0].trim();
-  return c && !name.toLowerCase().includes(c.toLowerCase()) ? `${name}, ${c}` : name;
+  const label = c && name && !name.toLowerCase().includes(c.toLowerCase()) ? `${name}, ${c}` : name;
+  if (located(s)) return { lat: s.lat, lng: s.lng, name: label || `${s.lat},${s.lng}` };
+  return label ? { name: label } : null;
 };
 
-const MAPS_DIR = "https://www.google.com/maps/dir/?api=1";
-
 /**
- * R-ay: Navigate to one stop — a Google Maps directions deep link (no API call, no key). From the
- * traveler's current location; the place by its coordinates when located, else by name + city.
+ * R-ay: Navigate to one stop — a Google Maps directions deep link (no API call, no key), built by the
+ * ONE maps handoff (`buildGoogleMapsDeepLink`, `@/lib/maps`), never a URL assembled here.
  */
 export function navigateHref(stop: NavigableStop, city?: string | null): string | null {
-  const dest = place(stop, city);
-  return dest ? `${MAPS_DIR}&destination=${encodeURIComponent(dest)}` : null;
+  const p = asPlace(stop, city);
+  return p ? buildGoogleMapsDeepLink([p]) || null : null;
 }
 
-/** Google Maps takes at most this many waypoints in a directions link. */
-export const NAVIGATE_MAX_WAYPOINTS = 9;
+/** Google Maps directions take at most 11 stops; the handoff caps the list. */
+export const NAVIGATE_MAX_STOPS = 11;
 
-/**
- * R-ay: Navigate the day — the day's stops in order as one directions link (last stop the
- * destination, the ones before it waypoints, capped at Google's limit). Null with no stop to go to.
- */
+/** R-ay: Navigate the day — the day's stops in order as one directions link, through the same handoff. */
 export function dayNavigateHref(stops: readonly NavigableStop[], city?: string | null): string | null {
-  const places = stops.map((s) => place(s, city)).filter((p): p is string => !!p);
+  const places = stops.map((s) => asPlace(s, city)).filter((p): p is Place => !!p);
   if (!places.length) return null;
-  const dest = places[places.length - 1];
-  const way = places.slice(0, -1).slice(0, NAVIGATE_MAX_WAYPOINTS);
-  return `${MAPS_DIR}&destination=${encodeURIComponent(dest)}${way.length ? `&waypoints=${encodeURIComponent(way.join("|"))}` : ""}`;
+  return buildGoogleMapsDeepLink(places) || null;
 }
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
