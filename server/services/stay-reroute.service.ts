@@ -65,8 +65,8 @@ function point(lat: unknown, lng: unknown): { lat: number; lng: number } | null 
   return { lat: la, lng: ln };
 }
 
-/** The plan's stay item and its point, or null (see the header). */
-export async function stayPointForPlan(tripId: string): Promise<StayPoint | null> {
+/** The plan's stay item id, or null — the ONE choice of which item is the stay (see the header). */
+export async function stayItemIdForPlan(tripId: string): Promise<string | null> {
   const [chosen] = await db
     .select({ itemId: planOptionSets.itineraryItemId })
     .from(planOptionSets)
@@ -96,6 +96,12 @@ export async function stayPointForPlan(tripId: string): Promise<StayPoint | null
       .limit(1);
     itemId = own?.id ?? null;
   }
+  return itemId;
+}
+
+/** The plan's stay item and its point, or null (see the header). */
+export async function stayPointForPlan(tripId: string): Promise<StayPoint | null> {
+  const itemId = await stayItemIdForPlan(tripId);
   if (!itemId) return null;
   const [item] = await db.select().from(itineraryItems).where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId))).limit(1);
   if (!item) return null;
@@ -103,11 +109,13 @@ export async function stayPointForPlan(tripId: string): Promise<StayPoint | null
   // The item's own coordinate first — a Google fact is read only when the row has none it can trust.
   const own = rowCoordinatesTrusted(item as any) ? point(item.latitude, item.longitude) : null;
   if (own) return { itemId: item.id, name, ...own, source: "item", fetchedAt: null };
-  const facts = await factsForTrip(tripId);
-  const [day] = applyGooglePins([{ activities: [{ id: item.id, lat: null as number | null, lng: null as number | null }] }], facts as any);
+  // An EXPIRED Places fact is never a pin (R312): `factsForTrip` keeps a stale view (ranked last) for
+  // display, so the stay reads only its unexpired facts — past Google's 30 days the point is gone.
+  const live = (await factsForTrip(tripId))[item.id]?.filter((f) => !f.stale) ?? [];
+  const [day] = applyGooglePins([{ activities: [{ id: item.id, lat: null as number | null, lng: null as number | null }] }], { [item.id]: live } as any);
   const pin = point(day.activities[0].lat, day.activities[0].lng);
   if (!pin) return null;
-  const loc = (facts[item.id] ?? []).find((f) => f.factType === "location" && f.origin === "places_api");
+  const loc = live.find((f) => f.factType === "location" && f.origin === "places_api");
   const fetchedAt = loc?.checkedAt ? new Date(loc.checkedAt) : null;
   return { itemId: item.id, name, ...pin, source: "google", fetchedAt };
 }
