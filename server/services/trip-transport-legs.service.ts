@@ -187,6 +187,106 @@ function pairKey(dayNumber: number, fromId: string | null, toId: string | null):
   return `${dayNumber}|${fromId ?? ""}|${toId ?? ""}`;
 }
 
+export interface StopPair<T> {
+  dayNumber: number;
+  /** 0-based position of `from` within its day. */
+  index: number;
+  from: T;
+  to: T;
+  /** NULL when the stop has no real coordinate (§13) — such a pair is never routed. */
+  fromCoord: { lat: number; lng: number } | null;
+  toCoord: { lat: number; lng: number } | null;
+}
+
+/**
+ * The ONE rule for which stops a trip-scoped leg connects (§18 rule 1): consecutive items on the
+ * same day, in the order given — callers pass `storage.getItineraryItems` order, (dayNumber,
+ * sortOrder, startTime), which IS the traveler's sequence. Days ascend. Both the leg engine
+ * (`generateTripTransportLegs`) and the ready-made publish gate (R-ax, `readyMadeLegLines`) read it,
+ * so the gate can never demand a leg the engine would not propose. Pure.
+ */
+export function consecutiveStopPairs<T extends { dayNumber: number; latitude?: unknown; longitude?: unknown }>(
+  items: readonly T[],
+): StopPair<T>[] {
+  const byDay = new Map<number, T[]>();
+  for (const item of items) {
+    const list = byDay.get(item.dayNumber) ?? [];
+    list.push(item);
+    byDay.set(item.dayNumber, list);
+  }
+  const out: StopPair<T>[] = [];
+  for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
+    const day = byDay.get(dayNumber)!;
+    for (let i = 0; i < day.length - 1; i++) {
+      out.push({
+        dayNumber,
+        index: i,
+        from: day[i],
+        to: day[i + 1],
+        fromCoord: realCoord(day[i].latitude, day[i].longitude),
+        toCoord: realCoord(day[i + 1].latitude, day[i + 1].longitude),
+      });
+    }
+  }
+  return out;
+}
+
+/** A leg "picked" under R-ax: confirmed, with the author's chosen mode. */
+export function isPickedLeg(leg: { proposalStatus?: string | null; userSelectedMode?: string | null }): boolean {
+  return leg.proposalStatus === "confirmed" && !!leg.userSelectedMode;
+}
+
+export type ReadyMadeLegLine = {
+  requirement: "legs" | "leg_location";
+  message: string;
+  dayNumber: number;
+  fromItemId: string;
+  toItemId: string;
+  legId?: string;
+};
+
+/**
+ * R-ax (work plan L1-2), pure. For every consecutive pair of stops (`consecutiveStopPairs`):
+ *   · both located and no PICKED leg (`isPickedLeg`) between them ⇒ a BLOCKING `legs` line, naming the
+ *     leg when one exists (proposed, or confirmed without a mode);
+ *   · either stop unlocated ⇒ an ADVISORY `leg_location` line ("Day N: {title} has no location"),
+ *     never blocking — the engine skips that pair too (`missing_coordinates`), so no leg could satisfy
+ *     it. Each unlocated stop is reported once.
+ */
+export function readyMadeLegLines(
+  items: ReadonlyArray<{ id: string; title: string; dayNumber: number; latitude?: unknown; longitude?: unknown }>,
+  legs: ReadonlyArray<{ id: string; dayNumber: number; fromActivityId: string | null; toActivityId: string | null; proposalStatus?: string | null; userSelectedMode?: string | null }>,
+): { blocking: ReadyMadeLegLine[]; advisory: ReadyMadeLegLine[] } {
+  const byPair = new Map<string, (typeof legs)[number][]>();
+  for (const leg of legs) {
+    const k = pairKey(leg.dayNumber, leg.fromActivityId, leg.toActivityId);
+    byPair.set(k, [...(byPair.get(k) ?? []), leg]);
+  }
+  const blocking: ReadyMadeLegLine[] = [];
+  const advisory: ReadyMadeLegLine[] = [];
+  const reportedUnlocated = new Set<string>();
+  for (const pair of consecutiveStopPairs(items)) {
+    const base = { dayNumber: pair.dayNumber, fromItemId: pair.from.id, toItemId: pair.to.id };
+    if (!pair.fromCoord || !pair.toCoord) {
+      for (const [stop, coord] of [[pair.from, pair.fromCoord], [pair.to, pair.toCoord]] as const) {
+        if (coord || reportedUnlocated.has(stop.id)) continue;
+        reportedUnlocated.add(stop.id);
+        advisory.push({ requirement: "leg_location", message: `Day ${pair.dayNumber}: ${stop.title} has no location`, ...base });
+      }
+      continue;
+    }
+    const candidates = byPair.get(pairKey(pair.dayNumber, pair.from.id, pair.to.id)) ?? [];
+    if (candidates.some(isPickedLeg)) continue;
+    blocking.push({
+      requirement: "legs",
+      message: `Day ${pair.dayNumber}: pick how to get from ${pair.from.title} to ${pair.to.title}`,
+      ...base,
+      ...(candidates[0] ? { legId: candidates[0].id } : {}),
+    });
+  }
+  return { blocking, advisory };
+}
+
 /**
  * ENGINE PROPOSAL PASS. Computes legs between consecutive same-day itinerary items using the
  * EXISTING variant leg engine (`computeTransportLeg` → `computeSingleLeg`, same distance / mode
@@ -250,116 +350,106 @@ export async function generateTripTransportLegs(
 
   // Plan order per day — storage.getItineraryItems already orders by
   // (dayNumber, sortOrder, startTime), which IS the traveler's sequence.
-  const byDay = new Map<number, typeof items>();
-  for (const item of items) {
-    const list = byDay.get(item.dayNumber) ?? [];
-    list.push(item);
-    byDay.set(item.dayNumber, list as typeof items);
-  }
-
   const skipped: TripLegSkip[] = [];
   const rows: Array<typeof transportLegs.$inferInsert> = [];
   const routedResults: Awaited<ReturnType<typeof computeTransportLeg>>[] = [];
   let keptConfirmed = 0;
 
-  for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
-    const dayItems = byDay.get(dayNumber)!;
-    for (let i = 0; i < dayItems.length - 1; i++) {
-      const from = dayItems[i] as any;
-      const to = dayItems[i + 1] as any;
+  // The ONE pairing rule (`consecutiveStopPairs`), shared with the ready-made leg gate (R-ax).
+  for (const pair of consecutiveStopPairs(items)) {
+    const { dayNumber, index: i, fromCoord, toCoord } = pair;
+    const from = pair.from as any;
+    const to = pair.to as any;
 
-      // Already the expert's own confirmed leg — leave it completely alone.
-      if (confirmedPairs.has(pairKey(dayNumber, from.id, to.id))) {
-        keptConfirmed++;
-        continue;
-      }
-
-      const fromCoord = realCoord(from.latitude, from.longitude);
-      const toCoord = realCoord(to.latitude, to.longitude);
-      if (!fromCoord || !toCoord) {
-        // §13: no geometry exists for this gap, so no leg is written. The caller surfaces this as
-        // "add a location to route this leg" — never a fabricated leg.
-        skipped.push({
-          dayNumber,
-          fromItemId: from.id,
-          fromTitle: from.title,
-          toItemId: to.id,
-          toTitle: to.title,
-          reason: "missing_coordinates",
-        });
-        continue;
-      }
-
-      const fromPoint: ActivityLocation = {
-        id: from.id,
-        name: from.title,
-        lat: fromCoord.lat,
-        lng: fromCoord.lng,
-        scheduledTime: from.startTime || "",
-        dayNumber,
-        order: i,
-      };
-      const toPoint: ActivityLocation = {
-        id: to.id,
-        name: to.title,
-        lat: toCoord.lat,
-        lng: toCoord.lng,
-        scheduledTime: to.startTime || "",
-        dayNumber,
-        order: i + 1,
-      };
-
-      const leg = resolver
-        ? legFromResolved(
-            fromPoint,
-            toPoint,
-            dayNumber,
-            i + 1,
-            await resolver(
-              fromCoord,
-              toCoord,
-              defaultLegMode(haversineMeters(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng), WITHIN_WALK_METERS),
-            ),
-          )
-        : await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
-      if (!leg) {
-        skipped.push({
-          dayNumber,
-          fromItemId: from.id,
-          fromTitle: from.title,
-          toItemId: to.id,
-          toTitle: to.title,
-          reason: "route_unavailable",
-        });
-        continue;
-      }
-      routedResults.push(leg);
-
-      rows.push({
-        // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).
-        tripId,
-        dayNumber: leg.dayNumber,
-        legOrder: leg.legOrder,
-        fromActivityId: leg.fromActivityId,
-        fromName: leg.fromName,
-        fromLat: leg.fromLat,
-        fromLng: leg.fromLng,
-        toActivityId: leg.toActivityId,
-        toName: leg.toName,
-        toLat: leg.toLat,
-        toLng: leg.toLng,
-        distanceMeters: leg.distanceMeters,
-        distanceDisplay: leg.distanceDisplay,
-        recommendedMode: leg.recommendedMode,
-        estimatedDurationMinutes: leg.estimatedDurationMinutes,
-        estimatedCostUsd: leg.estimatedCostUsd ?? null,
-        alternativeModes: leg.alternativeModes,
-        energyCost: leg.energyCost,
-        destinationProfile: destination || null,
-        // D1a-analog: born proposed. The engine cannot self-confirm.
-        proposalStatus: "proposed",
-      });
+    // Already the expert's own confirmed leg — leave it completely alone.
+    if (confirmedPairs.has(pairKey(dayNumber, from.id, to.id))) {
+      keptConfirmed++;
+      continue;
     }
+
+    if (!fromCoord || !toCoord) {
+      // §13: no geometry exists for this gap, so no leg is written. The caller surfaces this as
+      // "add a location to route this leg" — never a fabricated leg.
+      skipped.push({
+        dayNumber,
+        fromItemId: from.id,
+        fromTitle: from.title,
+        toItemId: to.id,
+        toTitle: to.title,
+        reason: "missing_coordinates",
+      });
+      continue;
+    }
+
+    const fromPoint: ActivityLocation = {
+      id: from.id,
+      name: from.title,
+      lat: fromCoord.lat,
+      lng: fromCoord.lng,
+      scheduledTime: from.startTime || "",
+      dayNumber,
+      order: i,
+    };
+    const toPoint: ActivityLocation = {
+      id: to.id,
+      name: to.title,
+      lat: toCoord.lat,
+      lng: toCoord.lng,
+      scheduledTime: to.startTime || "",
+      dayNumber,
+      order: i + 1,
+    };
+
+    const leg = resolver
+      ? legFromResolved(
+          fromPoint,
+          toPoint,
+          dayNumber,
+          i + 1,
+          await resolver(
+            fromCoord,
+            toCoord,
+            defaultLegMode(haversineMeters(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng), WITHIN_WALK_METERS),
+          ),
+        )
+      : await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+    if (!leg) {
+      skipped.push({
+        dayNumber,
+        fromItemId: from.id,
+        fromTitle: from.title,
+        toItemId: to.id,
+        toTitle: to.title,
+        reason: "route_unavailable",
+      });
+      continue;
+    }
+    routedResults.push(leg);
+
+    rows.push({
+      // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).
+      tripId,
+      dayNumber: leg.dayNumber,
+      legOrder: leg.legOrder,
+      fromActivityId: leg.fromActivityId,
+      fromName: leg.fromName,
+      fromLat: leg.fromLat,
+      fromLng: leg.fromLng,
+      toActivityId: leg.toActivityId,
+      toName: leg.toName,
+      toLat: leg.toLat,
+      toLng: leg.toLng,
+      distanceMeters: leg.distanceMeters,
+      distanceDisplay: leg.distanceDisplay,
+      recommendedMode: leg.recommendedMode,
+      estimatedDurationMinutes: leg.estimatedDurationMinutes,
+      estimatedCostUsd: leg.estimatedCostUsd ?? null,
+      alternativeModes: leg.alternativeModes,
+      energyCost: leg.energyCost,
+      destinationProfile: destination || null,
+      // D1a-analog: born proposed. The engine cannot self-confirm.
+      proposalStatus: "proposed",
+    });
   }
 
   // Atomic swap so a concurrent read never sees a trip with its proposals deleted and not yet
