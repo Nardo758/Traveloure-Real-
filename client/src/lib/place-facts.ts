@@ -131,3 +131,67 @@ export function sourcedLineSuffix(place: { provenance: string | null; checked: s
   if (!place.provenance) return "";
   return ` · ${place.provenance}${place.checked ? ` · checked ${place.checked}` : ""}`;
 }
+
+// ── Step 6 R-ap: the ItemSheet's facts (ledger `2026-10-04-step6-trip-card`) ─────────────────────────
+const SHEET_FACT_LABEL: Partial<Record<string, string>> = {
+  hours: "Hours",
+  address: "Address",
+  closure: "Closure",
+  ticketing_rule: "Tickets",
+  transit: "Getting there",
+  price: "Price",
+  dining_basics: "Dining",
+  event: "Event",
+  description: "About",
+  tip: "Tip",
+};
+
+function factText(f: FactView): string | null {
+  const v = f.value ?? {};
+  if (f.factType === "hours") {
+    const days = Array.isArray(v.weekdayDescriptions) ? (v.weekdayDescriptions as unknown[]).map(String).filter(Boolean) : [];
+    return days.length ? days.join(" · ") : null;
+  }
+  if (f.factType === "address") {
+    const a = [v.formattedAddress, v.shortFormattedAddress, v.address, v.text].find((x) => typeof x === "string" && x.trim());
+    return typeof a === "string" ? a.trim() : null;
+  }
+  const t = [v.text, v.summary, v.rule, v.name, v.title, v.value].find((x) => typeof x === "string" && x.trim());
+  return typeof t === "string" ? t.trim() : null;
+}
+
+export interface SheetFactLine {
+  label: string;
+  text: string;
+  /** "<source> · checked <d Mon>" — the same sourced-line format the row uses (S10-9). */
+  source: string;
+  sourceUrl: string | null;
+  stale: boolean;
+}
+
+/**
+ * Pure. Every fact the stop has, each with its source and checked date (R-ap) — the ONE "more info"
+ * list. A location fact is a point, not a sentence, and is not listed; a fact with nothing readable
+ * is omitted rather than shown empty (§13). Hours first, then the order of `SHEET_FACT_LABEL`.
+ */
+export function sheetFactLines(facts: readonly FactView[] | undefined, timeZone?: string | null): SheetFactLine[] {
+  const order = Object.keys(SHEET_FACT_LABEL);
+  return (facts ?? [])
+    .filter((f) => f.factType !== "location" && SHEET_FACT_LABEL[f.factType])
+    .map((f) => {
+      const text = factText(f);
+      if (!text) return null;
+      const checked = factCheckedLabel(f.checkedAt, timeZone) ?? provenanceCheckedLabel(f.provenance);
+      return {
+        label: SHEET_FACT_LABEL[f.factType]!,
+        text,
+        source: `${sourceName(f.provenance)}${checked ? ` · checked ${checked}` : ""}`,
+        sourceUrl: f.sourceUrl,
+        stale: f.stale,
+        _o: order.indexOf(f.factType),
+      };
+    })
+    .filter((x): x is SheetFactLine & { _o: number } => !!x)
+    .sort((a, b) => a._o - b._o)
+    .map(({ _o, ...rest }) => rest);
+}

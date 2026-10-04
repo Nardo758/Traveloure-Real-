@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { factsForTrip, pendingFactLookups } from "../services/content-facts/place-facts.service";
+import { factsForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
+import { photosFor } from "../services/place-photos.service";
 import { applyGooglePins } from "@shared/ai-place-text";
 import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
@@ -10,6 +11,7 @@ import {
   itineraryComparisons,
   itineraryVariants,
   itineraryVariantItems,
+  providerServices,
 } from "@shared/schema";
 import { db } from "../db";
 import { and, count, eq, inArray, notInArray } from "drizzle-orm";
@@ -554,6 +556,46 @@ router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async
   } catch (error) {
     console.error("Error adopting stops into trip:", error);
     res.status(500).json({ error: "Failed to add stops to plan" });
+  }
+});
+
+// Step 6 R-aq (ledger `2026-10-04-step6-trip-card`): photos for named stops of ONE plan — the slip's
+// one-per-day image, the card's today thumbnails, the ItemSheet. Through the plan's READ gate; the
+// client names at most PLACE_PHOTOS_MAX_ITEMS of the plan's own items (an id not on this plan is
+// ignored, never looked up). Order and storage rules are `@shared/place-photos` + the service.
+const PLACE_PHOTOS_MAX_ITEMS = 24;
+router.get("/api/trips/:tripId/place-photos", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const userId = getUserId(req)!;
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/place-photos");
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+    const ids = Array.from(new Set(String(req.query.items ?? "").split(",").map((x) => x.trim()).filter(Boolean))).slice(0, PLACE_PHOTOS_MAX_ITEMS);
+    if (!ids.length) return res.json({ photos: {} });
+    const rows = await db
+      .select({ id: itineraryItems.id, title: itineraryItems.title, lat: itineraryItems.latitude, lng: itineraryItems.longitude, serviceImage: providerServices.serviceImage })
+      .from(itineraryItems)
+      .leftJoin(providerServices, eq(providerServices.id, itineraryItems.providerServiceId))
+      .where(and(eq(itineraryItems.tripId, tripId), inArray(itineraryItems.id, ids)));
+    const refs = await placeRefsForTrip(tripId, rows.map((r) => r.id));
+    const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    const photos = await photosFor(
+      rows.map((r) => {
+        const ref = refs.get(r.id);
+        return {
+          id: r.id,
+          name: r.title ?? "",
+          placeId: ref?.placeId ?? null,
+          lat: ref?.lat ?? num(r.lat),
+          lng: ref?.lng ?? num(r.lng),
+          ownImage: r.serviceImage ?? null,
+        };
+      }),
+    );
+    res.json({ photos });
+  } catch (error) {
+    console.error("Error reading place photos:", error);
+    res.status(500).json({ error: "Failed to read photos" });
   }
 });
 

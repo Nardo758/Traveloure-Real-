@@ -63,7 +63,10 @@ import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airpor
 import { manifestFor } from "@shared/group-manifest";
 import { anchorSurfaces, isLodgingItem, replaceStayQuestion, type WhereToStayView } from "@shared/where-to-stay";
 import { itemFactsLine } from "@/lib/place-facts";
-import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
+import { ITEM_MENU_LABELS, ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
+import { ItemSheet } from "@/components/plan/ItemSheet";
+import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
+import { navigateHref } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
 import {
   GETTING_THERE_TOOL,
@@ -792,9 +795,13 @@ function SlipDayItem({
   const setAsStay = useSetAsStay(tripId, a.id);
   const [confirmStay, setConfirmStay] = useState(false);
   const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
+  // Step 6 R-ap: the stop's ItemSheet — title tap, ⋯ → Details. Its photo is read only while open.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetPhotos = usePlacePhotos(tripId, sheetOpen ? [a.id] : []);
   const showThread = hasAdvisor && (isOwner || isExpertViewer);
   const menu: ItemRowMenu | null = canEditItems
     ? {
+        onDetails: () => setSheetOpen(true),
         onSwap: actions.onSwap,
         onMoveUp: actions.onMoveUp,
         onMoveDown: actions.onMoveDown,
@@ -854,7 +861,22 @@ function SlipDayItem({
         isOwner && itemBookingAction(a) ? <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} /> : null
       }
       expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
+      onOpenDetails={() => setSheetOpen(true)}
     >
+      <ItemSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        item={{ id: a.id, name: anchorFrom || !travel ? a.name : travelRowTitle(travel.kind, city), time: a.time, location: a.location }}
+        facts={facts}
+        timeZone={timeZone}
+        photo={sheetPhotos[a.id] ?? null}
+        expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
+        onAskLocal={menu?.onAskLocal ? () => { setSheetOpen(false); menu.onAskLocal!(); } : null}
+        askLocalLabel={menu?.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}
+        navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, city)}
+        bookingLine={slipItemBookingLine(a)}
+        bookingAction={isOwner && itemBookingAction(a) ? <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} /> : null}
+      />
       {/* S10-6: replacing the plan's stay is confirmed by name first; the SAME stay row is rewritten. */}
       {confirmStay && replacingStay ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-border bg-muted/40 px-2 py-1.5 text-xs" data-testid={`item-set-as-stay-confirm-${a.id}`}>
@@ -1699,6 +1721,14 @@ export function SlipView({
   const mapAreas: MapArea[] = (areaRows?.data ?? [])
     .map((r) => ({ slug: r.slug, name: r.name, lat: Number(r.centroidLat), lng: Number(r.centroidLng) }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  // Step 6 R-aq: ONE image per day on the slip — the day's first located stop (never the stay); none
+  // on item rows, versions or the map. Resolved server-side in the R-aq order, with its attribution.
+  const dayPhotoItemId = new Map<number, string>();
+  for (const d of sortedDays) {
+    const first = (d.activities ?? []).find((x) => isLocated(x) && x.type !== "accommodation");
+    if (first) dayPhotoItemId.set(d.dayNum, first.id);
+  }
+  const dayPhotos = usePlacePhotos(tripId, Array.from(dayPhotoItemId.values()));
   // A paid run's versions: the Draft / A / B / C toggle (read gate; a non-reader is one 404 ⇒ no toggle).
   const { data: versionsView } = useQuery<VersionsBoardView>({
     queryKey: [`/api/trips/${tripId}/versions`],
@@ -2217,6 +2247,11 @@ export function SlipView({
                 })}
                 open={dayOpen[slot.key] ?? (slotIdx === 0 || (!!highlightItemId && slotItems.some((a) => a.id === highlightItemId)))}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
+                photo={
+                  slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
+                    <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} testId={`slip-day-photo-${slot.dayNum}`} />
+                  ) : null
+                }
               >
                 {/* R-aa: day 1 opens with the placeholder arrival anchor, the last day closes with the
                     departure one — a range-shaped plan only (a day-shaped occasion has no arrival). */}
