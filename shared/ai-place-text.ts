@@ -234,3 +234,91 @@ export function applyGooglePins<
     }),
   }));
 }
+
+// ── Smoke 9 S9-8 (extends R-w; ledger `2026-10-04-smoke9-addendum`) ────────────────────────────────
+//
+// A drafted title naming a FESTIVAL / MATSURI / EVENT is a claim that something is ON while the
+// traveler is there. The model cannot know that, so the title stands only when an R-p event fact (a
+// crawled `event` fact from an official, public_ok source — `isOfficialPublicFact`) COVERS the trip's
+// dates; otherwise it is reduced to its non-event fallback, and with no fallback the item becomes a
+// SUPPLY SLOT (no venue, no event name). Never rewritten into words the model did not write (§13): the
+// fallback is one of the model's own alternatives, picked whole.
+
+/** Words that name an event in a title. */
+const EVENT_WORD = /\b(festivals?|matsuri|events?)\b|matsuri\b/i;
+
+export function namesAnEvent(text: string | null | undefined): boolean {
+  return EVENT_WORD.test(text ?? "");
+}
+
+/**
+ * The model's own non-event alternative in a two-option title, or null. Splits on " or ", " / " and
+ * "Alternative:" (the shapes drafts use), and returns the FIRST part that names no event.
+ * "Gion Matsuri Festival grounds or Gion walking tour" → "Gion walking tour".
+ */
+export function eventFallbackTitle(title: string | null | undefined): string | null {
+  const parts = String(title ?? "")
+    .split(/\s+or\s+|\s+\/\s+|\s*\balternative:\s*/i)
+    .map((p) => p.trim().replace(/^[-–—:,;]+|[-–—:,;]+$/g, "").trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts.find((p) => !namesAnEvent(p)) ?? null;
+}
+
+/** An event the plan may name: its name (from the fact) — only facts already proven to cover the dates. */
+export interface CoveringEvent {
+  name: string;
+}
+
+const tokens = (s: string) =>
+  String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !EVENT_WORD.test(t));
+
+/** Does a covering event name this title? Every distinctive word of the event's name is in the title. */
+export function titleNamesCoveredEvent(title: string, covering: readonly CoveringEvent[]): boolean {
+  const have = new Set(tokens(title));
+  return covering.some((e) => {
+    const need = tokens(e.name);
+    return need.length > 0 && need.every((t) => have.has(t));
+  });
+}
+
+/** The title an event-naming drafted item may keep, or `{ supplySlot: true }`. Non-event titles pass through. */
+export function reduceUncoveredEvent(
+  title: string,
+  covering: readonly CoveringEvent[],
+): { title: string; reduced: boolean; supplySlot: boolean } {
+  if (!namesAnEvent(title) || titleNamesCoveredEvent(title, covering)) return { title, reduced: false, supplySlot: false };
+  const fallback = eventFallbackTitle(title);
+  if (fallback) return { title: fallback, reduced: true, supplySlot: false };
+  return { title: SUPPLY_SLOT_EVENT_TITLE, reduced: true, supplySlot: true };
+}
+
+/** The title of an event-named item with no fallback: a slot to fill, naming no event. */
+export const SUPPLY_SLOT_EVENT_TITLE = "Open slot — something local";
+
+/**
+ * Pure. Does an event fact's value cover the trip's dates? Only STRUCTURED dates count
+ * (`startDate`/`endDate`, "YYYY-MM-DD"); a fact with none covers nothing — its prose is never parsed
+ * into a date (§13). Covers = the event's window overlaps the trip's.
+ */
+export function eventFactCoversDates(value: unknown, tripStart: string | null | undefined, tripEnd: string | null | undefined): boolean {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const iso = (x: unknown) => (typeof x === "string" && /^\d{4}-\d{2}-\d{2}/.test(x) ? x.slice(0, 10) : null);
+  const s = iso(v.startDate);
+  const e = iso(v.endDate) ?? s;
+  const ts = iso(tripStart);
+  const te = iso(tripEnd) ?? ts;
+  if (!s || !e || !ts || !te) return false;
+  return s <= te && e >= ts;
+}
+
+/** The draft prompt's event rule (first layer; `reduceUncoveredEvent` at storage is the second). */
+export function aiEventPromptLine(tripStart: string | null | undefined, tripEnd: string | null | undefined, listed: readonly CoveringEvent[]): string {
+  const dates = tripStart && tripEnd ? `The trip runs ${tripStart} to ${tripEnd}. ` : "";
+  const list = listed.length ? `Events confirmed on those dates: ${listed.map((e) => e.name).join("; ")}.` : "No events are confirmed on those dates.";
+  return `${dates}No festivals or events unless listed here. ${list} Never title a stop after a festival, matsuri or event that is not listed.`;
+}

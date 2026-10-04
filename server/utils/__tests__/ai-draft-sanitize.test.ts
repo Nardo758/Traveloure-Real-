@@ -147,7 +147,8 @@ test("W6: the supply-slot predicate", () => {
 
 test("W7: wiring — every snapshot caller is sanitised, no city fallback, prompt lines", () => {
   const writer = readFileSync(path.join(repo, "server/services/content-query.service.ts"), "utf8");
-  assert.match(writer, /city: input\.trip\.destination \}/);
+  // S9-8 added the covering-event list to the same options object.
+  assert.match(writer, /city: input\.trip\.destination, coveringEvents \}/);
   assert.match(writer, /canonicalItems: sanitizeCanonicalItems\(input\.canonicalItems, sanitizeOptions\)/);
   assert.match(writer, /generatedPlan: sanitizeGeneratedPlan\(input\.generatedPlan, sanitizeOptions\)/);
   assert.match(writer, /locationName: activity\.location \|\| null,/);

@@ -21,7 +21,8 @@ import { parseAiJsonObjectOrThrow } from "../utils/ai-json";
 import { claudeService } from "./claude.service";
 import { calculateAnthropicCost, trackAnthropicResponse } from "./ai-cost-tracker";
 import { formatGeneratedItinerarySpecialRequests } from "../utils/generated-itinerary";
-import { AI_PLACE_PROMPT_LINE } from "@shared/ai-place-text";
+import { AI_PLACE_PROMPT_LINE, aiEventPromptLine, type CoveringEvent } from "@shared/ai-place-text";
+import { coveringEventsForTrip } from "./content-facts/covering-events";
 
 // Lazy Anthropic client for the itinerary draft (it runs its own configurable draft tier)
 let _anthropicClient: Anthropic | null = null;
@@ -172,6 +173,11 @@ export interface AutonomousItineraryRequest {
    * to the user prompt so generation schedules around fixed flight/hotel commitments.
    */
   immovableConstraints?: string;
+  /**
+   * S9-8: the R-p event facts covering the trip's dates. Absent ⇒ read here (`coveringEventsForTrip`)
+   * from the destination and dates, so every caller's prompt carries the same rule.
+   */
+  coveringEvents?: CoveringEvent[];
 }
 
 export interface AutonomousItineraryResult {
@@ -566,6 +572,13 @@ IMPORTANT: Incorporate this real-time intelligence into your recommendations. Pr
       }
     }
 
+    // S9-8: the trip's dates and "no festivals or events unless listed" — the first layer; storage
+    // (`ai-draft-sanitize`) reduces any event title the list does not cover.
+    const coveringEvents =
+      request.coveringEvents ??
+      (await coveringEventsForTrip({ destination: request.destination, startDate: request.dates.start, endDate: request.dates.end }));
+    const eventsLine = aiEventPromptLine(request.dates.start, request.dates.end, coveringEvents);
+
     const userPrompt = `Create a complete travel itinerary:
 
 **Trip Details:**
@@ -580,6 +593,7 @@ ${request.mustSeeAttractions?.length ? `- Must-See: ${request.mustSeeAttractions
 ${request.dietaryRestrictions?.length ? `- Dietary: ${request.dietaryRestrictions.join(", ")}` : ""}
 ${request.mobilityConsiderations?.length ? `- Mobility: ${request.mobilityConsiderations.join(", ")}` : ""}
 ${formatGeneratedItinerarySpecialRequests(request.specialRequests)}
+- Events: ${eventsLine}
 ${travelPulseSection}${request.immovableConstraints || ""}
 
 Create a detailed, actionable itinerary that incorporates the real-time destination intelligence above.`;

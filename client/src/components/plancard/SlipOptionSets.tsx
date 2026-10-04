@@ -444,6 +444,27 @@ export function SlipOptionSetCard({
  * `2026-10-03-surface-step1-item-row`) it is an entry in the row's ⋯ menu, not a link under the row:
  * same rail (`POST /anchor/promote`), same toasts; the menu calls `promote()`.
  */
+/**
+ * Smoke 9 S9-2 amendment (ledger `2026-10-04-smoke9-addendum`): "Set as where you're staying" — a
+ * hand-added lodging item becomes the plan's stay through the ONE where-to-stay rail
+ * (`{ kind: "this_item" }`), which binds a lodging set to the item itself.
+ */
+export function useSetAsStay(tripId: string, itemId: string): () => void {
+  const { toast } = useToast();
+  const m = useMutation({
+    mutationFn: async () => (await apiRequest("POST", `/api/trips/${tripId}/where-to-stay`, { kind: "this_item", itemId })).json(),
+    onSuccess: () => {
+      invalidatePlan(tripId);
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
+      toast({ title: "This is now where you're staying" });
+    },
+    onError: (e) => toast({ title: serverMessage(e, "Couldn't set where you're staying"), variant: "destructive" }),
+  });
+  return () => {
+    if (!m.isPending) m.mutate();
+  };
+}
+
 export function usePromoteAnchor(tripId: string, itemId: string): () => void {
   const { toast } = useToast();
   const promote = useMutation({

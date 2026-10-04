@@ -29,6 +29,7 @@ import { flagReviewSignal } from "./review-mutation.service";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 import { assertAiDraftEligible, itineraryItemNotPlanAnchor } from "./ai-draft-eligibility";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
+import { coveringEventsForTrip } from "./content-facts/covering-events";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -380,7 +381,13 @@ export async function saveGeneratedItinerarySnapshot(
 
   // R-w: AI place and description text is sanitised HERE, at storage, for every caller — the rows
   // and the stored draft JSON by the same rules (`server/utils/ai-draft-sanitize.ts`).
-  const sanitizeOptions = { noLodging: input.noLodging === true, city: input.trip.destination };
+  // S9-8: an event-named title stands only when an R-p event fact covers the trip's dates.
+  const coveringEvents = await coveringEventsForTrip({
+    destination: input.trip.destination,
+    startDate: input.trip.startDate,
+    endDate: input.trip.endDate,
+  });
+  const sanitizeOptions = { noLodging: input.noLodging === true, city: input.trip.destination, coveringEvents };
   input = {
     ...input,
     canonicalItems: sanitizeCanonicalItems(input.canonicalItems, sanitizeOptions),

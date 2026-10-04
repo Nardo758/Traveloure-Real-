@@ -17,6 +17,7 @@
  * No routing pill, no kind chip, no origin chip, and no per-item checkout control (R-l): the draft is
  * a plan, not a basket.
  */
+import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
 import type { ReactNode } from "react";
 import { Lock, MoreHorizontal } from "lucide-react";
 import { Link } from "wouter";
@@ -52,6 +53,8 @@ export interface ItemRowMenu {
   /** Step 5: on the slip, "Find a host" opens the map's Browse layer filtered to the item's category. */
   onFindHost?: () => void;
   onBuildAround?: () => void;
+  /** Smoke 9 S9-2 amendment: a hand-added lodging item becomes the plan's stay. */
+  onSetAsStay?: () => void;
   /** R-ah: "Keep this" (unlocked) / "Unlock" (locked) — the owner's own lock. */
   onToggleLock?: () => void;
 }
@@ -62,6 +65,8 @@ export interface ItemRowProps {
   facts?: readonly FactView[];
   /** The plan day's date — the facts line reads THAT day's weekday, and none without it (§13). */
   dateIso?: string | null;
+  /** S9-6: the plan's zone (`trips.timezone`) — the facts line's "checked" day is read in it. */
+  timeZone?: string | null;
   mode: ItemRowMode;
   role: ItemRowRole;
   /** The line a real booking says ("booked · #A1B2", "Payment failed — …"); null ⇒ nothing. */
@@ -92,9 +97,9 @@ export interface ItemRowProps {
 }
 
 export function ItemRow(props: ItemRowProps) {
-  const { item: a, facts, dateIso = null, mode, anchor = null, menu = null, highlighted = false } = props;
+  const { item: a, facts, dateIso = null, timeZone = null, mode, anchor = null, menu = null, highlighted = false } = props;
   const place = itemPlaceLine(facts, a);
-  const factsLine = itemFactsLine(facts, dateIso);
+  const factsLine = itemFactsLine(facts, dateIso, timeZone);
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
 
   const titleLine = (
@@ -204,7 +209,7 @@ export function ItemRow(props: ItemRowProps) {
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
-  return !!(m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround);
+  return !!(m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround || m.onSetAsStay);
 }
 
 /** The labels, ONCE (spec §3's order). */
@@ -217,6 +222,7 @@ export const ITEM_MENU_LABELS = {
   seeQuestion: "See your question",
   findHost: "Find a host",
   buildAround: "Build my days around this",
+  setAsStay: SET_AS_STAY_LABEL,
   lock: "Keep this",
   unlock: "Unlock",
 } as const;
@@ -255,7 +261,7 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
         {menu.onRemove ? (
           <DropdownMenuItem onSelect={menu.onRemove} data-testid={`item-menu-remove-${id}`}>{ITEM_MENU_LABELS.remove}</DropdownMenuItem>
         ) : null}
-        {(menu.onAskLocal || menu.findHostHref || menu.onBuildAround) && (menu.onSwap || menu.onRemove || menu.onToggleLock || menu.onMoveUp || menu.onMoveDown) ? (
+        {(menu.onAskLocal || menu.findHostHref || menu.onBuildAround || menu.onSetAsStay) && (menu.onSwap || menu.onRemove || menu.onToggleLock || menu.onMoveUp || menu.onMoveDown) ? (
           <DropdownMenuSeparator />
         ) : null}
         {menu.onAskLocal ? (
@@ -269,6 +275,9 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
           <DropdownMenuItem asChild data-testid={`item-menu-find-host-${id}`}>
             <Link href={menu.findHostHref}>{ITEM_MENU_LABELS.findHost}</Link>
           </DropdownMenuItem>
+        ) : null}
+        {menu.onSetAsStay ? (
+          <DropdownMenuItem onSelect={menu.onSetAsStay} data-testid={`item-menu-set-as-stay-${id}`}>{ITEM_MENU_LABELS.setAsStay}</DropdownMenuItem>
         ) : null}
         {menu.onBuildAround ? (
           <DropdownMenuItem onSelect={menu.onBuildAround} data-testid={`item-menu-build-around-${id}`}>{ITEM_MENU_LABELS.buildAround}</DropdownMenuItem>

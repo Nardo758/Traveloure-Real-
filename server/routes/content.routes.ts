@@ -64,6 +64,7 @@ import {
 } from "@shared/draft-basis";
 import { draftBasisInputs } from "../services/plan-option-sets.service";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
+import { coveringEventsForTrip } from "../services/content-facts/covering-events";
 import { healthFlags, healthEgressFlags } from "../services/runtime-flags";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -4787,6 +4788,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // LD 41 (c): which model actually produced the draft (the Anthropic draft tier) — reported
       // by the generator, never guessed here, because the cost row names it.
       let draftModelUsed: string;
+      // S9-8: ONE read of the R-p event facts covering the trip's dates — the prompt's list and this
+      // route's storage pass read the same answer.
+      const coveringEvents = await coveringEventsForTrip({ destination, startDate: dates?.start ?? null, endDate: dates?.end ?? null });
       try {
         ({ result, usage, model: draftModelUsed } = await dedupedRequest(dedupKey, () =>
           callWithCircuitBreaker(() =>
@@ -4803,6 +4807,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
               mobilityConsiderations: mobilityConsiderations || [],
               specialRequests: promptSpecialRequests,
               immovableConstraints: anchorBlock,
+              coveringEvents,
             }, { sourceType: "ai_itinerary", userId })
           )
         ));
@@ -4869,7 +4874,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // The snapshot writer runs the same pass again (idempotent) for its other callers.
       const noLodging = draftBasis.kind === "none_asked";
       {
-        const o = { noLodging, city: destination };
+        const o = { noLodging, city: destination, coveringEvents };
         normalizedResult.canonicalItems = sanitizeCanonicalItems(normalizedResult.canonicalItems, o).map((it) => ({ ...it, name: it.title }));
         const cleaned = sanitizeGeneratedPlan(
           {

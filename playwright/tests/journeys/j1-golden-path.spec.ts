@@ -407,12 +407,9 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     // Monotonic ordering (v1 no later than v2).
     expect(new Date(fullLog[0].created_at).getTime()).toBeLessThanOrEqual(new Date(fullLog[1].created_at).getTime());
 
-    // UI supplement: the slip's transition-log footer renders the diary entries.
-    const logFooter = page.getByTestId("slip-transition-log");
-    await expect(logFooter, "slip must render the transition-log footer").toBeVisible();
-    // At least one version-stamped entry is rendered (newest-first v-labels).
-    const logEntries = page.locator('[data-testid^="slip-log-entry-"]');
-    expect(await logEntries.count(), "slip transition-log must render at least one entry").toBeGreaterThan(0);
+    // Smoke 9 S9-9 (ledger `2026-10-04-smoke9-addendum`): the diary stays on the server (asserted
+    // above) and the slip no longer prints it as numbered "v<n>" lines.
+    await expect(page.getByTestId("slip-transition-log")).toHaveCount(0);
   });
 
   // ── Step 3 (matrix-id: J1.3): Optimize (PAID, Stripe TEST mode) → variants → apply best ─────

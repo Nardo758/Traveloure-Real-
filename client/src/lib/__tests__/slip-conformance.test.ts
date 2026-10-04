@@ -250,6 +250,13 @@ const ALLOWED_REMOVALS = {
   "slip-optimize-preview-fee":
     "surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`) — the fee now rides the Optimize " +
     "CTA itself (\"Optimize · <fee>\", read from `/api/optimization-fee`). It carried no handler.",
+  "slip-log-toggle":
+    "smoke 9 S9-9 (ledger `2026-10-04-smoke9-addendum`) — the transition-log footer is removed from " +
+    "the slip (\"v1 · Oct 3 · (removed item) (you)\"); its expand/collapse toggle went with it. The " +
+    "diary stays on the server (`recentTransitions`), unprinted.",
+  "slip-transition-log":
+    "smoke 9 S9-9 (ledger `2026-10-04-smoke9-addendum`) — the transition-log footer itself; see " +
+    "`slip-log-toggle`. It carried no handler of its own.",
   "slip-tracking-ref":
     "4 — the working header prints no slip number and no version. `planVersion` is the " +
     "transition-log ROW COUNT and reads as a released version it is not; the only version a " +
@@ -659,10 +666,9 @@ describe("4 — a version exists only once a plan is final, and only that surfac
     assert.match(banner, /trip\.finalVersion != null/, "rendered only when a real one exists");
     assert.match(banner, /data-testid="slip-final-version-chip"/);
     assert.match(banner, /v\{trip\.finalVersion\}/);
-    // The transition log is the one other `v<n>` on this surface, and it labels a row in a
-    // HISTORY — which is what the count is — rather than the plan as a whole.
-    const log = functionBody(viewCode, "function TransitionLogFooter(");
-    assert.match(log, /planVersion - i/, "the log still numbers its own entries");
+    // Smoke 9 S9-9: the transition-log footer — the only other `v<n>` on this surface — is gone,
+    // so the final chip is the slip's ONE version.
+    assert.ok(!/function TransitionLogFooter\(|data-testid="slip-transition-log"|\(removed item\)/.test(viewCode));
   });
 });
 

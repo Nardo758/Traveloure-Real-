@@ -254,6 +254,42 @@ async function renameToDisplayName(tripId: string, item: EnrichItem, name: strin
 }
 
 /**
+ * SMOKE 9 S9-7 (ledger `2026-10-04-smoke9-addendum`): when a lookup attaches a Google address fact
+ * carrying an AREA (from `addressComponents`, stored on the fact as `value.area`), that area replaces
+ * the AI's own area text on the item ("541 Nijocho … Shimogyo Ward, Kyoto" → "Nakagyo Ward, Kyoto").
+ * ONE conditional UPDATE, on the same guard as the rename: only the AI's own row, and only while it
+ * still carries the location the draft wrote — a traveler's edit is never overwritten. The fact keeps
+ * the area with its provenance; this only stops every other reader showing the AI's guess. Never throws.
+ */
+export function attachedArea(kept: readonly FactDraft[]): string | null {
+  const address = kept.find((d) => d.factType === "address" && d.origin === "places_api");
+  const area = (address?.value as Record<string, unknown> | undefined)?.area;
+  return typeof area === "string" && area.trim() ? area.trim() : null;
+}
+async function adoptGoogleArea(tripId: string, item: EnrichItem, area: string): Promise<boolean> {
+  const drafted = item.locationName ?? null;
+  if ((drafted ?? "").trim() === area) return false;
+  try {
+    const r = await db
+      .update(itineraryItems)
+      .set({ locationName: area })
+      .where(
+        and(
+          eq(itineraryItems.id, item.id),
+          eq(itineraryItems.tripId, tripId),
+          eq(itineraryItems.origin, "ai"),
+          drafted == null ? sql`(${itineraryItems.locationName} IS NULL OR ${itineraryItems.locationName} = '')` : eq(itineraryItems.locationName, drafted),
+        ),
+      )
+      .returning({ id: itineraryItems.id });
+    return r.length > 0;
+  } catch (err) {
+    console.error(`[place-facts] area adopt failed plan_id=${tripId} item_id=${item.id}:`, (err as Error)?.message ?? err);
+    return false;
+  }
+}
+
+/**
  * After a free draft commits: look up each drafted stop's facts (hours, dining basics, coordinates)
  * — cache first, then the Places spine. NEVER throws and never blocks the draft (§15b): a failed
  * lookup is logged and that item simply has no facts.
@@ -275,8 +311,8 @@ export async function enrichPlanItems(input: {
   items: EnrichItem[];
   adapters?: SourceAdapter[];
   draftId?: string | null;
-}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number }> {
-  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0 };
+}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number; areas: number }> {
+  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0, areas: 0 };
   const ids = (item: EnrichItem) => ({ planId: input.tripId, itemId: item.id });
   const progress = input.draftId ? new LookupProgress(input.draftId) : null;
   try {
@@ -346,6 +382,8 @@ export async function enrichPlanItems(input: {
         const display = kept.length ? attachedDisplayName(kept) : null;
         const renamed = display ? await renameToDisplayName(input.tripId, item, display) : false;
         if (renamed) summary.renamed += 1;
+        const area = attachedArea(kept);
+        if (area && (await adoptGoogleArea(input.tripId, item, area))) summary.areas += 1;
         scheduler.report(day, { attached: kept.length > 0, hasHours });
         logLookup(ids(item), drafts, cache, started, day, outcomeOf(drafts, kept), { facts: recorded, hours: hasHours, renamed });
       } catch (err) {

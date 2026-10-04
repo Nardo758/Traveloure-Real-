@@ -39,8 +39,10 @@ import {
   trips,
 } from "@shared/schema";
 import {
+  HAND_ADDED_STAY_LINE,
   WHERE_TO_STAY_MIN_DAYS,
   distinguishingReasons,
+  isLodgingItem,
   hotelsByNeighborhood,
   orderStaysByOrigin,
   topWonOnTieBreak,
@@ -409,7 +411,46 @@ async function storeStayRanking(draftId: string, value: StoredStayRanking): Prom
 export type StayBinding =
   | { kind: "stay_here"; hotel: { kind: "platform" | "hotel_cache" | "affiliate"; id: string } }
   | { kind: "own"; hotelName?: string | null; neighborhoodSlug?: string | null }
-  | { kind: "skip" };
+  | { kind: "skip" }
+  | { kind: "this_item"; itemId: string };
+
+/**
+ * Smoke 9 S9-2 amendment (ledger `2026-10-04-smoke9-addendum`): "Set as where you're staying" on a
+ * HAND-ADDED lodging item. The item becomes the plan's stay row through the SAME lodging-set path the
+ * chooser uses — a lodging set bound to THIS item (its incumbent option is the item itself), chosen —
+ * so the stay then changes from Where to stay like any other, and the "added by hand" refusal has
+ * somewhere to point. The item is never copied or replaced; nothing on it changes except that it is
+ * now typed as the stay. Refused when the plan already has a stay from a lodging set, and when the
+ * item is not lodging, not still being planned, or already the stay.
+ */
+async function setItemAsStay(tripId: string, userId: string, itemId: string): Promise<{ setId: string; itemId: string }> {
+  const [item] = await db
+    .select({ id: itineraryItems.id, title: itineraryItems.title, itemType: itineraryItems.itemType, routingStatus: itineraryItems.routingStatus, bookingId: itineraryItems.bookingId })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
+    .limit(1);
+  if (!item) throw new OptionSetError(404, "not_found", "No such item on this plan");
+  if (!isLodgingItem({ type: item.itemType, title: item.title })) throw new OptionSetError(409, "not_lodging", "Only a place to stay can be where you're staying");
+  if (item.routingStatus !== "in_planning" || item.bookingId) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
+  const [bound] = await db
+    .select({ id: planOptionSets.id })
+    .from(planOptionSets)
+    .where(and(eq(planOptionSets.tripId, tripId), eq(planOptionSets.itineraryItemId, itemId)))
+    .limit(1);
+  if (bound) throw new OptionSetError(409, "stay_decided", "This is already where you're staying");
+  if (await lodgingSetForChange(tripId)) throw new OptionSetError(409, "stay_decided", "This plan already says where you're staying — change it from Where to stay");
+  const set = await createOptionSet({ tripId, userId, itineraryItemId: itemId, categoryKey: "accommodation", label: "Where to stay", anchor: true });
+  const incumbent = set.options[0];
+  if (!incumbent) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
+  await chooseOption({ tripId, setId: set.id, optionId: incumbent.id, userId });
+  if (item.itemType !== "accommodation") {
+    await db
+      .update(itineraryItems)
+      .set({ itemType: "accommodation", updatedAt: new Date() })
+      .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`));
+  }
+  return { setId: set.id, itemId };
+}
 
 /** Bind the traveler's answer through the option-set rail. Returns the set and, when one was made, the stay item. */
 export async function bindWhereToStay(
@@ -418,6 +459,7 @@ export async function bindWhereToStay(
   binding: StayBinding,
 ): Promise<{ setId: string; itemId: string | null }> {
   if (!(await planRole(tripId, userId, "choose"))) throw new OptionSetError(404, "not_found", "No such plan");
+  if (binding.kind === "this_item") return setItemAsStay(tripId, userId, binding.itemId);
   // Smoke 9 S9-2: a plan that already says where it stays can still CHANGE it from the chooser —
   // through its existing lodging set (reopened if chosen; the choice then rewrites the same stay
   // item in place), never a second set or a second stay. Skip has nothing to dismiss there, a
@@ -426,7 +468,7 @@ export async function bindWhereToStay(
   if (await stayDecided(tripId)) {
     if (binding.kind === "skip") throw new OptionSetError(409, "stay_decided", "This plan already says where you're staying");
     reuse = await lodgingSetForChange(tripId);
-    if (!reuse) throw new OptionSetError(409, "stay_decided", "This plan's stay was added by hand — change it from its ⋯ menu");
+    if (!reuse) throw new OptionSetError(409, "stay_decided", HAND_ADDED_STAY_LINE);
     if (reuse.status === "chosen" && (await chosenStayIsBooked(tripId, reuse.id))) {
       throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
     }
