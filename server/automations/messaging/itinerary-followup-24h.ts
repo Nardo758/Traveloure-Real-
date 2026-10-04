@@ -1,0 +1,2 @@
+import { itineraryFollowupDefinition } from "./_itinerary-followup-definition";
+export const itineraryFollowup24hAutomation = itineraryFollowupDefinition("messaging.itinerary-followup-24h", "itinerary_followup_24h", 24);

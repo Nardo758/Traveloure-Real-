@@ -8699,21 +8699,13 @@ export class DatabaseStorage implements IStorage {
    * server restart/crash — to status='failed'. §15 atomic conditional UPDATE: the WHERE clause
    * (status='generating' AND updatedAt < staleBefore) is itself the concurrency guard, so a
    * concurrent sweep tick or a still-alive job matches nothing extra; a second pass over the same
-   * row is a no-op. The generation job's own success/failure writes
-   * (server/itinerary-optimizer.ts) are plain unconditional updates keyed only on id, so if the
-   * job WAS actually still alive and later finishes, its write legitimately overwrites this
-   * 'failed' verdict with the real outcome — acceptable because that means the job genuinely
-   * finished, not a race with a dead job.
+   * row is a no-op. The shared generation-outcome writer additionally checks the attempt
+   * timestamp and commits its failure notice with the status. Late workers cannot overwrite
+   * that terminal outcome; older workers cannot mutate a newer attempt.
    */
   async sweepStaleGeneratingComparisons(staleBefore: Date): Promise<Array<{ id: string; userId: string }>> {
-    const rows = await db.update(itineraryComparisons)
-      .set({ status: 'failed', updatedAt: new Date() } as any)
-      .where(and(
-        eq(itineraryComparisons.status, 'generating'),
-        lte(itineraryComparisons.updatedAt, staleBefore),
-      ))
-      .returning({ id: itineraryComparisons.id, userId: itineraryComparisons.userId });
-    return rows;
+    const { sweepTimedOutGenerations } = await import("./services/itinerary-generation-outcome.service");
+    return sweepTimedOutGenerations(staleBefore);
   }
 
   async getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null> {

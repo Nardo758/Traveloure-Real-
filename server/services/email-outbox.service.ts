@@ -38,11 +38,12 @@
  */
 
 import { db } from "../db";
-import { sql } from "drizzle-orm";
-import { emailOutbox, type InsertEmailOutbox } from "../../shared/schema";
+import { and, eq, sql } from "drizzle-orm";
+import { emailOutbox, itineraryComparisons, users, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { isItineraryFollowup } from "./itinerary-followup-email";
 import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
@@ -205,6 +206,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     reply_to:      string | null;
     attempt_count: number;
     max_attempts:  number;
+    email_type:    string;
   };
 
   let claimed: ClaimedRow[];
@@ -235,7 +237,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       FROM   candidates c
       WHERE  o.id = c.id
       RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
-                o.from_address, o.reply_to, o.attempt_count, o.max_attempts
+                o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.email_type
     `);
     claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
@@ -253,14 +255,42 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       html:    row.html,
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to  ? { replyTo: row.reply_to } : {}),
+      generationNotice: row.email_type === "itinerary_ready" || row.email_type === "itinerary_failed",
     };
     await attemptDelivery(row.id, params, {
       attemptCount: row.attempt_count,
       maxAttempts:  row.max_attempts,
+      emailType: row.email_type,
     });
   }
 
   return { drained: claimed.length };
+}
+
+/** Claim one committed, due notice; competing drains share the same lease guard. */
+export async function deliverQueuedEmail(outboxId: number): Promise<void> {
+  try {
+    const result = await db.execute(sql`
+      UPDATE email_outbox SET status = 'processing',
+        retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
+      WHERE id = ${outboxId} AND status IN ('pending', 'failed')
+        AND (retry_after IS NULL OR retry_after <= NOW())
+      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type
+    `);
+    const row = result.rows?.[0] as {
+      to_email: string; subject: string; html: string; text_body: string | null;
+      reply_to: string | null; attempt_count: number; max_attempts: number; email_type: string;
+    } | undefined;
+    if (!row) return;
+    await attemptDelivery(outboxId, {
+      to: row.to_email, subject: row.subject, html: row.html,
+      generationNotice: row.email_type === "itinerary_ready" || row.email_type === "itinerary_failed",
+      ...(row.text_body ? { text: row.text_body } : {}),
+      ...(row.reply_to ? { replyTo: row.reply_to } : {}),
+    }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type });
+  } catch (err) {
+    logger.error({ err, outboxId }, "[email-outbox] immediate generation delivery failed; retry worker retains ownership");
+  }
 }
 
 /** Route the existing drain implementation through its scheduled messaging node. */
@@ -303,7 +333,7 @@ export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainO
 async function attemptDelivery(
   outboxId: number | null,
   params: SendEmailParams,
-  current: { attemptCount: number; maxAttempts: number }
+  current: { attemptCount: number; maxAttempts: number; emailType?: string }
 ): Promise<void> {
   const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
   const maxAttempts  = current.maxAttempts;
@@ -313,6 +343,43 @@ async function attemptDelivery(
   // there is no circular import at module-load time.
   let result: SendEmailResult;
   try {
+    if (outboxId !== null && current.emailType && isItineraryFollowup(current.emailType)) {
+      const { deliverItineraryFollowup } = await import("./itinerary-followup.service");
+      await deliverItineraryFollowup(outboxId, async (payload) => {
+        if (_outboxTestHooks.sendEmailFn) return _outboxTestHooks.sendEmailFn(payload);
+        const { sendEmail } = await import("./email.service");
+        return sendEmail(payload);
+      });
+      return;
+    }
+    // Generation notices opt in to eligibility checks and stable provider retry keys.
+    // Legacy notifications retain their behavior.
+    if (outboxId !== null && params.generationNotice) {
+      const [row] = await db.select({ metadata: emailOutbox.metadata }).from(emailOutbox)
+        .where(eq(emailOutbox.id, outboxId)).limit(1);
+      const metadata = row?.metadata as {
+        generationNoticeKey?: string; comparisonId?: string; outcome?: string;
+        generationCompletedAt?: string;
+      } | undefined;
+      if (metadata?.generationNoticeKey) {
+        const [current] = await db.select({
+          status: itineraryComparisons.status, updatedAt: itineraryComparisons.updatedAt,
+          email: users.email,
+        }).from(itineraryComparisons).innerJoin(users, eq(users.id, itineraryComparisons.userId))
+          .where(eq(itineraryComparisons.id, metadata.comparisonId!)).limit(1);
+        const obsolete = !current || current.email !== toStr ||
+          current.status !== (metadata.outcome === "ready" ? "generated" : "failed") ||
+          (metadata.outcome === "failed" && current.updatedAt?.toISOString() !== metadata.generationCompletedAt);
+        if (obsolete) {
+          await db.update(emailOutbox).set({
+            status: "cancelled", lastError: "Outcome superseded, itinerary/account deleted, or recipient changed",
+            retryAfter: null, updatedAt: new Date(),
+          }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
+          return;
+        }
+        params = { ...params, idempotencyKey: `itinerary-outbox-${outboxId}` };
+      }
+    }
     if (_outboxTestHooks.sendEmailFn) {
       result = await _outboxTestHooks.sendEmailFn(params);
     } else {

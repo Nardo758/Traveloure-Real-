@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Part 2 traveler email verification</title>
+<style>
+body{font:16px/1.6 system-ui,sans-serif;color:#17212b;margin:0;background:#f5f7f9}
+main{max-width:1000px;margin:32px auto;padding:32px;background:white;border:1px solid #dde3e8;border-radius:12px}
+h1{line-height:1.2}h2{margin-top:28px}code{font-size:13px;overflow-wrap:anywhere}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:10px;text-align:left;border-bottom:1px solid #dde3e8}
+.status{color:#155b3c;font-weight:700}.note{color:#506070}
+@media(max-width:650px){main{margin:0;padding:18px;border-radius:0}table{font-size:12px}th,td{padding:7px}code{font-size:11px}}
+</style>
+<main>
+<h1>Part 2 traveler email verification</h1>
+<p class="status">Development verification complete — 4 October 2026</p>
+<p>Six real emails delivered to the approved development recipient: two clean live loops for each of the three automations. Production recipients and settings are unchanged. Nothing was published.</p>
+<h2>Count check: three definition files</h2>
+<ul>
+<li><code>itinerary-nudge-2h.ts</code> — <code>itinerary_nudge_2h</code></li>
+<li><code>itinerary-followup-24h.ts</code> — <code>itinerary_followup_24h</code></li>
+<li><code>itinerary-reengagement-5d.ts</code> — <code>itinerary_reengagement_5d</code></li>
+</ul>
+<p>Abandoned-chat email is excluded: authoritative per-conversation context, idle state and resume/completed-itinerary linkage were not reachable. No context bridge or new handoff was invented.</p>
+<h2>Actual provider receipts</h2>
+<table>
+<thead><tr><th>Automation</th><th>Loop</th><th>Provider ID</th><th>Event</th></tr></thead>
+<tbody>
+<tr><td>itinerary_nudge_2h</td><td>1</td><td><code>01a107eb-18f8-70dd-a656-f18d06f517ff</code></td><td>delivered</td></tr>
+<tr><td>itinerary_followup_24h</td><td>1</td><td><code>01a107eb-27e8-7ccc-b041-74f64eb7ab69</code></td><td>delivered</td></tr>
+<tr><td>itinerary_reengagement_5d</td><td>1</td><td><code>01a107eb-3a70-7d07-a11b-ad99f2fc0b47</code></td><td>delivered</td></tr>
+<tr><td>itinerary_nudge_2h</td><td>2</td><td><code>01a107eb-4f1d-7723-ba35-a0e73ee87293</code></td><td>delivered</td></tr>
+<tr><td>itinerary_followup_24h</td><td>2</td><td><code>01a107eb-5d59-7564-96e6-5b45e03e873f</code></td><td>delivered</td></tr>
+<tr><td>itinerary_reengagement_5d</td><td>2</td><td><code>01a107eb-71e0-7499-a886-23ffbb2cac9c</code></td><td>delivered</td></tr>
+</tbody></table>
+<p class="note">Each event was retrieved from Resend after the real outbox/registry/provider send. “Delivered” proves receipt by the recipient’s mail server, not Inbox placement. Provider acceptance alone was not used as proof.</p>
+<h2>Behavior and refinement checks</h2>
+<ul>
+<li><strong>Personalization:</strong> the 24-hour live loops covered both an approved available expert and the “top-rated activity” fallback.</li>
+<li><strong>Bookability:</strong> five-day live messages had bookable items. Both SQL loops also verified absent and newly paused services suppress the email. “Prices may change” appears only in the eligible five-day branch.</li>
+<li><strong>Cancellation:</strong> all 20 fresh database checks passed, including booking within one hour, mid-sequence cancellation, all four booking writers, and actual cancelled rows.</li>
+<li><strong>Concurrency:</strong> booking-first suppressed the provider attempt; sender-first held the database lock until the provider attempt and sent-state update. The competing booking writer was observed blocked in PostgreSQL. External inbox arrival cannot be ordered against a booking commit.</li>
+<li><strong>Idempotency:</strong> live repeat claims retained one provider attempt. Retry identity and competing claims passed the database checks.</li>
+<li><strong>Supersession:</strong> newer plans physically cancel older pending sequences; an older worker finishing late cannot cancel the newer plan. The exact bug case and two age variations passed.</li>
+<li><strong>Links:</strong> authenticated HTTP checks matched all six itinerary identities. A signed-in browser rendered the exact emailed destination, variant and item after the test account’s required Terms/Privacy flow.</li>
+<li><strong>Unsubscribe:</strong> GET preserved consent and pending rows. UI confirmation disabled consent and cancelled both remaining reminders, preserving the already-sent five-day email.</li>
+<li><strong>References:</strong> no unresolved in-scope code references; all live fixture comparisons and sent rows were removed, and zero final-fixture users remained.</li>
+</ul>
+<h2>Method and limitations</h2>
+<p>Live verification used sequential, isolated traveler fixtures at one approved development address. Ready timestamps were backdated to accelerate due-time eligibility; the daily cap was not bypassed for a persistent traveler. Only the test process’s URL resolver was configured to the development preview. No existing traveler, booking, payment or production setting was changed.</p>
+<p>The emailed QA records and account were deleted after authentication and browser verification, so those test-only links no longer open a live record. Recipient addresses, passwords and session cookies are intentionally omitted from this report.</p>
+<p>The build passed. TypeScript finished at the existing CI ceiling of 118 diagnostics, with none in the new follow-up/outcome/preferences modules—not a globally clean typecheck. The browser observed non-blocking existing CSP style warnings and a resource 404; both tested flows worked.</p>
+<p>Preserved Part 1’s two generation-outcome automations passed fresh preflight after reconciliation with main. Credit policy, pay-per-use, Trip Pass and payment behavior were not changed.</p>
+<h2>Result</h2>
+<p class="status">Part 2 genuinely complete for the approved development scope.</p>
+<p>Implementation and verification remain on <code>task-itinerary-part2</code>. Production review, merge and activation are separate; nothing was published.</p>
+</main>
+</html>
