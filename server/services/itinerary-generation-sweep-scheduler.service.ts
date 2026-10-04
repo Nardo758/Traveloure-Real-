@@ -19,18 +19,15 @@
  * getting the row OUT of the perpetual 'generating' hang so the client can show a retry CTA
  * instead of polling a spinner forever.
  *
- * STALENESS THRESHOLD (15 minutes): observed normal generation completes in ~12s on small trips.
- * The job makes exactly one AI call (server/itinerary-optimizer.ts callAI(), line ~1147) with no
- * explicit request timeout configured on either the Anthropic or Grok SDK client, so a genuinely
- * hung call could in the worst case run to the SDK's own default timeout (~10 minutes). 15
- * minutes sits safely above that single-hung-call worst case plus the surrounding DB/city-intel
- * work, while still being tight enough that a traveler isn't staring at a dead spinner for hours.
+ * STALENESS THRESHOLD (5 minutes): the generation-outcome email contract treats an attempt
+ * exceeding five minutes as failed. A live attempt owns a deadline timer; this sweep recovers
+ * attempts interrupted by process shutdown. Network work may finish later, but cannot publish
+ * a contradictory ready outcome.
  *
  * The DB update is the guard (atomic conditional UPDATE in storage.sweepStaleGeneratingComparisons,
- * WHERE status='generating' AND updatedAt < staleBefore — §15), so concurrent/overlapping runs are
- * safe and idempotent: a second pass matches nothing already flipped, and a genuinely still-alive
- * job's own (unconditional, id-keyed) success/failure write can still land after the sweep and
- * legitimately overwrite 'failed' with the real outcome — see storage.ts doc comment.
+ * WHERE status='generating' AND updatedAt=attemptStartedAt — §15), so concurrent/overlapping
+ * runs, late workers, and timers from an earlier attempt cannot overwrite a terminal/newer
+ * attempt. Status and outbox notice commit together through the generation-outcome service.
  *
  * Follows the same start()/stop()/runX() shape as the other startup schedulers
  * (earnings-release-scheduler.service.ts, trip-card-handover-scheduler.service.ts).
@@ -40,9 +37,9 @@ import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // every 5 min — tight enough that a stuck spinner clears quickly
+const CHECK_INTERVAL_MS = 60 * 1000; // recovery after restart; live attempts also own deadline timers
 const FIRST_RUN_DELAY_MS = 90 * 1000; // shortly after startup, once the DB has settled
-const STALE_THRESHOLD_MS = 15 * 60 * 1000; // see file header for the ~12s-observed / no-SDK-timeout justification
+const STALE_THRESHOLD_MS = 5 * 60 * 1000; // attempts exceeding five minutes are failed
 
 interface SweepStats {
   swept: number;
@@ -88,8 +85,7 @@ class ItineraryGenerationSweepSchedulerService {
       const swept = await storage.sweepStaleGeneratingComparisons(staleBefore);
       const stats: SweepStats = { swept: swept.length, ranAt: new Date() };
       if (swept.length > 0) {
-        // §13: log the honest reason server-side. The comparisons table has no error/reason
-        // column, so this is NOT persisted to the row — logging is the durable record.
+        // The outbox metadata records the timeout reason alongside this operational log.
         for (const row of swept) {
           logger.warn(
             { comparisonId: row.id, userId: row.userId, staleBefore: staleBefore.toISOString() },

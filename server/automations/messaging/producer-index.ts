@@ -3,6 +3,7 @@ import { authPasswordResetEmailAutomation } from "./auth-password-reset-email";
 import { authVerificationEmailAutomation } from "./auth-verification-email";
 import { authWelcomeEmailAutomation } from "./auth-welcome-email";
 import { planDeliveredEmailAutomation } from "./plan-delivered-email";
+import { itineraryFailedEmailAutomation } from "./itinerary-failed-email";
 import { planApprovedEmailAutomation } from "./plan-approved-email";
 import { planChangesRequestedEmailAutomation } from "./plan-changes-requested-email";
 import { planSuggestionEmailAutomation } from "./plan-suggestion-email";
@@ -15,6 +16,7 @@ export const producerAutomations = [
   authVerificationEmailAutomation,
   authWelcomeEmailAutomation,
   planDeliveredEmailAutomation,
+  itineraryFailedEmailAutomation,
   planApprovedEmailAutomation,
   planChangesRequestedEmailAutomation,
   planSuggestionEmailAutomation,
