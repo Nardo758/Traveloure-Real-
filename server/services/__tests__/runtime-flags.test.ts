@@ -15,7 +15,7 @@ import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags } from 
 test("F1: the named switches, booleans, '1' is on", () => {
   const f = healthFlags({ PLACE_FACTS_PLACES_ENABLED: "1", AFFILIATE_PAGE_EXTRACT_ENABLED: "true", DMO_INGEST_ENABLED: "0", FLIGHT_LOOKUP_ENABLED: "1" });
   assert.deepEqual(Object.keys(f), [...HEALTH_FLAG_NAMES]);
-  assert.deepEqual(f, { PLACE_FACTS_PLACES_ENABLED: true, AFFILIATE_PAGE_EXTRACT_ENABLED: false, DMO_INGEST_ENABLED: false, E2E_AI_STUB: false, FLIGHT_LOOKUP_ENABLED: true });
+  assert.deepEqual(f, { PLACE_FACTS_PLACES_ENABLED: true, AFFILIATE_PAGE_EXTRACT_ENABLED: false, DMO_INGEST_ENABLED: false, E2E_AI_STUB: false, FLIGHT_LOOKUP_ENABLED: true, EXPERT_SCRAPE_JOBS_ENABLED: false });
   for (const v of Object.values(healthFlags({}))) assert.equal(typeof v, "boolean");
 });
 

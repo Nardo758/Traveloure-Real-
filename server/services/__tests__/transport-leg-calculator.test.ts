@@ -12,12 +12,13 @@ const prefs = {
 
 function mockGoogleRoute(distanceMeters: number, durationSeconds: number) {
   process.env.GOOGLE_MAPS_API_KEY = "test-key";
+  process.env.MAPS_ROUTES_DRIVE_ENABLED = "1"; // R299: the drive call runs behind the Maps billing gate
   global.fetch = async () => new Response(JSON.stringify({
     routes: [{ distanceMeters, duration: `${durationSeconds}s`, polyline: { encodedPolyline: "abc" } }],
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-test("uses Google traffic-aware driving distance and duration", async () => {
+test("uses the Google driving distance and duration (Compute Routes Essentials, R299)", async () => {
   mockGoogleRoute(481_000, 21_600);
   const leg = await computeTransportLeg(
     { id: "a", name: "A", lat: 36.2704233, lng: -121.8080556, scheduledTime: "09:00", dayNumber: 2, order: 0 },
@@ -36,6 +37,7 @@ test("uses Google traffic-aware driving distance and duration", async () => {
 
 test("returns honest absence when Google routing is unavailable", async () => {
   process.env.GOOGLE_MAPS_API_KEY = "test-key";
+  process.env.MAPS_ROUTES_DRIVE_ENABLED = "1";
   global.fetch = async () => new Response("unavailable", { status: 503 });
   const leg = await computeTransportLeg(
     { id: "a", name: "A", lat: 35.0, lng: 135.0, scheduledTime: "09:00", dayNumber: 1, order: 0 },
@@ -55,4 +57,24 @@ test("activity pairs stay within a day and never imply an overnight transfer", (
     { id: "d2a", name: "Day 2 A", lat: 36, lng: 136, scheduledTime: "09:00", dayNumber: 2, order: 0 },
   ]);
   assert.deepEqual(pairs.map((pair) => [pair.from.id, pair.to.id]), [["d1a", "d1b"]]);
+});
+
+test("R299: with the drive switch off no request is made and the leg is honestly absent", async () => {
+  process.env.GOOGLE_MAPS_API_KEY = "test-key";
+  delete process.env.MAPS_ROUTES_DRIVE_ENABLED;
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    return new Response("{}", { status: 200 });
+  };
+  const leg = await computeTransportLeg(
+    { id: "a", name: "A", lat: 35.0, lng: 135.0, scheduledTime: "09:00", dayNumber: 1, order: 0 },
+    { id: "b", name: "B", lat: 35.02, lng: 135.0, scheduledTime: "10:00", dayNumber: 1, order: 1 },
+    1,
+    1,
+    "default",
+    prefs,
+  );
+  assert.equal(leg, null);
+  assert.equal(calls, 0);
 });
