@@ -7,8 +7,8 @@
  *       last stop of the last day → stay) in the replaced legs' modes; the middle legs are unchanged
  *   R2  changing the stay re-routes again: still exactly 2 re-routed legs, now from the new point
  *   R3  a plan that is not a copy is never touched; an anchor with no coordinate re-routes nothing
- *   D1  the first re-date of a copy (dates still a placeholder) shifts its anchors by the same days;
- *       a second re-date (dates now confirmed) does not
+ *   D1  the first re-date of a copy (dates still a placeholder) shifts the TEMPLATE's anchors (created
+ *       with the copy) by the same days and never one the buyer added; a second re-date moves nothing
  *   D2  re-dating a plan that is not a copy never moves its anchors
  *   R0  with no way to compute a route (service off, no Google key), the author's end legs are KEPT
  *       and nothing is invented
@@ -60,6 +60,7 @@ const ids = {
   legDH: `l14-${RUN}-dh`,
   plainLeg: `l14-${RUN}-plainleg`,
   flight: `l14-${RUN}-flight`,
+  buyerFlight: `l14-${RUN}-buyerflight`,
   plainFlight: `l14-${RUN}-plainflight`,
 };
 
@@ -133,9 +134,12 @@ before(async () => {
     VALUES (${ids.listing}, ${ids.author}, ${ids.build}, 'Kyoto', 'L1-4 listing', 2, 'approved', true)`);
   await db.execute(sql`INSERT INTO ready_made_purchases (id, buyer_id, ready_made_trip_id, price_paid_cents, stripe_payment_intent_id, clone_trip_id, status)
     VALUES (${ids.purchase}, ${ids.owner}, ${ids.listing}, 3900, ${`pi_l14_${RUN}`}, ${ids.copy}, 'cloned')`);
-  await db.execute(sql`INSERT INTO temporal_anchors (id, trip_id, anchor_type, anchor_datetime) VALUES
-    (${ids.flight}, ${ids.copy}, 'flight_arrival', '2026-10-04 14:30:00'),
-    (${ids.plainFlight}, ${ids.plain}, 'flight_arrival', '2026-10-04 14:30:00')`);
+  // `flight` is a TEMPLATE anchor (the clone stamps the copy's own created_at); `buyerFlight` is one
+  // the buyer added later — the first re-date must move the former and never the latter.
+  await db.execute(sql`INSERT INTO temporal_anchors (id, trip_id, anchor_type, anchor_datetime, created_at) VALUES
+    (${ids.flight}, ${ids.copy}, 'flight_arrival', '2026-10-04 14:30:00', (SELECT created_at FROM trips WHERE id = ${ids.copy})),
+    (${ids.buyerFlight}, ${ids.copy}, 'flight_departure', '2026-10-05 18:00:00', (SELECT created_at FROM trips WHERE id = ${ids.copy}) + interval '1 hour'),
+    (${ids.plainFlight}, ${ids.plain}, 'flight_arrival', '2026-10-04 14:30:00', (SELECT created_at FROM trips WHERE id = ${ids.plain}))`);
 });
 
 after(async () => {
@@ -203,8 +207,10 @@ test("R3: not a copy, or no coordinate ⇒ nothing re-routed", async () => {
 test("D1: the first re-date of a copy shifts its anchors; a later one does not", async () => {
   const at = async (id: string) => new Date(((await db.execute(sql`SELECT anchor_datetime FROM temporal_anchors WHERE id = ${id}`)).rows[0] as any).anchor_datetime).getTime();
   const before = await at(ids.flight);
+  const buyerBefore = await at(ids.buyerFlight);
   await storage.updateTrip(ids.copy, { startDate: "2026-11-14", endDate: "2026-11-15" } as any);
   assert.equal(await at(ids.flight), before + 41 * 86_400_000);
+  assert.equal(await at(ids.buyerFlight), buyerBefore, "an anchor the buyer added is never moved");
   const confirmed = (await db.execute(sql`SELECT dates_confirmed_at FROM trips WHERE id = ${ids.copy}`)).rows[0] as any;
   assert.ok(confirmed.dates_confirmed_at, "the re-date stamped the dates");
   await storage.updateTrip(ids.copy, { startDate: "2026-11-20", endDate: "2026-11-21" } as any);

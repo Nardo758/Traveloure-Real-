@@ -1704,8 +1704,9 @@ export class DatabaseStorage implements IStorage {
      * date at the clone (`buildClonedAnchor`). When that placeholder is first replaced by a real
      * start date, the anchors move by the same number of days, so a "day 2, 15:00" check-in lands on
      * the buyer's day 2. Only while the dates were still a placeholder (`dates_confirmed_at` NULL
-     * before this write) and only on a copy (`ready_made_purchases.clone_trip_id`): after the buyer
-     * has answered, an anchor is theirs and a later re-date never moves it. Same transaction, with
+     * before this write), only on a copy (`ready_made_purchases.clone_trip_id`), and only the anchors
+     * the clone wrote (created_at = the copy's own): after the buyer has answered, or for an anchor the
+     * buyer added themselves, the anchor is theirs and a re-date never moves it. Same transaction, with
      * the trip row locked, so a retried or concurrent re-date shifts once.
      */
     return await db.transaction(async (tx) => {
@@ -1726,11 +1727,18 @@ export class DatabaseStorage implements IStorage {
           .where(eq(readyMadePurchases.cloneTripId, id))
           .limit(1);
         if (copy) {
+          // ONLY the template's anchors: the clone stamps each with the copy trip's own created_at
+          // (`buildClonedAnchor`), so an anchor the buyer added — a real flight looked up before they
+          // confirmed dates — is never moved. Compared to the millisecond, the precision a JS Date
+          // carried when the clone wrote it.
           await tx.execute(sql`
-            UPDATE temporal_anchors
-               SET anchor_datetime = anchor_datetime + make_interval(days => (${String(updatedTrip.startDate)}::date - ${String(before.startDate)}::date)),
+            UPDATE temporal_anchors a
+               SET anchor_datetime = a.anchor_datetime + make_interval(days => (${String(updatedTrip.startDate)}::date - ${String(before.startDate)}::date)),
                    updated_at = now()
-             WHERE trip_id = ${id}
+              FROM trips t
+             WHERE a.trip_id = ${id}
+               AND t.id = a.trip_id
+               AND date_trunc('milliseconds', a.created_at) = date_trunc('milliseconds', t.created_at)
           `);
         }
       }
