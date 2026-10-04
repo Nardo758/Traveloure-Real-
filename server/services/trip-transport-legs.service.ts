@@ -29,7 +29,7 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, transportLegs } from "@shared/schema";
 import { storage } from "../storage";
-import { CHAUFFEURED_MODES } from "@shared/trip-plan";
+import { CHAUFFEURED_MODES, legModeOptions } from "@shared/trip-plan";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import {
   computeTransportLeg,
@@ -39,6 +39,7 @@ import {
   type UserTransportPrefs,
 } from "./transport-leg-calculator";
 import { haversineMeters } from "@shared/geo";
+import { isPickedLeg } from "@shared/leg-picked";
 import { defaultLegMode, LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { ResolvedLeg } from "@shared/leg-resolution";
 import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
@@ -586,6 +587,65 @@ export async function updateTripTransportLeg(
     .where(and(eq(transportLegs.id, legId), eq(transportLegs.tripId, tripId)))
     .returning();
   return row ?? null;
+}
+
+export interface LegReviewRow {
+  id: string;
+  dayNumber: number;
+  legOrder: number;
+  fromActivityId: string | null;
+  fromName: string;
+  from: { lat: number; lng: number };
+  toActivityId: string | null;
+  toName: string;
+  to: { lat: number; lng: number };
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  candidateModes: string[];
+  proposalStatus: string | null;
+  picked: boolean;
+  authorTip: string | null;
+  pickupProviderServiceId: string | null;
+  pickupPoint: string | null;
+  pickupTime: string | null;
+  estimatedDurationMinutes: number;
+  distanceDisplay: string;
+  checkedAt: string | null;
+}
+
+/**
+ * Work plan L1-10 (enhancement 2, leg review), pure: the trip-scoped legs in review order — day, then
+ * `leg_order`, then id (stable) — each with its candidate modes (`legModeOptions`, the Workstation
+ * picker's own rule) and coordinates, and the index of the first leg not yet picked (`null` when all
+ * are). The leg's `checked_by` (a users.id) is not returned; `checkedAt` is.
+ */
+export function buildLegReview(legs: ReadonlyArray<typeof transportLegs.$inferSelect>): { legs: LegReviewRow[]; firstUnpickedIndex: number | null } {
+  const ordered = [...legs].sort((a, b) => a.dayNumber - b.dayNumber || a.legOrder - b.legOrder || a.id.localeCompare(b.id));
+  const rows: LegReviewRow[] = ordered.map((l) => ({
+    id: l.id,
+    dayNumber: l.dayNumber,
+    legOrder: l.legOrder,
+    fromActivityId: l.fromActivityId,
+    fromName: l.fromName,
+    from: { lat: l.fromLat, lng: l.fromLng },
+    toActivityId: l.toActivityId,
+    toName: l.toName,
+    to: { lat: l.toLat, lng: l.toLng },
+    recommendedMode: l.recommendedMode,
+    userSelectedMode: l.userSelectedMode,
+    candidateModes: legModeOptions(l),
+    proposalStatus: l.proposalStatus,
+    picked: isPickedLeg(l),
+    authorTip: l.authorTip,
+    pickupProviderServiceId: l.pickupProviderServiceId,
+    pickupPoint: l.pickupPoint,
+    pickupTime: l.pickupTime,
+    estimatedDurationMinutes: l.estimatedDurationMinutes,
+    distanceDisplay: l.distanceDisplay,
+    checkedAt: l.checkedAt ? new Date(l.checkedAt).toISOString() : null,
+  }));
+  const first = rows.findIndex((r) => !r.picked);
+  return { legs: rows, firstUnpickedIndex: first === -1 ? null : first };
 }
 
 /**
