@@ -1,6 +1,8 @@
 -- Ledger 2026-10-04-surface-step5-map-versions (R-ac). SQL HELD for the founder's ruling before merge.
 -- ADDITIVE ONLY: one new table, born empty. No DEFAULT (created_at is set by the app), no CHECK, no
--- index, no FK, no seed. Declared in shared/schema.ts (deploy-push durability rule).
+-- secondary index, no FK, no seed. The primary key on `id` carries Postgres's own implicit unique
+-- index, and trip_id/day/user_id/created_at are NOT NULL — on a table born empty no row can violate
+-- either. Declared in shared/schema.ts (deploy-push durability rule).
 --
 -- One row per FREE day re-time on the versions board. Counted against OPTIMIZER_FREE_RETIMES
 -- (default 3) within 24 h of the paid run, same version. A re-time past the limit writes NO row and
