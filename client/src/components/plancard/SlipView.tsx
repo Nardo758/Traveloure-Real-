@@ -35,6 +35,7 @@ import {
   isBookedActivity,
   itemBookingAction,
   itemBookingState,
+  slipItemBookingLine,
 } from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -610,21 +611,9 @@ function SlipStatusStrip({ activities }: { activities: PlanCardActivity[] }) {
 // under the row (now a ⋯ entry), and `SlipItemTools`' second copy of the row (edit/move/delete are ⋯
 // entries over the SAME rails, via `useSlipItemActions`). `ExpertNoteBlock` became `ExpertNote`.
 
-/**
- * The row's booking line — the ONE reading of its linked booking (R145/R154). "booked" is written for
- * `booked` ALONE; every not-booked state says what happened (§13). Routing states ("with your expert",
- * "awaiting checkout") are NOT booking facts and are no longer said on the slip row (step 7 draws
- * routing as "with [expert]").
- */
-export function slipItemBookingLine(a: PlanCardActivity): string | null {
-  const bookingState = itemBookingState(a);
-  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
-  if (isPurchasedRow(a)) {
-    const ref = a.confirmationNumber || (a.booking ? a.booking.id.slice(0, 8) : null);
-    return ref ? `booked · #${ref}` : "booked";
-  }
-  return null;
-}
+// The row's booking line moved to `@/lib/item-booking-state` (step 6) so the Trip Card reads the SAME
+// rule without importing the slip; re-exported here for the slip's existing readers (§18 rule 1).
+export { slipItemBookingLine } from "@/lib/item-booking-state";
 
 /** R-ah — the owner's "Keep this" / "Unlock" (`PUT …/lock`, `.strict()` `{ locked }`). */
 function useToggleItemLock(tripId: string, itemId: string, locked: boolean): () => void {

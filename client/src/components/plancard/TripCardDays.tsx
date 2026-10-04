@@ -36,7 +36,7 @@ import { calendarDayOf } from "@shared/plan-timing";
 import type { FactView } from "@shared/content-facts";
 import type { FinalCardMeta } from "@shared/trip-card-final";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
-import { slipItemBookingLine } from "./SlipView";
+import { slipItemBookingLine } from "@/lib/item-booking-state";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -53,6 +53,8 @@ export interface TripCardDaysProps {
   showTravelMinutes: boolean;
   advisorName: string | null;
   isOwner: boolean;
+  /** Test seam: "now" (defaults to the clock). Today is read in the plan's zone. */
+  now?: Date;
 }
 
 type DayTransport = NonNullable<PlanCardDay["transports"]>[number];
@@ -72,7 +74,7 @@ function LegLine({ leg, showMinutes }: { leg: DayTransport; showMinutes: boolean
 
 export function TripCardDays(props: TripCardDaysProps) {
   const { tripId, days, timeZone } = props;
-  const todayIso = calendarDayOf(new Date(), timeZone);
+  const todayIso = calendarDayOf(props.now ?? new Date(), timeZone);
   const order = cardDayOrder(days, todayIso);
   const [openDay, setOpenDay] = useState<number | null>(() => {
     const t = days.findIndex((d) => isCardToday(d, todayIso));

@@ -65,6 +65,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { freeFindingsPromptLine, type Finding } from "@shared/optimizer-lead";
 import { createPortal } from "react-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -1122,6 +1123,16 @@ function FinishCard({
   const finalizeMutation = useFinalizeMutation(trip.id);
   const reopenMutation = useReopenMutation(trip.id);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  // Step 6 R-ay: a plan with no run sees its free findings once more before it is made final —
+  // the SAME findings the Optimize card reads (shared query key), and the ONE line rule.
+  const { data: finishPlan } = useQuery<{ lastOptimizedAt?: string | null }>({ queryKey: [`/api/trips/${trip.id}/plancard`], enabled: false });
+  const unoptimized = !finishPlan?.lastOptimizedAt;
+  const { data: finishPreview } = useQuery<{ findings?: Finding[] }>({
+    queryKey: ["/api/optimization-preview", { tripId: trip.id }],
+    enabled: isOwner && !isPrimary && unoptimized,
+    retry: false,
+  });
+  const freeLine = unoptimized ? freeFindingsPromptLine(finishPreview?.findings) : null;
   const checkoutReady = countCheckoutReadyItems(activities);
   // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee for THIS plan's
   // staged lines, shown where the slip's checkout path starts. The amount is the server's
@@ -1204,6 +1215,14 @@ function FinishCard({
       <RailNote>
         Snapshot the plan as your Trip Card, then choose how these get booked.
       </RailNote>
+      {/* R-ay: the free plan's findings, said once more where it is made final — never a block. */}
+      {freeLine ? (
+        <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs dark:bg-amber-950/20" data-testid="slip-finalize-free-prompt">
+          <Link href={`/plans/${trip.id}?optimize=1`} className="underline underline-offset-2">
+            {freeLine}
+          </Link>
+        </p>
+      ) : null}
       <RailRow
         label="Finalize Plan"
         icon={<CheckCircle2 className="w-3.5 h-3.5" />}
@@ -1219,6 +1238,7 @@ function FinishCard({
         busy={finalizeMutation.isPending}
         testId="slip-action-finalize-plan"
       />
+
       {checkoutReady > 0 && (
         <RailRow
           label={`Go to checkout (${checkoutReady})`}

@@ -52,6 +52,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { feeLedger, tripEntitlements, type TripEntitlement } from "@shared/schema";
 import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
+import { passCoversRun, passRunsLeft } from "@shared/trip-pass-runs";
 import { PLAN_KEYS } from "./plans.service";
 
 export type TripPassAction =
@@ -95,7 +96,7 @@ export async function coversAction(tripId: string, action: TripPassAction): Prom
       // R-ac cap (step 6): a pass covers up to `TRIP_PASS_RUNS_PER_TRIP` full runs on its trip; the
       // next one is a paid run. Read here so the run gate, the charge gate and the fee quote can never
       // disagree (§18 rule 1).
-      return (await tripPassRunsUsed(tripId)) < tripPassRunsPerTrip();
+      return passCoversRun(await tripPassRunsUsed(tripId), tripPassRunsPerTrip());
     case "ai_task":
     case "traveler_service_fee":
       // Unconditional benefits of an active pass (ruling; unlimited, no counters). These three are
@@ -227,5 +228,5 @@ export async function tripPassRunsStatus(tripId: string): Promise<{ cap: number;
   if (!(await tripHasPass(tripId))) return null;
   const cap = tripPassRunsPerTrip();
   const used = await tripPassRunsUsed(tripId);
-  return { cap, used: Number.isFinite(used) ? used : cap, left: Number.isFinite(used) ? Math.max(0, cap - used) : 0 };
+  return { cap, used: Number.isFinite(used) ? used : cap, left: passRunsLeft(used, cap) };
 }
