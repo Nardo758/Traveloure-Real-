@@ -1951,3 +1951,47 @@ function findAvailableSlots(
 function formatAnchorName(type: string): string {
   return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
+
+/**
+ * Smoke 10 S10-1(b) (R-i, R-an; ledger `2026-10-04-smoke10-fixes`): the free draft places NOTHING on
+ * the arrival day before the flight lands plus its buffer, and NOTHING on the departure day that runs
+ * past the departure minus its buffer (the cut-off — 07:40 for a 10:10 international departure).
+ * The prompt already says so (`buildAnchorPromptBlock`); this is the STORAGE half, so a model that
+ * ignores the line cannot put a stop into the airport window. FLIGHT anchors only — a hotel check-in
+ * is not a reason to keep a morning empty. The AI's own arrival/departure travel row is kept (it IS
+ * the flight's row). A dropped stop is dropped, never re-timed into a slot the model did not choose
+ * (§13). Pure.
+ */
+export function withinFlightWindows<T extends Record<string, any>>(
+  items: readonly T[],
+  anchors: Parameters<typeof parseAnchorConstraints>[0],
+  tripStartDate: string | Date,
+  read: { day: (it: T) => number; time: (it: T) => string | null | undefined; duration: (it: T) => number | null | undefined; isTravelRow: (it: T) => boolean },
+): { kept: T[]; dropped: T[] } {
+  const flights = parseAnchorConstraints(
+    anchors.filter((a) => a.anchorType === "flight_arrival" || a.anchorType === "flight_departure"),
+    tripStartDate,
+  );
+  if (!flights.length) return { kept: [...items], dropped: [] };
+  const kept: T[] = [];
+  const dropped: T[] = [];
+  for (const it of items) {
+    const day = read.day(it);
+    const start = parseActivityTimeToMinutes(read.time(it) ?? null);
+    if (start == null || read.isTravelRow(it)) {
+      kept.push(it);
+      continue;
+    }
+    const dur = read.duration(it);
+    const end = start + (typeof dur === "number" && dur > 0 ? dur : 60);
+    const outside = flights.some((f) =>
+      f.dayNumber !== day
+        ? false
+        : f.anchorType === "flight_arrival"
+          ? start < f.startTimeMinutes + (f.bufferAfter || 0)
+          : end > f.startTimeMinutes - (f.bufferBefore || 0),
+    );
+    (outside ? dropped : kept).push(it);
+  }
+  return { kept, dropped };
+}

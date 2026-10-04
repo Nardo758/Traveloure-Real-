@@ -7,13 +7,13 @@
  *   P1  place line: a Google-checked address shows its WARD/AREA with the Maps attribution
  *   P2  place line (R-ab): otherwise the location AS STORED, whoever wrote it — no client rewrite
  *   P3  place line: nothing stored and no Google fact ⇒ null
- *   P4  the day header's area is named only from a Google-located place
+ *   (P4 retired by smoke 10 S10-8: day headers name no area at all.)
  *   U1  unverifiedAreaText (the ward/area cut the map pin and P1 share) keeps areas, drops streets
  *   M1  the map pin still cuts AI text to its ward/area
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { factCheckedLabel, itemAreaLabel, itemFactsLine, itemPlaceLine, pinLocationText, unverifiedAreaText } from "../place-facts";
+import { factCheckedLabel, itemFactsLine, itemPlaceLine, pinLocationText, unverifiedAreaText } from "../place-facts";
 
 const base = { need: "stop.hours", origin: "places_api", sourceUrl: "https://maps.google.com/?cid=1", provenance: "Google Maps · checked 2 Oct 2026", stale: false, publishable: false, checkedAt: "2026-10-02T08:00:00.000Z" } as const;
 const hours = { ...base, factType: "hours", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM", "Wednesday: Open 24 hours"] } } as any;
@@ -43,12 +43,14 @@ test("F3: stale and unknown-checked facts", () => {
 
 test("P1: a Google-checked address shows its ward/area (from addressComponents), attributed", () => {
   const line = itemPlaceLine([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto", area: "Kita Ward, Kyoto" })], { location: "anything" });
-  assert.deepEqual(line, { text: "Kita Ward, Kyoto", provenance: "Google Maps", sourceUrl: base.sourceUrl });
+  assert.deepEqual({ ...line, checked: undefined }, { text: "Kita Ward, Kyoto", provenance: "Google Maps", checked: undefined, sourceUrl: base.sourceUrl });
+  assert.ok(line!.checked, "S10-9: the place line carries its checked day, like the facts line");
   // Smoke 8 item 2: never parsed from the formatted string — a fact with no component-derived area
   // falls through to the item's own location, even when the formatted address looks parseable.
   assert.deepEqual(itemPlaceLine([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: "Kinkaku-ji" }), {
     text: "Kinkaku-ji",
     provenance: null,
+    checked: null,
     sourceUrl: null,
   });
   assert.equal(
@@ -58,19 +60,13 @@ test("P1: a Google-checked address shows its ward/area (from addressComponents),
 });
 
 test("P2: otherwise the location as stored (R-ab — sanitising is a storage rule, R-w)", () => {
-  assert.deepEqual(itemPlaceLine(undefined, { location: "Gion" }), { text: "Gion", provenance: null, sourceUrl: null });
+  assert.deepEqual(itemPlaceLine(undefined, { location: "Gion" }), { text: "Gion", provenance: null, checked: null, sourceUrl: null });
   assert.equal(itemPlaceLine([address({ formattedAddress: "x" }, "crawled")], { location: "12 Imadegawa-dori, Kyoto" })!.text, "12 Imadegawa-dori, Kyoto", "a non-Google address fact is not used");
 });
 
 test("P3: nothing ⇒ null (smoke 6 'Uji Green Tea Experience' — no location)", () => {
   assert.equal(itemPlaceLine(undefined, { location: "" }), null);
   assert.equal(itemPlaceLine([hours], { location: "  " }), null);
-});
-
-test("P4: the day header names an area only from a Google-located place", () => {
-  assert.equal(itemAreaLabel([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto", area: "Kita Ward, Kyoto" })], { location: null }), "Kita Ward");
-  assert.equal(itemAreaLabel([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: null }), null);
-  assert.equal(itemAreaLabel(undefined, { location: "Gion" }), null);
 });
 
 test("U1: unverifiedAreaText keeps areas, drops streets and venues", () => {

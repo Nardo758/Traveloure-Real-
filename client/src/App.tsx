@@ -177,7 +177,9 @@ const InboxPage = lazy(() => import("@/pages/inbox"));
 const ContractViewPage = lazy(() => import("@/pages/contract-view"));
 const ServiceDetailPage = lazy(() => import("@/pages/service-detail"));
 const LayoutMock = lazy(() => import("@/pages/layout-mock"));
-const ItineraryComparisonPage = lazy(() => import("@/pages/itinerary-comparison"));
+// Smoke 10 S10-2: the route renders the versions board (`plan-versions`); the legacy screen is reached
+// only through it, for a trip-less cart comparison.
+const ItineraryComparisonPage = lazy(() => import("@/pages/plan-versions"));
 // Slip dispatch §4 Spec A: the slip's canonical address (/plans/:tripId). Parameterised
 // route — deliberately NOT in role-routes-config.ts (that registry is static-paths-only).
 const SlipViewPage = lazy(() => import("@/pages/slip-view"));

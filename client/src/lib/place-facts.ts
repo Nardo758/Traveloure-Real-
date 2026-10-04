@@ -106,17 +106,28 @@ export function itemFactsLine(
 export function itemPlaceLine(
   facts: readonly FactView[] | undefined,
   item: { location?: string | null },
-): { text: string; provenance: string | null; sourceUrl: string | null } | null {
+  timeZone?: string | null,
+): { text: string; provenance: string | null; checked: string | null; sourceUrl: string | null } | null {
   const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
   const area = typeof fact?.value?.area === "string" && fact.value.area.trim() ? fact.value.area.trim() : null;
-  if (fact && area) return { text: area, provenance: sourceName(fact.provenance), sourceUrl: fact.sourceUrl };
+  if (fact && area) {
+    return {
+      text: area,
+      provenance: sourceName(fact.provenance),
+      checked: factCheckedLabel(fact.checkedAt, timeZone) ?? provenanceCheckedLabel(fact.provenance),
+      sourceUrl: fact.sourceUrl,
+    };
+  }
   const stored = (item.location ?? "").trim();
-  return stored ? { text: stored, provenance: null, sourceUrl: null } : null;
+  return stored ? { text: stored, provenance: null, checked: null, sourceUrl: null } : null;
 }
 
-/** Pure. The ward/area a row sits in, for the day header's "<areas>" — from the same place line. */
-export function itemAreaLabel(facts: readonly FactView[] | undefined, item: { location?: string | null }): string | null {
-  const place = itemPlaceLine(facts, item);
-  if (!place?.provenance) return null; // only a Google-located ward names an area of the city
-  return place.text.split(",")[0].trim() || null;
+/**
+ * Smoke 10 S10-9 (ledger `2026-10-04-smoke10-fixes`): ONE format for a sourced line — the place line
+ * reads exactly like the facts line: "<what> · <source> · checked <d Mon>". The part after the place's
+ * own text, or "" when the line has no source (a stored location carries no provenance).
+ */
+export function sourcedLineSuffix(place: { provenance: string | null; checked: string | null }): string {
+  if (!place.provenance) return "";
+  return ` · ${place.provenance}${place.checked ? ` · checked ${place.checked}` : ""}`;
 }

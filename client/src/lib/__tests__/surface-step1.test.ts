@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DAY_AREAS_MAX, dayBlockHeading, dayBlockStats } from "../plan-day";
+import { dayBlockHeading, dayBlockStats } from "../plan-day";
 import { ASK_LOCAL_WORDS, FIND_A_HOST_CATEGORY, anchorFromTool, anyLocalLive, findHostHref } from "../item-row-menu";
 import { anchorLabel, TRAVEL_ANCHOR_WORDS } from "../../components/plan/AnchorRow";
 import { ITEM_MENU_LABELS } from "../../components/plan/ItemRow";
@@ -24,10 +24,10 @@ test("H1: the day heading", () => {
 });
 
 test("H2: the day stats", () => {
-  assert.equal(dayBlockStats({ stops: 5, areas: ["Higashiyama", null, "Sakyo", "Higashiyama"], hoursOn: 4 }), "5 stops · Higashiyama, Sakyo · hours on 4");
-  assert.equal(dayBlockStats({ stops: 1, areas: [], hoursOn: 0 }), "1 stop");
-  assert.equal(dayBlockStats({ stops: 0, areas: [], hoursOn: 0 }), null);
-  assert.equal(dayBlockStats({ stops: 6, areas: ["a", "b", "c", "d"], hoursOn: 0 }), `6 stops · ${["a", "b", "c"].slice(0, DAY_AREAS_MAX).join(", ")}`);
+  // Smoke 10 S10-8: no ward names on a day header, any day.
+  assert.equal(dayBlockStats({ stops: 5, hoursOn: 4 }), "5 stops · hours on 4");
+  assert.equal(dayBlockStats({ stops: 1, hoursOn: 0 }), "1 stop");
+  assert.equal(dayBlockStats({ stops: 0, hoursOn: 0 }), null);
 });
 
 test("M1: Find a host on a generic item, category preset", () => {

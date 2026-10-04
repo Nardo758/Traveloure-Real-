@@ -17,6 +17,7 @@ import type { Response } from "express";
 import { storage } from "../storage";
 import { eventTypeForSlug } from "@shared/occasions";
 import { writePlanPenOccasion, readPlanPenOccasionSlug } from "../services/plan-pen-occasion.service";
+import { resortDayByTime } from "../services/day-order.service";
 import { db } from "../db";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
@@ -3260,6 +3261,16 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       }
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
+      // Smoke 10 S10-5: a time (or day) change re-sorts the item's day by time, so the list reads in
+      // the order the day runs. The response is the row as stored, re-read after the re-sort.
+      const timeTouched =
+        ((safeBody as any).startTime !== undefined && (safeBody as any).startTime !== (existing as any).startTime) ||
+        ((safeBody as any).dayNumber !== undefined && (safeBody as any).dayNumber !== (existing as any).dayNumber);
+      if (timeTouched) {
+        await resortDayByTime(tripId, (updated as any).dayNumber);
+        const [fresh] = await db.select().from(itineraryItems).where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId))).limit(1);
+        return res.json(fresh ?? updated);
+      }
       res.json(updated);
     } catch (err) {
       console.error("[ItineraryItems] PATCH error:", err);

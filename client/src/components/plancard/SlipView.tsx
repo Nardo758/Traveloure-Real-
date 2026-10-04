@@ -61,8 +61,8 @@ import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPa
 import { LegRow } from "@/components/plan/LegRow";
 import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
 import { manifestFor } from "@shared/group-manifest";
-import { anchorSurfaces, isLodgingItem, type WhereToStayView } from "@shared/where-to-stay";
-import { itemAreaLabel, itemFactsLine } from "@/lib/place-facts";
+import { anchorSurfaces, isLodgingItem, replaceStayQuestion, type WhereToStayView } from "@shared/where-to-stay";
+import { itemFactsLine } from "@/lib/place-facts";
 import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { DayBlock } from "@/components/plan/DayBlock";
 import {
@@ -71,6 +71,7 @@ import {
   TravelAnchorPlaceholder,
   flightAnchorFor,
   flightRowText,
+  travelRowTitle,
   AnchorConflictLine,
   type FlightAnchorView,
 } from "@/components/plan/AnchorRow";
@@ -464,13 +465,15 @@ function SlipHeader({
             DTO (`lastComparisonId`, present only when a comparison row exists) — no surface
             fetches the user's comparisons to work out which board this was. Absent id ⇒ NO LINK
             (§13): a link to a board we cannot name is worse than none. */}
-        {hasOptimized && data.lastComparisonId && (
+        {/* Smoke 10 S10-2: once a run exists the slip links to its versions board as "Compare
+            versions" — whether or not a version was applied yet. */}
+        {data.lastComparisonId && (
           <Link
             href={`/itinerary-comparison/${data.lastComparisonId}`}
             className="text-[10px] font-semibold underline underline-offset-2 text-muted-foreground hover:text-foreground"
             data-testid="slip-see-what-changed"
           >
-            See what changed
+            Compare versions
           </Link>
         )}
       </div>
@@ -711,6 +714,7 @@ function SlipDayItem({
   groupItemIds,
   promotable = false,
   canSetAsStay = false,
+  replacingStay = null,
   facts,
   dateIso = null,
   timeZone = null,
@@ -733,6 +737,8 @@ function SlipDayItem({
   promotable?: boolean;
   /** S9-2 amendment: a hand-added lodging row on a plan with no lodging set — decided by the caller. */
   canSetAsStay?: boolean;
+  /** S10-6: the plan's current stay, by name — "Set as where you're staying" then confirms the swap. */
+  replacingStay?: string | null;
   isOwner: boolean;
   /** LD 52 (C): the owner's item tools, shared with the delegate (`canEditPlanItems`). */
   canEditItems: boolean;
@@ -743,7 +749,7 @@ function SlipDayItem({
   /** Non-null ⇒ this row is a fixed point, fixed by that tool (`anchorFromTool`). */
   anchorFrom: string | null;
   /** Step 2 addendum: this AI item IS the day's arrival/departure row; `flight` is the plan's, if entered. */
-  travel?: { flight: FlightAnchorView | null } | null;
+  travel?: { kind: "arrival" | "departure"; flight: FlightAnchorView | null } | null;
   onAddFlight?: () => void;
   highlighted: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
@@ -784,6 +790,7 @@ function SlipDayItem({
   const actions = useSlipItemActions({ tripId, itemId: a.id, tools, dayNumber, dayItemIds, groupItemIds });
   const promote = usePromoteAnchor(tripId, a.id);
   const setAsStay = useSetAsStay(tripId, a.id);
+  const [confirmStay, setConfirmStay] = useState(false);
   const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
   const showThread = hasAdvisor && (isOwner || isExpertViewer);
   const menu: ItemRowMenu | null = canEditItems
@@ -808,7 +815,7 @@ function SlipDayItem({
         findHostHref: findHostHref({ name: a.name, type: a.type, locationName: a.location }, { city, tripId }),
         onFindHost: onFindHost ? () => onFindHost(findHostCategory(a.type)) : undefined,
         onBuildAround: promotable ? promote : undefined,
-        onSetAsStay: canSetAsStay ? setAsStay : undefined,
+        onSetAsStay: canSetAsStay ? (replacingStay ? () => setConfirmStay(true) : setAsStay) : undefined,
       }
     : null;
   return (
@@ -829,8 +836,13 @@ function SlipDayItem({
                   fromTool: GETTING_THERE_TOOL,
                   time: travel.flight.time,
                   detail: flightRowText(travel.flight),
+                  title: travelRowTitle(travel.kind, city),
                 }
-              : { fromTool: null, action: onAddFlight ? { label: TRAVEL_ANCHOR_WORDS.addFlight, onClick: onAddFlight } : null }
+              : {
+                  fromTool: null,
+                  action: onAddFlight ? { label: TRAVEL_ANCHOR_WORDS.addFlight, onClick: onAddFlight } : null,
+                  title: travelRowTitle(travel.kind, city),
+                }
             : null
       }
       checkingHours={checkingHours}
@@ -843,6 +855,18 @@ function SlipDayItem({
       }
       expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
     >
+      {/* S10-6: replacing the plan's stay is confirmed by name first; the SAME stay row is rewritten. */}
+      {confirmStay && replacingStay ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-border bg-muted/40 px-2 py-1.5 text-xs" data-testid={`item-set-as-stay-confirm-${a.id}`}>
+          <span>{replaceStayQuestion(replacingStay, a.name)}</span>
+          <Button size="sm" className="h-7" onClick={() => { setConfirmStay(false); setAsStay(); }} data-testid={`item-set-as-stay-confirm-yes-${a.id}`}>
+            Replace
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7" onClick={() => setConfirmStay(false)}>
+            Cancel
+          </Button>
+        </div>
+      ) : null}
       {/* S3 — "Ask your expert about this": the EXISTING per-item thread (`ItemComments`), drawn only
           when there is somebody to ask, for the two people on the conversation. No count (§13). */}
       {showThread && (
@@ -1559,6 +1583,15 @@ export function SlipView({
     const pick = sets.find((st) => st.anchorRole === "primary") ?? sets[0];
     return pick ? { id: pick.id, status: pick.status } : null;
   })();
+  // S10-6: the plan's current stay row — the lodging set's item, else an accommodation row added by
+  // hand (the server's own reading, `setItemAsStay`).
+  const currentStay = (() => {
+    const setItemId = optionSets.find((st) => st.id === lodgingSet?.id)?.itineraryItemId ?? null;
+    const bySet = setItemId ? planActivities.find((act) => act.id === setItemId) : undefined;
+    const byType = planActivities.find((act) => act.type === "accommodation");
+    const row = bySet ?? byType;
+    return row ? { id: row.id, name: row.name } : null;
+  })();
   const renderAnchorPanel = (stage: "empty" | "drafted" | "chooser" | "change") => (
     <AnchorPanel
       tripId={tripId}
@@ -1661,7 +1694,7 @@ export function SlipView({
     days: v.days,
     anchor: v.anchor ? { kind: "stay", name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
   }));
-  const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null }>>({
+  const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null; bufferBefore?: number | null; bufferAfter?: number | null }>>({
     queryKey: [`/api/trips/${tripId}/anchors`],
     enabled: !!tripId && showTravelAnchors,
   });
@@ -2125,11 +2158,11 @@ export function SlipView({
             const stopTimes = slotItems.map((a) => ({ id: a.id, startTime: a.time, endTime: a.endTime ?? null }));
             const arrivalConflict =
               showTravelAnchors && slot.dayNum === 1
-                ? flightTimeConflictLine("arrival", flightAnchorFor(tripAnchors, "flight_arrival")?.time, stopTimes, arrivalItemId)
+                ? flightTimeConflictLine("arrival", flightAnchorFor(tripAnchors, "flight_arrival")?.time, stopTimes, arrivalItemId, flightAnchorFor(tripAnchors, "flight_arrival")?.bufferMinutes ?? null)
                 : null;
             const departureConflict =
               showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum
-                ? flightTimeConflictLine("departure", flightAnchorFor(tripAnchors, "flight_departure")?.time, stopTimes, departureItemId)
+                ? flightTimeConflictLine("departure", flightAnchorFor(tripAnchors, "flight_departure")?.time, stopTimes, departureItemId, flightAnchorFor(tripAnchors, "flight_departure")?.bufferMinutes ?? null)
                 : null;
             // The plan's own day row, when this slot is one — an EVENT-ONLY slot has no ordinal,
             // no `date` label of its own and no legs, and invents none of the three.
@@ -2160,7 +2193,6 @@ export function SlipView({
                 heading={dayBlockHeading({ dayNum: slot.dayNum, date: day?.date ?? null, dateIso: slot.dateIso })}
                 stats={dayBlockStats({
                   stops: slotItems.length,
-                  areas: slotItems.map((a) => itemAreaLabel(data.placeFacts?.[a.id], a)),
                   hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
                 })}
                 open={dayOpen[slot.key] ?? (slotIdx === 0 || (!!highlightItemId && slotItems.some((a) => a.id === highlightItemId)))}
@@ -2205,9 +2237,9 @@ export function SlipView({
                       })}
                       travel={
                         a.id === arrivalItemId
-                          ? { flight: flightAnchorFor(tripAnchors, "flight_arrival") }
+                          ? { kind: "arrival", flight: flightAnchorFor(tripAnchors, "flight_arrival") }
                           : a.id === departureItemId
-                            ? { flight: flightAnchorFor(tripAnchors, "flight_departure") }
+                            ? { kind: "departure", flight: flightAnchorFor(tripAnchors, "flight_departure") }
                             : null
                       }
                       onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
@@ -2229,15 +2261,17 @@ export function SlipView({
                         a.id !== anchorItemId
                       }
                       canSetAsStay={
-                        // S9-2 amendment: a hand-added lodging row, still being planned, on a plan
-                        // whose stay no lodging set holds yet. The server refuses the rest itself.
+                        // S9-2 amendment / S10-6: any lodging row still being planned that is not
+                        // already the stay — with a stay on the plan it REPLACES it (confirmed
+                        // first). The server refuses the rest itself.
                         canEditItems &&
                         isLodgingItem({ type: a.type, title: a.name }) &&
                         a.routingStatus === "in_planning" &&
                         !a.booking &&
-                        !lodgingSet &&
+                        a.id !== currentStay?.id &&
                         !optionSets.some((st) => st.itineraryItemId === a.id)
                       }
+                      replacingStay={currentStay && currentStay.id !== a.id ? currentStay.name : null}
                       onOpenExpertDoor={() => setExpertDoorState("open")}
                       onFindHost={openFindHost}
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}

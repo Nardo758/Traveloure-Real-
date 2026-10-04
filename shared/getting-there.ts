@@ -189,20 +189,41 @@ export function absorbedTravelItemId(
 }
 
 /**
- * Smoke 9 S9-5 — the travel row's amber line: how many of the day's stops sit OUTSIDE the flight —
- * starting before an arrival lands, or ending (else starting) after a departure leaves. Wall-clock
- * "HH:MM" strings compared as written, in the plan's own zone (LD 30); a stop with no time is not
- * checked, and the flight's own row is excluded. The line names a count, never a minute value (§13).
- * Null when nothing conflicts or the flight has no time.
+ * Smoke 10 S10-1(a) (R-i): the clock time the day is measured against — arrival + its buffer (when
+ * the traveler is out of the airport) or departure − its buffer (the cut-off to leave for it). The
+ * buffer is the anchor's own stored minutes; absent ⇒ the international figure, the longer one, as
+ * everywhere else (`flightBuffers`). Clamped to the day. Null when the flight has no time.
+ */
+export function flightCutoffTime(direction: FlightDirection, flightTime: string | null | undefined, bufferMinutes: number | null | undefined): string | null {
+  const m = /^(\d{2}):(\d{2})/.exec(flightTime ?? "");
+  if (!m) return null;
+  const at = Number(m[1]) * 60 + Number(m[2]);
+  const buf =
+    typeof bufferMinutes === "number" && bufferMinutes >= 0
+      ? bufferMinutes
+      : direction === "arrival"
+        ? FLIGHT_BUFFER_MIN.arrivalAfter.international
+        : FLIGHT_BUFFER_MIN.departureBefore.international;
+  const t = Math.min(23 * 60 + 59, Math.max(0, direction === "arrival" ? at + buf : at - buf));
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Smoke 9 S9-5, corrected by smoke 10 S10-1(a) — the travel row's amber line: how many of the day's
+ * stops sit inside the flight's BUFFER — starting before arrival + buffer, or ending (else starting)
+ * after the departure cut-off (departure − buffer). Wall-clock "HH:MM" strings in the plan's own zone
+ * (LD 30); a stop with no time is not checked, and the flight's own row is excluded. Null when nothing
+ * conflicts or the flight has no time.
  */
 export function flightTimeConflictLine(
   direction: FlightDirection,
   flightTime: string | null | undefined,
   stops: ReadonlyArray<{ id: string; startTime?: string | null; endTime?: string | null }>,
   excludeId: string | null = null,
+  bufferMinutes: number | null = null,
 ): string | null {
   const hhmm = (t: string | null | undefined) => (/^\d{2}:\d{2}/.test(t ?? "") ? (t as string).slice(0, 5) : null);
-  const at = hhmm(flightTime);
+  const at = flightCutoffTime(direction, flightTime, bufferMinutes);
   if (!at) return null;
   const n = stops.filter((st) => {
     if (st.id === excludeId) return false;
@@ -215,6 +236,6 @@ export function flightTimeConflictLine(
   if (!n) return null;
   const stopsWord = n === 1 ? "1 stop" : `${n} stops`;
   return direction === "arrival"
-    ? `${stopsWord} on this day ${n === 1 ? "starts" : "start"} before your flight lands`
-    : `${stopsWord} on this day ${n === 1 ? "runs" : "run"} past your flight's departure`;
+    ? `${stopsWord} on this day ${n === 1 ? "starts" : "start"} before you're out of the airport`
+    : `${stopsWord} on this day ${n === 1 ? "runs" : "run"} past the time to leave for your flight`;
 }

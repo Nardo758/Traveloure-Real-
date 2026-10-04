@@ -69,21 +69,42 @@ export const TRAVEL_ANCHOR_WORDS = {
   addFlight: "Add your flight",
 } as const;
 
+/**
+ * Smoke 10 S10-4: the travel row's title — ours, never the model's. An AI arrival/departure item that
+ * IS the travel row ("Arrive at Kansai International Airport", "Depart for Airport") renders under
+ * this title, with the flight line beneath. Null when the plan names no city (§13 — no honest title).
+ */
+export function travelRowTitle(kind: "arrival" | "departure", destination: string | null | undefined): string | null {
+  const name = (destination ?? "").split(",")[0].trim();
+  if (!name) return null;
+  return kind === "arrival" ? TRAVEL_ANCHOR_WORDS.arrival(name) : TRAVEL_ANCHOR_WORDS.departure(name);
+}
+
 /** A stored flight anchor, as the slip reads it from `GET /api/trips/:tripId/anchors`. */
 export interface FlightAnchorView {
   time: string | null;
   location: string | null;
   description: string | null;
+  /** S10-1: the anchor's own buffer — after landing (arrival) or before take-off (departure). */
+  bufferMinutes?: number | null;
 }
 
 /** The plan's flight anchor of one direction, or null (the first one — a plan has one flight in, one out). */
 export function flightAnchorFor(
-  anchors: ReadonlyArray<{ anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null }> | undefined,
+  anchors:
+    | ReadonlyArray<{ anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null; bufferBefore?: number | null; bufferAfter?: number | null }>
+    | undefined,
   type: "flight_arrival" | "flight_departure",
 ): FlightAnchorView | null {
   const a = (anchors ?? []).find((x) => x.anchorType === type);
   if (!a) return null;
-  return { time: anchorWallTime(a.anchorDatetime), location: a.location ?? null, description: a.description ?? null };
+  const buf = type === "flight_arrival" ? a.bufferAfter : a.bufferBefore;
+  return {
+    time: anchorWallTime(a.anchorDatetime),
+    location: a.location ?? null,
+    description: a.description ?? null,
+    bufferMinutes: typeof buf === "number" ? buf : null,
+  };
 }
 
 /**
@@ -117,9 +138,8 @@ export function TravelAnchorPlaceholder({
   flight?: FlightAnchorView | null;
   onAddFlight?: () => void;
 }) {
-  const name = (city ?? "").split(",")[0].trim();
-  if (!name) return null;
-  const title = kind === "arrival" ? TRAVEL_ANCHOR_WORDS.arrival(name) : TRAVEL_ANCHOR_WORDS.departure(name);
+  const title = travelRowTitle(kind, city);
+  if (!title) return null;
   if (flight) {
     return (
       <div className="py-3 px-3" data-testid={`slip-travel-anchor-${kind}`} data-anchor-real="true">

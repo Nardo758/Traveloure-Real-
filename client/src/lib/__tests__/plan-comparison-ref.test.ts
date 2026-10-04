@@ -55,7 +55,9 @@ describe("B7 — the link back reads the DTO, and no surface fetches comparisons
   it("the slip's link is the DTO field, gated on its presence", () => {
     const slip = read(SLIP_VIEW);
     assert.match(slip, /data-testid="slip-see-what-changed"/);
-    assert.match(slip, /hasOptimized && data\.lastComparisonId &&/);
+    // Smoke 10 S10-2: "Compare versions" once a run exists — applied or not.
+    assert.match(slip, /\{data\.lastComparisonId && \(/);
+    assert.match(slip, />\s*Compare versions\s*</);
     assert.match(slip, /\/itinerary-comparison\/\$\{data\.lastComparisonId\}/);
     // §14/§18 rule 1: the slip never asks the server for the user's comparisons to work out
     // which board this plan came from — the id arrives on the plancard payload it already has.

@@ -322,3 +322,20 @@ export function aiEventPromptLine(tripStart: string | null | undefined, tripEnd:
   const list = listed.length ? `Events confirmed on those dates: ${listed.map((e) => e.name).join("; ")}.` : "No events are confirmed on those dates.";
   return `${dates}No festivals or events unless listed here. ${list} Never title a stop after a festival, matsuri or event that is not listed.`;
 }
+
+
+// ── Smoke 10 S10-7 (ledger `2026-10-04-smoke10-fixes`) ─────────────────────────────────────────────
+/**
+ * The drafting prompt's meal windows — breakfast before 09:30, lunch 11:30–14:30, dinner from 17:30.
+ * A PROMPT rule only: nothing on the server renames or re-times a drafted meal (decision-maker,
+ * smoke 10). Stated once; the prompt reads this line.
+ */
+export const AI_MEAL_WINDOWS = {
+  breakfast: { before: "09:30" },
+  lunch: { from: "11:30", to: "14:30" },
+  dinner: { from: "17:30" },
+} as const;
+export const AI_MEAL_PROMPT_LINE =
+  `Meal times: breakfast starts before ${AI_MEAL_WINDOWS.breakfast.before}, lunch between ${AI_MEAL_WINDOWS.lunch.from} and ${AI_MEAL_WINDOWS.lunch.to}, ` +
+  `dinner from ${AI_MEAL_WINDOWS.dinner.from} — this applies to the "meals" list AND to any activity that is a meal ("Breakfast at …", "Lunch at …", "Dinner at …"). ` +
+  `Never schedule a breakfast late in the morning; if the morning is taken, leave breakfast out.`;

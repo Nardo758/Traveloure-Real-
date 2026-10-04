@@ -237,11 +237,20 @@ test("D9 smoke 9 S9-2 amendment: 'Set as where you're staying' converts the hand
   assert.deepEqual(stays.map((r) => r.title), ["Hotel Granvia Kyoto"]);
 });
 
-test("D9b a lodging-named item typed as an activity converts and becomes the stay type; a plan with a set-chosen stay refuses", async () => {
+test("D9b smoke 10 S10-6: with a stay on the plan, a lodging item REPLACES it — the same stay row is rewritten", async () => {
   const typed = id("tc-typed");
-  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin, routing_status) VALUES (${typed}, ${TC}, 2, 'Ryokan Yachiyo', 'activity', 'traveler', 'in_planning')`);
-  // TC already has a stay from its lodging set (D8) — one stay per plan.
-  await assert.rejects(bindWhereToStay(TC, OWNER, { kind: "this_item", itemId: typed }), /already says where you're staying/);
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin, routing_status) VALUES (${typed}, ${TC}, 2, 'Mitsui Garden Hotel Kyoto', 'activity', 'traveler', 'in_planning')`);
+  // TC's stay (D8) is held by its lodging set — and is being booked there; unbook it so it may be rewritten.
+  const [stay] = (await db.execute(sql`SELECT s.id AS set_id, s.itinerary_item_id AS item_id, i.title FROM plan_option_sets s JOIN itinerary_items i ON i.id = s.itinerary_item_id WHERE s.trip_id = ${TC} AND s.category_key = 'accommodation'`)).rows as any[];
+  await db.execute(sql`UPDATE itinerary_items SET routing_status = 'in_planning' WHERE id = ${stay.item_id}`);
+  await db.execute(sql`DELETE FROM plan_options WHERE set_id = ${stay.set_id} AND position >= 3`);
+  const out = await bindWhereToStay(TC, OWNER, { kind: "this_item", itemId: typed });
+  assert.equal(out.itemId, stay.item_id, "the SAME stay row");
+  assert.equal(out.setId, stay.set_id, "through the plan's own lodging set");
+  assert.equal((out as any).replaced, stay.title);
+  const stays = (await db.execute(sql`SELECT id, title FROM itinerary_items WHERE trip_id = ${TC} AND item_type = 'accommodation'`)).rows as any[];
+  assert.deepEqual(stays.map((r) => r.title), ["Mitsui Garden Hotel Kyoto"], "one stay, now the new hotel");
+  assert.equal((await db.execute(sql`SELECT 1 FROM itinerary_items WHERE id = ${typed}`)).rows.length, 0, "the hand-added row moved into the stay");
 });
 
 test("D4 'I've got lodging sorted' with a neighbourhood adds a stay with no coordinates", async () => {
