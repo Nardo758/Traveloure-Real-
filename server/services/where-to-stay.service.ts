@@ -67,7 +67,9 @@ import {
   createOptionSet,
   fitItems,
   planRole,
+  reopenOptionSet,
 } from "./plan-option-sets.service";
+import { OPTION_SET_CAP } from "@shared/plan-options";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -146,6 +148,29 @@ async function draftedSince(tripId: string): Promise<Date | null> {
     .from(itineraryItems)
     .where(and(eq(itineraryItems.tripId, tripId), sql`${itineraryItems.itemType} IS DISTINCT FROM 'accommodation'`));
   return item?.at ? new Date(item.at as any) : null;
+}
+
+/**
+ * Smoke 9 S9-2: the plan's lodging set a CHANGE goes through — its accommodation set that is still
+ * open or has a choice (the primary first). A closed set (a Skip) is not one.
+ */
+async function lodgingSetForChange(tripId: string): Promise<{ id: string; status: string } | null> {
+  const [row] = await db
+    .select({ id: planOptionSets.id, status: planOptionSets.status })
+    .from(planOptionSets)
+    .where(and(eq(planOptionSets.tripId, tripId), eq(planOptionSets.categoryKey, "accommodation"), sql`${planOptionSets.status} IN ('open', 'chosen')`))
+    .orderBy(sql`CASE WHEN ${planOptionSets.anchorRole} = 'primary' THEN 0 ELSE 1 END`, asc(planOptionSets.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Is the stay a chosen lodging set put on the plan already being booked (never rewritten)? */
+async function chosenStayIsBooked(tripId: string, setId: string): Promise<boolean> {
+  const r = await db.execute(sql`
+    SELECT 1 FROM plan_option_sets s JOIN itinerary_items i ON i.id = s.itinerary_item_id
+    WHERE s.id = ${setId} AND s.trip_id = ${tripId}
+      AND (i.booking_id IS NOT NULL OR i.routing_status <> 'in_planning') LIMIT 1`);
+  return ((r as any)?.rows?.length ?? 0) > 0;
 }
 
 async function hasPaidOptimizerRun(tripId: string): Promise<boolean> {
@@ -393,8 +418,29 @@ export async function bindWhereToStay(
   binding: StayBinding,
 ): Promise<{ setId: string; itemId: string | null }> {
   if (!(await planRole(tripId, userId, "choose"))) throw new OptionSetError(404, "not_found", "No such plan");
-  if (await stayDecided(tripId)) throw new OptionSetError(409, "stay_decided", "This plan already says where you're staying");
-  const openSet = () => createOptionSet({ tripId, userId, categoryKey: "accommodation", label: "Where to stay", anchor: true });
+  // Smoke 9 S9-2: a plan that already says where it stays can still CHANGE it from the chooser —
+  // through its existing lodging set (reopened if chosen; the choice then rewrites the same stay
+  // item in place), never a second set or a second stay. Skip has nothing to dismiss there, a
+  // booked stay is not rewritten, and a stay added by hand (no set) changes from its own ⋯ menu.
+  let reuse: { id: string; status: string } | null = null;
+  if (await stayDecided(tripId)) {
+    if (binding.kind === "skip") throw new OptionSetError(409, "stay_decided", "This plan already says where you're staying");
+    reuse = await lodgingSetForChange(tripId);
+    if (!reuse) throw new OptionSetError(409, "stay_decided", "This plan's stay was added by hand — change it from its ⋯ menu");
+    if (reuse.status === "chosen" && (await chosenStayIsBooked(tripId, reuse.id))) {
+      throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
+    }
+    // Refused BEFORE a reopen, so a full comparison is never left reopened by a failed add.
+    const [{ n }] = (await db.execute(sql`SELECT count(*)::int AS n FROM plan_options WHERE set_id = ${reuse.id}`)).rows as any[];
+    if (Number(n) >= OPTION_SET_CAP) {
+      throw new OptionSetError(409, "set_full", `A comparison holds up to ${OPTION_SET_CAP} places — remove one to add yours`, { cap: OPTION_SET_CAP });
+    }
+  }
+  const openSet = async (): Promise<{ id: string }> => {
+    if (!reuse) return createOptionSet({ tripId, userId, categoryKey: "accommodation", label: "Where to stay", anchor: true });
+    if (reuse.status === "chosen") return reopenOptionSet({ tripId, setId: reuse.id, userId });
+    return { id: reuse.id };
+  };
 
   if (binding.kind === "skip") {
     const set = await openSet();

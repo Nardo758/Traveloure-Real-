@@ -208,6 +208,10 @@ const ALLOWED_ADDITIONS = {
   // (R148). It carries NO handler — it is a sentence, not an action — and renders only when there is
   // something ready for checkout and the server answered with a figure (§13: no answer, no number).
   "slip-traveler-fee-preview": "R144 — the service fee stated before checkout (no handler)",
+  // Smoke 9 S9-4 (ledger `2026-10-04-smoke9-fixes`): the optimizer LEADS the page (§8) — the rail
+  // renders its OptimizerLead into this slot directly under the tools tray at every width (a portal;
+  // its state stays in the rail). It carries no handler of its own.
+  "slip-optimizer-slot": "S9-4 — the slot under the tools tray where the optimizer card renders",
 } as const;
 
 /**

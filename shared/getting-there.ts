@@ -187,3 +187,34 @@ export function absorbedTravelItemId(
   if (!matches.length) return null;
   return direction === "arrival" ? matches[0].id : matches[matches.length - 1].id;
 }
+
+/**
+ * Smoke 9 S9-5 — the travel row's amber line: how many of the day's stops sit OUTSIDE the flight —
+ * starting before an arrival lands, or ending (else starting) after a departure leaves. Wall-clock
+ * "HH:MM" strings compared as written, in the plan's own zone (LD 30); a stop with no time is not
+ * checked, and the flight's own row is excluded. The line names a count, never a minute value (§13).
+ * Null when nothing conflicts or the flight has no time.
+ */
+export function flightTimeConflictLine(
+  direction: FlightDirection,
+  flightTime: string | null | undefined,
+  stops: ReadonlyArray<{ id: string; startTime?: string | null; endTime?: string | null }>,
+  excludeId: string | null = null,
+): string | null {
+  const hhmm = (t: string | null | undefined) => (/^\d{2}:\d{2}/.test(t ?? "") ? (t as string).slice(0, 5) : null);
+  const at = hhmm(flightTime);
+  if (!at) return null;
+  const n = stops.filter((st) => {
+    if (st.id === excludeId) return false;
+    const start = hhmm(st.startTime);
+    if (!start) return false;
+    if (direction === "arrival") return start < at;
+    const end = hhmm(st.endTime) ?? start;
+    return end > at || start >= at;
+  }).length;
+  if (!n) return null;
+  const stopsWord = n === 1 ? "1 stop" : `${n} stops`;
+  return direction === "arrival"
+    ? `${stopsWord} on this day ${n === 1 ? "starts" : "start"} before your flight lands`
+    : `${stopsWord} on this day ${n === 1 ? "runs" : "run"} past your flight's departure`;
+}

@@ -176,16 +176,16 @@ describe("AnchorPanel", () => {
 
   it("P9 anchorSurfaces: Skip dismisses the current state only; the tray chooser stays open while undecided", () => {
     const drafted = view([nb("gion")]);
-    assert.deepEqual(anchorSurfaces(drafted, false), { slip: "drafted", trayChooser: true });
-    assert.deepEqual(anchorSurfaces({ ...drafted, dismissed: true }, false), { slip: null, trayChooser: true });
+    assert.deepEqual(anchorSurfaces(drafted, false), { slip: "drafted", trayChooser: true, trayChange: false });
+    assert.deepEqual(anchorSurfaces({ ...drafted, dismissed: true }, false), { slip: null, trayChooser: true, trayChange: false });
     const noDraft: WhereToStayView = { ...view([]), eligible: false, reason: "no_draft" };
-    assert.deepEqual(anchorSurfaces(noDraft, false), { slip: "empty", trayChooser: true });
-    assert.deepEqual(anchorSurfaces({ ...noDraft, dismissed: true }, false), { slip: null, trayChooser: true });
+    assert.deepEqual(anchorSurfaces(noDraft, false), { slip: "empty", trayChooser: true, trayChange: false });
+    assert.deepEqual(anchorSurfaces({ ...noDraft, dismissed: true }, false), { slip: null, trayChooser: true, trayChange: false });
     // A pre-draft Skip does not carry over: the next (drafted) view is undismissed and draws once.
     assert.equal(anchorSurfaces(drafted, false).slip, "drafted");
     const decided: WhereToStayView = { ...view([]), eligible: false, reason: "decided" };
-    assert.deepEqual(anchorSurfaces(decided, false), { slip: null, trayChooser: false });
-    assert.deepEqual(anchorSurfaces(drafted, true), { slip: null, trayChooser: false });
-    assert.deepEqual(anchorSurfaces(undefined, false), { slip: null, trayChooser: false });
+    assert.deepEqual(anchorSurfaces(decided, false), { slip: null, trayChooser: false, trayChange: true });
+    assert.deepEqual(anchorSurfaces(drafted, true), { slip: null, trayChooser: false, trayChange: true });
+    assert.deepEqual(anchorSurfaces(undefined, false), { slip: null, trayChooser: false, trayChange: false });
   });
 });

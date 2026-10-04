@@ -124,7 +124,8 @@ test("M2 — the slip mount is UNTOUCHED: it states no final standing, so it cla
   assert.doesNotMatch(slipMount![0], /surface=/);
   assert.doesNotMatch(slipMount![0], /planFinal=/);
   // And it is still the same four props lane 3 landed.
-  assert.match(slipMount![0], /aiAction=\{slipBuildAiAction\(activities\.length\)\}/);
+  // Smoke 9 S9-1: the ONE action, resolved once by the rail from the server's draft-gate count.
+  assert.match(slipMount![0], /aiAction=\{aiAction\}/);
 });
 
 test("M3 — ONE copy home: neither mount and neither component spells the version sentence", () => {

@@ -72,6 +72,18 @@ export const HELD_CATEGORY_ITEM_TYPES: Readonly<Record<string, readonly string[]
   transport: ["transport", "transfer", "taxi", "train"],
 };
 
+/**
+ * Smoke 9 S9-1 — ANCHOR ROWS ARE NOT ITEMS for the free-draft gate. A plan whose only rows are its
+ * place to stay is still an EMPTY plan to draft: the lodging anchor is what the draft is built
+ * around (§M5), not draft content. Flights are `temporal_anchors` rows and airport legs are derived,
+ * so neither is an `itinerary_items` row at all. The lodging types are THIS module's own list (the
+ * held-slot table above), so "what is a stay" has one spelling (§18 rule 1). Pure.
+ */
+export const PLAN_ANCHOR_ITEM_TYPES: readonly string[] = HELD_CATEGORY_ITEM_TYPES.accommodation;
+export function isPlanAnchorItemType(itemType: string | null | undefined): boolean {
+  return PLAN_ANCHOR_ITEM_TYPES.includes((itemType ?? "").trim().toLowerCase());
+}
+
 /** Drop drafted items a held slot forbids. Returns both halves so the caller can count them. */
 export function withoutHeldItems<T extends { type: string; dayNumber: number }>(
   items: readonly T[],

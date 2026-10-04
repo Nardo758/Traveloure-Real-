@@ -47,12 +47,12 @@ test("Z3 the slip map frames through the rule", () => {
 test("D1 the departure row is the last row of the last day, above its add control", () => {
   const slip = src("components/plancard/SlipView.tsx");
   const legs = slip.indexOf("{(day?.transports ?? []).map((leg) => (");
-  const dep = slip.indexOf('kind="departure"');
+  const dep = slip.search(/<TravelAnchorPlaceholder\s+kind="departure"/);
   const add = slip.indexOf("testId={`slip-day-add-${slot.key}`}");
   const dayEnd = slip.indexOf("</DayBlock>", dep);
   assert.ok(legs > 0 && dep > 0 && add > 0 && dayEnd > 0);
   assert.ok(legs < dep, "after the day's stops and legs");
   assert.ok(dep < add, "above the day's add control");
   assert.ok(add < dayEnd, "the add control is the only thing after it inside the day");
-  assert.equal(slip.split('kind="departure"').length - 1, 1, "one departure row");
+  assert.equal(slip.match(/<TravelAnchorPlaceholder\s+kind="departure"/g)?.length, 1, "one departure row");
 });

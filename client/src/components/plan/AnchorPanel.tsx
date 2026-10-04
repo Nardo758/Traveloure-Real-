@@ -43,6 +43,9 @@ export const ANCHOR_PANEL_DRAFTED_SUBTITLE = "Optional — ranked by where your 
 export const ANCHOR_PANEL_ADD_PLACES = "Add places I'm considering";
 export const ANCHOR_PANEL_SORTED = "I've got lodging sorted";
 export const ANCHOR_PANEL_SKIP = "Skip for now";
+export const ANCHOR_PANEL_CHANGE = "Change where I'm staying";
+export const ANCHOR_PANEL_DECIDING = "I'm deciding — compare places";
+export const ANCHOR_PANEL_HAND_ADDED = "Your stay was added by hand — change it from its ⋯ menu.";
 export const HOTELS_COMING_SOON = "Hotels coming soon";
 export const NO_LOCATED_ITEMS = "Once some of your stops are on the map, we'll rank neighbourhoods by them.";
 export const FIXED_ITEM_QUESTION = "What's fixed on these dates?";
@@ -55,7 +58,15 @@ type Bind =
 
 export interface AnchorPanelViewProps {
   /** `empty` before a draft exists; `drafted` once the server ranks neighbourhoods; `chooser` in the tray. */
-  stage: "empty" | "drafted" | "chooser";
+  stage: "empty" | "drafted" | "chooser" | "change";
+  /**
+   * Smoke 9 S9-2 (`change` stage): the plan's lodging set (open or chosen), when it has one. A plan
+   * whose stay was added by hand has none.
+   */
+  lodgingSet?: { id: string; status: string } | null;
+  /** The compare page for `lodgingSet` ("I'm deciding — compare places"). */
+  compareHref?: string | null;
+  onReopen?: () => void;
   /** The manifest's anchor question (`manifestFor(group).anchorQuestion`). */
   question: string;
   /** M7: a schedule-first Trip asks what is fixed, not where to stay. */
@@ -235,6 +246,51 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
       </button>
     ) : null;
 
+  // ── CHANGE — the tray's "Where to stay" once the plan says where it stays (smoke 9 S9-2) ────────
+  // The full chooser, whether or not Skip was ever pressed: change the chosen place (reopen its
+  // comparison), keep deciding (the comparison itself), or name your own (through the same set).
+  if (stage === "change") {
+    const set = props.lodgingSet ?? null;
+    return (
+      <section className="space-y-3" data-testid="anchor-panel-change" data-anchor-panel="change">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+          <BedDouble className="w-4 h-4" /> {ANCHOR_PANEL_DRAFTED_TITLE}
+        </h3>
+        {canChoose ? (
+          set ? (
+            <div className="space-y-2">
+              {ownOpen ? <OwnForm neighborhoods={view?.neighborhoods ?? []} busy={busy} onSave={(a) => props.onOwn?.(a)} /> : null}
+              <div className="flex flex-wrap items-center gap-3">
+                {set.status === "chosen" ? (
+                  <button type="button" className={btn} onClick={props.onReopen} disabled={busy} data-testid="where-to-stay-change">
+                    {ANCHOR_PANEL_CHANGE}
+                  </button>
+                ) : null}
+                {props.compareHref ? (
+                  <a className={link} href={props.compareHref} data-testid="where-to-stay-deciding">
+                    {ANCHOR_PANEL_DECIDING}
+                  </a>
+                ) : null}
+                {!ownOpen ? (
+                  <button type="button" className={link} onClick={() => setOwnOpen(true)} disabled={busy} data-testid="where-to-stay-own">
+                    {ANCHOR_PANEL_SORTED}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-3">{props.addPlacesControl ?? null}</div>
+              <p className="text-xs text-muted-foreground" data-testid="where-to-stay-hand-added">
+                {ANCHOR_PANEL_HAND_ADDED}
+              </p>
+            </div>
+          )
+        ) : null}
+      </section>
+    );
+  }
+
   // ── CHOOSER — the tray's "Where to stay" (smoke 8 item 1): the full chooser, always ───────────
   if (stage === "chooser") {
     const ranked = !!view?.eligible && view.neighborhoods.length > 0;
@@ -373,7 +429,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
 
 /** The container: wires the three answers to `POST /api/trips/:tripId/where-to-stay` and the free re-anchor. */
 export function AnchorPanel(
-  props: Omit<AnchorPanelViewProps, "busy" | "bound" | "onStayHere" | "onOwn" | "onSkip" | "onReanchor" | "onDismissReanchor"> & { tripId: string },
+  props: Omit<AnchorPanelViewProps, "busy" | "bound" | "onStayHere" | "onOwn" | "onSkip" | "onReanchor" | "onDismissReanchor" | "onReopen" | "compareHref"> & { tripId: string },
 ) {
   const { tripId } = props;
   const { toast } = useToast();
@@ -394,6 +450,13 @@ export function AnchorPanel(
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't save where you're staying", description: e?.message }),
   });
+  // Smoke 9 S9-2: "Change where I'm staying" reopens the chosen lodging comparison (the existing
+  // option-set rail); choosing another place then rewrites the same stay item in place.
+  const reopen = useMutation({
+    mutationFn: async (setId: string) => (await apiRequest("POST", `/api/trips/${tripId}/option-sets/${setId}/reopen`, {})).json(),
+    onSuccess: () => refresh(),
+    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't reopen where you're staying", description: e?.message }),
+  });
   const reanchor = useMutation({
     mutationFn: async (itemId: string) => (await apiRequest("POST", `/api/trips/${tripId}/anchor/promote`, { itemId })).json(),
     onSuccess: () => {
@@ -405,7 +468,9 @@ export function AnchorPanel(
   return (
     <AnchorPanelView
       {...props}
-      busy={bind.isPending || reanchor.isPending}
+      busy={bind.isPending || reanchor.isPending || reopen.isPending}
+      compareHref={props.lodgingSet ? `/plans/${tripId}/compare/${props.lodgingSet.id}` : null}
+      onReopen={() => props.lodgingSet && reopen.mutate(props.lodgingSet.id)}
       bound={bound}
       onStayHere={(h) => bind.mutate({ body: { kind: "stay_here", hotel: { kind: h.kind, id: h.id } }, name: h.name })}
       onOwn={(a) => bind.mutate({ body: { kind: "own", ...a }, name: null })}
