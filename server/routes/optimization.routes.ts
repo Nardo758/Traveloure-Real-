@@ -68,8 +68,10 @@ router.post("/api/optimization-preview", isAuthenticated, async (req, res) => {
   try {
     const { items = [], eventType, travelers = 1 } = req.body;
     const userId = getUserId(req)!;
-    if (typeof req.body?.tripId === "string" && req.body.tripId) {
-      const denied = await authorizeTripLogistics(req.body.tripId, userId, "POST /api/optimization-preview");
+    // The plan the body NAMES (a read target, never an actor — the actor is the session, §14).
+    const namedTripId = typeof req.body?.tripId === "string" && req.body.tripId ? req.body.tripId : null;
+    if (namedTripId) {
+      const denied = await authorizeTripLogistics(namedTripId, userId, "POST /api/optimization-preview");
       if (denied) return res.status(denied.status).json({ error: denied.message });
     }
 
