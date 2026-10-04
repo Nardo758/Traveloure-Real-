@@ -18,8 +18,11 @@ import {
   mentionsLodging,
   namesABrand,
   namesAHotel,
+  namesAnEvent,
+  reduceUncoveredEvent,
   sanitizeAiLocation,
   sanitizeAiProse,
+  type CoveringEvent,
 } from "@shared/ai-place-text";
 import type { NormalizedGeneratedCanonicalItem } from "./generated-itinerary";
 
@@ -28,6 +31,30 @@ export interface AiDraftSanitizeOptions {
   noLodging: boolean;
   /** The plan's destination — its city is kept as an area wherever it appears in a location. */
   city?: string | null;
+  /**
+   * S9-8: the R-p event facts that COVER the trip's dates (already filtered by the caller). A title
+   * naming a festival / matsuri / event not among them is reduced to its non-event fallback, else a
+   * supply slot. Absent ⇒ none cover the dates ⇒ every event-named title is reduced.
+   */
+  coveringEvents?: readonly CoveringEvent[];
+}
+
+/** S9-8: one drafted item's title and place, with an uncovered event reduced. */
+function reduceEventItem<T extends { title?: unknown; name?: unknown; location?: unknown; description?: unknown }>(it: T, o: AiDraftSanitizeOptions): T {
+  const title = String(it.title ?? it.name ?? "");
+  const r = reduceUncoveredEvent(title, o.coveringEvents ?? []);
+  if (!r.reduced) return it;
+  const out: any = { ...it };
+  if ("title" in out || !("name" in out)) out.title = r.title;
+  if ("name" in out) out.name = r.title;
+  // Event sentences go with the event name; a supply slot keeps no place and no prose about one.
+  const desc = typeof out.description === "string" ? out.description : "";
+  out.description = r.supplySlot ? "" : desc.split(/(?<=[.!?])\s+/).filter((x: string) => !namesAnEvent(x)).join(" ").trim();
+  if (r.supplySlot) {
+    out.location = "";
+    for (const k of ["latitude", "longitude", "lat", "lng", "coordinates"]) if (k in out) out[k] = null;
+  }
+  return out as T;
 }
 
 /** A title that must not be stored as an item: it names a hotel, or (no lodging) mentions one. */
@@ -42,11 +69,16 @@ export function sanitizeCanonicalItems(
 ): NormalizedGeneratedCanonicalItem[] {
   return items
     .filter((it) => !dropTitle(it.title, o))
-    .map((it) => ({
-      ...it,
-      location: sanitizeAiLocation(it.location, o.city) ?? "",
-      description: sanitizeAiProse(it.description, o) ?? "",
-    }));
+    .map((it) =>
+      reduceEventItem(
+        {
+          ...it,
+          location: sanitizeAiLocation(it.location, o.city) ?? "",
+          description: sanitizeAiProse(it.description, o) ?? "",
+        },
+        o,
+      ),
+    );
 }
 
 function cleanActivity(a: any, o: AiDraftSanitizeOptions): any {
@@ -54,7 +86,7 @@ function cleanActivity(a: any, o: AiDraftSanitizeOptions): any {
   for (const k of ["description", "tips"] as const) {
     if (k in out) out[k] = sanitizeAiProse(out[k], o) ?? "";
   }
-  return out;
+  return reduceEventItem(out, o);
 }
 
 function mealMentions(m: any, o: AiDraftSanitizeOptions): boolean {

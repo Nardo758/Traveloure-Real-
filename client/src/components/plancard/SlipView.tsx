@@ -20,8 +20,6 @@ import {
   Anchor,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   EyeOff,
   List as ListIcon,
   Map as MapIcon,
@@ -63,7 +61,7 @@ import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPa
 import { LegRow } from "@/components/plan/LegRow";
 import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
 import { manifestFor } from "@shared/group-manifest";
-import { anchorSurfaces, type WhereToStayView } from "@shared/where-to-stay";
+import { anchorSurfaces, isLodgingItem, type WhereToStayView } from "@shared/where-to-stay";
 import { itemAreaLabel, itemFactsLine } from "@/lib/place-facts";
 import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { DayBlock } from "@/components/plan/DayBlock";
@@ -132,6 +130,7 @@ import {
   SlipAnchorCompareButton,
   SlipOptionSetCard,
   usePromoteAnchor,
+  useSetAsStay,
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
@@ -277,14 +276,6 @@ function derivePhase(start: Date | null, end: Date | null): "upcoming" | "active
 }
 
 const PHASE_LABELS: Record<string, string> = { upcoming: "Upcoming", active: "Active", past: "Past" };
-
-/** Short human vocabulary for diary from/to statuses. */
-const STATUS_SHORT: Record<string, string> = {
-  in_planning: "planning",
-  with_expert: "with expert",
-  ready_for_checkout: "in checkout",
-  purchased: "purchased",
-};
 
 /** R145: the ONE client reading of the booked state (`@/lib/item-booking-state`) — an ended
  *  (refunded / cancelled) booking is never a purchased row, even when routing still says so. */
@@ -714,8 +705,10 @@ function SlipDayItem({
   dayItemIds,
   groupItemIds,
   promotable = false,
+  canSetAsStay = false,
   facts,
   dateIso = null,
+  timeZone = null,
   checkingHours = false,
   onOpenExpertDoor,
   savedQuestion = null,
@@ -728,8 +721,12 @@ function SlipDayItem({
   facts?: FactView[];
   checkingHours?: boolean;
   dateIso?: string | null;
+  /** S9-6: the plan's zone (`trips.timezone`) for the facts line's "checked" day; null ⇒ the UTC day. */
+  timeZone?: string | null;
   /** M8 (A3b): this located, dated row may become what the plan is built around — decided by the caller. */
   promotable?: boolean;
+  /** S9-2 amendment: a hand-added lodging row on a plan with no lodging set — decided by the caller. */
+  canSetAsStay?: boolean;
   isOwner: boolean;
   /** LD 52 (C): the owner's item tools, shared with the delegate (`canEditPlanItems`). */
   canEditItems: boolean;
@@ -778,6 +775,7 @@ function SlipDayItem({
   });
   const actions = useSlipItemActions({ tripId, itemId: a.id, tools, dayNumber, dayItemIds, groupItemIds });
   const promote = usePromoteAnchor(tripId, a.id);
+  const setAsStay = useSetAsStay(tripId, a.id);
   const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
   const showThread = hasAdvisor && (isOwner || isExpertViewer);
   const menu: ItemRowMenu | null = canEditItems
@@ -801,6 +799,7 @@ function SlipDayItem({
         askLocalSaved: !hasAdvisor && !!savedQuestion,
         findHostHref: findHostHref({ name: a.name, type: a.type, locationName: a.location }, { city, tripId }),
         onBuildAround: promotable ? promote : undefined,
+        onSetAsStay: canSetAsStay ? setAsStay : undefined,
       }
     : null;
   return (
@@ -808,6 +807,7 @@ function SlipDayItem({
       item={a}
       facts={facts}
       dateIso={dateIso}
+      timeZone={timeZone}
       mode={canEditItems ? "edit" : "read"}
       role={isExpertViewer ? "expert" : "traveler"}
       bookingState={slipItemBookingLine(a)}
@@ -1263,81 +1263,10 @@ function LogisticsRow({ leg }: { leg: PlanCardTransport }) {
   );
 }
 
-// ── TransitionLogFooter ────────────────────────────────────────────────────────────────
-
-function actorLabel(t: TripPlanTransition, expertName: string | null): string {
-  switch (t.actorType) {
-    case "traveler":
-      return "you";
-    case "expert":
-      return expertName || "expert";
-    case "checkout":
-      return "checkout";
-    case "optimizer":
-      return "optimizer";
-    case "refund":
-      return "refund";
-    default:
-      return t.actorType;
-  }
-}
-
-function transitionText(t: TripPlanTransition, itemTitleById: Map<string, string>): string {
-  if (t.eventType === "variant_applied") return "optimized plan applied";
-  const subject = t.itemId ? itemTitleById.get(t.itemId) || "(removed item)" : "plan";
-  const from = t.fromStatus ? STATUS_SHORT[t.fromStatus] || t.fromStatus : null;
-  const to = t.toStatus ? STATUS_SHORT[t.toStatus] || t.toStatus : null;
-  if (from && to) return `${subject} ${from} → ${to}`;
-  if (to) return `${subject} → ${to}`;
-  return subject;
-}
-
-function TransitionLogFooter({
-  transitions,
-  planVersion,
-  itemTitleById,
-  expertName,
-}: {
-  transitions: TripPlanTransition[];
-  planVersion: number;
-  itemTitleById: Map<string, string>;
-  expertName: string | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  if (transitions.length === 0) return null; // history starts when the log starts — honest
-
-  const shown = expanded ? transitions : transitions.slice(0, 3);
-
-  return (
-    <div className="rounded-lg bg-muted/40 px-3 py-2" data-testid="slip-transition-log">
-      <div className="space-y-1">
-        {shown.map((t, i) => {
-          const d = safeDate(t.createdAt);
-          // Newest-first: entry i is version (total − i). Display-only, from the real count.
-          const v = planVersion - i;
-          return (
-            <p key={t.id} className="font-mono text-xs text-muted-foreground" data-testid={`slip-log-entry-${t.id}`}>
-              {v > 0 ? `v${v} · ` : ""}
-              {d ? `${format(d, "MMM d")} · ` : ""}
-              {transitionText(t, itemTitleById)} ({actorLabel(t, expertName)})
-            </p>
-          );
-        })}
-      </div>
-      {transitions.length > 3 && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="mt-1.5 flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
-          data-testid="slip-log-toggle"
-        >
-          {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          {expanded ? "collapse log" : "view full log"}
-        </button>
-      )}
-    </div>
-  );
-}
+// Smoke 9 S9-9 (ledger `2026-10-04-smoke9-addendum`): the slip no longer prints the item-transition
+// diary ("v1 · Oct 3 · (removed item) (you)"). The diary stays on the server (`recentTransitions`,
+// append-only, read by the "see what changed" link); the footer that numbered its rows as plan
+// versions and named deleted items "(removed item)" is gone, not hidden (§18c).
 
 // ── Finalize Plan / Reopen (ruling R-F; adopt-finalize-conform: finalize = lock) ─────────
 
@@ -1482,16 +1411,11 @@ export function SlipView({
   const expertDoorLive = isOwner && slipAdvisorData !== undefined && !slipAdvisorData?.advisor;
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
-  const planVersion = data.trip?.planVersion ?? transitions.length;
   // R-F: `finalized_at ∨ now ≥ startDate−48h ∨ underway → Trip Card is primary` — the SAME rule
   // the server-side T-48h scheduler applies, read straight off this DTO's real fields.
   const isPrimary = data.trip ? tripCardIsPrimary(primaryInputFromTrip(data.trip)) : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
-  const itemTitleById = useMemo(
-    () => new Map(allActivities.map((a) => [a.id, a.name])),
-    [allActivities],
-  );
 
   // ── List | Map view toggle (ledger 2026-08-22-slip-map-view) ──────────────────────────
   // The map is the SAME MapControlCenter the PlanCard mounts (L6 — one implementation, one
@@ -2216,6 +2140,7 @@ export function SlipView({
                       facts={data.placeFacts?.[a.id]}
                       checkingHours={showsCheckingHours(a.id, data.factsPendingItemIds, !!itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null))}
                       dateIso={slot.dateIso ?? null}
+                      timeZone={data.trip?.timezone ?? null}
                       isOwner={isOwner}
                       canEditItems={canEditItems}
                       isExpertViewer={isExpertViewer}
@@ -2250,6 +2175,16 @@ export function SlipView({
                         // Ledger `2026-10-03-build-around-places`: a Google pin (`pinSource:
                         // "places"`) is promotable too — the server reads the live fact, never copies it.
                         a.id !== anchorItemId
+                      }
+                      canSetAsStay={
+                        // S9-2 amendment: a hand-added lodging row, still being planned, on a plan
+                        // whose stay no lodging set holds yet. The server refuses the rest itself.
+                        canEditItems &&
+                        isLodgingItem({ type: a.type, title: a.name }) &&
+                        a.routingStatus === "in_planning" &&
+                        !a.booking &&
+                        !lodgingSet &&
+                        !optionSets.some((st) => st.itineraryItemId === a.id)
                       }
                       onOpenExpertDoor={() => setExpertDoorState("open")}
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
@@ -2363,13 +2298,6 @@ export function SlipView({
           className="border-t border-border pt-5 mt-5"
         />
       )}
-
-          <TransitionLogFooter
-            transitions={transitions}
-            planVersion={planVersion}
-            itemTitleById={itemTitleById}
-            expertName={expertName}
-          />
         </div>
 
         {/* ── THE ACTION RAIL (ledger `2026-09-05-slip-rail-regroup`; placed by

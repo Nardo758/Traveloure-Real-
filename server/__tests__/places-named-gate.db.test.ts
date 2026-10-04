@@ -47,7 +47,11 @@ const GENERIC = ["Dinner at Local Izakaya", "Lunch at Traditional Restaurant", "
  */
 function placesFake(
   answer: (query: string) => string,
-  opts: { noHours?: (query: string) => boolean; types?: (query: string) => string[] } = {},
+  opts: {
+    noHours?: (query: string) => boolean;
+    types?: (query: string) => string[];
+    address?: (query: string) => { formattedAddress?: string; addressComponents?: unknown[] } | null;
+  } = {},
 ) {
   const state = { calls: 0, idCalls: 0, billed: [] as string[] };
   const byId = new Map<string, { q: string; name: string }>();
@@ -64,6 +68,7 @@ function placesFake(
     // Smoke 7: Google's types — a point of interest by default; a test can answer an area.
     types: opts.types?.(q) ?? ["tourist_attraction", "point_of_interest", "establishment"],
     ...(opts.noHours?.(q) ? {} : { regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] } }),
+    ...(opts.address?.(q) ?? {}),
   });
   const adapter = new PlacesAdapter(
     async (url, init) => {
@@ -92,8 +97,8 @@ function placesFake(
 
 async function insertItems(items: EnrichItem[]) {
   for (const i of items) {
-    await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin)
-      VALUES (${i.id}, ${TRIP}, ${i.dayNumber ?? 1}, ${i.title}, ${i.type ?? "attraction"}, 'ai')`);
+    await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin, location_name)
+      VALUES (${i.id}, ${TRIP}, ${i.dayNumber ?? 1}, ${i.title}, ${i.type ?? "attraction"}, 'ai', ${i.locationName ?? null})`);
   }
 }
 
@@ -389,4 +394,38 @@ test("G13 R-u: every day gets two named items looked up before any day's third",
   }
   assert.deepEqual([1, 2, 3].map((d) => perDay.get(d)?.size ?? 0), [2, 2, 2], "two named items per day within a cap of six");
   delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+});
+
+test("G14 smoke 9 S9-7: Google's addressComponents area replaces the AI's area — Nijo Castle → 'Nakagyo Ward, Kyoto'", async () => {
+  // The stored smoke-6 fixture: the draft wrote "541 Nijocho, Horikawa-nishi-iru, Shimogyo Ward, Kyoto"
+  // (the wrong ward). Google's components for Nijō Castle name Nakagyo Ward.
+  const NIJO_COMPONENTS = [
+    { longText: "541", types: ["street_number"] },
+    { longText: "Nijojocho", types: ["sublocality_level_2", "sublocality", "political"] },
+    { longText: "Nakagyo Ward", types: ["ward", "political"] },
+    { longText: "Kyoto", types: ["locality", "political"] },
+    { longText: "Kyoto", types: ["administrative_area_level_1", "political"] },
+    { longText: "Japan", types: ["country", "political"] },
+  ];
+  const nijo: EnrichItem = { id: id("nijo"), title: "Nijō Castle", type: "attraction", dayNumber: 2, locationName: "541 Nijocho, Horikawa-nishi-iru, Shimogyo Ward, Kyoto" };
+  const edited: EnrichItem = { id: id("nijo-edit"), title: "Nishiki Market", type: "attraction", dayNumber: 2, locationName: "Nishiki" };
+  await insertItems([nijo, edited]);
+  // The traveler edited this row's location after the draft: it is never overwritten.
+  await db.execute(sql`UPDATE itinerary_items SET location_name = 'Our meeting spot' WHERE id = ${edited.id}`);
+  const { adapter } = placesFake((q) => (q.startsWith("Nij") ? "Nijō Castle" : "Nishiki Market"), {
+    address: (q) =>
+      q.startsWith("Nij")
+        ? { formattedAddress: "541 Nijojocho, Nakagyo Ward, Kyoto, 604-8301, Japan", addressComponents: NIJO_COMPONENTS }
+        : { formattedAddress: "Nakagyo Ward, Kyoto, Japan", addressComponents: [{ longText: "Nakagyo Ward", types: ["ward"] }, { longText: "Kyoto", types: ["locality"] }] },
+  });
+  const r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [nijo, edited], adapters: [adapter] });
+  const loc = async (itemId: string) =>
+    ((await db.execute(sql`SELECT location_name FROM itinerary_items WHERE id = ${itemId}`)).rows[0] as any).location_name as string;
+  assert.equal(await loc(nijo.id), "Nakagyo Ward, Kyoto", "the AI's area is replaced by Google's");
+  assert.equal(await loc(edited.id), "Our meeting spot", "a traveler's edit is never overwritten");
+  assert.equal(r.areas, 1);
+  // Stored WITH the facts: the address fact carries the same area, with its Google provenance.
+  const fact = (await db.execute(sql`SELECT value, origin FROM place_facts WHERE plan_id = ${TRIP} AND itinerary_item_id = ${nijo.id} AND fact_type = 'address' AND superseded_by IS NULL`)).rows[0] as any;
+  assert.equal(fact.origin, "places_api");
+  assert.equal(fact.value.area, "Nakagyo Ward, Kyoto");
 });

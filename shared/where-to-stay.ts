@@ -19,6 +19,21 @@
  *     shows "hotels coming soon", never a fabricated name.
  */
 import { haversineMeters } from "./geo";
+import { mentionsLodging } from "./ai-place-text";
+
+/**
+ * Smoke 9 S9-2 amendment (ledger `2026-10-04-smoke9-addendum`): is this item a place to stay? An
+ * `accommodation` row, or a row whose title names lodging (a traveler typing "Hotel Granvia Kyoto" as
+ * an activity). ONE predicate, read by the server's "Set as where you're staying" and by the ⋯ menu
+ * that offers it (§18 rule 1).
+ */
+export function isLodgingItem(item: { type?: string | null; title?: string | null }): boolean {
+  return item.type === "accommodation" || mentionsLodging(item.title);
+}
+
+/** The refusal when a plan's stay was added by hand — it now points at the ⋯ entry that converts it. */
+export const SET_AS_STAY_LABEL = "Set as where you're staying";
+export const HAND_ADDED_STAY_LINE = `Your stay was added by hand — open its ⋯ menu and choose "${SET_AS_STAY_LABEL}" to change it from here.`;
 
 export interface StayPoint {
   lat: number;

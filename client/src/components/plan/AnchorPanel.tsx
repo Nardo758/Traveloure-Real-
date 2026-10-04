@@ -23,6 +23,7 @@
  * (`WhereToStayView`); this file restates no rule (§18 rule 1). No distance or minute is printed
  * (R242) — the tie note names the basis and says "(est.)".
  */
+import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { BedDouble, MapPin } from "lucide-react";
@@ -45,7 +46,7 @@ export const ANCHOR_PANEL_SORTED = "I've got lodging sorted";
 export const ANCHOR_PANEL_SKIP = "Skip for now";
 export const ANCHOR_PANEL_CHANGE = "Change where I'm staying";
 export const ANCHOR_PANEL_DECIDING = "I'm deciding — compare places";
-export const ANCHOR_PANEL_HAND_ADDED = "Your stay was added by hand — change it from its ⋯ menu.";
+export const ANCHOR_PANEL_HAND_ADDED = HAND_ADDED_STAY_LINE;
 export const HOTELS_COMING_SOON = "Hotels coming soon";
 export const NO_LOCATED_ITEMS = "Once some of your stops are on the map, we'll rank neighbourhoods by them.";
 export const FIXED_ITEM_QUESTION = "What's fixed on these dates?";

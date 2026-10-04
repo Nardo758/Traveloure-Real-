@@ -306,6 +306,8 @@ const stayBody = z.discriminatedUnion("kind", [
     })
     .strict(),
   z.object({ kind: z.literal("skip") }).strict(),
+  // Smoke 9 S9-2 amendment: a hand-added lodging item becomes the plan's stay (its ⋯ menu).
+  z.object({ kind: z.literal("this_item"), itemId: z.string().trim().min(1).max(64) }).strict(),
 ]);
 
 router.get("/api/trips/:tripId/where-to-stay", isAuthenticated, async (req: any, res) => {

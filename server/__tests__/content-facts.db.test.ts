@@ -213,6 +213,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // read the plan's hours and location facts — only inside `GET /api/optimization-preview`, behind
     // `authorizeTripLogistics`; only kinds and counts leave it.
     "server/services/optimizer-lead.service.ts",
+    // Smoke 9 S9-8 (ledger `2026-10-04-smoke9-addendum`): the drafting prompt's covering-event list. It
+    // reads ONLY `event` facts that `isOfficialPublicFact` accepts (crawled, official, public_ok — never
+    // places_api), and only the event NAME leaves it, into a draft for the plan's own owner.
+    "server/services/content-facts/covering-events.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

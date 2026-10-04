@@ -28,11 +28,26 @@ export { unverifiedAreaText };
 const WKD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2 Oct" — the day a fact was checked, in UTC (the server stamps `checkedAt` in UTC). Null ⇒ unknown. */
-export function factCheckedLabel(checkedAt: string | null | undefined): string | null {
+/**
+ * "2 Oct" — the day a fact was checked. Smoke 9 S9-6 (ledger `2026-10-04-smoke9-addendum`): the day is
+ * read in the PLAN's zone (`trips.timezone`, LD 30), so a fact checked at 23:30 UTC on 2 Oct reads
+ * "3 Oct" on a Kyoto plan. A plan with no zone (or an unknown one) keeps the UTC day — the instant the
+ * server stamped — rather than the viewer's own zone, which would be a guess (§13). Null ⇒ unknown.
+ */
+export function factCheckedLabel(checkedAt: string | null | undefined, timeZone?: string | null): string | null {
   const ms = checkedAt ? Date.parse(checkedAt) : NaN;
   if (!Number.isFinite(ms)) return null;
   const d = new Date(ms);
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", { timeZone, day: "numeric", month: "numeric" }).formatToParts(d);
+      const day = Number(parts.find((p) => p.type === "day")?.value);
+      const month = Number(parts.find((p) => p.type === "month")?.value);
+      if (Number.isInteger(day) && month >= 1 && month <= 12) return `${day} ${MON[month - 1]}`;
+    } catch {
+      /* an unknown zone falls back to the UTC day below */
+    }
+  }
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 }
 
@@ -63,6 +78,7 @@ function sourceName(provenance: string): string {
 export function itemFactsLine(
   facts: readonly FactView[] | undefined,
   dateIso: string | null,
+  timeZone?: string | null,
 ): { text: string; sourceUrl: string | null } | null {
   const hours = facts?.find((f) => f.factType === "hours");
   if (!hours || !dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
@@ -72,7 +88,7 @@ export function itemFactsLine(
   if (!line) return null;
   const hoursText = line.slice(WEEKDAYS[dow].length + 1).trim();
   if (!hoursText) return null;
-  const checked = factCheckedLabel(hours.checkedAt) ?? provenanceCheckedLabel(hours.provenance);
+  const checked = factCheckedLabel(hours.checkedAt, timeZone) ?? provenanceCheckedLabel(hours.provenance);
   const parts = [WKD[dow], hoursText, sourceName(hours.provenance)];
   if (checked) parts.push(`checked ${checked}`);
   return { text: parts.join(" · ") + (hours.stale ? " (may have changed)" : ""), sourceUrl: hours.sourceUrl };

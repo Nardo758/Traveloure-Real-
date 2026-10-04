@@ -213,6 +213,37 @@ test("D8 smoke 9: a decided plan changes its stay through its own set, in place;
   await assert.rejects(bindWhereToStay(TH, OWNER, { kind: "own", hotelName: "Other", neighborhoodSlug: null }), /added by hand/);
 });
 
+test("D9 smoke 9 S9-2 amendment: 'Set as where you're staying' converts the hand-added stay; the chooser then changes it in place", async () => {
+  const handId = id("th-stay");
+  // The refusal now points at the ⋯ entry.
+  await assert.rejects(bindWhereToStay(TH, OWNER, { kind: "own", hotelName: "Other", neighborhoodSlug: null }), /Set as where you're staying/);
+  // A non-lodging item, and a stranger, are refused.
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin) VALUES (${id("th-walk")}, ${TH}, 1, 'Morning walk', 'activity', 'traveler')`);
+  await assert.rejects(bindWhereToStay(TH, OWNER, { kind: "this_item", itemId: id("th-walk") }), /Only a place to stay/);
+  await assert.rejects(bindWhereToStay(TH, id("stranger"), { kind: "this_item", itemId: handId }), /No such plan/);
+  // Converted: a chosen lodging set bound to THIS item; the item keeps its id and title.
+  const out = await bindWhereToStay(TH, OWNER, { kind: "this_item", itemId: handId });
+  assert.equal(out.itemId, handId, "the hand-added row IS the stay — never a copy");
+  const set = (await db.execute(sql`SELECT status, category_key, itinerary_item_id, anchor_role FROM plan_option_sets WHERE id = ${out.setId}`)).rows[0] as any;
+  assert.deepEqual([set.status, set.category_key, set.itinerary_item_id], ["chosen", "accommodation", handId]);
+  assert.equal(((await db.execute(sql`SELECT title FROM itinerary_items WHERE id = ${handId}`)).rows[0] as any).title, "My own hotel");
+  // A second press is refused: it already is the stay.
+  await assert.rejects(bindWhereToStay(TH, OWNER, { kind: "this_item", itemId: handId }), /already where you're staying/);
+  // And the chooser now changes it through that set, in place — the refusal is gone.
+  const changed = await bindWhereToStay(TH, OWNER, { kind: "own", hotelName: "Hotel Granvia Kyoto", neighborhoodSlug: null });
+  assert.equal(changed.setId, out.setId);
+  assert.equal(changed.itemId, handId);
+  const stays = (await db.execute(sql`SELECT title FROM itinerary_items WHERE trip_id = ${TH} AND item_type = 'accommodation'`)).rows as any[];
+  assert.deepEqual(stays.map((r) => r.title), ["Hotel Granvia Kyoto"]);
+});
+
+test("D9b a lodging-named item typed as an activity converts and becomes the stay type; a plan with a set-chosen stay refuses", async () => {
+  const typed = id("tc-typed");
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin, routing_status) VALUES (${typed}, ${TC}, 2, 'Ryokan Yachiyo', 'activity', 'traveler', 'in_planning')`);
+  // TC already has a stay from its lodging set (D8) — one stay per plan.
+  await assert.rejects(bindWhereToStay(TC, OWNER, { kind: "this_item", itemId: typed }), /already says where you're staying/);
+});
+
 test("D4 'I've got lodging sorted' with a neighbourhood adds a stay with no coordinates", async () => {
   const out = await bindWhereToStay(T5B, OWNER, { kind: "own", hotelName: null, neighborhoodSlug: `east-${RUN}` });
   assert.ok(out.itemId);
