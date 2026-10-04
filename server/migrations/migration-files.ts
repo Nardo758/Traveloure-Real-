@@ -1914,4 +1914,7 @@ export const MIGRATION_FILES = [
   // 345 — feedback_events (ledger 2026-10-04-feedback-phase-a). New table, all columns nullable, no
   // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "345_feedback_events.sql",
+  // 346 — transport_legs authoring columns (work plan L1-1; R-ay/R-az/R-bf). Seven nullable columns,
+  // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. HELD for the founder's ruling.
+  "346_transport_leg_authoring.sql",
 ] as const;

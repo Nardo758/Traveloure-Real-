@@ -477,6 +477,45 @@ export interface TripLegPatch {
   pickupPoint?: string | null;
   pickupTime?: string | null;
   proposalStatus?: LegProposalStatus;
+  /** R-ay. Empty/blank ⇒ NULL. The route admits it only from the author or a write-status advisor. */
+  authorTip?: string | null;
+  /** R-az. The route admits it only after `legPickupRefusal` returns null. */
+  pickupProviderServiceId?: string | null;
+  /**
+   * R-bf. SERVER-SET, never from a body: the session user when an expert-side caller (the trip
+   * author or a write-status advisor) confirms the leg. Stamps `checked_by`/`checked_at` in the same
+   * UPDATE as the confirm.
+   */
+  stampCheckedBy?: string;
+}
+
+/** R-ay: an author's tip is at most this many characters (app-enforced; no DB CHECK). */
+export const AUTHOR_TIP_MAX_CHARS = 140;
+
+/** R-az: the `transport_provision` values under which a listing can carry a traveler to a stop. */
+export const PICKUP_CAPABLE_PROVISIONS = ["pickup_included", "pickup_available"] as const;
+
+export type LegPickupRefusal = "pickup_listing_not_found" | "pickup_not_offered" | "pickup_not_provider_confirmed";
+
+/**
+ * R-az, ONE decision: may this listing be a leg's "via host pickup"? It must exist, offer pickup
+ * (`transport_provision` ∈ PICKUP_CAPABLE_PROVISIONS), and carry the provider's own confirmation of
+ * its pickup block (`pickupConfirmedAt`, R-au).
+ *
+ * STATED LIMIT (§13): `provider_services` has no pickup-confirmation column yet — it is work plan
+ * L1-7 (migration 348, P1). Until it exists the caller passes `pickupConfirmedAt: undefined` and every
+ * listing is refused `pickup_not_provider_confirmed`. That is the plan's own dependency ("L1-7 for
+ * pickup selection to succeed"), never a guessed confirmation.
+ */
+export function legPickupRefusal(
+  listing: { transportProvision?: string | null; pickupConfirmedAt?: Date | string | null } | null,
+): LegPickupRefusal | null {
+  if (!listing) return "pickup_listing_not_found";
+  if (!(PICKUP_CAPABLE_PROVISIONS as readonly string[]).includes(listing.transportProvision ?? "")) {
+    return "pickup_not_offered";
+  }
+  if (!listing.pickupConfirmedAt) return "pickup_not_provider_confirmed";
+  return null;
 }
 
 /**
@@ -520,6 +559,18 @@ export async function updateTripTransportLeg(
   }
   if (patch.proposalStatus !== undefined) {
     updates.proposalStatus = patch.proposalStatus;
+  }
+  if (patch.authorTip !== undefined) {
+    updates.authorTip = patch.authorTip && patch.authorTip.trim().length > 0 ? patch.authorTip.trim() : null;
+  }
+  if (patch.pickupProviderServiceId !== undefined) {
+    updates.pickupProviderServiceId = patch.pickupProviderServiceId || null;
+  }
+  // R-bf: a confirm by an expert-side caller is a check. Re-confirming an already-confirmed leg
+  // re-stamps it (that is a fresh check). A confirm by anyone else leaves the stamp as it was.
+  if (patch.proposalStatus === "confirmed" && patch.stampCheckedBy) {
+    updates.checkedBy = patch.stampCheckedBy;
+    updates.checkedAt = new Date();
   }
 
   const [row] = await db

@@ -24,7 +24,10 @@
  * ── INVARIANTS ────────────────────────────────────────────────────────────────────────────────
  * §14 — no amount, earning, payout, refund or booking record is read or written anywhere here;
  *        the acting user comes from the session only, and every id is validated against the trip.
- * Mass-assign — PATCH takes a strict zod allow-list (4 fields), never a raw `req.body` spread.
+ * Mass-assign — PATCH takes a strict zod allow-list (6 fields), never a raw `req.body` spread.
+ * L1-1 (work plan; R-ay/R-az/R-bf) — `authorTip` and `pickupProviderServiceId` are written only by the
+ *        trip AUTHOR or a write-status advisor (`isExpertSideLegWriter`); a confirm by one of them
+ *        stamps `checked_by`/`checked_at` server-side. `checked_*` is never body-settable.
  * D1a-analog — 'proposed' is the only state generate can write; only the expert's PATCH confirms.
  * §13 — item pairs without real coordinates are reported as `skipped`, never routed with invented
  *        geometry; pickup fields carry only what the expert typed.
@@ -35,9 +38,16 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { isTripAuthor } from "../utils/trip-authorship";
+import { isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
+import { db } from "../db";
+import { providerServices } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { storage } from "../storage";
 import {
+  AUTHOR_TIP_MAX_CHARS,
   LEG_PROPOSAL_STATUSES,
+  legPickupRefusal,
   SELECTABLE_TRANSPORT_MODES,
   deleteTripTransportLeg,
   generateTripTransportLegs,
@@ -155,8 +165,23 @@ const patchLegSchema = z
     pickupTime: z.string().max(120).nullable().optional(),
     // 'proposed' | 'confirmed' — the traveler-visibility gate. No other value exists (DB CHECK).
     proposalStatus: z.enum(LEG_PROPOSAL_STATUSES).optional(),
+    // R-ay: plain text, null clears. Over the cap is refused, never trimmed.
+    authorTip: z.string().max(AUTHOR_TIP_MAX_CHARS).nullable().optional(),
+    // R-az: a provider_services id, null clears. Validated by `legPickupRefusal` below.
+    pickupProviderServiceId: z.string().min(1).max(64).nullable().optional(),
   })
   .strict();
+
+/**
+ * The expert side of a leg (R-ay, R-bf): the trip's AUTHOR, or an advisor in a §12 WRITE status
+ * (`accepted`/`assigned`, never `pending`). The owner, a managing EA and an admin pass
+ * `authorizeTripLogistics` but are not the expert side: they cannot write a tip or a host pickup,
+ * and their confirm stamps no check.
+ */
+async function isExpertSideLegWriter(tripId: string, userId: string | undefined): Promise<boolean> {
+  if (!userId) return false;
+  return (await isTripAuthor(tripId, userId)) || (await isTripAdvisorWithWriteAccess(tripId, userId));
+}
 
 router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async (req, res) => {
   try {
@@ -181,7 +206,25 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
     const existing = await getTripTransportLeg(tripId, legId);
     if (!existing) return res.status(404).json({ message: "Transport leg not found for this trip" });
 
-    const leg = await updateTripTransportLeg(tripId, legId, parsed.data);
+    const expertSide = await isExpertSideLegWriter(tripId, sessionUserId(req));
+    if ((parsed.data.authorTip !== undefined || parsed.data.pickupProviderServiceId !== undefined) && !expertSide) {
+      return res.status(403).json({ message: "Only the trip's author or its expert may set a tip or a host pickup" });
+    }
+    if (parsed.data.pickupProviderServiceId) {
+      const [listing] = await db
+        .select({ transportProvision: providerServices.transportProvision })
+        .from(providerServices)
+        .where(eq(providerServices.id, parsed.data.pickupProviderServiceId))
+        .limit(1);
+      // No pickup-confirmation column exists yet (work plan L1-7), so none is passed — see legPickupRefusal.
+      const refusal = legPickupRefusal(listing ? { transportProvision: listing.transportProvision, pickupConfirmedAt: undefined } : null);
+      if (refusal) return res.status(400).json({ message: "That listing cannot be this leg's host pickup", reason: refusal });
+    }
+
+    const leg = await updateTripTransportLeg(tripId, legId, {
+      ...parsed.data,
+      ...(expertSide && parsed.data.proposalStatus === "confirmed" ? { stampCheckedBy: sessionUserId(req) } : {}),
+    });
     if (!leg) return res.status(404).json({ message: "Transport leg not found for this trip" });
 
     // State the actual change(s) in the action text (§13 — never a generic "updated leg").
@@ -197,6 +240,12 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
     }
     if (parsed.data.proposalStatus !== undefined) {
       changed.push(`status → ${parsed.data.proposalStatus}`);
+    }
+    if (parsed.data.authorTip !== undefined) {
+      changed.push(parsed.data.authorTip ? `tip set` : `tip cleared`);
+    }
+    if (parsed.data.pickupProviderServiceId !== undefined) {
+      changed.push(parsed.data.pickupProviderServiceId ? `host pickup set` : `host pickup cleared`);
     }
     logLegChange(
       tripId,
