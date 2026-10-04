@@ -1276,17 +1276,20 @@ test.describe("6 · paid run", () => {
     const feeBody = (await fee.json()) as { feeCents: number; currency: string; coveredByTripPass: boolean };
 
     await expect(testid(page, "slip-action-optimize")).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, "slip-optimize-preview")).toBeVisible();
+    // Surface step 4 (spec §8): the OptimizerLead — its eyebrow, and the fee ON the CTA.
+    await expect(testid(page, "optimizer-lead-eyebrow")).toHaveText("What Optimize found in this draft");
     // The fee shown is the server's own quote, shown BEFORE the charge (LD 41 (d)); never a literal.
     expect(feeBody.coveredByTripPass, "a fresh plan holds no Trip Pass").toBe(false);
     expect(feeBody.currency).toBe("USD");
     expect(feeBody.feeCents).toBeGreaterThan(0);
-    await expect(testid(page, "slip-optimize-preview-fee")).toContainText(`$${(feeBody.feeCents / 100).toFixed(2)}`);
-    // B3 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the fee line states the ONE re-run
+    await expect(testid(page, "slip-action-optimize")).toContainText(`Optimize · $${(feeBody.feeCents / 100).toFixed(2)}`);
+    // B3 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the card states the ONE re-run
     // rule — the same sentence the comparison board renders (LD 41 (a)).
-    await expect(testid(page, "slip-optimize-preview-fee")).toContainText(
-      "A re-run within 24 hours of a completed optimization is free.",
-    );
+    await expect(testid(page, "optimizer-lead-rerun")).toHaveText("A re-run within 24 hours of a completed optimization is free.");
+    // R-f: the preview carries kinds and counts, never an order.
+    const body = (await preview.json()) as { findings?: Array<{ kind: string; count: number; days: number[] }> };
+    expect(Array.isArray(body.findings)).toBe(true);
+    for (const f of body.findings ?? []) expect(Object.keys(f).sort().filter((k) => !["caveat", "est"].includes(k))).toEqual(["count", "days", "kind"]);
   });
   test.fixme("§6 today — pay in test mode; the board shows the baseline and up to three versions; adopt one stop", async () => {
     // TODAY-PASSABLE IN THE PRODUCT, NOT IN THIS JOB: needs a Stripe test key (the job runs the stub,

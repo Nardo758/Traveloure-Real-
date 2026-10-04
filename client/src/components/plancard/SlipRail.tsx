@@ -79,12 +79,11 @@ import {
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
 import {
-  describeOptimizationPreview,
-  formatOptimizationFeeLabel,
   type OptimizationFeeQuote,
   type TripOptimizationPreview,
 } from "@/lib/optimization-preview";
 import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
+import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-plan-actions";
 import {
@@ -340,8 +339,12 @@ function BuildCard({
     queryKey: ["/api/optimization-fee", { tripId: trip.id }],
     enabled: previewEnabled,
   });
-  const previewLine = previewEnabled ? describeOptimizationPreview(previewData) : null;
-  const previewFeeLabel = previewEnabled ? formatOptimizationFeeLabel(feeQuote) : null;
+  // After a paid run the card shows the REALISED delta from the run record (the plancard's own
+  // `optimizationDelta`, read from the cache the slip already filled — no second fetch).
+  const { data: planData } = useQuery<{ optimizationDelta?: unknown; lastOptimizedAt?: string | null }>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: false,
+  });
 
   async function runComparison(
     optimizationPaymentId?: string,
@@ -494,43 +497,24 @@ function BuildCard({
 
       {isOwner && aiAction === "optimize" && (
         <>
-          <span title={optimizeDisabledReason ?? undefined} data-testid="slip-action-optimize-wrap">
-            <RailRow
-              label={creatingComparison ? "Building…" : "Optimize this plan"}
-              meta="review first"
-              icon={<Sparkles className="w-3.5 h-3.5" />}
-              onClick={() => {
-                if (optimizing || creatingComparison || optimizeDisabledReason) return;
-                setBuildAroundOpen(true);
-              }}
-              busy={optimizing || creatingComparison}
-              disabled={!!optimizeDisabledReason}
-              testId="slip-action-optimize"
-            />
+          {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
+              run, and the fee on the CTA. Same handler the old row had (the build-around step first). */}
+          <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
+          <OptimizerLead
+            findings={previewEnabled ? previewData?.findings : undefined}
+            hasPricedItems={!!previewData?.hasPricedItems}
+            fee={previewEnabled ? feeQuote : null}
+            realised={planData?.lastOptimizedAt ? (planData.optimizationDelta as any) ?? null : null}
+            testId="slip-action-optimize"
+            onClick={() => {
+              if (optimizing || creatingComparison || optimizeDisabledReason) return;
+              setBuildAroundOpen(true);
+            }}
+            busy={optimizing || creatingComparison}
+            disabledReason={optimizeDisabledReason}
+            ctaLabelOverride={creatingComparison ? "Building…" : null}
+          />
           </span>
-          {previewLine && (
-            <RailNote testId="slip-optimize-preview">
-              <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide">
-                Free estimate
-              </span>
-              {previewLine.kind === "estimate" ? (
-                <>
-                  <span>{previewLine.headline}</span>{" "}
-                  <span className="italic opacity-80">{previewLine.caveat}</span>
-                  {previewFeeLabel && (
-                    <span
-                      className="ml-1.5 font-mono text-[10px] text-foreground/70"
-                      data-testid="slip-optimize-preview-fee"
-                    >
-                      {previewFeeLabel}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span>{previewLine.reason}</span>
-              )}
-            </RailNote>
-          )}
           {lastOptimizeCoveredByPass && (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"

@@ -283,22 +283,14 @@ test("S6: Trip Pass coverage on the fee endpoint is the SERVER's coversAction an
   assert.ok(feeBlock.includes("coveredByTripPass,"), "the answer is returned to the client");
 });
 
-test("S7: the slip surface renders the preview and its fee, and reads no extrapolated number", () => {
-  // The Build card hands the testid to a shared RailNote (`testId="…"`), which renders it as
-  // `data-testid`; either spelling is the same rendered attribute.
-  assert.ok(
-    slipSurfaceSrc.includes('data-testid="slip-optimize-preview"') ||
-      slipSurfaceSrc.includes('testId="slip-optimize-preview"'),
-    "the preview line carries its testid",
-  );
-  assert.ok(slipSurfaceSrc.includes('data-testid="slip-optimize-preview-fee"'));
+test("S7: the slip surface renders the OptimizerLead with the server's fee, and reads no extrapolated number", () => {
+  // Surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`): the "Free estimate … N/100"
+  // note became the ONE `OptimizerLead` card — findings, the realised delta, and the fee on its CTA.
+  assert.ok(slipSurfaceSrc.includes("<OptimizerLead"), "the Build card mounts the OptimizerLead");
   assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-preview"'));
   assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-fee"'));
-  assert.ok(
-    slipSurfaceSrc.includes("describeOptimizationPreview") && slipSurfaceSrc.includes("formatOptimizationFeeLabel"),
-    "the slip reads the shared client module rather than composing its own copy",
-  );
-  for (const forbidden of ["estimatedSavingsPct", "estimatedCostDelta", "estimatedScheduleTighteningPct"]) {
+  assert.ok(slipSurfaceSrc.includes("fee={previewEnabled ? feeQuote : null}"), "the CTA's fee is the server's quote");
+  for (const forbidden of ["estimatedSavingsPct", "estimatedCostDelta", "estimatedScheduleTighteningPct", "/100"]) {
     assert.ok(!slipSurfaceSrc.includes(forbidden), `the slip must not render ${forbidden}`);
   }
   // Owner-only, exactly like the button the line sits beside. The Build card additionally gates on
