@@ -159,6 +159,9 @@ test("L1 + A1 + S1 + R1: the copy carries confirmed legs and re-based anchors", 
   assert.deepEqual([anchors[0].anchor_type, anchors[0].buffer_after, anchors[0].location], ["flight_arrival", 90, "KIX"]);
   assert.deepEqual(anchors[0].depends_on_item_ids, [leg.from_activity_id]);
   assert.equal(anchors[0].user_experience_id, null);
+  // Cloned anchors carry the copy's own created_at exactly (L1-4's re-date shift moves only these).
+  const [clonedAt] = (await db.execute(sql`SELECT created_at FROM trips WHERE id = ${clone}`)).rows as any[];
+  for (const a of anchors) assert.equal(new Date(a.created_at).getTime(), new Date(clonedAt.created_at).getTime());
 
   // S1
   assert.equal((await legsOf(ids.source)).length, 3);

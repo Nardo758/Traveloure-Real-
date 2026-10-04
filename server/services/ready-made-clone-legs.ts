@@ -90,6 +90,12 @@ export function buildClonedAnchor(
   sourceStartDate: string,
   cloneStartDate: string,
   itemIdMap: ReadonlyMap<string, string>,
+  /**
+   * The copy trip's own `created_at`. A cloned anchor is stamped with EXACTLY this instant, so a later
+   * reader can tell the template's anchors (created_at = the copy's) from anchors the buyer added
+   * (always later) without a new column — the first re-date moves only the former (L1-4).
+   */
+  cloneCreatedAt?: Date | null,
 ): typeof temporalAnchors.$inferInsert {
   const offsetMs = new Date(anchor.anchorDatetime as any).getTime() - dayStartUtc(sourceStartDate);
   const deps = Array.isArray(anchor.dependsOnItemIds) ? (anchor.dependsOnItemIds as unknown[]) : [];
@@ -110,5 +116,6 @@ export function buildClonedAnchor(
       .map((id) => (typeof id === "string" ? itemIdMap.get(id) : undefined))
       .filter((id): id is string => !!id),
     description: anchor.description,
+    ...(cloneCreatedAt ? { createdAt: cloneCreatedAt } : {}),
   };
 }

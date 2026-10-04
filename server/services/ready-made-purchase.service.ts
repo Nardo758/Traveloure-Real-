@@ -324,7 +324,7 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   const sourceAnchors = await db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, listing.sourceTripId));
   if (sourceAnchors.length > 0 && sourceTrip?.startDate) {
     await db.insert(temporalAnchors).values(
-      sourceAnchors.map((a) => buildClonedAnchor(a, cloneTrip.id, String(sourceTrip.startDate), fmt(start), itemIdMap)),
+      sourceAnchors.map((a) => buildClonedAnchor(a, cloneTrip.id, String(sourceTrip.startDate), fmt(start), itemIdMap, cloneTrip.createdAt)),
     );
   }
 

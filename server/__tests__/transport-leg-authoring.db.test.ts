@@ -1,6 +1,6 @@
 /**
  * L1-1 — transport_legs authoring columns (work plan docs/planning/expert-console-ready-made-work-plan.md;
- * rulings R-ay author's tip, R-az via host pickup, R-bf checked stamp; migration 346).
+ * rulings R-ay author's tip, R-az via host pickup, R-bf checked stamp; migration 347).
  *
  *   T1  the trip author PATCHes a tip; it round-trips, blank clears it to NULL
  *   T2  a tip over 140 chars is refused 400 and nothing is written
@@ -14,7 +14,7 @@
  *   U1  `legPickupRefusal` pure cases, including the pass case a future L1-7 column unlocks
  *
  * NEGATIVE SPACE (§18d): `origin`, `leg_check_status` and `leg_checked_at` are declared by migration
- * 346 and have no writer in this lane (writers: L1-3, L1-4, L1-5); nothing here asserts them beyond
+ * 347 and have no writer in this lane (writers: L1-3, L1-4, L1-5); nothing here asserts them beyond
  * staying NULL. No proof covers a SUCCESSFUL host pickup, because none can pass before L1-7.
  *
  * DISPOSABLE DB ONLY. Run solo:
@@ -222,4 +222,24 @@ test("U1: legPickupRefusal", () => {
   assert.equal(legPickupRefusal({ transportProvision: "pickup_available" }), "pickup_not_provider_confirmed");
   assert.equal(legPickupRefusal({ transportProvision: "pickup_available", pickupConfirmedAt: new Date() }), null);
   assert.equal(legPickupRefusal({ transportProvision: "pickup_included", pickupConfirmedAt: "2026-10-04T00:00:00Z" }), null);
+});
+
+test("K1: a confirm with no mode keeps the mode the Workstation shows (the recommendation); a chosen mode is never overwritten", async () => {
+  await resetLeg();
+  await db.execute(sql`UPDATE transport_legs SET user_selected_mode = NULL, recommended_mode = 'walk' WHERE id = ${ids.leg}`);
+  const r = await patchAs(ids.author, { proposalStatus: "confirmed" });
+  assert.equal(r.status, 200);
+  assert.equal((await legRow()).user_selected_mode, "walk");
+  await db.execute(sql`UPDATE transport_legs SET user_selected_mode = 'bus', proposal_status = 'proposed' WHERE id = ${ids.leg}`);
+  await patchAs(ids.author, { proposalStatus: "confirmed" });
+  assert.equal((await legRow()).user_selected_mode, "bus");
+});
+
+test("L1: no leg response carries checked_by (LD 40)", async () => {
+  await resetLeg();
+  const r = await patchAs(ids.author, { proposalStatus: "confirmed" });
+  assert.equal((await legRow()).checked_by, ids.author, "the stamp is stored");
+  assert.equal("checkedBy" in r.body.leg, false);
+  assert.ok(r.body.leg.checkedAt, "checkedAt is returned");
+  assert.equal(JSON.stringify(r.body).includes(ids.author), false);
 });
