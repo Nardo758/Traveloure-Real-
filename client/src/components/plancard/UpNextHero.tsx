@@ -15,7 +15,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 import { openInMaps } from "@/lib/navigate";
 import type { PlanCardDay, PlanCardLegData } from "./plancard-types";
-import { useLiveNow, useVisitedActivities, getUpNextInfo, formatCountdown } from "./plancard-temporal";
+import { useLiveNow, useVisitedActivities, getUpNextInfo, formatCountdown, machineDay } from "./plancard-temporal";
 import { resolvePrimaryAction } from "./primary-action";
 import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
@@ -99,7 +99,9 @@ export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed 
 
   // NULL zone, or a window nobody chose ⇒ null: the time line below still renders, the countdown
   // chip does not (LD 30; migration 302 / D-22). ONE conjunction, inside `formatCountdown`.
-  const countdown = formatCountdown(upNextActivity, day.date, now, timezone, datesConfirmed);
+  // R297: the countdown counts to the day's MACHINE date (`dateIso`), never its display label.
+  const countdownDay = machineDay(day) ?? day.date;
+  const countdown = formatCountdown(upNextActivity, countdownDay, now, timezone, datesConfirmed);
   const action = resolvePrimaryAction(upNextActivity, upNextLeg);
 
   return (

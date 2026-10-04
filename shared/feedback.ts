@@ -31,8 +31,8 @@ export const FEEDBACK_CODES: Readonly<Record<FeedbackMoment, readonly string[]>>
   post_optimize: [],
   // Phase B (step 7): helped / some / no.
   post_handoff: [],
-  // Phase B (step 6): great / fine / rough (+ text).
-  post_trip: [],
+  // Step 6 (Trip Card, T+1): great / fine / rough (+ text).
+  post_trip: ["great", "fine", "rough"],
 };
 
 /**
@@ -42,6 +42,8 @@ export const FEEDBACK_CODES: Readonly<Record<FeedbackMoment, readonly string[]>>
  */
 export const FEEDBACK_DISMISSED = "dismissed";
 export const FEEDBACK_OTHER = "other";
+/** The codes free text may ride with: `other`, and step 6's `rough` (the post-trip "+ text"). */
+export const FEEDBACK_TEXT_CODES: readonly string[] = [FEEDBACK_OTHER, "rough"];
 export const TAP_TEXT_MAX = 500;
 
 export function isFeedbackMoment(m: unknown): m is FeedbackMoment {
@@ -61,7 +63,7 @@ export function isFeedbackPair(moment: unknown, code: unknown): boolean {
  * answers 400. Null when there is none.
  */
 export function feedbackText(code: string, text: unknown): { ok: true; text: string | null } | { ok: false } {
-  if (code !== FEEDBACK_OTHER || typeof text !== "string" || !text.trim()) return { ok: true, text: null };
+  if (!FEEDBACK_TEXT_CODES.includes(code) || typeof text !== "string" || !text.trim()) return { ok: true, text: null };
   const t = text.trim();
   if (t.length > TAP_TEXT_MAX) return { ok: false };
   return { ok: true, text: t };
@@ -81,7 +83,19 @@ export function feedbackTimeNoun(timeUnit: string | null | undefined): string {
 
 export const FEEDBACK_PROMPT: Readonly<Partial<Record<FeedbackMoment, string>>> = {
   post_draft: "Does this draft fit?",
+  post_trip: "How was the trip?",
 };
+
+/**
+ * Step 6: `post_trip` opens on the Trip Card from T+1 — the day after the plan's last day (UTC
+ * calendar), and only for a plan that was made final (it has a card). No end date ⇒ never (§13).
+ */
+export function postTripOpen(endDate: string | Date | null | undefined, hasFinal: boolean, now: Date): boolean {
+  if (!hasFinal) return false;
+  const iso = endDate instanceof Date ? endDate.toISOString().slice(0, 10) : typeof endDate === "string" ? endDate.slice(0, 10) : null;
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  return now.toISOString().slice(0, 10) > iso;
+}
 
 /** A chip's words. Copy that refers to time uses the plan group's own unit. */
 export function feedbackChipLabel(code: string, timeUnit: string | null | undefined): string {
@@ -99,6 +113,12 @@ export function feedbackChipLabel(code: string, timeUnit: string | null | undefi
       return "Wrong stops";
     case "other":
       return "Something else";
+    case "great":
+      return "Great";
+    case "fine":
+      return "Fine";
+    case "rough":
+      return "Rough";
     default:
       return code;
   }

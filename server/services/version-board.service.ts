@@ -43,7 +43,7 @@ import { recordRunOutcome } from "./optimizer-runs.service";
 import { optimizerFreeRetimes } from "../config/optimizer-retimes.config";
 import { complexityTier, retimeDayInOrder } from "./smart-sequencing.service";
 import { getFee } from "./optimization-fee.service";
-import { coversAction } from "./trip-entitlement.service";
+import { coversAction, tripHasPass } from "./trip-entitlement.service";
 
 export class VersionBoardError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly extra: Record<string, unknown> = {}) {
@@ -170,7 +170,7 @@ export interface VersionsBoardView {
     stops: BoardStop[];
     days: DayDiff[];
   }>;
-  retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean> };
+  retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean>; unlimited?: boolean };
 }
 
 export async function loadVersionsBoard(tripId: string, now = new Date()): Promise<VersionsBoardView> {
@@ -186,7 +186,8 @@ export async function loadVersionsBoard(tripId: string, now = new Date()): Promi
   const badges = versionBadges(versions.map((x) => ({ id: x.v.id, stops: x.stops })));
   const used = await retimeCounts(tripId, run.runAt);
   const free: Record<string, boolean> = {};
-  for (const x of versions) free[x.v.id] = retimeIsFree({ runAt: run.runAt, now, used: used[x.v.id] ?? 0, limit });
+  const unlimited = await tripHasPass(tripId).catch(() => false);
+  for (const x of versions) free[x.v.id] = retimeIsFree({ runAt: run.runAt, now, used: used[x.v.id] ?? 0, limit, unlimited });
   const anchorOf = (v: (typeof run.variants)[number]) =>
     v.anchorName ? { name: v.anchorName, lat: num(v.anchorLat), lng: num(v.anchorLng) } : null;
   return {
@@ -201,7 +202,7 @@ export async function loadVersionsBoard(tripId: string, now = new Date()): Promi
       stops,
       days: diffVersionDays(plan, stops),
     })),
-    retimes: { limit, used, windowEndsAt: new Date(run.runAt.getTime() + 24 * 3600_000).toISOString(), free },
+    retimes: { limit, used, windowEndsAt: new Date(run.runAt.getTime() + 24 * 3600_000).toISOString(), free, unlimited },
   };
 }
 
@@ -345,7 +346,7 @@ export async function retimeDay(input: {
       .limit(1);
     const variantId = prov?.variantId ?? null;
     const used = (await retimeCounts(input.tripId, run.runAt, tx))[variantId ?? ""] ?? 0;
-    if (!retimeIsFree({ runAt: run.runAt, now, used, limit })) {
+    if (!retimeIsFree({ runAt: run.runAt, now, used, limit, unlimited: await tripHasPass(input.tripId).catch(() => false) })) {
       const fee = await paidRetimeFee(input.tripId);
       throw new VersionBoardError(409, "retime_paid", retimeLine({ free: false, remaining: 0, feeLabel: fee.label }), { limit, used, fee });
     }
