@@ -14,7 +14,6 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { apiUsageLogs, placePhotos } from "@shared/schema";
 import {
-  googlePhotoAttribution,
   photoCacheKey,
   resolvePlacePhoto,
   type CommonsCandidate,
@@ -22,6 +21,7 @@ import {
   type PhotoResolveDeps,
   type PhotoView,
 } from "@shared/place-photos";
+import { PLACE_PHOTO_ENDPOINT, googlePhotoLive } from "./place-photos-google";
 import {
   WIKIMEDIA_USER_AGENT,
   placePhotosCostCents,
@@ -63,54 +63,23 @@ export async function commonsNear(p: PhotoPlace, fetchImpl: Fetch = fetch): Prom
     .filter((c): c is CommonsCandidate => !!c && !!c.url);
 }
 
-/** A live Google Place Photo for a place id — key-free URI, never persisted. */
-export async function googlePhotoLive(p: PhotoPlace, fetchImpl: Fetch = fetch): Promise<PhotoView | null> {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key || !p.placeId) return null;
-  const started = Date.now();
-  let ok = false;
+/** The cost row for one Place Photo request — the flight/Places pattern (one source for spend and cap). */
+export async function logPlacePhotoUsage(r: { success: boolean; ms: number }): Promise<void> {
   try {
-    const det = await fetchImpl(`https://places.googleapis.com/v1/places/${encodeURIComponent(p.placeId)}`, {
-      headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "photos" },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!det.ok) return null;
-    const photo = ((await det.json()) as any)?.photos?.[0];
-    if (!photo?.name) return null;
-    const media = await fetchImpl(`https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=800&skipHttpRedirect=true`, {
-      headers: { "X-Goog-Api-Key": key },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!media.ok) return null;
-    const uri = ((await media.json()) as any)?.photoUri;
-    if (typeof uri !== "string" || !uri) return null;
-    ok = true;
-    const authors: string[] = Array.isArray(photo.authorAttributions) ? photo.authorAttributions.map((a: any) => String(a?.displayName ?? "")) : [];
-    return {
-      source: "google_live",
-      url: uri,
-      licence: null,
-      attribution: googlePhotoAttribution(authors),
-      sourceUrl: photo.authorAttributions?.[0]?.uri ?? null,
-    };
-  } finally {
-    // Every billed call writes its cost row, hit or miss — the cap counts these.
-    try {
-      await db.insert(apiUsageLogs).values({
-        provider: "google_places",
-        endpoint: "place_photo",
-        operation: "get",
-        requestCount: 1,
-        estimatedCostCents: Math.round(placePhotosCostCents()),
-        costPerCallCents: Math.round(placePhotosCostCents()),
-        responseTimeMs: Date.now() - started,
-        success: ok,
-        resultCount: ok ? 1 : 0,
-        metadata: {},
-      } as any);
-    } catch (err: any) {
-      console.error("[place-photos] cost row not written:", err?.message ?? err);
-    }
+    await db.insert(apiUsageLogs).values({
+      provider: "google_places",
+      endpoint: PLACE_PHOTO_ENDPOINT,
+      operation: "get",
+      requestCount: 1,
+      estimatedCostCents: Math.round(placePhotosCostCents()),
+      costPerCallCents: Math.round(placePhotosCostCents()),
+      responseTimeMs: r.ms,
+      success: r.success,
+      resultCount: r.success ? 1 : 0,
+      metadata: {},
+    } as any);
+  } catch (err: any) {
+    console.error("[place-photos] cost row not written:", err?.message ?? err);
   }
 }
 
@@ -145,13 +114,13 @@ export const defaultPhotoDeps: PhotoResolveDeps = {
     });
   },
   commons: (p) => commonsNear(p),
-  googleLive: (p) => googlePhotoLive(p),
+  googleLive: (p) => googlePhotoLive(p, fetch, logPlacePhotoUsage),
   async googleAllowed() {
     if (!placePhotosGoogleEnabled()) return false;
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(apiUsageLogs)
-      .where(and(eq(apiUsageLogs.provider, "google_places"), eq(apiUsageLogs.endpoint, "place_photo"), gte(apiUsageLogs.createdAt, startOfUtcDay())));
+      .where(and(eq(apiUsageLogs.provider, "google_places"), eq(apiUsageLogs.endpoint, PLACE_PHOTO_ENDPOINT), gte(apiUsageLogs.createdAt, startOfUtcDay())));
     return Number(row?.n ?? 0) < placePhotosDailyCap();
   },
   wikimediaEnabled: placePhotosWikimediaEnabled,

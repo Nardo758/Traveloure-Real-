@@ -511,12 +511,25 @@ export async function factPointsForTrip(tripId: string, now: Date = new Date()):
  * — what the photo resolver keys its Wikimedia cache on and searches near. Read here, the one reader
  * of `place_facts` (content-facts C5), never in the photo service.
  */
-export async function placeRefsForTrip(tripId: string, itemIds: string[], now: Date = new Date()): Promise<Map<string, { placeId: string | null; lat: number | null; lng: number | null }>> {
+export type PlaceRefView = {
+  placeId: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** R297: the first cached Google photo REFERENCE for the place (never an image), else null. */
+  photoRef: { name: string; authors: Array<{ displayName: string; uri: string | null }> } | null;
+};
+export async function placeRefsForTrip(tripId: string, itemIds: string[], now: Date = new Date()): Promise<Map<string, PlaceRefView>> {
   const rows = (await rowsForTrip(tripId, itemIds)).filter((r) => !isFactStale(r, now));
-  const out = new Map<string, { placeId: string | null; lat: number | null; lng: number | null }>();
+  const out = new Map<string, PlaceRefView>();
   for (const r of rows) {
     if (!r.itineraryItemId) continue;
-    const cur = out.get(r.itineraryItemId) ?? { placeId: null, lat: null, lng: null };
+    const cur = out.get(r.itineraryItemId) ?? { placeId: null, lat: null, lng: null, photoRef: null };
+    if (!cur.photoRef && r.factType === "photo_ref") {
+      const first = Array.isArray((r.value as any)?.photos) ? (r.value as any).photos[0] : null;
+      if (first && typeof first.name === "string" && first.name) {
+        cur.photoRef = { name: first.name, authors: Array.isArray(first.authors) ? first.authors : [] };
+      }
+    }
     if (!cur.placeId && r.placeRefKind === "place_id") cur.placeId = r.placeRef;
     if (cur.lat == null && r.factType === "location") {
       const lat = Number((r.value as any)?.lat);

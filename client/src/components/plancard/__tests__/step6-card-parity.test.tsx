@@ -111,3 +111,19 @@ test("P5/P6 provenance says only what is known; no photo without one", () => {
   assert.ok(!html.includes('data-testid="slip-item-photo-'), "no thumbnail without a photo");
   assert.ok(!html.includes('data-testid="card-day-photo-'), "no day photo without a stored one");
 });
+
+test("P7 R297: today carries the now-line before the next stop and a visited tick on every row; other days none", () => {
+  const d1 = days[0];
+  // 11:00 in Kyoto on day 1 (02:00Z): the 09:00 and 10:45 stops are past, 12:00 is next.
+  const html = render(new Date(`${d1.dateIso}T02:00:00Z`));
+  const line = html.indexOf('data-testid="now-line"');
+  assert.ok(line > 0, "the now-line is drawn today");
+  const next = d1.activities.find((a: any) => a.time === "12:00");
+  assert.ok(next, "the fixture's day 1 has a 12:00 stop");
+  assert.ok(line < html.indexOf(`data-testid="slip-item-${next.id}"`), "the line sits before the next stop");
+  for (const a of d1.activities) assert.ok(html.includes(`data-testid="button-visited-${a.id}"`), `visited tick on ${a.name}`);
+  // A day that is not today: no line, no tick.
+  const later = render(new Date("2026-10-01T02:00:00Z")); // before the trip: no day is today
+  assert.ok(!later.includes('data-testid="now-line"'));
+  assert.ok(!later.includes('data-testid="button-visited-'));
+});
