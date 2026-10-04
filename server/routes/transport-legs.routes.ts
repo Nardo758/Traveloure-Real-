@@ -16,9 +16,10 @@
  *
  * ── AUTH MODEL ────────────────────────────────────────────────────────────────────────────────
  * `authorizeTripLogistics` — owner ‖ trip-assigned expert ‖ trip author ‖ (audit-logged) admin.
- * PATCH and DELETE pass `requireWriteAccess` (ledger `2026-10-04-leg-write-access`): the assigned-expert
- * arm is then the §12 WRITE list (accepted/assigned), so a `pending` advisor reads legs but cannot
- * confirm, re-mode, edit or delete one. Generate is unchanged.
+ * PATCH, DELETE and generate pass `requireWriteAccess` (ledger `2026-10-04-leg-write-access`; generate by
+ * `2026-10-04-leg-generate-write-gate`): the assigned-expert arm is then the §12 WRITE list
+ * (accepted/assigned), so a `pending` advisor reads legs but cannot confirm, re-mode, edit, delete or
+ * regenerate one.
  * This is the canonical shared implementation of the inline trip-mutation model: it is documented
  * as matching `booking-actions.ts` `workspace-constraints`, which is itself the reference copy of
  * the inline `routes.ts` handlers' `verifyTripOwnership` → `isExpertAssignedToTrip` →
@@ -120,6 +121,8 @@ router.post("/api/trips/:tripId/transport-legs/generate", isAuthenticated, async
       tripId,
       sessionUserId(req),
       "POST /api/trips/:tripId/transport-legs/generate",
+      // Generate replaces the plan's proposed legs — a write, so a PENDING advisor (§12) may not.
+      { requireWriteAccess: true },
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
 

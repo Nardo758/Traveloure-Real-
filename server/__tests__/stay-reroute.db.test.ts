@@ -9,7 +9,11 @@
  *   R2  moving the stay's point re-routes again: still exactly 2 re-routed legs, from the new point
  *   R3  a plan that is not a copy is never touched; with no chosen set, an author's lodging item is
  *       never read as the stay; a stay with no coordinate and no fact has no point
- *   P1  a stay with no row coordinate takes its Google `location` fact — the plancard's own pin
+ *   P1  a stay with no row coordinate takes its Google `location` fact — the plancard's own pin — and
+ *       the re-routed legs record it as a cache: `coord_source='google'` + the fact's `coord_fetched_at`
+ *       (migration 350; ledger `2026-10-04-leg-google-coords`, LD 57 extends to transport_legs)
+ *   P2  with BOTH an own coordinate and a Google fact, the stay item's own coordinate wins and the
+ *       legs carry no Google record (R1 also asserts NULL for an item-sourced re-route)
  *   H1  the option-set choose route calls the hook for an accommodation set (source pin)
  *   D1  the first re-date of a copy (dates still a placeholder) shifts the TEMPLATE's anchors (created
  *       with the copy) by the same days and never one the buyer added; a second re-date moves nothing
@@ -165,6 +169,7 @@ test("R1: the stay chosen in where-to-stay re-routes exactly the two end legs", 
     [null, "Hotel Granvia Kyoto", ids.a, "taxi", "confirmed"]);
   assert.deepEqual([last.from_activity_id, last.to_activity_id, last.to_name, last.user_selected_mode], [ids.d, null, "Hotel Granvia Kyoto", "train"]);
   assert.equal(Number(first.from_lat).toFixed(4), "34.9850");
+  assert.deepEqual([first.coord_source, first.coord_fetched_at, last.coord_source], [null, null, null], "an own coordinate is no Google cache");
   const ab = rows.find((l) => l.id === ids.legAB)!;
   assert.deepEqual([ab.origin, ab.user_selected_mode], ["author_pick", "walk"]);
 });
@@ -208,6 +213,23 @@ test("P1: a stay with no row coordinate takes its Google location fact", async (
   assert.deepEqual(await rerouteCopyForStay(ids.copy), { rerouted: 2, removed: 2 });
   const rerouted = (await legs(ids.copy)).filter((l) => l.origin === "rerouted_for_stay");
   assert.ok(rerouted.some((l) => Number(l.from_lat).toFixed(4) === "35.0011"));
+  assert.equal(p?.source, "google");
+  for (const l of rerouted) {
+    assert.equal(l.coord_source, "google");
+    assert.ok(l.coord_fetched_at, "the Google point's fetch time is on the leg");
+  }
+});
+
+test("P2: the stay item's own coordinate wins over its Google fact; no Google record on the legs", async () => {
+  const stayId = (await stayPointForPlan(ids.copy))!.itemId; // still carries P1's fact
+  await db.execute(sql`UPDATE itinerary_items SET latitude = 34.9990, longitude = 135.7550 WHERE id = ${stayId}`);
+  const p = await stayPointForPlan(ids.copy);
+  assert.deepEqual([p?.lat, p?.lng, p?.source, p?.fetchedAt], [34.999, 135.755, "item", null]);
+  await rerouteCopyForStay(ids.copy);
+  const rerouted = (await legs(ids.copy)).filter((l) => l.origin === "rerouted_for_stay");
+  assert.equal(rerouted.length, 2);
+  assert.ok(rerouted.every((l) => l.coord_source === null && l.coord_fetched_at === null));
+  assert.ok(rerouted.some((l) => Number(l.from_lat).toFixed(4) === "34.9990"));
 });
 
 test("H1: the option-set choose route re-routes when an accommodation set is chosen", () => {

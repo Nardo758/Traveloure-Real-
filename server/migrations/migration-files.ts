@@ -1923,4 +1923,8 @@ export const MIGRATION_FILES = [
   // 349 — expert_question_answers (work plan L1-13; R-bj). New table, PK only, all columns nullable,
   // no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "349_expert_question_answers.sql",
+  // 350 — transport_legs coord_source / coord_fetched_at (ledger 2026-10-04-leg-google-coords; LD 57
+  // extends to legs). Two nullable columns, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts.
+  // HELD for the founder's ruling.
+  "350_transport_leg_coord_source.sql",
 ] as const;

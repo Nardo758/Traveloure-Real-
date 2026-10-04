@@ -8096,6 +8096,11 @@ export const transportLegs = pgTable("transport_legs", {
   // R-bb: `ok` | `changed` | `broken` from the re-check job (writer: L1-5). NULL = never re-checked.
   legCheckStatus: varchar("leg_check_status", { length: 20 }),
   legCheckedAt: timestamp("leg_checked_at"),
+  // Migration 350 (ledger `2026-10-04-leg-google-coords`; LD 57 extends to transport_legs): `google` when
+  // a from/to point on this leg came from a Google Places location fact, and that fact's fetch time.
+  // Writer: the stay re-route. NULL = no Google coordinate recorded on the leg.
+  coordSource: varchar("coord_source", { length: 20 }),
+  coordFetchedAt: timestamp("coord_fetched_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

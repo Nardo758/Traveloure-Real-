@@ -7,8 +7,9 @@
  *   W2  an accepted advisor and the trip owner may confirm and re-mode
  *   W3  the owner may delete
  *   R1  the pending advisor still READS the legs (`GET /api/trips/:tripId/transport-legs?includeProposed=1`)
- *
- * NEGATIVE SPACE (§18d): `POST …/transport-legs/generate` is unchanged and not asserted here.
+ *   G1  a pending advisor is refused 403 on `POST /api/trips/:tripId/transport-legs/generate`, which
+ *       replaces the plan's proposed legs; the proposed leg survives
+ *   G2  the owner and an accepted advisor may generate (200)
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test server/__tests__/leg-write-access.db.test.ts
@@ -33,6 +34,7 @@ const ids = {
   trip: `lwa-${RUN}-trip`,
   leg: `lwa-${RUN}-leg`,
   leg2: `lwa-${RUN}-leg2`,
+  leg3: `lwa-${RUN}-leg3`,
 };
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -49,7 +51,7 @@ function assertDisposableDb(): void {
   }
 }
 
-async function call(userId: string, method: "GET" | "PATCH" | "DELETE", url: string, body?: unknown) {
+async function call(userId: string, method: "GET" | "POST" | "PATCH" | "DELETE", url: string, body?: unknown) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -88,7 +90,7 @@ before(async () => {
   await db.execute(sql`INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status) VALUES
     (${`${ids.trip}-p`}, ${ids.trip}, ${ids.pending}, 'pending'),
     (${`${ids.trip}-a`}, ${ids.trip}, ${ids.accepted}, 'accepted')`);
-  for (const id of [ids.leg, ids.leg2]) {
+  for (const id of [ids.leg, ids.leg2, ids.leg3]) {
     await db.execute(sql`INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
         to_activity_id, to_name, to_lat, to_lng, distance_meters, distance_display, recommended_mode, alternative_modes,
         estimated_duration_minutes, proposal_status)
@@ -131,4 +133,17 @@ test("R1: a pending advisor still reads the legs", async () => {
   const r = await call(ids.pending, "GET", `/api/trips/${ids.trip}/transport-legs?includeProposed=1`);
   assert.equal(r.status, 200);
   assert.ok(r.body.legs.some((l: any) => l.id === ids.leg));
+});
+
+test("G1: a pending advisor cannot regenerate the plan's legs", async () => {
+  const r = await call(ids.pending, "POST", `/api/trips/${ids.trip}/transport-legs/generate`);
+  assert.equal(r.status, 403);
+  assert.deepEqual(await legRow(ids.leg3), { proposal_status: "proposed", user_selected_mode: null });
+});
+
+test("G2: the owner and an accepted advisor may regenerate the plan's legs", async () => {
+  const byOwner = await call(ids.owner, "POST", `/api/trips/${ids.trip}/transport-legs/generate`);
+  assert.equal(byOwner.status, 200, JSON.stringify(byOwner.body));
+  const byAdvisor = await call(ids.accepted, "POST", `/api/trips/${ids.trip}/transport-legs/generate`);
+  assert.equal(byAdvisor.status, 200, JSON.stringify(byAdvisor.body));
 });

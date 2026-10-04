@@ -11,9 +11,16 @@
  *     typed by name, or "Set as where you're staying"), primary set first; else
  *   · the latest hand-added accommodation item that is not the author's (`origin` not `expert`, so a
  *     copy's own placeholder ryokan is never mistaken for the buyer's stay);
- * and its point is the item row's coordinate when trusted (`rowCoordinatesTrusted`), else its Google
- * `location` fact — exactly the pin the plancard draws (`applyGooglePins`, §18 rule 1). No point ⇒ no
- * re-route (§13 — never a city centre). The stay is where day 1 starts and the last day ends.
+ * and its point is the item row's OWN coordinate when trusted (`rowCoordinatesTrusted`); only when the
+ * item has none does it take its Google `location` fact — exactly the pin the plancard draws
+ * (`applyGooglePins`, §18 rule 1). No point ⇒ no re-route (§13 — never a city centre). The stay is
+ * where day 1 starts and the last day ends.
+ *
+ * GOOGLE COORDINATES ON A LEG (decision-maker ruling, Oct 4, 2026 — LD 57 extends to transport_legs;
+ * ledger `2026-10-04-leg-google-coords`, migration 350): `from/to_lat/lng` are NOT NULL, so a leg built
+ * from a Google pin holds it. That leg says so — `coord_source = 'google'` and `coord_fetched_at` = the
+ * fact's fetch time — so the coordinate is a CACHE (max 30 days) that a scheduled job refreshes or
+ * clears. A leg built from the item's own coordinate carries NULL in both.
  *
  * WHAT IS REPLACED: the day's end leg is removed only when it touches a LODGING item at that end
  * (`isLodgingItem`) — the author's own placeholder stay — so an author's pick between two real stops
@@ -39,7 +46,16 @@ import { SELECTABLE_TRANSPORT_MODES, recomputeLegForMode } from "./trip-transpor
 import { AUTHOR_PICK_ORIGIN } from "./ready-made-clone-legs";
 
 export const REROUTED_FOR_STAY_ORIGIN = "rerouted_for_stay";
-export type StayPoint = { itemId: string; name: string; lat: number; lng: number };
+export type StayPoint = {
+  itemId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** `item` = the stay row's own coordinate; `google` = its Google Places `location` fact. */
+  source: "item" | "google";
+  /** For `google`: the fact's fetch time (its 30-day cache window starts here). Null otherwise. */
+  fetchedAt: Date | null;
+};
 
 function point(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
   const la = Number(lat);
@@ -83,15 +99,17 @@ export async function stayPointForPlan(tripId: string): Promise<StayPoint | null
   if (!itemId) return null;
   const [item] = await db.select().from(itineraryItems).where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId))).limit(1);
   if (!item) return null;
-  const rowTrusted = rowCoordinatesTrusted(item as any);
+  const name = item.title?.trim() || "Your stay";
+  // The item's own coordinate first — a Google fact is read only when the row has none it can trust.
+  const own = rowCoordinatesTrusted(item as any) ? point(item.latitude, item.longitude) : null;
+  if (own) return { itemId: item.id, name, ...own, source: "item", fetchedAt: null };
   const facts = await factsForTrip(tripId);
-  const [day] = applyGooglePins(
-    [{ activities: [{ id: item.id, lat: rowTrusted ? (point(item.latitude, item.longitude)?.lat ?? null) : null, lng: rowTrusted ? (point(item.latitude, item.longitude)?.lng ?? null) : null }] }],
-    facts as any,
-  );
+  const [day] = applyGooglePins([{ activities: [{ id: item.id, lat: null as number | null, lng: null as number | null }] }], facts as any);
   const pin = point(day.activities[0].lat, day.activities[0].lng);
   if (!pin) return null;
-  return { itemId: item.id, name: item.title?.trim() || "Your stay", ...pin };
+  const loc = (facts[item.id] ?? []).find((f) => f.factType === "location" && f.origin === "places_api");
+  const fetchedAt = loc?.checkedAt ? new Date(loc.checkedAt) : null;
+  return { itemId: item.id, name, ...pin, source: "google", fetchedAt };
 }
 
 export type RerouteResult =
@@ -155,6 +173,9 @@ export async function rerouteCopyForStay(tripId: string): Promise<RerouteResult>
       destinationProfile: destination || null,
       proposalStatus: "confirmed",
       origin: REROUTED_FOR_STAY_ORIGIN,
+      // Migration 350: the stay end's point, when it is Google's, is recorded as a cache.
+      coordSource: stayPoint.source === "google" ? "google" : null,
+      coordFetchedAt: stayPoint.source === "google" ? stayPoint.fetchedAt : null,
     } as const;
     // The plan's route: the ONE travel-time service in the author's mode (Routes → matrix → the
     // labelled straight-line estimate). Null when the service is off or the mode is not selectable.
