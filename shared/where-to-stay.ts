@@ -276,6 +276,13 @@ export type WhereToStayIneligible = "not_found" | "single_day" | "no_draft" | "d
 export interface WhereToStayView {
   eligible: boolean;
   reason?: WhereToStayIneligible;
+  /**
+   * Smoke 8 item 1: the traveler pressed "Skip for now" in the plan's CURRENT state — before the
+   * draft (`reason: "no_draft"`) or on this draft's ranking. The slip draws no panel; the tray's
+   * "Where to stay" chip still opens the full chooser from the same view. A skip before the draft
+   * does not dismiss the drafted panel: it appears once after the draft. Absent ⇒ not skipped.
+   */
+  dismissed?: true;
   city: string | null;
   basis: "straight_line" | "travel_time";
   /** True when the city has ANY hotel in our own inventory. False ⇒ "hotels coming soon". */
@@ -301,4 +308,20 @@ export interface WhereToStayView {
    * the ranking has rows.
    */
   unranked?: "no_neighborhoods" | "no_located_items";
+}
+
+/**
+ * Smoke 8 item 1 — WHERE the lodging surface draws, from the server's view alone (§18 rule 1; the
+ * slip restates nothing). `slip`: the drafted panel for an undismissed eligible view, the empty
+ * panel for an undismissed `no_draft`, else nothing. `tray`: the tools tray's "Where to stay"
+ * opens the full chooser whenever the stay is undecided — dismissed or not.
+ */
+export function anchorSurfaces(
+  view: WhereToStayView | null | undefined,
+  hasStayItem: boolean,
+): { slip: "drafted" | "empty" | null; trayChooser: boolean } {
+  if (hasStayItem || !view) return { slip: null, trayChooser: false };
+  const undecided = view.eligible || view.reason === "no_draft";
+  const slip = view.dismissed ? null : view.eligible ? "drafted" : view.reason === "no_draft" ? "empty" : null;
+  return { slip, trayChooser: undecided };
 }

@@ -47,7 +47,28 @@ export const PLACES_BASE_FIELDS = [
   "regularOpeningHours.weekdayDescriptions",
   "types",
   "googleMapsUri",
+  // Smoke 8 item 2: the AREA (ward / sublocality / locality) is read from the structured components,
+  // never parsed out of the formatted string. Essentials tier — below Enterprise, so no tier change.
+  "addressComponents",
 ] as const;
+
+/**
+ * Smoke 8 item 2 — the area text, from `addressComponents` ONLY, in this order: `ward`,
+ * `sublocality_level_1`, `locality` (each Google component type; duplicates dropped). Every call
+ * asks `languageCode=en`, so these are English names even where `formattedAddress` comes back in the
+ * local script. Never parsed from the formatted string; no components ⇒ null (§13).
+ */
+export const PLACES_AREA_COMPONENT_TYPES = ["ward", "sublocality_level_1", "locality"] as const;
+export function placesAreaText(components: unknown): string | null {
+  if (!Array.isArray(components)) return null;
+  const out: string[] = [];
+  for (const type of PLACES_AREA_COMPONENT_TYPES) {
+    const c = components.find((x: any) => Array.isArray(x?.types) && x.types.includes(type));
+    const t = typeof c?.longText === "string" ? c.longText.trim() : "";
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.length ? out.join(", ") : null;
+}
 /** Atmosphere-tier fields — named so a test can prove the default asks none of them. */
 export const PLACES_ATMOSPHERE_FIELDS = [
   "reservable",
@@ -214,10 +235,12 @@ export class PlacesAdapter implements SourceAdapter {
     // reader picks formatted → short → the draft's own text. Neither present ⇒ no address fact (§13).
     const formatted = typeof p.formattedAddress === "string" ? p.formattedAddress.trim() : "";
     const short = typeof p.shortFormattedAddress === "string" ? p.shortFormattedAddress.trim() : "";
-    if (formatted || short) {
+    const area = placesAreaText(p.addressComponents);
+    if (formatted || short || area) {
       const v: Record<string, unknown> = { query: text };
       if (formatted) v.formattedAddress = formatted;
       if (short) v.shortFormattedAddress = short;
+      if (area) v.area = area;
       push({ need: req.need, factType: "address", value: v, expiresAt: expiry(fetchedAt, factTtlDays("address")) });
     }
     // A located place with nothing else still cost a call — record it on a location row; a place

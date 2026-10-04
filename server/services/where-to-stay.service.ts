@@ -87,7 +87,11 @@ function empty(reason: WhereToStayIneligible, city: string | null = null): Where
   return { eligible: false, reason, city, basis: "straight_line", hotelsAvailable: false, neighborhoods: [] };
 }
 
-/** Has the plan decided where to stay? A stay item, or a lodging set already chosen, closed or open. */
+/**
+ * Has the plan decided where to stay? A stay item, or a lodging set that is still open or has a
+ * choice. A lodging set CLOSED WITH NOTHING CHOSEN is a "Skip for now" (smoke 8 item 1): it answers
+ * only the state it was pressed in (`lastSkipAt`), never the question for good.
+ */
 async function stayDecided(tripId: string): Promise<boolean> {
   const [stay] = await db
     .select({ id: itineraryItems.id })
@@ -98,9 +102,50 @@ async function stayDecided(tripId: string): Promise<boolean> {
   const [set] = await db
     .select({ id: planOptionSets.id })
     .from(planOptionSets)
-    .where(and(eq(planOptionSets.tripId, tripId), eq(planOptionSets.categoryKey, "accommodation")))
+    .where(
+      and(
+        eq(planOptionSets.tripId, tripId),
+        eq(planOptionSets.categoryKey, "accommodation"),
+        or(sql`${planOptionSets.status} <> 'closed'`, isNotNull(planOptionSets.chosenOptionId)),
+      ),
+    )
     .limit(1);
   return !!set;
+}
+
+/** When the traveler last pressed "Skip for now" (a lodging set closed with nothing chosen), or null. */
+async function lastSkipAt(tripId: string): Promise<Date | null> {
+  const [row] = await db
+    .select({ at: sql<Date | null>`max(${planOptionSets.createdAt})` })
+    .from(planOptionSets)
+    .where(
+      and(
+        eq(planOptionSets.tripId, tripId),
+        eq(planOptionSets.categoryKey, "accommodation"),
+        eq(planOptionSets.status, "closed"),
+        isNull(planOptionSets.chosenOptionId),
+      ),
+    );
+  return row?.at ? new Date(row.at as any) : null;
+}
+
+/**
+ * When the plan entered its DRAFTED state: its latest draft row, else (a plan built by hand) its
+ * earliest non-stay item. A skip at or after this instant was pressed on the drafted panel.
+ */
+async function draftedSince(tripId: string): Promise<Date | null> {
+  const [draft] = await db
+    .select({ at: aiGeneratedItineraries.createdAt })
+    .from(aiGeneratedItineraries)
+    .where(eq(aiGeneratedItineraries.tripId, tripId))
+    .orderBy(sql`${aiGeneratedItineraries.createdAt} DESC NULLS LAST`)
+    .limit(1);
+  if (draft?.at) return new Date(draft.at as any);
+  const [item] = await db
+    .select({ at: sql<Date | null>`min(${itineraryItems.createdAt})` })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), sql`${itineraryItems.itemType} IS DISTINCT FROM 'accommodation'`));
+  return item?.at ? new Date(item.at as any) : null;
 }
 
 async function hasPaidOptimizerRun(tripId: string): Promise<boolean> {
@@ -240,11 +285,15 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const days = dayCount(trip.startDate, trip.endDate);
   if (days === null || days < WHERE_TO_STAY_MIN_DAYS) return empty("single_day", city);
 
-  // Surface step 3: "decided" is asked FIRST, so a Skip on the pre-draft AnchorPanel (a closed
-  // lodging set) keeps the panel away on reload, before and after a draft alike.
+  // "decided" is asked FIRST (a stay, or a lodging set open or chosen). A Skip is NOT a decision
+  // (smoke 8 item 1): it dismisses the state it was pressed in, and the drafted panel still appears
+  // once after the draft.
   if (await stayDecided(tripId)) return empty("decided", city);
+  const skippedAt = await lastSkipAt(tripId);
   const items = await fitItems(tripId);
-  if (!items.length) return empty("no_draft", city);
+  if (!items.length) return { ...empty("no_draft", city), ...(skippedAt ? { dismissed: true as const } : {}) };
+  const since = skippedAt ? await draftedSince(tripId) : null;
+  const dismissed = !!skippedAt && (!since || skippedAt.getTime() >= since.getTime());
 
   const byDay = new Map<number, StayDay>();
   for (const it of items) {
@@ -288,6 +337,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const tied = topWonOnTieBreak(ranked);
   return {
     eligible: true,
+    ...(dismissed ? { dismissed: true as const } : {}),
     city,
     basis,
     hotelsAvailable: hotels.length > 0,

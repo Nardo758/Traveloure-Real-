@@ -13,10 +13,15 @@
  *   DRAFTED, collapsed    R-y: no option has a stay ⇒ one line, "Best area for these days: <top> ·
  *                         <one-liner> · Skip".
  *
- * Skip closes an anchored lodging set with nothing chosen; the server then reports the stay as
- * decided, so the panel never returns on reload, in either state. Every order and number is the
- * server's (`WhereToStayView`); this file restates no rule (§18 rule 1). No distance or minute is
- * printed (R242) — the tie note names the basis and says "(est.)".
+ *   CHOOSER (the tray)    smoke 8 item 1: the tools tray's "Where to stay" chip ALWAYS opens the full
+ *                         chooser — the ranking when there is one, then "Add places I'm considering"
+ *                         / "I've got lodging sorted" / "Skip for now" — whatever was skipped before.
+ *
+ * Skip dismisses the panel for the CURRENT state only (smoke 8 item 1): the server marks the view
+ * `dismissed`, the slip draws nothing, and a Skip before the draft still lets the drafted panel (or
+ * its collapsed line) appear once after the draft. Every order and number is the server's
+ * (`WhereToStayView`); this file restates no rule (§18 rule 1). No distance or minute is printed
+ * (R242) — the tie note names the basis and says "(est.)".
  */
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -49,8 +54,8 @@ type Bind =
   | { kind: "skip" };
 
 export interface AnchorPanelViewProps {
-  /** `empty` before a draft exists; `drafted` once the server ranks neighbourhoods. */
-  stage: "empty" | "drafted";
+  /** `empty` before a draft exists; `drafted` once the server ranks neighbourhoods; `chooser` in the tray. */
+  stage: "empty" | "drafted" | "chooser";
   /** The manifest's anchor question (`manifestFor(group).anchorQuestion`). */
   question: string;
   /** M7: a schedule-first Trip asks what is fixed, not where to stay. */
@@ -124,6 +129,77 @@ function OwnForm({
   );
 }
 
+function RankedList({
+  view,
+  canChoose,
+  busy,
+  onStayHere,
+}: {
+  view: WhereToStayView;
+  canChoose: boolean;
+  busy: boolean;
+  onStayHere?: (hotel: StayHotel) => void;
+}) {
+  return (
+        <ol className="space-y-3">
+          {view.neighborhoods.map((n, i) => (
+            <li key={n.slug} className="space-y-1" data-testid={`where-to-stay-neighborhood-${n.slug}`}>
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="font-mono text-xs text-muted-foreground">{i + 1}</span>
+                <span className="text-sm font-semibold text-foreground">{n.name}</span>
+                {n.reason ? (
+                  <span className="text-xs text-muted-foreground" data-testid={`where-to-stay-reason-${n.slug}`}>
+                    {n.reason}
+                  </span>
+                ) : n.tieBreak ? (
+                  <span className="text-xs text-muted-foreground" data-testid={`where-to-stay-tiebreak-${n.slug}`}>
+                    {STAY_TIE_BREAK_NOTE}
+                  </span>
+                ) : null}
+              </div>
+              {n.oneLiner ? (
+                <p className="pl-5 text-xs text-muted-foreground" data-testid={`where-to-stay-oneliner-${n.slug}`} data-source={n.oneLiner.source}>
+                  {n.oneLiner.text}
+                </p>
+              ) : null}
+              {n.hotels.length === 0 ? (
+                <p className="pl-5 text-xs text-muted-foreground italic" data-testid={`where-to-stay-coming-soon-${n.slug}`}>
+                  {HOTELS_COMING_SOON}
+                </p>
+              ) : (
+                <ul className="pl-5 space-y-1">
+                  {n.hotels.map((h) => (
+                    <li key={`${h.kind}-${h.id}`} className="flex items-center justify-between gap-2 text-sm" data-testid={`where-to-stay-hotel-${h.kind}-${h.id}`}>
+                      <span className="flex flex-wrap items-center gap-1 text-foreground">
+                        <MapPin className="w-3 h-3" /> {h.name}
+                        {h.starRating ? <span className="text-xs text-muted-foreground">· {h.starRating}★</span> : null}
+                        {h.kind === "platform" ? (
+                          <span className="rounded border border-border px-1.5 text-[11px] text-muted-foreground" data-testid={`where-to-stay-platform-badge-${h.id}`}>
+                            {PLATFORM_STAY_BADGE}
+                          </span>
+                        ) : null}
+                      </span>
+                      {canChoose ? (
+                        <button
+                          type="button"
+                          className="text-xs font-semibold underline underline-offset-2 hover:text-foreground"
+                          onClick={() => onStayHere?.(h)}
+                          disabled={busy}
+                          data-testid={`where-to-stay-stay-${h.kind}-${h.id}`}
+                        >
+                          Stay here
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ol>
+  );
+}
+
 export function AnchorPanelView(props: AnchorPanelViewProps) {
   const { stage, question, anchorKind, view, canChoose, busy = false } = props;
   const [ownOpen, setOwnOpen] = useState(false);
@@ -158,6 +234,38 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         {label}
       </button>
     ) : null;
+
+  // ── CHOOSER — the tray's "Where to stay" (smoke 8 item 1): the full chooser, always ───────────
+  if (stage === "chooser") {
+    const ranked = !!view?.eligible && view.neighborhoods.length > 0;
+    return (
+      <section className="space-y-3" data-testid="anchor-panel-chooser" data-anchor-panel="chooser">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+            <BedDouble className="w-4 h-4" /> {ANCHOR_PANEL_DRAFTED_TITLE}
+          </h3>
+          <p className="text-xs text-muted-foreground" data-testid="anchor-panel-optional">
+            {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
+          </p>
+        </div>
+        {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
+        {canChoose ? (
+          <div className="space-y-2 border-t border-border pt-3">
+            {ownOpen ? <OwnForm neighborhoods={view?.neighborhoods ?? []} busy={busy} onSave={(a) => props.onOwn?.(a)} /> : null}
+            <div className="flex flex-wrap items-center gap-3">
+              {props.addPlacesControl ?? null}
+              {!ownOpen ? (
+                <button type="button" className={link} onClick={() => setOwnOpen(true)} disabled={busy} data-testid="where-to-stay-own">
+                  {ANCHOR_PANEL_SORTED}
+                </button>
+              ) : null}
+              {skip()}
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
 
   // ── EMPTY — before the draft ────────────────────────────────────────────────────────────────
   if (stage === "empty") {
@@ -243,62 +351,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
           </p>
         )
       ) : (
-        <ol className="space-y-3">
-          {view.neighborhoods.map((n, i) => (
-            <li key={n.slug} className="space-y-1" data-testid={`where-to-stay-neighborhood-${n.slug}`}>
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="font-mono text-xs text-muted-foreground">{i + 1}</span>
-                <span className="text-sm font-semibold text-foreground">{n.name}</span>
-                {n.reason ? (
-                  <span className="text-xs text-muted-foreground" data-testid={`where-to-stay-reason-${n.slug}`}>
-                    {n.reason}
-                  </span>
-                ) : n.tieBreak ? (
-                  <span className="text-xs text-muted-foreground" data-testid={`where-to-stay-tiebreak-${n.slug}`}>
-                    {STAY_TIE_BREAK_NOTE}
-                  </span>
-                ) : null}
-              </div>
-              {n.oneLiner ? (
-                <p className="pl-5 text-xs text-muted-foreground" data-testid={`where-to-stay-oneliner-${n.slug}`} data-source={n.oneLiner.source}>
-                  {n.oneLiner.text}
-                </p>
-              ) : null}
-              {n.hotels.length === 0 ? (
-                <p className="pl-5 text-xs text-muted-foreground italic" data-testid={`where-to-stay-coming-soon-${n.slug}`}>
-                  {HOTELS_COMING_SOON}
-                </p>
-              ) : (
-                <ul className="pl-5 space-y-1">
-                  {n.hotels.map((h) => (
-                    <li key={`${h.kind}-${h.id}`} className="flex items-center justify-between gap-2 text-sm" data-testid={`where-to-stay-hotel-${h.kind}-${h.id}`}>
-                      <span className="flex flex-wrap items-center gap-1 text-foreground">
-                        <MapPin className="w-3 h-3" /> {h.name}
-                        {h.starRating ? <span className="text-xs text-muted-foreground">· {h.starRating}★</span> : null}
-                        {h.kind === "platform" ? (
-                          <span className="rounded border border-border px-1.5 text-[11px] text-muted-foreground" data-testid={`where-to-stay-platform-badge-${h.id}`}>
-                            {PLATFORM_STAY_BADGE}
-                          </span>
-                        ) : null}
-                      </span>
-                      {canChoose ? (
-                        <button
-                          type="button"
-                          className="text-xs font-semibold underline underline-offset-2 hover:text-foreground"
-                          onClick={() => props.onStayHere?.(h)}
-                          disabled={busy}
-                          data-testid={`where-to-stay-stay-${h.kind}-${h.id}`}
-                        >
-                          Stay here
-                        </button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          ))}
-        </ol>
+        <RankedList view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} />
       )}
 
       {canChoose ? (

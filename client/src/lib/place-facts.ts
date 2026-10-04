@@ -80,7 +80,9 @@ export function itemFactsLine(
 
 /**
  * Pure. The `ItemRow` PLACE line (spec §3; step-1 amendment R-ab). The order:
- *   1. a Google-checked (`places_api`) address fact — its WARD/AREA, with the Maps attribution;
+ *   1. a Google-checked (`places_api`) address fact — its WARD/AREA, with the Maps attribution. The
+ *      area is the one the adapter derived from Google's `addressComponents` (`value.area`, smoke 8
+ *      item 2); it is NEVER parsed from the formatted address, so a fact without one falls through;
  *   2. the item's location AS STORED — sanitising AI-written place text is a STORAGE rule (R-w, its own
  *      server lane), never a second client-side rewrite of it;
  *   3. nothing.
@@ -90,8 +92,7 @@ export function itemPlaceLine(
   item: { location?: string | null },
 ): { text: string; provenance: string | null; sourceUrl: string | null } | null {
   const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
-  const raw = fact ? String(fact.value?.formattedAddress ?? fact.value?.shortFormattedAddress ?? "") : "";
-  const area = raw ? unverifiedAreaText(raw) : null;
+  const area = typeof fact?.value?.area === "string" && fact.value.area.trim() ? fact.value.area.trim() : null;
   if (fact && area) return { text: area, provenance: sourceName(fact.provenance), sourceUrl: fact.sourceUrl };
   const stored = (item.location ?? "").trim();
   return stored ? { text: stored, provenance: null, sourceUrl: null } : null;

@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { ToolsTray, type ToolsTrayProps } from "../../plan/ToolsTray";
-import { GETTING_THERE_TOOL, TravelAnchorPlaceholder, flightAnchorFor } from "../../plan/AnchorRow";
+import { GETTING_THERE_TOOL, TravelAnchorPlaceholder, flightAnchorFor, flightRowText } from "../../plan/AnchorRow";
 import { ItemRow } from "../../plan/ItemRow";
 import { GROUP_MANIFEST, TOOL_LABEL } from "@shared/group-manifest";
 
@@ -93,7 +93,16 @@ describe("tools tray", () => {
     assert.ok(real.includes('data-anchor-real="true"'));
     assert.ok(real.includes("15:25"));
     assert.ok(real.includes("Anchor · fixed · from Getting there"));
-    assert.ok(real.includes("JL 61 · LAX → KIX · arrives T1 · KIX"));
+    // Smoke 8 item 3: the stored line is the whole line (the airport is no longer appended).
+    assert.ok(real.includes("JL 61 · LAX → KIX · arrives T1"));
+    assert.ok(!real.includes("arrives T1 · KIX"));
+    const line = flightAnchorFor(
+      [{ anchorType: "flight_arrival", anchorDatetime: "2026-11-11T09:05:00.000Z", location: "KIX", description: "JL 061 · lands KIX 09:05 · entered by you" }],
+      "flight_arrival",
+    );
+    assert.equal(flightRowText(line), "JL 061 · lands KIX 09:05 · entered by you");
+    assert.equal(flightRowText({ time: "09:05", location: "KIX", description: null }), "KIX", "the airport stands in only for a flight stored with no line");
+    assert.equal(flightRowText(null), null);
     assert.ok(!real.includes("Add your flight"));
     assert.equal(flightAnchorFor([], "flight_departure"), null);
   });

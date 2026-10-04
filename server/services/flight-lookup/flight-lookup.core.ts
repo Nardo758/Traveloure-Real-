@@ -50,7 +50,9 @@ export async function lookupFlight(
     return flight ? { kind: "found", flight, cached: false } : { kind: "not_found", cached: false };
   } catch (err: any) {
     await deps.logUsage({ provider: deps.adapter.provider, userId: input.userId, costCents: deps.costCents(), success: false, found: false, error: String(err?.message ?? err).slice(0, 300), ms: Date.now() - started });
-    console.warn(`[flight-lookup] ${flightNo} ${input.date} failed: ${err?.message ?? err}`);
+    // The error CLASS, status and provider message (never the key) so the log says what failed.
+    const status = typeof err?.status === "number" ? ` status=${err.status}` : "";
+    console.warn(`[flight-lookup] ${flightNo} ${input.date} failed: class=${err?.name ?? typeof err}${status} message=${JSON.stringify(String(err?.message ?? err).slice(0, 300))}`);
     return { kind: "error" };
   }
 }

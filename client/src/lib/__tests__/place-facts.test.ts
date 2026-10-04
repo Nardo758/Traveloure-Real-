@@ -41,9 +41,20 @@ test("F3: stale and unknown-checked facts", () => {
   assert.equal(factCheckedLabel("not a date"), null);
 });
 
-test("P1: a Google-checked address shows its ward/area, attributed", () => {
-  const line = itemPlaceLine([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: "anything" });
+test("P1: a Google-checked address shows its ward/area (from addressComponents), attributed", () => {
+  const line = itemPlaceLine([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto", area: "Kita Ward, Kyoto" })], { location: "anything" });
   assert.deepEqual(line, { text: "Kita Ward, Kyoto", provenance: "Google Maps", sourceUrl: base.sourceUrl });
+  // Smoke 8 item 2: never parsed from the formatted string — a fact with no component-derived area
+  // falls through to the item's own location, even when the formatted address looks parseable.
+  assert.deepEqual(itemPlaceLine([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: "Kinkaku-ji" }), {
+    text: "Kinkaku-ji",
+    provenance: null,
+    sourceUrl: null,
+  });
+  assert.equal(
+    itemPlaceLine([address({ formattedAddress: "日本、〒616-8385 京都府京都市右京区嵯峨天龍寺芒ノ馬場町６８" })], { location: "" }),
+    null,
+  );
 });
 
 test("P2: otherwise the location as stored (R-ab — sanitising is a storage rule, R-w)", () => {
@@ -57,7 +68,8 @@ test("P3: nothing ⇒ null (smoke 6 'Uji Green Tea Experience' — no location)"
 });
 
 test("P4: the day header names an area only from a Google-located place", () => {
-  assert.equal(itemAreaLabel([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: null }), "Kita Ward");
+  assert.equal(itemAreaLabel([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto", area: "Kita Ward, Kyoto" })], { location: null }), "Kita Ward");
+  assert.equal(itemAreaLabel([address({ formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" })], { location: null }), null);
   assert.equal(itemAreaLabel(undefined, { location: "Gion" }), null);
 });
 

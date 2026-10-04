@@ -86,6 +86,16 @@ export function flightAnchorFor(
   return { time: anchorWallTime(a.anchorDatetime), location: a.location ?? null, description: a.description ?? null };
 }
 
+/**
+ * The flight's line under its row (smoke 8 item 3), ONCE for both travel rows (the placeholder's
+ * real form and an absorbed AI arrival/departure): the stored line ("JL 061 · lands KIX 09:05 ·
+ * entered by you") is the whole line; the airport alone stands in only for a flight stored with none.
+ */
+export function flightRowText(flight: FlightAnchorView | null | undefined): string | null {
+  if (!flight) return null;
+  return (flight.description ?? "").trim() || (flight.location ?? "").trim() || null;
+}
+
 /** Where a flight anchor was fixed — the AnchorRow's "from <tool>". */
 export const GETTING_THERE_TOOL = "Getting there";
 
@@ -114,9 +124,9 @@ export function TravelAnchorPlaceholder({
     return (
       <div className="py-3 px-3" data-testid={`slip-travel-anchor-${kind}`} data-anchor-real="true">
         <AnchorRow id={`travel-${kind}`} time={flight.time} title={title} fromTool={GETTING_THERE_TOOL}>
-          {[flight.description, flight.location].some(Boolean) ? (
+          {flightRowText(flight) ? (
             <p className="text-xs text-muted-foreground" data-testid={`slip-travel-anchor-${kind}-flight`}>
-              {[flight.description, flight.location].filter(Boolean).join(" · ")}
+              {flightRowText(flight)}
             </p>
           ) : null}
         </AnchorRow>
