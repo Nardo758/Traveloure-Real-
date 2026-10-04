@@ -37,8 +37,8 @@ escape safety, missing email, deleted account/itinerary, and transactional rollb
 Use two varied local loops and rollback-only development database fixtures.
 
 Refine copy and guards based on those results. Local evidence is not live inbox certification.
-The supplied inbox is still a literal placeholder; no live sends may be initiated to it.
-Receipt and real-AI end-to-end evidence remain blocked until an approved real inbox is supplied.
+An approved real inbox has now been supplied and configured in the development-only allowlist.
+Provider delivery evidence and the operator's inbox receipt are separate verification stages.
 
 Development queues notices only when the persisted traveler email matches
 ITINERARY_OUTCOME_TEST_EMAIL. No recipient is rewritten. An unset or placeholder value means no
@@ -63,5 +63,26 @@ allowlist through workspace environment settings only after obtaining the operat
   passing verification step.
 - Billing/credit/Trip Pass sources and configuration are unchanged. No commit or publish.
 
-Status: implemented and locally verified, NOT live certified. Real generation, real timeout
-timing, inbox receipt, and the requested live clean loops await an approved real test inbox.
+## Live development verification
+
+The live suite passed on 2026-10-04 in approximately six minutes and twenty-four seconds:
+
+- Two consecutive ready cases used actual Anthropic calls, persisted AI variants, and produced
+  separate ready notices for two itineraries on the same day.
+- Two consecutive error cases injected a preprocessing failure and exercised the optimizer's
+  real failure handler, committed outcome, registry, outbox, and provider delivery.
+- Two concurrent stalled-upstream cases used an intercepted never-resolving model response.
+  Neither clock nor timestamp was mocked: the optimizer's actual five-minute deadline marked
+  both comparisons failed and sent their timeout notices. Both rejected late ready completion.
+- All six outbox records were sent, with six distinct provider IDs. Read-only Resend lookups
+  confirmed `last_event=delivered` for every message.
+- New sends were limited to the approved persisted recipient. The harness blocked unrelated
+  recipients and used development links, rather than links to production-only data.
+- One isolated development QA account and six labeled comparison fixtures remain available
+  for checking the messages. No production fixtures, payment, Trip Pass, wallet, or credit
+  changes were made. This run did not exercise checkout or certify unchanged billing flows.
+- The local harness is in `.local/tests/itinerary-outcomes-live.vitest.ts`; output evidence is
+  in `/tmp/itinerary-outcomes-live.log`. No recipient address or credentials belong in this doc.
+
+Status: implementation, real generation, real elapsed timeout, and provider delivery verified.
+Operator inbox receipt, spam placement, and authenticated link usability are not certified.
