@@ -65,7 +65,8 @@ const words = (s: string): string[] =>
   s
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, " ")
     .split(/[\s-]+/)
     .filter((w) => w.length >= 3 && !["the", "and", "temple", "shrine", "park", "market", "museum", "file", "jpg", "jpeg", "png"].includes(w));
 

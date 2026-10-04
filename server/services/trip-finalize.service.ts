@@ -24,9 +24,12 @@
  * an edit while already-finalized writes a new version without a flip.
  */
 import crypto from "crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../db";
-import { trips, itineraryItems, tripFinals, type TripFinal } from "@shared/schema";
+import { trips, itineraryItems, itineraryVariants, itineraryComparisons, tripFinals, type TripFinal } from "@shared/schema";
+import { dominantVariant, finalCardDays, type FinalCardMeta } from "@shared/trip-card-final";
+import { versionLabel } from "@shared/version-board";
+import type { PhotoView } from "@shared/place-photos";
 import { logItemTransition } from "./item-transition-log.service";
 
 /** Trip-level plan fields frozen into the snapshot and folded into the fingerprint. */
@@ -132,6 +135,10 @@ export async function reFinalizeIfCurrentlyFinal(tripId: string, actorId: string
  * Idempotent by plan fingerprint. Throws {@link TripNotFoundError} if the trip does not exist.
  */
 export async function finalizeTrip(tripId: string, actorId: string): Promise<FinalizeResult> {
+  // Step 6: the card's stored photo references are resolved BEFORE the lock — a Commons read is
+  // network I/O and must not hold the trip row. Best effort: a failure stores no photos, never fails
+  // the finalize (§15b — an ancillary effect may not break the operation that authorizes it).
+  const photos = await finalCardPhotos(tripId).catch(() => ({}));
   return db.transaction(async (tx) => {
     // 1. Serialize per-trip finalizes: lock the trip row for the whole transaction.
     const [trip] = await tx
@@ -149,7 +156,10 @@ export async function finalizeTrip(tripId: string, actorId: string): Promise<Fin
     // Snapshot stores the FULL item rows (render fidelity — Phase 2 joins live booking rows by id),
     // deterministically ordered so the stored blob is stable for equal plans.
     const snapshotItems = ordered;
-    const snapshot = { trip: snapshotTrip, items: snapshotItems };
+    // Step 6 (spec §9): per-day {source_run_id, source_variant_id}, the version the plan was built
+    // from, and the stored photo references. Outside the fingerprint (below) by construction.
+    const card = await finalCardMeta(tx, tripId, ordered as any[], photos);
+    const snapshot = { trip: snapshotTrip, items: snapshotItems, card };
 
     const fingerprint = {
       trip: snapshotTrip,
@@ -217,4 +227,58 @@ export async function finalizeTrip(tripId: string, actorId: string): Promise<Fin
       itemCount: ordered.length,
     };
   });
+}
+
+/** Step 6: the card meta a snapshot carries (`@shared/trip-card-final`). */
+async function finalCardMeta(tx: any, tripId: string, items: any[], photos: Record<string, PhotoView>): Promise<FinalCardMeta> {
+  const days = finalCardDays(items);
+  const dom = dominantVariant(days);
+  let builtFrom: FinalCardMeta["builtFrom"] = null;
+  if (dom) {
+    const [variant] = await tx
+      .select({ comparisonId: itineraryVariants.comparisonId })
+      .from(itineraryVariants)
+      .where(eq(itineraryVariants.id, dom.sourceVariantId))
+      .limit(1);
+    if (variant) {
+      const siblings = await tx
+        .select({ id: itineraryVariants.id })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.comparisonId, variant.comparisonId))
+        .orderBy(asc(itineraryVariants.sortOrder), asc(itineraryVariants.id));
+      const idx = siblings.findIndex((v: { id: string }) => v.id === dom.sourceVariantId);
+      const runs = await tx
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(and(eq(itineraryComparisons.tripId, tripId), isNotNull(itineraryComparisons.optimizedAt)))
+        .orderBy(asc(itineraryComparisons.optimizedAt), asc(itineraryComparisons.id));
+      const run = runs.findIndex((r: { id: string }) => r.id === variant.comparisonId);
+      if (idx >= 0) builtFrom = { versionLabel: versionLabel(idx), runNumber: run >= 0 ? run + 1 : null };
+    }
+  }
+  return { days, builtFrom, photos };
+}
+
+/** Step 6 R-aq: one stored photo per day — the day's first located stop (never the stay); stored
+ *  sources only (ours / Wikimedia), never a live Google photo. */
+async function finalCardPhotos(tripId: string): Promise<Record<string, PhotoView>> {
+  const rows = orderItems((await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, tripId))) as any[]);
+  const firstByDay = new Map<number, any>();
+  for (const r of rows) {
+    if (r.dayNumber == null || firstByDay.has(r.dayNumber) || r.itemType === "accommodation") continue;
+    firstByDay.set(r.dayNumber, r);
+  }
+  if (!firstByDay.size) return {};
+  const { photosFor, defaultPhotoDeps } = await import("./place-photos.service");
+  const { placeRefsForTrip } = await import("./content-facts/place-facts.service");
+  const picked = Array.from(firstByDay.values());
+  const refs = await placeRefsForTrip(tripId, picked.map((r) => r.id));
+  const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const resolved = await photosFor(
+    picked.map((r) => ({ id: r.id, name: r.title ?? "", placeId: refs.get(r.id)?.placeId ?? null, lat: refs.get(r.id)?.lat ?? num(r.latitude), lng: refs.get(r.id)?.lng ?? num(r.longitude), ownImage: null })),
+    { ...defaultPhotoDeps, googleLive: null },
+  );
+  const out: Record<string, PhotoView> = {};
+  for (const [id, p] of Object.entries(resolved)) if (p && p.source !== "google_live") out[id] = p;
+  return out;
 }

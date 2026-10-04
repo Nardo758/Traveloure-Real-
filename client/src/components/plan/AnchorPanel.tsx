@@ -23,6 +23,7 @@
  * (`WhereToStayView`); this file restates no rule (§18 rule 1). No distance or minute is printed
  * (R242) — the tie note names the basis and says "(est.)".
  */
+import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -183,7 +184,7 @@ function RankedList({
                   {n.hotels.map((h) => (
                     <li key={`${h.kind}-${h.id}`} className="flex items-center justify-between gap-2 text-sm" data-testid={`where-to-stay-hotel-${h.kind}-${h.id}`}>
                       <span className="flex flex-wrap items-center gap-1 text-foreground">
-                        <MapPin className="w-3 h-3" /> {h.name}
+                        {h.photo ? <PlacePhoto photo={h.photo} size="thumb" testId={`where-to-stay-photo-${h.id}`} /> : <MapPin className="w-3 h-3" />} {h.name}
                         {h.starRating ? <span className="text-xs text-muted-foreground">· {h.starRating}★</span> : null}
                         {h.kind === "platform" ? (
                           <span className="rounded border border-border px-1.5 text-[11px] text-muted-foreground" data-testid={`where-to-stay-platform-badge-${h.id}`}>

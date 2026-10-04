@@ -1,7 +1,8 @@
 /**
  * Photo sources (R-aq; step 6 — ledger `2026-10-04-step6-trip-card`). Deployment config by name;
  * nothing here is a price literal for code (the cost is what a call is RECORDED as costing).
- *   PLACE_PHOTOS_WIKIMEDIA_ENABLED  — Commons lookups (free, cached); on unless set to "0"
+ *   PLACE_PHOTOS_WIKIMEDIA_ENABLED  — Commons lookups (free, cached); OFF unless "1" (like every
+ *                                     outbound source here — CI and dev make no network call by default)
  *   PLACE_PHOTOS_RECHECK_DAYS       — how long a Commons answer (hit or miss) is reused (default 30)
  *   PLACE_PHOTOS_DAILY_CAP          — live Google Place Photo calls per UTC day (default 0 = OFF until
  *                                     the operator verifies Place Photo pricing and sets it)
@@ -14,7 +15,7 @@ function envNumber(name: string, fallback: number): number {
 }
 
 export function placePhotosWikimediaEnabled(): boolean {
-  return process.env.PLACE_PHOTOS_WIKIMEDIA_ENABLED !== "0";
+  return process.env.PLACE_PHOTOS_WIKIMEDIA_ENABLED === "1";
 }
 
 export function placePhotosRecheckDays(): number {

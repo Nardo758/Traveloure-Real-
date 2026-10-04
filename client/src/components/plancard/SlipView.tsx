@@ -866,7 +866,7 @@ function SlipDayItem({
       <ItemSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        item={{ id: a.id, name: anchorFrom || !travel ? a.name : travelRowTitle(travel.kind, city), time: a.time, location: a.location }}
+        item={{ id: a.id, name: anchorFrom || !travel ? a.name : travelRowTitle(travel.kind, city) ?? a.name, time: a.time, location: a.location }}
         facts={facts}
         timeZone={timeZone}
         photo={sheetPhotos[a.id] ?? null}

@@ -12,6 +12,7 @@ import {
   itineraryVariants,
   itineraryVariantItems,
   providerServices,
+  notifications,
 } from "@shared/schema";
 import { db } from "../db";
 import { and, count, eq, inArray, notInArray } from "drizzle-orm";
@@ -559,6 +560,34 @@ router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async
   }
 });
 
+// Step 6 R-ad (ledger `2026-10-04-step6-trip-card`): the T-3 re-check's finding for this plan, as the
+// `facts-recheck` job recorded it (one `trip_recheck_conflict` notice per plan, by dedupe key). The
+// card's banner READS this; nothing is computed on page load. Through the plan's READ gate. No
+// notice ⇒ `{ conflict: null }` — no re-check has found anything (or none has run), never "all clear".
+router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const userId = getUserId(req)!;
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/recheck");
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+    const [row] = await db
+      .select({ data: notifications.data, createdAt: notifications.createdAt })
+      .from(notifications)
+      .where(eq(notifications.dedupeKey, `facts-recheck:${tripId}`))
+      .limit(1);
+    const data = (row?.data ?? null) as { findings?: unknown; checkedAt?: unknown } | null;
+    res.json({
+      conflict:
+        data && Array.isArray(data.findings) && data.findings.length
+          ? { findings: data.findings, checkedAt: typeof data.checkedAt === "string" ? data.checkedAt : row?.createdAt ?? null }
+          : null,
+    });
+  } catch (error) {
+    console.error("Error reading the re-check:", error);
+    res.status(500).json({ error: "Failed to read the re-check" });
+  }
+});
+
 // Step 6 R-aq (ledger `2026-10-04-step6-trip-card`): photos for named stops of ONE plan — the slip's
 // one-per-day image, the card's today thumbnails, the ItemSheet. Through the plan's READ gate; the
 // client names at most PLACE_PHOTOS_MAX_ITEMS of the plan's own items (an id not on this plan is
@@ -784,6 +813,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // assigned — the key stays ABSENT when the trip has no comparison, rather than becoming a
       // null the reader has to interpret (§13). Additive: every existing consumer ignores it.
       ...planComparisonRef({ id: plan.plancard.lastComparisonId ?? null }),
+      ...(plan.plancard.finalCard ? { finalCard: plan.plancard.finalCard } : {}),
       stats: plan.plancard.stats,
       // ADDITIVE TripPlan v1 envelope (docs/EXECUTION_MAP.md §3). New consumers read these;
       // existing consumers ignore them.
