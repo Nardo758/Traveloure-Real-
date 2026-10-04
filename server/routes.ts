@@ -166,6 +166,7 @@ import liveHelpRoutes from "./routes/live-help.routes";
 import planOptionSetsRoutes from "./routes/plan-option-sets.routes";
 import { expertRequestSentProperties } from "./services/expert-door.service";
 import expertDoorRoutes from "./routes/expert-door.routes";
+import expertInboxQuestionsRoutes from "./routes/expert-inbox-questions.routes";
 import { loadLiveStatus } from "./services/live-status.service";
 import { liveListingTermsRefusal } from "@shared/live-availability";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
@@ -973,6 +974,8 @@ export async function registerRoutes(
     "/api/expert/neighborhood-claims",
     // Blog signing (ledger `2026-09-27-blog-lifecycle`): only an expert ever signs a byline.
     "/api/expert/blog",
+    // Ask-a-local questions (work plan L1-13): the feed and the answer rail are expert-only.
+    "/api/expert/inbox",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/verification-status",
@@ -1221,6 +1224,7 @@ export async function registerRoutes(
   app.use(planOptionSetsRoutes);
   // The expert door (ledger `2026-09-29-expert-door`): help-level card and the gated picker.
   app.use(expertDoorRoutes);
+  app.use(expertInboxQuestionsRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.

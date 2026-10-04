@@ -1914,4 +1914,8 @@ export const MIGRATION_FILES = [
   // 345 — feedback_events (ledger 2026-10-04-feedback-phase-a). New table, all columns nullable, no
   // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "345_feedback_events.sql",
+  // 349 — expert_question_answers (work plan L1-13; R-bj). New table, PK only, all columns nullable,
+  // no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. HELD for the founder's ruling.
+  // (346–348 are other work-plan lanes, in their own PRs.)
+  "349_expert_question_answers.sql",
 ] as const;
