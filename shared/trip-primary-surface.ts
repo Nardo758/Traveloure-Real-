@@ -66,3 +66,37 @@ export function tripCardForcedPrimaryByDateAlone(
 ): boolean {
   return tripCardIsPrimary({ ...input, finalizedAt: null });
 }
+
+// ── Step 6 finalize smoke (ledger `2026-10-04-step6-trip-card`) ─────────────────────────────────────
+/**
+ * ONE answer to "is the Trip Card ready?", read by the slip's banner, the T-48h nudge and the card
+ * itself, so "Your Trip Card is ready" and the card's own state can never disagree. The card has
+ * something of its own to show only once a final version exists (`trip_finals`); before that the
+ * date arm can make the card PRIMARY but there is nothing to read on it, so the words are "make it
+ * final", never "ready".
+ *   ready         — a final version exists (the card renders it)
+ *   finalize_now  — the card would be primary by date, but no final exists yet
+ *   null          — the slip is primary; no banner
+ */
+export type TripCardBannerState = "ready" | "finalize_now" | null;
+
+export function tripCardBannerState(input: TripCardPrimaryInput & { finalVersion: number | null | undefined }): TripCardBannerState {
+  if (!tripCardIsPrimary(input)) return null;
+  return input.finalVersion != null ? "ready" : "finalize_now";
+}
+
+/** The card page's own reading: a final exists ⇒ the card renders it; none ⇒ "Not final yet". */
+export function tripCardHasFinal(finalVersion: number | null | undefined): boolean {
+  return finalVersion != null;
+}
+
+export const TRIP_CARD_READY_TITLE = "Your Trip Card is ready";
+export const TRIP_CARD_FINALIZE_NOW_TITLE = "Your trip starts soon · make your plan final";
+
+/** The T-48h nudge's words, by the same rule. */
+export function tripCardNudgeCopy(hasFinal: boolean, destination: string | null | undefined): { title: string; message: string; path: "card" | "slip" } {
+  const where = destination || "your trip";
+  return hasFinal
+    ? { title: TRIP_CARD_READY_TITLE, message: `Your Trip Card for ${where} is ready to view.`, path: "card" }
+    : { title: TRIP_CARD_FINALIZE_NOW_TITLE, message: `Your plan for ${where} isn't final yet. Finish it and make it final to get your Trip Card.`, path: "slip" };
+}

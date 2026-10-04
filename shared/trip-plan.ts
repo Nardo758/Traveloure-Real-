@@ -673,6 +673,8 @@ export interface TripPlanPlancardExtras {
    * query, and no client-side lookup of the user's comparisons.
    */
   lastComparisonId?: string;
+  /** Step 6: the frozen final's card meta (`@shared/trip-card-final`) — the card render only. */
+  finalCard?: import("./trip-card-final").FinalCardMeta;
   stats: TripPlanStats;
 }
 

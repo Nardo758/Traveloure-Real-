@@ -1,4 +1,6 @@
 /**
+ * (Step 6, R-bc: also the trip city's seeded `city_events` whose dates overlap the trip.)
+ *
  * Smoke 9 S9-8 (extends R-w; ledger `2026-10-04-smoke9-addendum`): the R-p EVENT facts that cover a
  * trip's dates — the only events a draft may name. ONE loader, read by the drafting prompt (its list)
  * and by the storage pass (`ai-draft-sanitize`, which reduces every other event-named title).
@@ -11,9 +13,9 @@
  */
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { contentSources, placeFacts } from "@shared/schema";
+import { cityEvents, contentSources, placeFacts } from "@shared/schema";
 import { isOfficialPublicFact } from "@shared/content-facts";
-import { eventFactCoversDates, type CoveringEvent } from "@shared/ai-place-text";
+import { cityEventCoversDates, eventFactCoversDates, type CoveringEvent } from "@shared/ai-place-text";
 import { resolveMarketSlug } from "../trend-engine/operating-markets";
 
 export async function coveringEventsForTrip(input: {
@@ -54,6 +56,20 @@ export async function coveringEventsForTrip(input: {
       const v = (r.value ?? {}) as Record<string, unknown>;
       const name = [v.name, v.title, v.query].find((x): x is string => typeof x === "string" && x.trim().length > 0);
       if (name && !out.some((e) => e.name === name.trim())) out.push({ name: name.trim() });
+    }
+    // R-bc (step 6): the seeded `city_events` in the trip's city that overlap its dates are confirmed
+    // events too — the prompt may name them, so the storage pass must keep them (one list, two layers).
+    const city = (input.destination ?? "").split(",")[0].trim().toLowerCase();
+    if (city) {
+      const evs = await db
+        .select({ title: cityEvents.title, startsAt: cityEvents.startsAt, endsAt: cityEvents.endsAt })
+        .from(cityEvents)
+        .where(and(sql`lower(${cityEvents.city}) = ${city}`, isNull(cityEvents.withdrawnAt)));
+      for (const e of evs) {
+        if (!cityEventCoversDates(e.startsAt, e.endsAt, start, end)) continue;
+        const name = (e.title ?? "").trim();
+        if (name && !out.some((x) => x.name === name)) out.push({ name });
+      }
     }
     return out;
   } catch (err) {
