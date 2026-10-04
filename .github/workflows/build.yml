@@ -3129,6 +3129,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      # ledger 2026-10-04-maps-billing-audit (R298): no tracked file carries a merge-conflict marker.
+      - name: conflict-marker-guard · Conflict-marker predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-conflict-markers.cjs --self-test
+      - name: conflict-marker-guard · No conflict markers in tracked files
+        if: ${{ !cancelled() }}
+        run: node scripts/check-conflict-markers.cjs
       # 
       # ledger 2026-09-27-e2e-helpers-confirm-effect: an e2e helper returns only after CONFIRMING
       # its effect; a fixed wait or one-shot count in a helper module must say why (settle-ok /
