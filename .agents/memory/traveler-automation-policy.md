@@ -59,6 +59,12 @@ Certification requires real test-account email evidence and actual database stat
 
 **How to apply:** Use isolated development test recipients and data. Test-email links must point to the environment holding the fixtures, not automatically to a shared production canonical host: production cannot open development-only records. Record actual outcomes without claiming delivery from provider acceptance alone or credit correctness from a fabricated counter. A provider's delivered event establishes recipient-server delivery, not Inbox placement or authenticated link usability.
 
+Live-verification commits must contain only code and sanitized evidence, not recipient configuration or test login credentials.
+
+**Why:** Inbox approval is environment-specific operational data, not an application default. Saving the platform form can modify tracked configuration even without an agent editing it.
+
+**How to apply:** Stage verification files explicitly rather than staging every modified file. Leave recipient-setting changes uncommitted; omit addresses, passwords and session cookies from the receipt report.
+
 ## Conditional abandoned-chat scope
 
 Part 2 may validly contain three automations. If authoritative per-conversation context,

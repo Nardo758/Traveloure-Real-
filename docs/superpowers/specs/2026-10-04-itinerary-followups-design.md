@@ -56,7 +56,7 @@ deletion and both race orderings on separate real database connections. Intercep
 tests are not inbox evidence. Completion requires separate live approved-recipient evidence;
 no "genuinely complete" claim is permitted until that evidence exists.
 
-## Recorded development results; live certification still pending
+## Recorded development results
 
 Reconciled against origin/main at the start of this dispatch on task-itinerary-part2.
 The fresh Part 1 preflight passed before Part 2 edits; its eight rollback-only database checks
@@ -76,11 +76,52 @@ consecutively, each with the exact case and two creation-age variations.
 Provider transport was intercepted in those tests, not real delivery.
 
 The production build passed with existing bundle warnings. The running development workflow applied
-the registered migration; the home page rendered. Development recipient configuration was checked
-without displaying it and no currently approved inbox was configured. No copied user's inbox was
-used. Real provider IDs, recipient-server delivered events, and authenticated email-link checks
-remain required before certification. A full TypeScript check completed at the CI ceiling of
-118 existing diagnostics with none in the new follow-up/outcome/preferences modules; that pass
-preceded the final late-worker refinement. Its post-refinement retry exceeded a 60-second
-shell budget, so the final compiler check remains separately pending rather than claimed clean.
-Do not infer a clean typecheck from the successful bundle.
+the registered migration; the home page rendered. The final compiler check, including the live
+verification harness, completed with 118 diagnostics, matching the existing CI ceiling, and none
+in the new follow-up/outcome/preferences modules. This is baseline parity, not a globally clean tsc.
+
+## Live certification: 2026-10-04
+
+The operator supplied a valid development-only recipient through the environment-variable form.
+Production recipients and settings were not changed. The approved inbox was not committed into
+source. No copied traveler was changed or used as a live fixture.
+
+The real outbox claim, registered dispatch, payload renderer and Resend transport delivered each
+automation twice. Only the test process's URL resolver was configured for the development host.
+Fixture ready timestamps were backdated to accelerate the 2h/24h/120h eligibility checks.
+Each send used a fresh isolated traveler so no daily-cap reservation was bypassed. Accounts sharing
+the approved recipient were created sequentially, then deleted; the final one stayed only for
+the signed-in browser check.
+
+| Automation | Loop | Actual provider ID | Provider event |
+|---|---:|---|---|
+| itinerary_nudge_2h | 1 | 01a107eb-18f8-70dd-a656-f18d06f517ff | delivered |
+| itinerary_followup_24h | 1 | 01a107eb-27e8-7ccc-b041-74f64eb7ab69 | delivered |
+| itinerary_reengagement_5d | 1 | 01a107eb-3a70-7d07-a11b-ad99f2fc0b47 | delivered |
+| itinerary_nudge_2h | 2 | 01a107eb-4f1d-7723-ba35-a0e73ee87293 | delivered |
+| itinerary_followup_24h | 2 | 01a107eb-5d59-7564-96e6-5b45e03e873f | delivered |
+| itinerary_reengagement_5d | 2 | 01a107eb-71e0-7499-a886-23ffbb2cac9c | delivered |
+
+Each receipt was retrieved from the provider, not inferred from enqueue or acceptance. These
+events prove recipient-server delivery, not Inbox placement. The 24h live loops exercised both
+the approved-expert and top-rated-activity fallback branches. Five-day urgency appeared only
+in the bookable branch; absence and newly paused services were skipped in both SQL loops.
+Repeated claims kept each real live send at one attempt.
+
+Authenticated HTTP checks verified all six exact itinerary identities and development links.
+The real browser accepted the test account's required Terms/Privacy flow, then rendered the
+exact emailed destination, variant and item. Unsubscribe GET preserved consent and pending rows;
+UI confirmation disabled consent and physically cancelled the remaining 2h and 24h rows while
+preserving the sent five-day row. Browser observations included existing non-blocking CSP style
+warnings and a resource 404; the tested page and unsubscribe flow worked.
+
+The fresh full SQL suite passed all 20 checks, including immediate and mid-sequence booking
+cancellation, all four booking writers, latest-itinerary supersession, both real two-connection
+race orders and retry/claim idempotency. The earlier late-worker fix's exact case and two age
+variations remained green. There are no unresolved in-scope structural risks or code references.
+All live fixture comparisons and sent rows were removed, with zero residual final-fixture users;
+test-only emailed record links are deliberately no longer usable after cleanup.
+
+Exactly three marketing definition files remain; conditional abandoned-chat work stays excluded.
+No booking, payment, AI generation or publication was performed for live receipt verification.
+The development-only Part 2 scope is genuinely complete; production activation remains separate.
