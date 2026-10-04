@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   FEEDBACK_DISMISSED,
   FEEDBACK_OTHER,
+  FEEDBACK_TEXT_CODES,
   FEEDBACK_PROMPT,
   TAP_TEXT_MAX,
   feedbackChipLabel,
@@ -36,7 +37,9 @@ const chip =
   "inline-flex min-h-[32px] items-center rounded-full border border-border px-3 text-xs font-medium hover:bg-muted/40 disabled:opacity-50";
 
 export function FeedbackTapView({ moment, codes, timeUnit, busy = false, answered = null, onAnswer, onDismiss, onUndo }: FeedbackTapViewProps) {
-  const [otherOpen, setOtherOpen] = useState(false);
+  // The code the text box is open for: `other`, or step 6's post-trip `rough` (FEEDBACK_TEXT_CODES).
+  const [textCode, setTextCode] = useState<string | null>(null);
+  const otherOpen = textCode != null;
   const [text, setText] = useState("");
   if (answered) {
     return (
@@ -72,8 +75,8 @@ export function FeedbackTapView({ moment, codes, timeUnit, busy = false, answere
             type="button"
             className={chip}
             disabled={busy}
-            aria-pressed={code === FEEDBACK_OTHER ? otherOpen : undefined}
-            onClick={() => (code === FEEDBACK_OTHER ? setOtherOpen((o) => !o) : onAnswer(code))}
+            aria-pressed={FEEDBACK_TEXT_CODES.includes(code) ? textCode === code : undefined}
+            onClick={() => (FEEDBACK_TEXT_CODES.includes(code) ? setTextCode((c) => (c === code ? null : code)) : onAnswer(code))}
             data-testid={`feedback-chip-${code}`}
           >
             {feedbackChipLabel(code, timeUnit)}
@@ -95,7 +98,7 @@ export function FeedbackTapView({ moment, codes, timeUnit, busy = false, answere
             type="button"
             className={chip}
             disabled={busy}
-            onClick={() => onAnswer(FEEDBACK_OTHER, text)}
+            onClick={() => onAnswer(textCode ?? FEEDBACK_OTHER, text)}
             data-testid="feedback-send"
           >
             Send

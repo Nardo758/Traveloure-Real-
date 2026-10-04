@@ -170,3 +170,21 @@ export const ITEM_BOOKING_RETRY_TO_PLAN_LABEL = "Back to plan";
 export function retryGoesToPlan(a: ItemBookingLike): boolean {
   return a.retryOpensCheckout === false;
 }
+
+/**
+ * The row's booking line — the ONE reading of its linked booking (R145/R154). "booked" is written for
+ * `booked` ALONE; every not-booked state says what happened (§13). Routing states ("with your expert",
+ * "awaiting checkout") are NOT booking facts and are no longer said on the slip row (step 7 draws
+ * routing as "with [expert]").
+ */
+export function slipItemBookingLine(a: ItemBookingLike & { confirmationNumber?: string | null }): string | null {
+  const bookingState = itemBookingState(a);
+  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
+  if (isBookedActivity(a)) {
+    const bookingId = (a.booking as { id?: string } | null | undefined)?.id ?? null;
+    const ref = a.confirmationNumber || (bookingId ? bookingId.slice(0, 8) : null);
+    return ref ? `booked · #${ref}` : "booked";
+  }
+  return null;
+}
+

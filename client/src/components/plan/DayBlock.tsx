@@ -19,10 +19,14 @@ export interface DayBlockProps {
   /** Controlled open state, when the caller needs it (e.g. to open the day a link points into). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Step 6 R-aq: the day's one image (slip: first located stop), drawn under the header when open. */
+  photo?: ReactNode;
+  /** Step 6: a line beside the header (the Trip Card's "Today", the day's Navigate link). */
+  aside?: ReactNode;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, children }: DayBlockProps) {
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;
   const toggle = () => {
@@ -55,7 +59,13 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
           ) : null}
         </span>
       </button>
-      {isOpen ? <div data-testid={`slip-day-body-${dayKey}`}>{children}</div> : null}
+      {aside ? <div className="px-3 pl-8 text-xs" data-testid={`slip-day-aside-${dayKey}`}>{aside}</div> : null}
+      {isOpen ? (
+        <div data-testid={`slip-day-body-${dayKey}`}>
+          {photo ? <div className="px-3 pt-1 pb-2">{photo}</div> : null}
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }

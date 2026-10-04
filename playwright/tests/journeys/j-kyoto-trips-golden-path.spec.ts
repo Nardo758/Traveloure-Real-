@@ -1311,7 +1311,7 @@ test.describe("6 · paid run", () => {
     await expect(testid(page, "slip-action-optimize")).toContainText(`Optimize · $${(feeBody.feeCents / 100).toFixed(2)}`);
     // B3 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the card states the ONE re-run
     // rule — the same sentence the comparison board renders (LD 41 (a)).
-    await expect(testid(page, "optimizer-lead-rerun")).toHaveText("A re-run within 24 hours of a completed optimization is free.");
+    await expect(testid(page, "optimizer-lead-rerun")).toHaveText("After a run, re-timing a day on the versions board is free for 24 hours.");
     // R-f: the preview carries kinds and counts, never an order.
     const body = (await preview.json()) as { findings?: Array<{ kind: string; count: number; days: number[] }> };
     expect(Array.isArray(body.findings)).toBe(true);
@@ -1500,6 +1500,69 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
       [tripId],
     );
     expect(trip.finalized).toBe(true);
+  });
+  test("§7 step 6 FINALIZE SMOKE — 'Your Trip Card is ready' and the card agree; Reopen returns to the slip intact", async ({ page }) => {
+    // The first smoke test that finalizes a plan end to end (step 6 brief, gate 3). Covers the
+    // known "Your Trip Card is ready" vs "Not final yet" mismatch: both now read ONE rule
+    // (`tripCardBannerState`) — "ready" only once a final version exists.
+    test.setTimeout(120_000);
+    await signedInTraveler(page, "s6fin");
+    const tripId = await createTrip(page.request, "Kyoto finalize smoke", KYOTO);
+    const a = await createItem(page.request, tripId, "Nishiki Market lunch", 1);
+    const b = await createItem(page.request, tripId, "Philosopher's Path", 1);
+    await page.goto(`/plans/${tripId}`);
+    const finalize = testid(page, "slip-action-finalize-plan");
+    await expect(finalize).toBeVisible({ timeout: 20_000 });
+    const status = await actAndAwait(page, () => finalize.click(), { method: "POST", path: new RegExp(`^/api/trips/${tripId}/finalize$`) });
+    expect(ok2xx(status), `finalize answered ${status}`).toBe(true);
+    await expect(testid(page, "finalize-modal")).toBeVisible({ timeout: 10_000 });
+    await testid(page, "finalize-back").click();
+    await expect(testid(page, "finalize-modal")).toHaveCount(0);
+
+    // The slip says ready — and a final version exists, so the card will too.
+    await expect(testid(page, "slip-trip-card-primary-banner")).toContainText("Your Trip Card is ready", { timeout: 20_000 });
+    await expect(testid(page, "slip-final-version-chip")).toHaveText("v1");
+    const [fin] = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM trip_finals WHERE trip_id = $1`, [tripId]);
+    expect(fin.n).toBe(1);
+
+    // The card agrees: no "Not final yet", its days on the shared rows, read-only, both stops there.
+    await testid(page, "slip-action-view-trip-card").click();
+    await expect(page).toHaveURL(new RegExp(`/trip/${tripId}`));
+    await expect(testid(page, "trip-not-final-notice")).toHaveCount(0);
+    await expect(testid(page, "card-days")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Final · v1").first()).toBeVisible();
+    await expect(testid(page, "card-provenance")).toContainText("Finalized");
+    for (const id of [a, b]) {
+      await expect(testid(page, `slip-item-${id}`)).toHaveAttribute("data-item-mode", "read");
+      await expect(testid(page, `slip-item-navigate-${id}`)).toHaveAttribute("href", /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&/);
+    }
+    await expect(page.locator('[data-testid^="item-menu-"]')).toHaveCount(0);
+
+    // Reopen returns to the slip with the plan intact.
+    const reopened = await actAndAwait(page, () => testid(page, "trip-card-action-reopen").click(), { method: "POST", path: new RegExp(`^/api/trips/${tripId}/reopen$`) });
+    expect(ok2xx(reopened)).toBe(true);
+    await expect(page).toHaveURL(new RegExp(`/plans/${tripId}`), { timeout: 20_000 });
+    for (const id of [a, b]) await expect(testid(page, `slip-item-${id}`)).toBeVisible({ timeout: 20_000 });
+    const [after] = await rows<{ finalized: boolean; items: number }>(
+      `SELECT t.finalized_at IS NOT NULL AS finalized, (SELECT count(*)::int FROM itinerary_items i WHERE i.trip_id = t.id) AS items FROM trips t WHERE t.id = $1`,
+      [tripId],
+    );
+    expect(after.finalized).toBe(false);
+    expect(after.items).toBe(2);
+  });
+  test("§7 step 6 — inside 48 h with no final version the slip says 'make it final', never 'ready'", async ({ page }) => {
+    await signedInTraveler(page, "s6soon");
+    const tripId = await createTrip(page.request, "Kyoto tomorrow", KYOTO);
+    await createItem(page.request, tripId, "Fushimi Inari", 1);
+    const tomorrow = new Date(Date.now() + 24 * 3600_000).toISOString().slice(0, 10);
+    const later = new Date(Date.now() + 4 * 24 * 3600_000).toISOString().slice(0, 10);
+    await rows(`UPDATE trips SET start_date = $2, end_date = $3 WHERE id = $1`, [tripId, tomorrow, later]);
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-trip-card-finalize-now")).toBeVisible({ timeout: 20_000 });
+    await expect(testid(page, "slip-trip-card-primary-banner")).toHaveCount(0);
+    await expect(page.getByText("Your Trip Card is ready")).toHaveCount(0);
+    // The Finish card keeps Finalize (there is no card to view yet).
+    await expect(testid(page, "slip-action-finalize-plan")).toBeVisible();
   });
   test("§7 A8 — Finalize computes the plan's legs, and they agree with plan-fit per day within 25%", async ({ page }) => {
     // R228: Finalize runs activate-transport through the ONE travel-time service, from the plan's

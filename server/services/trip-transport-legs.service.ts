@@ -566,6 +566,12 @@ export async function updateTripTransportLeg(
   if (patch.pickupProviderServiceId !== undefined) {
     updates.pickupProviderServiceId = patch.pickupProviderServiceId || null;
   }
+  // Review blocking-4: a confirm that names no mode keeps the mode the Workstation SHOWS — the
+  // engine's recommendation (`userSelectedMode || recommendedMode`) — so "Confirmed" on screen and
+  // "picked" at the publish gate (R-ax) are the same fact. Never overwrites a mode already chosen.
+  if (patch.proposalStatus === "confirmed" && patch.userSelectedMode === undefined && !leg.userSelectedMode && leg.recommendedMode) {
+    updates.userSelectedMode = leg.recommendedMode;
+  }
   // R-bf: a confirm by an expert-side caller is a check. Re-confirming an already-confirmed leg
   // re-stamps it (that is a fresh check). A confirm by anyone else leaves the stamp as it was.
   if (patch.proposalStatus === "confirmed" && patch.stampCheckedBy) {
@@ -580,6 +586,15 @@ export async function updateTripTransportLeg(
     .where(and(eq(transportLegs.id, legId), eq(transportLegs.tripId, tripId)))
     .returning();
   return row ?? null;
+}
+
+/**
+ * LD 40: `checked_by` is a `users.id`, which no response carries. Every route that returns a whole
+ * leg row passes it through this projection; `checkedAt` stays.
+ */
+export function legResponseRow<T extends { checkedBy?: unknown }>(leg: T): Omit<T, "checkedBy"> {
+  const { checkedBy: _checkedBy, ...rest } = leg;
+  return rest;
 }
 
 /** Deletes one trip-scoped leg (the expert rejecting a proposal, or removing a confirmed one). */

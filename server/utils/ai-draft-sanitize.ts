@@ -57,6 +57,21 @@ function reduceEventItem<T extends { title?: unknown; name?: unknown; location?:
   return out as T;
 }
 
+/**
+ * Step 6 (R-aa/R-w on every drafting path): a day's activities from a path that does not go through
+ * the snapshot writer (the trip generate route), with each uncovered event-named title reduced by the
+ * SAME rule. `locationName` is read and written as the place.
+ */
+export function reduceUncoveredEventActivities<T extends Record<string, any>>(activities: readonly T[], coveringEvents: readonly CoveringEvent[]): T[] {
+  return activities.map((a) => {
+    const r: any = reduceEventItem({ ...a, location: a.locationName ?? a.location }, { noLodging: false, coveringEvents });
+    const out: any = { ...r };
+    if ("locationName" in a) out.locationName = r.location;
+    if (!("location" in a)) delete out.location;
+    return out as T;
+  });
+}
+
 /** A title that must not be stored as an item: it names a hotel, or (no lodging) mentions one. */
 function dropTitle(title: unknown, o: AiDraftSanitizeOptions): boolean {
   const t = String(title ?? "");

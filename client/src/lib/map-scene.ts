@@ -76,11 +76,26 @@ export interface MapScene {
   connector: Array<{ lat: number; lng: number }>;
   anchor: (MapAnchor & { lat: number; lng: number }) | null;
   areas: MapArea[];
+  /** How strongly the areas are drawn: soft whenever the stay is located, stronger while the
+   *  AnchorPanel is open (spec §2.3, step 6). */
+  areaStyle: { strokeOpacity: number; fillOpacity: number };
   browse: Array<BrowsePlace & { lat: number; lng: number }>;
   /** The day's stops in order, numbered — the bottom sheet's list (located or not). */
   list: Array<{ id: string; n: number; name: string; time: string | null; located: boolean; state: PinState }>;
   /** Stops with no point: listed, never pinned. */
   notOnMap: Array<{ id: string; name: string }>;
+}
+
+export const AREA_STYLE_SOFT = { strokeOpacity: 0.2, fillOpacity: 0.04 } as const;
+export const AREA_STYLE_EMPHASIS = { strokeOpacity: 0.45, fillOpacity: 0.12 } as const;
+
+/**
+ * Pure. When the slip map shades neighbourhoods (spec v1.3.4 §2.3, step 6): whenever the plan's STAY
+ * has coordinates, and also while the AnchorPanel is open (deciding where to stay); emphasised while
+ * the panel is open. A reservation or venue anchor is not a stay and shades nothing on its own.
+ */
+export function areaShading(input: { stayLocated: boolean; panelOpen: boolean }): { show: boolean; emphasize: boolean } {
+  return { show: input.stayLocated || input.panelOpen, emphasize: input.panelOpen };
 }
 
 const located = (lat: unknown, lng: unknown): boolean =>
@@ -93,6 +108,8 @@ export function buildMapScene(input: {
   planAnchor?: MapAnchor | null;
   areas?: readonly MapArea[] | null;
   showAreas?: boolean;
+  /** The AnchorPanel is open — the shading is emphasised. */
+  emphasizeAreas?: boolean;
   browse?: readonly BrowsePlace[] | null;
   layers: { plan: boolean; browse: boolean };
 }): MapScene {
@@ -138,6 +155,7 @@ export function buildMapScene(input: {
     connector: connector.length > 1 ? connector : [],
     anchor,
     areas: input.showAreas ? [...(input.areas ?? [])] : [],
+    areaStyle: input.emphasizeAreas ? AREA_STYLE_EMPHASIS : AREA_STYLE_SOFT,
     browse: input.layers.browse
       ? (input.browse ?? []).filter((b) => located(b.lat, b.lng)).map((b) => ({ ...b, lat: b.lat as number, lng: b.lng as number }))
       : [],
