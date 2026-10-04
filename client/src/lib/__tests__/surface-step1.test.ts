@@ -70,7 +70,8 @@ test("M4: Ask a local — a live local opens the door, none records the question
   assert.equal(anyLocalLive(null), false);
   assert.match(ASK_LOCAL_WORDS.saved("Kyoto"), /Kyoto.*nothing was charged/);
   assert.doesNotMatch(ASK_LOCAL_WORDS.saved("Kyoto"), /notify|we'll tell you|email/i, "no promise of a notification nothing sends");
-  assert.deepEqual(Object.values(ITEM_MENU_LABELS).slice(0, 4), ["Swap", "Move up", "Move down", "Remove"]);
+  // Step 6 R-ap: "Details" (the ItemSheet) leads the menu; the spec §3 order follows it.
+  assert.deepEqual(Object.values(ITEM_MENU_LABELS).slice(0, 5), ["Details", "Swap", "Move up", "Move down", "Remove"]);
   assert.equal(ITEM_MENU_LABELS.askLocal, "Ask a local about this");
   assert.equal(ITEM_MENU_LABELS.findHost, "Find a host");
 });
