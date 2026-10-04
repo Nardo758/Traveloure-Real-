@@ -144,6 +144,10 @@ jobs:
       # Skip and "I've got lodging sorted" through the option-set rail. D1–D4.
       - name: Where to stay — ranked by the plan's days; skip and own answers bind honestly
         run: npx tsx --test --test-force-exit server/__tests__/where-to-stay.db.test.ts
+      # Smoke 9 S9-1 (ledger `2026-10-04-smoke9-fixes`): the plan's lodging anchor is not an item for
+      # the free-draft gate — hotel + flights drafts and keeps the stay; one stop is still refused. G1–G3.
+      - name: Smoke 9 draft gate — anchors are not items; the draft keeps the stay
+        run: npx tsx --test --test-force-exit server/__tests__/smoke9-draft-gate.db.test.ts
       # Feedback phase A (ledger `2026-10-04-feedback-phase-a`, migration 345): one row per plan ×
       # moment × user (a second tap updates), server-filled context, unknown pairs refused. F1–F5.
       - name: Feedback events — a second tap updates; unknown codes refused

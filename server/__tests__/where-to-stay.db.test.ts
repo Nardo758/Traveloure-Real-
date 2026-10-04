@@ -10,6 +10,10 @@
  *      the tray's chooser, and Skip is not a decision (a second answer is still accepted)
  *   D3b smoke 8: a Skip BEFORE the draft dismisses the empty panel, and the drafted panel still
  *      appears once after the draft; a Skip on that drafted panel then dismisses it
+ *   D8 smoke 9 S9-2: a plan that already says where it stays can CHANGE it through its own lodging set —
+ *      "I've got lodging sorted" reopens the chosen set and rewrites the SAME stay item in place (one
+ *      stay, one set); a booked stay, a full comparison and a hand-added stay are refused BEFORE any
+ *      reopen; Skip on a decided plan is refused
  *   D4 "I've got lodging sorted" with a neighbourhood puts a stay on the plan with NO coordinates
  *   D5 §13 — a drafted plan whose stops have no coordinates says so (no_located_items), never that the
  *      city has no neighbourhoods; a city with none says that (no_neighborhoods)
@@ -41,6 +45,8 @@ const T0S = id("empty-skip");
 const TU = id("unlocated");
 const TN = id("nowhere");
 const TT = id("tied");
+const TC = id("change");
+const TH = id("hand");
 const TS = id("stored");
 const TIE_CITY = `Tietown${RUN}`;
 
@@ -75,6 +81,12 @@ before(async () => {
     for (const d of [1, 2, 4, 5]) await item(t, d, 35.001, 135.781, 1);
     await item(t, 3, 35.0, 135.671, 1);
   }
+  for (const t of [TC, TH]) {
+    await trip(t, "2027-11-11", "2027-11-15");
+    for (const d of [1, 2, 3]) await item(t, d, 35.001, 135.781, 1);
+  }
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin)
+    VALUES (${id("th-stay")}, ${TH}, 1, 'My own hotel', 'accommodation', 'traveler')`);
   await trip(T1, "2027-11-11", "2027-11-11");
   await item(T1, 1, 35.0, 135.78, 1);
   await trip(T0, "2027-11-11", "2027-11-15");
@@ -172,6 +184,33 @@ test("D3b a Skip before the draft dismisses the empty panel only; the drafted pa
   // A real answer still decides for good.
   await bindWhereToStay(T0S, OWNER, { kind: "own", hotelName: "Hotel Fixture", neighborhoodSlug: null });
   assert.equal((await loadWhereToStay(T0S, OWNER)).reason, "decided");
+});
+
+test("D8 smoke 9: a decided plan changes its stay through its own set, in place; refusals come first", async () => {
+  const first = await bindWhereToStay(TC, OWNER, { kind: "own", hotelName: "Hotel One", neighborhoodSlug: null });
+  assert.ok(first.itemId);
+  assert.equal((await loadWhereToStay(TC, OWNER)).reason, "decided");
+  // Skip has nothing to dismiss on a decided plan.
+  await assert.rejects(bindWhereToStay(TC, OWNER, { kind: "skip" }), /already says where you're staying/);
+  // Change: the SAME set and the SAME stay item, now naming the new hotel.
+  const second = await bindWhereToStay(TC, OWNER, { kind: "own", hotelName: "Hotel Granvia Kyoto", neighborhoodSlug: null });
+  assert.equal(second.setId, first.setId, "the plan's own lodging set, never a second one");
+  assert.equal(second.itemId, first.itemId, "the stay item is rewritten in place");
+  const stays = (await db.execute(sql`SELECT id, title FROM itinerary_items WHERE trip_id = ${TC} AND item_type = 'accommodation'`)).rows as any[];
+  assert.deepEqual(stays.map((r) => r.title), ["Hotel Granvia Kyoto"]);
+  const sets = (await db.execute(sql`SELECT status FROM plan_option_sets WHERE trip_id = ${TC} AND category_key = 'accommodation'`)).rows as any[];
+  assert.deepEqual(sets.map((r) => r.status), ["chosen"]);
+  // A full comparison is refused BEFORE a reopen.
+  await bindWhereToStay(TC, OWNER, { kind: "own", hotelName: "Hotel Three", neighborhoodSlug: null });
+  await assert.rejects(bindWhereToStay(TC, OWNER, { kind: "own", hotelName: "Hotel Four", neighborhoodSlug: null }), /holds up to 3 places/);
+  assert.equal(((await db.execute(sql`SELECT status FROM plan_option_sets WHERE id = ${first.setId}`)).rows[0] as any).status, "chosen");
+  // A stay already being booked is never rewritten, and the set is not reopened.
+  await db.execute(sql`DELETE FROM plan_options WHERE set_id = ${first.setId} AND position = 3`);
+  await db.execute(sql`UPDATE itinerary_items SET routing_status = 'ready_for_checkout' WHERE id = ${first.itemId}`);
+  await assert.rejects(bindWhereToStay(TC, OWNER, { kind: "own", hotelName: "Hotel Five", neighborhoodSlug: null }), /already being booked/);
+  assert.equal(((await db.execute(sql`SELECT status FROM plan_option_sets WHERE id = ${first.setId}`)).rows[0] as any).status, "chosen");
+  // A stay added by hand has no set to change through.
+  await assert.rejects(bindWhereToStay(TH, OWNER, { kind: "own", hotelName: "Other", neighborhoodSlug: null }), /added by hand/);
 });
 
 test("D4 'I've got lodging sorted' with a neighbourhood adds a stay with no coordinates", async () => {

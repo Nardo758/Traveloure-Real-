@@ -16,7 +16,7 @@
  */
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadDeltaLine, type Finding } from "@shared/optimizer-lead";
+import { LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadDeltaLine, type Finding } from "@shared/optimizer-lead";
 import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, type OptimizationFeeQuote } from "@/lib/optimization-preview";
 
 export interface OptimizerLeadProps {
@@ -33,6 +33,8 @@ export interface OptimizerLeadProps {
   busy?: boolean;
   disabledReason?: string | null;
   ctaLabelOverride?: string | null;
+  /** Smoke 9 S9-4: false ⇒ the plan has no draft yet — "Draft first", CTA disabled. Default true. */
+  drafted?: boolean;
 }
 
 /** "Optimize · <the server's fee>" / "Optimize · Included in your Trip Pass" / "Optimize" — never a literal. */
@@ -43,7 +45,24 @@ export function optimizeCtaLabel(fee: OptimizationFeeQuote | null | undefined): 
   return `Optimize · ${formatMoneyCents(fee.feeCents, fee.currency)}`;
 }
 
-export function OptimizerLead({ findings, hasPricedItems, fee, realised, onClick, testId = "slip-action-optimize", busy = false, disabledReason, ctaLabelOverride }: OptimizerLeadProps) {
+export function OptimizerLead({ findings, hasPricedItems, fee, realised, onClick, testId = "slip-action-optimize", busy = false, disabledReason, ctaLabelOverride, drafted = true }: OptimizerLeadProps) {
+  // Smoke 9 S9-4: a plan with no draft yet has nothing to optimize — say so, disable the CTA, and
+  // claim no findings and no "already works".
+  if (!drafted) {
+    return (
+      <section className="rounded-md border border-border p-3 space-y-2" data-testid="optimizer-lead" data-lead-state="draft-first">
+        <p className="text-sm text-foreground" data-testid="optimizer-lead-draft-first">
+          {LEAD_DRAFT_FIRST}
+        </p>
+        <span title={LEAD_DRAFT_FIRST} className="block">
+          <Button size="sm" className="w-full justify-center gap-1.5" disabled data-testid={testId}>
+            <Sparkles className="w-3.5 h-3.5" />
+            {optimizeCtaLabel(fee)}
+          </Button>
+        </span>
+      </section>
+    );
+  }
   const currency = fee?.currency || "USD";
   const delta = leadDeltaLine({
     hasPricedItems,

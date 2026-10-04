@@ -65,6 +65,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createPortal } from "react-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -94,6 +95,8 @@ import {
   slipOtherAdvisorsLine,
   slipBrowseServicesHref,
   slipBuildAiAction,
+  slipDraftItemCount,
+  type SlipBuildAiAction,
   slipCalendarPath,
   slipDraftDisabledReason,
   slipExpertRailState,
@@ -286,6 +289,8 @@ function BuildCard({
   canEditItems,
   activities,
   expertState,
+  aiAction,
+  optimizerSlot,
 }: {
   trip: SlipTrip;
   tripId: string;
@@ -293,6 +298,10 @@ function BuildCard({
   /** LD 52 (C): the owner, or the delegate who builds the plan for them (browse + add only). */
   canEditItems: boolean;
   activities: PlanCardActivity[];
+  /** The ONE AI action (LD 41 (b)), resolved once by `SlipRail` from the server's draft count. */
+  aiAction: SlipBuildAiAction;
+  /** Smoke 9 S9-4: the slip's slot under the tools tray, where the optimizer card renders. */
+  optimizerSlot?: HTMLElement | null;
   /**
    * The expert row's state, resolved ONCE by `SlipRail` from the ONE owner-gated advisor read
    * (ledger `2026-09-06-slip-conformance`). It used to be fetched here; the Expert card above now
@@ -305,8 +314,7 @@ function BuildCard({
   const [, setLocation] = useLocation();
   const askExpert = useAskExpert();
 
-  // ── The ONE AI action (Locked Decision 41 (b)) ──────────────────────────────────────────────
-  const aiAction = slipBuildAiAction(activities.length);
+  // ── The ONE AI action (Locked Decision 41 (b)) — resolved by `SlipRail` and passed in. ──────
 
   // Optimize — the SAME shared gate sequence `cart.tsx` runs (`lib/optimization-gate.ts`), fed
   // from this trip's own DTO fields. Moved here verbatim from the flat action row; not re-cut.
@@ -465,6 +473,42 @@ function BuildCard({
   // ── The expert (ONE picker, ONE message control) ────────────────────────────────────────────
   const [hireOpen, setHireOpen] = useState(false);
 
+  const optimizerBlock = (
+        <>
+          {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
+              run, and the fee on the CTA. Same handler the old row had (the build-around step first). */}
+          <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
+          <OptimizerLead
+            drafted={aiAction === "optimize"}
+            findings={previewEnabled ? previewData?.findings : undefined}
+            hasPricedItems={!!previewData?.hasPricedItems}
+            fee={previewEnabled ? feeQuote : null}
+            realised={planData?.lastOptimizedAt ? (planData.optimizationDelta as any) ?? null : null}
+            testId="slip-action-optimize"
+            onClick={() => {
+              if (optimizing || creatingComparison || optimizeDisabledReason) return;
+              setBuildAroundOpen(true);
+            }}
+            busy={optimizing || creatingComparison}
+            disabledReason={optimizeDisabledReason}
+            ctaLabelOverride={creatingComparison ? "Building…" : null}
+          />
+          </span>
+          {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
+              optimizer card, once the plan has a draft; the server says when the moment is open. */}
+          <FeedbackTap tripId={tripId} moment="post_draft" codes={FEEDBACK_CODES.post_draft} />
+          {lastOptimizeCoveredByPass && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
+              data-testid="trip-pass-covered-label"
+            >
+              <Ticket className="w-3.5 h-3.5" />
+              Included in your Trip Pass
+            </span>
+          )}
+        </>
+  );
+
   return (
     <RailCard card="build" title="Build">
       {canEditItems && (
@@ -497,40 +541,10 @@ function BuildCard({
         </>
       )}
 
-      {isOwner && aiAction === "optimize" && (
-        <>
-          {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
-              run, and the fee on the CTA. Same handler the old row had (the build-around step first). */}
-          <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
-          <OptimizerLead
-            findings={previewEnabled ? previewData?.findings : undefined}
-            hasPricedItems={!!previewData?.hasPricedItems}
-            fee={previewEnabled ? feeQuote : null}
-            realised={planData?.lastOptimizedAt ? (planData.optimizationDelta as any) ?? null : null}
-            testId="slip-action-optimize"
-            onClick={() => {
-              if (optimizing || creatingComparison || optimizeDisabledReason) return;
-              setBuildAroundOpen(true);
-            }}
-            busy={optimizing || creatingComparison}
-            disabledReason={optimizeDisabledReason}
-            ctaLabelOverride={creatingComparison ? "Building…" : null}
-          />
-          </span>
-          {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
-              optimizer card, once the plan has a draft; the server says when the moment is open. */}
-          <FeedbackTap tripId={tripId} moment="post_draft" codes={FEEDBACK_CODES.post_draft} />
-          {lastOptimizeCoveredByPass && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
-              data-testid="trip-pass-covered-label"
-            >
-              <Ticket className="w-3.5 h-3.5" />
-              Included in your Trip Pass
-            </span>
-          )}
-        </>
-      )}
+      {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — rendered directly under the tools tray at
+          every width through the slip's slot (a portal: the state stays here, the card moves). On a
+          plan with no draft it reads "Draft first" with the CTA disabled. */}
+      {isOwner ? (optimizerSlot ? createPortal(optimizerBlock, optimizerSlot) : optimizerBlock) : null}
 
       {/* THE EXPERT — two states since D22 (see `slipExpertRailState`): nobody on the plan, or
           somebody to message. */}
@@ -1232,6 +1246,7 @@ export function SlipRail({
   budgetLine,
   stopsLine,
   zoneLine,
+  optimizerSlot = null,
 }: {
   trip: SlipTrip;
   tripId: string;
@@ -1253,6 +1268,8 @@ export function SlipRail({
   /** The header's own stops/zone lines, resolved once by `SlipView` (§18 rule 1). */
   stopsLine: string | null;
   zoneLine: string | null;
+  /** Smoke 9 S9-4: the slot under the tools tray where the optimizer card renders (§8). */
+  optimizerSlot?: HTMLElement | null;
 }) {
   /**
    * THE ONE ADVISOR READ FOR THE WHOLE RAIL (ledger `2026-09-06-slip-conformance`).
@@ -1263,6 +1280,13 @@ export function SlipRail({
    * only enabled for the owner: the expert viewing this slip IS the advisor and has no need of a
    * card about themself.
    */
+  // Smoke 9 S9-1: the ONE AI action reads the SERVER's draft-gate count (non-anchor items — a plan
+  // holding only its stay is still empty to draft), from the plancard the slip already loaded.
+  const { data: planGate } = useQuery<{ draftItemCount?: number }>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: false,
+  });
+  const aiAction = slipBuildAiAction(slipDraftItemCount(planGate?.draftItemCount, activities.length));
   const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null; advisors?: SlipRailAdvisor[] }>({
     queryKey: [`/api/trips/${tripId}/expert-advisor`],
     enabled: isOwner && !!tripId,
@@ -1300,6 +1324,8 @@ export function SlipRail({
         canEditItems={canEditItems}
         activities={activities}
         expertState={expertState}
+        aiAction={aiAction}
+        optimizerSlot={optimizerSlot}
       />
       {/* ASK AI — its OWN card, beneath Build (L16 lanes 2/3). It renders NOTHING for a viewer the
           proposal-log route would refuse: the routes are the policy and this mirrors them, never
@@ -1308,7 +1334,7 @@ export function SlipRail({
         tripId={tripId}
         isOwner={isOwner}
         isExpertViewer={isExpertViewer}
-        aiAction={slipBuildAiAction(activities.length)}
+        aiAction={aiAction}
       />
       <PlanCard
         tripId={tripId}

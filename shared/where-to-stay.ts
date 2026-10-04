@@ -319,9 +319,12 @@ export interface WhereToStayView {
 export function anchorSurfaces(
   view: WhereToStayView | null | undefined,
   hasStayItem: boolean,
-): { slip: "drafted" | "empty" | null; trayChooser: boolean } {
-  if (hasStayItem || !view) return { slip: null, trayChooser: false };
+): { slip: "drafted" | "empty" | null; trayChooser: boolean; trayChange: boolean } {
+  // Smoke 9 S9-2: a plan that ALREADY says where it stays still gets the full chooser in the tray —
+  // the CHANGE form (change where I'm staying / I'm deciding / I've got lodging sorted).
+  const decided = hasStayItem || view?.reason === "decided";
+  if (hasStayItem || !view) return { slip: null, trayChooser: false, trayChange: decided };
   const undecided = view.eligible || view.reason === "no_draft";
   const slip = view.dismissed ? null : view.eligible ? "drafted" : view.reason === "no_draft" ? "empty" : null;
-  return { slip, trayChooser: undecided };
+  return { slip, trayChooser: undecided, trayChange: decided };
 }

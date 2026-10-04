@@ -27,7 +27,7 @@ import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-led
 import { attachRolesNeeded } from "../services/occasion-roles.service";
 import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
-import { isUntouchedAiDraft } from "../services/ai-draft-eligibility";
+import { countTripItineraryItems, isUntouchedAiDraft } from "../services/ai-draft-eligibility";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { isTripPayer } from "../services/balance-payer.service";
 import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
@@ -702,6 +702,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // is not an AI sketch — and the client renders NOTHING when it is false, never the inverse
     // claim ("this plan is yours"). Additive; existing consumers ignore the key.
     const aiSketch = await isUntouchedAiDraft(tripId);
+    // Smoke 9 S9-1: the free-draft gate's OWN count (non-anchor items — a plan holding only its stay
+    // is still empty to draft), so "Draft it with AI" reads the server's answer and never re-counts.
+    const draftItemCount = await countTripItineraryItems(tripId);
 
     // A5 (ledger `2026-09-29-a5-draft-open-set`; content sourcing brief §2/§3): each item's facts
     // (hours, dining basics, coordinates), first of each type in the engine's order, each with its
@@ -764,6 +767,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // LD 41 (c) — see the note above. `true` ⇒ every item on this plan is still an untouched
       // free-draft row, which is the only state the slip's "starting sketch" line renders in.
       aiSketch,
+      draftItemCount,
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

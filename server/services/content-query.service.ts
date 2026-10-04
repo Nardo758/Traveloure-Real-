@@ -27,7 +27,7 @@ import { drainPendingEventsIntoTrip } from "./pending-events.service";
 import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itinerary";
 import { flagReviewSignal } from "./review-mutation.service";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
-import { assertAiDraftEligible } from "./ai-draft-eligibility";
+import { assertAiDraftEligible, itineraryItemNotPlanAnchor } from "./ai-draft-eligibility";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -475,6 +475,8 @@ export async function saveGeneratedItinerarySnapshot(
       tripId,
     } as any).returning();
 
+    // Smoke 9 S9-1: the draft now runs on a plan that holds only its LODGING ANCHOR, so the rebuild
+    // never deletes an anchor row — the stay is what the draft is built around (§M5).
     // item-removed:replace — one complete AI regeneration, not individual removals.
     // D-1 money-safety (ledger 2026-08-31-two-surfaces-one-handoff): this snapshot re-apply row-locks
     // and replaces an EXISTING trip's items when `input.tripId` is set (Grok generate + Plus occasion
@@ -483,6 +485,7 @@ export async function saveGeneratedItinerarySnapshot(
     await tx.delete(itineraryItems).where(and(
       eq(itineraryItems.tripId, tripId),
       itineraryItemRebuildDeletable(),
+      itineraryItemNotPlanAnchor(),
     ));
     const insertedRows = input.canonicalItems.length === 0
       ? []
