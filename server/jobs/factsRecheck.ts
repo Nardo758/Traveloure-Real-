@@ -1,8 +1,8 @@
 /**
  * `facts-recheck` — the T-3 re-check (surface spec v1.3.4 R-ad / R-v / §9 Jobs; step 6 — ledger
- * `2026-10-04-step6-trip-card`). Track A writes the job FUNCTION; the engineer registers it in the
- * automation registry with its heartbeat stamp (route, `JOB_CADENCE`, `BUCKET_ROUTES` — one commit),
- * per the step 6 brief. Until then nothing calls it, and the banner says nothing.
+ * `2026-10-04-step6-trip-card`). The authenticated internal route registers this function with
+ * `runJob`, the daily `JOB_CADENCE` roster and the cron script's daily `BUCKET_ROUTES`.
+ * Only a real endpoint-driven success stamps its heartbeat; the banner requires a conflict notice.
  *
  * For every plan that starts in 3 days (UTC calendar): re-run the facts lookups for its stops (cache
  * first — the Places spine's shared 30-day cache, a miss billed under its own cap), then compute the
