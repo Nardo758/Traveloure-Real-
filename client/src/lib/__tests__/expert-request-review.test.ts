@@ -89,6 +89,9 @@ function stripComments(src: string): string {
       i++;
       continue;
     }
+    // A `'` straight after a letter is an apostrophe in JSX text ("mount's"), never a string
+    // opener — no string literal can follow an identifier character.
+    if (ch === "'" && /[A-Za-z0-9]/.test(src[i - 1] ?? "")) { i++; continue; }
     if (ch === '"' || ch === "'" || ch === "`") { quote = ch; i++; continue; }
     if (ch === "/" && next === "/") {
       while (i < src.length && src[i] !== "\n") { out[i] = " "; i++; }

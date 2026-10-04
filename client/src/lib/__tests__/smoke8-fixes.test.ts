@@ -38,7 +38,10 @@ test("Z2 several pins: fit, clamped to the district", () => {
 });
 
 test("Z3 the slip map frames through the rule", () => {
-  const map = src("components/plancard/MapControlCenter.tsx");
+  // Surface step 5: the framing moved into the map's renderers — Google keeps the clamp; the
+  // Leaflet fallback frames through the same rule.
+  assert.match(src("components/plancard/map/SceneMapLeaflet.tsx"), /mapFraming\(/);
+  const map = src("components/plancard/map/SceneMapGoogle.tsx");
   assert.match(map, /mapFraming\(/);
   assert.match(map, /clampFramingZoom\(map\.getZoom\(\), framing\.maxZoom\)/);
   assert.match(map, /if \(framing\.kind === "center"\) \{\s*map\.setCenter\(framing\.center\);\s*map\.setZoom\(framing\.zoom\);/);

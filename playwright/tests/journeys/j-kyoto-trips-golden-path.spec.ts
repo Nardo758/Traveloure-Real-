@@ -1317,6 +1317,108 @@ test.describe("6 · paid run", () => {
     expect(Array.isArray(body.findings)).toBe(true);
     for (const f of body.findings ?? []) expect(Object.keys(f).sort().filter((k) => !["caveat", "est"].includes(k))).toEqual(["count", "days", "kind"]);
   });
+  test("§6 step 5 — one map with the version toggle; the board adopts a day by drag and gates the fourth re-time", async ({ page }) => {
+    // The run is SEEDED (a paid run needs a Stripe test key and a model key this job does not hold):
+    // three AI versions on one comparison, exactly the rows a run writes, with `source_item_id`.
+    test.setTimeout(150_000);
+    await page.setViewportSize({ width: 1366, height: 900 });
+    const me = await signedInTraveler(page, "s5map");
+    const tripId = await createTrip(page.request, "Kyoto versions", KYOTO);
+    const kiyo = await createItem(page.request, tripId, "Kiyomizu-dera", 1);
+    const gion = await createItem(page.request, tripId, "Gion stroll", 1);
+    const area = await createItem(page.request, tripId, "Arashiyama (area)", 1);
+    await rows(`UPDATE itinerary_items SET latitude = $2, longitude = $3, start_time = $4 WHERE id = $1`, [kiyo, "34.9949", "135.7850", "09:00"]);
+    await rows(`UPDATE itinerary_items SET latitude = $2, longitude = $3, start_time = $4 WHERE id = $1`, [gion, "35.0037", "135.7788", "11:00"]);
+    await rows(`UPDATE itinerary_items SET start_time = '13:00' WHERE id = $1`, [area]);
+    const run = `s5-${Date.now().toString(36)}`;
+    const cmp = `${run}-cmp`;
+    const V = { A: `${run}-vA`, B: `${run}-vB`, C: `${run}-vC` };
+    await rows(`INSERT INTO itinerary_comparisons (id, user_id, trip_id, title, destination, status) VALUES ($1, $2, $3, 'Kyoto versions', $4, 'generated')`, [cmp, me.id, tripId, KYOTO]);
+    for (const [k, name, sort] of [["A", "Budget", 1], ["B", "Relaxed", 2], ["C", "Experience", 3]] as const) {
+      await rows(`INSERT INTO itinerary_variants (id, comparison_id, name, source, status, sort_order, run_id) VALUES ($1, $2, $3, 'ai_optimized', 'generated', $4, $5)`, [V[k], cmp, name, sort, `${run}-run`]);
+    }
+    const vitem = (variant: string, key: string, sort: number, name: string, start: string, end: string, source: string | null, lat: string | null, lng: string | null) =>
+      rows(
+        `INSERT INTO itinerary_variant_items (id, variant_id, day_number, sort_order, name, service_type, start_time, end_time, source_item_id, latitude, longitude)
+         VALUES ($1, $2, 1, $3, $4, 'activity', $5, $6, $7, $8, $9)`,
+        [`${run}-${key}`, variant, sort, name, start, end, source, lat, lng],
+      );
+    // A keeps the day; B puts Gion first, drops Kiyomizu-dera and adds Fushimi Inari; C keeps it.
+    // Every version carries the area-only stop, unlocated, exactly as the run copies it.
+    for (const v of [V.A, V.C]) {
+      await vitem(v, `${v}-1`, 0, "Kiyomizu-dera", "09:00", "10:30", kiyo, "34.9949", "135.7850");
+      await vitem(v, `${v}-2`, 1, "Gion stroll", "11:00", "12:00", gion, "35.0037", "135.7788");
+      await vitem(v, `${v}-3`, 2, "Arashiyama (area)", "13:00", "15:00", area, null, null);
+    }
+    await vitem(V.B, "b1", 0, "Gion stroll", "09:00", "10:00", gion, "35.0037", "135.7788");
+    await vitem(V.B, "b2", 1, "Fushimi Inari", "10:30", "12:30", null, "34.9671", "135.7727");
+    await vitem(V.B, "b3", 2, "Arashiyama (area)", "13:00", "15:00", area, null, null);
+
+    // ── The slip's ONE map: located stops pinned, the area stop listed, the version redraws ──────
+    await page.goto(`/plans/${tripId}`);
+    await testid(page, "button-slip-view-map").click();
+    const map = testid(page, `map-control-center-${tripId}`);
+    await expect(map).toBeVisible({ timeout: 20_000 });
+    await expect(testid(page, `map-pin-${kiyo}`)).toHaveCount(1, { timeout: 20_000 });
+    await expect(testid(page, `map-pin-${gion}`)).toHaveCount(1);
+    await expect(testid(page, `map-pin-${area}`)).toHaveCount(0);
+    await expect(testid(page, "map-not-on-map")).toContainText("Arashiyama");
+    if ((await map.getAttribute("data-map-renderer")) === "leaflet") await expect(testid(page, "map-fallback-notice")).toHaveText("Map by OpenStreetMap");
+    await testid(page, "map-version-B").click();
+    await expect(testid(page, `map-pin-${run}-b1`)).toHaveAttribute("data-pin-state", "moved", { timeout: 10_000 }).catch(async () => {
+      // The Google renderer draws its own marker element; the state is the scene's either way.
+      await expect(testid(page, `map-pin-${run}-b1`)).toHaveCount(1);
+    });
+    await expect(testid(page, `map-ghost-${kiyo}`)).toHaveCount(1);
+
+    // ── The board: 4a cards, then 4c — drag B's day 1 onto Your plan, apply ─────────────────────
+    await page.goto(`/itinerary-comparison/${cmp}`);
+    await expect(testid(page, "versions-board")).toBeVisible({ timeout: 20_000 });
+    for (const l of ["A", "B", "C"]) await expect(testid(page, `versions-card-${l}`)).toBeVisible();
+    await expect(testid(page, "versions-card-day-A-1")).toContainText("Same as draft");
+    await testid(page, "versions-by-day-B").click();
+    await expect(testid(page, "versions-desktop")).toBeVisible();
+    await testid(page, "versions-desk-day-handle-B-1").dragTo(testid(page, "versions-desk-plan-day-1"));
+    await expect(testid(page, "versions-desk-plan-pick-1")).toContainText("From B");
+    await expect(testid(page, "versions-apply")).toHaveText("Apply 1 day");
+    const applied = page.waitForResponse((r) => r.url().includes(`/api/trips/${tripId}/versions/apply-days`) && r.request().method() === "POST");
+    await testid(page, "versions-apply").click();
+    expect((await applied).status()).toBe(200);
+    const day1 = await rows<{ title: string; source_variant_id: string | null }>(
+      `SELECT title, source_variant_id FROM itinerary_items WHERE trip_id = $1 AND day_number = 1 ORDER BY sort_order`,
+      [tripId],
+    );
+    expect(day1.filter((r) => r.source_variant_id === V.B).map((r) => r.title).sort()).toEqual(["Arashiyama (area)", "Fushimi Inari", "Gion stroll"]);
+    expect(day1.some((r) => r.title === "Kiyomizu-dera"), "the dropped stop left the day").toBe(false);
+    const variantRows = await rows(`SELECT id FROM itinerary_variant_items WHERE variant_id = $1`, [V.B]);
+    expect(variantRows.length, "the run is untouched").toBe(3);
+
+    // ── Re-time: one free re-time by drag, two more by the rail, then the fourth is gated ────────
+    await expect(testid(page, "versions-retime-line-1")).toContainText("free · 3 left", { timeout: 15_000 });
+    const planStops = page.locator('[data-testid^="versions-desk-plan-stop-"]');
+    await expect(planStops).toHaveCount(3);
+    const retimed = page.waitForResponse((r) => /\/days\/1\/retime$/.test(new URL(r.url()).pathname) && r.request().method() === "POST");
+    await planStops.nth(2).dragTo(planStops.nth(0));
+    expect((await retimed).status()).toBe(200);
+    for (let i = 0; i < 2; i++) {
+      const ids = (await rows<{ id: string }>(`SELECT id FROM itinerary_items WHERE trip_id = $1 AND day_number = 1 ORDER BY sort_order`, [tripId])).map((r) => r.id);
+      const r = await page.request.post(`${BASE_URL}/api/trips/${tripId}/days/1/retime`, { data: { order: [...ids].reverse() } });
+      expect(r.status()).toBe(200);
+    }
+    await page.reload();
+    await testid(page, "versions-by-day-B").click();
+    await expect(testid(page, "versions-retime-line-1")).toContainText("Re-timing now is a paid run", { timeout: 15_000 });
+    let fourthSent = false;
+    page.on("request", (req) => {
+      if (/\/days\/1\/retime$/.test(new URL(req.url()).pathname)) fourthSent = true;
+    });
+    const stopsNow = page.locator('[data-testid^="versions-desk-plan-stop-"]');
+    await stopsNow.nth(2).dragTo(stopsNow.nth(0));
+    await expect(testid(page, "versions-retime-paid")).toContainText("Nothing has been changed.");
+    expect(fourthSent, "the paid gate is said before anything is sent").toBe(false);
+    const counted = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM plan_day_retimes WHERE trip_id = $1`, [tripId]);
+    expect(counted[0].n).toBe(3);
+  });
   test.fixme("§6 today — pay in test mode; the board shows the baseline and up to three versions; adopt one stop", async () => {
     // TODAY-PASSABLE IN THE PRODUCT, NOT IN THIS JOB: needs a Stripe test key (the job runs the stub,
     // ruling 38) and a model key for the run. Missing code: none — missing CI secrets.

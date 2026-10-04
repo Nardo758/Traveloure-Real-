@@ -38,10 +38,22 @@ test("M1: Find a host on a generic item, category preset", () => {
   assert.equal(q.get("tripId"), "t1");
 });
 
-test("M2: no Find a host for a named place or an unhireable type", () => {
+test("M1b (step 5, R-w): the slip's MAPPED types get their preset — the bug the rule closed", () => {
+  // The slip passes the plancard's mapped type: activity → attraction, meal → dining. Before the fix
+  // only transport and stays offered "Find a host" on the slip.
+  const q = (type: string) =>
+    new URLSearchParams(findHostHref({ name: "Lunch", type, locationName: null }, { city: "Kyoto", tripId: "t1" })!.split("?")[1]);
+  assert.equal(q("attraction").get("categoryKey"), "activity_provider");
+  assert.equal(q("dining").get("categoryKey"), "dining_venue");
+  assert.equal(q("transport").get("categoryKey"), "private_transportation");
+});
+
+test("M2 (step 5, R-w): no Find a host for a named place; ANY venue-less item gets one, whatever its type", () => {
   assert.equal(findHostHref({ name: "Kinkaku-ji visit", type: "activity", locationName: null }, { city: "Kyoto", tripId: "t1" }), null);
-  assert.equal(findHostHref({ name: "Free time", type: "free_time" }, { city: "Kyoto", tripId: "t1" }), null);
-  assert.equal(findHostHref({ name: "Dinner", type: null }, { city: "Kyoto", tripId: "t1" }), null);
+  const free = findHostHref({ name: "Free time", type: "free_time" }, { city: "Kyoto", tripId: "t1" });
+  assert.ok(free && free.startsWith("/services?"));
+  assert.equal(new URLSearchParams(free!.split("?")[1]).get("categoryKey"), null, "no invented preset — an unfiltered browse");
+  assert.ok(findHostHref({ name: "Dinner", type: null }, { city: "Kyoto", tripId: "t1" }));
 });
 
 test("M3: where an anchor was fixed", () => {

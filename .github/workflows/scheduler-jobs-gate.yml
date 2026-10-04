@@ -152,6 +152,11 @@ jobs:
       # moment × user (a second tap updates), server-filled context, unknown pairs refused. F1–F5.
       - name: Feedback events — a second tap updates; unknown codes refused
         run: npx tsx --test --test-force-exit server/__tests__/feedback-events.db.test.ts
+      # Surface step 5 (ledger `2026-10-04-surface-step5-map-versions`, migrations 343/344): the versions
+      # board read, per-day apply with provenance (moved in place, locked kept, draft and run untouched),
+      # and R-ac's free re-times — the fourth refused with nothing written. B1–B4.
+      - name: Versions board — per-day apply and the free re-time limit
+        run: npx tsx --test --test-force-exit server/__tests__/version-board.db.test.ts
 
       # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): no legacy crowd/pulse field on
       # the four public routes, the 48h Trend freshness gate, and /api/health's score age. T1–T4.
