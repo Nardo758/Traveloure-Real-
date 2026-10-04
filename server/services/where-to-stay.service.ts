@@ -72,7 +72,7 @@ import {
   reopenOptionSet,
 } from "./plan-option-sets.service";
 import { enrichPlanItems } from "./content-facts/place-facts.service";
-import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
+import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
@@ -515,10 +515,12 @@ async function setItemAsStay(
   });
   const chosen = await chooseOption({ tripId, setId, optionId: option.id, userId });
   // The replacing item's place now lives on the stay row; the hand-added row it came from goes.
+  // rebuild-guard-exempt: in_planning-only AND unbooked AND not machine-protected (expert work, locked) —
+  // one traveler-chosen row moved into the stay, never a rebuild.
   // item-removed:replace — the place MOVES into the plan's stay row (one operation); it is not removed.
   await db
     .delete(itineraryItems)
-    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`, itineraryItemRebuildDeletable()));
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`, itineraryItemNotMachineProtected()));
   return { setId, itemId: chosen.itemId, replaced: stay.title };
 }
 

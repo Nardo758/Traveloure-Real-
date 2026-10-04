@@ -81,7 +81,7 @@ export default function PlanVersionsPage() {
     return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center" data-testid="plan-versions-not-found">
         <p className="text-sm text-muted-foreground">We couldn't find that plan.</p>
-        <Link href="/my-plans" className="mt-3 inline-block text-sm underline">
+        <Link href="/my-trips" className="mt-3 inline-block text-sm underline">
           Back to my plans
         </Link>
       </div>
