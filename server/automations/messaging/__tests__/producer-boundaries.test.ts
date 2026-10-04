@@ -7,13 +7,14 @@ import {
   wrapEmailProviderTransport,
 } from "../producer-index";
 
-test("messaging producer definitions register ten unique active boundaries", () => {
+test("messaging producer definitions register eleven unique active boundaries", () => {
   const registry = createAutomationRegistry(producerAutomations);
   assert.deepEqual(Array.from(registry.byId.keys()), [
     "messaging.auth-password-reset-email",
     "messaging.auth-verification-email",
     "messaging.auth-welcome-email",
     "messaging.plan-delivered-email",
+    "messaging.itinerary-failed-email",
     "messaging.plan-approved-email",
     "messaging.plan-changes-requested-email",
     "messaging.plan-suggestion-email",

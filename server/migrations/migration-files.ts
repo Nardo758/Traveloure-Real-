@@ -1914,4 +1914,5 @@ export const MIGRATION_FILES = [
   // 345 — feedback_events (ledger 2026-10-04-feedback-phase-a). New table, all columns nullable, no
   // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "345_feedback_events.sql",
+  "346_itinerary_followup_booking_guard.sql",
 ] as const;
