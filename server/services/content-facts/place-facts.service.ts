@@ -511,7 +511,6 @@ export async function factPointsForTrip(tripId: string, now: Date = new Date()):
  * — what the photo resolver keys its Wikimedia cache on and searches near. Read here, the one reader
  * of `place_facts` (content-facts C5), never in the photo service.
  */
-<<<<<<< HEAD
 export type PlaceRefView = {
   placeId: string | null;
   lat: number | null;
@@ -531,14 +530,6 @@ export async function placeRefsForTrip(tripId: string, itemIds: string[], now: D
         cur.photoRef = { name: first.name, authors: Array.isArray(first.authors) ? first.authors : [] };
       }
     }
-=======
-export async function placeRefsForTrip(tripId: string, itemIds: string[], now: Date = new Date()): Promise<Map<string, { placeId: string | null; lat: number | null; lng: number | null }>> {
-  const rows = (await rowsForTrip(tripId, itemIds)).filter((r) => !isFactStale(r, now));
-  const out = new Map<string, { placeId: string | null; lat: number | null; lng: number | null }>();
-  for (const r of rows) {
-    if (!r.itineraryItemId) continue;
-    const cur = out.get(r.itineraryItemId) ?? { placeId: null, lat: null, lng: null };
->>>>>>> origin/main
     if (!cur.placeId && r.placeRefKind === "place_id") cur.placeId = r.placeRef;
     if (cur.lat == null && r.factType === "location") {
       const lat = Number((r.value as any)?.lat);
