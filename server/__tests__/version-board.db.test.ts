@@ -129,7 +129,15 @@ test("B3 three free re-times, the fourth is refused with the paid-run answer and
   const before4 = (await db.execute(sql`SELECT id, start_time FROM itinerary_items WHERE trip_id = ${T} AND day_number = 2 ORDER BY id`)).rows;
   await assert.rejects(
     retimeDay({ tripId: T, userId: OWNER, day: 2, order: order.slice().reverse() }),
-    (e: unknown) => e instanceof VersionBoardError && e.code === "retime_paid" && e.status === 409,
+    (e: unknown) => {
+      assert.ok(e instanceof VersionBoardError && e.code === "retime_paid" && e.status === 409);
+      // The refusal states the paid run and, when the fee resolver answers, its price.
+      assert.match(e.message, /^Re-timing now is a paid run/);
+      const fee = (e.extra as any).fee;
+      assert.ok(fee && "label" in fee);
+      if (fee.label) assert.ok(e.message.includes(fee.label), "the message names the fee");
+      return true;
+    },
   );
   const after4 = (await db.execute(sql`SELECT id, start_time FROM itinerary_items WHERE trip_id = ${T} AND day_number = 2 ORDER BY id`)).rows;
   assert.deepEqual(after4, before4, "the fourth re-time re-timed nothing");

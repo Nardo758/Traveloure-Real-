@@ -22,10 +22,11 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryComparisons, itineraryItems, itineraryVariantItems, itineraryVariants, planDayRetimes } from "@shared/schema";
+import { itineraryComparisons, itineraryItems, itineraryVariantItems, itineraryVariants, planDayRetimes, trips } from "@shared/schema";
 import {
   diffVersionDays,
   retimeIsFree,
+  retimeLine,
   versionBadges,
   versionLabel,
   type BoardStop,
@@ -39,8 +40,10 @@ import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { choosePickInTx, openSetHeldItemIds } from "./version-adopt.service";
 import { planRole } from "./plan-option-sets.service";
 import { recordRunOutcome } from "./optimizer-runs.service";
-import { retimeDayInOrder } from "./smart-sequencing.service";
 import { optimizerFreeRetimes } from "../config/optimizer-retimes.config";
+import { complexityTier, retimeDayInOrder } from "./smart-sequencing.service";
+import { getFee } from "./optimization-fee.service";
+import { coversAction } from "./trip-entitlement.service";
 
 export class VersionBoardError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly extra: Record<string, unknown> = {}) {
@@ -101,6 +104,9 @@ async function planStops(tripId: string, exec: any = db): Promise<Array<BoardSto
       startTime: r.startTime || null,
       endTime: r.endTime || null,
       durationMinutes: r.durationMinutes ?? null,
+      lat: num(r.latitude),
+      lng: num(r.longitude),
+      sourceVariantId: r.sourceVariantId ?? null,
       routingStatus: r.routingStatus ?? null,
       // A fixed point the optimizer never moves (the same classes apply-days never touches).
       fixed: r.routingStatus !== "in_planning" || !!r.bookingId || itineraryItemIsMachineProtected(r),
@@ -133,6 +139,23 @@ function toBoardStop(r: typeof itineraryVariantItems.$inferSelect): BoardStop {
     lat: num(r.latitude),
     lng: num(r.longitude),
   };
+}
+
+/**
+ * Past the free re-times, a re-time is the EXISTING paid optimizer run — this states its price from
+ * the one fee resolver (`getFee`, §8 — no literal here) and the Trip Pass coverage the charge path
+ * itself reads, so the refusal names what the run would cost. No charge happens here.
+ */
+export async function paidRetimeFee(tripId: string): Promise<{ priceCents: number | null; currency: string | null; coveredByTripPass: boolean; label: string | null }> {
+  const [trip] = await db.select({ eventType: trips.eventType }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  const eventType = trip?.eventType ?? undefined;
+  const covered = await coversAction(tripId, "optimizer_run").catch(() => false);
+  if (covered) return { priceCents: null, currency: null, coveredByTripPass: true, label: "covered by your Trip Pass" };
+  const resolved = await getFee(eventType, complexityTier(eventType)).catch(() => null);
+  if (!resolved || resolved.isDisabled || !(resolved.priceCents > 0)) return { priceCents: null, currency: null, coveredByTripPass: false, label: null };
+  const amount = (resolved.priceCents / 100).toFixed(2);
+  const label = resolved.currency && resolved.currency.toUpperCase() !== "USD" ? `${resolved.currency.toUpperCase()} ${amount}` : `$${amount}`;
+  return { priceCents: resolved.priceCents, currency: resolved.currency, coveredByTripPass: false, label };
 }
 
 export interface VersionsBoardView {
@@ -323,7 +346,8 @@ export async function retimeDay(input: {
     const variantId = prov?.variantId ?? null;
     const used = (await retimeCounts(input.tripId, run.runAt, tx))[variantId ?? ""] ?? 0;
     if (!retimeIsFree({ runAt: run.runAt, now, used, limit })) {
-      throw new VersionBoardError(409, "retime_paid", "Re-timing this day now is a paid run", { limit, used });
+      const fee = await paidRetimeFee(input.tripId);
+      throw new VersionBoardError(409, "retime_paid", retimeLine({ free: false, remaining: 0, feeLabel: fee.label }), { limit, used, fee });
     }
     // A swap-in: the version's stop joins this day (moved if it keeps a plan row elsewhere, else inserted).
     let order = [...input.order];

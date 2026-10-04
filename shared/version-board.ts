@@ -38,6 +38,8 @@ export interface BoardStop {
    * never "dropped".
    */
   fixed?: boolean;
+  /** Plan stops only: the version this row was adopted from (migration 343); null when never adopted. */
+  sourceVariantId?: string | null;
 }
 
 export interface DayDiff {
