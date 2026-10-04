@@ -89,7 +89,7 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
   // 2026-08-05) and the service code deleted, so nothing can report against it anymore.
   // server/services/serp.service.ts: `process.env.SERP_API_KEY`
   serpapi: { label: "SerpAPI", isConfigured: () => !!process.env.SERP_API_KEY },
-  // server/services/google-places-photos.service.ts: `process.env.GOOGLE_MAPS_API_KEY`
+  // Google Maps Platform callers (R298: `@shared/maps-billing`): `process.env.GOOGLE_MAPS_API_KEY`
   google_places: { label: "Google Places", isConfigured: () => !!process.env.GOOGLE_MAPS_API_KEY },
   // server/services/booking-com.service.ts: `isConfigured()` = `!!AFFILIATE_ID`
   booking_com: { label: "Booking.com", isConfigured: () => !!process.env.BOOKING_COM_AFFILIATE_ID },

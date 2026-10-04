@@ -1,12 +1,13 @@
 // Media Aggregator Service - Combines photos and videos from multiple sources
-// Coordinates Unsplash, Pexels, and Google Places to create comprehensive media galleries
+// Coordinates Unsplash and Pexels to create comprehensive media galleries.
+// R298: Google Places photos are NOT a source here — the legacy Place Photo URLs carried the server
+// key to the browser and billed per image load. Place photos come only from the R-aq resolver.
 
 import { db } from "../db";
 import { cityMediaCache, travelPulseCities, type InsertCityMediaCache, type CityMediaCache } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { unsplashService, type UnsplashMediaResult } from "./unsplash.service";
 import { pexelsService, type PexelsMediaResult } from "./pexels.service";
-import { googlePlacesPhotosService, type GooglePlacesPhotoResult } from "./google-places-photos.service";
 
 export interface CityIntelligenceContext {
   cityName: string;
@@ -42,11 +43,10 @@ class MediaAggregatorService {
     }
 
     // Fetch from all sources in parallel
-    const [unsplashPhotos, pexelsPhotos, pexelsVideos, googlePhotos] = await Promise.all([
+    const [unsplashPhotos, pexelsPhotos, pexelsVideos] = await Promise.all([
       this.fetchUnsplashPhotos(context),
       this.fetchPexelsPhotos(context),
       this.fetchPexelsVideos(context),
-      this.fetchGooglePlacesPhotos(context),
     ]);
 
     // Clear old cache for this city
@@ -74,11 +74,6 @@ class MediaAggregatorService {
       }
     });
 
-    // Google Places photos (for attractions)
-    googlePhotos.forEach((photo) => {
-      allMedia.push(this.transformGoogleToCache(photo, context));
-    });
-
     // Insert all media into cache
     if (allMedia.length > 0) {
       await db.insert(cityMediaCache).values(allMedia);
@@ -104,7 +99,10 @@ class MediaAggregatorService {
         and(
           eq(cityMediaCache.cityName, cityName),
           eq(cityMediaCache.country, country),
-          eq(cityMediaCache.isActive, true)
+          eq(cityMediaCache.isActive, true),
+          // R298: a row a pre-R298 refresh stored from Google carries the server key in its URL —
+          // never served (it would also bill Places Photo per view). It ages out at the next refresh.
+          sql`${cityMediaCache.source} IS DISTINCT FROM ${"google_places"}`
         )
       )
       .orderBy(desc(cityMediaCache.qualityScore));
@@ -180,30 +178,6 @@ class MediaAggregatorService {
       return videos;
     } catch (error) {
       console.error('[MediaAggregator] Pexels video fetch error:', error);
-      return [];
-    }
-  }
-
-  private async fetchGooglePlacesPhotos(context: CityIntelligenceContext): Promise<GooglePlacesPhotoResult[]> {
-    try {
-      if (context.attractions && context.attractions.length > 0) {
-        const photos = await googlePlacesPhotosService.getMultipleAttractionPhotos(
-          context.attractions.slice(0, 5),
-          context.cityName
-        );
-        console.log(`[MediaAggregator] Fetched ${photos.length} Google Places photos`);
-        return photos;
-      }
-      // Fallback to landmark photos
-      const photos = await googlePlacesPhotosService.getCityLandmarkPhotos(
-        context.cityName,
-        context.country,
-        5
-      );
-      console.log(`[MediaAggregator] Fetched ${photos.length} Google Places landmark photos`);
-      return photos;
-    } catch (error) {
-      console.error('[MediaAggregator] Google Places fetch error:', error);
       return [];
     }
   }
@@ -305,40 +279,6 @@ class MediaAggregatorService {
       sourceUrl: video.sourceUrl,
       license: video.license,
       qualityScore: 75,
-      isPrimary: false,
-      expiresAt,
-      isActive: true,
-    };
-  }
-
-  private transformGoogleToCache(
-    photo: GooglePlacesPhotoResult,
-    context: CityIntelligenceContext
-  ): InsertCityMediaCache {
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + this.cacheExpiryHours);
-
-    return {
-      cityId: context.cityId,
-      cityName: context.cityName,
-      country: context.country,
-      source: 'google_places',
-      mediaType: 'photo',
-      url: photo.url,
-      thumbnailUrl: photo.thumbnailUrl,
-      width: photo.width,
-      height: photo.height,
-      context: 'attraction',
-      contextQuery: photo.attractionName,
-      attractionName: photo.attractionName,
-      photographerName: photo.photographerName,
-      photographerUrl: photo.photographerUrl,
-      sourceName: photo.sourceName,
-      sourceUrl: photo.sourceUrl,
-      license: photo.license,
-      googlePlaceId: photo.googlePlaceId,
-      htmlAttributions: photo.htmlAttributions, // Required by Google - must display exactly as provided
-      qualityScore: 85, // Google Places often has better quality for attractions
       isPrimary: false,
       expiresAt,
       isActive: true,

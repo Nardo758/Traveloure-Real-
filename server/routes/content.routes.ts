@@ -6453,7 +6453,8 @@ router.get("/api/geocode", async (req, res) => {
     try {
       const { address } = req.query as { address?: string };
       if (!address) return res.status(400).json({ message: "address required" });
-      if (!process.env.GOOGLE_MAPS_API_KEY) return res.status(503).json({ message: "Maps API not configured" });
+      // R298: the geocoder answers only when its Maps billing switch is on (and a key is set).
+      if (!process.env.GOOGLE_MAPS_API_KEY || process.env.MAPS_GEOCODE_ENABLED !== "1") return res.status(503).json({ message: "Maps API not configured" });
       const result = await geocodeAddress(address);
       if (!result) return res.status(404).json({ message: "Location not found" });
       res.json(result);
@@ -6495,7 +6496,6 @@ router.get("/api/search/experiences", async (req, res) => {
         });
       }
 
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];
 
       // ── Platform provider services FIRST (W-3 task 2: "one registry-backed search" —
@@ -6567,52 +6567,19 @@ router.get("/api/search/experiences", async (req, res) => {
       } catch (_) {}
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
-      if (includeGoogle && apiKey) {
+      // R298: Places API (New) behind the Maps billing gate, explicit mask, NO photo (the legacy
+      // photo URL carried the server key to the browser and billed "Places Photo" per image load).
+      if (includeGoogle) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
           hotels: "lodging",
-          activities: "tourist_attraction|museum|amusement_park|park|spa",
+          activities: "tourist_attraction",
           all: "",
         };
-        const typeFilter = catToType[category || "all"] || "";
+        const includedType = catToType[category || "all"] || null;
         const searchQuery = [q, destination].filter(Boolean).join(" in ");
-        const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
-        placesUrl.searchParams.set("query", searchQuery);
-        placesUrl.searchParams.set("key", apiKey);
-        if (typeFilter) placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
-
-        const resp = await fetch(placesUrl.toString());
-        if (resp.ok) {
-          const data: any = await resp.json();
-          const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-          const catFromTypes = (types: string[]): string => {
-            if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
-            if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
-            if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
-            if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
-            return "activity";
-          };
-          for (const place of (data.results || []).slice(0, 15)) {
-            const photoRef = place.photos?.[0]?.photo_reference;
-            results.push({
-              id: `gp_${place.place_id}`,
-              source: "google_places",
-              placeId: place.place_id,
-              name: place.name,
-              address: place.formatted_address,
-              category: catFromTypes(place.types || []),
-              rating: place.rating ?? null,
-              reviewCount: place.user_ratings_total ?? null,
-              priceLevel: place.price_level ?? null,
-              priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
-              location: place.geometry?.location ?? null,
-              photoUrl: photoRef
-                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
-                : null,
-              mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-            });
-          }
-        }
+        const { searchWorkspacePlaces } = await import("../services/maps-billing/places-text-search");
+        results.push(...(await searchWorkspacePlaces(searchQuery, includedType)));
       }
 
       res.json({ results, count: results.length });
