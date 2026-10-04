@@ -8081,6 +8081,21 @@ export const transportLegs = pgTable("transport_legs", {
   // 'confirmed' (expert-confirmed; the ONLY state traveler surfaces render). NULL = legacy
   // variant leg, grandfathered. DB CHECK (migration 154) allows NULL.
   proposalStatus: varchar("proposal_status", { length: 20 }),
+  // Migration 347 (work plan L1-1). All nullable, no DEFAULT/CHECK/index/FK, no backfill.
+  // R-ay: the author's tip, plain text <=140 chars (app-enforced); written only by the trip author or a
+  // write-status advisor; cloned with the leg; never rewritten by the engine. NULL = no tip.
+  authorTip: text("author_tip"),
+  // R-az: "via host pickup" — a provider_services id (no FK). Admitted only for a pickup-capable
+  // listing the provider has confirmed (`legPickupRefusal`). NULL = no host pickup.
+  pickupProviderServiceId: varchar("pickup_provider_service_id"),
+  // R-bf: stamped when the author / a write-status advisor confirms the leg. NULL = never checked.
+  checkedBy: varchar("checked_by"),
+  checkedAt: timestamp("checked_at"),
+  // R-ba: `author_pick` | `rerouted_for_stay` on a buyer's copy (writers: L1-3/L1-4). NULL = not a copy.
+  origin: varchar("origin", { length: 30 }),
+  // R-bb: `ok` | `changed` | `broken` from the re-check job (writer: L1-5). NULL = never re-checked.
+  legCheckStatus: varchar("leg_check_status", { length: 20 }),
+  legCheckedAt: timestamp("leg_checked_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

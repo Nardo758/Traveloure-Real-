@@ -1917,4 +1917,7 @@ export const MIGRATION_FILES = [
   // 346 — place_photos (ledger 2026-10-04-step6-trip-card, R-aq). New table: NOT NULL on identity
   // columns only, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. HELD for the founder's ruling.
   "346_place_photos.sql",
+  // 347 — transport_legs authoring columns (work plan L1-1; R-ay/R-az/R-bf). Seven nullable columns,
+  // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
+  "347_transport_leg_authoring.sql",
 ] as const;
