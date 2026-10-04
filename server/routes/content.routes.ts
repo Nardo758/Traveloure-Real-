@@ -204,7 +204,8 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
+import { buildAnchorPromptBlock, validateAnchorConflicts, withinFlightWindows } from "../services/smart-sequencing.service";
+import { travelItemKind } from "@shared/getting-there";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
@@ -4852,6 +4853,36 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           ).kept.map(({ dayNumber: _d, ...a }: any) => a),
         }));
         if (heldSlots.some((h) => h.categoryKey === "accommodation")) normalizedResult.accommodationSuggestions = [];
+      }
+      // Smoke 10 S10-1(b) (R-i, R-an): nothing before arrival + buffer on the arrival day and nothing past
+      // the departure cut-off on the departure day — the prompt says so; storage makes it true. The
+      // stored plan is filtered by the same rule so the two never disagree.
+      if (tripAnchors.length) {
+        const minutesOf = (d: unknown) => {
+          const m = /(\d+)/.exec(String(d ?? ""));
+          return m ? Number(m[1]) : null;
+        };
+        const isTravelRow = (title: unknown, location: unknown) => travelItemKind({ name: String(title ?? ""), location: String(location ?? ""), origin: "ai" }) !== null;
+        const startIso = dates?.start ?? normalizedResult.dailyItinerary[0]?.date;
+        const cut = withinFlightWindows(normalizedResult.canonicalItems, tripAnchors as any, startIso, {
+          day: (it) => Number(it.dayNumber),
+          time: (it) => it.time,
+          duration: (it) => it.durationMinutes,
+          isTravelRow: (it) => isTravelRow(it.title, it.location),
+        });
+        if (cut.dropped.length) {
+          console.info(`[ai-draft] flight-window plan_id=${resolvedTripId || "none"} dropped=${cut.dropped.length}`);
+        }
+        normalizedResult.canonicalItems = cut.kept;
+        normalizedResult.dailyItinerary = normalizedResult.dailyItinerary.map((d: any) => ({
+          ...d,
+          activities: withinFlightWindows(Array.isArray(d.activities) ? d.activities : [], tripAnchors as any, startIso, {
+            day: () => Number(d.day),
+            time: (a: any) => a.time,
+            duration: (a: any) => minutesOf(a.duration),
+            isTravelRow: (a: any) => isTravelRow(a.name, a.location),
+          }).kept,
+        }));
       }
       // Smoke 4, item 4 (ledger `2026-10-02-smoke4-draft-fixes`): a draft with no place to stay has
       // no hotel in it. Day 1's hotel item becomes the arrival and the last day's the departure, with

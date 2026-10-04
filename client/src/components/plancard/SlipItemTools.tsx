@@ -44,6 +44,9 @@ import {
 function invalidatePlan(tripId: string) {
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+  // Smoke 10 S10-5: the Optimize card's findings (clashes, closed-on-arrival…) are read off the
+  // items, so any item write refetches them — no stale clash count until reload.
+  queryClient.invalidateQueries({ queryKey: ["/api/optimization-preview", { tripId }] });
 }
 
 /** The shape `GET /api/trips/:tripId/itinerary-items` answers with — the rows themselves, by day. */

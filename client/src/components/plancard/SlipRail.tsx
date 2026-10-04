@@ -44,7 +44,7 @@
  * is not rendered at all.
  */
 import { helpArticlePath } from "@shared/help-article-slugs";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   CalendarPlus,
@@ -322,6 +322,20 @@ function BuildCard({
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [paySheet, setPaySheet] = useState<OptimizationPaymentSheet | null>(null);
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
+  // Smoke 10 S10-2: the versions board's Optimize card lands here with `?optimize=1` — the SAME
+  // flow the rail's own Optimize opens (what the run is built around, then the fee), never a second.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("optimize") !== "1") return;
+      params.delete("optimize");
+      const rest = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+      setBuildAroundOpen(true);
+    } catch {
+      /* no URL to read */
+    }
+  }, []);
   const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
   const confirmedPinnedAnchor = useRef<ComparisonPinnedAnchor | undefined>(undefined);
 

@@ -88,7 +88,7 @@ describe("tools tray", () => {
       [{ anchorType: "flight_arrival", anchorDatetime: "2026-11-11T15:25:00.000Z", location: "KIX", description: "JL 61 · LAX → KIX · arrives T1" }],
       "flight_arrival",
     );
-    assert.deepEqual(flight, { time: "15:25", location: "KIX", description: "JL 61 · LAX → KIX · arrives T1" });
+    assert.deepEqual(flight, { time: "15:25", location: "KIX", description: "JL 61 · LAX → KIX · arrives T1", bufferMinutes: null });
     const real = renderToString(React.createElement(TravelAnchorPlaceholder, { kind: "arrival", city: "Kyoto, Japan", flight }));
     assert.ok(real.includes('data-anchor-real="true"'));
     assert.ok(real.includes("15:25"));

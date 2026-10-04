@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { FactView } from "@shared/content-facts";
 import type { PlanCardActivity } from "@/components/plancard/plancard-types";
-import { itemFactsLine, itemPlaceLine } from "@/lib/place-facts";
+import { itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
 import { CHECKING_HOURS_LABEL } from "@/lib/plancard-refetch";
 import { AnchorRow } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
@@ -84,7 +84,14 @@ export interface ItemRowProps {
    * standing in for the placeholder) — glyph and `action`, no "fixed" label. `time` overrides the
    * item's own (a flight's time); `detail` is one line under the title (what the flight is).
    */
-  anchor?: { fromTool: string | null; time?: string | null; action?: { label: string; onClick: () => void } | null; detail?: string | null } | null;
+  anchor?: {
+    fromTool: string | null;
+    time?: string | null;
+    action?: { label: string; onClick: () => void } | null;
+    detail?: string | null;
+    /** S10-4: a travel row's title is the anchor's ("Arrival in Kyoto"), never the model's. */
+    title?: string | null;
+  } | null;
   /** The place-facts run is still checking this stop. */
   checkingHours?: boolean;
   menu?: ItemRowMenu | null;
@@ -98,7 +105,7 @@ export interface ItemRowProps {
 
 export function ItemRow(props: ItemRowProps) {
   const { item: a, facts, dateIso = null, timeZone = null, mode, anchor = null, menu = null, highlighted = false } = props;
-  const place = itemPlaceLine(facts, a);
+  const place = itemPlaceLine(facts, a, timeZone);
   const factsLine = itemFactsLine(facts, dateIso, timeZone);
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
 
@@ -122,20 +129,19 @@ export function ItemRow(props: ItemRowProps) {
         </p>
       ) : null}
       {place ? (
-        <p className="text-xs text-muted-foreground">
-          <span data-testid={`slip-item-address-${a.id}`}>{place.text}</span>
-          {place.provenance ? (
+        // S10-9: the same format and the same link as the facts line below — one sourced-line style.
+        <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-place-${a.id}`}>
+          {place.provenance && place.sourceUrl ? (
+            <a href={place.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+              <span data-testid={`slip-item-address-${a.id}`}>{place.text}</span>
+              {sourcedLineSuffix(place)}
+            </a>
+          ) : (
             <>
-              {" · "}
-              {place.sourceUrl ? (
-                <a href={place.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline" data-testid={`slip-item-address-source-${a.id}`}>
-                  {place.provenance}
-                </a>
-              ) : (
-                <span data-testid={`slip-item-address-source-${a.id}`}>{place.provenance}</span>
-              )}
+              <span data-testid={`slip-item-address-${a.id}`}>{place.text}</span>
+              {sourcedLineSuffix(place)}
             </>
-          ) : null}
+          )}
         </p>
       ) : null}
       {factsLine ? (
@@ -184,7 +190,7 @@ export function ItemRow(props: ItemRowProps) {
             <AnchorRow
               id={a.id}
               time={anchor.time !== undefined ? anchor.time : a.time || null}
-              title={a.name}
+              title={anchor.title || a.name}
               fromTool={anchor.fromTool}
               action={anchor.action ?? null}
             >

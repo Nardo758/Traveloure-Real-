@@ -71,6 +71,8 @@ import {
   planRole,
   reopenOptionSet,
 } from "./plan-option-sets.service";
+import { enrichPlanItems } from "./content-facts/place-facts.service";
+import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
@@ -423,9 +425,22 @@ export type StayBinding =
  * now typed as the stay. Refused when the plan already has a stay from a lodging set, and when the
  * item is not lodging, not still being planned, or already the stay.
  */
-async function setItemAsStay(tripId: string, userId: string, itemId: string): Promise<{ setId: string; itemId: string }> {
+async function setItemAsStay(
+  tripId: string,
+  userId: string,
+  itemId: string,
+): Promise<{ setId: string; itemId: string; replaced: string | null }> {
   const [item] = await db
-    .select({ id: itineraryItems.id, title: itineraryItems.title, itemType: itineraryItems.itemType, routingStatus: itineraryItems.routingStatus, bookingId: itineraryItems.bookingId })
+    .select({
+      id: itineraryItems.id,
+      title: itineraryItems.title,
+      itemType: itineraryItems.itemType,
+      routingStatus: itineraryItems.routingStatus,
+      bookingId: itineraryItems.bookingId,
+      locationName: itineraryItems.locationName,
+      latitude: itineraryItems.latitude,
+      longitude: itineraryItems.longitude,
+    })
     .from(itineraryItems)
     .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
     .limit(1);
@@ -438,18 +453,104 @@ async function setItemAsStay(tripId: string, userId: string, itemId: string): Pr
     .where(and(eq(planOptionSets.tripId, tripId), eq(planOptionSets.itineraryItemId, itemId)))
     .limit(1);
   if (bound) throw new OptionSetError(409, "stay_decided", "This is already where you're staying");
-  if (await lodgingSetForChange(tripId)) throw new OptionSetError(409, "stay_decided", "This plan already says where you're staying — change it from Where to stay");
-  const set = await createOptionSet({ tripId, userId, itineraryItemId: itemId, categoryKey: "accommodation", label: "Where to stay", anchor: true });
-  const incumbent = set.options[0];
-  if (!incumbent) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
-  await chooseOption({ tripId, setId: set.id, optionId: incumbent.id, userId });
-  if (item.itemType !== "accommodation") {
-    await db
-      .update(itineraryItems)
-      .set({ itemType: "accommodation", updatedAt: new Date() })
-      .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`));
+
+  // Smoke 10 S10-6: the plan's CURRENT stay row — the lodging set's item, else another accommodation
+  // row added by hand. With one, this item REPLACES it: the same stay row is rewritten in place
+  // through a lodging set (S9-2's path), never a second stay.
+  const set = await lodgingSetForChange(tripId);
+  let stay: { id: string; title: string; routingStatus: string | null; bookingId: string | null } | null = null;
+  const stayCols = { id: itineraryItems.id, title: itineraryItems.title, routingStatus: itineraryItems.routingStatus, bookingId: itineraryItems.bookingId };
+  if (set) {
+    const [row] = await db
+      .select(stayCols)
+      .from(itineraryItems)
+      .innerJoin(planOptionSets, eq(planOptionSets.itineraryItemId, itineraryItems.id))
+      .where(eq(planOptionSets.id, set.id))
+      .limit(1);
+    stay = row ?? null;
+  } else {
+    const [row] = await db
+      .select(stayCols)
+      .from(itineraryItems)
+      .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.itemType, "accommodation"), sql`${itineraryItems.id} <> ${itemId}`))
+      .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder))
+      .limit(1);
+    stay = row ?? null;
   }
-  return { setId: set.id, itemId };
+
+  if (!stay) {
+    // S9-2: no stay yet — this item becomes it (a lodging set bound to the item, chosen).
+    const created = await createOptionSet({ tripId, userId, itineraryItemId: itemId, categoryKey: "accommodation", label: "Where to stay", anchor: true });
+    const incumbent = created.options[0];
+    if (!incumbent) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
+    await chooseOption({ tripId, setId: created.id, optionId: incumbent.id, userId });
+    if (item.itemType !== "accommodation") {
+      await db
+        .update(itineraryItems)
+        .set({ itemType: "accommodation", updatedAt: new Date() })
+        .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`));
+    }
+    return { setId: created.id, itemId, replaced: null };
+  }
+
+  if (stay.routingStatus !== "in_planning" || stay.bookingId) {
+    throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
+  }
+  let setId: string;
+  if (set) {
+    const [{ n }] = (await db.execute(sql`SELECT count(*)::int AS n FROM plan_options WHERE set_id = ${set.id}`)).rows as any[];
+    if (Number(n) >= OPTION_SET_CAP) {
+      throw new OptionSetError(409, "set_full", `A comparison holds up to ${OPTION_SET_CAP} places — remove one to add yours`, { cap: OPTION_SET_CAP });
+    }
+    setId = set.status === "chosen" ? (await reopenOptionSet({ tripId, setId: set.id, userId })).id : set.id;
+  } else {
+    // The current stay was itself added by hand: bind a set to IT, so it is the row rewritten.
+    setId = (await createOptionSet({ tripId, userId, itineraryItemId: stay.id, categoryKey: "accommodation", label: "Where to stay", anchor: true })).id;
+  }
+  const option = await addOption({
+    tripId,
+    setId,
+    userId,
+    source: { kind: "custom", title: item.title, locationName: item.locationName ?? null, lat: item.latitude ?? null, lng: item.longitude ?? null },
+  });
+  const chosen = await chooseOption({ tripId, setId, optionId: option.id, userId });
+  // The replacing item's place now lives on the stay row; the hand-added row it came from goes.
+  // rebuild-guard-exempt: in_planning-only AND unbooked AND not machine-protected (expert work, locked) —
+  // one traveler-chosen row moved into the stay, never a rebuild.
+  // item-removed:replace — the place MOVES into the plan's stay row (one operation); it is not removed.
+  await db
+    .delete(itineraryItems)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`, itineraryItemNotMachineProtected()));
+  return { setId, itemId: chosen.itemId, replaced: stay.title };
+}
+
+/**
+ * Smoke 10 S10-3 (ledger `2026-10-04-smoke10-fixes`): a stay set BY NAME gets the same place lookup
+ * drafted items get — the ID-only search, then Details on a miss, cached by Google's place ID and
+ * counted against the per-call cap (`enrichPlanItems`) — so its location and area are stored as facts
+ * on the stay item and the map can draw its anchor. Coordinates stay on the FACT, never copied onto the
+ * row (LD 57). Awaited, so the plan the client re-reads already carries the pin; never throws (the
+ * stay is already set — a failed lookup leaves it unlocated, said honestly).
+ */
+async function lookUpStayPlace(tripId: string, itemId: string | null): Promise<void> {
+  if (!itemId) return;
+  try {
+    const [row] = await db
+      .select({ id: itineraryItems.id, title: itineraryItems.title, dayNumber: itineraryItems.dayNumber, locationName: itineraryItems.locationName, destination: trips.destination, marketSlug: trips.marketSlug })
+      .from(itineraryItems)
+      .innerJoin(trips, eq(trips.id, itineraryItems.tripId))
+      .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
+      .limit(1);
+    if (!row) return;
+    await enrichPlanItems({
+      tripId,
+      market: row.marketSlug ?? null,
+      city: row.destination ?? null,
+      items: [{ id: row.id, title: row.title, type: "accommodation", dayNumber: row.dayNumber ?? 1, locationName: row.locationName ?? null }],
+    });
+  } catch (err) {
+    console.error(`[where-to-stay] stay lookup failed plan_id=${tripId} item_id=${itemId}:`, (err as Error)?.message ?? err);
+  }
 }
 
 /** Bind the traveler's answer through the option-set rail. Returns the set and, when one was made, the stay item. */
@@ -457,9 +558,13 @@ export async function bindWhereToStay(
   tripId: string,
   userId: string,
   binding: StayBinding,
-): Promise<{ setId: string; itemId: string | null }> {
+): Promise<{ setId: string; itemId: string | null; replaced?: string | null }> {
   if (!(await planRole(tripId, userId, "choose"))) throw new OptionSetError(404, "not_found", "No such plan");
-  if (binding.kind === "this_item") return setItemAsStay(tripId, userId, binding.itemId);
+  if (binding.kind === "this_item") {
+    const out = await setItemAsStay(tripId, userId, binding.itemId);
+    await lookUpStayPlace(tripId, out.itemId);
+    return out;
+  }
   // Smoke 9 S9-2: a plan that already says where it stays can still CHANGE it from the chooser —
   // through its existing lodging set (reopened if chosen; the choice then rewrites the same stay
   // item in place), never a second set or a second stay. Skip has nothing to dismiss there, a
@@ -566,6 +671,8 @@ export async function bindWhereToStay(
   const set = await openSet();
   const option = await addOption({ tripId, setId: set.id, userId, source });
   const chosen = await chooseOption({ tripId, setId: set.id, optionId: option.id, userId });
+  // S10-3: a stay typed by name (no listing, no coordinates) is looked up like any drafted stop.
+  if (binding.kind === "own" && (binding.hotelName ?? "").trim()) await lookUpStayPlace(tripId, chosen.itemId);
   return { setId: set.id, itemId: chosen.itemId };
 }
 

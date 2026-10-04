@@ -16,7 +16,7 @@
  *
  * No minute, hour or distance value is shown (R-h): stops carry their clock times only.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -72,6 +72,7 @@ export function VersionsBoard({
   destination,
   days,
   onPaidRun,
+  noRunCta,
 }: {
   tripId: string;
   destination: string;
@@ -79,6 +80,11 @@ export function VersionsBoard({
   days: PlanCardDay[];
   /** Past the free re-times, the re-time is the EXISTING paid run — the board routes there. */
   onPaidRun: () => void;
+  /**
+   * Smoke 10 S10-2: with NO run the board is Draft-only — the map of the plan as it stands, no
+   * A/B/C toggle — and this is its call to action (the Optimize card). Absent ⇒ nothing renders.
+   */
+  noRunCta?: ReactNode;
 }) {
   const { toast } = useToast();
   const isDesktop = useIsDesktop();
@@ -135,7 +141,32 @@ export function VersionsBoard({
     },
   });
 
-  if (!view || !view.run || view.versions.length === 0) return null;
+  if (!view) return null;
+  if (!view.run || view.versions.length === 0) {
+    if (!noRunCta) return null;
+    return (
+      <section className="mb-6 space-y-4" data-testid="versions-board" data-board-state="draft-only">
+        <h2 className="text-lg font-semibold">Your plan's versions</h2>
+        <p className="text-sm text-muted-foreground" data-testid="versions-draft-only">
+          Only your draft so far. Optimize builds up to three versions to compare with it.
+        </p>
+        {sortedDays.length ? (
+          <div className="rounded-lg border border-border overflow-hidden">
+            <MapControlCenter
+              tripId={tripId}
+              tripDestination={destination}
+              days={sortedDays}
+              selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
+              onSelectDay={setMapDayIdx}
+              compact
+              readOnly
+            />
+          </div>
+        ) : null}
+        {noRunCta}
+      </section>
+    );
+  }
 
   const mapVersions: MapVersion[] = view.versions.map((v) => ({
     key: v.variantId,

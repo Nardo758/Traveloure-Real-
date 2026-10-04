@@ -43,20 +43,21 @@ test("A2 S9-4: the optimizer card sits directly under the tray, and says Draft f
   assert.doesNotMatch(rail, /isOwner && aiAction === "optimize" && \(/, "the card no longer hides on an undrafted plan");
 });
 
-test("A3 S9-5: stops outside the flight, counted, never a minute value", () => {
+test("A3 S9-5, as corrected by S10-1(a): stops inside the flight's buffer, counted, never a minute value", () => {
+  // S10-1(a): measured against arrival + buffer / departure − buffer; buffers 0 here keep S9-5's cases.
   const stops = [
     { id: "arr", startTime: "08:30" },
     { id: "a", startTime: "08:00" },
     { id: "b", startTime: "10:00", endTime: "11:00" },
     { id: "c", startTime: "TBD" },
   ];
-  assert.equal(flightTimeConflictLine("arrival", "09:05", stops, "arr"), "1 stop on this day starts before your flight lands");
-  assert.equal(flightTimeConflictLine("arrival", "09:05", stops, null), "2 stops on this day start before your flight lands");
-  assert.equal(flightTimeConflictLine("arrival", "07:00", stops, null), null);
-  assert.equal(flightTimeConflictLine("departure", "10:30", stops, null), "1 stop on this day runs past your flight's departure");
-  assert.equal(flightTimeConflictLine("departure", "10:00", [{ id: "x", startTime: "10:00" }], null), "1 stop on this day runs past your flight's departure");
+  assert.equal(flightTimeConflictLine("arrival", "09:05", stops, "arr", 0), "1 stop on this day starts before you're out of the airport");
+  assert.equal(flightTimeConflictLine("arrival", "09:05", stops, null, 0), "2 stops on this day start before you're out of the airport");
+  assert.equal(flightTimeConflictLine("arrival", "07:00", stops, null, 0), null);
+  assert.equal(flightTimeConflictLine("departure", "10:30", stops, null, 0), "1 stop on this day runs past the time to leave for your flight");
+  assert.equal(flightTimeConflictLine("departure", "10:00", [{ id: "x", startTime: "10:00" }], null, 0), "1 stop on this day runs past the time to leave for your flight");
   assert.equal(flightTimeConflictLine("arrival", null, stops, null), null, "no flight time ⇒ nothing claimed");
-  for (const line of [flightTimeConflictLine("arrival", "09:05", stops, null), flightTimeConflictLine("departure", "10:30", stops, null)]) {
+  for (const line of [flightTimeConflictLine("arrival", "09:05", stops, null, 0), flightTimeConflictLine("departure", "10:30", stops, null, 0)]) {
     assert.doesNotMatch(line!, /\d{1,2}:\d{2}|min|hour/i);
   }
 });

@@ -1317,6 +1317,19 @@ test.describe("6 · paid run", () => {
     expect(Array.isArray(body.findings)).toBe(true);
     for (const f of body.findings ?? []) expect(Object.keys(f).sort().filter((k) => !["caveat", "est"].includes(k))).toEqual(["count", "days", "kind"]);
   });
+  test("§6 smoke 10 S10-2 — /itinerary-comparison/<planId> with no run is a Draft-only versions board, never the old cart screen", async ({ page }) => {
+    await signedInTraveler(page, "s10nr");
+    const tripId = await createTrip(page.request, "Kyoto no run", KYOTO);
+    await createItem(page.request, tripId, "Kiyomizu-dera", 1);
+    await page.goto(`/itinerary-comparison/${tripId}`);
+    await expect(testid(page, "versions-board")).toHaveAttribute("data-board-state", "draft-only", { timeout: 20_000 });
+    await expect(testid(page, "plan-versions-optimize")).toBeVisible();
+    await expect(page.locator('[data-testid^="map-version-"]')).toHaveCount(0);
+    await expect(page.getByText("No itinerary data found")).toHaveCount(0);
+    await expect(page.getByText("Back to Cart")).toHaveCount(0);
+    await testid(page, "plan-versions-optimize").click();
+    await expect(page).toHaveURL(new RegExp(`/plans/${tripId}`));
+  });
   test("§6 step 5 — one map with the version toggle; the board adopts a day by drag and gates the fourth re-time", async ({ page }) => {
     // The run is SEEDED (a paid run needs a Stripe test key and a model key this job does not hold):
     // three AI versions on one comparison, exactly the rows a run writes, with `source_item_id`.

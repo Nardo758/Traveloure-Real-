@@ -31,6 +31,11 @@ export function isLodgingItem(item: { type?: string | null; title?: string | nul
   return item.type === "accommodation" || mentionsLodging(item.title);
 }
 
+/** S10-6: the confirmation before a lodging item replaces the plan's current stay. */
+export function replaceStayQuestion(current: string, next: string): string {
+  return `Replace ${current.trim()} with ${next.trim()}?`;
+}
+
 /** The refusal when a plan's stay was added by hand — it now points at the ⋯ entry that converts it. */
 export const SET_AS_STAY_LABEL = "Set as where you're staying";
 export const HAND_ADDED_STAY_LINE = `Your stay was added by hand — open its ⋯ menu and choose "${SET_AS_STAY_LABEL}" to change it from here.`;

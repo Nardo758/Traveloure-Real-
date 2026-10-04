@@ -42,7 +42,8 @@ test("C2 S9-2 amendment: 'Set as where you're staying' posts the hand-added item
   assert.match(row, /data-testid=\{`item-menu-set-as-stay-\$\{id\}`\}/);
   const slip = read("client/src/components/plancard/SlipView.tsx");
   assert.match(slip, /isLodgingItem\(\{ type: a\.type, title: a\.name \}\)/);
-  assert.match(slip, /!lodgingSet &&/);
+  // S10-6: offered with a stay on the plan too — it then replaces it, confirmed by name.
+  assert.match(slip, /a\.id !== currentStay\?\.id &&/);
   assert.match(read("client/src/components/plan/AnchorPanel.tsx"), /ANCHOR_PANEL_HAND_ADDED = HAND_ADDED_STAY_LINE/);
 });
 
