@@ -38,6 +38,7 @@ import { optionPickOf } from "@shared/version-options";
 import { versionPerOptionEnabled } from "../config/version-options.config";
 import { listRunsForTrip, recordRunOutcome } from "../services/optimizer-runs.service";
 import { optimizerRunRecordsEnabled } from "../config/optimizer-runs.config";
+import { readyMadeProvenanceForTrip } from "../services/ready-made-provenance.service";
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -726,6 +727,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // Smoke 7 item 4 (ledger `2026-10-03-no-ward-pins`): the questions THIS viewer saved through "Ask
     // a local about this" — their own rows only, present only when there is one.
     const savedQuestions = await savedItemQuestions(tripId, userId);
+    // R-be (work plan L1-6): where this plan came from when it is a buyer's copy of a Ready Made
+    // Trip — DERIVED from `ready_made_purchases.clone_trip_id`, read here behind this gate and never
+    // in the assembler. `null` = not a copy. The slip header and the Trip Card (`?surface=card`)
+    // read it from this one payload; the line itself is drawn by Lane 2.
+    const readyMadeSource = await readyMadeProvenanceForTrip(tripId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
@@ -782,6 +788,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       ...((plan as any).coordinatesPending === true ? { coordinatesPending: true } : {}),
       ...(factsPendingItemIds.length ? { factsPendingItemIds } : {}),
       ...(Object.keys(savedQuestions.items).length ? { savedQuestions } : {}),
+      // R-be — see the note above. ADDITIVE: existing consumers ignore the key.
+      readyMadeSource,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {
