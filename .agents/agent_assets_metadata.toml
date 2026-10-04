@@ -300,3 +300,17 @@ mtime_ms = 1790936771372
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/f076e28a-d96d-4081-86fc-598a8310b85e/5e1634ee-578e-4dcc-8bbd-26ed7ce14e2e"
 storage_version_token = "1790936929075876"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "-k3UmQn73JJMR3RjWoM1y"
+uri = "file://reports/stage2-part1-reuse-check.html"
+type = "html"
+title = "Stage 2 Part 1 — complete registry and reuse mapping"
+description = "All 85 current automation IDs, declared triggers and enabled statuses, plus the four-automation reuse check. Read-only evidence; not live certification."
+logical_id = "220a8d03-ce20-4a9f-8c18-52825a86fe85"
+content_hash = "sha256:c2de90b232c864e3013ecd25b6e0fd9b28b25c17a361bd27ba0b28467eabfa0a"
+size = 15099
+mtime_ms = 1791105408507
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/220a8d03-ce20-4a9f-8c18-52825a86fe85/c08d70de-ffb9-4854-9596-edda065f3620"
+storage_version_token = "1791105415119661"
+content_type = "text/html"
