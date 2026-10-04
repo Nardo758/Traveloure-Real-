@@ -13,13 +13,15 @@
 import { db } from "../db";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { storage } from "../storage";
-import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators, users } from "@shared/schema";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import crypto from "node:crypto";
+import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators, users, transportLegs, temporalAnchors } from "@shared/schema";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { READY_MADE_TRIP_BAND } from "./fee-band-requirements";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 import { resolveTripTimezone } from "./trip-timezone";
 import { buildClonedItineraryItem } from "./itinerary-item-clone";
+import { buildClonedAnchor, buildClonedLeg, isCarriedLeg } from "./ready-made-clone-legs";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
 import { notifyBuyerOfReadyMadeDelivery } from "./ready-made-notifications.service";
@@ -226,7 +228,7 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   // row), so read it from there and carry it onto the clone. The PRIVATE build-notes field
   // (trips.expertNotes, §21) is deliberately NOT read — it must never reach a traveler surface.
   const [sourceTrip] = await db
-    .select({ expertTravelerNote: trips.expertTravelerNote })
+    .select({ expertTravelerNote: trips.expertTravelerNote, startDate: trips.startDate })
     .from(trips)
     .where(eq(trips.id, listing.sourceTripId))
     .limit(1);
@@ -283,6 +285,7 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     .values({ tripId: cloneTrip.id, userId: purchase.buyerId, role: "owner" })
     .onConflictDoNothing();
 
+  const itemIdMap = new Map<string, string>();
   const sourceItems = await db
     .select()
     .from(itineraryItems)
@@ -297,8 +300,31 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     // row in `ready_for_checkout` landed in the BUYER's cart (LD 39). `buildClonedItineraryItem`
     // copies the author's CONTENT and nothing else; the `as any` is gone, so the next misspelled
     // key is a compile error rather than a silent drop.
+    // L1-3: the clone's item ids are minted HERE so the legs and anchors below can be remapped onto
+    // them (source id → clone id). The item SHAPE is still `buildClonedItineraryItem`'s alone.
     await db.insert(itineraryItems).values(
-      sourceItems.map((item) => buildClonedItineraryItem(item, cloneTrip.id)),
+      sourceItems.map((item) => {
+        const id = crypto.randomUUID();
+        itemIdMap.set(item.id, id);
+        return { ...buildClonedItineraryItem(item, cloneTrip.id), id };
+      }),
+    );
+  }
+
+  // ── L1-3 (R-ba / R-bg): the author's confirmed legs and the build's anchors ride with the copy,
+  //    inside this same pre-claim step, so a lost claim's orphan delete cascades them too.
+  const sourceLegs = (
+    await db.select().from(transportLegs).where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId)))
+  ).filter(isCarriedLeg);
+  const clonedLegs = sourceLegs
+    .map((leg) => buildClonedLeg(leg, cloneTrip.id, itemIdMap))
+    .filter((leg): leg is NonNullable<typeof leg> => leg !== null);
+  if (clonedLegs.length > 0) await db.insert(transportLegs).values(clonedLegs);
+
+  const sourceAnchors = await db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, listing.sourceTripId));
+  if (sourceAnchors.length > 0 && sourceTrip?.startDate) {
+    await db.insert(temporalAnchors).values(
+      sourceAnchors.map((a) => buildClonedAnchor(a, cloneTrip.id, String(sourceTrip.startDate), fmt(start), itemIdMap)),
     );
   }
 
