@@ -20,7 +20,10 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users, adminNotifications } from "@shared/schema";
+import { readyMadeLegLines } from "../services/trip-transport-legs.service";
+import { readinessAdvisory, stopPhotoStates, type ReadinessLine } from "../services/ready-made-readiness";
+import { factsForTrip } from "../services/content-facts/place-facts.service";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, temporalAnchors, users, adminNotifications } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
@@ -526,10 +529,29 @@ type ReadyMadeCompletenessListing = {
   sourceTripId: string;
 };
 
+export type ReadyMadeRequirementLine = {
+  requirement: string;
+  message: string;
+  dayNumber?: number;
+  fromItemId?: string;
+  toItemId?: string;
+  legId?: string;
+};
+
+/**
+ * The publish gate, used by submit and by admin approve. R-ax (work plan L1-2): every consecutive
+ * pair of LOCATED stops on every day needs a confirmed trip-scoped leg with the author's mode
+ * (`readyMadeLegLines`), one `legs` line per gap. Unlocated stops are advisory only and are not
+ * returned here (the readiness read, L1-9, carries them).
+ *
+ * STATED LIMIT: R-ax also accepts a leg whose `pickup_provider_service_id` is set instead of a mode.
+ * That column arrives with migration 346 (L1-1, a separate PR); until it is on main a leg counts as
+ * picked only by its mode (`isPickedLeg`).
+ */
 export async function assertReadyMadeComplete(
   listing: ReadyMadeCompletenessListing,
-): Promise<Array<{ requirement: string; message: string }>> {
-  const missing: Array<{ requirement: string; message: string }> = [];
+): Promise<ReadyMadeRequirementLine[]> {
+  const missing: ReadyMadeRequirementLine[] = [];
   const title = listing.title?.trim() ?? "";
   if (!title || title === READY_MADE_PLACEHOLDER_TITLE) {
     missing.push({ requirement: "title", message: "Give the trip a real title." });
@@ -561,7 +583,65 @@ export async function assertReadyMadeComplete(
       message: `Day${emptyDays.length > 1 ? "s" : ""} ${emptyDays.join(", ")} ${emptyDays.length > 1 ? "have" : "has"} no items yet — every day needs at least one`,
     });
   }
+
+  // R-ax: the leg clause. Items in the engine's own order (storage.getItineraryItems), legs
+  // trip-scoped only (variant_id IS NULL, the migration-154 scope rule).
+  const [items, legs] = await Promise.all([
+    storage.getItineraryItems(listing.sourceTripId),
+    db
+      .select({
+        id: transportLegs.id,
+        dayNumber: transportLegs.dayNumber,
+        fromActivityId: transportLegs.fromActivityId,
+        toActivityId: transportLegs.toActivityId,
+        proposalStatus: transportLegs.proposalStatus,
+        userSelectedMode: transportLegs.userSelectedMode,
+      })
+      .from(transportLegs)
+      .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId))),
+  ]);
+  missing.push(...readyMadeLegLines(items, legs).blocking);
   return missing;
+}
+
+/**
+ * R-bi (work plan L1-9, enhancement 1): the readiness read. `blocking` IS the publish gate's own output
+ * (`assertReadyMadeComplete` — submit and admin approve call it too), so the checklist and a refused
+ * submit can never disagree; `advisory` never stops a submit (`readinessAdvisory`). Every line carries
+ * what it is about (day, item, the leg's stops, anchor) so a checklist can jump to it.
+ */
+export async function readyMadeReadiness(
+  listing: ReadyMadeCompletenessListing,
+): Promise<{ blocking: ReadyMadeRequirementLine[]; advisory: ReadinessLine[] }> {
+  const blocking = await assertReadyMadeComplete(listing);
+  const [items, legs, anchors, facts, [build]] = await Promise.all([
+    storage.getItineraryItems(listing.sourceTripId),
+    db
+      .select({
+        id: transportLegs.id,
+        dayNumber: transportLegs.dayNumber,
+        fromActivityId: transportLegs.fromActivityId,
+        toActivityId: transportLegs.toActivityId,
+        proposalStatus: transportLegs.proposalStatus,
+        userSelectedMode: transportLegs.userSelectedMode,
+      })
+      .from(transportLegs)
+      .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId))),
+    db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, listing.sourceTripId)),
+    factsForTrip(listing.sourceTripId),
+    db.select({ startDate: trips.startDate }).from(trips).where(eq(trips.id, listing.sourceTripId)).limit(1),
+  ]);
+  const factTypesByItem = new Map(Object.entries(facts).map(([itemId, views]) => [itemId, new Set(views.map((v) => v.factType as string))]));
+  const advisory = readinessAdvisory({
+    items,
+    legAdvisory: readyMadeLegLines(items, legs).advisory,
+    factTypesByItem,
+    photoStateByItem: await stopPhotoStates(listing.sourceTripId, items),
+    anchors,
+    buildStartDate: build?.startDate ? String(build.startDate) : null,
+    durationDays: listing.durationDays,
+  });
+  return { blocking, advisory };
 }
 
 /**
@@ -664,6 +744,23 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
   } catch (err: any) {
     console.error("[ready-made] patch error:", err);
     res.status(500).json({ message: "Failed to update listing", error: err.message });
+  }
+});
+
+/**
+ * GET /api/expert/ready-made/:id/readiness — the author's checklist (work plan L1-9; R-bi). Author
+ * only; anyone else gets the same 404 as every other author-scoped listing read.
+ */
+router.get("/api/expert/ready-made/:id/readiness", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+    res.json(await readyMadeReadiness(listing));
+  } catch (err: any) {
+    console.error("[ready-made] readiness failed:", err);
+    res.status(500).json({ message: "Failed to load the readiness checklist" });
   }
 });
 
@@ -1233,7 +1330,13 @@ router.get("/api/ready-made/:id/teaser-map.svg", async (req, res) => {
         totalMeters: sql<number>`sum(${transportLegs.distanceMeters})::int`,
       })
       .from(transportLegs)
-      .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId)))
+      // R-ax / L1-2: confirmed legs only — a machine proposal the author never accepted is not part
+      // of the trip being sold.
+      .where(and(
+        eq(transportLegs.tripId, listing.sourceTripId),
+        isNull(transportLegs.variantId),
+        eq(transportLegs.proposalStatus, "confirmed"),
+      ))
       .groupBy(transportLegs.dayNumber)
       .orderBy(asc(transportLegs.dayNumber));
 

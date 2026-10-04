@@ -1,5 +1,5 @@
 /**
- * R300 — the browser's Google Maps key is its own variable (ledger
+ * R312 — the browser's Google Maps key is its own variable (ledger
  * `2026-10-04-maps-session-and-browser-key`).
  *   K1  GOOGLE_MAPS_BROWSER_KEY wins; VITE_GOOGLE_MAPS_API_KEY is the fallback; neither ⇒ "" (keyless maps)
  *   K2  vite exposes GOOGLE_MAPS_BROWSER_* and VITE_* only — no prefix matches the server's GOOGLE_MAPS_API_KEY
