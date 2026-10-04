@@ -246,9 +246,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // POST /api/optimization-preview: briefly public-or-system when step 6 (R296) removed its only session
   // read (the retired free re-run); R297 gives it the plan-route session gate (decision-maker ruling,
   // Oct 4, 2026), so it is session-self again — 401 anonymous, the plan read gate when it names a plan.
+  // POST /api/geocode moved public-or-system -> session-self (R312, ledger `2026-10-04-maps-session-and-browser-key`):
+  // every call spends a Geocoding request, so it requires a session (decision-maker ruling, Oct 4, 2026).
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 336, "resource-owner": 97,
-    signature: 6, "public-or-system": 41, unknown: 0,
+    "admin-role": 168, "session-self": 337, "resource-owner": 97,
+    signature: 6, "public-or-system": 40, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

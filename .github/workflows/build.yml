@@ -463,6 +463,8 @@ jobs:
       # both surfaces read the server's named refusals through.
       - name: Quote surface copy pin
         run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
+      - name: Maps browser key is its own variable (R312)
+        run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
         run: npx tsx --test shared/__tests__/listing-save-intent.test.ts
       - name: Bundle component + settlement copy pin

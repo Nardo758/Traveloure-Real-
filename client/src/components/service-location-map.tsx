@@ -28,12 +28,13 @@ import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Circle, Polyline as LeafletPolyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
 const BRAND = "var(--console-brand, #E85D55)";
 const CARD = "var(--console-card, #FFFFFF)";
 const INK = "var(--console-ink, #1A1A18)";
 const MID = "var(--console-mid, #7A7A72)";
-const GOOGLE_MAPS_KEY: string = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || "";
+const GOOGLE_MAPS_KEY: string = MAPS_BROWSER_KEY;
 
 export interface ServiceRouteStopView {
   id: string;
