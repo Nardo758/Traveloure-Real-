@@ -35,11 +35,12 @@ import {
   isBookedActivity,
   itemBookingAction,
   itemBookingState,
+  slipItemBookingLine,
 } from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
-import { tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
+import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   type PlanCardActivity,
   type PlanCardData,
@@ -63,7 +64,10 @@ import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airpor
 import { manifestFor } from "@shared/group-manifest";
 import { anchorSurfaces, isLodgingItem, replaceStayQuestion, type WhereToStayView } from "@shared/where-to-stay";
 import { itemFactsLine } from "@/lib/place-facts";
-import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
+import { ITEM_MENU_LABELS, ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
+import { ItemSheet } from "@/components/plan/ItemSheet";
+import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
+import { navigateHref } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
 import {
   GETTING_THERE_TOOL,
@@ -81,7 +85,7 @@ import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHostHref } from "@/lib/item-row-menu";
 import { isLocated } from "@/components/plancard/MapControlCenter";
-import type { MapAnchor, MapArea, MapVersion } from "@/lib/map-scene";
+import { areaShading, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
 import type { VersionsBoardView } from "@/lib/versions-board";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
@@ -607,21 +611,9 @@ function SlipStatusStrip({ activities }: { activities: PlanCardActivity[] }) {
 // under the row (now a ⋯ entry), and `SlipItemTools`' second copy of the row (edit/move/delete are ⋯
 // entries over the SAME rails, via `useSlipItemActions`). `ExpertNoteBlock` became `ExpertNote`.
 
-/**
- * The row's booking line — the ONE reading of its linked booking (R145/R154). "booked" is written for
- * `booked` ALONE; every not-booked state says what happened (§13). Routing states ("with your expert",
- * "awaiting checkout") are NOT booking facts and are no longer said on the slip row (step 7 draws
- * routing as "with [expert]").
- */
-export function slipItemBookingLine(a: PlanCardActivity): string | null {
-  const bookingState = itemBookingState(a);
-  if (bookingState && bookingState !== "booked") return ITEM_BOOKING_NOTES[bookingState];
-  if (isPurchasedRow(a)) {
-    const ref = a.confirmationNumber || (a.booking ? a.booking.id.slice(0, 8) : null);
-    return ref ? `booked · #${ref}` : "booked";
-  }
-  return null;
-}
+// The row's booking line moved to `@/lib/item-booking-state` (step 6) so the Trip Card reads the SAME
+// rule without importing the slip; re-exported here for the slip's existing readers (§18 rule 1).
+export { slipItemBookingLine } from "@/lib/item-booking-state";
 
 /** R-ah — the owner's "Keep this" / "Unlock" (`PUT …/lock`, `.strict()` `{ locked }`). */
 function useToggleItemLock(tripId: string, itemId: string, locked: boolean): () => void {
@@ -792,9 +784,13 @@ function SlipDayItem({
   const setAsStay = useSetAsStay(tripId, a.id);
   const [confirmStay, setConfirmStay] = useState(false);
   const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
+  // Step 6 R-ap: the stop's ItemSheet — title tap, ⋯ → Details. Its photo is read only while open.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetPhotos = usePlacePhotos(tripId, sheetOpen ? [a.id] : []);
   const showThread = hasAdvisor && (isOwner || isExpertViewer);
   const menu: ItemRowMenu | null = canEditItems
     ? {
+        onDetails: () => setSheetOpen(true),
         onSwap: actions.onSwap,
         onMoveUp: actions.onMoveUp,
         onMoveDown: actions.onMoveDown,
@@ -854,7 +850,22 @@ function SlipDayItem({
         isOwner && itemBookingAction(a) ? <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} /> : null
       }
       expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
+      onOpenDetails={() => setSheetOpen(true)}
     >
+      <ItemSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        item={{ id: a.id, name: anchorFrom || !travel ? a.name : travelRowTitle(travel.kind, city) ?? a.name, time: a.time, location: a.location }}
+        facts={facts}
+        timeZone={timeZone}
+        photo={sheetPhotos[a.id] ?? null}
+        expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
+        onAskLocal={menu?.onAskLocal ? () => { setSheetOpen(false); menu.onAskLocal!(); } : null}
+        askLocalLabel={menu?.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}
+        navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, city)}
+        bookingLine={slipItemBookingLine(a)}
+        bookingAction={isOwner && itemBookingAction(a) ? <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} /> : null}
+      />
       {/* S10-6: replacing the plan's stay is confirmed by name first; the SAME stay row is rewritten. */}
       {confirmStay && replacingStay ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-border bg-muted/40 px-2 py-1.5 text-xs" data-testid={`item-set-as-stay-confirm-${a.id}`}>
@@ -1324,11 +1335,25 @@ function primaryInputFromTrip(trip: SlipTrip | undefined) {
  * of its own to render (§13).
  */
 function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
+  // Step 6 finalize smoke: "ready" only when a final version exists (`tripCardBannerState`, the one
+  // rule the card and the T-48h nudge read); inside the 48-hour window with no final, the slip says
+  // to make the plan final instead — the card would only say "Not final yet".
+  const state = tripCardBannerState({ finalizedAt: trip.finalizedAt, startDate: trip.startDate, endDate: trip.endDate, finalVersion: trip.finalVersion });
+  if (state === "finalize_now") {
+    return (
+      <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20" data-testid="slip-trip-card-finalize-now">
+        <CardContent className="p-4 flex items-center gap-2 flex-wrap">
+          <CheckCircle2 className="w-4 h-4 text-amber-700 flex-shrink-0" />
+          <p className="text-sm font-medium text-foreground">{TRIP_CARD_FINALIZE_NOW_TITLE}</p>
+        </CardContent>
+      </Card>
+    );
+  }
   return (
     <Card className="border-primary/30 bg-primary/5" data-testid="slip-trip-card-primary-banner">
       <CardContent className="p-4 flex items-center gap-2 flex-wrap">
         <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
-        <p className="text-sm font-medium text-foreground">Your Trip Card is ready</p>
+        <p className="text-sm font-medium text-foreground">{TRIP_CARD_READY_TITLE}</p>
         {/* Version chip (adopt-finalize-conform D-2): with it, the Finalize Plan button's absence
             reads as COMPLETED. §13: render only a real server-emitted version, never an invented
             one. */}
@@ -1447,6 +1472,9 @@ export function SlipView({
   // R-F: `finalized_at ∨ now ≥ startDate−48h ∨ underway → Trip Card is primary` — the SAME rule
   // the server-side T-48h scheduler applies, read straight off this DTO's real fields.
   const isPrimary = data.trip ? tripCardIsPrimary(primaryInputFromTrip(data.trip)) : false;
+  // Step 6 finalize smoke: the rail's "Finished · View as Trip card" only once a final exists — with
+  // none, the Finish card keeps Finalize (`tripCardBannerState`, the one rule).
+  const cardReady = data.trip ? tripCardBannerState({ ...primaryInputFromTrip(data.trip), finalVersion: data.trip.finalVersion }) === "ready" : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
 
@@ -1669,17 +1697,27 @@ export function SlipView({
     if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng! };
     return null;
   })();
-  // Neighbourhoods are shaded only while the AnchorPanel is open (on the slip or in the tray).
+  // Neighbourhoods are shaded whenever the stay is located, and emphasised while the AnchorPanel is
+  // open (on the slip or in the tray) — spec v1.3.4 §2.3, step 6 (`areaShading`).
   const anchorPanelOpen = anchorSurface.slip === "drafted" || (!!tripsAnchor && anchorPanelEmpty) || openTool === "where_to_stay";
+  const shading = areaShading({ stayLocated: mapAnchor?.kind === "stay", panelOpen: anchorPanelOpen });
   const mapCity = (data.trip?.destination ?? "").split(",")[0].trim();
   const { data: areaRows } = useQuery<{ data?: Array<{ slug: string; name: string; centroidLat: string; centroidLng: string }> }>({
     queryKey: [`/api/city-neighborhoods?city=${encodeURIComponent(mapCity)}`],
-    enabled: slipView === "map" && anchorPanelOpen && !!mapCity,
+    enabled: slipView === "map" && shading.show && !!mapCity,
     staleTime: 10 * 60_000,
   });
   const mapAreas: MapArea[] = (areaRows?.data ?? [])
     .map((r) => ({ slug: r.slug, name: r.name, lat: Number(r.centroidLat), lng: Number(r.centroidLng) }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  // Step 6 R-aq: ONE image per day on the slip — the day's first located stop (never the stay); none
+  // on item rows, versions or the map. Resolved server-side in the R-aq order, with its attribution.
+  const dayPhotoItemId = new Map<number, string>();
+  for (const d of sortedDays) {
+    const first = (d.activities ?? []).find((x) => isLocated(x) && x.type !== "accommodation");
+    if (first) dayPhotoItemId.set(d.dayNum, first.id);
+  }
+  const dayPhotos = usePlacePhotos(tripId, Array.from(dayPhotoItemId.values()));
   // A paid run's versions: the Draft / A / B / C toggle (read gate; a non-reader is one 404 ⇒ no toggle).
   const { data: versionsView } = useQuery<VersionsBoardView>({
     queryKey: [`/api/trips/${tripId}/versions`],
@@ -2072,7 +2110,8 @@ export function SlipView({
             readOnly={!canEditItems}
             anchor={mapAnchor}
             areas={mapAreas}
-            showAreas={anchorPanelOpen}
+            showAreas={shading.show}
+            emphasizeAreas={shading.emphasize}
             versions={mapVersions}
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
@@ -2197,6 +2236,11 @@ export function SlipView({
                 })}
                 open={dayOpen[slot.key] ?? (slotIdx === 0 || (!!highlightItemId && slotItems.some((a) => a.id === highlightItemId)))}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
+                photo={
+                  slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
+                    <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} testId={`slip-day-photo-${slot.dayNum}`} />
+                  ) : null
+                }
               >
                 {/* R-aa: day 1 opens with the placeholder arrival anchor, the last day closes with the
                     departure one — a range-shaped plan only (a day-shaped occasion has no arrival). */}
@@ -2410,7 +2454,7 @@ export function SlipView({
               isOwner={isOwner}
               canEditItems={canEditItems}
               isExpertViewer={isExpertViewer}
-              isPrimary={isPrimary}
+              isPrimary={cardReady}
               activities={allActivities}
               planEvents={planEvents}
               budgetLine={budgetLine}

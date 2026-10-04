@@ -213,6 +213,13 @@ export interface UpNextInfo<TLeg extends InlineTransportLegData = InlineTranspor
  * carries the mode-aware primary action's forward-compat booking fields) gets
  * `upNextLeg` typed with those fields intact, instead of widened to the base type.
  */
+/** R297: a plan day's machine date — `dateIso`, else `date` when it is already "YYYY-MM-DD". */
+export function machineDay(day: { date?: string | null; dateIso?: string | null } | null | undefined): string | null {
+  if (!day) return null;
+  if (day.dateIso && /^\d{4}-\d{2}-\d{2}$/.test(day.dateIso)) return day.dateIso;
+  return day.date && /^\d{4}-\d{2}-\d{2}$/.test(day.date) ? day.date : null;
+}
+
 export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransportLegData>(
   day: PlanCardDay | undefined,
   legs: TLeg[],
@@ -226,11 +233,15 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
   // unzoned plan, which is right for L10's calendar-date question and wrong for "is the traveler
   // looking at today's day list", so the fallback is chosen here rather than inside it.)
   const today = isUsableTimeZone(timezone) ? calendarDayOf(now, timezone) : todayIso(now);
-  const isLiveDay = !!day && day.date === today;
+  // R297: the day's MACHINE date. The plancard's `date` is its DISPLAY label ("Wed, Nov 11"), which
+  // never equalled an ISO day — so no card day was ever "today" and neither the now-line nor the
+  // Up-next panel could draw. `dateIso` first; `date` only for a producer that carries no ISO day.
+  const dayIso = machineDay(day);
+  const isLiveDay = !!day && dayIso === today;
   const activities = day?.activities ?? [];
 
   const states = isLiveDay
-    ? computeTemporalStates(activities, day!.date, now, visited, timezone)
+    ? computeTemporalStates(activities, dayIso!, now, visited, timezone)
     : ({} as Record<string, TemporalState>);
 
   const upNextIndex = isLiveDay ? activities.findIndex((a) => states[a.id] === "upcoming") : -1;
