@@ -96,7 +96,7 @@ exercised by this live run and are not certified.
 
 ### Phase 0: exact inventory and billing mapping
 
-There are **two**, not four, in-scope automation definition files:
+There are **exactly two** in-scope automation definition files:
 
 1. `server/automations/messaging/plan-delivered-email.ts` — existing node
    `messaging.plan-delivered-email`, extended with `itinerary.ready`.
@@ -104,19 +104,23 @@ There are **two**, not four, in-scope automation definition files:
    `messaging.itinerary-failed-email`, handling generation errors and timeout outcomes.
 
 Supporting modules `server/services/itinerary-generation-outcome.service.ts` and
-`server/services/itinerary-outcome-email.ts` are not additional automations. Counting those
-helpers as two more automation definitions would misrepresent the implementation.
+`server/services/itinerary-outcome-email.ts` are shared implementation helpers, not
+additional automations.
 
 Fresh registry inspection reports 86 valid nodes, exactly two nodes for `itinerary.ready`
 and `itinerary.failed`, and no one-credit-left/out-of-credits nodes. A source search found no
 references to those excluded automation names in server, client, shared, or scripts.
 
+The operator reconfirmed that Part 1 is only the two outcome emails, with pay-per-use and
+Trip Pass unchanged. Credit/allowance policy is separate future work, not a prerequisite,
+deferred acceptance item, or certification blocker for Part 1. Do not reopen that policy
+during this closeout.
+
 The actual run gate is `server/services/optimizer-run-authorization.ts`, wired from
 `server/routes.ts`: Trip Pass coverage, the recent-run window, an already-recorded payment,
-or verified pay-per-use payment. There is no active itinerary-credit allowance/decrement in
-this approved path. A null payment ID in service-level QA is not evidence of credit safety
-or of payment authorization. These tests deliberately do not exercise checkout/run-gate HTTP
-flows or modify billing.
+or verified pay-per-use payment. These tests exercise the optimizer/outcome service, not
+checkout/run-gate HTTP flows. Billing authorization and payment behavior are not changed
+or newly certified by these email tests.
 
 ### Phase 1: loop-by-loop evidence and bug list
 
@@ -179,24 +183,31 @@ Bug/risk disposition for the notification path:
   regressions.
 - No new failures occurred in this refinement run. Repository-wide compiler cleanliness,
   authenticated email-link usability, intermediate optimizer-write isolation, and unchanged
-  billing journeys are not certified by this test set.
+  billing journeys are not certified by this test set. These are boundaries of the evidence,
+  not deferred acceptance checks for the approved generation-outcome notification scope.
+  Email link rendering matches the existing `/itinerary-comparison/:id` client route.
 
-### Phase 2: requested item statuses
+### Phase 2: final two-automation certification checklist
+
+The superseded automation-count and credit-counter checks are removed, not carried forward
+as Deferred items. Every row below is an acceptance check for the actual approved scope.
 
 | Requested item | Status | Evidence / remaining condition |
 | --- | --- | --- |
-| 1. Exactly four automation files | **Deferred** | Two definition files exist and are named above. The two credit alerts were explicitly excluded. Scope reconciliation is required; no dummy files were created. |
-| 2. Every automation fired with real evidence | **Satisfied for the two approved automations** | Ready 504/505 and failure 506/507 each sent and provider-delivered; original timeout deliveries 479/480 remain available. This does not certify two nonexistent credit automations. |
-| 3. Structural risk flags resolved | **Fixed for previously identified notification-path flags; broader certification Deferred** | Existing fixes were freshly reverified as listed above. Global compiler, authenticated-link/billing verification, and intermediate optimizer-write isolation are not passed off as resolved. |
-| 4. Fresh randomized failure never consumes a credit | **Deferred** | Two genuinely fresh randomized failures passed, but there is no active itinerary-credit counter to measure. An absent counter is not passing credit-integrity evidence. A separately approved credit policy is required. |
-| 5. Concurrent successes, two sends, correct credit decrement | **Deferred overall; notification portion Satisfied** | Two overlapping real AI generations for one user produced distinct delivered ready notices. Credit decrement cannot be certified without an active, approved credit policy. |
-| 6. No orphaned references | **Satisfied for notification registry and QA operational references** | Registry validation passes; fresh account, four comparisons and associated variants are absent. Read-only post-cleanup SQL finds zero pending/sending/failed outcome notices with missing comparison/user references. Historical sent audits intentionally retain their comparison identifiers, as previously authorized. |
+| 1. Exactly two automation definition files | **Satisfied** | `plan-delivered-email.ts` and `itinerary-failed-email.ts`; exactly two registered itinerary-outcome nodes, in a valid 86-node registry. |
+| 2. Both automations fired with real evidence | **Satisfied** | Ready audits 504/505 and failure audits 506/507 each sent and provider-delivered; original real five-minute timeout deliveries 479/480 remain available. The operator previously confirmed Inbox receipt for all six original messages. |
+| 3. Notification structural risk flags resolved | **Fixed** | Atomic state/outbox persistence, attempt-owned terminal transitions, timeout/late-terminal protection, per-itinerary dedupe, provider retry/lease guards, cancelled-ready recovery, and deleted/superseded recipient suppression all have passing regression evidence. Previously implemented fixes were freshly reverified; no new defect was found. |
+| 4. Fresh randomized failure-notification loops | **Satisfied** | Two new item-property fault scenarios, new randomized inputs and UUIDs, failed terminal state, no optimized timestamp, and independent provider-delivered failure notices 506/507. No credit assertions are part of this check. |
+| 5. Concurrent same-user successes produce two separate ready sends | **Satisfied** | Two real generations overlapped from the same attempt-start millisecond, persisted AI variants, and produced distinct comparison-scoped ready keys and delivered notices 504/505. Duplicate delivery calls did not add notices. |
+| 6. No orphaned notification references | **Satisfied** | Registry validation passes; fresh account, four comparisons and associated variants are absent. Read-only post-cleanup SQL finds zero pending/sending/failed outcome notices with missing comparison/user references. Historical sent audits intentionally retain their comparison identifiers, as previously authorized. |
 
 The four fresh delivery audits remained unchanged during guarded transactional cleanup.
 The original six audits were not deleted. Production data, billing sources, and app runtime
 configuration were not changed; no commit or publish was performed. The landing page renders.
 The new fixture email links no longer resolve to fixture data, intentionally following cleanup.
 
-**Closeout:** the requested six-point checklist is not fully certified. Do not declare Part 1
-genuinely complete while the count/credit acceptance requirements and broader verification
-deferrals remain unresolved.
+**Closeout:** all acceptance checks for the approved two-automation generation-outcome email
+scope are Satisfied or Fixed. No in-scope acceptance checks remain Deferred.
+**Part 1 genuinely complete.** This certifies the two outcome automations and their documented
+delivery/race/cleanup behavior, not production rollout, broader optimizer internals, global
+typecheck cleanliness, new authenticated-link testing, or billing changes.
