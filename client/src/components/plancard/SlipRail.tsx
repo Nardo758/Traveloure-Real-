@@ -84,6 +84,8 @@ import {
 } from "@/lib/optimization-preview";
 import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
+import { FeedbackTap } from "@/components/plan/FeedbackTap";
+import { FEEDBACK_CODES } from "@shared/feedback";
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-plan-actions";
 import {
@@ -515,6 +517,9 @@ function BuildCard({
             ctaLabelOverride={creatingComparison ? "Building…" : null}
           />
           </span>
+          {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
+              optimizer card, once the plan has a draft; the server says when the moment is open. */}
+          <FeedbackTap tripId={tripId} moment="post_draft" codes={FEEDBACK_CODES.post_draft} />
           {lastOptimizeCoveredByPass && (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"

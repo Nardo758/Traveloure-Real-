@@ -144,6 +144,10 @@ jobs:
       # Skip and "I've got lodging sorted" through the option-set rail. D1–D4.
       - name: Where to stay — ranked by the plan's days; skip and own answers bind honestly
         run: npx tsx --test --test-force-exit server/__tests__/where-to-stay.db.test.ts
+      # Feedback phase A (ledger `2026-10-04-feedback-phase-a`, migration 345): one row per plan ×
+      # moment × user (a second tap updates), server-filled context, unknown pairs refused. F1–F5.
+      - name: Feedback events — a second tap updates; unknown codes refused
+        run: npx tsx --test --test-force-exit server/__tests__/feedback-events.db.test.ts
 
       # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): no legacy crowd/pulse field on
       # the four public routes, the 48h Trend freshness gate, and /api/health's score age. T1–T4.
