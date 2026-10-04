@@ -179,7 +179,10 @@ test("A5: the ONE AI action follows the item count, and stops before the externa
   await expect(draft).toBeVisible();
   await expect(draft).toBeEnabled();
   await expect(draft).toContainText("empty plan");
-  await expect(page.getByTestId("slip-action-optimize")).toHaveCount(0);
+  // Smoke 9 S9-4: the optimizer card still leads the page, but on an undrafted plan it says "Draft
+  // first" and its CTA is disabled — never "this draft already works".
+  await expect(page.getByTestId("optimizer-lead-draft-first")).toHaveText("Draft first — Optimize works on a drafted plan");
+  await expect(page.getByTestId("slip-action-optimize")).toBeDisabled();
 
   // One row of any status ⇒ Optimize, and pressing it opens the review-first dialog. The RUN is
   // the paid rail and is not started here.

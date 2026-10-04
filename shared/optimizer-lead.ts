@@ -321,6 +321,8 @@ export function findingLine(f: Finding): string {
 }
 
 export const LEAD_EYEBROW = "What Optimize found in this draft";
+/** Smoke 9 S9-4: the card on a plan with no draft yet — Optimize is disabled, nothing is claimed. */
+export const LEAD_DRAFT_FIRST = "Draft first — Optimize works on a drafted plan";
 export const LEAD_ZERO = "This draft already works · Optimize builds three versions around where you stay";
 export const LEAD_VERSIONS = "three versions built around where you stay";
 

@@ -42,8 +42,9 @@ export type AiDraftEligibility =
 /**
  * THE DECISION, given the trip id and how many `itinerary_items` rows it holds.
  *
- * "EMPTY" COUNTS EVERY ROW, IN EVERY STATUS — DELIBERATELY. The caller's count is a bare
- * `COUNT(*)`: no status filter, no `origin` filter, no `routing_status` filter, and NOT the
+ * "EMPTY" COUNTS EVERY NON-ANCHOR ROW, IN EVERY STATUS — DELIBERATELY. The caller's count is a
+ * `COUNT(*)` that leaves out only the plan's LODGING ANCHOR rows (smoke 9 S9-1 — a stay is what the
+ * draft is built around, not draft content; `PLAN_ANCHOR_ITEM_TYPES`): no status filter, no `origin` filter, no `routing_status` filter, and NOT the
  * rebuild guard's deletable predicate. The question is "does the traveler already have a plan
  * here?", not "what could a rebuild legally delete?". A `purchased` row, a `ready_for_checkout`
  * row, an expert-authored row and a plain `in_planning` AI row all make the slip non-empty — a

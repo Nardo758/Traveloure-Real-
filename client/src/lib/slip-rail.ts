@@ -57,6 +57,16 @@ export type SlipBuildAiAction = "draft" | "optimize";
  * A non-finite count is treated as "optimize": the cautious direction is never to offer a free
  * wipe-and-rebuild on a plan we could not count.
  */
+/**
+ * Smoke 9 S9-1 — the count `slipBuildAiAction` reads: the SERVER's draft-gate count (the plancard's
+ * `draftItemCount` — non-anchor items, the same number `POST draft` refuses on), so a plan holding
+ * only its stay offers "Draft it with AI". Before the plancard answers, the plain activity count
+ * stands in — never a lower number than the server would use.
+ */
+export function slipDraftItemCount(serverCount: number | null | undefined, activityCount: number): number {
+  return typeof serverCount === "number" && Number.isFinite(serverCount) ? serverCount : activityCount;
+}
+
 export function slipBuildAiAction(itemCount: number): SlipBuildAiAction {
   if (!Number.isFinite(itemCount)) return "optimize";
   return itemCount <= 0 ? "draft" : "optimize";

@@ -145,3 +145,20 @@ export function TravelAnchorPlaceholder({
     </div>
   );
 }
+
+/**
+ * Smoke 9 S9-5 — the amber line under a travel row when stops sit outside the flight
+ * (`flightTimeConflictLine`, shared). A count and a direction; never a minute value.
+ */
+export function AnchorConflictLine({ kind, text }: { kind: "arrival" | "departure"; text: string | null }) {
+  if (!text) return null;
+  return (
+    <p
+      className="mx-3 mb-2 rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+      role="status"
+      data-testid={`slip-anchor-conflict-${kind}`}
+    >
+      {text}
+    </p>
+  );
+}
