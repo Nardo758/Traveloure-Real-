@@ -954,7 +954,9 @@ jobs:
       - name: Optimize-preview heuristic + slip line pin
         run: |
           npx tsx --test server/__tests__/optimize-preview-on-slip.test.ts
-          npx tsx --test client/src/lib/__tests__/optimize-preview-line.test.ts
+          # Surface step 4: the preview LINE's test left with the line (§18c). The OptimizerLead's
+          # findings and card are pinned by shared/__tests__/optimizer-lead.test.ts and
+          # client/src/components/plancard/__tests__/optimizer-lead.test.tsx (whole-directory jobs).
       # 2026-09-05-build-id-and-map-fallback: two post-publish QA defects whose whole failure mode
       # is that they RENDER FINE. B1-B9/S1 pin the build-identity resolver — the ordered sources,
       # and above all §13's all-miss answer (`commit: null`, `source: "unknown"`), because the way

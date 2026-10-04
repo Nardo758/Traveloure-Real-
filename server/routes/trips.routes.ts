@@ -1,6 +1,7 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { setItemLock } from '../services/item-lock.service';
 import { platformCarFits } from '../services/airport-leg.service';
+import { anchorConflicts } from '@shared/optimizer-lead';
 import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -1808,31 +1809,10 @@ router.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req,
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
 
-      // Check for conflicts: activities overlapping anchor buffer zones
-      const conflicts: Array<{ anchorId: string; anchorType: string; conflict: string }> = [];
-
-      for (const anchor of anchors) {
-        const anchorTime = new Date(anchor.anchorDatetime).getTime();
-        const bufferStart = anchorTime - (anchor.bufferBefore || 0) * 60000;
-        const bufferEnd = anchorTime + (anchor.bufferAfter || 0) * 60000;
-
-        // Check against proposed items in the request body
-        const proposedItems = req.body.items || [];
-        for (const item of proposedItems) {
-          if (item.startTime && item.dayNumber) {
-            const itemStart = new Date(`${item.date || ''}T${item.startTime}`).getTime();
-            const itemEnd = item.endTime ? new Date(`${item.date || ''}T${item.endTime}`).getTime() : itemStart + (item.durationMinutes || 60) * 60000;
-
-            if (itemStart < bufferEnd && itemEnd > bufferStart) {
-              conflicts.push({
-                anchorId: anchor.id,
-                anchorType: anchor.anchorType,
-                conflict: `Activity "${item.title}" overlaps with ${anchor.anchorType} buffer zone (${anchor.description || ''})`,
-              });
-            }
-          }
-        }
-      }
+      // Check for conflicts: activities overlapping anchor buffer zones — the ONE overlap rule, shared
+      // with the optimizer preview's timed-entry finding (`anchorConflicts`, surface step 4, §18 rule 1).
+      const proposedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      const conflicts = anchorConflicts(anchors as any, proposedItems).map(({ anchorId, anchorType, conflict }) => ({ anchorId, anchorType, conflict }));
 
       res.json({
         valid: conflicts.length === 0,

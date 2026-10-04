@@ -209,6 +209,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // neighbourhood one-liner — a REGISTRY `neighbourhood` description fact (origin <> places_api), read
     // only inside `loadWhereToStay`, behind the plan's own read gate (`planRole(…, "read")`).
     "server/services/where-to-stay.service.ts",
+    // Surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`): the OptimizerLead's findings
+    // read the plan's hours and location facts — only inside `GET /api/optimization-preview`, behind
+    // `authorizeTripLogistics`; only kinds and counts leave it.
+    "server/services/optimizer-lead.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

@@ -29,6 +29,8 @@
  * the traveler presses Optimize and confirms.
  */
 
+import type { Finding } from "@shared/optimizer-lead";
+
 // ── Server shapes (mirrors of what the two endpoints return) ─────────────────────────────────
 
 export interface PreviewDimension {
@@ -48,11 +50,18 @@ export interface TripOptimizationPreviewComputed {
   dimensions: PreviewDimension[];
   /** Purchased items a run would treat as fixed points. */
   fixedCount: number;
+  /** Surface step 4 (spec §8, R-f): what Optimize found — kinds and counts only. */
+  findings?: Finding[];
+  /** A real price exists on the plan (a listing or a booking) — gates the cost delta line. */
+  hasPricedItems?: boolean;
 }
 
 export interface TripOptimizationPreviewRefused {
   computable: false;
   reason: string;
+  /** Surface step 4: the findings ride a refused score too. */
+  findings?: Finding[];
+  hasPricedItems?: boolean;
 }
 
 export type TripOptimizationPreview =
@@ -71,59 +80,9 @@ export interface OptimizationFeeQuote {
 
 // ── The line ────────────────────────────────────────────────────────────────────────────────
 
-/**
- * The standing caveat. Both halves are required by the ruling: the estimate is a simple
- * heuristic (not a measurement, and not a promise of the delta a run will produce), and what a
- * paid run actually builds is anchored versions of the plan priced from real listings.
- *
- * "up to three" is deliberate: the optimizer's own contract caps variants at three but yields
- * fewer when the destination's catalogue is thin, and promising exactly three would be a claim
- * the generator does not make (§13).
- */
-export const OPTIMIZE_PREVIEW_CAVEAT =
-  "An estimate from a simple heuristic — it reads what each item is, not where it is, so it names no distance, time or money saved. A paid run builds up to three anchored versions of your plan, priced from real listings.";
-
-export type OptimizePreviewLine =
-  | { kind: "estimate"; headline: string; caveat: string }
-  | { kind: "reason"; reason: string };
-
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-/**
- * Turn a preview response into the line the slip renders, or `null` when there is nothing
- * honest to show (no response yet, or a malformed one — never a placeholder).
- */
-export function describeOptimizationPreview(
-  preview: TripOptimizationPreview | null | undefined,
-): OptimizePreviewLine | null {
-  if (!preview || typeof preview !== "object") return null;
-  if (preview.computable === false) {
-    // The SERVER's reason, verbatim. An empty one is shown as nothing rather than as a guess.
-    return preview.reason ? { kind: "reason", reason: preview.reason } : null;
-  }
-  if (preview.computable !== true || !preview.weakest) return null;
-
-  const scope = `${plural(preview.itemCount, "item", "items")} over ${plural(
-    preview.dayCount,
-    "day",
-    "days",
-  )}`;
-  const fixed =
-    preview.fixedCount > 0
-      ? ` ${plural(preview.fixedCount, "booked item", "booked items")} would stay put.`
-      : "";
-
-  return {
-    kind: "estimate",
-    headline:
-      `This plan scores ${preview.currentScore}/100 across ${scope} — ` +
-      `${preview.weakest.label.toLowerCase()} is its weakest part (${preview.weakest.score}/100), ` +
-      `so that is where a run has the most room.${fixed}`,
-    caveat: OPTIMIZE_PREVIEW_CAVEAT,
-  };
-}
+// Surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`): the "scores N/100" line and its
+// caveat are GONE — `OptimizerLead` renders what Optimize FOUND instead (spec §8). §18c: deleted, not
+// kept beside the card that replaced them.
 
 // ── The fee chip ────────────────────────────────────────────────────────────────────────────
 
@@ -162,19 +121,4 @@ export function formatMoneyCents(cents: number, currency: string): string {
  */
 export const OPTIMIZE_RERUN_RULE = "A re-run within 24 hours of a completed optimization is free.";
 
-/**
- * What the fee chip says, or `null` when there is no price to state. Three server-decided
- * cases, in order:
- *   - `aiDisabled`  → NOTHING. The run cannot be bought for this plan, so no price is honest.
- *   - `coveredByTripPass` → the existing covered label, on the server's word.
- *   - otherwise     → the server-resolved amount, with the pricing page's own promise attached.
- */
-export function formatOptimizationFeeLabel(
-  fee: OptimizationFeeQuote | null | undefined,
-): string | null {
-  if (!fee || typeof fee !== "object") return null;
-  if (fee.aiDisabled) return null;
-  if (fee.coveredByTripPass) return TRIP_PASS_COVERED_LABEL;
-  if (!Number.isFinite(fee.feeCents) || fee.feeCents <= 0) return null;
-  return `${formatMoneyCents(fee.feeCents, fee.currency)} to run · charged only when you confirm · ${OPTIMIZE_RERUN_RULE}`;
-}
+// The fee chip's sentence moved onto the card's CTA (`optimizeCtaLabel`, `components/plan/OptimizerLead`).
