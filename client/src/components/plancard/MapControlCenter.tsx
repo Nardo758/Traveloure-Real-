@@ -16,6 +16,7 @@ import {
 } from "./plancard-types";
 import { getModePolylineStyle, getModeColor } from "@/lib/transport-modes";
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
+import { clampFramingZoom, mapFraming } from "@/lib/map-framing";
 
 interface MapControlCenterProps {
   tripId: string;
@@ -140,10 +141,20 @@ function MapContent({
     // Both series share ONE viewport: a compare view that framed only the proposal would
     // silently crop the plan it is being compared with.
     const framed = [...geocodedActivities, ...geocodedSecondary];
-    if (framed.length > 0) {
+    // Smoke 8 item 5: framing never zooms past the district — one pin is centred at district
+    // zoom, and a fit over several is clamped to it once it settles (`mapFraming`).
+    const framing = mapFraming(framed.map((a) => ({ lat: a.resolvedLat, lng: a.resolvedLng })));
+    if (framing.kind === "center") {
+      map.setCenter(framing.center);
+      map.setZoom(framing.zoom);
+    } else if (framing.kind === "bounds") {
       const bounds = new google.maps.LatLngBounds();
       framed.forEach((a) => {
         bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
+      });
+      google.maps.event.addListenerOnce(map, "idle", () => {
+        const clamped = clampFramingZoom(map.getZoom(), framing.maxZoom);
+        if (clamped !== null) map.setZoom(clamped);
       });
       map.fitBounds(bounds, 60);
     } else if (fallbackCenter) {

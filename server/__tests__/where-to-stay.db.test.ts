@@ -5,7 +5,11 @@
  *   D1 a five-day drafted plan with no stay is eligible; its city's neighbourhoods are ranked by the
  *      located items per day; a city with no inventory says so (hotelsAvailable false, no hotel)
  *   D2 a single-day plan and an undrafted plan are not eligible; a stranger gets not_found
- *   D3 Skip closes an anchored lodging set with nothing chosen, and the panel is then gone
+ *   D3 smoke 8: Skip closes an anchored lodging set with nothing chosen and dismisses the CURRENT
+ *      state only — the drafted panel is gone on reload, but the view is still served (dismissed) for
+ *      the tray's chooser, and Skip is not a decision (a second answer is still accepted)
+ *   D3b smoke 8: a Skip BEFORE the draft dismisses the empty panel, and the drafted panel still
+ *      appears once after the draft; a Skip on that drafted panel then dismisses it
  *   D4 "I've got lodging sorted" with a neighbourhood puts a stay on the plan with NO coordinates
  *   D5 §13 — a drafted plan whose stops have no coordinates says so (no_located_items), never that the
  *      city has no neighbourhoods; a city with none says that (no_neighborhoods)
@@ -33,6 +37,7 @@ const T5 = id("five");
 const T5B = id("five-b");
 const T1 = id("one");
 const T0 = id("empty");
+const T0S = id("empty-skip");
 const TU = id("unlocated");
 const TN = id("nowhere");
 const TT = id("tied");
@@ -73,6 +78,7 @@ before(async () => {
   await trip(T1, "2027-11-11", "2027-11-11");
   await item(T1, 1, 35.0, 135.78, 1);
   await trip(T0, "2027-11-11", "2027-11-15");
+  await trip(T0S, "2027-11-11", "2027-11-15");
   await trip(TU, "2027-11-11", "2027-11-15");
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin)
     VALUES (${id("tu-1")}, ${TU}, 1, 'Explore', 'attraction', 'ai')`);
@@ -133,7 +139,7 @@ test("D2 single-day, undrafted and a stranger's plan get no panel", async () => 
   assert.equal((await loadWhereToStay(T5, STRANGER)).reason, "not_found");
 });
 
-test("D3 Skip closes an anchored lodging set with nothing chosen, and the panel is gone", async () => {
+test("D3 Skip closes a lodging set with nothing chosen and dismisses only the current (drafted) state", async () => {
   const out = await bindWhereToStay(T5, OWNER, { kind: "skip" });
   assert.equal(out.itemId, null);
   const r = await db.execute(sql`SELECT status, category_key, anchor_role, chosen_option_id FROM plan_option_sets WHERE id = ${out.setId}`);
@@ -142,8 +148,30 @@ test("D3 Skip closes an anchored lodging set with nothing chosen, and the panel 
   assert.equal(set.category_key, "accommodation");
   assert.ok(set.anchor_role);
   assert.equal(set.chosen_option_id, null);
-  assert.equal((await loadWhereToStay(T5, OWNER)).reason, "decided");
-  await assert.rejects(bindWhereToStay(T5, OWNER, { kind: "skip" }), /already says where you're staying/);
+  const after = await loadWhereToStay(T5, OWNER);
+  assert.equal(after.eligible, true, "the ranking is still served — the tray's chooser reads it");
+  assert.equal(after.dismissed, true, "the slip draws no drafted panel after a drafted Skip");
+  assert.ok(after.neighborhoods.length > 0);
+  // A Skip is not a decision: the chooser can still be answered.
+  const again = await bindWhereToStay(T5, OWNER, { kind: "skip" });
+  assert.equal(again.itemId, null);
+});
+
+test("D3b a Skip before the draft dismisses the empty panel only; the drafted panel appears once, then its own Skip dismisses it", async () => {
+  await bindWhereToStay(T0S, OWNER, { kind: "skip" });
+  const empty = await loadWhereToStay(T0S, OWNER);
+  assert.equal(empty.reason, "no_draft");
+  assert.equal(empty.dismissed, true);
+  // The draft lands after the Skip.
+  for (const d of [1, 2, 3]) await item(T0S, d, 35.001, 135.781, 1);
+  const drafted = await loadWhereToStay(T0S, OWNER);
+  assert.equal(drafted.eligible, true);
+  assert.equal(drafted.dismissed, undefined, "the pre-draft Skip does not dismiss the drafted panel");
+  await bindWhereToStay(T0S, OWNER, { kind: "skip" });
+  assert.equal((await loadWhereToStay(T0S, OWNER)).dismissed, true);
+  // A real answer still decides for good.
+  await bindWhereToStay(T0S, OWNER, { kind: "own", hotelName: "Hotel Fixture", neighborhoodSlug: null });
+  assert.equal((await loadWhereToStay(T0S, OWNER)).reason, "decided");
 });
 
 test("D4 'I've got lodging sorted' with a neighbourhood adds a stay with no coordinates", async () => {

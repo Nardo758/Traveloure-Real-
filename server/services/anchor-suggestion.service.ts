@@ -8,6 +8,7 @@
 
 import { storage } from "../storage";
 import type { TemporalAnchor } from "@shared/schema";
+import { FLIGHT_BUFFER_MIN } from "@shared/getting-there";
 
 interface AnchorSuggestion {
   anchorType: string;
@@ -78,7 +79,8 @@ function getFlightBufferSuggestions(
       suggestedTime: "14:00",
       suggestedDayNumber: 1,
       bufferBefore: 0,
-      bufferAfter: 120,
+      // Smoke 8 item 4: the ONE buffer table; a suggestion does not know the origin ⇒ international.
+      bufferAfter: FLIGHT_BUFFER_MIN.arrivalAfter.international,
       reason: "Afternoon arrivals give time for customs, baggage, and transit to accommodation. 2-hour buffer covers immigration and transport.",
       confidence: "medium",
       source: "destination",
@@ -90,9 +92,9 @@ function getFlightBufferSuggestions(
       anchorType: "flight_departure",
       suggestedTime: "16:00",
       suggestedDayNumber: context.numberOfDays,
-      bufferBefore: 180,
+      bufferBefore: FLIGHT_BUFFER_MIN.departureBefore.international,
       bufferAfter: 0,
-      reason: "Late afternoon departure allows a relaxed final morning. 3-hour buffer covers check-out, transit, and airport security.",
+      reason: "Late afternoon departure allows a relaxed final morning. A 2½-hour buffer covers transit to the airport, check-in and security.",
       confidence: "medium",
       source: "destination",
     });
@@ -253,15 +255,16 @@ export async function analyzeAnchorOptimization(
 
   // Check for missing buffers on flight anchors
   for (const anchor of anchors) {
-    if (anchor.anchorType === "flight_departure" && (anchor.bufferBefore || 0) < 120) {
+    // Smoke 8 item 4: the floor is the DOMESTIC buffer — the shortest the platform itself sets.
+    if (anchor.anchorType === "flight_departure" && (anchor.bufferBefore || 0) < FLIGHT_BUFFER_MIN.departureBefore.domestic) {
       tips.push({
-        tip: `Departure flight buffer is only ${anchor.bufferBefore || 0} minutes. Consider at least 120 minutes for airport transit and security.`,
+        tip: `Departure flight buffer is only ${anchor.bufferBefore || 0} minutes. Consider at least ${FLIGHT_BUFFER_MIN.departureBefore.domestic} minutes for airport transit and security.`,
         severity: "warning",
       });
     }
-    if (anchor.anchorType === "flight_arrival" && (anchor.bufferAfter || 0) < 60) {
+    if (anchor.anchorType === "flight_arrival" && (anchor.bufferAfter || 0) < FLIGHT_BUFFER_MIN.arrivalAfter.domestic) {
       tips.push({
-        tip: `Arrival flight buffer is only ${anchor.bufferAfter || 0} minutes. Consider at least 60 minutes for baggage and transit.`,
+        tip: `Arrival flight buffer is only ${anchor.bufferAfter || 0} minutes. Consider at least ${FLIGHT_BUFFER_MIN.arrivalAfter.domestic} minutes for baggage and transit.`,
         severity: "info",
       });
     }

@@ -63,7 +63,7 @@ import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPa
 import { LegRow } from "@/components/plan/LegRow";
 import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
 import { manifestFor } from "@shared/group-manifest";
-import type { WhereToStayView } from "@shared/where-to-stay";
+import { anchorSurfaces, type WhereToStayView } from "@shared/where-to-stay";
 import { itemAreaLabel, itemFactsLine } from "@/lib/place-facts";
 import { ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { DayBlock } from "@/components/plan/DayBlock";
@@ -72,6 +72,7 @@ import {
   TRAVEL_ANCHOR_WORDS,
   TravelAnchorPlaceholder,
   flightAnchorFor,
+  flightRowText,
   type FlightAnchorView,
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId } from "@shared/getting-there";
@@ -817,7 +818,7 @@ function SlipDayItem({
               ? {
                   fromTool: GETTING_THERE_TOOL,
                   time: travel.flight.time,
-                  detail: [travel.flight.description, travel.flight.location].filter(Boolean).join(" · ") || null,
+                  detail: flightRowText(travel.flight),
                 }
               : { fromTool: null, action: onAddFlight ? { label: TRAVEL_ANCHOR_WORDS.addFlight, onClick: onAddFlight } : null }
             : null
@@ -1550,14 +1551,18 @@ export function SlipView({
   const hasStayItem = planActivities.some((act) => act.type === "accommodation");
   // Surface step 3 (ledger `2026-10-03-surface-step3-anchor-panel`): the ONE AnchorPanel reads the
   // same view before AND after the draft — `no_draft` is its empty state, an eligible view its
-  // drafted state, and `decided` (a stay, a comparison, or a Skip) means no panel. Asked whenever the
+  // drafted state, and `decided` (a stay, or a comparison open or chosen) means no panel; a Skip only
+  // dismisses the state it was pressed in (smoke 8 item 1, `dismissed`). Asked whenever the
   // plan has no stay item; the server decides the rest and the client restates none of it.
   const whereToStayQuery = useQuery<WhereToStayView>({
     queryKey: [`/api/trips/${tripId}/where-to-stay`],
     enabled: !!tripId && !hasStayItem,
   });
   const whereToStay = whereToStayQuery.data?.eligible ? whereToStayQuery.data : null;
-  const anchorPanelEmpty = !hasStayItem && whereToStayQuery.data?.reason === "no_draft";
+  // Smoke 8 item 1: a "Skip for now" dismisses the panel for the state it was pressed in; the
+  // tray's "Where to stay" opens the full chooser whenever the stay is undecided (`anchorSurfaces`).
+  const anchorSurface = anchorSurfaces(whereToStayQuery.data, hasStayItem);
+  const anchorPanelEmpty = anchorSurface.slip === "empty";
   // Smoke 5 items 6/8: when the draft's lookups finish, its stops' coordinates have landed — re-ask
   // Where to stay once, which then ranks on them and stores that order for the draft.
   const factsPendingCount = data.factsPendingItemIds?.length ?? 0;
@@ -1612,7 +1617,7 @@ export function SlipView({
   const experienceGroup = experienceGroupFor(occasion);
   const tripsAnchor: TripsAnchor | null = resolvedTripsAnchor(occasion);
   // Surface step 3: the ONE lodging surface, in either state. Its question is the group manifest's.
-  const renderAnchorPanel = (stage: "empty" | "drafted") => (
+  const renderAnchorPanel = (stage: "empty" | "drafted" | "chooser") => (
     <AnchorPanel
       tripId={tripId}
       stage={stage}
@@ -1927,13 +1932,7 @@ export function SlipView({
               occasionSlug={occasion?.slug ?? null}
               planEvents={planEvents}
               isHidden={occasionIsHidden}
-              whereToStay={
-                whereToStay ? (
-                  renderAnchorPanel("drafted")
-                ) : (
-                  <SlipAnchorCompareButton tripId={tripId} />
-                )
-              }
+              whereToStay={anchorSurface.trayChooser ? renderAnchorPanel("chooser") : <SlipAnchorCompareButton tripId={tripId} />}
               trip={{
                 destination: data.trip.destination ?? null,
                 startDate: (data.trip.startDate as any) ?? null,
@@ -2076,7 +2075,7 @@ export function SlipView({
       ) : null}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
-      {whereToStay ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty ? renderAnchorPanel("empty") : null}
+      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
@@ -2265,6 +2264,18 @@ export function SlipView({
                 {(day?.transports ?? []).map((leg) => (
                   <LogisticsRow key={leg.id} leg={leg} />
                 ))}
+                {/* R-i: stay → airport, before the departure anchor. Smoke 8 item 5: the departure is
+                    the LAST ROW inside the last day — after its stops and legs, above the day's
+                    "Add something to this day" control (which adds to the day, not after the flight). */}
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? renderAirportLeg("departure") : null}
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? (
+                  <TravelAnchorPlaceholder
+                    kind="departure"
+                    city={data.trip?.destination ?? null}
+                    flight={flightAnchorFor(tripAnchors, "flight_departure")}
+                    onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
+                  />
+                ) : null}
                 {/* S1's second control: the plan's ONE implicit unnamed event has no header to hang
                     an add on, and a day with no events has no event header at all. `null` is that
                     event — a real answer, not an absence (Locked Decision 29) — so the day-level
@@ -2284,16 +2295,6 @@ export function SlipView({
                     />
                   </div>
                 )}
-                {/* R-i: stay → airport, before the departure anchor. */}
-                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? renderAirportLeg("departure") : null}
-                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? (
-                  <TravelAnchorPlaceholder
-                    kind="departure"
-                    city={data.trip?.destination ?? null}
-                    flight={flightAnchorFor(tripAnchors, "flight_departure")}
-                    onAddFlight={isOwner ? () => setOpenTool("getting_there") : undefined}
-                  />
-                ) : null}
               </DayBlock>
             );
           })}

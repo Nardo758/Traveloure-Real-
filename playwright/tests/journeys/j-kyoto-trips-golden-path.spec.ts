@@ -441,7 +441,7 @@ async function openLodgingSetWithThree(page: Page, tripId: string): Promise<stri
 
 test.describe("2 · where are you staying", () => {
 
-  test("§2 A1 / step 3 — an empty Travel slip's AnchorPanel asks 'Where are you staying?', offers three answers, and Skip never returns", async ({ page }) => {
+  test("§2 A1 / step 3 — an empty Travel slip's AnchorPanel asks 'Where are you staying?', offers three answers; Skip dismisses it, and the tray still opens the full chooser (smoke 8)", async ({ page }) => {
     const tripId = await planWithOccasion(page, "a1-stay", "travel");
     const read = await actAndAwait(page, async () => { await page.goto(`/plans/${tripId}`); }, { method: "GET", path: new RegExp(`^/api/trips/${tripId}$`) });
     expect(ok2xx(read)).toBe(true);
@@ -467,7 +467,17 @@ test.describe("2 · where are you staying", () => {
     await page.reload();
     await expect(testid(page, "slip-header")).toBeVisible({ timeout: 20_000 });
     await expect(testid(page, "slip-anchor-question")).toHaveCount(0);
-    expect((await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json()).reason).toBe("decided");
+    // Smoke 8 item 1: Skip dismisses the EMPTY state only — it is not a decision.
+    const after = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json();
+    expect(after.reason).toBe("no_draft");
+    expect(after.dismissed).toBe(true);
+    // …and the tray's "Where to stay" chip still opens the full chooser.
+    await testid(page, "tool-chip-where_to_stay").click();
+    const chooser = testid(page, "tool-sheet-where_to_stay").getByTestId("anchor-panel-chooser");
+    await expect(chooser).toBeVisible({ timeout: 20_000 });
+    await expect(chooser.getByTestId("slip-anchor-compare")).toHaveText("Add places I'm considering");
+    await expect(chooser.getByTestId("where-to-stay-own")).toHaveText("I've got lodging sorted");
+    await expect(chooser.getByTestId("where-to-stay-skip")).toHaveText("Skip for now");
   });
 
   test("§2 A1 — a golf trip (schedule on) asks what is fixed first; lodging is secondary (M7)", async ({ page }) => {
@@ -525,14 +535,14 @@ test.describe("2 · where are you staying", () => {
     // The placeholder's action opens the Getting there sheet.
     await testid(page, "slip-anchor-action-travel-arrival").click();
     await expect(testid(page, "getting-there-sheet")).toBeVisible();
-    await testid(page, "getting-there-arrival-number").fill("JL 61");
+    await testid(page, "getting-there-arrival-number").fill("JL 061");
     const looked = await actAndAwait(page, () => testid(page, "getting-there-arrival-lookup").click(), {
       method: "POST",
       path: new RegExp(`^/api/trips/${tripId}/flight-lookup$`),
     });
     expect(ok2xx(looked)).toBe(true);
     await expect(testid(page, "getting-there-arrival-manual")).toBeVisible();
-    await testid(page, "getting-there-arrival-time").fill("15:25");
+    await testid(page, "getting-there-arrival-time").fill("09:05");
     await testid(page, "getting-there-arrival-airport").fill("KIX");
     const added = await actAndAwait(page, () => testid(page, "getting-there-arrival-manual-add").click(), {
       method: "POST",
@@ -543,11 +553,24 @@ test.describe("2 · where are you staying", () => {
       `SELECT anchor_type, to_char(anchor_datetime, 'HH24:MI') AS t, location, buffer_after FROM temporal_anchors WHERE trip_id = $1`,
       [tripId],
     );
-    expect(row).toEqual({ anchor_type: "flight_arrival", t: "15:25", location: "KIX", buffer_after: 90 });
+    // Smoke 8 item 4: the manual path does not ask where the flight came from ⇒ unknown ⇒ the
+    // international arrival buffer (120 min).
+    expect(row).toEqual({ anchor_type: "flight_arrival", t: "09:05", location: "KIX", buffer_after: 120 });
     await page.keyboard.press("Escape");
     await expect(testid(page, "slip-travel-anchor-arrival")).toHaveAttribute("data-anchor-real", "true");
-    await expect(testid(page, "slip-travel-anchor-arrival")).toContainText("15:25");
+    await expect(testid(page, "slip-travel-anchor-arrival")).toContainText("09:05");
+    // Smoke 8 item 3: the flight as entered (leading zeros kept), where it lands, and who said so.
+    await expect(testid(page, "slip-travel-anchor-arrival-flight")).toHaveText("JL 061 · lands KIX 09:05 · entered by you");
     await expect(testid(page, "slip-anchor-label-travel-arrival")).toHaveText("Anchor · fixed · from Getting there");
+    // Smoke 8 item 5: the departure row is the last row inside the last day, ABOVE its add control.
+    const departure = testid(page, "slip-travel-anchor-departure");
+    await expect(departure).toBeVisible();
+    const order = await departure.evaluate((dep) => {
+      const adds = Array.from(document.querySelectorAll('[data-testid^="slip-day-add-"]'));
+      const last = adds[adds.length - 1];
+      return last ? dep.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING : -1;
+    });
+    expect(order, "the day's add control follows the departure row").toBeGreaterThan(0);
   });
 
   test("§2 A3 — the anchor question opens a set; three places admitted, a fourth refused (cap 3)", async ({ page }) => {
@@ -1065,7 +1088,7 @@ test.describe("4 · free draft around the set", () => {
     // Smoke 5 item 2: the panel is the ONE lodging surface — the legacy inline card never shows.
     await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
 
-    // …and after Skip, a reload brings back neither the panel nor the legacy card.
+    // …and after Skip, a reload brings back neither the panel nor the legacy card (smoke 8: for this state).
     const skip = await actAndAwait(
       page,
       async () => {
@@ -1082,7 +1105,10 @@ test.describe("4 · free draft around the set", () => {
     await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
     await expect(testid(page, "anchor-panel-collapsed")).toHaveCount(0);
     await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
-    expect((await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json()).reason).toBe("decided");
+    // Smoke 8 item 1: the drafted Skip dismisses this state; the ranking is still served for the tray.
+    const after = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`)).json();
+    expect(after.eligible).toBe(true);
+    expect(after.dismissed).toBe(true);
   });
 
   test("§4 — with an open hotel set the draft succeeds, leaves the set open and adds no accommodation", async ({ page }) => {

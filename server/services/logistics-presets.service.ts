@@ -15,6 +15,7 @@
 // Same pattern and same reason as `server/services/pending-events.service.ts`'s lazy storage
 // import; the two write paths are already `async`, so nothing else changes.
 import type { InsertTemporalAnchor, InsertDayBoundary } from "@shared/schema";
+import { FLIGHT_BUFFER_MIN } from "@shared/getting-there";
 
 interface AnchorPreset {
   anchorType: string;
@@ -200,7 +201,8 @@ const TRAVEL_PRESETS: TemplatePresets = {
       anchorType: "flight_arrival",
       label: "Arrival Flight",
       defaultBufferBefore: 0,
-      defaultBufferAfter: 120,
+      // Smoke 8 item 4: the ONE buffer table; a preset does not know the origin ⇒ international.
+      defaultBufferAfter: FLIGHT_BUFFER_MIN.arrivalAfter.international,
       defaultTimeOfDay: "14:00",
       dayOffset: 0,
       isImmovable: true,
@@ -229,12 +231,12 @@ const TRAVEL_PRESETS: TemplatePresets = {
     {
       anchorType: "flight_departure",
       label: "Departure Flight",
-      defaultBufferBefore: 180,
+      defaultBufferBefore: FLIGHT_BUFFER_MIN.departureBefore.international,
       defaultBufferAfter: 0,
       defaultTimeOfDay: "16:00",
       dayOffset: -1, // Last day
       isImmovable: true,
-      description: "Departure flight — need 3 hours before for airport",
+      description: "Departure flight — 2½ hours before for the airport",
     },
   ],
   dayBoundaries: [

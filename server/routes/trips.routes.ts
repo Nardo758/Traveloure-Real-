@@ -218,6 +218,8 @@ import { buildItineraryViewOgTags, injectIntoHead } from "../utils/html-head";
 import { sanitizeInput } from "../utils/sanitize";
 import { refuseIfComparisonApplyToCartDisabled } from "../config/comparison-apply-to-cart.config";
 import { lookupFlight } from "../services/flight-lookup/flight-lookup.service";
+import { isInternationalFlight } from "@shared/getting-there";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
 
 const router = Router();
 
@@ -1688,6 +1690,18 @@ router.post("/api/trips/:tripId/flight-lookup", isAuthenticated, async (req, res
   const result = await lookupFlight({ ...parsed.data, userId });
   if (result.kind === "invalid") return res.status(400).json(result);
   if (result.kind === "cap_reached") return res.status(429).json(result);
+  if (result.kind === "found") {
+    // Smoke 8 item 4: is each direction international for THIS plan (its market's country)? The
+    // sheet sets the anchor's buffer from it; null ⇒ unknown ⇒ the international buffer.
+    const planCountry = OPERATING_MARKETS.find((m) => m.marketKey === trip.marketSlug)?.countryCode ?? null;
+    return res.json({
+      ...result,
+      international: {
+        arrival: isInternationalFlight("arrival", result.flight, planCountry),
+        departure: isInternationalFlight("departure", result.flight, planCountry),
+      },
+    });
+  }
   return res.json(result);
 });
 

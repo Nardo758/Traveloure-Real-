@@ -12,6 +12,10 @@
  *      and Skip — no list, no coming-soon slots
  *   P6 unranked views say why (§13), and nothing printed is a distance or a minute
  *   P7 pure rules: orderStaysByOrigin (R-o), topWonOnTieBreak, anchorPanelMode, collapsedStayLine
+ *   P8 smoke 8 — the tray CHOOSER always offers compare / I've got lodging sorted / Skip for now, with
+ *      the ranking (never collapsed) when there is one, and a dismissed view renders in full
+ *   P9 smoke 8 — `anchorSurfaces`: a Skip dismisses the slip panel for its own state only; the tray's
+ *      chooser stays available while the stay is undecided
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/anchor-panel.test.tsx
  */
@@ -25,6 +29,7 @@ import {
   anchorPanelMode,
   collapsedStayLine,
   orderStaysByOrigin,
+  anchorSurfaces,
   topWonOnTieBreak,
   type WhereToStayView,
 } from "@shared/where-to-stay";
@@ -146,5 +151,41 @@ describe("AnchorPanel", () => {
     assert.equal(anchorPanelMode([{ hotels: [] }, { hotels: [] }]), "collapsed");
     assert.equal(anchorPanelMode([{ hotels: [] }, { hotels: [1] }]), "options");
     assert.equal(collapsedStayLine({ name: "Gion", oneLiner: null }), "Best area for these days: Gion");
+  });
+
+  it("P8 the tray chooser: the three answers always, the full ranking when there is one", () => {
+    const compare = React.createElement("button", { "data-testid": "slip-anchor-compare" }, "Add places I'm considering");
+    // No draft yet (and even after a pre-draft Skip): the three answers.
+    const bare = render({ stage: "chooser", view: null, addPlacesControl: compare });
+    const tb = text(bare);
+    assert.match(bare, /data-testid="anchor-panel-chooser"/);
+    assert.match(tb, /Add places I'm considering/);
+    assert.match(tb, /I've got lodging sorted/);
+    assert.match(tb, /Skip for now/);
+    // A drafted view whose options have no stays would COLLAPSE on the slip; the chooser lists them all,
+    // and a dismissed view (the traveler skipped it) still renders in full.
+    const v = view([nb("gion"), nb("arashiyama")], { dismissed: true });
+    const full = render({ stage: "chooser", view: v, addPlacesControl: compare });
+    assert.match(full, /where-to-stay-neighborhood-gion/);
+    assert.match(full, /where-to-stay-neighborhood-arashiyama/);
+    assert.doesNotMatch(full, /anchor-panel-collapsed/);
+    for (const a of [/slip-anchor-compare/, /where-to-stay-own/, /where-to-stay-skip/]) assert.match(full, a);
+    // A non-chooser sees no answers.
+    assert.doesNotMatch(render({ stage: "chooser", view: v, canChoose: false }), /where-to-stay-skip|where-to-stay-own/);
+  });
+
+  it("P9 anchorSurfaces: Skip dismisses the current state only; the tray chooser stays open while undecided", () => {
+    const drafted = view([nb("gion")]);
+    assert.deepEqual(anchorSurfaces(drafted, false), { slip: "drafted", trayChooser: true });
+    assert.deepEqual(anchorSurfaces({ ...drafted, dismissed: true }, false), { slip: null, trayChooser: true });
+    const noDraft: WhereToStayView = { ...view([]), eligible: false, reason: "no_draft" };
+    assert.deepEqual(anchorSurfaces(noDraft, false), { slip: "empty", trayChooser: true });
+    assert.deepEqual(anchorSurfaces({ ...noDraft, dismissed: true }, false), { slip: null, trayChooser: true });
+    // A pre-draft Skip does not carry over: the next (drafted) view is undismissed and draws once.
+    assert.equal(anchorSurfaces(drafted, false).slip, "drafted");
+    const decided: WhereToStayView = { ...view([]), eligible: false, reason: "decided" };
+    assert.deepEqual(anchorSurfaces(decided, false), { slip: null, trayChooser: false });
+    assert.deepEqual(anchorSurfaces(drafted, true), { slip: null, trayChooser: false });
+    assert.deepEqual(anchorSurfaces(undefined, false), { slip: null, trayChooser: false });
   });
 });

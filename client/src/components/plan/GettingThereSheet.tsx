@@ -48,7 +48,7 @@ interface AnchorRowData {
 }
 
 type LookupAnswer =
-  | { kind: "found"; flight: FlightInfo; cached: boolean }
+  | { kind: "found"; flight: FlightInfo; cached: boolean; international?: { arrival: boolean | null; departure: boolean | null } }
   | { kind: "not_found" | "off" | "error" | "cap_reached" };
 
 function FlightBlock({
@@ -125,8 +125,10 @@ function FlightBlock({
       {existing ? (
         <div className="flex items-start justify-between gap-2 text-sm" data-testid={`getting-there-${direction}-added`}>
           <div>
-            <p className="text-foreground">{[anchorWallTime(existing.anchorDatetime), existing.location].filter(Boolean).join(" · ")}</p>
-            {existing.description ? <p className="text-xs text-muted-foreground">{existing.description}</p> : null}
+            {/* Smoke 8 item 3: the stored line already says the flight, the airport and the time. */}
+            <p className="text-foreground">
+              {existing.description || [anchorWallTime(existing.anchorDatetime), existing.location].filter(Boolean).join(" · ")}
+            </p>
           </div>
           <Button size="sm" variant="ghost" onClick={() => remove.mutate(existing.id)} disabled={remove.isPending} data-testid={`getting-there-${direction}-remove`}>
             {GETTING_THERE_WORDS.remove}
@@ -160,7 +162,12 @@ function FlightBlock({
               <p className="text-foreground">
                 {answer.flight.number} · {answer.flight.depAirport} {answer.flight.depAt.slice(11)} → {answer.flight.arrAirport} {answer.flight.arrAt.slice(11)}
               </p>
-              <Button size="sm" onClick={() => add.mutate(flightAnchorBody(direction, answer.flight))} disabled={add.isPending} data-testid={`getting-there-${direction}-add`}>
+              <Button size="sm" onClick={() => add.mutate(
+                    flightAnchorBody(direction, answer.flight, {
+                      entered: flightNumber.trim() || null,
+                      international: answer.international?.[direction] ?? null,
+                    }),
+                  )} disabled={add.isPending} data-testid={`getting-there-${direction}-add`}>
                 {GETTING_THERE_WORDS.add}
               </Button>
             </div>
@@ -183,7 +190,7 @@ function FlightBlock({
               <Button
                 size="sm"
                 onClick={() =>
-                  add.mutate(manualFlightAnchorBody(direction, { date, time, flightNumber: normalizeFlightNumber(flightNumber), airport: airport.trim() || null }))
+                  add.mutate(manualFlightAnchorBody(direction, { date, time, flightNumber: flightNumber.trim() || null, airport: airport.trim() || null }))
                 }
                 disabled={!/^\d{2}:\d{2}$/.test(time) || !date || add.isPending}
                 data-testid={`getting-there-${direction}-manual-add`}

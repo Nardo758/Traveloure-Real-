@@ -23,6 +23,39 @@ function movementLocal(mv: any): string | null {
   return localStamp(mv?.scheduledTime?.local ?? mv?.scheduledTimeLocal ?? mv?.revisedTime?.local ?? null);
 }
 
+function airportCountry(mv: any): string | null {
+  const c = mv?.airport?.countryCode;
+  return typeof c === "string" && /^[A-Za-z]{2}$/.test(c) ? c.toUpperCase() : null;
+}
+
+/**
+ * A provider failure Replit can read (smoke 8): the HTTP status and the provider's own message —
+ * NEVER the key (it rides a header and is not in the URL or the body we keep).
+ */
+export class FlightLookupError extends Error {
+  constructor(readonly status: number, readonly providerMessage: string | null) {
+    super(`flight lookup failed: HTTP ${status}${providerMessage ? ` — ${providerMessage}` : ""}`);
+    this.name = "FlightLookupError";
+  }
+}
+
+async function providerMessage(resp: { text(): Promise<string> }): Promise<string | null> {
+  try {
+    const raw = (await resp.text()).slice(0, 2000);
+    let msg: unknown = raw;
+    try {
+      const j = JSON.parse(raw);
+      msg = j?.message ?? j?.error?.message ?? j?.error ?? raw;
+    } catch {
+      /* not JSON — keep the text */
+    }
+    const t = String(msg ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+    return t || null;
+  } catch {
+    return null;
+  }
+}
+
 function airportCode(mv: any): string | null {
   const a = mv?.airport;
   return (a?.iata || a?.icao || a?.name || null) as string | null;
@@ -45,6 +78,8 @@ export function parseAeroDataBox(body: unknown): FlightInfo | null {
       depAt,
       arrAt,
       terminal: (f?.arrival?.terminal ?? f?.departure?.terminal ?? null) as string | null,
+      depCountry: airportCountry(f?.departure),
+      arrCountry: airportCountry(f?.arrival),
     };
   }
   return null;
@@ -59,7 +94,7 @@ export const aeroDataBoxAdapter: FlightLookupAdapter = {
     const url = `https://${host}/flights/number/${encodeURIComponent(flightNo)}/${encodeURIComponent(date)}?withAircraftImage=false&withLocation=false`;
     const resp = await fetch(url, { headers: { "X-RapidAPI-Key": key, "X-RapidAPI-Host": host } });
     if (resp.status === 204 || resp.status === 404) return null;
-    if (!resp.ok) throw new Error(`flight lookup failed: HTTP ${resp.status}`);
+    if (!resp.ok) throw new FlightLookupError(resp.status, await providerMessage(resp));
     const parsed = parseAeroDataBox(await resp.json());
     return parsed ? { ...parsed, number: parsed.number || flightNo } : null;
   },
