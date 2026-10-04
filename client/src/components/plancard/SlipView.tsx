@@ -39,7 +39,7 @@ import {
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
-import { tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
+import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   type PlanCardActivity,
   type PlanCardData,
@@ -81,7 +81,7 @@ import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHostHref } from "@/lib/item-row-menu";
 import { isLocated } from "@/components/plancard/MapControlCenter";
-import type { MapAnchor, MapArea, MapVersion } from "@/lib/map-scene";
+import { areaShading, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
 import type { VersionsBoardView } from "@/lib/versions-board";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
@@ -1324,11 +1324,25 @@ function primaryInputFromTrip(trip: SlipTrip | undefined) {
  * of its own to render (§13).
  */
 function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
+  // Step 6 finalize smoke: "ready" only when a final version exists (`tripCardBannerState`, the one
+  // rule the card and the T-48h nudge read); inside the 48-hour window with no final, the slip says
+  // to make the plan final instead — the card would only say "Not final yet".
+  const state = tripCardBannerState({ finalizedAt: trip.finalizedAt, startDate: trip.startDate, endDate: trip.endDate, finalVersion: trip.finalVersion });
+  if (state === "finalize_now") {
+    return (
+      <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20" data-testid="slip-trip-card-finalize-now">
+        <CardContent className="p-4 flex items-center gap-2 flex-wrap">
+          <CheckCircle2 className="w-4 h-4 text-amber-700 flex-shrink-0" />
+          <p className="text-sm font-medium text-foreground">{TRIP_CARD_FINALIZE_NOW_TITLE}</p>
+        </CardContent>
+      </Card>
+    );
+  }
   return (
     <Card className="border-primary/30 bg-primary/5" data-testid="slip-trip-card-primary-banner">
       <CardContent className="p-4 flex items-center gap-2 flex-wrap">
         <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
-        <p className="text-sm font-medium text-foreground">Your Trip Card is ready</p>
+        <p className="text-sm font-medium text-foreground">{TRIP_CARD_READY_TITLE}</p>
         {/* Version chip (adopt-finalize-conform D-2): with it, the Finalize Plan button's absence
             reads as COMPLETED. §13: render only a real server-emitted version, never an invented
             one. */}
@@ -1447,6 +1461,9 @@ export function SlipView({
   // R-F: `finalized_at ∨ now ≥ startDate−48h ∨ underway → Trip Card is primary` — the SAME rule
   // the server-side T-48h scheduler applies, read straight off this DTO's real fields.
   const isPrimary = data.trip ? tripCardIsPrimary(primaryInputFromTrip(data.trip)) : false;
+  // Step 6 finalize smoke: the rail's "Finished · View as Trip card" only once a final exists — with
+  // none, the Finish card keeps Finalize (`tripCardBannerState`, the one rule).
+  const cardReady = data.trip ? tripCardBannerState({ ...primaryInputFromTrip(data.trip), finalVersion: data.trip.finalVersion }) === "ready" : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
 
@@ -1669,12 +1686,14 @@ export function SlipView({
     if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng! };
     return null;
   })();
-  // Neighbourhoods are shaded only while the AnchorPanel is open (on the slip or in the tray).
+  // Neighbourhoods are shaded whenever the stay is located, and emphasised while the AnchorPanel is
+  // open (on the slip or in the tray) — spec v1.3.4 §2.3, step 6 (`areaShading`).
   const anchorPanelOpen = anchorSurface.slip === "drafted" || (!!tripsAnchor && anchorPanelEmpty) || openTool === "where_to_stay";
+  const shading = areaShading({ stayLocated: mapAnchor?.kind === "stay", panelOpen: anchorPanelOpen });
   const mapCity = (data.trip?.destination ?? "").split(",")[0].trim();
   const { data: areaRows } = useQuery<{ data?: Array<{ slug: string; name: string; centroidLat: string; centroidLng: string }> }>({
     queryKey: [`/api/city-neighborhoods?city=${encodeURIComponent(mapCity)}`],
-    enabled: slipView === "map" && anchorPanelOpen && !!mapCity,
+    enabled: slipView === "map" && shading.show && !!mapCity,
     staleTime: 10 * 60_000,
   });
   const mapAreas: MapArea[] = (areaRows?.data ?? [])
@@ -2072,7 +2091,8 @@ export function SlipView({
             readOnly={!canEditItems}
             anchor={mapAnchor}
             areas={mapAreas}
-            showAreas={anchorPanelOpen}
+            showAreas={shading.show}
+            emphasizeAreas={shading.emphasize}
             versions={mapVersions}
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
@@ -2410,7 +2430,7 @@ export function SlipView({
               isOwner={isOwner}
               canEditItems={canEditItems}
               isExpertViewer={isExpertViewer}
-              isPrimary={isPrimary}
+              isPrimary={cardReady}
               activities={allActivities}
               planEvents={planEvents}
               budgetLine={budgetLine}

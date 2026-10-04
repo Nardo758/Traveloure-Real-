@@ -23,7 +23,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
-import { TRIP_CARD_HANDOVER_WINDOW_MS } from "@shared/trip-primary-surface";
+import { TRIP_CARD_HANDOVER_WINDOW_MS, tripCardNudgeCopy } from "@shared/trip-primary-surface";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { runBookingSchedule } from "../automations/bookings/runtime";
@@ -42,6 +42,7 @@ interface HandoverCandidate {
   id: string;
   userId: string;
   destination: string | null;
+  hasFinal: boolean;
 }
 
 class TripCardHandoverSchedulerService {
@@ -91,14 +92,18 @@ class TripCardHandoverSchedulerService {
       for (const trip of candidates) {
         // Best-effort per-trip: one failed notification must not abort the rest of the pass.
         try {
+          // Step 6 finalize smoke: "ready" only when a final version exists — a never-finalized
+          // plan is told to make it final and sent to its slip, never to a card that says
+          // "Not final yet" (`tripCardNudgeCopy`, the one rule the slip banner reads too).
+          const copy = tripCardNudgeCopy(trip.hasFinal, trip.destination);
           await storage.createNotification({
             userId: trip.userId,
             type: "trip_card_ready",
-            title: "Your Trip Card is ready",
-            message: `Your Trip Card for ${trip.destination || "your trip"} is ready to view.`,
+            title: copy.title,
+            message: copy.message,
             relatedId: trip.id,
             relatedType: "trip",
-            data: { tripId: trip.id, workspacePath: `/trip/${trip.id}?tab=itinerary` },
+            data: { tripId: trip.id, workspacePath: copy.path === "card" ? `/trip/${trip.id}` : `/plans/${trip.id}` },
           } as any);
           nudged++;
         } catch (err) {
@@ -132,7 +137,8 @@ class TripCardHandoverSchedulerService {
    */
   private async findUnnudgedCandidates(): Promise<HandoverCandidate[]> {
     const result = await db.execute(sql`
-      SELECT t.id, t.user_id, t.destination
+      SELECT t.id, t.user_id, t.destination,
+        EXISTS (SELECT 1 FROM trip_finals f WHERE f.trip_id = t.id) AS has_final
       FROM trips t
       WHERE t.finalized_at IS NULL
         AND t.user_id IS NOT NULL
@@ -151,6 +157,7 @@ class TripCardHandoverSchedulerService {
       id: r.id,
       userId: r.user_id,
       destination: r.destination ?? null,
+      hasFinal: r.has_final === true,
     }));
   }
 

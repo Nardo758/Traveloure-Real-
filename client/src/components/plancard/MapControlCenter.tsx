@@ -74,9 +74,11 @@ export interface MapControlCenterProps {
   readOnly?: boolean;
   /** The plan's anchor (stay / reservation / venue) — always drawn when located. */
   anchor?: MapAnchor | null;
-  /** Neighbourhood centroids; shaded only while `showAreas` (the AnchorPanel is open). */
+  /** Neighbourhood centroids; shaded while `showAreas` (the stay is located, or the AnchorPanel is
+   *  open), emphasised while `emphasizeAreas` (the AnchorPanel is open). */
   areas?: MapArea[] | null;
   showAreas?: boolean;
+  emphasizeAreas?: boolean;
   /** A run's versions: the Draft / A / B / C toggle. */
   versions?: MapVersion[] | null;
   /** Controlled Browse layer (e.g. "Find a host" opens it filtered to a category). */
@@ -101,6 +103,7 @@ export function MapControlCenter({
   anchor = null,
   areas = null,
   showAreas = false,
+  emphasizeAreas = false,
   versions = null,
   browse: browseControlled = null,
   onBrowseChange,
@@ -187,6 +190,7 @@ export function MapControlCenter({
     planAnchor: anchor,
     areas,
     showAreas,
+    emphasizeAreas,
     browse: browsePlaces,
     layers: { plan: planLayer, browse: browseOn },
   });

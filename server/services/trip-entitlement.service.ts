@@ -50,7 +50,8 @@
  */
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { tripEntitlements, type TripEntitlement } from "@shared/schema";
+import { feeLedger, tripEntitlements, type TripEntitlement } from "@shared/schema";
+import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
 import { PLAN_KEYS } from "./plans.service";
 
 export type TripPassAction =
@@ -91,6 +92,10 @@ export async function coversAction(tripId: string, action: TripPassAction): Prom
   if (!pass) return false;
   switch (action) {
     case "optimizer_run":
+      // R-ac cap (step 6): a pass covers up to `TRIP_PASS_RUNS_PER_TRIP` full runs on its trip; the
+      // next one is a paid run. Read here so the run gate, the charge gate and the fee quote can never
+      // disagree (§18 rule 1).
+      return (await tripPassRunsUsed(tripId)) < tripPassRunsPerTrip();
     case "ai_task":
     case "traveler_service_fee":
       // Unconditional benefits of an active pass (ruling; unlimited, no counters). These three are
@@ -189,4 +194,38 @@ export async function grantTripPass(input: {
   const active = await getActiveTripPass(input.tripId);
   if (active) return { entitlement: active, created: false };
   throw new Error("trip pass grant conflicted but no standing entitlement was found");
+}
+
+/**
+ * R-ac (step 6): the FULL optimizer runs a Trip Pass has covered on this trip — one `fee_waiver` row
+ * per covered run is written by `recordOptimizerRunToll` (`covered_by: trip_pass`, keyed on a run id
+ * minted at the run point), so the ledger IS the count; nothing new is stored. A run whose toll could
+ * not be priced wrote no row and is not counted (stated limit). A read failure counts as NO covered
+ * run left — the run then states the fee rather than spending past the cap unseen.
+ */
+export async function tripPassRunsUsed(tripId: string): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(feeLedger)
+      .where(
+        and(
+          eq(feeLedger.sourceType, "optimizer_run"),
+          eq(feeLedger.feeType, "fee_waiver"),
+          sql`${feeLedger.metadata}->>'tripId' = ${tripId}`,
+          sql`${feeLedger.metadata}->>'covered_by' = 'trip_pass'`,
+        ),
+      );
+    return Number(row?.n ?? 0);
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/** The pass's run allowance on this trip, for the "N runs left" line. `null` = no active pass. */
+export async function tripPassRunsStatus(tripId: string): Promise<{ cap: number; used: number; left: number } | null> {
+  if (!(await tripHasPass(tripId))) return null;
+  const cap = tripPassRunsPerTrip();
+  const used = await tripPassRunsUsed(tripId);
+  return { cap, used: Number.isFinite(used) ? used : cap, left: Number.isFinite(used) ? Math.max(0, cap - used) : 0 };
 }
