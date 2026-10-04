@@ -5,12 +5,15 @@
  * WHAT A "COPY" IS: a plan carrying a leg whose `origin` is `author_pick` or `rerouted_for_stay` (the
  * plan's own words: "on a copy (origin present on any leg)"). Anything else is never touched.
  *
- * WHAT "THE STAY" IS: a `hotel_checkin` / `hotel_checkout` temporal anchor with a real coordinate —
- * the plan's "lodging anchor". Check-in is where day 1 starts; check-out (else check-in) is where the
- * last day ends. An anchor with no coordinate is no stay point (§13 — never a city centre).
- *   STATED LIMIT: the where-to-stay chooser sets a stay as a lodging ITEM through an option set and
- *   writes no such anchor, and a Places coordinate is never written onto an item row (LD 57). So a
- *   stay chosen there does not re-route yet; that needs its own ruling.
+ * WHAT "THE STAY" IS (decision-maker, Oct 4, 2026 — ledger `2026-10-04-stay-item-reroute`; no hotel
+ * anchor): the plan's STAY ITEM, read by ONE function, `stayPointForPlan` —
+ *   · the item a CHOSEN accommodation option set put on the plan (the where-to-stay chooser, a stay
+ *     typed by name, or "Set as where you're staying"), primary set first; else
+ *   · the latest hand-added accommodation item that is not the author's (`origin` not `expert`, so a
+ *     copy's own placeholder ryokan is never mistaken for the buyer's stay);
+ * and its point is the item row's coordinate when trusted (`rowCoordinatesTrusted`), else its Google
+ * `location` fact — exactly the pin the plancard draws (`applyGooglePins`, §18 rule 1). No point ⇒ no
+ * re-route (§13 — never a city centre). The stay is where day 1 starts and the last day ends.
  *
  * WHAT IS REPLACED: the day's end leg is removed only when it touches a LODGING item at that end
  * (`isLodgingItem`) — the author's own placeholder stay — so an author's pick between two real stops
@@ -24,19 +27,19 @@
  *
  * Never throws into its caller's write (§15b): the anchor route calls it best-effort.
  */
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { temporalAnchors, transportLegs, trips } from "@shared/schema";
+import { itineraryItems, planOptionSets, transportLegs, trips } from "@shared/schema";
 import { isLodgingItem } from "@shared/where-to-stay";
+import { applyGooglePins, rowCoordinatesTrusted } from "@shared/ai-place-text";
+import { factsForTrip } from "./content-facts/place-facts.service";
 import { storage } from "../storage";
 import { computeTransportLeg } from "./transport-leg-calculator";
 import { SELECTABLE_TRANSPORT_MODES, recomputeLegForMode } from "./trip-transport-legs.service";
 import { AUTHOR_PICK_ORIGIN } from "./ready-made-clone-legs";
 
 export const REROUTED_FOR_STAY_ORIGIN = "rerouted_for_stay";
-export const STAY_ANCHOR_TYPES = ["hotel_checkin", "hotel_checkout"] as const;
-
-export type StayPoint = { name: string; lat: number; lng: number };
+export type StayPoint = { itemId: string; name: string; lat: number; lng: number };
 
 function point(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
   const la = Number(lat);
@@ -46,21 +49,49 @@ function point(lat: unknown, lng: unknown): { lat: number; lng: number } | null 
   return { lat: la, lng: ln };
 }
 
-/** The stay's start and end points from the plan's hotel anchors (latest of each type wins). */
-export function stayPointsFromAnchors(
-  anchors: ReadonlyArray<{ anchorType: string; latitude: unknown; longitude: unknown; location: string | null; updatedAt?: Date | null }>,
-): { start: StayPoint | null; end: StayPoint | null } {
-  const latest = (type: string): StayPoint | null => {
-    const rows = anchors
-      .filter((a) => a.anchorType === type && point(a.latitude, a.longitude))
-      .sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime());
-    const a = rows[0];
-    if (!a) return null;
-    const p = point(a.latitude, a.longitude)!;
-    return { name: a.location?.trim() || "Your stay", ...p };
-  };
-  const start = latest("hotel_checkin");
-  return { start, end: latest("hotel_checkout") ?? start };
+/** The plan's stay item and its point, or null (see the header). */
+export async function stayPointForPlan(tripId: string): Promise<StayPoint | null> {
+  const [chosen] = await db
+    .select({ itemId: planOptionSets.itineraryItemId })
+    .from(planOptionSets)
+    .where(
+      and(
+        eq(planOptionSets.tripId, tripId),
+        eq(planOptionSets.categoryKey, "accommodation"),
+        eq(planOptionSets.status, "chosen"),
+        isNotNull(planOptionSets.itineraryItemId),
+      ),
+    )
+    .orderBy(sql`CASE WHEN ${planOptionSets.anchorRole} = 'primary' THEN 0 ELSE 1 END`, desc(planOptionSets.createdAt))
+    .limit(1);
+  let itemId = chosen?.itemId ?? null;
+  if (!itemId) {
+    const [own] = await db
+      .select({ id: itineraryItems.id })
+      .from(itineraryItems)
+      .where(
+        and(
+          eq(itineraryItems.tripId, tripId),
+          eq(itineraryItems.itemType, "accommodation"),
+          or(isNull(itineraryItems.origin), ne(itineraryItems.origin, "expert")),
+        ),
+      )
+      .orderBy(desc(itineraryItems.createdAt), asc(itineraryItems.id))
+      .limit(1);
+    itemId = own?.id ?? null;
+  }
+  if (!itemId) return null;
+  const [item] = await db.select().from(itineraryItems).where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId))).limit(1);
+  if (!item) return null;
+  const rowTrusted = rowCoordinatesTrusted(item as any);
+  const facts = await factsForTrip(tripId);
+  const [day] = applyGooglePins(
+    [{ activities: [{ id: item.id, lat: rowTrusted ? (point(item.latitude, item.longitude)?.lat ?? null) : null, lng: rowTrusted ? (point(item.latitude, item.longitude)?.lng ?? null) : null }] }],
+    facts as any,
+  );
+  const pin = point(day.activities[0].lat, day.activities[0].lng);
+  if (!pin) return null;
+  return { itemId: item.id, name: item.title?.trim() || "Your stay", ...pin };
 }
 
 export type RerouteResult =
@@ -75,12 +106,9 @@ export async function rerouteCopyForStay(tripId: string): Promise<RerouteResult>
   if (!legs.some((l) => l.origin === AUTHOR_PICK_ORIGIN || l.origin === REROUTED_FOR_STAY_ORIGIN)) {
     return { skipped: "not_a_copy" };
   }
-  const anchors = await db
-    .select()
-    .from(temporalAnchors)
-    .where(and(eq(temporalAnchors.tripId, tripId), inArray(temporalAnchors.anchorType, [...STAY_ANCHOR_TYPES])));
-  const stay = stayPointsFromAnchors(anchors);
-  if (!stay.start || !stay.end) return { skipped: "no_located_stay" };
+  const stayPoint = await stayPointForPlan(tripId);
+  if (!stayPoint) return { skipped: "no_located_stay" };
+  const stay = { start: stayPoint, end: stayPoint };
 
   const items = await storage.getItineraryItems(tripId);
   if (items.length === 0) return { skipped: "no_located_stops" };
@@ -178,9 +206,11 @@ export async function rerouteCopyForStay(tripId: string): Promise<RerouteResult>
   return { rerouted: rows.length, removed: removeIds.length };
 }
 
-/** The anchor route's best-effort hook: a stay anchor changed on a copy. Never throws (§15b). */
-export async function rerouteAfterStayAnchor(tripId: string, anchorType: string | null | undefined): Promise<void> {
-  if (!anchorType || !(STAY_ANCHOR_TYPES as readonly string[]).includes(anchorType)) return;
+/**
+ * The best-effort hook (§15b): the plan's stay may have changed — after the where-to-stay chooser binds
+ * a stay and after an accommodation option set is chosen. Never throws; a no-op off a copy.
+ */
+export async function rerouteAfterStayChange(tripId: string): Promise<void> {
   try {
     await rerouteCopyForStay(tripId);
   } catch (err) {

@@ -198,7 +198,6 @@ import {
   serviceCategorySlugToFeeCategory,
 } from "../services/commission";
 import { getTripRole } from "../utils/trip-role";
-import { rerouteAfterStayAnchor } from "../services/stay-reroute.service";
 // The CANONICAL §12 READ-access advisor predicate (pending/accepted/assigned; rejected and any
 // unrecognised status DENY). Imported directly rather than re-derived — V-33.
 import { isTripAdvisor } from "../utils/trip-advisor";
@@ -1660,9 +1659,6 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
 
       const input = anchorCreateInput.parse(body);
       const anchor = await storage.createTemporalAnchor(input);
-      // R-ba (work plan L1-4): a stay anchor on a ready-made copy re-routes its first and last legs.
-      // Best-effort — never fails the anchor write (§15b); a no-op on anything that is not a copy.
-      await rerouteAfterStayAnchor(req.params.tripId, anchor.anchorType);
       res.status(201).json(anchor);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1744,8 +1740,6 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
       const updates = anchorUpdateInput.parse(req.body);
       const updated = await storage.updateTemporalAnchor(req.params.id, updates);
       if (!updated) return res.status(404).json({ message: "Anchor not found" });
-      // R-ba (work plan L1-4): see the create rail above.
-      await rerouteAfterStayAnchor(existing.tripId, updated.anchorType);
       res.json(updated);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
