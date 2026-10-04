@@ -59,14 +59,24 @@ function buildOptimizationFeeIdempotencyKey(
  * Body: { items: [{serviceType, price?, duration?, dayNumber?}[]], eventType?, travelers? }
  * Returns heuristic estimate + fee — no LLM, no auth required.
  */
-router.post("/api/optimization-preview", async (req, res) => {
+// R297 (decision-maker ruling, Oct 4, 2026): SESSION-GATED, like every other plan route. The rail
+// had no sign-in requirement — a pre-existing gap the free-re-run removal exposed (its only session
+// read was that check). It computes findings over a plan's items, so it carries plan READ access: a
+// signed-in caller, and when the body names a plan (`tripId`), the same read gate the trip-addressed
+// GET below runs.
+router.post("/api/optimization-preview", isAuthenticated, async (req, res) => {
   try {
     const { items = [], eventType, travelers = 1 } = req.body;
+    const userId = getUserId(req)!;
+    if (typeof req.body?.tripId === "string" && req.body.tripId) {
+      const denied = await authorizeTripLogistics(req.body.tripId, userId, "POST /api/optimization-preview");
+      if (denied) return res.status(denied.status).json({ error: denied.message });
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "items array is required" });
     }
-    // Security-audit finding 15 (2026-09-01): no auth by design, and `items` had no ceiling —
+    // Security-audit finding 15 (2026-09-01): `items` had no ceiling (the rail was then unauthenticated) —
     // CPU amplification behind only the IP limiter and the 10 MB body cap. Capped at the
     // platform's own itinerary-list ceiling (MAX_GENERATED_LIST_ITEMS = 100,
     // utils/generated-itinerary.ts) — no real plan exceeds it.

@@ -94,10 +94,7 @@ export function TripCardDays(props: TripCardDaysProps) {
   const liveNow = useLiveNow();
   const now = props.now ?? liveNow;
   const todayLegs = [...(today?.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0)) as any[];
-  // The temporal engine compares `day.date` with an ISO day; the plancard's `date` is the DISPLAY
-  // label ("Wed, Nov 11"), which never matched — the old card's now-line could never draw. The card
-  // hands it the machine day (`dateIso`) instead.
-  const upNext = today?.dateIso ? getUpNextInfo({ ...today, date: today.dateIso }, todayLegs, now, visited, timeZone) : null;
+  const upNext = today ? getUpNextInfo(today, todayLegs, now, visited, timeZone) : null;
   const stored = props.finalCard?.photos ?? {};
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 

@@ -114,16 +114,42 @@ test("P5/P6 provenance says only what is known; no photo without one", () => {
 
 test("P7 R297: today carries the now-line before the next stop and a visited tick on every row; other days none", () => {
   const d1 = days[0];
-  // 11:00 in Kyoto on day 1 (02:00Z): the 09:00 and 10:45 stops are past, 12:00 is next.
+  // 11:00 in Kyoto on day 1 (02:00Z): the 09:00 stop is past, the 10:45 stop is the next one.
   const html = render(new Date(`${d1.dateIso}T02:00:00Z`));
   const line = html.indexOf('data-testid="now-line"');
   assert.ok(line > 0, "the now-line is drawn today");
-  const next = d1.activities.find((a: any) => a.time === "12:00");
-  assert.ok(next, "the fixture's day 1 has a 12:00 stop");
-  assert.ok(line < html.indexOf(`data-testid="slip-item-${next.id}"`), "the line sits before the next stop");
+  const past = d1.activities.find((a: any) => a.time === "09:00");
+  const next = d1.activities.find((a: any) => a.time === "10:45");
+  assert.ok(past && next, "the fixture's day 1 has 09:00 and 10:45 stops");
+  assert.ok(html.indexOf(`data-testid="slip-item-${past.id}"`) < line, "after the stop already done");
+  assert.ok(line < html.indexOf(`data-testid="slip-item-${next.id}"`), "and before the next stop");
   for (const a of d1.activities) assert.ok(html.includes(`data-testid="button-visited-${a.id}"`), `visited tick on ${a.name}`);
   // A day that is not today: no line, no tick.
   const later = render(new Date("2026-10-01T02:00:00Z")); // before the trip: no day is today
   assert.ok(!later.includes('data-testid="now-line"'));
   assert.ok(!later.includes('data-testid="button-visited-'));
+});
+
+test("P8 R297: the 'Up next' engine knows today from the day's ISO date, not its display label", async () => {
+  const { getUpNextInfo, machineDay } = await import("../plancard-temporal");
+  const d1 = days[0];
+  assert.notEqual(d1.date, d1.dateIso, "the fixture's `date` is the display label");
+  assert.equal(machineDay(d1), d1.dateIso);
+  const info = getUpNextInfo(d1, [], new Date(`${d1.dateIso}T02:00:00Z`), new Set(), payload.trip.timezone);
+  assert.equal(info.isLiveDay, true, "day 1 at 11:00 Kyoto time is today");
+  assert.equal(info.upNextActivity?.time, "10:45", "the 10:45 stop is still under way at 11:00");
+  assert.equal(getUpNextInfo(days[1], [], new Date(`${d1.dateIso}T02:00:00Z`), new Set(), payload.trip.timezone).isLiveDay, false);
+});
+
+test("P9 R-ay: a row's Navigate is destination-only (Maps starts where the traveler is); the day's is a route", () => {
+  const html = renders[0].html;
+  const rowHrefs = Array.from(html.matchAll(/data-testid="slip-item-navigate-[^"]+"|href="(https:\/\/www\.google\.com\/maps\/dir\/[^"]+)"[^>]*data-testid="slip-item-navigate-/g)).map((m) => m[1]).filter(Boolean);
+  assert.ok(rowHrefs.length > 0);
+  for (const h of rowHrefs) {
+    assert.ok(!/[?&](amp;)?origin=/.test(h), `no origin on a row link: ${h}`);
+    assert.ok(/destination=/.test(h));
+  }
+  const dayHref = /href="([^"]+)"[^>]*data-testid="card-day-navigate-1"/.exec(html)![1];
+  assert.match(dayHref, /origin=/, "the day's link is a route through the day, from its first stop");
+  assert.match(dayHref, /waypoints=/);
 });
