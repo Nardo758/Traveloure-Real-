@@ -5,6 +5,7 @@
  *   POST   /api/trips/:tripId/transport-legs/generate    engine proposes (born 'proposed')
  *   PATCH  /api/trips/:tripId/transport-legs/:legId      expert confirms / edits
  *   DELETE /api/trips/:tripId/transport-legs/:legId      expert rejects a leg
+ *   GET    /api/trips/:tripId/transport-legs/review      the leg-review stepper's read (work plan L1-10)
  *
  * The Workstation READ (`GET /api/trips/:tripId/transport-legs?includeProposed=1`) is deliberately
  * NOT registered here: that exact path is ALREADY served by a live handler in `trips.routes.ts`
@@ -47,6 +48,8 @@ import { storage } from "../storage";
 import {
   AUTHOR_TIP_MAX_CHARS,
   LEG_PROPOSAL_STATUSES,
+  buildLegReview,
+  getTripTransportLegs,
   legPickupRefusal,
   SELECTABLE_TRANSPORT_MODES,
   deleteTripTransportLeg,
@@ -148,6 +151,26 @@ router.post("/api/trips/:tripId/transport-legs/generate", isAuthenticated, async
     }
     console.error("[TransportLegs] generate error:", err);
     res.status(500).json({ message: "Failed to generate transport legs" });
+  }
+});
+
+/**
+ * GET /api/trips/:tripId/transport-legs/review — work plan L1-10 (enhancement 2). The Workstation's
+ * leg-review stepper: every trip-scoped leg, proposed included, in review order with its candidate
+ * modes, coordinates and the first unpicked index (`buildLegReview`). A read — the same gate and the
+ * same 404 as the Workstation's `GET …/transport-legs?includeProposed=1` (no trip oracle). No path
+ * shadows it: `/transport-legs/:legId` has only PATCH and DELETE here, and no GET is registered for it.
+ */
+router.get("/api/trips/:tripId/transport-legs/review", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const denied = await authorizeTripLogistics(tripId, sessionUserId(req), "GET /api/trips/:tripId/transport-legs/review");
+    if (denied) return res.status(denied.status === 401 ? 401 : 404).json({ message: denied.status === 401 ? "Not authenticated" : "Trip not found" });
+    const legs = await getTripTransportLegs(tripId, { includeProposed: true });
+    res.json({ tripId, ...buildLegReview(legs) });
+  } catch (err) {
+    console.error("[TransportLegs] review error:", err);
+    res.status(500).json({ message: "Failed to load the leg review" });
   }
 });
 
