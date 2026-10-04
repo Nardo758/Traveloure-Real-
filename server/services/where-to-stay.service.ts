@@ -74,6 +74,7 @@ import {
 import { enrichPlanItems } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
+import { rerouteAfterStayChange } from "./stay-reroute.service";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -566,6 +567,19 @@ async function lookUpStayPlace(tripId: string, itemId: string | null): Promise<v
 
 /** Bind the traveler's answer through the option-set rail. Returns the set and, when one was made, the stay item. */
 export async function bindWhereToStay(
+  tripId: string,
+  userId: string,
+  binding: StayBinding,
+): Promise<{ setId: string; itemId: string | null; replaced?: string | null }> {
+  const out = await bindWhereToStayInner(tripId, userId, binding);
+  // R-ba (work plan L1-4; ledger `2026-10-04-stay-item-reroute`): on a ready-made copy the new stay
+  // re-routes the first and last legs — AFTER the stay's own place lookup above has run, so a stay
+  // typed by name is routed from its Google point. Best-effort, never fails the bind (§15b).
+  if (out.itemId) await rerouteAfterStayChange(tripId);
+  return out;
+}
+
+async function bindWhereToStayInner(
   tripId: string,
   userId: string,
   binding: StayBinding,

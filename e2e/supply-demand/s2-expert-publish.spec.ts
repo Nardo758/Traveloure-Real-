@@ -23,7 +23,7 @@ import {
 } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
-import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin, seedExpertIdentityVerification, seedReadyMadeHero } from './lib/db';
+import { q, userByEmail, serviceByTitle, feeBand, seedMeetingPin, seedExpertIdentityVerification, seedReadyMadeHero, seedReadyMadeConfirmedLegs } from './lib/db';
 import { writeState, readState } from './lib/state';
 import { testid, appears } from './lib/ui';
 import { dedupe } from './lib/dedupe';
@@ -719,6 +719,39 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
         submittable = await submitBtn.isEnabled().catch(() => false);
         if (submittable) break;
         await page.waitForTimeout(400);
+      }
+    }
+
+    // R-ax (ledger `2026-10-04-ready-made-leg-gate`): the publish gate now needs a confirmed leg with a
+    // mode between every pair of consecutive LOCATED stops. Drive the real path first — the engine's
+    // generate, then the author's confirm of each proposal in its recommended (selectable) mode — and
+    // seed only the pairs it could not route (no Google key / travel-time service here), logged.
+    if (tripId) {
+      const gen = await page.request.post(`/api/trips/${tripId}/transport-legs/generate`).catch(() => null);
+      const legsRes = await page.request.get(`/api/trips/${tripId}/transport-legs?includeProposed=1`).catch(() => null);
+      const proposed = legsRes && legsRes.ok() ? ((await legsRes.json()).legs ?? []).filter((l: any) => l.proposalStatus === 'proposed') : [];
+      for (const leg of proposed) {
+        await page.request
+          .patch(`/api/trips/${tripId}/transport-legs/${leg.id}`, { data: { proposalStatus: 'confirmed', userSelectedMode: 'walk' } })
+          .catch(() => {});
+      }
+      const seeded = await seedReadyMadeConfirmedLegs(tripId);
+      if (seeded > 0) {
+        fileFinding({
+          journey: 'S2',
+          step: 'readymade:seeded-legs',
+          class: 'SPEC_DIVERGENCE',
+          severity: 'P3',
+          known: null,
+          title: 'seeded confirmed ready-made legs (HELD:routing)',
+          expected: 'n/a — documented R-1 exception: the leg engine cannot route without a Google key or the travel-time service',
+          actual:
+            `generate answered ${gen ? gen.status() : 'no response'}; ${proposed.length} proposal(s) confirmed through the real PATCH; ` +
+            `${seeded} pair(s) the engine could not route were seeded as confirmed 'walk' legs on trip ${tripId}.`,
+          where: 'e2e/supply-demand/lib/db.ts seedReadyMadeConfirmedLegs',
+          evidence: {},
+          behavioural: true,
+        });
       }
     }
 

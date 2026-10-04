@@ -1691,12 +1691,59 @@ export class DatabaseStorage implements IStorage {
     if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
       derived.datesConfirmedAt = new Date();
     }
-    const [updatedTrip] = await db
-      .update(trips)
-      .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
-      .where(eq(trips.id, id))
-      .returning();
-    return updatedTrip;
+    if (safeUpdates.startDate === undefined) {
+      const [updatedTrip] = await db
+        .update(trips)
+        .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
+        .where(eq(trips.id, id))
+        .returning();
+      return updatedTrip;
+    }
+    /**
+     * R-bg (work plan L1-4): a ready-made copy's anchors were re-based onto its PLACEHOLDER start
+     * date at the clone (`buildClonedAnchor`). When that placeholder is first replaced by a real
+     * start date, the anchors move by the same number of days, so a "day 2, 15:00" check-in lands on
+     * the buyer's day 2. Only while the dates were still a placeholder (`dates_confirmed_at` NULL
+     * before this write), only on a copy (`ready_made_purchases.clone_trip_id`), and only the anchors
+     * the clone wrote (created_at = the copy's own): after the buyer has answered, or for an anchor the
+     * buyer added themselves, the anchor is theirs and a re-date never moves it. Same transaction, with
+     * the trip row locked, so a retried or concurrent re-date shifts once.
+     */
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ startDate: trips.startDate, datesConfirmedAt: trips.datesConfirmedAt })
+        .from(trips)
+        .where(eq(trips.id, id))
+        .for("update");
+      const [updatedTrip] = await tx
+        .update(trips)
+        .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
+        .where(eq(trips.id, id))
+        .returning();
+      if (before && updatedTrip && before.datesConfirmedAt == null && before.startDate && updatedTrip.startDate) {
+        const [copy] = await tx
+          .select({ id: readyMadePurchases.id })
+          .from(readyMadePurchases)
+          .where(eq(readyMadePurchases.cloneTripId, id))
+          .limit(1);
+        if (copy) {
+          // ONLY the template's anchors: the clone stamps each with the copy trip's own created_at
+          // (`buildClonedAnchor`), so an anchor the buyer added — a real flight looked up before they
+          // confirmed dates — is never moved. Compared to the millisecond, the precision a JS Date
+          // carried when the clone wrote it.
+          await tx.execute(sql`
+            UPDATE temporal_anchors a
+               SET anchor_datetime = a.anchor_datetime + make_interval(days => (${String(updatedTrip.startDate)}::date - ${String(before.startDate)}::date)),
+                   updated_at = now()
+              FROM trips t
+             WHERE a.trip_id = ${id}
+               AND t.id = a.trip_id
+               AND date_trunc('milliseconds', a.created_at) = date_trunc('milliseconds', t.created_at)
+          `);
+        }
+      }
+      return updatedTrip;
+    });
   }
 
   async deleteTrip(id: string): Promise<void> {

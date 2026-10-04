@@ -197,7 +197,12 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * /api/plans/:id/feedback, the post-draft tap and its undo — .strict() picks behind the plan's read
  * gate (authorizeTripLogistics; one 404), the user from the session. The text heuristic classes both
  * "other" / session-self — other 217 → 219, session-self 333 → 335.
- * 655 / 646 → 656 / 647 (PR #1283, daily facts recheck registration): POST /internal/jobs/facts-recheck,
+ * 655 / 646 → 656 / 647 (ledger `2026-10-04-expert-inbox-questions`, work plan L1-13): POST
+ * /api/expert/inbox/questions/:id/answer — a .strict() pick under the expert role backstop
+ * (`/api/expert/inbox` in EXPERT_SELF_SERVICE_PREFIXES); the answering expert is the session user and
+ * the question's visibility is decided in the service (one 404). The text heuristic classes it
+ * "user-data" / session-self — user-data 228 → 229, session-self 335 → 336.
+ * 656 / 647 → 657 / 648 (PR #1283, daily facts recheck registration): POST /internal/jobs/facts-recheck,
  * the scheduler's trigger behind requireInternalSecret — "other" / public-or-system like its sibling
  * /internal/jobs/* triggers: other 219 → 220, public-or-system 40 → 41.
  *
@@ -208,8 +213,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 656);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 647);
+  assert.equal(result.mutations.length, 657);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 648);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -219,17 +224,19 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 647);
-  assert.equal(manifest.rawRegistrationCount, 656);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 647);
+  assert.equal(endpointRows.length, 648);
+  assert.equal(manifest.rawRegistrationCount, 657);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 648);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
   // admin, behind the blanket /api/admin guard.
   // + POST /api/trips/:tripId/flight-lookup (ledger `2026-10-03-surface-step2-tools-tray`): user-data,
   // session-self by the text heuristic; the handler runs authorizeTripLogistics with requireWriteAccess.
+  // + POST /api/expert/inbox/questions/:id/answer (ledger `2026-10-04-expert-inbox-questions`):
+  // user-data, session-self; under the expert role backstop.
   // + POST /internal/jobs/facts-recheck (PR #1283): other, public-or-system — the internal-secret trigger.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 228, other: 220 });
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 229, other: 220 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -240,7 +247,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // read (the retired free re-run); R297 gives it the plan-route session gate (decision-maker ruling,
   // Oct 4, 2026), so it is session-self again — 401 anonymous, the plan read gate when it names a plan.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 335, "resource-owner": 97,
+    "admin-role": 168, "session-self": 336, "resource-owner": 97,
     signature: 6, "public-or-system": 41, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

@@ -829,3 +829,23 @@ export const CHAUFFEURED_MODES: readonly string[] = [
 export function isChauffeuredMode(mode: string | null | undefined): boolean {
   return !!mode && CHAUFFEURED_MODES.includes(mode.toLowerCase());
 }
+
+/**
+ * The mode picker's option set for ONE leg (moved here from the Workstation, work plan L1-10, so the
+ * Workstation picker and `GET /api/trips/:tripId/transport-legs/review` read ONE rule — §18 rule 1).
+ * It unions the leg's own engine recommendation and alternatives (valid against the server's
+ * SELECTABLE_TRANSPORT_MODES, derived from the same destination-profile data) with the chauffeured
+ * modes, plus the leg's current pick, sorted. Never a hand-typed full vocabulary.
+ */
+export function legModeOptions(leg: {
+  recommendedMode: string;
+  alternativeModes?: ReadonlyArray<{ mode: string }> | null;
+  userSelectedMode?: string | null;
+}): string[] {
+  const set = new Set<string>();
+  set.add(leg.recommendedMode);
+  (leg.alternativeModes ?? []).forEach((a) => set.add(a.mode));
+  CHAUFFEURED_MODES.forEach((m) => set.add(m));
+  if (leg.userSelectedMode) set.add(leg.userSelectedMode);
+  return Array.from(set).sort();
+}
