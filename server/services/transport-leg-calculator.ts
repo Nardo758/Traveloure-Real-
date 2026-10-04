@@ -265,7 +265,7 @@ async function computeSingleLeg(
   profile: DestinationTransportProfile,
   userPrefs: UserTransportPrefs
 ): Promise<TransportLegResult | null> {
-  // R298: the drive is a Compute Routes ESSENTIALS request (TRAFFIC_UNAWARE, no departure) — see
+  // R299: the drive is a Compute Routes ESSENTIALS request (TRAFFIC_UNAWARE, no departure) — see
   // `getTrafficAwareDrivingRoute`. `from.departureTime` is no longer sent.
   const routed = await getTrafficAwareDrivingRoute({
     origin: { lat: from.lat, lng: from.lng },

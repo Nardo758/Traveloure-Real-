@@ -1,5 +1,5 @@
 /**
- * THE MAPS BILLING GATE — the I/O half (R298, ledger `2026-10-04-maps-billing-audit`).
+ * THE MAPS BILLING GATE — the I/O half (R299, ledger `2026-10-04-maps-billing-audit`).
  *
  * The counter and the cost row are BOTH `api_usage_logs` rows with provider `google_maps` and the
  * caller key as the endpoint, so the daily cap counts exactly what was recorded. `estimated_cost_cents`

@@ -133,7 +133,7 @@ export interface DrivingRouteRequest {
   origin: { lat: number; lng: number };
   destination: { lat: number; lng: number };
   /**
-   * RFC 3339. R298: NOT sent — a TRAFFIC_UNAWARE drive needs no departure, and the field is kept
+   * RFC 3339. R299: NOT sent — a TRAFFIC_UNAWARE drive needs no departure, and the field is kept
    * only so callers that already compute one do not change shape.
    */
   departureTime?: string;
@@ -159,7 +159,7 @@ function parseDuration(durationString: string): number {
  * callers must surface an unavailable route rather than presenting a straight-line estimate as a
  * real drive time.
  *
- * R298 (Maps billing audit): Compute Routes ESSENTIALS — `routingPreference: TRAFFIC_UNAWARE`, no
+ * R299 (Maps billing audit): Compute Routes ESSENTIALS — `routingPreference: TRAFFIC_UNAWARE`, no
  * departure. It was TRAFFIC_AWARE (the Pro SKU), but a leg is computed while planning and most legs
  * had no real departure (they fell back to now + 10 min), so the "traffic" was the traffic at the
  * moment of planning, not on the day. Gated by `routes_drive` (`@shared/maps-billing`).
@@ -317,7 +317,7 @@ export async function getTransitRoute(request: TransitRequest): Promise<ParsedTr
     "routes.legs.steps.endLocation",
   ].join(",");
 
-  // R298: Compute Routes ESSENTIALS (TRANSIT; no Pro modifier). Gated by `routes_transit`.
+  // R299: Compute Routes ESSENTIALS (TRANSIT; no Pro modifier). Gated by `routes_transit`.
   return gatedMapsCallOrNull("routes_transit", async (apiKey) => {
     const response = await fetch(ROUTES_API_URL, {
       method: "POST",
@@ -390,7 +390,7 @@ export async function getRouteForMode(
     return r ? { minutes: r.durationMinutes, distanceMeters: r.distanceMeters } : null;
   }
   const travelMode = mode === "walk" ? "WALK" : mode === "cycle" ? "BICYCLE" : "TRANSIT";
-  // R298: Compute Routes ESSENTIALS (a mode, no routing preference). Gated by `routes_mode`.
+  // R299: Compute Routes ESSENTIALS (a mode, no routing preference). Gated by `routes_mode`.
   return gatedMapsCallOrNull("routes_mode", async (apiKey) => {
     const response = await fetch(ROUTES_API_URL, {
       method: "POST",

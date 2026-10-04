@@ -1,6 +1,6 @@
 // Media Aggregator Service - Combines photos and videos from multiple sources
 // Coordinates Unsplash and Pexels to create comprehensive media galleries.
-// R298: Google Places photos are NOT a source here — the legacy Place Photo URLs carried the server
+// R299: Google Places photos are NOT a source here — the legacy Place Photo URLs carried the server
 // key to the browser and billed per image load. Place photos come only from the R-aq resolver.
 
 import { db } from "../db";
@@ -100,7 +100,7 @@ class MediaAggregatorService {
           eq(cityMediaCache.cityName, cityName),
           eq(cityMediaCache.country, country),
           eq(cityMediaCache.isActive, true),
-          // R298: a row a pre-R298 refresh stored from Google carries the server key in its URL —
+          // R299: a row a pre-R299 refresh stored from Google carries the server key in its URL —
           // never served (it would also bill Places Photo per view). It ages out at the next refresh.
           sql`${cityMediaCache.source} IS DISTINCT FROM ${"google_places"}`
         )

@@ -1,5 +1,5 @@
 /**
- * R298 — the Maps billing audit's price test (ledger `2026-10-04-maps-billing-audit`). Pure: no
+ * R299 — the Maps billing audit's price test (ledger `2026-10-04-maps-billing-audit`). Pure: no
  * database, no network. Pins, per Google Maps Platform caller, the SKU tier it bills under and the
  * request shape that puts it there, and proves the gate's rule (switch, key, daily cap, recorded cost).
  *

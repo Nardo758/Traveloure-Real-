@@ -6453,7 +6453,7 @@ router.get("/api/geocode", async (req, res) => {
     try {
       const { address } = req.query as { address?: string };
       if (!address) return res.status(400).json({ message: "address required" });
-      // R298: the geocoder answers only when its Maps billing switch is on (and a key is set).
+      // R299: the geocoder answers only when its Maps billing switch is on (and a key is set).
       if (!process.env.GOOGLE_MAPS_API_KEY || process.env.MAPS_GEOCODE_ENABLED !== "1") return res.status(503).json({ message: "Maps API not configured" });
       const result = await geocodeAddress(address);
       if (!result) return res.status(404).json({ message: "Location not found" });
@@ -6567,7 +6567,7 @@ router.get("/api/search/experiences", async (req, res) => {
       } catch (_) {}
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
-      // R298: Places API (New) behind the Maps billing gate, explicit mask, NO photo (the legacy
+      // R299: Places API (New) behind the Maps billing gate, explicit mask, NO photo (the legacy
       // photo URL carried the server key to the browser and billed "Places Photo" per image load).
       if (includeGoogle) {
         const catToType: Record<string, string> = {

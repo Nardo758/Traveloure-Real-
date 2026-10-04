@@ -1,5 +1,5 @@
 /**
- * The Routes request shapes the Maps billing tier depends on (R298). Pure, so the tier test pins
+ * The Routes request shapes the Maps billing tier depends on (R299). Pure, so the tier test pins
  * them without a database. Compute Routes bills by request FEATURES (routing preference, modifiers,
  * waypoint count), never by response fields; these bodies carry no Pro feature.
  */

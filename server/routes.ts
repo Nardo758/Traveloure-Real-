@@ -5075,7 +5075,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Lightweight place-photo proxy — Unsplash → Pexels. Used by the useGemPhoto hook.
-  // R298: the Google branch is REMOVED. It ran a legacy Text Search and returned a legacy Place
+  // R299: the Google branch is REMOVED. It ran a legacy Text Search and returned a legacy Place
   // Photo URL with the server key inside it — every image load billed "Places Photo" outside the
   // R-aq resolver, and the key was public. `source=google` (a cached client) now answers null, so
   // the hook falls through to its Unsplash step as it always did on a Google miss.

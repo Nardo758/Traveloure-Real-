@@ -345,7 +345,7 @@ function PlacesAutocompleteInputInner({
   const [open, setOpen] = useState(false);
   const acServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
-  // R298 (Maps billing audit): one AutocompleteSessionToken per pick, so the keystrokes and the
+  // R299 (Maps billing audit): one AutocompleteSessionToken per pick, so the keystrokes and the
   // Details call bill as ONE session instead of a per-keystroke Autocomplete request each.
   const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);

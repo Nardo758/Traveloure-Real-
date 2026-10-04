@@ -105,7 +105,7 @@ export function googleRouteMatrixFetch(apiKey: string): RouteMatrixFetch {
 }
 
 /**
- * R298: the live call behind the Maps billing gate (`route_matrix`). Each batch counts its ELEMENTS
+ * R299: the live call behind the Maps billing gate (`route_matrix`). Each batch counts its ELEMENTS
  * against the daily cap; a refused batch throws, which fails the run exactly like an API error
  * (the run row records it). The cost stays on the refresh row (`costRecordedOn`), never twice.
  */

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * check-conflict-markers.cjs — no tracked file carries a git merge-conflict marker (R298, ledger
+ * check-conflict-markers.cjs — no tracked file carries a git merge-conflict marker (R299, ledger
  * `2026-10-04-maps-billing-audit`).
  *
  * Why: on Oct 4, 2026 a merge of a squash-merged base into a stacked branch was committed and pushed

@@ -1,5 +1,5 @@
 /**
- * THE MAPS BILLING GATE — the pure half (R298, ledger `2026-10-04-maps-billing-audit`).
+ * THE MAPS BILLING GATE — the pure half (R299, ledger `2026-10-04-maps-billing-audit`).
  *
  * One rule for every Google Maps Platform caller in `@shared/maps-billing`: a call happens only when
  * the caller's own switch is on, the key is set and today's count is under the caller's daily cap;

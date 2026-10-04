@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
  *  (a) imageUrl already on the gem record
  *  (b) Unsplash/Pexels via /api/media/place-photo?q=&city=&source=unsplash
  *  (c) null → caller should hide the card
- *  R298: there is no Google step — Google place photos come only from the R-aq resolver.
+ *  R299: there is no Google step — Google place photos come only from the R-aq resolver.
  */
 export function useGemPhoto(
   gemId: string,

@@ -12,13 +12,13 @@ const prefs = {
 
 function mockGoogleRoute(distanceMeters: number, durationSeconds: number) {
   process.env.GOOGLE_MAPS_API_KEY = "test-key";
-  process.env.MAPS_ROUTES_DRIVE_ENABLED = "1"; // R298: the drive call runs behind the Maps billing gate
+  process.env.MAPS_ROUTES_DRIVE_ENABLED = "1"; // R299: the drive call runs behind the Maps billing gate
   global.fetch = async () => new Response(JSON.stringify({
     routes: [{ distanceMeters, duration: `${durationSeconds}s`, polyline: { encodedPolyline: "abc" } }],
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-test("uses the Google driving distance and duration (Compute Routes Essentials, R298)", async () => {
+test("uses the Google driving distance and duration (Compute Routes Essentials, R299)", async () => {
   mockGoogleRoute(481_000, 21_600);
   const leg = await computeTransportLeg(
     { id: "a", name: "A", lat: 36.2704233, lng: -121.8080556, scheduledTime: "09:00", dayNumber: 2, order: 0 },
@@ -59,7 +59,7 @@ test("activity pairs stay within a day and never imply an overnight transfer", (
   assert.deepEqual(pairs.map((pair) => [pair.from.id, pair.to.id]), [["d1a", "d1b"]]);
 });
 
-test("R298: with the drive switch off no request is made and the leg is honestly absent", async () => {
+test("R299: with the drive switch off no request is made and the leg is honestly absent", async () => {
   process.env.GOOGLE_MAPS_API_KEY = "test-key";
   delete process.env.MAPS_ROUTES_DRIVE_ENABLED;
   let calls = 0;

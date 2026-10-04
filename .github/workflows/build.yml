@@ -3129,7 +3129,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # ledger 2026-10-04-maps-billing-audit (R298): no tracked file carries a merge-conflict marker.
+      # ledger 2026-10-04-maps-billing-audit (R299): no tracked file carries a merge-conflict marker.
       - name: conflict-marker-guard · Conflict-marker predicate self-test
         if: ${{ !cancelled() }}
         run: node scripts/check-conflict-markers.cjs --self-test
