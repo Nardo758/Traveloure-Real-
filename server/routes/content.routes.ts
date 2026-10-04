@@ -4354,7 +4354,9 @@ router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
   // response as "no location", not a crash (client/src/components/provider/catalog-map-view.tsx,
   // client/src/pages/experience-template.tsx).
 
-router.post("/api/geocode", async (req, res) => {
+  // R299: session required — every call spends a Maps request (Geocoding / Places), and a public
+  // endpoint that spends money is an abuse vector whatever its daily cap (decision-maker, Oct 4).
+router.post("/api/geocode", isAuthenticated, async (req, res) => {
     try {
       const parsed = geocodeSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -6449,7 +6451,9 @@ router.get("/api/serp/partnerships", isAuthenticated, async (req, res) => {
   // ============================================
 
 
-router.get("/api/geocode", async (req, res) => {
+  // R299: session required — every call spends a Maps request (Geocoding / Places), and a public
+  // endpoint that spends money is an abuse vector whatever its daily cap (decision-maker, Oct 4).
+router.get("/api/geocode", isAuthenticated, async (req, res) => {
     try {
       const { address } = req.query as { address?: string };
       if (!address) return res.status(400).json({ message: "address required" });
@@ -6469,7 +6473,9 @@ router.get("/api/geocode", async (req, res) => {
   // ============================================
 
 
-router.get("/api/search/experiences", async (req, res) => {
+  // R299: session required — every call spends a Maps request (Geocoding / Places), and a public
+  // endpoint that spends money is an abuse vector whatever its daily cap (decision-maker, Oct 4).
+router.get("/api/search/experiences", isAuthenticated, async (req, res) => {
     try {
       const { q, destination, category, sources } = req.query as Record<string, string>;
       if (!q && !destination) {

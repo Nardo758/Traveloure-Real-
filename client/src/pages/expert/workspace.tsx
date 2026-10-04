@@ -51,8 +51,9 @@ import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
 // doc comment for the "Google swap point" contract).
 import { LeafletPlanMap } from "@/components/expert/leaflet-plan-map";
 import { trackEvent } from "@/lib/analytics";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
-const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+const MAPS_KEY = MAPS_BROWSER_KEY;
 
 // ── Console tokens (§17 two-palettes rule: never raw hex in console pages) ──
 // These resolve against the .console-scope block in client/src/index.css (light + dark),

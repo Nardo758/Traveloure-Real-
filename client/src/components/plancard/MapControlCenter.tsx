@@ -42,8 +42,9 @@ import { browseAddBody, hostRows, listingPlaces, partnerPlaces } from "@/lib/bro
 import { SceneMapGoogle } from "./map/SceneMapGoogle";
 import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
 import type { SceneLeg } from "./map/scene-legs";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+const MAPS_API_KEY = MAPS_BROWSER_KEY;
 
 /**
  * ONE located-pin predicate (§18 rule 1) — the pin layer, the view bar's count and the slip's

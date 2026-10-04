@@ -42,8 +42,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, MapPin, Crosshair, X, Check, AlertTriangle } from "lucide-react";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
-const MAPS_KEY: string = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || "";
+const MAPS_KEY: string = MAPS_BROWSER_KEY;
 
 export interface LocationPoint {
   lat: number;
