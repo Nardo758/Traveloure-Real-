@@ -232,9 +232,13 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // POST /api/itinerary-comparisons/:id/adopt-stop moved session-self -> resource-owner (ledger
   // 2026-09-26-adopt-stop-write-access, R130): it now calls authorizeTripLogistics with
   // requireWriteAccess, so the plan's owner or a write-status advisor is verified before any write.
+  // POST /api/optimization-preview moved session-self -> public-or-system (ledger
+  // 2026-10-04-step6-trip-card, R-ac): its only session read was the retired 24-hour free-re-run
+  // check. The rail never required sign-in (no isAuthenticated); it is a priced preview that writes
+  // nothing, and the trip-addressed GET twin stays behind its own gate.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 335, "resource-owner": 97,
-    signature: 6, "public-or-system": 40, unknown: 0,
+    "admin-role": 168, "session-self": 334, "resource-owner": 97,
+    signature: 6, "public-or-system": 41, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

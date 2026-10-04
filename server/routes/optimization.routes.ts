@@ -17,11 +17,11 @@
 import { openSetSlotsForRun } from "../services/version-options.service";
 import { versionPerOptionEnabled } from "../config/version-options.config";
 import { Router } from "express";
-import { coversAction } from "../services/trip-entitlement.service";
+import { coversAction, tripPassRunsStatus } from "../services/trip-entitlement.service";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { complexityTier } from "../services/smart-sequencing.service";
 import {
@@ -106,23 +106,10 @@ router.post("/api/optimization-preview", async (req, res) => {
     const { estimatedSavingsPct, estimatedCostDelta, estimatedScheduleTighteningPct } =
       legacyPreviewExtrapolation(preview);
 
-    // Check free re-run for authenticated users
-    let freeRerun = false;
-    const userId = getUserId(req)!;
-    if (userId) {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const [recent] = await db
-        .select({ id: itineraryComparisons.id })
-        .from(itineraryComparisons)
-        .where(
-          and(
-            eq(itineraryComparisons.userId, userId),
-            gte(itineraryComparisons.optimizedAt, cutoff)
-          )
-        )
-        .limit(1);
-      if (recent) freeRerun = true;
-    }
+    // R-ac (step 6): the unlimited 24-hour full re-run is retired — another full run is paid, or
+    // covered by a Trip Pass up to its cap. `freeRerun` stays on the payload, always false, so older
+    // clients read "not free" rather than an absent key.
+    const freeRerun = false;
 
     return res.json({
       estimatedSavingsPct,
@@ -296,6 +283,8 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
     // moment, or it states a price the platform will not charge. `false` here means "no active
     // pass covers this run", which is exactly what the charge path will decide.
     const coveredByTripPass = tripId ? await coversAction(String(tripId), "optimizer_run") : false;
+    // R-ac (step 6): the pass's run allowance on this trip, for "N runs left" (absent ⇒ no pass).
+    const tripPassRuns = tripId ? await tripPassRunsStatus(String(tripId)) : null;
 
     return res.json({
       complexityTier: tier,
@@ -304,6 +293,7 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
       creditTowardCoordination: fee.creditTowardCoordination,
       aiDisabled: fee.isDisabled,
       coveredByTripPass,
+      ...(tripPassRuns ? { tripPassRuns } : {}),
     });
   } catch (err: any) {
     console.error("[optimization-fee] error:", err);
@@ -422,22 +412,8 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
     }
 
-    // 24-hour free re-run check
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [recent] = await db
-      .select({ id: itineraryComparisons.id, optimizedAt: itineraryComparisons.optimizedAt })
-      .from(itineraryComparisons)
-      .where(
-        and(
-          eq(itineraryComparisons.userId, userId),
-          gte(itineraryComparisons.optimizedAt, cutoff)
-        )
-      )
-      .limit(1);
-
-    if (recent) {
-      return res.json({ freeRerun: true, feeCents: 0, comparisonId: recent.id });
-    }
+    // (The 24-hour free re-run is retired — R-ac, step 6. A run past a Trip Pass's cap, or with no
+    //  pass, is charged here.)
 
     // FP-1: durable Stripe Customer (users.stripe_customer_id, migration 146) — replaces the
     // per-request customers.list({email}) lookup this endpoint previously carried.

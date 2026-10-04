@@ -339,3 +339,66 @@ export const AI_MEAL_PROMPT_LINE =
   `Meal times: breakfast starts before ${AI_MEAL_WINDOWS.breakfast.before}, lunch between ${AI_MEAL_WINDOWS.lunch.from} and ${AI_MEAL_WINDOWS.lunch.to}, ` +
   `dinner from ${AI_MEAL_WINDOWS.dinner.from} — this applies to the "meals" list AND to any activity that is a meal ("Breakfast at …", "Lunch at …", "Dinner at …"). ` +
   `Never schedule a breakfast late in the morning; if the morning is taken, leave breakfast out.`;
+
+// ── Step 6 R-bc (ledger `2026-10-04-step6-trip-card`) ─────────────────────────────────────────────
+/**
+ * Pure. Does a `city_events` row overlap the trip's dates? Its `starts_at` day through its `ends_at`
+ * day (or the start day when no end is stated) against the trip's window — date-only, so a time of
+ * day is never invented (§13). A withdrawn row is the caller's to exclude.
+ */
+export function cityEventCoversDates(
+  startsAt: string | Date | null | undefined,
+  endsAt: string | Date | null | undefined,
+  tripStart: string | null | undefined,
+  tripEnd: string | null | undefined,
+): boolean {
+  const iso = (x: unknown) =>
+    x instanceof Date ? (Number.isNaN(x.getTime()) ? null : x.toISOString().slice(0, 10)) : typeof x === "string" && /^\d{4}-\d{2}-\d{2}/.test(x) ? x.slice(0, 10) : null;
+  return eventFactCoversDates({ startDate: iso(startsAt), endDate: iso(endsAt) ?? iso(startsAt) }, tripStart, tripEnd);
+}
+
+/** The calendar months a trip touches, 1–12, in order (a trip over New Year gives [12, 1]). */
+export function tripMonths(tripStart: string | null | undefined, tripEnd: string | null | undefined): number[] {
+  const iso = (x: unknown) => (typeof x === "string" && /^\d{4}-\d{2}-\d{2}/.test(x) ? x.slice(0, 10) : null);
+  const s = iso(tripStart);
+  const e = iso(tripEnd) ?? s;
+  if (!s || !e || e < s) return [];
+  const out: number[] = [];
+  let y = Number(s.slice(0, 4));
+  let m = Number(s.slice(5, 7));
+  const ey = Number(e.slice(0, 4));
+  const em = Number(e.slice(5, 7));
+  for (let guard = 0; guard < 24 && (y < ey || (y === ey && m <= em)); guard++) {
+    if (!out.includes(m)) out.push(m);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+export interface SeasonFact {
+  month: number;
+  rating: string;
+  crowdLevel?: string | null;
+  weatherDescription?: string | null;
+}
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/**
+ * The drafting prompt's season line (R-bc): the destination's season facts for the months the trip
+ * touches, so out-of-season things are not proposed in the first place. Empty when no fact covers
+ * those months — nothing is claimed about a season nobody recorded (§13).
+ */
+export function aiSeasonPromptLine(facts: readonly SeasonFact[], tripStart: string | null | undefined, tripEnd: string | null | undefined): string {
+  const months = tripMonths(tripStart, tripEnd);
+  const parts = months
+    .map((m) => facts.find((f) => f.month === m))
+    .filter((f): f is SeasonFact => !!f && typeof f.rating === "string" && f.rating.trim().length > 0)
+    .map((f) => {
+      const extra = [f.crowdLevel ? `${f.crowdLevel} crowds` : null, f.weatherDescription ? f.weatherDescription.trim() : null].filter(Boolean).join("; ");
+      return `${MONTH_NAMES[f.month - 1]}: ${f.rating.trim()} season${extra ? ` (${extra})` : ""}`;
+    });
+  if (!parts.length) return "";
+  return `Season for these dates — ${parts.join(". ")}. Only propose what is open and in season then; nothing seasonal from another time of year.`;
+}

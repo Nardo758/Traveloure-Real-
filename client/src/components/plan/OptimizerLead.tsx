@@ -17,7 +17,7 @@
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadDeltaLine, type Finding } from "@shared/optimizer-lead";
-import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, type OptimizationFeeQuote } from "@/lib/optimization-preview";
+import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
 
 export interface OptimizerLeadProps {
   /** The preview's findings; `undefined` while it is being read (the card then shows no finding lines). */
@@ -116,6 +116,11 @@ export function OptimizerLead({ findings, hasPricedItems, fee, realised, onClick
           {LEAD_VERSIONS}
         </p>
       )}
+      {tripPassRunsLine(fee) ? (
+        <p className="text-[11px] text-muted-foreground" data-testid="optimizer-lead-pass-runs">
+          {tripPassRunsLine(fee)}
+        </p>
+      ) : null}
       <p className="text-[11px] text-muted-foreground" data-testid="optimizer-lead-rerun">
         {OPTIMIZE_RERUN_RULE}
       </p>

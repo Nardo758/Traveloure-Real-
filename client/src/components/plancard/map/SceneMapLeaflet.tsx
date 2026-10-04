@@ -67,7 +67,7 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
       />
       <Framing scene={scene} />
       {scene.areas.map((a) => (
-        <Circle key={a.slug} center={[a.lat, a.lng]} radius={700} pathOptions={{ color: ANCHOR_COLOR, weight: 1, opacity: 0.35, fillOpacity: 0.08 }} />
+        <Circle key={a.slug} center={[a.lat, a.lng]} radius={700} pathOptions={{ color: ANCHOR_COLOR, weight: 1, opacity: scene.areaStyle.strokeOpacity, fillOpacity: scene.areaStyle.fillOpacity }} />
       ))}
       {scene.connector.length > 1 ? (
         <Polyline positions={scene.connector.map((p) => [p.lat, p.lng] as [number, number])} pathOptions={{ color: "#64748B", weight: 2, opacity: 0.6 }} />

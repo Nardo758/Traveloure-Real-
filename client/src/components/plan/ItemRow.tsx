@@ -19,7 +19,7 @@
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
 import type { ReactNode } from "react";
-import { Lock, MoreHorizontal } from "lucide-react";
+import { Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
 import {
   DropdownMenu,
@@ -34,6 +34,8 @@ import { itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-fac
 import { CHECKING_HOURS_LABEL } from "@/lib/plancard-refetch";
 import { AnchorRow } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
+import { PlacePhoto } from "./PlacePhoto";
+import type { PhotoView } from "@shared/place-photos";
 
 export type ItemRowMode = "edit" | "read";
 export type ItemRowRole = "traveler" | "expert";
@@ -57,6 +59,8 @@ export interface ItemRowMenu {
   onSetAsStay?: () => void;
   /** R-ah: "Keep this" (unlocked) / "Unlock" (locked) — the owner's own lock. */
   onToggleLock?: () => void;
+  /** Step 6 R-ap: ⋯ → Details opens the `ItemSheet`. */
+  onDetails?: () => void;
 }
 
 export interface ItemRowProps {
@@ -101,6 +105,12 @@ export interface ItemRowProps {
   bookingAction?: ReactNode;
   /** Inline panels the menu opens (the edit form, the remove confirmation). */
   children?: ReactNode;
+  /** Step 6 R-ap: tapping the title (or the photo) opens the stop's `ItemSheet`. */
+  onOpenDetails?: () => void;
+  /** Step 6 R-aq: a thumbnail — Trip Card today rows only (none on slip rows, versions or the map). */
+  photo?: PhotoView | null;
+  /** Step 6 R-ay: read mode's Navigate — a Google Maps directions deep link, no API call. */
+  navigateHref?: string | null;
 }
 
 export function ItemRow(props: ItemRowProps) {
@@ -116,7 +126,18 @@ export function ItemRow(props: ItemRowProps) {
           {a.time}
         </span>
       ) : null}
-      <span className="min-w-0 break-words" data-testid={`slip-item-name-${a.id}`}>{a.name}</span>
+      {props.onOpenDetails ? (
+        <button
+          type="button"
+          onClick={props.onOpenDetails}
+          className="min-w-0 break-words text-left hover:underline underline-offset-2"
+          data-testid={`slip-item-name-${a.id}`}
+        >
+          {a.name}
+        </button>
+      ) : (
+        <span className="min-w-0 break-words" data-testid={`slip-item-name-${a.id}`}>{a.name}</span>
+      )}
     </p>
   );
 
@@ -165,6 +186,18 @@ export function ItemRow(props: ItemRowProps) {
         </p>
       ) : null}
       {props.bookingAction ? <div className="mt-1.5">{props.bookingAction}</div> : null}
+      {mode === "read" && props.navigateHref ? (
+        <a
+          href={props.navigateHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+          data-testid={`slip-item-navigate-${a.id}`}
+        >
+          <Navigation className="w-3 h-3" aria-hidden="true" />
+          Navigate
+        </a>
+      ) : null}
       {props.expertNote ? (
         <ExpertNote
           note={props.expertNote.note}
@@ -185,6 +218,7 @@ export function ItemRow(props: ItemRowProps) {
       data-item-mode={mode}
     >
       <div className="flex items-start justify-between gap-2">
+        {props.photo ? <PlacePhoto photo={props.photo} size="thumb" testId={`slip-item-photo-${a.id}`} onClick={props.onOpenDetails} /> : null}
         <div className="min-w-0 flex-1">
           {anchor ? (
             <AnchorRow
@@ -215,11 +249,12 @@ export function ItemRow(props: ItemRowProps) {
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
-  return !!(m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround || m.onSetAsStay);
+  return !!(m.onDetails || m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround || m.onSetAsStay);
 }
 
 /** The labels, ONCE (spec §3's order). */
 export const ITEM_MENU_LABELS = {
+  details: "Details",
   swap: "Swap",
   moveUp: "Move up",
   moveDown: "Move down",
@@ -250,6 +285,9 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {menu.onDetails ? (
+          <DropdownMenuItem onSelect={menu.onDetails} data-testid={`item-menu-details-${id}`}>{ITEM_MENU_LABELS.details}</DropdownMenuItem>
+        ) : null}
         {menu.onSwap ? (
           <DropdownMenuItem onSelect={menu.onSwap} data-testid={`item-menu-swap-${id}`}>{ITEM_MENU_LABELS.swap}</DropdownMenuItem>
         ) : null}
