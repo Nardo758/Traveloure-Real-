@@ -137,7 +137,7 @@ test("C2: the cache answers a repeated query at zero cost and never extends the 
   `)).rows as any[];
   const a = rows.filter((r) => r.item === ids.s1);
   const b = rows.filter((r) => r.item === ids.s2);
-  assert.equal(a.reduce((n, r) => n + r.cost, 0), 4, "one call's cost, on one row");
+  assert.equal(a.reduce((n, r) => n + r.cost, 0), 2, "one call's cost, on one row (Place Details, Enterprise tier — the field-mask ruling)");
   assert.equal(b.reduce((n, r) => n + r.cost, 0), 0, "the copy cost nothing");
   for (const t of ["hours", "location"]) {
     assert.equal(

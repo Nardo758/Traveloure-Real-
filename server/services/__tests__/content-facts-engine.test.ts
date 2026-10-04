@@ -60,7 +60,8 @@ test("P2: one call ⇒ provenance-carrying facts, cost once, ≤ 30 days", async
   assert.equal(calls.length, 1);
   assert.match(calls[0].init.headers["X-Goog-FieldMask"], /regularOpeningHours/);
   assert.equal(JSON.parse(calls[0].init.body).textQuery, "Kinkaku-ji, Kyoto, Japan");
-  assert.deepEqual(facts.map((f) => f.factType), ["location", "hours", "price"]);
+  // Field-mask ruling (Oct 3, 2026): `priceLevel` is no longer asked, so no price fact is written.
+  assert.deepEqual(facts.map((f) => f.factType), ["location", "hours"]);
   assert.equal(facts.filter((f) => f.costCents > 0).length, 1, "the call's cost is recorded on one row");
   for (const f of facts) {
     assert.equal(f.origin, "places_api");
@@ -108,12 +109,10 @@ test("P5: the address — two fields added to the mask, both forms kept, neither
     );
   const req = { need: "stop.hours" as const, market: "kyoto", query: { text: "Kinkaku-ji", city: "Kyoto, Japan" }, budgetCents: 0 };
   const both = await answer({ formattedAddress: " 1 Kinkakujicho, Kita Ward, Kyoto, 603-8361, Japan ", shortFormattedAddress: "1 Kinkakujicho, Kita Ward" }).fetch(req);
+  // Field-mask ruling (Oct 3, 2026): the default mask, nothing from the Atmosphere tier.
   assert.deepEqual(masks[0].split(","), [
-    "places.id", "places.displayName", "places.location", "places.regularOpeningHours.weekdayDescriptions",
-    "places.priceLevel", "places.googleMapsUri", "places.reservable", "places.servesVegetarianFood",
-    "places.formattedAddress", "places.shortFormattedAddress",
-    // Smoke 7 (ledger `2026-10-03-no-ward-pins`): the result's types — a rename needs a point of interest.
-    "places.types",
+    "places.id", "places.displayName", "places.location", "places.formattedAddress", "places.shortFormattedAddress",
+    "places.regularOpeningHours.weekdayDescriptions", "places.types", "places.googleMapsUri",
   ]);
   const addr = both.find((f) => f.factType === "address")!;
   assert.deepEqual(addr.value, { query: "Kinkaku-ji, Kyoto, Japan", formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto, 603-8361, Japan", shortFormattedAddress: "1 Kinkakujicho, Kita Ward" });

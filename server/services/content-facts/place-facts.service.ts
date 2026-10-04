@@ -215,8 +215,11 @@ function logLookup(
   extra: { facts: number; hours: boolean; renamed: boolean },
 ): void {
   const placeId = drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? "none";
+  // Field-mask ruling: the BILLED SKU tier of this call (a cache hit was not billed: "none").
+  const sku = cache === "hit" ? "none" : drafts.find((d) => d.sku)?.sku ?? "unknown";
+  const costCents = drafts.reduce((n, d) => n + (cache === "hit" ? 0 : d.costCents ?? 0), 0);
   console.info(
-    `[place-facts] lookup plan_id=${ids.planId} item_id=${ids.itemId} day=${day} outcome=${outcome} place_id=${placeId} cache=${cache} facts=${extra.facts} hours=${extra.hours ? 1 : 0} renamed=${extra.renamed ? 1 : 0} latency_ms=${Date.now() - startedMs}`,
+    `[place-facts] lookup plan_id=${ids.planId} item_id=${ids.itemId} day=${day} outcome=${outcome} place_id=${placeId} cache=${cache} sku=${sku} cost_cents=${costCents} facts=${extra.facts} hours=${extra.hours ? 1 : 0} renamed=${extra.renamed ? 1 : 0} latency_ms=${Date.now() - startedMs}`,
   );
 }
 

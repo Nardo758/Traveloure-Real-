@@ -33,6 +33,8 @@ export interface FactDraft {
   expiresAt: Date | null;
   /** The fetch's cost, recorded on ONE draft per call so a sum over rows is the real spend. */
   costCents: number;
+  /** The billed SKU tier of the call that produced this draft (logged per call; not persisted). */
+  sku?: string;
 }
 
 export interface FetchRequest {
