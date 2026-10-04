@@ -4,7 +4,7 @@
  * AFFILIATE_PAGE_EXTRACT_ENABLED, DMO_INGEST_ENABLED, E2E_AI_STUB; never secret values)").
  *
  * Pure. Each flag is `true` exactly when its env var is the string "1" — the same test every reader of
- * these four switches applies — and `false` otherwise (unset included). It reports the SWITCH, not the
+ * these switches applies — and `false` otherwise (unset included). It reports the SWITCH, not the
  * whole effective state: the Places spine also needs `GOOGLE_MAPS_API_KEY`, and the AI stub also needs a
  * non-production environment; neither of those is read or reported here. The list is closed: a name is
  * added here deliberately, and only a boolean ever leaves, never an env value.
@@ -14,6 +14,9 @@ export const HEALTH_FLAG_NAMES = [
   "AFFILIATE_PAGE_EXTRACT_ENABLED",
   "DMO_INGEST_ENABLED",
   "E2E_AI_STUB",
+  // Surface step 2's flight schedule lookup (ledger `2026-10-03-surface-step2-tools-tray`). The SWITCH
+  // only: `FLIGHT_LOOKUP_API_KEY` is also required and is never read or reported here.
+  "FLIGHT_LOOKUP_ENABLED",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;
