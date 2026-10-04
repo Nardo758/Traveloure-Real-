@@ -1691,12 +1691,51 @@ export class DatabaseStorage implements IStorage {
     if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
       derived.datesConfirmedAt = new Date();
     }
-    const [updatedTrip] = await db
-      .update(trips)
-      .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
-      .where(eq(trips.id, id))
-      .returning();
-    return updatedTrip;
+    if (safeUpdates.startDate === undefined) {
+      const [updatedTrip] = await db
+        .update(trips)
+        .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
+        .where(eq(trips.id, id))
+        .returning();
+      return updatedTrip;
+    }
+    /**
+     * R-bg (work plan L1-4): a ready-made copy's anchors were re-based onto its PLACEHOLDER start
+     * date at the clone (`buildClonedAnchor`). When that placeholder is first replaced by a real
+     * start date, the anchors move by the same number of days, so a "day 2, 15:00" check-in lands on
+     * the buyer's day 2. Only while the dates were still a placeholder (`dates_confirmed_at` NULL
+     * before this write) and only on a copy (`ready_made_purchases.clone_trip_id`): after the buyer
+     * has answered, an anchor is theirs and a later re-date never moves it. Same transaction, with
+     * the trip row locked, so a retried or concurrent re-date shifts once.
+     */
+    return await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ startDate: trips.startDate, datesConfirmedAt: trips.datesConfirmedAt })
+        .from(trips)
+        .where(eq(trips.id, id))
+        .for("update");
+      const [updatedTrip] = await tx
+        .update(trips)
+        .set({ ...safeUpdates, ...derived, updatedAt: new Date() })
+        .where(eq(trips.id, id))
+        .returning();
+      if (before && updatedTrip && before.datesConfirmedAt == null && before.startDate && updatedTrip.startDate) {
+        const [copy] = await tx
+          .select({ id: readyMadePurchases.id })
+          .from(readyMadePurchases)
+          .where(eq(readyMadePurchases.cloneTripId, id))
+          .limit(1);
+        if (copy) {
+          await tx.execute(sql`
+            UPDATE temporal_anchors
+               SET anchor_datetime = anchor_datetime + make_interval(days => (${String(updatedTrip.startDate)}::date - ${String(before.startDate)}::date)),
+                   updated_at = now()
+             WHERE trip_id = ${id}
+          `);
+        }
+      }
+      return updatedTrip;
+    });
   }
 
   async deleteTrip(id: string): Promise<void> {
