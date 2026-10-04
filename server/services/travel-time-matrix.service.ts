@@ -50,6 +50,8 @@ import {
   transitElementsPerRequest,
 } from "../config/travel-matrix.config";
 import { MARKET_TIMEZONES } from "./trend-engine/operating-markets";
+import { mapsCallerEnabled } from "../config/maps-billing.config";
+import { gatedMapsCall } from "./maps-billing/maps-billing.service";
 
 const ROUTE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
 const ROUTE_MATRIX_FIELD_MASK = "originIndex,destinationIndex,duration,distanceMeters,condition";
@@ -102,6 +104,25 @@ export function googleRouteMatrixFetch(apiKey: string): RouteMatrixFetch {
   };
 }
 
+/**
+ * R299: the live call behind the Maps billing gate (`route_matrix`). Each batch counts its ELEMENTS
+ * against the daily cap; a refused batch throws, which fails the run exactly like an API error
+ * (the run row records it). The cost stays on the refresh row (`costRecordedOn`), never twice.
+ */
+export function gatedRouteMatrixFetch(): RouteMatrixFetch {
+  return async (body) => {
+    const elements =
+      (Array.isArray(body.origins) ? body.origins.length : 0) * (Array.isArray(body.destinations) ? body.destinations.length : 0);
+    const out = await gatedMapsCall(
+      "route_matrix",
+      async (apiKey) => ({ value: await googleRouteMatrixFetch(apiKey)(body), units: Math.max(1, elements) }),
+      { sku: body.travelMode === "TRANSIT" ? "compute_route_matrix_pro" : "compute_route_matrix_essentials" },
+    );
+    if ("refused" in out) throw new Error(`computeRouteMatrix refused by the Maps billing gate: ${out.refused}`);
+    return out.value;
+  };
+}
+
 /** The next weekday (Mon–Fri) at `HH:MM` in `zone`, as an RFC 3339 instant. */
 export function nextWeekdayDeparture(zone: string, hhmm: string, now = new Date()): string {
   const [h, m] = hhmm.split(":").map(Number);
@@ -126,7 +147,7 @@ const waypoint = (c: Centroid) => ({ waypoint: { location: { latLng: { latitude:
 const parseSeconds = (d?: string) => (d && /^\d+(\.\d+)?s$/.test(d) ? Math.round(Number(d.slice(0, -1))) : null);
 
 export type RefreshOutcome =
-  | { skipped: "no_api_key" | "no_centroids" | "not_due"; market: string; reason?: string }
+  | { skipped: "no_api_key" | "disabled" | "no_centroids" | "not_due"; market: string; reason?: string }
   | { refused: "over_ceiling"; market: string; ceilingUsd: number; maxUsd: number }
   | { refreshId: string; market: string; status: "complete" | "failed"; elementsRequested: number; elementsReturned: number; listUsd: number; error?: string };
 
@@ -145,7 +166,8 @@ export async function refreshMarketMatrix(opts: {
   const market = opts.marketSlug;
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (!opts.fetchMatrix && !apiKey) return { skipped: "no_api_key", market };
-  const fetchMatrix = opts.fetchMatrix ?? googleRouteMatrixFetch(apiKey!);
+  if (!opts.fetchMatrix && !mapsCallerEnabled("route_matrix")) return { skipped: "disabled", market };
+  const fetchMatrix = opts.fetchMatrix ?? gatedRouteMatrixFetch();
   const now = opts.now ?? new Date();
 
   const centroids = await (opts.loadCentroids ?? loadMarketCentroids)(market);

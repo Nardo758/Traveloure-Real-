@@ -3,9 +3,9 @@ import { useState, useEffect } from "react";
 /**
  * Resolves a photo URL for a gem card using the following priority:
  *  (a) imageUrl already on the gem record
- *  (b) Google Places photo via /api/media/place-photo?q=&city=&source=google
- *  (c) Unsplash/Pexels fallback via /api/media/place-photo?q=&city=&source=unsplash
- *  (d) null → caller should hide the card
+ *  (b) Unsplash/Pexels via /api/media/place-photo?q=&city=&source=unsplash
+ *  (c) null → caller should hide the card
+ *  R299: there is no Google step — Google place photos come only from the R-aq resolver.
  */
 export function useGemPhoto(
   gemId: string,
@@ -27,18 +27,7 @@ export function useGemPhoto(
 
     (async () => {
       try {
-        // (b) Try Google Places first
-        const qs = new URLSearchParams({ q: placeName, city, source: "google" });
-        const res = await fetch(`/api/media/place-photo?${qs}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.photoUrl) {
-            if (!cancelled) setPhotoUrl(json.photoUrl);
-            return;
-          }
-        }
-
-        // (c) Unsplash/Pexels fallback
+        // (b) Unsplash/Pexels
         const qs2 = new URLSearchParams({ q: placeName, city, source: "unsplash" });
         const res2 = await fetch(`/api/media/place-photo?${qs2}`);
         if (res2.ok) {

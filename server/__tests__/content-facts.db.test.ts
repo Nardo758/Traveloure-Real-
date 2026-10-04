@@ -232,7 +232,7 @@ test("C5: no Places fact reaches a public route", async () => {
     // Work plan L1-4b (ledger `2026-10-04-stay-item-reroute`): the stay's point for the re-route, read
     // only from the two plan-gated stay writers (`bindWhereToStay`, the accommodation option-set choose).
     // The stay item's OWN coordinate first; its Google `location` fact only when it has none. Ruled
-    // (ledger `2026-10-04-leg-google-coords`, R310 — LD 57 extends to transport_legs): a Google point on
+    // (ledger `2026-10-04-leg-google-coords`, R311 — LD 57 extends to transport_legs): a Google point on
     // a leg is a CACHE (max 30 days, refreshed or cleared by a scheduled job), recorded on the leg as
     // `coord_source='google'` + `coord_fetched_at` (migration 350).
     "server/services/stay-reroute.service.ts",

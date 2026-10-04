@@ -345,6 +345,9 @@ function PlacesAutocompleteInputInner({
   const [open, setOpen] = useState(false);
   const acServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  // R299 (Maps billing audit): one AutocompleteSessionToken per pick, so the keystrokes and the
+  // Details call bill as ONE session instead of a per-keystroke Autocomplete request each.
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -352,6 +355,7 @@ function PlacesAutocompleteInputInner({
     try {
       acServiceRef.current = new placesLib.AutocompleteService();
       placesServiceRef.current = new placesLib.PlacesService(document.createElement("div"));
+      sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
     } catch {
       // Construction failing (bad key / billing) is exactly the fallback case — leave the refs
       // null so getPlacePredictions below is skipped and this behaves as plain text.
@@ -372,7 +376,8 @@ function PlacesAutocompleteInputInner({
     }
     debounceRef.current = setTimeout(() => {
       try {
-        acServiceRef.current!.getPlacePredictions({ input: v }, (results, status) => {
+        if (!sessionTokenRef.current && placesLib) sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
+        acServiceRef.current!.getPlacePredictions({ input: v, sessionToken: sessionTokenRef.current ?? undefined }, (results, status) => {
           if (status === "OK" && results?.length) {
             setPredictions(results);
             setOpen(true);
@@ -400,8 +405,11 @@ function PlacesAutocompleteInputInner({
       return;
     }
     try {
+      const sessionToken = sessionTokenRef.current ?? undefined;
+      // The pick closes the session; the next keystroke opens a new one.
+      sessionTokenRef.current = null;
       placesServiceRef.current.getDetails(
-        { placeId: prediction.place_id, fields: ["geometry", "name"] },
+        { placeId: prediction.place_id, fields: ["geometry", "name"], sessionToken },
         (place, status) => {
           if (status === "OK" && place?.geometry?.location) {
             onPlaceSelected({
