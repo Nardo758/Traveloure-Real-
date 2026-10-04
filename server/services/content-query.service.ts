@@ -4,6 +4,7 @@
  * Routes → this service (or storage) → db. No raw db calls in route handlers.
  */
 
+import { canonicalWithinFlightWindows, daysWithinFlightWindows } from "../utils/draft-flight-windows";
 import { db } from "../db";
 import {
   eq, and, or, inArray, ilike, count, sql, gte,
@@ -393,6 +394,25 @@ export async function saveGeneratedItinerarySnapshot(
     canonicalItems: sanitizeCanonicalItems(input.canonicalItems, sanitizeOptions),
     generatedPlan: sanitizeGeneratedPlan(input.generatedPlan, sanitizeOptions),
   };
+  // R-aa (step 6): every drafting path that reaches this writer — the free draft, Plus occasion
+  // drafts, save-as-trip — keeps nothing before arrival + buffer or past departure − buffer, by the ONE
+  // rule (`server/utils/draft-flight-windows.ts`). A newly minted plan has no flights yet, so this is a
+  // no-op for it; re-applying it to an already-filtered draft changes nothing.
+  if (input.tripId) {
+    const flightAnchors = (await storage.getTemporalAnchors(input.tripId)).filter(
+      (a: any) => a.anchorType === "flight_arrival" || a.anchorType === "flight_departure",
+    );
+    if (flightAnchors.length) {
+      const cut = canonicalWithinFlightWindows(input.canonicalItems, flightAnchors as any, input.trip.startDate);
+      input = {
+        ...input,
+        canonicalItems: cut.kept,
+        generatedPlan: Array.isArray(input.generatedPlan?.itineraryData)
+          ? { ...input.generatedPlan, itineraryData: daysWithinFlightWindows(input.generatedPlan.itineraryData, flightAnchors as any, input.trip.startDate) }
+          : input.generatedPlan,
+      };
+    }
+  }
 
   const result = await db.transaction(async (tx) => {
     let trip: any;

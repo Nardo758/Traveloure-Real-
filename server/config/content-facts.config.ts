@@ -26,6 +26,8 @@ const TTL_DAYS: Record<FactType, number | null> = {
   location: 30,
   dining_basics: 30,
   address: 30,
+  // R297: photo references live exactly as long as the Places facts they came with.
+  photo_ref: 30,
 };
 
 export function factTtlDays(type: FactType): number | null {

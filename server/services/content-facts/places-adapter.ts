@@ -50,6 +50,10 @@ export const PLACES_BASE_FIELDS = [
   // Smoke 8 item 2: the AREA (ward / sublocality / locality) is read from the structured components,
   // never parsed out of the formatted string. Essentials tier — below Enterprise, so no tier change.
   "addressComponents",
+  // R297 (ledger `2026-10-04-photo-references`): the photo REFERENCES (resource names + author
+  // attributions), stored with the facts cache entry. An Essentials-tier field, so the call stays
+  // billed at Enterprise (the hours field already sets the tier) — pinned by the price test F6.
+  "photos",
 ] as const;
 
 /**
@@ -58,6 +62,9 @@ export const PLACES_BASE_FIELDS = [
  * asks `languageCode=en`, so these are English names even where `formattedAddress` comes back in the
  * local script. Never parsed from the formatted string; no components ⇒ null (§13).
  */
+/** R297: how many photo references one Details answer keeps. */
+export const PLACES_PHOTO_REFS_MAX = 3;
+
 export const PLACES_AREA_COMPONENT_TYPES = ["ward", "sublocality_level_1", "locality"] as const;
 export function placesAreaText(components: unknown): string | null {
   if (!Array.isArray(components)) return null;
@@ -242,6 +249,24 @@ export class PlacesAdapter implements SourceAdapter {
       if (short) v.shortFormattedAddress = short;
       if (area) v.area = area;
       push({ need: req.need, factType: "address", value: v, expiresAt: expiry(fetchedAt, factTtlDays("address")) });
+    }
+    // R297: the photo REFERENCES (never an image) — at most PLACES_PHOTO_REFS_MAX, each with the
+    // author attributions Google requires shown beside it. Same place-ID key and TTL as the rest.
+    const photos = Array.isArray(p.photos)
+      ? p.photos
+          .filter((x: any) => typeof x?.name === "string" && x.name)
+          .slice(0, PLACES_PHOTO_REFS_MAX)
+          .map((x: any) => ({
+            name: String(x.name),
+            authors: Array.isArray(x.authorAttributions)
+              ? x.authorAttributions
+                  .map((a: any) => ({ displayName: typeof a?.displayName === "string" ? a.displayName : "", uri: typeof a?.uri === "string" ? a.uri : null }))
+                  .filter((a: { displayName: string }) => a.displayName)
+              : [],
+          }))
+      : [];
+    if (photos.length) {
+      push({ need: req.need, factType: "photo_ref", value: { photos, query: text }, expiresAt: expiry(fetchedAt, factTtlDays("photo_ref")) });
     }
     // A located place with nothing else still cost a call — record it on a location row; a place
     // with no coordinates and no facts records nothing (there is nothing true to keep).

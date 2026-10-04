@@ -65,10 +65,6 @@ function deps(
         calls.passChecks.push(tripId);
         return passTrips.includes(tripId);
       },
-      hasRecentOptimizationRun: async (userId, cutoff) => {
-        calls.recentRunChecks.push({ userId, cutoff });
-        return over.recentRun === true;
-      },
       verifyPayment: async (params) => {
         calls.verifications.push(params);
         return over.verify ?? { ok: true };
@@ -100,19 +96,17 @@ test("P3 (NEGATIVE): no pass, no run in the window, no PaymentIntent ⇒ refused
   assert.deepEqual(auth, { authorized: false, reason: "payment_required" });
 });
 
-test("P4: a completed run inside the 24h window is the free re-run, and the clock is that window", async () => {
-  const { deps: d, calls } = deps({ recentRun: true });
+test("P4 (step 6, R-ac): the unlimited 24-hour full re-run is RETIRED — no pass and no payment is refused", async () => {
+  const { deps: d } = deps({ recentRun: true });
   const auth = await resolveOptimizerRunAuthorization({ userId: "u-1", tripId: "trip-a" }, d);
-  assert.deepEqual(auth, { authorized: true, basis: "free_rerun" });
-  assert.equal(calls.recentRunChecks[0].userId, "u-1");
-  assert.equal(calls.recentRunChecks[0].cutoff.getTime(), NOW - OPTIMIZATION_FREE_RERUN_MS);
+  assert.deepEqual(auth, { authorized: false, reason: "payment_required" });
+  assert.equal("hasRecentOptimizationRun" in d, false, "the predicate no longer reads a recent-run clock");
 });
 
-test("P5: a covered trip reports trip_pass even when the free re-run would also be true (§13: the honest reason)", async () => {
-  const { deps: d, calls } = deps({ passTrips: ["trip-a"], recentRun: true });
+test("P5: a covered trip reports trip_pass (§13: the honest reason)", async () => {
+  const { deps: d } = deps({ passTrips: ["trip-a"], recentRun: true });
   const auth = await resolveOptimizerRunAuthorization({ userId: "u-1", tripId: "trip-a" }, d);
   assert.deepEqual(auth, { authorized: true, basis: "trip_pass" });
-  assert.equal(calls.recentRunChecks.length, 0, "the pass short-circuits before the clock is read");
 });
 
 test("P6: the payment already recorded on the comparison, inside the window, authorizes and needs NO second claim", async () => {
@@ -213,13 +207,12 @@ test("P12: a pass-covered run neither verifies nor spends a supplied PaymentInte
   assert.deepEqual(calls.verifications, [], "a covered run must not consume a payment");
 });
 
-test("P13: the basis log fires for trip_pass ONLY — every other basis is silent", () => {
+test("P13: the basis log fires for trip_pass ONLY — a paid run is silent", () => {
   const lines: string[] = [];
   const original = console.log;
   console.log = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
   try {
     logOptimizerRunBasis("trip_pass", { tripId: "trip-a", comparisonId: "cmp-1" });
-    logOptimizerRunBasis("free_rerun", { tripId: "trip-a", comparisonId: "cmp-1" });
     logOptimizerRunBasis("paid", { tripId: "trip-a", comparisonId: "cmp-1" });
   } finally {
     console.log = original;
