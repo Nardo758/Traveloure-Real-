@@ -15,6 +15,9 @@
  *
  * ── AUTH MODEL ────────────────────────────────────────────────────────────────────────────────
  * `authorizeTripLogistics` — owner ‖ trip-assigned expert ‖ trip author ‖ (audit-logged) admin.
+ * PATCH and DELETE pass `requireWriteAccess` (ledger `2026-10-04-leg-write-access`): the assigned-expert
+ * arm is then the §12 WRITE list (accepted/assigned), so a `pending` advisor reads legs but cannot
+ * confirm, re-mode, edit or delete one. Generate is unchanged.
  * This is the canonical shared implementation of the inline trip-mutation model: it is documented
  * as matching `booking-actions.ts` `workspace-constraints`, which is itself the reference copy of
  * the inline `routes.ts` handlers' `verifyTripOwnership` → `isExpertAssignedToTrip` →
@@ -165,6 +168,9 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
       tripId,
       sessionUserId(req),
       "PATCH /api/trips/:tripId/transport-legs/:legId",
+      // LD 12 / §12: a leg confirm, re-mode, edit or delete is a plan WRITE — the WRITE allow-list
+      // (accepted/assigned), never a `pending` advisor (ledger `2026-10-04-leg-write-access`).
+      { requireWriteAccess: true },
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
@@ -222,6 +228,9 @@ router.delete("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async
       tripId,
       sessionUserId(req),
       "DELETE /api/trips/:tripId/transport-legs/:legId",
+      // LD 12 / §12: a leg confirm, re-mode, edit or delete is a plan WRITE — the WRITE allow-list
+      // (accepted/assigned), never a `pending` advisor (ledger `2026-10-04-leg-write-access`).
+      { requireWriteAccess: true },
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
 

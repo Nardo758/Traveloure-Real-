@@ -2289,6 +2289,9 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
           leg.tripId,
           userId,
           "PATCH /api/transport-legs/:legId/mode (trip-scoped)",
+          // §12: re-moding a trip-scoped leg is a plan write — never a `pending` advisor
+          // (ledger `2026-10-04-leg-write-access`).
+          { requireWriteAccess: true },
         );
         if (denied) return res.status(denied.status).json({ error: denied.message });
       }
