@@ -6,7 +6,8 @@ import { db } from "../db";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { escHtml } from "../utils/email-escape";
-import { lockFollowupTraveler, cancelItineraryFollowups } from "../services/itinerary-followup.service";
+import { cancelItineraryFollowups } from "../services/itinerary-followup.service";
+import { updateUserPreferences } from "../services/user-preferences-writer";
 import { marketingPreferences } from "../services/itinerary-followup-email";
 
 const router = Router();
@@ -20,13 +21,15 @@ async function savePreferences(userId: string, input: unknown) {
   if (parsed.enabled && !marketingPreferences({ itineraryMarketing: parsed })) {
     throw new Error("Choose a valid timezone and quiet-hour start/end times.");
   }
-  await db.transaction(async (tx) => {
-    await lockFollowupTraveler(tx, userId);
-    await tx.execute(sql`UPDATE users
-      SET preferences = jsonb_set(COALESCE(preferences, '{}'::jsonb), '{itineraryMarketing}', ${JSON.stringify(parsed)}::jsonb)
-      WHERE id = ${userId}`);
-    if (!parsed.enabled) await cancelItineraryFollowups(tx, userId, "Traveler unsubscribed");
-  });
+  // The ONE writer of users.preferences (ledger 2026-09-23-preferences-one-writer). It locks the same
+  // users row lockFollowupTraveler locks, and the opt-out cancel commits in its transaction.
+  await updateUserPreferences(
+    userId,
+    (current) => ({ preferences: { ...current, itineraryMarketing: parsed }, result: parsed }),
+    async (tx) => {
+      if (!parsed.enabled) await cancelItineraryFollowups(tx, userId, "Traveler unsubscribed");
+    },
+  );
 }
 
 const page = (title: string, content: string) => `<!doctype html><html lang="en"><meta charset="utf-8">

@@ -38,6 +38,12 @@ export interface PreferencesWrite<T> {
 export async function updateUserPreferences<T>(
   userId: string,
   merge: (current: UserPreferences) => PreferencesWrite<T>,
+  /**
+   * Optional: work that must commit atomically with this write, run in the SAME transaction after
+   * the UPDATE and while the row lock is still held (the itinerary follow-ups cancel their queued
+   * emails here when a traveler opts out). It receives the merge's result.
+   */
+  afterWrite?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], result: T) => Promise<void>,
 ): Promise<T | null> {
   return db.transaction(async (tx) => {
     const locked = await tx.execute(sql`SELECT preferences FROM users WHERE id = ${userId} FOR UPDATE`);
@@ -49,6 +55,7 @@ export async function updateUserPreferences<T>(
       .update(users)
       .set({ ...(next.columns ?? {}), preferences: next.preferences })
       .where(eq(users.id, userId));
+    if (afterWrite) await afterWrite(tx, next.result);
     return next.result;
   });
 }

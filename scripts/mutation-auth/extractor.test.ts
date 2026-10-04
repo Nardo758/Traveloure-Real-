@@ -205,8 +205,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 655);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 646);
+  assert.equal(result.mutations.length, 658);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 649);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -216,24 +216,28 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 646);
-  assert.equal(manifest.rawRegistrationCount, 655);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 646);
+  assert.equal(endpointRows.length, 649);
+  assert.equal(manifest.rawRegistrationCount, 658);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 649);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
   // admin, behind the blanket /api/admin guard.
   // + POST /api/trips/:tripId/flight-lookup (ledger `2026-10-03-surface-step2-tools-tray`): user-data,
   // session-self by the text heuristic; the handler runs authorizeTripLogistics with requireWriteAccess.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 228, other: 219 });
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 229, other: 221 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
   // POST /api/itinerary-comparisons/:id/adopt-stop moved session-self -> resource-owner (ledger
   // 2026-09-26-adopt-stop-write-access, R130): it now calls authorizeTripLogistics with
   // requireWriteAccess, so the plan's owner or a write-status advisor is verified before any write.
+  // #1274 (traveler itinerary emails): + PATCH /api/me/itinerary-email-preferences (user-data,
+  // session-self) and + POST /email-preferences (other, session-self) — both isAuthenticated, the user
+  // from the session; + POST /email-preferences/unsubscribe/:token (other, resource-owner) — the token
+  // resolves the traveler from their own email_outbox row, one 404 otherwise. 655/646 → 658/649.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 335, "resource-owner": 97,
+    "admin-role": 168, "session-self": 337, "resource-owner": 98,
     signature: 6, "public-or-system": 40, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
