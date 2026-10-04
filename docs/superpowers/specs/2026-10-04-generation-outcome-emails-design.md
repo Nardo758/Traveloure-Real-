@@ -76,6 +76,7 @@ The live suite passed on 2026-10-04 in approximately six minutes and twenty-four
   both comparisons failed and sent their timeout notices. Both rejected late ready completion.
 - All six outbox records were sent, with six distinct provider IDs. Read-only Resend lookups
   confirmed `last_event=delivered` for every message.
+- The operator confirmed on 2026-10-04 that all six messages arrived in Inbox, not Spam.
 - New sends were limited to the approved persisted recipient. The harness blocked unrelated
   recipients and used development links, rather than links to production-only data.
 - One isolated development QA account and six labeled comparison fixtures remain available
@@ -84,5 +85,6 @@ The live suite passed on 2026-10-04 in approximately six minutes and twenty-four
 - The local harness is in `.local/tests/itinerary-outcomes-live.vitest.ts`; output evidence is
   in `/tmp/itinerary-outcomes-live.log`. No recipient address or credentials belong in this doc.
 
-Status: implementation, real generation, real elapsed timeout, and provider delivery verified.
-Operator inbox receipt, spam placement, and authenticated link usability are not certified.
+Status: implementation, real generation, real elapsed timeout, provider delivery, and operator
+Inbox receipt verified. Authenticated link usability and unchanged billing journeys were not
+exercised by this live run and are not certified.
