@@ -8992,8 +8992,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getItineraryComparisonByTripId(tripId: string): Promise<any | null> {
+    // Step 5 (ruling 5): the NEWEST comparison — a plan re-run keeps its older comparisons stored,
+    // and an unordered read picked one of them arbitrarily.
     const [row] = await db.select().from(itineraryComparisons)
       .where(eq(itineraryComparisons.tripId, tripId))
+      .orderBy(desc(itineraryComparisons.createdAt))
       .limit(1);
     return row ?? null;
   }

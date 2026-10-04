@@ -935,13 +935,19 @@ router.get("/api/city-neighborhoods", async (req, res) => {
       // Reference data — high default (200, also the hard cap) so existing consumers still see
       // the full catalog today, while the response can never grow unbounded.
       const { limit, offset } = parsePagination(req.query, { defaultLimit: 200 });
+      // Step 5: an optional `?city=` filter (case-insensitive) — the slip map's neighbourhood shading
+      // reads one city's centroids. Absent ⇒ the whole catalog, exactly as before.
+      const city = typeof req.query.city === "string" && req.query.city.trim() ? req.query.city.trim() : null;
+      const where = city ? sql`lower(${cityNeighborhoods.city}) = lower(${city})` : undefined;
       const [agg] = await db
         .select({ total: count() })
-        .from(cityNeighborhoods);
+        .from(cityNeighborhoods)
+        .where(where);
       const total = Number(agg?.total ?? 0);
       const rows = await db
         .select()
         .from(cityNeighborhoods)
+        .where(where)
         .orderBy(cityNeighborhoods.city, cityNeighborhoods.name)
         .limit(limit)
         .offset(offset);

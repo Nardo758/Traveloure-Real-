@@ -156,7 +156,9 @@ test("S3 the map renders NO map when there is no centre, and says why", () => {
 test("S4 every ExperienceMap mount on the page can reach the planning door", () => {
   const src = read(TEMPLATE);
   const mounts = (src.match(/<ExperienceMap\b/g) ?? []).length;
-  assert.ok(mounts >= 3, `expected the page's three map mounts, found ${mounts}`);
+  // Surface step 5 (ledger `2026-10-04-surface-step5-map-versions`): two of the three mounts are
+  // retired; the desktop panel's one stays until step 8.
+  assert.equal(mounts, 1, `expected the page's one remaining map mount, found ${mounts}`);
   // A mount without the door would render an empty state with no way out of it (§13).
   const doors = (src.match(/onSetLocation=\{\(\) => openPlanModal\(\{ door: "experience_cta", experienceSlug: slug \|\| undefined, destination: destination\.trim\(\) \|\| undefined \}\)\}/g) ?? []).length;
   assert.ok(

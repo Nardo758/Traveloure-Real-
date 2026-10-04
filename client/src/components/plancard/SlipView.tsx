@@ -78,7 +78,10 @@ import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-th
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
-import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostHref } from "@/lib/item-row-menu";
+import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHostHref } from "@/lib/item-row-menu";
+import { isLocated } from "@/components/plancard/MapControlCenter";
+import type { MapAnchor, MapArea, MapVersion } from "@/lib/map-scene";
+import type { VersionsBoardView } from "@/lib/versions-board";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
@@ -208,6 +211,8 @@ export interface SlipTrip {
 
 export interface SlipData extends PlanCardData {
   trip?: SlipTrip;
+  /** Step 5 (R-h): routed legs and their minutes render only when the travel-time service is on. */
+  travelTimesShown?: boolean;
   /** A5 — each item's facts with their provenance, keyed by item id (server-projected; absent ⇒ none). */
   placeFacts?: Record<string, FactView[]>;
   /** Smoke 5 item 8 — item ids the latest draft's place-facts run is still checking (present only when non-empty). */
@@ -711,6 +716,7 @@ function SlipDayItem({
   timeZone = null,
   checkingHours = false,
   onOpenExpertDoor,
+  onFindHost,
   savedQuestion = null,
   savedCity = null,
 }: {
@@ -746,6 +752,8 @@ function SlipDayItem({
   groupItemIds: readonly string[];
   /** R-m: "Ask a local about this" with no advisor on the plan opens the expert door. */
   onOpenExpertDoor: () => void;
+  /** Step 5: "Find a host" opens the slip map's Browse layer filtered to this category (null = all). */
+  onFindHost?: (categoryKey: string | null) => void;
   /** Smoke 7 item 4: the viewer's saved question on this item, if any, and the plan's market city. */
   savedQuestion?: { question: string | null } | null;
   savedCity?: string | null;
@@ -798,6 +806,7 @@ function SlipDayItem({
               : undefined,
         askLocalSaved: !hasAdvisor && !!savedQuestion,
         findHostHref: findHostHref({ name: a.name, type: a.type, locationName: a.location }, { city, tripId }),
+        onFindHost: onFindHost ? () => onFindHost(findHostCategory(a.type)) : undefined,
         onBuildAround: promotable ? promote : undefined,
         onSetAsStay: canSetAsStay ? setAsStay : undefined,
       }
@@ -1432,14 +1441,15 @@ export function SlipView({
     () => allActivities.some((a) => a.routingStatus === "ready_for_checkout" || isPurchasedRow(a)),
     [allActivities],
   );
-  const locatedActivities = useMemo(
-    () => allActivities.filter((a) => a.lat != null && a.lng != null),
-    [allActivities],
-  );
-  const unlocatedActivities = useMemo(
-    () => allActivities.filter((a) => a.lat == null || a.lng == null),
-    [allActivities],
-  );
+  // Step 5 ruling 10: ONE located predicate — the map's own `isLocated` (§18 rule 1).
+  const locatedActivities = useMemo(() => allActivities.filter(isLocated), [allActivities]);
+  const unlocatedActivities = useMemo(() => allActivities.filter((a) => !isLocated(a)), [allActivities]);
+  // Step 5: the map's Browse layer, opened by the layers control or by an item's "Find a host".
+  const [mapBrowse, setMapBrowse] = useState<{ open: boolean; categoryKey: string | null }>({ open: false, categoryKey: null });
+  const openFindHost = (categoryKey: string | null) => {
+    setMapBrowse({ open: true, categoryKey });
+    setSlipView("map");
+  };
   const mapDisabledReason =
     locatedActivities.length === 0
       ? "No stops are located yet — items need map locations before they can be shown on a map"
@@ -1617,6 +1627,40 @@ export function SlipView({
   // anchor manager and the Getting there sheet read), so a flight added there turns day 1's /
   // the last day's placeholder into the real anchor row.
   const [openTool, setOpenTool] = useState<ToolKey | null>(null);
+  // ── Step 5: the slip map's anchor, neighbourhood shading and versions (spec §2.3; R-d) ─────────
+  // The anchor: the plan's stay when it has one located, else the item the plan is built around.
+  const mapAnchor: MapAnchor | null = (() => {
+    const stay = planActivities.find((act) => act.type === "accommodation" && isLocated(act));
+    if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng! };
+    const built = anchorItemId ? planActivities.find((act) => act.id === anchorItemId && isLocated(act)) : undefined;
+    if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng! };
+    return null;
+  })();
+  // Neighbourhoods are shaded only while the AnchorPanel is open (on the slip or in the tray).
+  const anchorPanelOpen = anchorSurface.slip === "drafted" || (!!tripsAnchor && anchorPanelEmpty) || openTool === "where_to_stay";
+  const mapCity = (data.trip?.destination ?? "").split(",")[0].trim();
+  const { data: areaRows } = useQuery<{ data?: Array<{ slug: string; name: string; centroidLat: string; centroidLng: string }> }>({
+    queryKey: [`/api/city-neighborhoods?city=${encodeURIComponent(mapCity)}`],
+    enabled: slipView === "map" && anchorPanelOpen && !!mapCity,
+    staleTime: 10 * 60_000,
+  });
+  const mapAreas: MapArea[] = (areaRows?.data ?? [])
+    .map((r) => ({ slug: r.slug, name: r.name, lat: Number(r.centroidLat), lng: Number(r.centroidLng) }))
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+  // A paid run's versions: the Draft / A / B / C toggle (read gate; a non-reader is one 404 ⇒ no toggle).
+  const { data: versionsView } = useQuery<VersionsBoardView>({
+    queryKey: [`/api/trips/${tripId}/versions`],
+    enabled: slipView === "map" && !!tripId,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const mapVersions: MapVersion[] = (versionsView?.versions ?? []).map((v) => ({
+    key: v.variantId,
+    label: v.label,
+    stops: v.stops,
+    days: v.days,
+    anchor: v.anchor ? { kind: "stay", name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
+  }));
   const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null }>>({
     queryKey: [`/api/trips/${tripId}/anchors`],
     enabled: !!tripId && showTravelAnchors,
@@ -1992,6 +2036,14 @@ export function SlipView({
             selectedDay={Math.min(mapDay, Math.max(0, sortedDays.length - 1))}
             onSelectDay={setMapDay}
             expertTravelerNote={data.trip.expertTravelerNote}
+            readOnly={!canEditItems}
+            anchor={mapAnchor}
+            areas={mapAreas}
+            showAreas={anchorPanelOpen}
+            versions={mapVersions}
+            browse={mapBrowse}
+            onBrowseChange={setMapBrowse}
+            showTravelMinutes={data.travelTimesShown === true}
           />
           {/* §13: unlocated items are NAMED, never guessed onto the map. */}
           {unlocatedActivities.length > 0 && (
@@ -2187,6 +2239,7 @@ export function SlipView({
                         !optionSets.some((st) => st.itineraryItemId === a.id)
                       }
                       onOpenExpertDoor={() => setExpertDoorState("open")}
+                      onFindHost={openFindHost}
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
                       savedCity={data.savedQuestions?.cityName ?? null}
                     />

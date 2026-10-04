@@ -1322,6 +1322,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
             expertTravelerNote={plancardData?.trip?.expertTravelerNote}
+            readOnly
+            showTravelMinutes={(plancardData as any)?.travelTimesShown === true}
           />
         )}
 

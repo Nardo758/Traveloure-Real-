@@ -22,4 +22,25 @@ router.get("/api/markets/geography", async (req, res) => {
   }
 });
 
+/**
+ * Step 5 (ruling 9): the Leaflet/OSM fallback renderer's tiles. The URL is DEPLOYMENT config
+ * (`MAP_FALLBACK_TILE_URL`, a keyed or paid provider — public OSM tiles are against their usage
+ * policy at production volume). Absent ⇒ public OSM tiles, and the server says so once in its log.
+ * ODbL attribution is always returned and always drawn.
+ */
+let warnedPublicTiles = false;
+router.get("/api/maps/tiles", (_req, res) => {
+  const configured = (process.env.MAP_FALLBACK_TILE_URL ?? "").trim();
+  if (!configured && !warnedPublicTiles) {
+    warnedPublicTiles = true;
+    console.warn("[maps] MAP_FALLBACK_TILE_URL is not set — the fallback map uses public OpenStreetMap tiles");
+  }
+  res.set("Cache-Control", "public, max-age=300");
+  res.json({
+    url: configured || "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "© OpenStreetMap contributors",
+    source: configured ? "configured" : "public_osm",
+  });
+});
+
 export default router;

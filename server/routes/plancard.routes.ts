@@ -28,6 +28,7 @@ import { attachRolesNeeded } from "../services/occasion-roles.service";
 import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
 import { countTripItineraryItems, isUntouchedAiDraft } from "../services/ai-draft-eligibility";
+import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { isTripPayer } from "../services/balance-payer.service";
 import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
@@ -768,6 +769,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // free-draft row, which is the only state the slip's "starting sketch" line renders in.
       aiSketch,
       draftItemCount,
+      // Step 5: travel minutes appear on the map only when the travel-time service is on (A8);
+      // otherwise connectors are straight sequence lines with no duration (R-h).
+      travelTimesShown: travelTimeServiceEnabled(),
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

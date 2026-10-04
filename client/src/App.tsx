@@ -122,6 +122,7 @@ const AdminReviewModeration = lazy(() => import("@/pages/admin/review-moderation
 const AdminDestinationEvents = lazy(() => import("@/pages/admin/destination-events"));
 const AdminServiceRequests = lazy(() => import("@/pages/admin/service-requests"));
 const AdminReconciliation = lazy(() => import("@/pages/admin/reconciliation"));
+const AdminFeedback = lazy(() => import("@/pages/admin/feedback"));
 const ConciergePage = lazy(() => import("@/pages/concierge"));
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
@@ -1168,6 +1169,9 @@ function Router() {
       </Route>
       <Route path="/admin/reconciliation">
         {() => <ProtectedRoute component={AdminReconciliation} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/feedback">
+        {() => <ProtectedRoute component={AdminFeedback} requiredRole="admin" />}
       </Route>
       <Route path="/admin/fee-config">
         {() => <Redirect to="/admin/fee-bands" />}
