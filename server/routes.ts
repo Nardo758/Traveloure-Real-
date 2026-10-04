@@ -183,6 +183,11 @@ import { itineraryIntelligenceService } from "./services/itinerary-intelligence.
 import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
+import { daysWithinFlightWindows } from "./utils/draft-flight-windows";
+import { reduceUncoveredEventActivities } from "./utils/ai-draft-sanitize";
+import { coveringEventsForTrip } from "./services/content-facts/covering-events";
+import { seasonPromptLineForTrip } from "./services/content-facts/season-facts";
+import { AI_MEAL_PROMPT_LINE, aiEventPromptLine } from "@shared/ai-place-text";
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { ensureTripAdvisorRow } from "./services/booking-actions.service";
 import { authorizeExpertBookingRequest } from "./services/expert-booking-request-guard.service";
@@ -798,8 +803,6 @@ async function verifyOptimizationPayment(params: {
  */
 const optimizerRunAuthorizationDeps: OptimizerRunAuthorizationDeps = {
   tripPassCoversRun: (tripId) => coversAction(tripId, "optimizer_run"),
-  hasRecentOptimizationRun: async (userId, cutoff) =>
-    !!(await storage.getRecentOptimizationRun(userId, cutoff)),
   verifyPayment: verifyOptimizationPayment,
 };
 
@@ -1826,16 +1829,27 @@ export async function registerRoutes(
         storage.getDayBoundaries(trip.id),
       ]);
       const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, trip.startDate);
+      // Step 6 (R-aa, R-bc, S10-7 on every drafting path): the meal windows, the events confirmed on
+      // the trip's dates ("no festivals or events unless listed") and the season facts — the same
+      // lines the free draft's prompt carries, from the same loaders.
+      const tripStartIso = trip.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : null;
+      const tripEndIso = trip.endDate ? new Date(trip.endDate).toISOString().slice(0, 10) : null;
+      const coveringEvents = await coveringEventsForTrip({ destination: trip.destination, startDate: tripStartIso, endDate: tripEndIso });
+      const draftRulesBlock = [
+        `\n\nMeals at meal times: ${AI_MEAL_PROMPT_LINE}`,
+        `\nEvents: ${aiEventPromptLine(tripStartIso, tripEndIso, coveringEvents)}`,
+        await seasonPromptLineForTrip({ destination: trip.destination, startDate: tripStartIso, endDate: tripEndIso }).then((l) => (l ? `\nSeason: ${l}` : "")),
+      ].join("");
 
       // Dedup key covers all parameters that affect the AI output.
       // Generic (non-personalised) — preferences string is included so
       // trips with different prefs get independent AI calls. The anchor block
       // is folded in verbatim so two same-destination trips with different
       // anchors don't share a cached generation (in-memory map key; length is fine).
-      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}`;
+      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}:${draftRulesBlock}`;
 
       try {
-        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}
+        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}${draftRulesBlock}
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -1927,6 +1941,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             ],
           })),
         };
+      }
+
+      // Step 6 (R-aa, R-w): the same storage rules the snapshot writer applies to every other drafting
+      // path — nothing before arrival + buffer or past departure − buffer (the ONE rule,
+      // `draft-flight-windows`), and an event-named title not confirmed for these dates reduced.
+      if (Array.isArray(itineraryData?.days)) {
+        itineraryData.days = daysWithinFlightWindows(itineraryData.days, tripAnchors as any, tripStartIso).map((d: any) => ({
+          ...d,
+          activities: Array.isArray(d.activities) ? reduceUncoveredEventActivities(d.activities, coveringEvents) : d.activities,
+        }));
       }
 
       // Post-generation anchor validation (Lane 2a): warn, never block. Attaches

@@ -123,7 +123,9 @@ describe("T5 the countdown needs the plan's zone (LD 30)", () => {
     // half of the same fact — whether anybody CHOSE the day being counted to — so the argument
     // list grew by one and the literal spelling stopped matching. The invariant is asserted
     // instead of the spelling: the zone still rides, and the dates fact rides beside it.
-    assert.match(hero, /formatCountdown\(\s*upNextActivity,\s*day\.date,\s*now,\s*timezone\b/);
+    // R297: the day handed over is its MACHINE date (`machineDay`), not the display label.
+    assert.match(hero, /formatCountdown\(\s*upNextActivity,\s*countdownDay,\s*now,\s*timezone\b/);
+    assert.match(hero, /const countdownDay = machineDay\(day\)/);
     assert.match(
       hero,
       /formatCountdown\([^)]*\bdatesConfirmed\b[^)]*\)/,

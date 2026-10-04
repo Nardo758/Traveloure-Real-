@@ -36,6 +36,7 @@ import inboxRoutes from "../routes/expert-inbox-questions.routes";
 import {
   answerInboxQuestion,
   expertMaySeeQuestion,
+  inboxQuestionWindowDays,
   listInboxQuestions,
 } from "../services/expert-inbox-questions.service";
 
@@ -134,14 +135,16 @@ before(async () => {
     VALUES (${ids.listing}, ${ids.author}, ${ids.build}, 'Kyoto', 'L1-13 listing', 2, 'approved', true)`);
   await db.execute(sql`INSERT INTO ready_made_purchases (id, buyer_id, ready_made_trip_id, price_paid_cents, stripe_payment_intent_id, clone_trip_id, status)
     VALUES (${ids.purchase}, ${ids.traveler}, ${ids.listing}, 3900, ${`pi_l113_${RUN}`}, ${ids.copy}, 'cloned')`);
-  const ev = (id: string, trip: string, props: Record<string, unknown>, at: string) =>
+  // Relative times, so the fixture stays inside the inbox's look-back window whenever it runs.
+  const ev = (id: string, trip: string, props: Record<string, unknown>, hoursAgo: number) =>
     db.execute(sql`INSERT INTO funnel_events (id, user_id, trip_id, event_type, stage, properties, created_at)
-      VALUES (${id}, ${ids.traveler}, ${trip}, 'expert_interest', 'SLIP', ${JSON.stringify(props)}::jsonb, ${at})`);
-  await ev(q.old, ids.plain, { level: "ask", market: "kyoto", itemId: ids.i1, question: "Is it busy at 9?" }, "2026-10-01T09:00:00Z");
-  await ev(q.plain, ids.plain, { level: "ask", market: "kyoto", itemId: ids.i1, question: "Best stall for tamagoyaki?" }, "2026-10-02T09:00:00Z");
-  await ev(q.copy, ids.copy, { level: "ask", market: "kyoto", itemId: ids.i2, question: "Cherry blossoms in early April?" }, "2026-10-02T10:00:00Z");
-  await ev(q.door, ids.plain, { level: "ask", market: "kyoto" }, "2026-10-02T11:00:00Z");
-  await ev(q.nomarket, ids.nomarket, { level: "ask", itemId: ids.i3 }, "2026-10-02T12:00:00Z");
+      VALUES (${id}, ${ids.traveler}, ${trip}, 'expert_interest', 'SLIP', ${JSON.stringify(props)}::jsonb,
+        date_trunc('second', now()) - make_interval(hours => ${hoursAgo}))`);
+  await ev(q.old, ids.plain, { level: "ask", market: "kyoto", itemId: ids.i1, question: "Is it busy at 9?" }, 30);
+  await ev(q.plain, ids.plain, { level: "ask", market: "kyoto", itemId: ids.i1, question: "Best stall for tamagoyaki?" }, 5);
+  await ev(q.copy, ids.copy, { level: "ask", market: "kyoto", itemId: ids.i2, question: "Cherry blossoms in early April?" }, 4);
+  await ev(q.door, ids.plain, { level: "ask", market: "kyoto" }, 3);
+  await ev(q.nomarket, ids.nomarket, { level: "ask", itemId: ids.i3 }, 2);
 });
 
 after(async () => {
@@ -155,6 +158,7 @@ after(async () => {
 });
 
 test("Q1: a copy's question reaches its author, with no asker identity", async () => {
+  const copyAskedAt = new Date(((await db.execute(sql`SELECT created_at FROM funnel_events WHERE id = ${q.copy}`)).rows[0] as any).created_at).toISOString();
   const r = await call(ids.author, "GET", "/api/expert/inbox/questions");
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.questions, [
@@ -164,7 +168,7 @@ test("Q1: a copy's question reaches its author, with no asker identity", async (
       itemTitle: "Philosopher's Path",
       dayNumber: 2,
       city: "Kyoto",
-      askedAt: "2026-10-02T10:00:00.000Z",
+      askedAt: copyAskedAt,
       fromYourReadyMadeTrip: true,
     },
   ]);
@@ -243,4 +247,19 @@ test("S1: /api/expert/inbox is under the expert role backstop", () => {
   const src = fs.readFileSync(path.resolve(import.meta.dirname, "../routes.ts"), "utf8");
   const block = src.slice(src.indexOf("const EXPERT_SELF_SERVICE_PREFIXES = ["), src.indexOf("const PROVIDER_SELF_SERVICE_PREFIXES"));
   assert.match(block, /"\/api\/expert\/inbox",/);
+});
+
+test("W1: questions older than the window are not offered; the window is config", async () => {
+  assert.equal(inboxQuestionWindowDays({}), 90);
+  assert.equal(inboxQuestionWindowDays({ INBOX_QUESTION_WINDOW_DAYS: "30" }), 30);
+  assert.equal(inboxQuestionWindowDays({ INBOX_QUESTION_WINDOW_DAYS: "nope" }), 90);
+  const old = crypto.randomUUID();
+  await db.execute(sql`INSERT INTO funnel_events (id, user_id, trip_id, event_type, stage, properties, created_at)
+    VALUES (${old}, ${ids.traveler}, ${ids.copy}, 'expert_interest', 'SLIP', ${JSON.stringify({ level: "ask", itemId: ids.i2, question: "Old?" })}::jsonb, now() - interval '400 days')`);
+  try {
+    const list = await listInboxQuestions(ids.author);
+    assert.equal(list.some((x) => x.id === old), false);
+  } finally {
+    await db.execute(sql`DELETE FROM funnel_events WHERE id = ${old}`);
+  }
 });

@@ -239,6 +239,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // POST /api/itinerary-comparisons/:id/adopt-stop moved session-self -> resource-owner (ledger
   // 2026-09-26-adopt-stop-write-access, R130): it now calls authorizeTripLogistics with
   // requireWriteAccess, so the plan's owner or a write-status advisor is verified before any write.
+  // POST /api/optimization-preview: briefly public-or-system when step 6 (R296) removed its only session
+  // read (the retired free re-run); R297 gives it the plan-route session gate (decision-maker ruling,
+  // Oct 4, 2026), so it is session-self again — 401 anonymous, the plan read gate when it names a plan.
   assert.deepEqual(manifest.boundaryTotals, {
     "admin-role": 168, "session-self": 336, "resource-owner": 97,
     signature: 6, "public-or-system": 40, unknown: 0,

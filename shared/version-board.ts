@@ -248,11 +248,12 @@ export function versionBadges(versions: ReadonlyArray<{ id: string; stops: reado
 export const FREE_RETIME_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Is a re-time still free? Inside 24 h of the paid run and under the limit for that version. */
-export function retimeIsFree(input: { runAt: Date | string | null; now: Date; used: number; limit: number }): boolean {
+export function retimeIsFree(input: { runAt: Date | string | null; now: Date; used: number; limit: number; unlimited?: boolean }): boolean {
   if (!input.runAt) return false;
   const runAt = new Date(input.runAt).getTime();
   if (!Number.isFinite(runAt)) return false;
-  return input.now.getTime() - runAt <= FREE_RETIME_WINDOW_MS && input.used < input.limit;
+  // R-ac (step 6): a Trip Pass holder's re-times are unlimited within the same 24-hour window.
+  return input.now.getTime() - runAt <= FREE_RETIME_WINDOW_MS && (input.unlimited === true || input.used < input.limit);
 }
 
 /** The board's line about re-times, said BEFORE one happens. */

@@ -37,6 +37,7 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
+import { readFinalCardMeta } from "@shared/trip-card-final";
 import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
 import { isAreaOnlyLocation, rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { isSupplySlot } from "@shared/ai-place-text";
@@ -1279,6 +1280,10 @@ export async function assembleTripPlan(
       // OMITTED when there is no comparison, never null-filled (§13; `planComparisonRef` is the
       // one place that decision is made).
       ...planComparisonRef(comparison),
+      // Step 6: the card meta the frozen final carries (per-day source run/version, "built from",
+      // stored photos) — the Trip Card read only; omitted on the live render and for a pre-step-6
+      // snapshot (§13).
+      ...(renderingSnapshot && readFinalCardMeta(latestFinal!.snapshot) ? { finalCard: readFinalCardMeta(latestFinal!.snapshot)! } : {}),
       stats: {
         totalDays: fallbackDays || days.length,
         totalActivities: fallbackActivityCount,

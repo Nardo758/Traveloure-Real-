@@ -25,7 +25,7 @@
  * NOT built and nothing claims it is.
  */
 import crypto from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   expertQuestionAnswers,
@@ -41,6 +41,16 @@ import { checkBylineEligibility } from "./blog-byline-gate.service";
 import { getMarketByKey, resolveMarketSlug } from "./trend-engine/operating-markets";
 
 export const INBOX_ANSWER_MAX_CHARS = 2000;
+
+/**
+ * How far back the inbox looks for open questions (review: the scan was unbounded). Config, default 90
+ * days, `INBOX_QUESTION_WINDOW_DAYS` to change it; a question older than the window is no longer
+ * offered to experts (it is not deleted — it stays the traveler's own record).
+ */
+export function inboxQuestionWindowDays(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.INBOX_QUESTION_WINDOW_DAYS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 90;
+}
 
 export class InboxQuestionError extends Error {
   constructor(public status: number, public code: string, message: string) {
@@ -109,6 +119,7 @@ async function loadOpenQuestions(onlyId?: string): Promise<InboxQuestionRow[]> {
         eq(funnelEvents.eventType, "expert_interest"),
         sql`${funnelEvents.properties}->>'itemId' IS NOT NULL`,
         sql`${funnelEvents.tripId} IS NOT NULL`,
+        gte(funnelEvents.createdAt, new Date(Date.now() - inboxQuestionWindowDays() * 86_400_000)),
       ),
     )
     .orderBy(desc(funnelEvents.createdAt));

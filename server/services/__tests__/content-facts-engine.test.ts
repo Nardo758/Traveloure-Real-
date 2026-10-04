@@ -113,6 +113,8 @@ test("P5: the address — two fields added to the mask, both forms kept, neither
   assert.deepEqual(masks[0].split(","), [
     "places.id", "places.displayName", "places.location", "places.formattedAddress", "places.shortFormattedAddress",
     "places.regularOpeningHours.weekdayDescriptions", "places.types", "places.googleMapsUri", "places.addressComponents",
+    // R297: the photo references ride the same call (Essentials tier — the billed tier is unchanged).
+    "places.photos",
   ]);
   const addr = both.find((f) => f.factType === "address")!;
   assert.deepEqual(addr.value, { query: "Kinkaku-ji, Kyoto, Japan", formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto, 603-8361, Japan", shortFormattedAddress: "1 Kinkakujicho, Kita Ward" });

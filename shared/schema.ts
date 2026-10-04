@@ -12227,6 +12227,21 @@ export const feedbackEvents = pgTable("feedback_events", {
   createdAt: timestamp("created_at"),
 });
 export type FeedbackEvent = typeof feedbackEvents.$inferSelect;
+// Migration 346 (step 6, R-aq): a photo is a fact — origin, licence and attribution with the image
+// reference. Only `ours` and `wikimedia` are stored; a Google Place Photo is live-only, never a row.
+// created_at set by the app (no DEFAULT). No CHECK, no index, no FK. One reader/writer:
+// server/services/place-photos.service.ts.
+export const placePhotos = pgTable("place_photos", {
+  id: varchar("id").primaryKey(),
+  placeId: varchar("place_id").notNull(),
+  source: text("source").notNull(),
+  urlOrAsset: text("url_or_asset"),
+  licence: text("licence"),
+  attribution: text("attribution"),
+  checkedAt: timestamp("checked_at"),
+  createdAt: timestamp("created_at"),
+});
+export type PlacePhoto = typeof placePhotos.$inferSelect;
 // Migration 344 (step 5, R-ac): one row per FREE day re-time on the versions board. created_at is set
 // by the app (no DEFAULT). No CHECK, no index, no FK. Read and written only by version-board.service.
 export const planDayRetimes = pgTable("plan_day_retimes", {
