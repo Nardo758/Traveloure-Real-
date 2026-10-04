@@ -101,6 +101,7 @@ VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxx
 # reached the PR-498 branch on Aug 17; rotate that key).
 RATE_LIMIT_LOOPBACK_SKIP = "1"
 DMO_INGEST_ENABLED = "0"
+ITINERARY_OUTCOME_TEST_EMAIL = "bhawanitest1@proton.me"
 
 [userenv.production]
 ENVIRONMENT = "PROD"
