@@ -1,5 +1,5 @@
 -- Work plan L1-1 (docs/planning/expert-console-ready-made-work-plan.md; rulings R-ay, R-az, R-bf,
--- R-ba, R-bb). SQL HELD for the founder's ruling before merge. ADDITIVE ONLY: seven nullable columns
+-- R-ba, R-bb). SQL APPROVED by the decision-maker, Oct 4, 2026. ADDITIVE ONLY: seven nullable columns
 -- on transport_legs. No DEFAULT, no CHECK, no index, no FK, no backfill. Declared in
 -- shared/schema.ts (deploy-push durability rule). IF NOT EXISTS so a second run is a no-op.
 --   author_tip                  R-ay: the author's plain-text tip, <=140 chars (app-enforced)
