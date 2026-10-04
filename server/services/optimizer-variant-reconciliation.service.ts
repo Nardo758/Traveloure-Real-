@@ -34,7 +34,7 @@ export function isSameOptimizerItem(
 function carryThroughBaselineItem(item: ItineraryItem): ReconciledVariantActivity {
   return {
     id: item.id,
-    sourceItemId: item.planItemId,
+    ...(item.planItemId ? { sourceItemId: item.planItemId } : {}),
     providerServiceId: item.providerServiceId,
     latitude: item.latitude,
     longitude: item.longitude,
