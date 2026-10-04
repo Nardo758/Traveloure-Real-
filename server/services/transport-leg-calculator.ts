@@ -265,18 +265,11 @@ async function computeSingleLeg(
   profile: DestinationTransportProfile,
   userPrefs: UserTransportPrefs
 ): Promise<TransportLegResult | null> {
-  // Google only accepts future departures for traffic-aware routing. A schedule without a usable
-  // calendar timestamp is routed shortly in the future rather than silently converted from a
-  // date-less wall clock in the server timezone.
-  const requestedDeparture = from.departureTime ? new Date(from.departureTime) : null;
-  const departureTime =
-    requestedDeparture && Number.isFinite(requestedDeparture.getTime()) && requestedDeparture.getTime() > Date.now()
-      ? requestedDeparture.toISOString()
-      : new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  // R299: the drive is a Compute Routes ESSENTIALS request (TRAFFIC_UNAWARE, no departure) — see
+  // `getTrafficAwareDrivingRoute`. `from.departureTime` is no longer sent.
   const routed = await getTrafficAwareDrivingRoute({
     origin: { lat: from.lat, lng: from.lng },
     destination: { lat: to.lat, lng: to.lng },
-    departureTime,
   });
   if (!routed) return null;
   const distanceMeters = routed.distanceMeters;

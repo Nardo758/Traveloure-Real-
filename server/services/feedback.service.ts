@@ -13,8 +13,8 @@
 import crypto from "node:crypto";
 import { and, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
-import { aiGeneratedItineraries, feedbackEvents, trips } from "@shared/schema";
-import { FEEDBACK_SURFACE, type FeedbackMoment } from "@shared/feedback";
+import { aiGeneratedItineraries, feedbackEvents, tripFinals, trips } from "@shared/schema";
+import { FEEDBACK_SURFACE, postTripOpen, type FeedbackMoment } from "@shared/feedback";
 import { experienceGroupFor } from "@shared/experience-group";
 import { manifestFor } from "@shared/group-manifest";
 import { getBuildInfo } from "./build-info";
@@ -98,6 +98,12 @@ export async function feedbackState(tripId: string, userId: string): Promise<{
   const open: FeedbackMoment[] = [];
   const [draft] = await db.select({ id: aiGeneratedItineraries.id }).from(aiGeneratedItineraries).where(eq(aiGeneratedItineraries.tripId, tripId)).limit(1);
   if (draft && !answers.post_draft) open.push("post_draft");
+  // Step 6: the Trip Card's post-trip tap, from T+1 on a plan that was made final.
+  if (!answers.post_trip) {
+    const [t] = await db.select({ endDate: trips.endDate }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    const [fin] = await db.select({ id: tripFinals.id }).from(tripFinals).where(eq(tripFinals.tripId, tripId)).limit(1);
+    if (postTripOpen(t?.endDate as any, !!fin, new Date())) open.push("post_trip");
+  }
   return { answers, open, groupKey: (await planContext(tripId)).groupKey };
 }
 

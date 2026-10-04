@@ -21,7 +21,7 @@ export interface FollowupMetadata {
   deliveryCalendarDay?: string;
 }
 
-/** Same row lock as migration 346's booking triggers. Do not substitute a process-local mutex. */
+/** Same row lock as migration 351's booking triggers. Do not substitute a process-local mutex. */
 export async function lockFollowupTraveler(tx: Tx, travelerId: string) {
   await tx.execute(sql`SELECT id FROM users WHERE id = ${travelerId} FOR UPDATE`);
 }

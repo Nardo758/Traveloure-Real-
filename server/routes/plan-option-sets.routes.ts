@@ -41,6 +41,7 @@ import {
   suggestLodging,
 } from "../services/plan-option-sets.service";
 import { bindWhereToStay, loadWhereToStay } from "../services/where-to-stay.service";
+import { rerouteAfterStayChange } from "../services/stay-reroute.service";
 
 const router = Router();
 
@@ -209,6 +210,9 @@ router.post("/api/trips/:tripId/option-sets/:setId/choose", isAuthenticated, asy
   if (!parsed.success) return badBody(res);
   try {
     const out = await chooseOption({ tripId: req.params.tripId, setId: req.params.setId, optionId: parsed.data.optionId, userId: getUserId(req)! });
+    // R-ba (ledger `2026-10-04-stay-item-reroute`): choosing a STAY re-routes a ready-made copy's end
+    // legs. Best-effort, never fails the choice (§15b); a no-op for any other category or plan.
+    if (out.set.categoryKey === "accommodation") await rerouteAfterStayChange(req.params.tripId);
     res.json(out);
   } catch (err) {
     fail(res, err, "choose");

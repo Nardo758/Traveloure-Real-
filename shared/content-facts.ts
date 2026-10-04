@@ -134,6 +134,10 @@ export const FACT_TYPES = [
   "location",
   "dining_basics",
   "address",
+  // R297 (ledger `2026-10-04-photo-references`): a Place Details answer's photo REFERENCES (resource
+  // names + author attributions) — never an image. Same place-ID key and TTL as the other Places facts;
+  // the photo resolver reads them, and only the Place Photo media call is made per render.
+  "photo_ref",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 

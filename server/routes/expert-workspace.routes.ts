@@ -35,6 +35,7 @@ import {
 import { classifyDmoShape, runPlaceExtraction } from "../services/dmo-place-extraction.service";
 import { resolveTripTimezone } from "../services/trip-timezone";
 import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
+import { expertScrapeJobsEnabled, scrapeJobsAccess, admitScrapeJobSource } from "../config/expert-scrape-jobs.config";
 
 const router = Router();
 
@@ -952,33 +953,51 @@ router.patch(
 );
 
 // ============================================================
-// SCRAPE JOBS — Trigger and monitor AI scraping
+// SCRAPE JOBS — admin-only, behind EXPERT_SCRAPE_JOBS_ENABLED (R-bo, work plan L1-19)
 // ============================================================
+// Before R-bo any expert could queue crawls over arbitrary URLs here. Now: switch off (production)
+// ⇒ 404 for everyone; switch on ⇒ admins only (DB role), and a job may name only a registry source
+// that `admitScrapeJobSource` accepts — free URLs are refused. See that function for why no source
+// passes today.
+
+async function requireScrapeJobsAdmin(req: any, res: any, next: any) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  // Switch first: when it is off nothing (not even the role read) distinguishes the route from absent.
+  const enabled = expertScrapeJobsEnabled();
+  const access = scrapeJobsAccess(enabled, enabled ? await getDbRole(req) : null);
+  if (!access.ok) {
+    return access.status === 404
+      ? res.status(404).json({ message: "Not found" })
+      : res.status(403).json({ message: "Admin access required", reason: access.reason });
+  }
+  next();
+}
 
 router.post(
   "/scrape-jobs",
-  requireExpert,
+  requireScrapeJobsAdmin,
   asyncHandler(async (req: any, res: Response) => {
-    const schema = z.object({
-      sourceId: z.string().optional(),
-      jobType: z.enum(["search_extract", "crawl", "batch_scrape", "manual_import"]).default("search_extract"),
-      market: z.string().min(1),
-      query: z.string().optional(),
-      targetUrls: z.array(z.string().url()).optional(),
-      startUrl: z.string().url().optional(),
-      includePaths: z.array(z.string()).optional(),
-      excludePaths: z.array(z.string()).optional(),
-      maxDepth: z.number().min(1).max(5).optional().default(2),
-    });
+    // `.strict()`: `targetUrls`, `startUrl`, `query`, paths and depth are refused, not ignored (§19).
+    const parsed = z.object({ sourceId: z.string().min(1).optional(), market: z.string().min(1) }).strict().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Only a registry sourceId and a market are accepted", reason: "free_urls_refused" });
+    }
+    const { sourceId, market } = parsed.data;
 
-    const data = schema.parse(req.body);
+    const [source] = sourceId
+      ? await db.select({ id: dmoSources.id, domain: dmoSources.domain }).from(dmoSources).where(eq(dmoSources.id, sourceId)).limit(1)
+      : [];
+    // dmo_sources carries neither public_ok nor a transport marker, so both are passed as unknown.
+    const admission = admitScrapeJobSource(source ? { id: source.id, publicOk: null, transport: null } : null, Boolean(sourceId));
+    if (!admission.ok) {
+      return res.status(400).json({ message: "This source may not be scraped", reason: admission.reason });
+    }
 
     const [job] = await db
       .insert(dmoScrapeJobs)
-      .values({
-        ...data,
-        status: "queued",
-      })
+      .values({ sourceId: source!.id, market, jobType: "crawl", startUrl: `https://${source!.domain}/`, status: "queued" })
       .returning();
 
     // Fire-and-forget the actual scrape (do not await — response returns immediately)
@@ -992,7 +1011,7 @@ router.post(
 
 router.get(
   "/scrape-jobs",
-  requireExpert,
+  requireScrapeJobsAdmin,
   asyncHandler(async (req: any, res: Response) => {
     const market = req.query.market as string | undefined;
     const status = req.query.status as string | undefined;
@@ -1014,7 +1033,7 @@ router.get(
 
 router.get(
   "/scrape-jobs/:id",
-  requireExpert,
+  requireScrapeJobsAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const job = await storage.getDmoScrapeJobById(req.params.id);
     if (!job) throw new NotFoundError("Job not found");
@@ -1026,9 +1045,18 @@ router.get(
 // BACKGROUND SCRAPE JOB EXECUTOR
 // ============================================================
 
-async function executeScrapeJob(jobId: string) {
+export async function executeScrapeJob(jobId: string) {
   const job = await storage.getDmoScrapeJobById(jobId);
   if (!job) return;
+
+  // R-bo: re-check the switch at run time, so a job queued before it was turned off never runs.
+  if (!expertScrapeJobsEnabled()) {
+    await db
+      .update(dmoScrapeJobs)
+      .set({ status: "failed", errorMessage: "expert_scrape_jobs_disabled", updatedAt: new Date() })
+      .where(and(eq(dmoScrapeJobs.id, jobId), eq(dmoScrapeJobs.status, "queued")));
+    return;
+  }
 
   await db
     .update(dmoScrapeJobs)

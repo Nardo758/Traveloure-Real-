@@ -166,6 +166,7 @@ import liveHelpRoutes from "./routes/live-help.routes";
 import planOptionSetsRoutes from "./routes/plan-option-sets.routes";
 import { expertRequestSentProperties } from "./services/expert-door.service";
 import expertDoorRoutes from "./routes/expert-door.routes";
+import expertInboxQuestionsRoutes from "./routes/expert-inbox-questions.routes";
 import { loadLiveStatus } from "./services/live-status.service";
 import { liveListingTermsRefusal } from "@shared/live-availability";
 import bookingComponentsRoutes from "./routes/booking-components.routes";
@@ -182,6 +183,11 @@ import { itineraryIntelligenceService } from "./services/itinerary-intelligence.
 import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
+import { daysWithinFlightWindows } from "./utils/draft-flight-windows";
+import { reduceUncoveredEventActivities } from "./utils/ai-draft-sanitize";
+import { coveringEventsForTrip } from "./services/content-facts/covering-events";
+import { seasonPromptLineForTrip } from "./services/content-facts/season-facts";
+import { AI_MEAL_PROMPT_LINE, aiEventPromptLine } from "@shared/ai-place-text";
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { ensureTripAdvisorRow } from "./services/booking-actions.service";
 import { authorizeExpertBookingRequest } from "./services/expert-booking-request-guard.service";
@@ -798,8 +804,6 @@ async function verifyOptimizationPayment(params: {
  */
 const optimizerRunAuthorizationDeps: OptimizerRunAuthorizationDeps = {
   tripPassCoversRun: (tripId) => coversAction(tripId, "optimizer_run"),
-  hasRecentOptimizationRun: async (userId, cutoff) =>
-    !!(await storage.getRecentOptimizationRun(userId, cutoff)),
   verifyPayment: verifyOptimizationPayment,
 };
 
@@ -974,6 +978,8 @@ export async function registerRoutes(
     "/api/expert/neighborhood-claims",
     // Blog signing (ledger `2026-09-27-blog-lifecycle`): only an expert ever signs a byline.
     "/api/expert/blog",
+    // Ask-a-local questions (work plan L1-13): the feed and the answer rail are expert-only.
+    "/api/expert/inbox",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/verification-status",
@@ -1222,6 +1228,7 @@ export async function registerRoutes(
   app.use(planOptionSetsRoutes);
   // The expert door (ledger `2026-09-29-expert-door`): help-level card and the gated picker.
   app.use(expertDoorRoutes);
+  app.use(expertInboxQuestionsRoutes);
   // ledger `2026-09-17-surfaces-quotes-settlement`: the ONE read of a purchased bundle's
   // components + its settlement (GET /api/bookings/:id/components). Read-only; every action on
   // those surfaces still calls the existing component rails.
@@ -1824,16 +1831,27 @@ export async function registerRoutes(
         storage.getDayBoundaries(trip.id),
       ]);
       const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, trip.startDate);
+      // Step 6 (R-aa, R-bc, S10-7 on every drafting path): the meal windows, the events confirmed on
+      // the trip's dates ("no festivals or events unless listed") and the season facts — the same
+      // lines the free draft's prompt carries, from the same loaders.
+      const tripStartIso = trip.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : null;
+      const tripEndIso = trip.endDate ? new Date(trip.endDate).toISOString().slice(0, 10) : null;
+      const coveringEvents = await coveringEventsForTrip({ destination: trip.destination, startDate: tripStartIso, endDate: tripEndIso });
+      const draftRulesBlock = [
+        `\n\nMeals at meal times: ${AI_MEAL_PROMPT_LINE}`,
+        `\nEvents: ${aiEventPromptLine(tripStartIso, tripEndIso, coveringEvents)}`,
+        await seasonPromptLineForTrip({ destination: trip.destination, startDate: tripStartIso, endDate: tripEndIso }).then((l) => (l ? `\nSeason: ${l}` : "")),
+      ].join("");
 
       // Dedup key covers all parameters that affect the AI output.
       // Generic (non-personalised) — preferences string is included so
       // trips with different prefs get independent AI calls. The anchor block
       // is folded in verbatim so two same-destination trips with different
       // anchors don't share a cached generation (in-memory map key; length is fine).
-      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}`;
+      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}:${draftRulesBlock}`;
 
       try {
-        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}
+        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}${draftRulesBlock}
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -1925,6 +1943,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             ],
           })),
         };
+      }
+
+      // Step 6 (R-aa, R-w): the same storage rules the snapshot writer applies to every other drafting
+      // path — nothing before arrival + buffer or past departure − buffer (the ONE rule,
+      // `draft-flight-windows`), and an event-named title not confirmed for these dates reduced.
+      if (Array.isArray(itineraryData?.days)) {
+        itineraryData.days = daysWithinFlightWindows(itineraryData.days, tripAnchors as any, tripStartIso).map((d: any) => ({
+          ...d,
+          activities: Array.isArray(d.activities) ? reduceUncoveredEventActivities(d.activities, coveringEvents) : d.activities,
+        }));
       }
 
       // Post-generation anchor validation (Lane 2a): warn, never block. Attaches
@@ -5052,16 +5080,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Lightweight place-photo proxy — resolution order: Google Places → Unsplash
-  // Used by the useGemPhoto hook (source=google first, then source=unsplash fallback).
+  // Lightweight place-photo proxy — Unsplash → Pexels. Used by the useGemPhoto hook.
+  // R299: the Google branch is REMOVED. It ran a legacy Text Search and returned a legacy Place
+  // Photo URL with the server key inside it — every image load billed "Places Photo" outside the
+  // R-aq resolver, and the key was public. `source=google` (a cached client) now answers null, so
+  // the hook falls through to its Unsplash step as it always did on a Google miss.
   app.get("/api/media/place-photo", async (req, res) => {
     try {
       const q = typeof req.query.q === "string" ? req.query.q : "";
       const city = typeof req.query.city === "string" ? req.query.city : "";
       const source = typeof req.query.source === "string" ? req.query.source : "google";
-      if (!q) return res.json({ photoUrl: null });
+      if (!q || source !== "unsplash") return res.json({ photoUrl: null });
 
-      if (source === "unsplash") {
+      {
         // Unsplash → Pexels fallback chain via media aggregator services
         const { unsplashService } = await import("./services/unsplash.service");
         const { pexelsService } = await import("./services/pexels.service");
@@ -5085,11 +5116,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // Google Places (default)
-      const { googlePlacesPhotosService } = await import("./services/google-places-photos.service");
-      const photos = await googlePlacesPhotosService.getAttractionPhotos(q, city, 1);
-      const photoUrl = photos[0]?.url ?? null;
-      res.json({ photoUrl });
     } catch (err: any) {
       console.error("Error fetching place photo:", err);
       res.json({ photoUrl: null });

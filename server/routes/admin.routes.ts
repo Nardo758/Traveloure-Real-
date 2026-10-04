@@ -2451,7 +2451,7 @@ router.get("/api/admin/integration-status", isAuthenticated, async (req, res) =>
       booking: { configured: !!env.BOOKING_COM_AFFILIATE_ID },
       // 12Go rides via the Travelpayouts network token
       "12go": { configured: !!env.TRAVELPAYOUTS_TOKEN },
-      // server/services/google-places-photos.service.ts + client maps
+      // the Maps billing callers (`@shared/maps-billing`) + client maps
       googlemaps: { configured: !!env.GOOGLE_MAPS_API_KEY },
       // server/services/serp.service.ts
       serpapi: { configured: !!env.SERP_API_KEY },

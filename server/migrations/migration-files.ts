@@ -1914,5 +1914,24 @@ export const MIGRATION_FILES = [
   // 345 — feedback_events (ledger 2026-10-04-feedback-phase-a). New table, all columns nullable, no
   // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "345_feedback_events.sql",
-  "346_itinerary_followup_booking_guard.sql",
+  // 346 — place_photos (ledger 2026-10-04-step6-trip-card, R-aq). New table: NOT NULL on identity
+  // columns only, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. HELD for the founder's ruling.
+  "346_place_photos.sql",
+  // 347 — transport_legs authoring columns (work plan L1-1; R-ay/R-az/R-bf). Seven nullable columns,
+  // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
+  "347_transport_leg_authoring.sql",
+  // 349 — expert_question_answers (work plan L1-13; R-bj). New table, PK only, all columns nullable,
+  // no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
+  "349_expert_question_answers.sql",
+  // 350 — transport_legs coord_source / coord_fetched_at (ledger 2026-10-04-leg-google-coords; LD 57
+  // extends to legs). Two nullable columns, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts.
+  // APPROVED Oct 4, 2026.
+  "350_transport_leg_coord_source.sql",
+  // 351 — itinerary follow-up booking guard (ledger 2026-10-04-itinerary-traveler-emails; #1274).
+  // CREATE OR REPLACE FUNCTION + BEFORE INSERT/UPDATE triggers on service_bookings, bookings,
+  // affiliate_booking_requests and coordination_bookings, and a BEFORE DELETE trigger on
+  // itinerary_comparisons. No table, column, index or CHECK. Renumbered from 346 (taken on main by
+  // 346_place_photos). HELD — NOT APPROVED: the booking triggers take a users-row lock on the money
+  // path and await the decision-maker's ruling.
+  "351_itinerary_followup_booking_guard.sql",
 ] as const;

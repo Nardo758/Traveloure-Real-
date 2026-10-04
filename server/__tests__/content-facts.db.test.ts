@@ -217,6 +217,25 @@ test("C5: no Places fact reaches a public route", async () => {
     // reads ONLY `event` facts that `isOfficialPublicFact` accepts (crawled, official, public_ok — never
     // places_api), and only the event NAME leaves it, into a draft for the plan's own owner.
     "server/services/content-facts/covering-events.ts",
+    // Step 6 (ledger `2026-10-04-step6-trip-card`): the T-3 `facts-recheck` job re-runs ONE plan's
+    // lookups through the one writer (no public output — its finding is a notice to that plan's owner)…
+    "server/jobs/factsRecheck.ts",
+    // …and Finalize reads each day's first stop's place id/point (`placeRefsForTrip`) to resolve the
+    // card's STORED photo references. Only ids and points leave it, never a Places fact's content.
+    "server/services/trip-finalize.service.ts",
+    // Work plan L1-9 (ledger `2026-10-04-ready-made-readiness`, R-bi): the author's readiness checklist
+    // reads the build's fact TYPES (`factsForTrip`) and its cached photo refs (`placeRefsForTrip`), only
+    // inside `GET /api/expert/ready-made/:id/readiness` (authenticated, the listing's own author). Only
+    // per-item fact kinds and a has/none/unchecked photo state leave it — never a fact's content.
+    "server/routes/ready-made.routes.ts",
+    "server/services/ready-made-readiness.ts",
+    // Work plan L1-4b (ledger `2026-10-04-stay-item-reroute`): the stay's point for the re-route, read
+    // only from the two plan-gated stay writers (`bindWhereToStay`, the accommodation option-set choose).
+    // The stay item's OWN coordinate first; its Google `location` fact only when it has none. Ruled
+    // (ledger `2026-10-04-leg-google-coords`, R311 — LD 57 extends to transport_legs): a Google point on
+    // a leg is a CACHE (max 30 days, refreshed or cleared by a scheduled job), recorded on the leg as
+    // `coord_source='google'` + `coord_fetched_at` (migration 350).
+    "server/services/stay-reroute.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

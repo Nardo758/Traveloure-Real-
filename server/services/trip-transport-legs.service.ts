@@ -29,7 +29,7 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, transportLegs } from "@shared/schema";
 import { storage } from "../storage";
-import { CHAUFFEURED_MODES } from "@shared/trip-plan";
+import { CHAUFFEURED_MODES, legModeOptions } from "@shared/trip-plan";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import {
   computeTransportLeg,
@@ -39,6 +39,7 @@ import {
   type UserTransportPrefs,
 } from "./transport-leg-calculator";
 import { haversineMeters } from "@shared/geo";
+import { isPickedLeg } from "@shared/leg-picked";
 import { defaultLegMode, LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { ResolvedLeg } from "@shared/leg-resolution";
 import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
@@ -187,6 +188,101 @@ function pairKey(dayNumber: number, fromId: string | null, toId: string | null):
   return `${dayNumber}|${fromId ?? ""}|${toId ?? ""}`;
 }
 
+export interface StopPair<T> {
+  dayNumber: number;
+  /** 0-based position of `from` within its day. */
+  index: number;
+  from: T;
+  to: T;
+  /** NULL when the stop has no real coordinate (§13) — such a pair is never routed. */
+  fromCoord: { lat: number; lng: number } | null;
+  toCoord: { lat: number; lng: number } | null;
+}
+
+/**
+ * The ONE rule for which stops a trip-scoped leg connects (§18 rule 1): consecutive items on the
+ * same day, in the order given — callers pass `storage.getItineraryItems` order, (dayNumber,
+ * sortOrder, startTime), which IS the traveler's sequence. Days ascend. Both the leg engine
+ * (`generateTripTransportLegs`) and the ready-made publish gate (R-ax, `readyMadeLegLines`) read it,
+ * so the gate can never demand a leg the engine would not propose. Pure.
+ */
+export function consecutiveStopPairs<T extends { dayNumber: number; latitude?: unknown; longitude?: unknown }>(
+  items: readonly T[],
+): StopPair<T>[] {
+  const byDay = new Map<number, T[]>();
+  for (const item of items) {
+    const list = byDay.get(item.dayNumber) ?? [];
+    list.push(item);
+    byDay.set(item.dayNumber, list);
+  }
+  const out: StopPair<T>[] = [];
+  for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
+    const day = byDay.get(dayNumber)!;
+    for (let i = 0; i < day.length - 1; i++) {
+      out.push({
+        dayNumber,
+        index: i,
+        from: day[i],
+        to: day[i + 1],
+        fromCoord: realCoord(day[i].latitude, day[i].longitude),
+        toCoord: realCoord(day[i + 1].latitude, day[i + 1].longitude),
+      });
+    }
+  }
+  return out;
+}
+
+export type ReadyMadeLegLine = {
+  requirement: "legs" | "leg_location";
+  message: string;
+  dayNumber: number;
+  fromItemId: string;
+  toItemId: string;
+  legId?: string;
+};
+
+/**
+ * R-ax (work plan L1-2), pure. For every consecutive pair of stops (`consecutiveStopPairs`):
+ *   · both located and no PICKED leg (`isPickedLeg`) between them ⇒ a BLOCKING `legs` line, naming the
+ *     leg when one exists (proposed, or confirmed without a mode);
+ *   · either stop unlocated ⇒ an ADVISORY `leg_location` line ("Day N: {title} has no location"),
+ *     never blocking — the engine skips that pair too (`missing_coordinates`), so no leg could satisfy
+ *     it. Each unlocated stop is reported once.
+ */
+export function readyMadeLegLines(
+  items: ReadonlyArray<{ id: string; title: string; dayNumber: number; latitude?: unknown; longitude?: unknown }>,
+  legs: ReadonlyArray<{ id: string; dayNumber: number; fromActivityId: string | null; toActivityId: string | null; proposalStatus?: string | null; userSelectedMode?: string | null }>,
+): { blocking: ReadyMadeLegLine[]; advisory: ReadyMadeLegLine[] } {
+  const byPair = new Map<string, (typeof legs)[number][]>();
+  for (const leg of legs) {
+    const k = pairKey(leg.dayNumber, leg.fromActivityId, leg.toActivityId);
+    byPair.set(k, [...(byPair.get(k) ?? []), leg]);
+  }
+  const blocking: ReadyMadeLegLine[] = [];
+  const advisory: ReadyMadeLegLine[] = [];
+  const reportedUnlocated = new Set<string>();
+  for (const pair of consecutiveStopPairs(items)) {
+    const base = { dayNumber: pair.dayNumber, fromItemId: pair.from.id, toItemId: pair.to.id };
+    if (!pair.fromCoord || !pair.toCoord) {
+      for (const [stop, coord] of [[pair.from, pair.fromCoord], [pair.to, pair.toCoord]] as const) {
+        if (coord || reportedUnlocated.has(stop.id)) continue;
+        reportedUnlocated.add(stop.id);
+        advisory.push({ requirement: "leg_location", message: `Day ${pair.dayNumber}: ${stop.title} has no location`, ...base });
+      }
+      continue;
+    }
+    const candidates = byPair.get(pairKey(pair.dayNumber, pair.from.id, pair.to.id)) ?? [];
+    if (candidates.some(isPickedLeg)) continue;
+    blocking.push({
+      requirement: "legs",
+      message: `Day ${pair.dayNumber}: pick how to get from ${pair.from.title} to ${pair.to.title}`,
+      ...base,
+      ...(candidates[0] ? { legId: candidates[0].id } : {}),
+    });
+  }
+  return { blocking, advisory };
+}
+
 /**
  * ENGINE PROPOSAL PASS. Computes legs between consecutive same-day itinerary items using the
  * EXISTING variant leg engine (`computeTransportLeg` → `computeSingleLeg`, same distance / mode
@@ -250,116 +346,106 @@ export async function generateTripTransportLegs(
 
   // Plan order per day — storage.getItineraryItems already orders by
   // (dayNumber, sortOrder, startTime), which IS the traveler's sequence.
-  const byDay = new Map<number, typeof items>();
-  for (const item of items) {
-    const list = byDay.get(item.dayNumber) ?? [];
-    list.push(item);
-    byDay.set(item.dayNumber, list as typeof items);
-  }
-
   const skipped: TripLegSkip[] = [];
   const rows: Array<typeof transportLegs.$inferInsert> = [];
   const routedResults: Awaited<ReturnType<typeof computeTransportLeg>>[] = [];
   let keptConfirmed = 0;
 
-  for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
-    const dayItems = byDay.get(dayNumber)!;
-    for (let i = 0; i < dayItems.length - 1; i++) {
-      const from = dayItems[i] as any;
-      const to = dayItems[i + 1] as any;
+  // The ONE pairing rule (`consecutiveStopPairs`), shared with the ready-made leg gate (R-ax).
+  for (const pair of consecutiveStopPairs(items)) {
+    const { dayNumber, index: i, fromCoord, toCoord } = pair;
+    const from = pair.from as any;
+    const to = pair.to as any;
 
-      // Already the expert's own confirmed leg — leave it completely alone.
-      if (confirmedPairs.has(pairKey(dayNumber, from.id, to.id))) {
-        keptConfirmed++;
-        continue;
-      }
-
-      const fromCoord = realCoord(from.latitude, from.longitude);
-      const toCoord = realCoord(to.latitude, to.longitude);
-      if (!fromCoord || !toCoord) {
-        // §13: no geometry exists for this gap, so no leg is written. The caller surfaces this as
-        // "add a location to route this leg" — never a fabricated leg.
-        skipped.push({
-          dayNumber,
-          fromItemId: from.id,
-          fromTitle: from.title,
-          toItemId: to.id,
-          toTitle: to.title,
-          reason: "missing_coordinates",
-        });
-        continue;
-      }
-
-      const fromPoint: ActivityLocation = {
-        id: from.id,
-        name: from.title,
-        lat: fromCoord.lat,
-        lng: fromCoord.lng,
-        scheduledTime: from.startTime || "",
-        dayNumber,
-        order: i,
-      };
-      const toPoint: ActivityLocation = {
-        id: to.id,
-        name: to.title,
-        lat: toCoord.lat,
-        lng: toCoord.lng,
-        scheduledTime: to.startTime || "",
-        dayNumber,
-        order: i + 1,
-      };
-
-      const leg = resolver
-        ? legFromResolved(
-            fromPoint,
-            toPoint,
-            dayNumber,
-            i + 1,
-            await resolver(
-              fromCoord,
-              toCoord,
-              defaultLegMode(haversineMeters(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng), WITHIN_WALK_METERS),
-            ),
-          )
-        : await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
-      if (!leg) {
-        skipped.push({
-          dayNumber,
-          fromItemId: from.id,
-          fromTitle: from.title,
-          toItemId: to.id,
-          toTitle: to.title,
-          reason: "route_unavailable",
-        });
-        continue;
-      }
-      routedResults.push(leg);
-
-      rows.push({
-        // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).
-        tripId,
-        dayNumber: leg.dayNumber,
-        legOrder: leg.legOrder,
-        fromActivityId: leg.fromActivityId,
-        fromName: leg.fromName,
-        fromLat: leg.fromLat,
-        fromLng: leg.fromLng,
-        toActivityId: leg.toActivityId,
-        toName: leg.toName,
-        toLat: leg.toLat,
-        toLng: leg.toLng,
-        distanceMeters: leg.distanceMeters,
-        distanceDisplay: leg.distanceDisplay,
-        recommendedMode: leg.recommendedMode,
-        estimatedDurationMinutes: leg.estimatedDurationMinutes,
-        estimatedCostUsd: leg.estimatedCostUsd ?? null,
-        alternativeModes: leg.alternativeModes,
-        energyCost: leg.energyCost,
-        destinationProfile: destination || null,
-        // D1a-analog: born proposed. The engine cannot self-confirm.
-        proposalStatus: "proposed",
-      });
+    // Already the expert's own confirmed leg — leave it completely alone.
+    if (confirmedPairs.has(pairKey(dayNumber, from.id, to.id))) {
+      keptConfirmed++;
+      continue;
     }
+
+    if (!fromCoord || !toCoord) {
+      // §13: no geometry exists for this gap, so no leg is written. The caller surfaces this as
+      // "add a location to route this leg" — never a fabricated leg.
+      skipped.push({
+        dayNumber,
+        fromItemId: from.id,
+        fromTitle: from.title,
+        toItemId: to.id,
+        toTitle: to.title,
+        reason: "missing_coordinates",
+      });
+      continue;
+    }
+
+    const fromPoint: ActivityLocation = {
+      id: from.id,
+      name: from.title,
+      lat: fromCoord.lat,
+      lng: fromCoord.lng,
+      scheduledTime: from.startTime || "",
+      dayNumber,
+      order: i,
+    };
+    const toPoint: ActivityLocation = {
+      id: to.id,
+      name: to.title,
+      lat: toCoord.lat,
+      lng: toCoord.lng,
+      scheduledTime: to.startTime || "",
+      dayNumber,
+      order: i + 1,
+    };
+
+    const leg = resolver
+      ? legFromResolved(
+          fromPoint,
+          toPoint,
+          dayNumber,
+          i + 1,
+          await resolver(
+            fromCoord,
+            toCoord,
+            defaultLegMode(haversineMeters(fromCoord.lat, fromCoord.lng, toCoord.lat, toCoord.lng), WITHIN_WALK_METERS),
+          ),
+        )
+      : await computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
+    if (!leg) {
+      skipped.push({
+        dayNumber,
+        fromItemId: from.id,
+        fromTitle: from.title,
+        toItemId: to.id,
+        toTitle: to.title,
+        reason: "route_unavailable",
+      });
+      continue;
+    }
+    routedResults.push(leg);
+
+    rows.push({
+      // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).
+      tripId,
+      dayNumber: leg.dayNumber,
+      legOrder: leg.legOrder,
+      fromActivityId: leg.fromActivityId,
+      fromName: leg.fromName,
+      fromLat: leg.fromLat,
+      fromLng: leg.fromLng,
+      toActivityId: leg.toActivityId,
+      toName: leg.toName,
+      toLat: leg.toLat,
+      toLng: leg.toLng,
+      distanceMeters: leg.distanceMeters,
+      distanceDisplay: leg.distanceDisplay,
+      recommendedMode: leg.recommendedMode,
+      estimatedDurationMinutes: leg.estimatedDurationMinutes,
+      estimatedCostUsd: leg.estimatedCostUsd ?? null,
+      alternativeModes: leg.alternativeModes,
+      energyCost: leg.energyCost,
+      destinationProfile: destination || null,
+      // D1a-analog: born proposed. The engine cannot self-confirm.
+      proposalStatus: "proposed",
+    });
   }
 
   // Atomic swap so a concurrent read never sees a trip with its proposals deleted and not yet
@@ -477,6 +563,45 @@ export interface TripLegPatch {
   pickupPoint?: string | null;
   pickupTime?: string | null;
   proposalStatus?: LegProposalStatus;
+  /** R-ay. Empty/blank ⇒ NULL. The route admits it only from the author or a write-status advisor. */
+  authorTip?: string | null;
+  /** R-az. The route admits it only after `legPickupRefusal` returns null. */
+  pickupProviderServiceId?: string | null;
+  /**
+   * R-bf. SERVER-SET, never from a body: the session user when an expert-side caller (the trip
+   * author or a write-status advisor) confirms the leg. Stamps `checked_by`/`checked_at` in the same
+   * UPDATE as the confirm.
+   */
+  stampCheckedBy?: string;
+}
+
+/** R-ay: an author's tip is at most this many characters (app-enforced; no DB CHECK). */
+export const AUTHOR_TIP_MAX_CHARS = 140;
+
+/** R-az: the `transport_provision` values under which a listing can carry a traveler to a stop. */
+export const PICKUP_CAPABLE_PROVISIONS = ["pickup_included", "pickup_available"] as const;
+
+export type LegPickupRefusal = "pickup_listing_not_found" | "pickup_not_offered" | "pickup_not_provider_confirmed";
+
+/**
+ * R-az, ONE decision: may this listing be a leg's "via host pickup"? It must exist, offer pickup
+ * (`transport_provision` ∈ PICKUP_CAPABLE_PROVISIONS), and carry the provider's own confirmation of
+ * its pickup block (`pickupConfirmedAt`, R-au).
+ *
+ * STATED LIMIT (§13): `provider_services` has no pickup-confirmation column yet — it is work plan
+ * L1-7 (migration 348, P1). Until it exists the caller passes `pickupConfirmedAt: undefined` and every
+ * listing is refused `pickup_not_provider_confirmed`. That is the plan's own dependency ("L1-7 for
+ * pickup selection to succeed"), never a guessed confirmation.
+ */
+export function legPickupRefusal(
+  listing: { transportProvision?: string | null; pickupConfirmedAt?: Date | string | null } | null,
+): LegPickupRefusal | null {
+  if (!listing) return "pickup_listing_not_found";
+  if (!(PICKUP_CAPABLE_PROVISIONS as readonly string[]).includes(listing.transportProvision ?? "")) {
+    return "pickup_not_offered";
+  }
+  if (!listing.pickupConfirmedAt) return "pickup_not_provider_confirmed";
+  return null;
 }
 
 /**
@@ -521,6 +646,24 @@ export async function updateTripTransportLeg(
   if (patch.proposalStatus !== undefined) {
     updates.proposalStatus = patch.proposalStatus;
   }
+  if (patch.authorTip !== undefined) {
+    updates.authorTip = patch.authorTip && patch.authorTip.trim().length > 0 ? patch.authorTip.trim() : null;
+  }
+  if (patch.pickupProviderServiceId !== undefined) {
+    updates.pickupProviderServiceId = patch.pickupProviderServiceId || null;
+  }
+  // Review blocking-4: a confirm that names no mode keeps the mode the Workstation SHOWS — the
+  // engine's recommendation (`userSelectedMode || recommendedMode`) — so "Confirmed" on screen and
+  // "picked" at the publish gate (R-ax) are the same fact. Never overwrites a mode already chosen.
+  if (patch.proposalStatus === "confirmed" && patch.userSelectedMode === undefined && !leg.userSelectedMode && leg.recommendedMode) {
+    updates.userSelectedMode = leg.recommendedMode;
+  }
+  // R-bf: a confirm by an expert-side caller is a check. Re-confirming an already-confirmed leg
+  // re-stamps it (that is a fresh check). A confirm by anyone else leaves the stamp as it was.
+  if (patch.proposalStatus === "confirmed" && patch.stampCheckedBy) {
+    updates.checkedBy = patch.stampCheckedBy;
+    updates.checkedAt = new Date();
+  }
 
   const [row] = await db
     .update(transportLegs)
@@ -529,6 +672,74 @@ export async function updateTripTransportLeg(
     .where(and(eq(transportLegs.id, legId), eq(transportLegs.tripId, tripId)))
     .returning();
   return row ?? null;
+}
+
+export interface LegReviewRow {
+  id: string;
+  dayNumber: number;
+  legOrder: number;
+  fromActivityId: string | null;
+  fromName: string;
+  from: { lat: number; lng: number };
+  toActivityId: string | null;
+  toName: string;
+  to: { lat: number; lng: number };
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  candidateModes: string[];
+  proposalStatus: string | null;
+  picked: boolean;
+  authorTip: string | null;
+  pickupProviderServiceId: string | null;
+  pickupPoint: string | null;
+  pickupTime: string | null;
+  estimatedDurationMinutes: number;
+  distanceDisplay: string;
+  checkedAt: string | null;
+}
+
+/**
+ * Work plan L1-10 (enhancement 2, leg review), pure: the trip-scoped legs in review order — day, then
+ * `leg_order`, then id (stable) — each with its candidate modes (`legModeOptions`, the Workstation
+ * picker's own rule) and coordinates, and the index of the first leg not yet picked (`null` when all
+ * are). The leg's `checked_by` (a users.id) is not returned; `checkedAt` is.
+ */
+export function buildLegReview(legs: ReadonlyArray<typeof transportLegs.$inferSelect>): { legs: LegReviewRow[]; firstUnpickedIndex: number | null } {
+  const ordered = [...legs].sort((a, b) => a.dayNumber - b.dayNumber || a.legOrder - b.legOrder || a.id.localeCompare(b.id));
+  const rows: LegReviewRow[] = ordered.map((l) => ({
+    id: l.id,
+    dayNumber: l.dayNumber,
+    legOrder: l.legOrder,
+    fromActivityId: l.fromActivityId,
+    fromName: l.fromName,
+    from: { lat: l.fromLat, lng: l.fromLng },
+    toActivityId: l.toActivityId,
+    toName: l.toName,
+    to: { lat: l.toLat, lng: l.toLng },
+    recommendedMode: l.recommendedMode,
+    userSelectedMode: l.userSelectedMode,
+    candidateModes: legModeOptions(l),
+    proposalStatus: l.proposalStatus,
+    picked: isPickedLeg(l),
+    authorTip: l.authorTip,
+    pickupProviderServiceId: l.pickupProviderServiceId,
+    pickupPoint: l.pickupPoint,
+    pickupTime: l.pickupTime,
+    estimatedDurationMinutes: l.estimatedDurationMinutes,
+    distanceDisplay: l.distanceDisplay,
+    checkedAt: l.checkedAt ? new Date(l.checkedAt).toISOString() : null,
+  }));
+  const first = rows.findIndex((r) => !r.picked);
+  return { legs: rows, firstUnpickedIndex: first === -1 ? null : first };
+}
+
+/**
+ * LD 40: `checked_by` is a `users.id`, which no response carries. Every route that returns a whole
+ * leg row passes it through this projection; `checkedAt` stays.
+ */
+export function legResponseRow<T extends { checkedBy?: unknown }>(leg: T): Omit<T, "checkedBy"> {
+  const { checkedBy: _checkedBy, ...rest } = leg;
+  return rest;
 }
 
 /** Deletes one trip-scoped leg (the expert rejecting a proposal, or removing a confirmed one). */

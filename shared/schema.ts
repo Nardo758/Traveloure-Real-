@@ -8081,6 +8081,26 @@ export const transportLegs = pgTable("transport_legs", {
   // 'confirmed' (expert-confirmed; the ONLY state traveler surfaces render). NULL = legacy
   // variant leg, grandfathered. DB CHECK (migration 154) allows NULL.
   proposalStatus: varchar("proposal_status", { length: 20 }),
+  // Migration 347 (work plan L1-1). All nullable, no DEFAULT/CHECK/index/FK, no backfill.
+  // R-ay: the author's tip, plain text <=140 chars (app-enforced); written only by the trip author or a
+  // write-status advisor; cloned with the leg; never rewritten by the engine. NULL = no tip.
+  authorTip: text("author_tip"),
+  // R-az: "via host pickup" — a provider_services id (no FK). Admitted only for a pickup-capable
+  // listing the provider has confirmed (`legPickupRefusal`). NULL = no host pickup.
+  pickupProviderServiceId: varchar("pickup_provider_service_id"),
+  // R-bf: stamped when the author / a write-status advisor confirms the leg. NULL = never checked.
+  checkedBy: varchar("checked_by"),
+  checkedAt: timestamp("checked_at"),
+  // R-ba: `author_pick` | `rerouted_for_stay` on a buyer's copy (writers: L1-3/L1-4). NULL = not a copy.
+  origin: varchar("origin", { length: 30 }),
+  // R-bb: `ok` | `changed` | `broken` from the re-check job (writer: L1-5). NULL = never re-checked.
+  legCheckStatus: varchar("leg_check_status", { length: 20 }),
+  legCheckedAt: timestamp("leg_checked_at"),
+  // Migration 350 (ledger `2026-10-04-leg-google-coords`; LD 57 extends to transport_legs): `google` when
+  // a from/to point on this leg came from a Google Places location fact, and that fact's fetch time.
+  // Writer: the stay re-route. NULL = no Google coordinate recorded on the leg.
+  coordSource: varchar("coord_source", { length: 20 }),
+  coordFetchedAt: timestamp("coord_fetched_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -10840,6 +10860,22 @@ export const funnelEvents = pgTable("funnel_events", {
   stageTimeIdx: index("funnel_events_stage_time_idx").on(table.stage, table.createdAt.desc().nullsFirst()),
 }));
 
+// Migration 349 (work plan L1-13; R-bj). An expert's answer to an "Ask a local about this" question
+// (a `funnel_events` `expert_interest` row carrying `properties.itemId`). PK only; every column
+// nullable with no DEFAULT/CHECK/index/FK. ONE writer, `answerInboxQuestion`
+// (server/services/expert-inbox-questions.service.ts), which also enforces one answer per question.
+// `status` is app-enforced: 'answered' is the only value written.
+export const expertQuestionAnswers = pgTable("expert_question_answers", {
+  id: varchar("id").primaryKey(),
+  questionEventId: varchar("question_event_id"),
+  tripId: varchar("trip_id"),
+  itemId: varchar("item_id"),
+  expertId: varchar("expert_id"),
+  answer: text("answer"),
+  status: varchar("status", { length: 20 }),
+  createdAt: timestamp("created_at"),
+});
+
 export const insertFunnelEventSchema = createInsertSchema(funnelEvents).omit({ id: true, createdAt: true });
 export type InsertFunnelEvent = z.infer<typeof insertFunnelEventSchema>;
 export type FunnelEvent = typeof funnelEvents.$inferSelect;
@@ -12211,6 +12247,21 @@ export const feedbackEvents = pgTable("feedback_events", {
   createdAt: timestamp("created_at"),
 });
 export type FeedbackEvent = typeof feedbackEvents.$inferSelect;
+// Migration 346 (step 6, R-aq): a photo is a fact — origin, licence and attribution with the image
+// reference. Only `ours` and `wikimedia` are stored; a Google Place Photo is live-only, never a row.
+// created_at set by the app (no DEFAULT). No CHECK, no index, no FK. One reader/writer:
+// server/services/place-photos.service.ts.
+export const placePhotos = pgTable("place_photos", {
+  id: varchar("id").primaryKey(),
+  placeId: varchar("place_id").notNull(),
+  source: text("source").notNull(),
+  urlOrAsset: text("url_or_asset"),
+  licence: text("licence"),
+  attribution: text("attribution"),
+  checkedAt: timestamp("checked_at"),
+  createdAt: timestamp("created_at"),
+});
+export type PlacePhoto = typeof placePhotos.$inferSelect;
 // Migration 344 (step 5, R-ac): one row per FREE day re-time on the versions board. created_at is set
 // by the app (no DEFAULT). No CHECK, no index, no FK. Read and written only by version-board.service.
 export const planDayRetimes = pgTable("plan_day_retimes", {

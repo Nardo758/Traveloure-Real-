@@ -204,8 +204,8 @@ import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { buildAnchorPromptBlock, validateAnchorConflicts, withinFlightWindows } from "../services/smart-sequencing.service";
-import { travelItemKind } from "@shared/getting-there";
+import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
+import { canonicalWithinFlightWindows, daysWithinFlightWindows } from "../utils/draft-flight-windows";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
@@ -4858,31 +4858,13 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // the departure cut-off on the departure day — the prompt says so; storage makes it true. The
       // stored plan is filtered by the same rule so the two never disagree.
       if (tripAnchors.length) {
-        const minutesOf = (d: unknown) => {
-          const m = /(\d+)/.exec(String(d ?? ""));
-          return m ? Number(m[1]) : null;
-        };
-        const isTravelRow = (title: unknown, location: unknown) => travelItemKind({ name: String(title ?? ""), location: String(location ?? ""), origin: "ai" }) !== null;
         const startIso = dates?.start ?? normalizedResult.dailyItinerary[0]?.date;
-        const cut = withinFlightWindows(normalizedResult.canonicalItems, tripAnchors as any, startIso, {
-          day: (it) => Number(it.dayNumber),
-          time: (it) => it.time,
-          duration: (it) => it.durationMinutes,
-          isTravelRow: (it) => isTravelRow(it.title, it.location),
-        });
+        const cut = canonicalWithinFlightWindows(normalizedResult.canonicalItems, tripAnchors as any, startIso);
         if (cut.dropped.length) {
           console.info(`[ai-draft] flight-window plan_id=${resolvedTripId || "none"} dropped=${cut.dropped.length}`);
         }
         normalizedResult.canonicalItems = cut.kept;
-        normalizedResult.dailyItinerary = normalizedResult.dailyItinerary.map((d: any) => ({
-          ...d,
-          activities: withinFlightWindows(Array.isArray(d.activities) ? d.activities : [], tripAnchors as any, startIso, {
-            day: () => Number(d.day),
-            time: (a: any) => a.time,
-            duration: (a: any) => minutesOf(a.duration),
-            isTravelRow: (a: any) => isTravelRow(a.name, a.location),
-          }).kept,
-        }));
+        normalizedResult.dailyItinerary = daysWithinFlightWindows(normalizedResult.dailyItinerary, tripAnchors as any, startIso);
       }
       // Smoke 4, item 4 (ledger `2026-10-02-smoke4-draft-fixes`): a draft with no place to stay has
       // no hotel in it. Day 1's hotel item becomes the arrival and the last day's the departure, with
@@ -6471,7 +6453,8 @@ router.get("/api/geocode", async (req, res) => {
     try {
       const { address } = req.query as { address?: string };
       if (!address) return res.status(400).json({ message: "address required" });
-      if (!process.env.GOOGLE_MAPS_API_KEY) return res.status(503).json({ message: "Maps API not configured" });
+      // R299: the geocoder answers only when its Maps billing switch is on (and a key is set).
+      if (!process.env.GOOGLE_MAPS_API_KEY || process.env.MAPS_GEOCODE_ENABLED !== "1") return res.status(503).json({ message: "Maps API not configured" });
       const result = await geocodeAddress(address);
       if (!result) return res.status(404).json({ message: "Location not found" });
       res.json(result);
@@ -6513,7 +6496,6 @@ router.get("/api/search/experiences", async (req, res) => {
         });
       }
 
-      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];
 
       // ── Platform provider services FIRST (W-3 task 2: "one registry-backed search" —
@@ -6585,52 +6567,19 @@ router.get("/api/search/experiences", async (req, res) => {
       } catch (_) {}
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
-      if (includeGoogle && apiKey) {
+      // R299: Places API (New) behind the Maps billing gate, explicit mask, NO photo (the legacy
+      // photo URL carried the server key to the browser and billed "Places Photo" per image load).
+      if (includeGoogle) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
           hotels: "lodging",
-          activities: "tourist_attraction|museum|amusement_park|park|spa",
+          activities: "tourist_attraction",
           all: "",
         };
-        const typeFilter = catToType[category || "all"] || "";
+        const includedType = catToType[category || "all"] || null;
         const searchQuery = [q, destination].filter(Boolean).join(" in ");
-        const placesUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
-        placesUrl.searchParams.set("query", searchQuery);
-        placesUrl.searchParams.set("key", apiKey);
-        if (typeFilter) placesUrl.searchParams.set("type", typeFilter.split("|")[0]);
-
-        const resp = await fetch(placesUrl.toString());
-        if (resp.ok) {
-          const data: any = await resp.json();
-          const priceLabelMap: Record<number, string> = { 0: "Free", 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
-          const catFromTypes = (types: string[]): string => {
-            if (types.some(t => ["restaurant","food","cafe","bakery","bar"].includes(t))) return "dining";
-            if (types.some(t => ["lodging","hotel"].includes(t))) return "hotel";
-            if (types.some(t => ["museum","art_gallery","place_of_worship","tourist_attraction"].includes(t))) return "culture";
-            if (types.some(t => ["amusement_park","park","spa","night_club"].includes(t))) return "activity";
-            return "activity";
-          };
-          for (const place of (data.results || []).slice(0, 15)) {
-            const photoRef = place.photos?.[0]?.photo_reference;
-            results.push({
-              id: `gp_${place.place_id}`,
-              source: "google_places",
-              placeId: place.place_id,
-              name: place.name,
-              address: place.formatted_address,
-              category: catFromTypes(place.types || []),
-              rating: place.rating ?? null,
-              reviewCount: place.user_ratings_total ?? null,
-              priceLevel: place.price_level ?? null,
-              priceLabel: place.price_level != null ? priceLabelMap[place.price_level] : null,
-              location: place.geometry?.location ?? null,
-              photoUrl: photoRef
-                ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${apiKey}`
-                : null,
-              mapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-            });
-          }
-        }
+        const { searchWorkspacePlaces } = await import("../services/maps-billing/places-text-search");
+        results.push(...(await searchWorkspacePlaces(searchQuery, includedType)));
       }
 
       res.json({ results, count: results.length });

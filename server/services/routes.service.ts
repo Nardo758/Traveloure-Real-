@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { gatedMapsCallOrNull } from "./maps-billing/maps-billing.service";
+import { DRIVE_FIELD_MASK, MODE_FIELD_MASK, drivingRouteBody, modeRouteBody } from "./maps-billing/maps-requests";
 
 const ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 
@@ -130,8 +132,11 @@ export interface ParsedTransitStep {
 export interface DrivingRouteRequest {
   origin: { lat: number; lng: number };
   destination: { lat: number; lng: number };
-  /** RFC 3339. Google requires a future departure for traffic-aware routing. */
-  departureTime: string;
+  /**
+   * RFC 3339. R299: NOT sent — a TRAFFIC_UNAWARE drive needs no departure, and the field is kept
+   * only so callers that already compute one do not change shape.
+   */
+  departureTime?: string;
 }
 
 export interface ParsedDrivingRoute {
@@ -140,7 +145,7 @@ export interface ParsedDrivingRoute {
   durationMinutes: number;
   polyline?: string;
   provider: "google_routes";
-  routingPreference: "TRAFFIC_AWARE";
+  routingPreference: "TRAFFIC_UNAWARE";
   retrievedAt: string;
 }
 
@@ -153,62 +158,48 @@ function parseDuration(durationString: string): number {
  * Authoritative activity-to-activity driving route. There is deliberately no geometric fallback:
  * callers must surface an unavailable route rather than presenting a straight-line estimate as a
  * real drive time.
+ *
+ * R299 (Maps billing audit): Compute Routes ESSENTIALS — `routingPreference: TRAFFIC_UNAWARE`, no
+ * departure. It was TRAFFIC_AWARE (the Pro SKU), but a leg is computed while planning and most legs
+ * had no real departure (they fell back to now + 10 min), so the "traffic" was the traffic at the
+ * moment of planning, not on the day. Gated by `routes_drive` (`@shared/maps-billing`).
  */
 export async function getTrafficAwareDrivingRoute(
   request: DrivingRouteRequest,
 ): Promise<ParsedDrivingRoute | null> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) {
-    console.error("[Routes] GOOGLE_MAPS_API_KEY not configured");
-    return null;
-  }
-
-  const fieldMask = [
-    "routes.duration",
-    "routes.distanceMeters",
-    "routes.polyline.encodedPolyline",
-  ].join(",");
-
-  try {
+  return gatedMapsCallOrNull("routes_drive", async (apiKey) => {
     const response = await fetch(ROUTES_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": fieldMask,
+        "X-Goog-FieldMask": DRIVE_FIELD_MASK,
       },
-      body: JSON.stringify({
-        origin: { location: { latLng: { latitude: request.origin.lat, longitude: request.origin.lng } } },
-        destination: { location: { latLng: { latitude: request.destination.lat, longitude: request.destination.lng } } },
-        travelMode: "DRIVE",
-        routingPreference: "TRAFFIC_AWARE",
-        departureTime: request.departureTime,
-        computeAlternativeRoutes: false,
-        languageCode: "en-US",
-        units: "METRIC",
-      }),
+      body: JSON.stringify(drivingRouteBody(request)),
     });
     if (!response.ok) {
       console.error("[Routes] driving route failed:", response.status, await response.text());
-      return null;
+      return { value: null, success: false };
     }
     const data = await response.json() as { routes?: Array<{ duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }> };
     const route = data.routes?.[0];
     const durationSeconds = route?.duration ? parseDuration(route.duration) : 0;
-    if (!route || !Number.isFinite(route.distanceMeters) || !durationSeconds) return null;
+    if (!route || !Number.isFinite(route.distanceMeters) || !durationSeconds) return { value: null };
     return {
-      distanceMeters: route.distanceMeters!,
-      durationSeconds,
-      durationMinutes: Math.max(1, Math.ceil(durationSeconds / 60)),
-      polyline: route.polyline?.encodedPolyline,
-      provider: "google_routes",
-      routingPreference: "TRAFFIC_AWARE",
-      retrievedAt: new Date().toISOString(),
+      value: {
+        distanceMeters: route.distanceMeters!,
+        durationSeconds,
+        durationMinutes: Math.max(1, Math.ceil(durationSeconds / 60)),
+        polyline: route.polyline?.encodedPolyline,
+        provider: "google_routes" as const,
+        routingPreference: "TRAFFIC_UNAWARE" as const,
+        retrievedAt: new Date().toISOString(),
+      },
     };
-  } catch (error) {
+  }).catch((error) => {
     console.error("[Routes] driving route request failed:", error);
     return null;
-  }
+  });
 }
 
 function parseTransitRoute(route: TransitRoute): ParsedTransitRoute {
@@ -282,13 +273,6 @@ function parseTransitRoute(route: TransitRoute): ParsedTransitRoute {
 }
 
 export async function getTransitRoute(request: TransitRequest): Promise<ParsedTransitRoute | null> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  
-  if (!apiKey) {
-    console.error("GOOGLE_MAPS_API_KEY not configured");
-    return null;
-  }
-
   const departureTime = request.departureTime || new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   const requestBody = {
@@ -333,7 +317,8 @@ export async function getTransitRoute(request: TransitRequest): Promise<ParsedTr
     "routes.legs.steps.endLocation",
   ].join(",");
 
-  try {
+  // R299: Compute Routes ESSENTIALS (TRANSIT; no Pro modifier). Gated by `routes_transit`.
+  return gatedMapsCallOrNull("routes_transit", async (apiKey) => {
     const response = await fetch(ROUTES_API_URL, {
       method: "POST",
       headers: {
@@ -347,21 +332,21 @@ export async function getTransitRoute(request: TransitRequest): Promise<ParsedTr
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Routes API error:", response.status, errorText);
-      return null;
+      return { value: null, success: false };
     }
 
     const data: TransitRouteResponse = await response.json();
-    
+
     if (!data.routes || data.routes.length === 0) {
       console.log("No transit routes found");
-      return null;
+      return { value: null };
     }
 
-    return parseTransitRoute(data.routes[0]);
-  } catch (error) {
+    return { value: parseTransitRoute(data.routes[0]) };
+  }).catch((error) => {
     console.error("Error fetching transit route:", error);
     return null;
-  }
+  });
 }
 
 export async function getMultipleTransitRoutes(
@@ -401,44 +386,32 @@ export async function getRouteForMode(
   mode: "walk" | "cycle" | "transit" | "drive",
 ): Promise<{ minutes: number; distanceMeters: number } | null> {
   if (mode === "drive") {
-    const r = await getTrafficAwareDrivingRoute({
-      origin,
-      destination,
-      departureTime: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-    });
+    const r = await getTrafficAwareDrivingRoute({ origin, destination });
     return r ? { minutes: r.durationMinutes, distanceMeters: r.distanceMeters } : null;
   }
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return null;
   const travelMode = mode === "walk" ? "WALK" : mode === "cycle" ? "BICYCLE" : "TRANSIT";
-  try {
+  // R299: Compute Routes ESSENTIALS (a mode, no routing preference). Gated by `routes_mode`.
+  return gatedMapsCallOrNull("routes_mode", async (apiKey) => {
     const response = await fetch(ROUTES_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
+        "X-Goog-FieldMask": MODE_FIELD_MASK,
       },
-      body: JSON.stringify({
-        origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
-        destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-        travelMode,
-        computeAlternativeRoutes: false,
-        languageCode: "en-US",
-        units: "METRIC",
-      }),
+      body: JSON.stringify(modeRouteBody(origin, destination, travelMode)),
     });
     if (!response.ok) {
       console.error(`[Routes] ${travelMode} route failed:`, response.status);
-      return null;
+      return { value: null, success: false };
     }
     const data = (await response.json()) as { routes?: Array<{ duration?: string; distanceMeters?: number }> };
     const route = data.routes?.[0];
     const seconds = route?.duration ? parseDuration(route.duration) : 0;
-    if (!route || !Number.isFinite(route.distanceMeters) || !seconds) return null;
-    return { minutes: Math.max(1, Math.ceil(seconds / 60)), distanceMeters: route.distanceMeters! };
-  } catch (error) {
+    if (!route || !Number.isFinite(route.distanceMeters) || !seconds) return { value: null };
+    return { value: { minutes: Math.max(1, Math.ceil(seconds / 60)), distanceMeters: route.distanceMeters! } };
+  }).catch((error) => {
     console.error(`[Routes] ${travelMode} route request failed:`, error);
     return null;
-  }
+  });
 }

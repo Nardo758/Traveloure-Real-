@@ -74,6 +74,7 @@ import {
 import { enrichPlanItems } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
+import { rerouteAfterStayChange } from "./stay-reroute.service";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -250,7 +251,7 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
     // R-o: stays LISTED ON TRAVELOURE — the same public read gate every listing surface uses
     // (approved + active), in the accommodation category, in this city, with a confirmed pin.
     db
-      .select({ id: providerServices.id, name: providerServices.serviceName, lat: providerServices.latitude, lng: providerServices.longitude })
+      .select({ id: providerServices.id, name: providerServices.serviceName, lat: providerServices.latitude, lng: providerServices.longitude, image: providerServices.serviceImage })
       .from(providerServices)
       .innerJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
       .where(
@@ -283,7 +284,18 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
     const lat = Number(p.lat);
     const lng = Number(p.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-    out.push({ kind: "platform", id: p.id, name: p.name, starRating: null, lat, lng });
+    // Step 6 R-aq: a platform stay's thumbnail is OUR listing's own image (the first source), with
+    // its attribution; partner stays carry none — their images are not among R-aq's sources.
+    const image = typeof p.image === "string" && /^https?:\/\//i.test(p.image) ? p.image : null;
+    out.push({
+      kind: "platform",
+      id: p.id,
+      name: p.name,
+      starRating: null,
+      lat,
+      lng,
+      ...(image ? { photo: { source: "ours" as const, url: image, licence: null, attribution: "From the host's listing", sourceUrl: null } } : {}),
+    });
   }
   for (const h of cache) {
     const lat = Number(h.lat);
@@ -555,6 +567,19 @@ async function lookUpStayPlace(tripId: string, itemId: string | null): Promise<v
 
 /** Bind the traveler's answer through the option-set rail. Returns the set and, when one was made, the stay item. */
 export async function bindWhereToStay(
+  tripId: string,
+  userId: string,
+  binding: StayBinding,
+): Promise<{ setId: string; itemId: string | null; replaced?: string | null }> {
+  const out = await bindWhereToStayInner(tripId, userId, binding);
+  // R-ba (work plan L1-4; ledger `2026-10-04-stay-item-reroute`): on a ready-made copy the new stay
+  // re-routes the first and last legs — AFTER the stay's own place lookup above has run, so a stay
+  // typed by name is routed from its Google point. Best-effort, never fails the bind (§15b).
+  if (out.itemId) await rerouteAfterStayChange(tripId);
+  return out;
+}
+
+async function bindWhereToStayInner(
   tripId: string,
   userId: string,
   binding: StayBinding,

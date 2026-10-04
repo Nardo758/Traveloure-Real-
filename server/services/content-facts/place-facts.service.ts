@@ -31,6 +31,7 @@ import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.c
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { PlacesAdapter, sourcesForNeed } from "./places-adapter";
 import { LookupScheduler } from "./lookup-scheduler.pure";
+import { gatedMapsCall } from "../maps-billing/maps-billing.service";
 import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
 import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea } from "@shared/place-name-gate";
@@ -304,6 +305,18 @@ async function adoptGoogleArea(tripId: string, item: EnrichItem, area: string): 
  * on the draft's own row (`ai_generated_itineraries.facts_lookup`), so the slip can say "checking
  * hours…" and re-read until the run says done — on whichever server instance answers the read.
  */
+/**
+ * R299 (Maps billing audit): the two Places calls a draft makes run behind the Maps billing gate —
+ * `places_id_lookup` (the no-charge IDs-only search) and `places_details` (the billed Details call),
+ * each with its own daily cap; their cost stays on `place_facts` (the gate's row records the count).
+ * A refused call is NOT made: a refused ID lookup leaves the item unlooked, a refused Details call is
+ * logged as the cap. Injected adapters (tests) default to an ungated pass-through unless the test
+ * passes a gate of its own.
+ */
+export type PlacesCallGate = <T>(key: "places_id_lookup" | "places_details", call: () => Promise<T>) => Promise<{ value: T } | { refused: string }>;
+const ungatedPlacesCall: PlacesCallGate = async (_key, call) => ({ value: await call() });
+const mapsGatedPlacesCall: PlacesCallGate = (key, call) => gatedMapsCall(key, async () => ({ value: await call() }));
+
 export async function enrichPlanItems(input: {
   tripId: string;
   market: string | null;
@@ -311,10 +324,12 @@ export async function enrichPlanItems(input: {
   items: EnrichItem[];
   adapters?: SourceAdapter[];
   draftId?: string | null;
+  placesGate?: PlacesCallGate;
 }): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number; areas: number }> {
   const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0, areas: 0 };
   const ids = (item: EnrichItem) => ({ planId: input.tripId, itemId: item.id });
   const progress = input.draftId ? new LookupProgress(input.draftId) : null;
+  const gate = input.placesGate ?? (input.adapters ? ungatedPlacesCall : mapsGatedPlacesCall);
   try {
     const cap = placesLookupsPerDraft();
     const byDay = namedByDay(input.items, input.city);
@@ -348,10 +363,16 @@ export async function enrichPlanItems(input: {
         // the item's own stored ID, else an ID this exact query already resolved to, else the
         // no-charge IDs-only search — then reuse that place's facts from ANY plan at zero cost. Only a
         // miss is billed (Place Details by ID), and only that spends the cap.
-        const placeId =
-          item.googlePlaceId ||
-          (await knownPlaceIdForQuery(query)) ||
-          (adapter.resolvePlaceId ? await adapter.resolvePlaceId(req) : null);
+        let placeId: string | null = item.googlePlaceId || (await knownPlaceIdForQuery(query));
+        if (!placeId && adapter.resolvePlaceId) {
+          const resolve = adapter.resolvePlaceId.bind(adapter);
+          const out = await gate("places_id_lookup", () => resolve(req));
+          if ("refused" in out) {
+            logSkipped(ids(item), day, "cap");
+            continue;
+          }
+          placeId = out.value;
+        }
         const cached = placeId ? await cachedForPlaceId(placeId) : null;
         if (cached) {
           summary.cached += 1;
@@ -361,8 +382,15 @@ export async function enrichPlanItems(input: {
           logSkipped(ids(item), day, "cap");
           continue;
         } else if (placeId && adapter.fetchByPlaceId) {
+          const fetchById = adapter.fetchByPlaceId.bind(adapter);
+          const id = placeId;
+          const out = await gate("places_details", () => fetchById(id, req));
+          if ("refused" in out) {
+            logSkipped(ids(item), day, "cap");
+            continue;
+          }
           summary.looked += 1;
-          drafts = await adapter.fetchByPlaceId(placeId, req);
+          drafts = out.value;
           cache = "miss";
         } else if (!adapter.resolvePlaceId) {
           // An adapter with no ID step (a test double, a future source): the text fetch, billed.
@@ -503,6 +531,44 @@ export async function factPointsForTrip(tripId: string, now: Date = new Date()):
     const lng = Number((first?.value as any)?.lng);
     if (Number.isFinite(lat) && Number.isFinite(lng)) out.set(itemId, { lat, lng });
   });
+  return out;
+}
+
+/**
+ * Step 6 R-aq: each plan item's Google place id and point, from its own unexpired, unsuperseded facts
+ * — what the photo resolver keys its Wikimedia cache on and searches near. Read here, the one reader
+ * of `place_facts` (content-facts C5), never in the photo service.
+ */
+export type PlaceRefView = {
+  placeId: string | null;
+  lat: number | null;
+  lng: number | null;
+  /** R297: the first cached Google photo REFERENCE for the place (never an image), else null. */
+  photoRef: { name: string; authors: Array<{ displayName: string; uri: string | null }> } | null;
+};
+export async function placeRefsForTrip(tripId: string, itemIds: string[], now: Date = new Date()): Promise<Map<string, PlaceRefView>> {
+  const rows = (await rowsForTrip(tripId, itemIds)).filter((r) => !isFactStale(r, now));
+  const out = new Map<string, PlaceRefView>();
+  for (const r of rows) {
+    if (!r.itineraryItemId) continue;
+    const cur = out.get(r.itineraryItemId) ?? { placeId: null, lat: null, lng: null, photoRef: null };
+    if (!cur.photoRef && r.factType === "photo_ref") {
+      const first = Array.isArray((r.value as any)?.photos) ? (r.value as any).photos[0] : null;
+      if (first && typeof first.name === "string" && first.name) {
+        cur.photoRef = { name: first.name, authors: Array.isArray(first.authors) ? first.authors : [] };
+      }
+    }
+    if (!cur.placeId && r.placeRefKind === "place_id") cur.placeId = r.placeRef;
+    if (cur.lat == null && r.factType === "location") {
+      const lat = Number((r.value as any)?.lat);
+      const lng = Number((r.value as any)?.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        cur.lat = lat;
+        cur.lng = lng;
+      }
+    }
+    out.set(r.itineraryItemId, cur);
+  }
   return out;
 }
 
