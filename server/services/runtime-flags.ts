@@ -17,6 +17,8 @@ export const HEALTH_FLAG_NAMES = [
   // Surface step 2's flight schedule lookup (ledger `2026-10-03-surface-step2-tools-tray`). The SWITCH
   // only: `FLIGHT_LOOKUP_API_KEY` is also required and is never read or reported here.
   "FLIGHT_LOOKUP_ENABLED",
+  // R-bo (work plan L1-19): expert scrape jobs, admin-only and OFF in production.
+  "EXPERT_SCRAPE_JOBS_ENABLED",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;
