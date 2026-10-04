@@ -11,10 +11,14 @@
  *       are untouched
  *   J4  a second run the same day finds nothing due (idempotent)
  *   J5  a failed candidate scan is an `error` and touches nothing
+ *   J6  registration: `leg-google-coords` is on the daily `JOB_CADENCE` roster, its internal route runs
+ *       the job through `runJob` with the scan error as the failure test, and the cron script's daily
+ *       bucket posts it
  *
  * NEGATIVE SPACE (§18d): the relookup is injected (no Places call; `enrichPlanItems` is the place-facts
  * suite's to prove); leg durations come from the travel-time service's offline estimate, so only shape,
- * points and fetch times are asserted. The route/heartbeat registration is not in this file.
+ * points and fetch times are asserted. J6 pins the registration by source; the route's 401 is
+ * `internal-jobs-auth.http.test.ts`'s and the cron posting is `post-internal-jobs.test.sh`'s.
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test server/__tests__/leg-google-coords-refresh.db.test.ts
@@ -22,6 +26,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { sql } from "drizzle-orm";
 
 process.env.STRIPE_SECRET_KEY ||= "sk_test_leg_google_coords";
@@ -173,4 +179,18 @@ test("J5: a failed candidate scan is an error and touches nothing", async () => 
   });
   assert.deepEqual(result, { checked: 0, refreshed: 0, cleared: 0, failed: 0, error: "db down" });
   assert.equal((await legs(ids.other)).length, before);
+});
+
+test("J6: the job is registered daily — roster, route and cron bucket", async () => {
+  const { JOB_CADENCE } = await import("../routes/internal.routes");
+  assert.deepEqual(JOB_CADENCE.filter((j) => j.job === "leg-google-coords"), [
+    { job: "leg-google-coords", expectedIntervalSec: 86_400, bucket: "daily" },
+  ]);
+  const routes = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/internal.routes.ts"), "utf8");
+  assert.match(
+    routes,
+    /router\.post\("\/internal\/jobs\/leg-google-coords", requireInternalSecret,[\s\S]{0,120}runJob\("leg-google-coords", \(\) => runLegGoogleCoordsRefresh\(\), \(r\) => !!r\?\.error\)/,
+  );
+  const cron = fs.readFileSync(path.resolve(import.meta.dirname, "../../scripts/ci/post-internal-jobs.sh"), "utf8");
+  assert.match(cron, /\["daily"\]="[^"]*\bleg-google-coords\b/);
 });

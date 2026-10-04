@@ -18,6 +18,7 @@
  *
  * Never throws for one plan (a failed plan is counted); only a failed candidate scan is an `error`,
  * which never stamps a success heartbeat. Idempotent: a second run the same day finds nothing due.
+ * Registered as `POST /internal/jobs/leg-google-coords` (daily `JOB_CADENCE` + `BUCKET_ROUTES`).
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
