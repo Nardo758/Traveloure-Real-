@@ -48,8 +48,10 @@ test("D1 S10-1(b): nothing past the 07:40 cut-off on the departure day, nothing 
   assert.equal(hotelOnly.dropped.length, 0);
   // The free-draft route runs it on the rows AND the stored plan.
   const route = fs.readFileSync(path.resolve(import.meta.dirname, "../../routes/content.routes.ts"), "utf8");
-  assert.match(route, /const cut = withinFlightWindows\(normalizedResult\.canonicalItems, tripAnchors/);
-  assert.match(route, /activities: withinFlightWindows\(Array\.isArray\(d\.activities\)/);
+  // Step 6: the route reads the ONE shared shape of the rule (`draft-flight-windows`), which every
+  // drafting path calls (step6-draft D2).
+  assert.match(route, /const cut = canonicalWithinFlightWindows\(normalizedResult\.canonicalItems, tripAnchors/);
+  assert.match(route, /daysWithinFlightWindows\(normalizedResult\.dailyItinerary, tripAnchors/);
 });
 
 test("D2 S10-7: the meal windows are in the prompt, and the CI draft has no breakfast after 10:00", () => {

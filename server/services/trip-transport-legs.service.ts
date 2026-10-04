@@ -39,6 +39,7 @@ import {
   type UserTransportPrefs,
 } from "./transport-leg-calculator";
 import { haversineMeters } from "@shared/geo";
+import { isPickedLeg } from "@shared/leg-picked";
 import { defaultLegMode, LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { ResolvedLeg } from "@shared/leg-resolution";
 import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
@@ -566,6 +567,12 @@ export async function updateTripTransportLeg(
   if (patch.pickupProviderServiceId !== undefined) {
     updates.pickupProviderServiceId = patch.pickupProviderServiceId || null;
   }
+  // Review blocking-4: a confirm that names no mode keeps the mode the Workstation SHOWS — the
+  // engine's recommendation (`userSelectedMode || recommendedMode`) — so "Confirmed" on screen and
+  // "picked" at the publish gate (R-ax) are the same fact. Never overwrites a mode already chosen.
+  if (patch.proposalStatus === "confirmed" && patch.userSelectedMode === undefined && !leg.userSelectedMode && leg.recommendedMode) {
+    updates.userSelectedMode = leg.recommendedMode;
+  }
   // R-bf: a confirm by an expert-side caller is a check. Re-confirming an already-confirmed leg
   // re-stamps it (that is a fresh check). A confirm by anyone else leaves the stamp as it was.
   if (patch.proposalStatus === "confirmed" && patch.stampCheckedBy) {
@@ -580,14 +587,6 @@ export async function updateTripTransportLeg(
     .where(and(eq(transportLegs.id, legId), eq(transportLegs.tripId, tripId)))
     .returning();
   return row ?? null;
-}
-
-/**
- * R-ax: a leg the author has PICKED — confirmed, with a chosen mode or a host pickup. (L1-2's publish
- * gate states the same rule; when both lanes are on main this is the one definition.)
- */
-export function isPickedLeg(leg: { proposalStatus?: string | null; userSelectedMode?: string | null; pickupProviderServiceId?: string | null }): boolean {
-  return leg.proposalStatus === "confirmed" && (!!leg.userSelectedMode || !!leg.pickupProviderServiceId);
 }
 
 export interface LegReviewRow {
@@ -647,6 +646,15 @@ export function buildLegReview(legs: ReadonlyArray<typeof transportLegs.$inferSe
   }));
   const first = rows.findIndex((r) => !r.picked);
   return { legs: rows, firstUnpickedIndex: first === -1 ? null : first };
+}
+
+/**
+ * LD 40: `checked_by` is a `users.id`, which no response carries. Every route that returns a whole
+ * leg row passes it through this projection; `checkedAt` stays.
+ */
+export function legResponseRow<T extends { checkedBy?: unknown }>(leg: T): Omit<T, "checkedBy"> {
+  const { checkedBy: _checkedBy, ...rest } = leg;
+  return rest;
 }
 
 /** Deletes one trip-scoped leg (the expert rejecting a proposal, or removing a confirmed one). */

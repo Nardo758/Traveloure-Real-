@@ -53,6 +53,7 @@ import {
   legPickupRefusal,
   SELECTABLE_TRANSPORT_MODES,
   deleteTripTransportLeg,
+  legResponseRow,
   generateTripTransportLegs,
   getTripTransportLeg,
   updateTripTransportLeg,
@@ -279,7 +280,7 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
       { legId, patch: parsed.data },
     );
 
-    res.json({ leg });
+    res.json({ leg: legResponseRow(leg) });
   } catch (err) {
     console.error("[TransportLegs] patch error:", err);
     res.status(500).json({ message: "Failed to update transport leg" });
