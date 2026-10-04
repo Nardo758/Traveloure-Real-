@@ -239,6 +239,13 @@ const ALLOWED_REMOVALS = {
     "note now renders through the ONE `ExpertNote` (`components/plan/ExpertNote.tsx`) under its " +
     "item, with the SAME `slip-expert-note` testid. It left the slip's FILE SET, which is all this " +
     "inventory reads. It carries no handler.",
+  "slip-optimize-preview":
+    "surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`) — the \"Free estimate … /100\" " +
+    "line is replaced by `OptimizerLead` (`components/plan/OptimizerLead.tsx`): counted findings from " +
+    "the SAME `GET /api/optimization-preview`, never a score (spec §8, R-f). It carried no handler.",
+  "slip-optimize-preview-fee":
+    "surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`) — the fee now rides the Optimize " +
+    "CTA itself (\"Optimize · <fee>\", read from `/api/optimization-fee`). It carried no handler.",
   "slip-tracking-ref":
     "4 — the working header prints no slip number and no version. `planVersion` is the " +
     "transition-log ROW COUNT and reads as a released version it is not; the only version a " +

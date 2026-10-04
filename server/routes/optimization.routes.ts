@@ -34,6 +34,7 @@ import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
+import { loadOptimizerFindings } from "../services/optimizer-lead.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "../utils/stripe-key";
 
@@ -221,9 +222,13 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
       tripRow?.eventType ?? undefined,
     );
 
+    // Surface step 4 (spec §8; R-f): what Optimize found in this draft — kinds and counts only, never
+    // the re-sequenced order. Independent of the heuristic score, so a refused score still carries them.
+    const { findings, hasPricedItems } = await loadOptimizerFindings(tripId);
+
     if (!preview.computable) {
       // The heuristic's OWN reason, passed through unchanged — the client never restates it.
-      return res.json({ computable: false, reason: preview.reason });
+      return res.json({ computable: false, reason: preview.reason, findings, hasPricedItems });
     }
 
     // Projected explicitly. `metrics` (the full internal object) and the three extrapolated
@@ -240,6 +245,8 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
       // Items the run would treat as fixed points — purchased rows AND D3 expert work, counted
       // from the same read-set's actual constraint list, never assumed (§13).
       fixedCount: inputs.fixedCommitments.length,
+      findings,
+      hasPricedItems,
       // A7 (§F2 (4)): how many open comparisons a run would decide — never WHICH option wins. The
       // run decides only the stay comparison it builds its versions around, so this is 0 or 1.
       ...(versionPerOptionEnabled()
