@@ -10855,6 +10855,22 @@ export const funnelEvents = pgTable("funnel_events", {
   stageTimeIdx: index("funnel_events_stage_time_idx").on(table.stage, table.createdAt.desc().nullsFirst()),
 }));
 
+// Migration 349 (work plan L1-13; R-bj). An expert's answer to an "Ask a local about this" question
+// (a `funnel_events` `expert_interest` row carrying `properties.itemId`). PK only; every column
+// nullable with no DEFAULT/CHECK/index/FK. ONE writer, `answerInboxQuestion`
+// (server/services/expert-inbox-questions.service.ts), which also enforces one answer per question.
+// `status` is app-enforced: 'answered' is the only value written.
+export const expertQuestionAnswers = pgTable("expert_question_answers", {
+  id: varchar("id").primaryKey(),
+  questionEventId: varchar("question_event_id"),
+  tripId: varchar("trip_id"),
+  itemId: varchar("item_id"),
+  expertId: varchar("expert_id"),
+  answer: text("answer"),
+  status: varchar("status", { length: 20 }),
+  createdAt: timestamp("created_at"),
+});
+
 export const insertFunnelEventSchema = createInsertSchema(funnelEvents).omit({ id: true, createdAt: true });
 export type InsertFunnelEvent = z.infer<typeof insertFunnelEventSchema>;
 export type FunnelEvent = typeof funnelEvents.$inferSelect;

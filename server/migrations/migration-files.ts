@@ -1920,4 +1920,7 @@ export const MIGRATION_FILES = [
   // 347 — transport_legs authoring columns (work plan L1-1; R-ay/R-az/R-bf). Seven nullable columns,
   // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "347_transport_leg_authoring.sql",
+  // 349 — expert_question_answers (work plan L1-13; R-bj). New table, PK only, all columns nullable,
+  // no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
+  "349_expert_question_answers.sql",
 ] as const;
