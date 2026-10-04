@@ -268,11 +268,19 @@ export function VersionsBoard({
                 {cols.map((c) => (
                   <div
                     key={c.variantId}
-                    {...dragProps({ kind: "day", variantId: c.variantId, dayNumber })}
-                    className="rounded-md border border-border p-2 text-xs cursor-grab"
+                    className="rounded-md border border-border p-2 text-xs"
                     data-testid={`versions-desk-day-${c.label}-${dayNumber}`}
                   >
-                    <p className="font-semibold">Day {dayNumber}</p>
+                    {/* The DAY drags by its header (times, legs and facts travel with it); a stop
+                        below drags on its own as a swap-in. */}
+                    <p
+                      {...dragProps({ kind: "day", variantId: c.variantId, dayNumber })}
+                      className="flex cursor-grab items-center gap-1 font-semibold"
+                      title={`Drag Version ${c.label}'s day ${dayNumber} onto Your plan`}
+                      data-testid={`versions-desk-day-handle-${c.label}-${dayNumber}`}
+                    >
+                      <span aria-hidden="true">⠿</span> Day {dayNumber}
+                    </p>
                     {c.identical ? (
                       <p className="text-muted-foreground" data-testid={`versions-desk-same-${c.label}-${dayNumber}`}>Same as draft</p>
                     ) : (
