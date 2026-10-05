@@ -31,7 +31,7 @@ export function ReadyMadePreviewView({ preview }: { preview: ReadyMadePreview })
   const day = preview.sampleDay;
   return (
     <main className="mx-auto max-w-[760px] px-4 pb-16" data-testid="rm-preview">
-      <section className="overflow-hidden rounded-2xl border border-[#e3e8e6] bg-white">
+      <section className="overflow-hidden rounded-2xl border border-[var(--earn-border)] bg-[var(--earn-card)]">
         {preview.heroImageUrl ? (
           <figure className="relative">
             <img src={preview.heroImageUrl} alt="" className="h-[260px] w-full object-cover sm:h-[340px]" data-testid="rm-preview-hero" />
@@ -47,30 +47,30 @@ export function ReadyMadePreviewView({ preview }: { preview: ReadyMadePreview })
           </figure>
         ) : null}
         <div className="space-y-4 p-5 sm:p-7">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#247d78]">{preview.planLabel} · {preview.market}</p>
-          <h1 className="text-[30px] font-semibold leading-[1.05] tracking-[-0.035em] text-[#193752] sm:text-[38px]" style={FRAUNCES} data-testid="rm-preview-title">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[var(--earn-teal-ink)]">{preview.planLabel} · {preview.market}</p>
+          <h1 className="text-[30px] font-semibold leading-[1.05] tracking-[-0.035em] text-[var(--earn-navy)] sm:text-[38px]" style={FRAUNCES} data-testid="rm-preview-title">
             {preview.title}
           </h1>
-          <div className="flex flex-wrap items-center gap-2 text-[13px] text-[#45607a]">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--earn-muted)]">
             <span className="inline-flex items-center gap-1" data-testid="rm-preview-days"><CalendarDays className="h-4 w-4" />{preview.durationDays} {preview.durationDays === 1 ? "day" : "days"}</span>
             <span aria-hidden>·</span>
             <span data-testid="rm-preview-expert">
               by{" "}
-              {preview.expert.handle ? <Link href={`/s/${preview.expert.handle}`} className="font-semibold text-[#193752] underline-offset-2 hover:underline">{preview.expert.name}</Link> : <strong className="text-[#193752]">{preview.expert.name}</strong>}
+              {preview.expert.handle ? <Link href={`/s/${preview.expert.handle}`} className="font-semibold text-[var(--earn-navy)] underline-offset-2 hover:underline">{preview.expert.name}</Link> : <strong className="text-[var(--earn-navy)]">{preview.expert.name}</strong>}
             </span>
             {preview.expert.localVerified ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f3f2] px-2 py-0.5 text-[12px] font-semibold text-[#247d78]" data-testid="rm-preview-verified">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] px-2 py-0.5 text-[12px] font-semibold text-[var(--earn-teal-ink)]" data-testid="rm-preview-verified">
                 <BadgeCheck className="h-3.5 w-3.5" />Local · verified in {preview.market}
               </span>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e8e6] pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--earn-border)] pt-4">
             {preview.priceLine ? (
-              <strong className="text-[22px] font-semibold text-[#193752]" style={FRAUNCES} data-testid="rm-preview-price">{preview.priceLine}</strong>
+              <strong className="text-[22px] font-semibold text-[var(--earn-navy)]" style={FRAUNCES} data-testid="rm-preview-price">{preview.priceLine}</strong>
             ) : <span />}
             <Link
               href={`/ready-made/${preview.id}`}
-              className="inline-flex h-11 items-center rounded-full bg-[#f34d6e] px-6 text-[15px] font-semibold text-white hover:bg-[#e03d5e]"
+              className="inline-flex h-11 items-center rounded-full bg-[var(--earn-coral-ink)] px-6 text-[15px] font-semibold text-white hover:opacity-90"
               data-testid="rm-preview-get"
             >
               Get this trip
@@ -80,19 +80,19 @@ export function ReadyMadePreviewView({ preview }: { preview: ReadyMadePreview })
       </section>
 
       {day ? (
-        <section className="mt-6 rounded-2xl border border-[#e3e8e6] bg-white p-5 sm:p-7" data-testid="rm-preview-sample-day">
-          <h2 className="text-[22px] font-semibold text-[#193752]" style={FRAUNCES}>A sample day · Day {day.dayNumber}</h2>
+        <section className="mt-6 rounded-2xl border border-[var(--earn-border)] bg-[var(--earn-card)] p-5 sm:p-7" data-testid="rm-preview-sample-day">
+          <h2 className="text-[22px] font-semibold text-[var(--earn-navy)]" style={FRAUNCES}>A sample day · Day {day.dayNumber}</h2>
           <ol className="mt-4 space-y-3">
             {day.stops.map((s, i) => (
               <li key={i} data-testid={`rm-preview-stop-${i}`}>
                 {i > 0 && sampleLegLine(day, i) ? (
-                  <p className="mb-2 ml-6 text-[12px] text-[#45607a]" data-testid={`rm-preview-leg-${i}`}>{sampleLegLine(day, i)}</p>
+                  <p className="mb-2 ml-6 text-[12px] text-[var(--earn-muted)]" data-testid={`rm-preview-leg-${i}`}>{sampleLegLine(day, i)}</p>
                 ) : null}
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#193752] text-[12px] font-bold text-white">{i + 1}</span>
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--earn-navy)] text-[12px] font-bold text-[var(--earn-card)]">{i + 1}</span>
                   <div>
-                    <p className="font-semibold text-[#193752]">{s.title}</p>
-                    <p className="flex flex-wrap gap-x-3 text-[12px] text-[#45607a]">
+                    <p className="font-semibold text-[var(--earn-navy)]">{s.title}</p>
+                    <p className="flex flex-wrap gap-x-3 text-[12px] text-[var(--earn-muted)]">
                       {s.startTime ? <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{s.startTime}</span> : null}
                       {s.locationName ? <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{s.locationName}</span> : null}
                     </p>
@@ -102,7 +102,7 @@ export function ReadyMadePreviewView({ preview }: { preview: ReadyMadePreview })
             ))}
           </ol>
           {preview.lockedDays > 0 ? (
-            <p className="mt-5 flex items-center gap-2 rounded-xl bg-[#f8faf9] p-3 text-[13px] text-[#45607a]" data-testid="rm-preview-locked">
+            <p className="mt-5 flex items-center gap-2 rounded-xl bg-[var(--earn-chip)] p-3 text-[13px] text-[var(--earn-muted)]" data-testid="rm-preview-locked">
               <LockKeyhole className="h-4 w-4" />
               The other {preview.lockedDays} {preview.lockedDays === 1 ? "day opens" : "days open"} in your own editable trip when you get it.
             </p>
@@ -126,7 +126,7 @@ export default function ReadyMadePreviewPage() {
   }, [data, slug, navigate]);
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] text-[#193752]" style={{ fontFamily: '"DM Sans", "Inter", sans-serif' }}>
+    <div className="min-h-screen bg-[var(--earn-chip)] text-[var(--earn-navy)]" style={{ fontFamily: '"DM Sans", "Inter", sans-serif' }}>
       <header className="mx-auto flex max-w-[760px] items-center px-4 py-4">
         <Link href="/" aria-label="Traveloure home"><TraveloureLogo /></Link>
       </header>
@@ -135,7 +135,7 @@ export default function ReadyMadePreviewPage() {
       ) : isError || !data ? (
         <main className="mx-auto max-w-[760px] px-4 py-16 text-center">
           <h1 className="mb-2 text-[24px] font-semibold" style={FRAUNCES}>Trip not found</h1>
-          <p className="text-[#45607a]">This trip may have been withdrawn. <Link href="/ready-made" className="underline">See Ready Made Trips</Link></p>
+          <p className="text-[var(--earn-muted)]">This trip may have been withdrawn. <Link href="/ready-made" className="underline">See Ready Made Trips</Link></p>
         </main>
       ) : (
         <ReadyMadePreviewView preview={data} />
