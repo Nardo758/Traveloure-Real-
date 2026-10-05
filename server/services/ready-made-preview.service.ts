@@ -19,6 +19,7 @@ import {
   readyMadePriceLine,
   readyMadeSlug,
   readyMadeSlugToken,
+  photoSourceName,
   sampleDayOf,
   type ReadyMadePreview,
 } from "@shared/ready-made-preview";
@@ -69,7 +70,7 @@ export async function loadReadyMadePreview(slug: string): Promise<ReadyMadePrevi
     loadVerifiedMarkets(listing.authorId),
   ]);
   const marketSlug = resolveMarketSlug(listing.market ?? "");
-  const meta = (listing.heroImageMeta ?? null) as { photographer?: string; profileUrl?: string } | null;
+  const meta = (listing.heroImageMeta ?? null) as { photographer?: string; profileUrl?: string; unsplashId?: string } | null;
   const planLabel = (isCustomPlanType(listing.planType) && listing.planTypeCustom)
     ? listing.planTypeCustom
     : (planTypeLabel(listing.planType) ?? "Trip plan");
@@ -82,7 +83,9 @@ export async function loadReadyMadePreview(slug: string): Promise<ReadyMadePrevi
     durationDays: listing.durationDays,
     planLabel,
     heroImageUrl: listing.heroImageUrl ?? null,
-    heroCredit: meta?.photographer ? { photographer: meta.photographer, profileUrl: meta.profileUrl ?? null } : null,
+    heroCredit: meta?.photographer
+      ? { photographer: meta.photographer, profileUrl: meta.profileUrl ?? null, source: photoSourceName(meta) }
+      : null,
     priceLine: readyMadePriceLine(listing),
     expert: {
       name: author?.firstName?.trim() || "Expert",
