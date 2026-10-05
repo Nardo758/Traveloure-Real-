@@ -1930,4 +1930,8 @@ export const MIGRATION_FILES = [
   // 351 — RETIRED, never applied: the itinerary follow-up booking-guard triggers (#1274) were rejected
   // by the decision-maker on Oct 4, 2026 (surface spec v1.3.5 §9: no functions, triggers,
   // CREATE OR REPLACE or DO blocks in any migration). The number is not reused.
+  // 354 — step 7b handoff (R323): expert_suggestions (new table, PK only, nullable columns),
+  // additive handoff lifecycle columns on expert_requests, and three fee_bands rows insert-if-missing
+  // (values proposed). 352/353 are held by other lanes. Declared in shared/schema.ts. HELD.
+  "354_handoff_suggestions.sql",
 ] as const;

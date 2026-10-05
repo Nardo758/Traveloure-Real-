@@ -2432,6 +2432,22 @@ This document captures architectural decisions to maintain consistency across co
     the Moment default (the item a Moment plan is built around is locked when it becomes that anchor). The
     insert schema omits the column and the storage strip removes it.
 
+62. **THE HANDOFF: ONE DOOR, A HOLD AT ASK, CAPTURE ON ACCEPT, SUGGESTIONS NEVER WRITES, PAY ON APPROVAL
+    (decision-maker dispatch Oct 5, 2026 — step 7b; ledger `2026-10-05-step7b-handoff`; migration 354, HELD FOR
+    RULING).** Every expert door ("Hand off to a local expert", "Book this for me", Finalize's expert lane, the
+    template and summary-card CTAs) opens the ONE `HandoffChooser`; the ask is ONE `expert_requests` row
+    (`handoff_kind`, `scope_item_ids`, fee and lifecycle stamps — nullable, no DEFAULT/CHECK/index/FK, declared in
+    `shared/schema.ts`) owned by `server/services/handoff.service.ts`. The fee is the EXISTING expert-review bands
+    plus the traveler service fee, AUTHORIZED by a manual-capture PaymentIntent and CAPTURED only on the expert's
+    accept, under an atomic claim taken first (§15b); 24 h ⇒ concierge fallback offered, 48 h ⇒ hold released, 7 d
+    after delivery ⇒ auto-approve (config, `server/config/handoff.config.ts`); withdrawal keeps nothing before accept
+    and the `handoff_withdrawal_*` band share after. On a TRAVELER's plan a §12 write-status advisor's item/leg
+    writes are FILED as `expert_suggestions` rows (new table, PK only, declared in `shared/schema.ts`) and applied
+    only by the owner's accept, which replays the same storage write — this subsumes the plan-approval 409s; the
+    expert's own `expert_note` and the author's own build stay direct. The expert is paid on APPROVAL through the
+    existing R6 split, never on deliver; approval returns the pen (advisor row back to read-only `pending`). The
+    Ready Made included revision is a PREPAID handoff and grants no write.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

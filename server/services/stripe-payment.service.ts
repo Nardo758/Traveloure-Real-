@@ -125,6 +125,8 @@ export async function recordRefundAuditRow(input: {
  * expiry; ledger `2026-09-16-l16-lane1-review-fixes`). Same job as the bundle constant above.
  */
 export const AI_TASK_PROPOSAL_REFUND_SOURCE = 'ai_task_proposal';
+/** Step 7b (R323): the handoff fee's refund source (a withdrawal after capture, R-t). */
+export const HANDOFF_REFUND_SOURCE = 'handoff_withdrawal';
 
 /**
  * R162 (ledger `2026-09-27-failed-is-final`): the `metadata.source` and the `refunds.reason` of the
@@ -1993,6 +1995,109 @@ class StripePaymentService {
       { idempotencyKey },
     );
     return { id: pi.id, status: pi.status };
+  }
+
+  /**
+   * Step 7b (R323, R-q) — THE handoff AUTHORIZATION: a PaymentIntent with `capture_method: 'manual'`,
+   * the first in this codebase. Confirming it places a HOLD on the traveler's card; nothing is taken
+   * until `captureHandoffPayment` (the expert's accept) — and `cancelPaymentIntent` releases it when
+   * nobody accepts in time. The amount arrives SERVER-DERIVED (§14): the fee band through
+   * `resolveExpertReviewAmount` plus the traveler service fee. The key is the logical ask (trip,
+   * traveler, kind, scope) so a retry gets the SAME intent back (§15).
+   */
+  async createHandoffAuthorization(input: {
+    userId: string;
+    tripId: string;
+    kind: string;
+    amountCents: number;
+    idempotencyKey: string;
+    destination: string | null;
+    travelerServiceFee?: Record<string, unknown> | null;
+  }): Promise<{ clientSecret: string | null; paymentIntentId: string; amountCents: number }> {
+    const pi = await stripe.paymentIntents.create(
+      {
+        amount: Math.round(input.amountCents),
+        currency: 'usd',
+        capture_method: 'manual',
+        metadata: {
+          type: 'expert_handoff',
+          userId: input.userId,
+          tripId: input.tripId,
+          handoffKind: input.kind,
+          ...(input.travelerServiceFee ? { travelerServiceFee: JSON.stringify(input.travelerServiceFee).substring(0, 480) } : {}),
+        },
+        description: `Local expert handoff${input.destination ? ` - ${input.destination}` : ''}`,
+        // LD 43(c): wallets on this platform charge too; the handoff sheet confirms with
+        // `redirect: 'if_required'` and has no redirect-return page.
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const },
+      },
+      { idempotencyKey: input.idempotencyKey },
+    );
+    return { clientSecret: pi.client_secret, paymentIntentId: pi.id, amountCents: pi.amount };
+  }
+
+  /** Step 7b: the handoff intent as Stripe reports it — status, amounts and our own metadata. */
+  async retrieveHandoffPaymentIntent(paymentIntentId: string): Promise<{
+    id: string;
+    status: string;
+    amountCents: number;
+    amountCapturableCents: number;
+    amountReceivedCents: number;
+    metadata: Record<string, string>;
+  }> {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return {
+      id: pi.id,
+      status: pi.status,
+      amountCents: pi.amount,
+      amountCapturableCents: Number(pi.amount_capturable ?? 0),
+      amountReceivedCents: Number(pi.amount_received ?? 0),
+      metadata: (pi.metadata ?? {}) as Record<string, string>,
+    };
+  }
+
+  /**
+   * Step 7b (R323, R-q) — THE ONE `stripe.paymentIntents.capture` CALL SITE. The caller
+   * (`handoff.service.ts` accept) owns the claim, taken with an atomic conditional BEFORE this call
+   * (§15b); this is only the call, under a key derived from the request, so a retry is one capture.
+   */
+  async captureHandoffPayment(paymentIntentId: string, idempotencyKey: string): Promise<{ id: string; status: string; amountReceivedCents: number }> {
+    const pi = await stripe.paymentIntents.capture(paymentIntentId, {}, { idempotencyKey });
+    return { id: pi.id, status: pi.status, amountReceivedCents: Number(pi.amount_received ?? 0) };
+  }
+
+  /**
+   * Step 7b (R323, R-t) — a withdrawal after capture refunds the fee less the band-named share kept.
+   * The SIXTH caller of the shared refund call site, never a second `stripe.refunds.create` (§18 rule
+   * 1). The claim (the request's `withdrawn_at`) is the caller's, taken BEFORE this; the amount and
+   * the key arrive server-derived from the row. Throws the raw Stripe error.
+   */
+  async refundHandoffFee(input: {
+    requestId: string;
+    tripId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+    auditReason: string;
+  }): Promise<{ id: string; status: string | null }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason(HANDOFF_REFUND_SOURCE),
+      idempotencyKey: input.idempotencyKey,
+      metadata: { requestId: input.requestId, tripId: input.tripId, source: HANDOFF_REFUND_SOURCE },
+    });
+    await this.recordIssuedRefund({
+      bookingId: null,
+      paymentIntentId: input.paymentIntentId,
+      refund,
+      amount: Math.round(input.amountCents) / 100,
+      internalReason: input.auditReason,
+      feeRefund: 0,
+      feeReversalActor: HANDOFF_REFUND_SOURCE,
+      onceByStripeRefundId: true,
+    });
+    return { id: refund.id, status: refund.status ?? null };
   }
 
   /**

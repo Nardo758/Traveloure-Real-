@@ -95,24 +95,24 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   const advisorSql = `SELECT id, status, workspace_status, plan_approval_status, plan_review_note, plan_approved_at
                         FROM trip_expert_advisors WHERE trip_id = $1 AND local_expert_id = $2`;
 
-  // ── 1. HIRE (traveler, slip → HireExpertDialog) ──
+  // ── 1. HIRE (traveler → the storefront hire rail) ──
+  // R323 (step 7b): the slip's "Hand off to a local expert" now opens the ONE handoff chooser,
+  // whose ask places a Stripe HOLD — CI's Stripe key is a stub, so a priced handoff cannot be
+  // authorized here (HELD:stripe; the handoff lifecycle is proven at the service seam by
+  // server/__tests__/handoff-lifecycle.db.test.ts). This lifecycle keeps the advisor-row hire it
+  // has always exercised, through the same owner-gated rail the storefront uses.
   const d1 = await dbStep(J, '01', 'hire: trip_expert_advisors row', advisorSql, [tripId, expertId]);
   await page.goto(`/plans/${tripId}`);
   await settle(page);
-  await (await must(page, 'slip-action-hire-expert', '01')).click();
-  await page.waitForTimeout(800);
-  const option = await must(page, `hire-expert-option-${expertId}`, '01b', 12_000);
-  await option.click();
-  await shot3(page, J, '01', 'hire-dialog-expert-picked');
-  await (await must(page, 'button-hire-expert-submit', '01c')).click();
-  await settle(page, 1500);
+  await expect(testid(page, 'slip-action-hire-expert'), 'the slip offers the one handoff door').toBeVisible({ timeout: 15_000 });
+  const hireRes = await page.request.post(`/api/trips/${tripId}/advisors`, { data: { handle: expertE.handle } });
+  expect(hireRes.status(), await hireRes.text()).toBeLessThan(300);
+  await settle(page, 1000);
   await shot3(page, J, '02', 'traveler-slip-after-hire');
   const a1 = await d1.after();
   expect(a1.length, 'advisor row born by hire').toBe(1);
   expect(a1[0].status).toBe('pending');
   const assignmentId: string = a1[0].id;
-  const hirePost = net.find(`/api/trips/${tripId}/advisors`, 'POST');
-  expect(hirePost.some((e) => e.status < 300), 'POST /api/trips/:tripId/advisors 2xx').toBeTruthy();
 
   // ── 2. ACCEPT (expert, inbox queue) + gap (a): is there any decline control? ──
   await loginViaUi(page, expertE.email, E2E_PASSWORD);

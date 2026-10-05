@@ -25,7 +25,7 @@ if (import.meta.env.DEV && _stripePublishableKey && !_stripePublishableKey.start
   throw new Error('Development checkout requires a Stripe test publishable key');
 }
 let _stripePromise: ReturnType<typeof loadStripe> | undefined;
-const getStripePromise = () => {
+export const getStripePromise = () => {
   if (!_stripePromise) {
     _stripePromise = loadStripe(_stripePublishableKey);
   }

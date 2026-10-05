@@ -19,7 +19,7 @@
  * plan's contents came from, and a refund does not change it. (The revision entitlement on
  * `GET /api/ready-made/purchases/by-clone/:tripId` is a different question and keeps its own filter.)
  */
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { readyMadePurchases, readyMadeTrips, users } from "@shared/schema";
 
@@ -29,6 +29,8 @@ export type ReadyMadeProvenance = {
   authorDisplayName: string | null;
   authorHandle: string | null;
   lastVerifiedAt: string | null;
+  /** R-bf / R-be (R323): the latest check stamp on this copy's confirmed legs — null when none (§13). */
+  legsCheckedAt: string | null;
 };
 
 export async function readyMadeProvenanceForTrip(tripId: string): Promise<ReadyMadeProvenance | null> {
@@ -48,11 +50,17 @@ export async function readyMadeProvenanceForTrip(tripId: string): Promise<ReadyM
     .limit(1);
   if (!row) return null;
   const firstName = row.authorFirstName?.trim();
+  const checked = await db.execute(sql`
+    SELECT max(checked_at) AS at FROM transport_legs
+    WHERE trip_id = ${tripId} AND variant_id IS NULL AND proposal_status = 'confirmed' AND checked_at IS NOT NULL
+  `);
+  const legsAt = (checked.rows?.[0] as any)?.at;
   return {
     sourceReadyMadeTripId: row.sourceReadyMadeTripId,
     listingTitle: row.listingTitle,
     authorDisplayName: firstName ? firstName : null,
     authorHandle: row.authorHandle ?? null,
     lastVerifiedAt: row.lastVerifiedAt ? new Date(row.lastVerifiedAt).toISOString() : null,
+    legsCheckedAt: legsAt ? new Date(legsAt).toISOString() : null,
   };
 }
