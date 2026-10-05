@@ -27,6 +27,7 @@ import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
+import { planMapAnchor } from "@/lib/map-scene";
 import { slipAdvisorName } from "@/lib/slip-rail";
 import { UpNextHero } from "./UpNextHero";
 import { TripCardDays } from "./TripCardDays";
@@ -1353,6 +1354,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
             expertTravelerNote={plancardData?.trip?.expertTravelerNote}
+            // R321 S11-6: the card's map draws the same stay anchor the slip's map does, through
+            // the ONE derivation (§18 rule 1). The card loads no option sets, so only the stay.
+            anchor={planMapAnchor(days.flatMap((d) => d.activities ?? []))}
             readOnly
             showTravelMinutes={(plancardData as any)?.travelTimesShown === true}
           />

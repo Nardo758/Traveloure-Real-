@@ -24,7 +24,8 @@ interface PlanCardHeaderProps {
   destination: string;
   /** preformatted, e.g. "12 Jun – 19 Jun" */
   dateRange: string;
-  statusLabel: string;
+  /** null ⇒ no status pill (R321 S11-7: a finalized plan's card shows its "Final · vN" chip, not "Planning"). */
+  statusLabel: string | null;
   metrics: PlanCardHeaderMetrics;
   /** optional "Expert: Sofia C." line appended to the location row */
   expertName?: string | null;
@@ -93,9 +94,11 @@ export function PlanCardHeader({
       <div className="relative z-10">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-              ⚡ {statusLabel}
-            </span>
+            {statusLabel && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                ⚡ {statusLabel}
+              </span>
+            )}
             {badges}
           </div>
           {topRight && <div className="flex-shrink-0 text-right">{topRight}</div>}

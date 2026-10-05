@@ -29,9 +29,7 @@
  *   3b SUGGESTION FROM YOUR EXPERT — the EXISTING `ExpertSuggestionsPanel` (C2's decline-with-
  *     reason), mounted here and nowhere else on this page (`PlanCard suggestionsHome="rail"`).
  *   4 NEED TO CHANGE THE PLAN? — "Back to planning", the SAME `useReopenMutation` the slip's Finish
- *     card calls, SUPPRESSED inside the 48-hour window and once underway by the SAME predicate the
- *     slip suppresses its Reopen with (`tripCardForcedPrimaryByDateAlone`, now zone-aware through
- *     `shared/plan-timing.ts`). With no zone the predicate compares on the date alone, as stated there.
+ *     card calls, offered on any finalized plan, underway included (R321 S11-1).
  *
  * NOT here, deliberately: the push-consent card (the brief draws it absent; no stub), and any
  * booking-agent DRAWER (L17). Every card is owner-only: each rail it reads is owner-gated — which
@@ -44,7 +42,6 @@ import { ExternalLink, MessageCircle, Undo2, ShoppingBag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { tripCardForcedPrimaryByDateAlone } from "@shared/trip-primary-surface";
 import { readBookingAgentStatus } from "@/lib/booking-agent-status";
 import { earnerProfilePath } from "@/lib/earner-address";
 import { useAskExpert } from "@/lib/use-ask-expert";
@@ -247,22 +244,9 @@ function YourExpertCard({ trip, advisor }: { trip: TripCardRailTrip; advisor: Sl
 function BackToPlanningCard({ trip }: { trip: TripCardRailTrip }) {
   const reopen = useReopenMutation(trip.id);
   const [, navigate] = useLocation();
-  // The SAME suppression the slip's Finish card applies to its Reopen (§18 rule 1): inside the
-  // 48-hour window or underway the Trip Card is primary regardless, so reopening would change
-  // nothing visible and offering it would be a false reversal (R-F).
-  //
-  // IT IS THE ZONE-FREE PREDICATE, DELIBERATELY, AND THAT IS NOT AN OVERSIGHT. Making
-  // `tripCardForcedPrimaryByDateAlone` zone-aware means `shared/trip-primary-surface.ts` reading
-  // `shared/plan-timing.ts`, which imports the window constant back from it — a cycle. Lane L10
-  // owns that module and its import direction; a lane may not silently reverse it, and two
-  // predicates answering "is the Trip Card already primary?" would be the drift §18 rule 1 names.
-  // So this rail asks the ONE existing question, gets the answer the slip gets, and the zone-aware
-  // refinement is left to whichever lane moves the constant deliberately.
-  const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-  if (!trip.finalizedAt || forcedByDateAlone) return null;
+  // R321 S11-1: offered to the owner of any finalized plan, underway included — the SAME rule as
+  // the slip's Finish card. The 48-hour suppression is retired (decision-maker, smoke 11).
+  if (!trip.finalizedAt) return null;
   return (
     <RailCard card="back-to-planning" title="Need to change the plan?">
       <RailNote>

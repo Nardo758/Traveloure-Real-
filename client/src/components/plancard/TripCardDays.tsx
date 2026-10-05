@@ -22,11 +22,12 @@ import { Button } from "@/components/ui/button";
 import { DayBlock } from "@/components/plan/DayBlock";
 import { ItemRow } from "@/components/plan/ItemRow";
 import { ItemSheet } from "@/components/plan/ItemSheet";
+import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { factCheckedLabel, itemFactsLine } from "@/lib/place-facts";
-import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, dayNavigateHref, isCardToday, navigateHref } from "@/lib/trip-card";
+import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine } from "@/lib/trip-card";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { apiRequest } from "@/lib/queryClient";
 import { FEEDBACK_CODES } from "@shared/feedback";
@@ -37,7 +38,7 @@ import type { FactView } from "@shared/content-facts";
 import type { FinalCardMeta } from "@shared/trip-card-final";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
-import { getUpNextInfo, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
+import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -73,6 +74,18 @@ function LegLine({ leg, showMinutes }: { leg: DayTransport; showMinutes: boolean
   );
 }
 
+function NowLine({ now }: { now: Date }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-1" data-testid="now-line">
+      <div className="flex-1 h-px bg-red-400/60" />
+      <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full border border-red-200 dark:border-red-800">
+        {nowHHMM(now)} now
+      </span>
+      <div className="flex-1 h-px bg-red-400/60" />
+    </div>
+  );
+}
+
 export function TripCardDays(props: TripCardDaysProps) {
   const { tripId, days, timeZone } = props;
   const todayIso = calendarDayOf(props.now ?? new Date(), timeZone);
@@ -82,6 +95,9 @@ export function TripCardDays(props: TripCardDaysProps) {
     return t >= 0 ? days[t].dayNum : days[order[0]]?.dayNum ?? null;
   });
   const [sheetFor, setSheetFor] = useState<PlanCardActivity | null>(null);
+  // R321 (S11-5): the card's sheet carries "Ask a local about this" (owner), recording the question
+  // on the same `expert_interest` rail the slip uses.
+  const [askOpenFor, setAskOpenFor] = useState<string | null>(null);
 
   // Photos: the day's stored photo (the final's own references), and live-resolved thumbnails for
   // TODAY's rows only — none on other rows, versions or the map (R-aq).
@@ -94,7 +110,9 @@ export function TripCardDays(props: TripCardDaysProps) {
   const liveNow = useLiveNow();
   const now = props.now ?? liveNow;
   const todayLegs = [...(today?.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0)) as any[];
-  const upNext = today ? getUpNextInfo(today, todayLegs, now, visited, timeZone) : null;
+  // R321 (S11-2): the stay is the day's anchor, not a stop — the engine sees the stop list only, so its
+  // indices are the rendered rows' and Up next is the next timed stop.
+  const upNext = today ? getUpNextInfo({ ...today, activities: (today.activities ?? []).filter((a) => !isStayActivity(a)) }, todayLegs, now, visited, timeZone) : null;
   const stored = props.finalCard?.photos ?? {};
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 
@@ -205,11 +223,13 @@ export function TripCardDays(props: TripCardDaysProps) {
 
       {order.map((i) => {
         const d = days[i];
-        const acts = d.activities ?? [];
+        // R321 (S11-2): the stay renders as "Staying at …" in the day header, never as a stop.
+        const stays = (d.activities ?? []).filter(isStayActivity);
+        const acts = (d.activities ?? []).filter((a) => !isStayActivity(a));
         const isToday = isCardToday(d, todayIso);
         const legs = [...(d.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0));
-        const dayHref = dayNavigateHref(acts.filter((a) => a.type !== "accommodation").map((a) => ({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null })), props.destination);
-        const firstPhotoId = acts.find((a) => a.type !== "accommodation" && stored[a.id])?.id ?? null;
+        const dayHref = dayNavigateHref(acts.map((a) => ({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null })), props.destination);
+        const firstPhotoId = acts.find((a) => stored[a.id])?.id ?? null;
         return (
           <DayBlock
             key={d.dayNum}
@@ -218,26 +238,36 @@ export function TripCardDays(props: TripCardDaysProps) {
             stats={dayBlockStats({ stops: acts.length, hoursOn: acts.filter((a) => itemFactsLine(props.placeFacts?.[a.id], d.dateIso ?? null)).length })}
             open={openDay === d.dayNum}
             onOpenChange={(o) => setOpenDay(o ? d.dayNum : null)}
-            photo={firstPhotoId ? <PlacePhoto photo={stored[firstPhotoId]} testId={`card-day-photo-${d.dayNum}`} /> : null}
+            photo={
+              firstPhotoId ? (
+                <PlacePhoto
+                  photo={stored[firstPhotoId]}
+                  testId={`card-day-photo-${d.dayNum}`}
+                  // R321 (S11-4): the day's photo opens its stop's ItemSheet.
+                  onClick={() => setSheetFor(acts.find((a) => a.id === firstPhotoId) ?? null)}
+                />
+              ) : null
+            }
             aside={
-              dayHref ? (
-                <a href={dayHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline" data-testid={`card-day-navigate-${d.dayNum}`}>
-                  <Navigation className="w-3 h-3" /> Navigate the day
-                </a>
+              stays.length || dayHref ? (
+                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {stays.length ? (
+                    <span className="text-muted-foreground" data-testid={`card-day-stay-${d.dayNum}`}>
+                      {stayingAtLine(stays[0].name)}
+                    </span>
+                  ) : null}
+                  {dayHref ? (
+                    <a href={dayHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline" data-testid={`card-day-navigate-${d.dayNum}`}>
+                      <Navigation className="w-3 h-3" /> Navigate the day
+                    </a>
+                  ) : null}
+                </span>
               ) : null
             }
           >
             {acts.map((a, idx) => (
               <Fragment key={a.id}>
-                {isToday && upNext?.showNowLine && idx === upNext.upNextIndex ? (
-                  <div className="flex items-center gap-2 px-3 py-1" data-testid="now-line">
-                    <div className="flex-1 h-px bg-red-400/60" />
-                    <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full border border-red-200 dark:border-red-800">
-                      {nowHHMM(now)} now
-                    </span>
-                    <div className="flex-1 h-px bg-red-400/60" />
-                  </div>
-                ) : null}
+                {isToday && upNext?.nowLineIndex === idx ? <NowLine now={now} /> : null}
                 <ItemRow
                   item={a}
                   facts={props.placeFacts?.[a.id]}
@@ -255,6 +285,7 @@ export function TripCardDays(props: TripCardDaysProps) {
                 {legs[idx] && idx < acts.length - 1 ? <LegLine leg={legs[idx]} showMinutes={props.showTravelMinutes} /> : null}
               </Fragment>
             ))}
+            {isToday && acts.length > 0 && upNext?.nowLineIndex === acts.length ? <NowLine now={now} /> : null}
           </DayBlock>
         );
       })}
@@ -262,7 +293,12 @@ export function TripCardDays(props: TripCardDaysProps) {
       {sheetFor ? (
         <ItemSheet
           open={!!sheetFor}
-          onOpenChange={(o) => !o && setSheetFor(null)}
+          onOpenChange={(o) => {
+            if (!o) {
+              setSheetFor(null);
+              setAskOpenFor(null);
+            }
+          }}
           item={{ id: sheetFor.id, name: sheetFor.name, time: sheetFor.time, location: sheetFor.location }}
           facts={props.placeFacts?.[sheetFor.id]}
           timeZone={timeZone}
@@ -270,6 +306,12 @@ export function TripCardDays(props: TripCardDaysProps) {
           expertNote={sheetFor.expertNote ? { note: sheetFor.expertNote, author: props.advisorName } : null}
           navigateHref={navigateHref({ name: sheetFor.name, lat: sheetFor.lat ?? null, lng: sheetFor.lng ?? null }, props.destination)}
           bookingLine={slipItemBookingLine(sheetFor)}
+          onAskLocal={props.isOwner ? () => setAskOpenFor((cur) => (cur === sheetFor.id ? null : sheetFor.id)) : null}
+          askLocalPanel={
+            props.isOwner && askOpenFor === sheetFor.id ? (
+              <ItemAskLocalPanel tripId={tripId} itemId={sheetFor.id} onClose={() => setAskOpenFor(null)} />
+            ) : null
+          }
         />
       ) : null}
 

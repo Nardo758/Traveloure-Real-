@@ -206,3 +206,28 @@ export const PIN_STYLE: Readonly<Record<PinState, { fill: string; ring: string; 
 };
 export const BROWSE_TEAL = "#14B8A6";
 export const ANCHOR_COLOR = "#7C3AED";
+
+/**
+ * THE PLAN'S MAP ANCHOR (R321, S11-6) — ONE derivation for the slip's map and the Trip Card's map
+ * (§18 rule 1). The located stay wins; otherwise the item the plan is built around, when located.
+ * No located candidate ⇒ null: an anchor is never guessed onto the map (§13).
+ */
+export interface AnchorCandidate {
+  id: string;
+  name: string;
+  type?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+}
+
+function anchorLocated(a: AnchorCandidate): boolean {
+  return typeof a.lat === "number" && typeof a.lng === "number" && Number.isFinite(a.lat) && Number.isFinite(a.lng);
+}
+
+export function planMapAnchor(activities: readonly AnchorCandidate[], anchorItemId?: string | null): MapAnchor | null {
+  const stay = activities.find((a) => a.type === "accommodation" && anchorLocated(a));
+  if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng! };
+  const built = anchorItemId ? activities.find((a) => a.id === anchorItemId && anchorLocated(a)) : undefined;
+  if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng! };
+  return null;
+}
