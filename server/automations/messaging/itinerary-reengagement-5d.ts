@@ -1,0 +1,2 @@
+import { itineraryFollowupDefinition } from "./_itinerary-followup-definition";
+export const itineraryReengagement5dAutomation = itineraryFollowupDefinition("messaging.itinerary-reengagement-5d", "itinerary_reengagement_5d", 120);

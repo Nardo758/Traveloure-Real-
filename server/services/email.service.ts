@@ -85,6 +85,10 @@ export interface SendEmailParams {
   text?: string;
   /** Override per-call; falls back to EMAIL_REPLY_TO env var. */
   replyTo?: string;
+  /** Opt-in provider retry deduplication; existing callers retain their send behavior. */
+  idempotencyKey?: string;
+  /** Internal outbox opt-in; never forwarded to the email provider. */
+  generationNotice?: boolean;
   /** Optional files, including vendor coordination calendar invitations. */
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }
@@ -135,7 +139,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 
   try {
     const client = createClient(apiKey);
-    const { data, error } = await client.emails.send({
+    const payload = {
       from,
       to: params.to,
       subject: params.subject,
@@ -143,7 +147,10 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       ...(params.text ? { text: params.text } : {}),
       replyTo: replyTo,
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
-    });
+    };
+    const { data, error } = params.idempotencyKey
+      ? await client.emails.send(payload, { idempotencyKey: params.idempotencyKey })
+      : await client.emails.send(payload);
 
     if (error) {
       console.error("[email] sendEmail Resend error:", {

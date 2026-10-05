@@ -1927,4 +1927,7 @@ export const MIGRATION_FILES = [
   // extends to legs). Two nullable columns, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts.
   // APPROVED Oct 4, 2026.
   "350_transport_leg_coord_source.sql",
+  // 351 — RETIRED, never applied: the itinerary follow-up booking-guard triggers (#1274) were rejected
+  // by the decision-maker on Oct 4, 2026 (surface spec v1.3.5 §9: no functions, triggers,
+  // CREATE OR REPLACE or DO blocks in any migration). The number is not reused.
 ] as const;

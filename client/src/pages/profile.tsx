@@ -499,6 +499,18 @@ export default function Profile() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Itinerary follow-up emails</CardTitle>
+            <CardDescription>Choose planning reminders, your timezone, and quiet hours. Booking and security emails stay separate.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <a href="/email-preferences" className="text-primary underline underline-offset-4" data-testid="link-itinerary-email-preferences">
+              Manage itinerary email preferences
+            </a>
+          </CardContent>
+        </Card>
+
         {/* Notification email — experts and providers only */}
         {isEarner && (
           <Card className="border border-border">

@@ -59,6 +59,10 @@ const SKIP_PATHS = new Set<string>([
   '/sitemap.xml',
   '/robots.txt',
   '/favicon.ico',
+  // Server-rendered HTML page (server/routes/itinerary-email-preferences.routes.ts, #1274): the
+  // itinerary follow-up email preferences form, linked from profile.tsx as a full-page link. It is
+  // served by Express, not the SPA, so it has no <Route>.
+  '/email-preferences',
 ]);
 
 // ── Source file collection ────────────────────────────────────────────────────

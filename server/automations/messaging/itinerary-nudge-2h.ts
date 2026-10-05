@@ -1,0 +1,2 @@
+import { itineraryFollowupDefinition } from "./_itinerary-followup-definition";
+export const itineraryNudge2hAutomation = itineraryFollowupDefinition("messaging.itinerary-nudge-2h", "itinerary_nudge_2h", 2);
