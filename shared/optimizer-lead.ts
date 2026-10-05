@@ -160,20 +160,49 @@ export interface ScheduledItem {
 }
 
 /**
+ * ONE frame for the overlap rule (R315, ledger `2026-10-05-anchor-overlap-wall-clock`). An anchor's
+ * `anchor_datetime` is a plain timestamp holding the plan's WALL-CLOCK (R-aa writes "YYYY-MM-DDTHH:MM:00";
+ * `anchorWallTime` reads it back the same way), and drizzle hands it over as a Date whose UTC parts ARE
+ * that wall-clock. An item's `date` + `startTime` are wall-clock strings too (LD 30). So both sides are
+ * read as UTC-naive milliseconds: a zone-less string is read as UTC, never in the server's own zone —
+ * which is what made the rule depend on the machine's TZ (an item at 13:00 against a 14:00 take-off
+ * passed on a Tokyo or US server and failed only on a UTC one).
+ */
+function wallClockMs(value: string | Date | null | undefined): number {
+  if (value instanceof Date) return value.getTime();
+  const s = String(value ?? "").trim();
+  if (!s) return NaN;
+  // A string that names its own zone (Z or ±HH:MM) is parsed as given; a zone-less one is wall-clock.
+  return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s : `${s}Z`);
+}
+
+/** An item's wall-clock instant on its own date ("HH:MM" or "HH:MM:SS"); NaN when either is missing. */
+function itemWallClockMs(date: string | null | undefined, time: string | null | undefined): number {
+  const d = /^\d{4}-\d{2}-\d{2}/.exec(String(date ?? ""))?.[0];
+  const t = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(time ?? "").trim());
+  if (!d || !t) return NaN;
+  return Date.parse(`${d}T${t[1].padStart(2, "0")}:${t[2]}:${t[3] ?? "00"}Z`);
+}
+
+/**
  * Pure. Items overlapping an anchor's buffer window — THE rule `POST /api/trips/:tripId/validate-schedule`
- * applies (moved here so the preview and that route read one implementation, §18 rule 1). Times are
- * read as written; an item with no time or no date is not checked.
+ * applies (moved here so the preview and that route read one implementation, §18 rule 1). Anchor and
+ * item are compared in ONE wall-clock frame (`wallClockMs`), whatever the server's TZ; an item with no
+ * time, no date or an unreadable one is not checked.
  */
 export function anchorConflicts(anchors: readonly AnchorWindow[], items: readonly ScheduledItem[]): Array<{ anchorId: string; anchorType: string; conflict: string; dayNumber: number | null }> {
   const out: Array<{ anchorId: string; anchorType: string; conflict: string; dayNumber: number | null }> = [];
   for (const anchor of anchors) {
-    const anchorTime = new Date(anchor.anchorDatetime).getTime();
+    const anchorTime = wallClockMs(anchor.anchorDatetime);
+    if (!Number.isFinite(anchorTime)) continue;
     const bufferStart = anchorTime - (anchor.bufferBefore || 0) * 60000;
     const bufferEnd = anchorTime + (anchor.bufferAfter || 0) * 60000;
     for (const item of items) {
       if (!item.startTime || !item.dayNumber) continue;
-      const itemStart = new Date(`${item.date || ""}T${item.startTime}`).getTime();
-      const itemEnd = item.endTime ? new Date(`${item.date || ""}T${item.endTime}`).getTime() : itemStart + (item.durationMinutes || 60) * 60000;
+      const itemStart = itemWallClockMs(item.date, item.startTime);
+      if (!Number.isFinite(itemStart)) continue;
+      const end = item.endTime ? itemWallClockMs(item.date, item.endTime) : NaN;
+      const itemEnd = Number.isFinite(end) ? end : itemStart + (item.durationMinutes || 60) * 60000;
       // A flight is a one-way edge, not only a window (R-aa, step 6): nothing may start before you are
       // out of the arrival airport, and nothing may run past the time to leave for a departure — a stop
       // AFTER take-off is a conflict too, not only one overlapping the buffer.

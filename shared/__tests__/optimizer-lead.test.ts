@@ -13,6 +13,9 @@
  *   O8 order and cap: problems first, then gains, at most three; zero findings ⇒ an empty list
  *   O9 the cost delta line: only after a run, only with a priced item, never a range
  *   O10 parseDayHours: Google's narrow spaces, inherited meridiem, several ranges, 24h, Closed
+ *   O11 R315: the overlap rule reads anchor and item in ONE wall-clock frame, whatever the server's TZ —
+ *       a DB-shaped anchor (a Date whose UTC parts are the plan's wall-clock), a zone-less string anchor
+ *       and the item's date + time agree on a Tokyo and a Los Angeles process exactly as on a UTC one
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -75,6 +78,27 @@ test("O4 timed-entry conflicts through the one overlap rule", () => {
   assert.equal(anchorConflicts(anchors, sched).length, 1);
   assert.deepEqual(timedEntryConflicts(anchors, sched), { kind: "timed_entry_conflict", count: 1, days: [5] });
   assert.equal(timedEntryConflicts([], sched), null);
+});
+
+test("O11 the overlap rule does not depend on the server's TZ (R315)", () => {
+  const before = process.env.TZ;
+  const items = [
+    { title: "Lunch", dayNumber: 5, date: "2026-11-15", startTime: "13:00" },
+    { title: "Breakfast", dayNumber: 5, date: "2026-11-15", startTime: "08:00" },
+    { title: "No date", dayNumber: 5, date: null, startTime: "13:30" },
+  ];
+  try {
+    for (const tz of ["UTC", "Asia/Tokyo", "America/Los_Angeles"]) {
+      process.env.TZ = tz;
+      for (const at of [new Date("2026-11-15T14:00:00Z"), "2026-11-15T14:00:00", "2026-11-15T14:00:00.000Z"]) {
+        const c = anchorConflicts([{ id: "d", anchorType: "flight_departure", anchorDatetime: at, bufferBefore: 180, bufferAfter: 0 }], items);
+        assert.deepEqual(c.map((x) => x.conflict.split('"')[1]), ["Lunch"], `${tz} / ${String(at)}`);
+      }
+    }
+  } finally {
+    if (before === undefined) delete process.env.TZ;
+    else process.env.TZ = before;
+  }
 });
 
 test("O5 city crossings (est.); smoke 6 has none", () => {
