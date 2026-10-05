@@ -43,6 +43,12 @@ This document captures architectural decisions to maintain consistency across co
    `active_provider_commission_policy` is `beta_flat`, new provider bookings read the `beta_flat` band;
    the four tier bands stay defined and active so an admin can flip the policy to `tiered` without a
    deploy. Ruling 49's deactivation of `beta_flat` is amended by that ledger row.
+   **EVERY FEE IS EDITABLE IN ADMIN WITH NO DEPLOY, AND A NEW BAND SHIPS WITH ITS FEES-SCREEN CONTROL IN
+   THE SAME PR (decision-maker, Oct 5, 2026 — ledger `2026-10-05-handoff-bands-declared`).** `/admin/fee-bands`
+   lists every `fee_bands` row with edit, confirm and the audit log (V-6); a band is complete only when
+   `RESOLVER_FEE_BAND_REQUIREMENTS` also declares it with its fallback, so the screen states what turning
+   it off does instead of "not declared". Pinned for every band a migration seeds from 354 on
+   (`fee-band-admin-guards` D8). A band the screen can't see or explain fails the ruling.
    **Migration 339** (ledger `2026-10-03-beta-flat-band-insert`) inserts the `beta_flat` row when it
    is missing — 051 stamped 001–050 without running them, so production never received 033's seed
    and 338's UPDATE matched nothing — then repeats 338's guarded reactivation and policy upsert.

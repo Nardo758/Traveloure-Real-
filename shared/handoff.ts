@@ -61,6 +61,7 @@ export const HANDOFF_CHANGE_ROUNDS_INCLUDED = 2;
 
 /** R-t: what stage a withdrawal is at, and the band that names its fee. Before accept: none. */
 export type WithdrawalStage = "before_accept" | "after_accept" | "after_delivery";
+/** Mirrors `HANDOFF_WITHDRAWAL_*_BAND` / `ON_TRIP_SUPPORT_BAND` in server/services/fee-band-requirements.ts (pinned equal). */
 export const WITHDRAWAL_FEE_BAND: Record<Exclude<WithdrawalStage, "before_accept">, string> = {
   after_accept: "handoff_withdrawal_accepted",
   after_delivery: "handoff_withdrawal_delivered",

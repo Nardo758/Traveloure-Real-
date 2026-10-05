@@ -11,6 +11,7 @@ name: Spec Coverage Gate
 # THE SPECS HERE ARE PROVEN, NOT ASSUMED. Every one was run to completion on a verification bench
 # and passed in full: auth-form-validation 23/23, booking-payment-isolation 1/1,
 # concierge-phase-a 6/6, executive-card-expand 2/2, expert-booking-decline-dialog 3/3,
+# expert-inbox-questions 3/3 (L2-9, ledger `2026-10-05-inbox-questions-tab`),
 # navbar-responsive 16/16, rbac-security 28/28,
 # stripe-connect-reminder-notification 2/2.
 # Specs from the same sweep with genuine failures are deliberately EXCLUDED and filed in the
@@ -90,6 +91,7 @@ jobs:
             playwright/tests/create-service-layout.spec.ts \
             playwright/tests/executive-card-expand.spec.ts \
             playwright/tests/expert-booking-decline-dialog.spec.ts \
+            playwright/tests/expert-inbox-questions.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
             playwright/tests/rbac-security.spec.ts \
             playwright/tests/stripe-connect-reminder-notification.spec.ts; do
@@ -178,6 +180,7 @@ jobs:
             playwright/tests/create-service-layout.spec.ts \
             playwright/tests/executive-card-expand.spec.ts \
             playwright/tests/expert-booking-decline-dialog.spec.ts \
+            playwright/tests/expert-inbox-questions.spec.ts \
             playwright/tests/navbar-responsive.spec.ts \
             playwright/tests/rbac-security.spec.ts \
             playwright/tests/stripe-connect-reminder-notification.spec.ts
