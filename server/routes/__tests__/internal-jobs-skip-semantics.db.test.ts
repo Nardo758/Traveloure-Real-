@@ -17,12 +17,19 @@
  *
  * Needs a database: S2 and S4 run the REAL jobs (a no-op drain and a no-op earnings release) rather
  * than a stub, so the proof covers the actual wiring the cron hits.
+ *
+ * S2 PARKS the shared outbox (R320, ledger `2026-10-05-internal-jobs-skip-isolated`). The CI job runs
+ * this file after ~20 DB suites on ONE database, and their email rows stay due in `email_outbox`; the
+ * real drain then claimed them, tried to SEND them, bumped their attempt counts and answered
+ * `drained: N` — a failure that depended on what ran first. S2 now moves every row the drain would
+ * claim out of its window for the duration of the test and restores each row's own `retry_after`
+ * after, so "an empty outbox drains 0" is asserted against an outbox that is empty of due work.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { jobHeartbeats } from "@shared/schema";
 import { db } from "../../db";
 import internalRoutes, { runJob } from "../internal.routes";
@@ -75,18 +82,51 @@ test("S1: an overlapping pass answers skipped:true with a reason", async () => {
   });
 });
 
+/**
+ * Move every row `drainOutboxImpl` would claim out of its window, returning each row's own
+ * `retry_after` so it can be put back exactly. The WHERE is the drain's candidate predicate
+ * (`server/services/email-outbox.service.ts`), restated here only to park rows — never to decide one.
+ */
+async function parkDueOutboxRows(): Promise<Array<{ id: number; old_retry_after: Date | null }>> {
+  const result = await db.execute(sql`
+    WITH due AS (
+      SELECT id, retry_after FROM email_outbox
+      WHERE (status IN ('pending', 'failed') AND (retry_after IS NULL OR retry_after <= NOW()))
+         OR (status = 'processing' AND retry_after < NOW() - INTERVAL '1 minute')
+      FOR UPDATE
+    )
+    UPDATE email_outbox AS o
+    SET    retry_after = NOW() + INTERVAL '1 day'
+    FROM   due
+    WHERE  o.id = due.id
+    RETURNING o.id, due.retry_after AS old_retry_after
+  `);
+  return (result.rows ?? []) as Array<{ id: number; old_retry_after: Date | null }>;
+}
+
+async function restoreOutboxRows(parked: Array<{ id: number; old_retry_after: Date | null }>) {
+  for (const row of parked) {
+    await db.execute(sql`UPDATE email_outbox SET retry_after = ${row.old_retry_after} WHERE id = ${row.id}`);
+  }
+}
+
 test("S2: a real drain of an empty outbox reports drained:0, NOT skipped", async () => {
   process.env.INTERNAL_JOB_SECRET = SECRET;
-  await withServer(async (base) => {
-    const res = await postJob(base, "email-outbox");
-    const body = await res.json() as any;
+  const parked = await parkDueOutboxRows();
+  try {
+    await withServer(async (base) => {
+      const res = await postJob(base, "email-outbox");
+      const body = await res.json() as any;
 
-    assert.equal(res.status, 200);
-    assert.equal(body.ok, true);
-    assert.equal(body.skipped, undefined, "a job that actually ran must not claim to be skipped");
-    assert.equal(body.result?.drained, 0, "an empty outbox is an honest drained:0, not silence");
-    assert.equal(body.result?.error, undefined);
-  });
+      assert.equal(res.status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.skipped, undefined, "a job that actually ran must not claim to be skipped");
+      assert.equal(body.result?.drained, 0, "an empty outbox is an honest drained:0, not silence");
+      assert.equal(body.result?.error, undefined);
+    });
+  } finally {
+    await restoreOutboxRows(parked);
+  }
 });
 
 test("S3: a job body resolving undefined is a contract error (500), never a skip", async () => {
