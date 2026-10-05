@@ -12,15 +12,20 @@
  *     that stop (§13);
  *   · the hop map is inline SVG: two stops and a dashed straight line labelled as stop order, not a
  *     route — no tiles and no map component (R-d: one map).
+ * Slice A1 (ledger `2026-10-05-leg-live-hop-path`): when Routes answers, the same inline SVG draws the
+ * leg's ROUTE for its own mode (fetched live per leg and mode, never stored), captioned as that mode's
+ * route with Google's credit; a mode change re-keys the read and redraws. Without an answer — loading,
+ * no key, the cap, no road mode — the dashed stop-order line stays, exactly as before.
  * `picked` is the server's own answer (R303's review read), never re-derived here.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { PlanCardActivity, PlanCardDay } from "@/components/plancard/plancard-types";
-import { LegRow, type StopLeg } from "./LegRow";
+import { LegRow, legModeLabel, type StopLeg } from "./LegRow";
 import { legGapLine } from "./WorkstationDays";
-import { buildLegReviewSteps, firstReviewStep, hopMapPoints, nextOpenStep, type PointLike } from "@/lib/leg-review";
+import { buildLegReviewSteps, firstReviewStep, hopMapPoints, hopPathPoints, nextOpenStep, type PointLike } from "@/lib/leg-review";
+import { decodePolyline, effectiveLegMode, type LegRoutePathResponse, type PathPoint } from "@shared/leg-route-path";
 
 /** A row of `GET /api/trips/:tripId/transport-legs/review` (R303) — only what the stepper reads. */
 interface ReviewRow {
@@ -56,24 +61,41 @@ export interface LegReviewDrawerProps {
 const MAP_W = 320;
 const MAP_H = 150;
 
-/** The hop map: two numbered stops and a dashed straight line, labelled as order, not a route. */
-export function HopMap({ from, to, fromName, toName }: { from: PointLike; to: PointLike; fromName: string; toName: string }) {
-  const pts = hopMapPoints(from, to, MAP_W, MAP_H);
+/**
+ * The hop map. With a live route (`path` + `modeLabel`): the route drawn solid, captioned as that
+ * mode's route, with Google's credit. Without one: two numbered stops and a dashed straight line,
+ * labelled as order, not a route.
+ */
+export function HopMap({ from, to, fromName, toName, path, modeLabel }: {
+  from: PointLike; to: PointLike; fromName: string; toName: string;
+  path?: readonly PathPoint[] | null; modeLabel?: string | null;
+}) {
+  const routed = modeLabel ? hopPathPoints(from, to, path, MAP_W, MAP_H) : null;
+  const pts = routed ?? hopMapPoints(from, to, MAP_W, MAP_H);
   if (!pts) return null;
   return (
-    <figure className="space-y-1" data-testid="leg-review-hop-map">
+    <figure className="space-y-1" data-testid="leg-review-hop-map" data-hop-kind={routed ? "route" : "order"}>
       <svg
         viewBox={`0 0 ${MAP_W} ${MAP_H}`}
         width="100%"
         role="img"
-        aria-label={`Stop order: ${fromName}, then ${toName}`}
+        aria-label={routed ? `${modeLabel} route: ${fromName} to ${toName}` : `Stop order: ${fromName}, then ${toName}`}
         className="rounded-md border border-border bg-muted/30"
       >
-        <line
-          x1={pts.a.x} y1={pts.a.y} x2={pts.b.x} y2={pts.b.y}
-          stroke="currentColor" strokeWidth={2} strokeDasharray="6 5" className="text-muted-foreground"
-          data-testid="leg-review-hop-line"
-        />
+        {routed ? (
+          <polyline
+            points={[routed.a, ...routed.path, routed.b].map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}
+            fill="none" stroke="currentColor" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round"
+            className="text-primary"
+            data-testid="leg-review-hop-route"
+          />
+        ) : (
+          <line
+            x1={pts.a.x} y1={pts.a.y} x2={pts.b.x} y2={pts.b.y}
+            stroke="currentColor" strokeWidth={2} strokeDasharray="6 5" className="text-muted-foreground"
+            data-testid="leg-review-hop-line"
+          />
+        )}
         {[{ p: pts.a, n: 1 }, { p: pts.b, n: 2 }].map(({ p, n }) => (
           <g key={n}>
             <circle cx={p.x} cy={p.y} r={10} className="fill-primary" />
@@ -82,10 +104,30 @@ export function HopMap({ from, to, fromName, toName }: { from: PointLike; to: Po
         ))}
       </svg>
       <figcaption className="text-[11px] text-muted-foreground" data-testid="leg-review-hop-caption">
-        1 {fromName} → 2 {toName} · stop order, not a route
+        {routed
+          ? `${modeLabel} route · 1 ${fromName} → 2 ${toName} · Route: Google Maps`
+          : `1 ${fromName} → 2 ${toName} · stop order, not a route`}
       </figcaption>
     </figure>
   );
+}
+
+/**
+ * The live path for the leg on screen, keyed by leg AND effective mode so a mode change refetches and
+ * redraws. A read with no side effects; never retried (each call spends the Maps cap).
+ */
+function useLegPath(tripId: string, legId: string | null, mode: string | null, enabled: boolean) {
+  return useQuery<LegRoutePathResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs/${legId}/path`, mode],
+    queryFn: async () => {
+      const res = await fetch(`/api/trips/${tripId}/transport-legs/${legId}/path`, { credentials: "include" });
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    },
+    enabled: enabled && !!tripId && !!legId && !!mode,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
 }
 
 export function LegReviewDrawer(props: LegReviewDrawerProps) {
@@ -113,6 +155,10 @@ export function LegReviewDrawer(props: LegReviewDrawerProps) {
 
   const step = steps[index];
   const legById = new globalThis.Map(legs.map((l) => [l.id, l] as const));
+  const shownLeg = step?.kind === "leg" ? legById.get(step.leg.id) ?? null : null;
+  const shownMode = shownLeg ? effectiveLegMode(shownLeg) : null;
+  const { data: livePath } = useLegPath(tripId, shownLeg?.id ?? null, shownMode, open);
+  const pathPoints = livePath?.available && livePath.legId === shownLeg?.id ? decodePolyline(livePath.encodedPolyline) : null;
 
   const confirm = async (legId: string) => {
     try {
@@ -146,7 +192,14 @@ export function LegReviewDrawer(props: LegReviewDrawerProps) {
             <p className="text-xs font-semibold text-muted-foreground">Day {step.dayNumber}</p>
             {step.kind === "leg" ? (
               <>
-                <HopMap from={step.leg.from} to={step.leg.to} fromName={step.from.name} toName={step.to.name} />
+                <HopMap
+                  from={step.leg.from}
+                  to={step.leg.to}
+                  fromName={step.from.name}
+                  toName={step.to.name}
+                  path={pathPoints}
+                  modeLabel={pathPoints && shownMode ? legModeLabel(shownMode) : null}
+                />
                 {legById.get(step.leg.id) ? (
                   <LegRow
                     kind="stops"

@@ -63,6 +63,8 @@ import {
   getTripTransportLeg,
   updateTripTransportLeg,
 } from "../services/trip-transport-legs.service";
+import { resolveLegRoutePath } from "../services/leg-route-path.service";
+import { getRoutePathForMode } from "../services/routes.service";
 
 const router = Router();
 
@@ -182,6 +184,29 @@ router.get("/api/trips/:tripId/transport-legs/review", isAuthenticated, async (r
   } catch (err) {
     console.error("[TransportLegs] review error:", err);
     res.status(500).json({ message: "Failed to load the leg review" });
+  }
+});
+
+/**
+ * GET /api/trips/:tripId/transport-legs/:legId/path — Slice A1 (ledger `2026-10-05-leg-live-hop-path`).
+ * The route SHAPE for the leg's own mode (the author's pick, else the engine's recommendation), fetched
+ * live from Google Routes for the leg review's hop map and never stored (`no-store`). The same read gate
+ * and the same 404 as the review read above; spend is the Maps caller's daily cap. A leg with no
+ * coordinates, no road mode or no Routes answer says so (`available:false` + reason) — the drawer keeps
+ * its dashed stop-order line; nothing is guessed.
+ */
+router.get("/api/trips/:tripId/transport-legs/:legId/path", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId, legId } = req.params;
+    const denied = await authorizeTripLogistics(tripId, sessionUserId(req), "GET /api/trips/:tripId/transport-legs/:legId/path");
+    if (denied) return res.status(denied.status === 401 ? 401 : 404).json({ message: denied.status === 401 ? "Not authenticated" : "Trip not found" });
+    const leg = await getTripTransportLeg(tripId, legId);
+    if (!leg) return res.status(404).json({ message: "Leg not found" });
+    res.set("Cache-Control", "no-store");
+    res.json(await resolveLegRoutePath(leg, getRoutePathForMode));
+  } catch (err) {
+    console.error("[TransportLegs] path error:", err);
+    res.status(500).json({ message: "Failed to load the leg path" });
   }
 });
 
