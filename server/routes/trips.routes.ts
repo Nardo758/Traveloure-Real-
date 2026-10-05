@@ -2,6 +2,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { setItemLock } from '../services/item-lock.service';
 import { platformCarFits } from '../services/airport-leg.service';
 import { anchorConflicts } from '@shared/optimizer-lead';
+import { anchorDatetimeFromInput, anchorWallClockString } from '@shared/anchor-time';
 import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -1623,16 +1624,21 @@ router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
 // the shared Drizzle `anchorDatetime` contract (a strict z.date()) is unsatisfiable
 // over HTTP — every client would 400. We coerce HERE (not in the shared schema, which
 // stays untouched) so any caller — this UI, the expert workspace, future callers — can
-// send an ISO string. z.coerce.date() still REJECTS non-dates (Invalid Date → 400).
+// send an ISO string. An unreadable value is still an Invalid Date and still a 400.
+// R316 (ledger `2026-10-05-anchor-writers-wall-clock`): a ZONE-LESS string is the plan's wall-clock and
+// is read as UTC-naive through the ONE convention reader (`anchorDatetimeFromInput`) — `z.coerce.date()`
+// read it in the SERVER's zone, so the same "14:00" stored differently on a UTC and a non-UTC host. A
+// string that names its own zone is taken as given, unchanged.
+const anchorDatetimeInput = z.preprocess(anchorDatetimeFromInput, z.date());
 const anchorCreateInput = insertTemporalAnchorSchema.extend({
-  anchorDatetime: z.coerce.date(),
+  anchorDatetime: anchorDatetimeInput,
 });
 // Update: all fields optional; tripId omitted so an anchor can't be reassigned to
 // another trip (mass-assign guard). Same coercion on anchorDatetime.
 const anchorUpdateInput = insertTemporalAnchorSchema
   .omit({ tripId: true })
   .partial()
-  .extend({ anchorDatetime: z.coerce.date().optional() });
+  .extend({ anchorDatetime: anchorDatetimeInput.optional() });
 
 router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
@@ -1646,13 +1652,13 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
       const body = { ...req.body, tripId: req.params.tripId };
 
       if (!body.anchorDatetime && body.dayNumber && body.suggestedTime) {
+        // R316: the suggestion's day + time are the plan's wall-clock — built as a zone-less string on
+        // the plan's own calendar (UTC day arithmetic), never through setHours in the server's zone.
         const startDate = trip.startDate?.toString() || new Date().toISOString().split('T')[0];
-        const tripStart = new Date(startDate);
-        const anchorDate = new Date(tripStart);
-        anchorDate.setDate(anchorDate.getDate() + (body.dayNumber - 1));
-        const [h, m] = body.suggestedTime.split(':');
-        anchorDate.setHours(parseInt(h), parseInt(m), 0, 0);
-        body.anchorDatetime = anchorDate.toISOString();
+        const day = new Date(Date.parse(`${startDate.slice(0, 10)}T00:00:00Z`) + (Number(body.dayNumber) - 1) * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+        body.anchorDatetime = anchorWallClockString(day, String(body.suggestedTime)) ?? undefined;
         delete body.dayNumber;
         delete body.suggestedTime;
       }
