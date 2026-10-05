@@ -107,7 +107,7 @@ test("P1: an approved listing's preview is the public teaser, nothing private", 
   const body = await r.json();
   assert.equal(body.slug, slug);
   assert.equal(body.path, `/t/${slug}`);
-  assert.equal(body.priceLine, "From $49 · fees included");
+  assert.equal(body.priceLine, "From $49 · no fee on this purchase");
   assert.deepEqual(body.expert, { name: "Aiko", handle: `rmp${RUN}`, localVerified: false });
   assert.deepEqual(body.heroCredit, { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann" });
   assert.deepEqual(body.sampleDay.stops.map((s: any) => s.title), ["Fushimi Inari", "Tofuku-ji", "Nishiki Market"]);
@@ -146,7 +146,7 @@ test("P3: /t/:slug carries real OG and Twitter tags; stale 301s; unknown falls t
   assert.ok(html.includes(`<meta name="twitter:image" content="${card}" />`));
   assert.match(html, /<meta property="og:image:width" content="1200" \/>/);
   assert.match(html, new RegExp(`<meta property="og:title" content="${TITLE} \\| Traveloure" />`));
-  assert.match(html, /From \$49 · fees included/);
+  assert.match(html, /From \$49 · no fee on this purchase/);
   assert.equal((html.match(/property="og:title"/g) ?? []).length, 1, "the template's own tags are stripped");
 
   const stale = await fetch(`${base}/t/an-old-title-${readyMadeSlug({ id: ids.listing, title: "" })}`, { redirect: "manual" });
