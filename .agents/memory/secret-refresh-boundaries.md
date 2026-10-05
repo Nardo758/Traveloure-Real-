@@ -22,3 +22,11 @@ Configuration round-trips must also preserve line endings, not just parsed value
 **Why:** Programmatic shell output can contain terminal-style CRLF; feeding that output into the validated configuration writer can change every line and fail clean-checkout preflight despite identical TOML settings.
 
 **How to apply:** Treat shell output as terminal text rather than byte-exact file data when restoring reviewed configuration, and confirm the resulting diff is empty.
+
+## Production release constraints
+
+Keep `EXPERT_SCRAPE_JOBS_ENABLED`, `TRIP_PASS_RUNS_PER_TRIP` and both R314 email settings unset in production. Use Track A's authoritative list for exact setting names, not operator shorthand. Keep previously approved switches and caps; add cost overrides only where Track A confirms a default differs from the approved list.
+
+**Why:** The operator explicitly excluded those settings and clarified configuration authority. Treating an unset setting as missing, or inventing a cost-variable name, would change the approved deployment.
+
+**How to apply:** Check exclusions before requesting release settings. Resolve email-setting names from the authoritative list rather than guessing. Preserve these constraints when switching between release and engineering branches.

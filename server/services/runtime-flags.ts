@@ -19,6 +19,14 @@ export const HEALTH_FLAG_NAMES = [
   "FLIGHT_LOOKUP_ENABLED",
   // R-bo (work plan L1-19): expert scrape jobs, admin-only and OFF in production.
   "EXPERT_SCRAPE_JOBS_ENABLED",
+  // R299 Maps billing switches: report configuration only, never credentials,
+  // caps, prices or a claim that a provider request succeeded.
+  "MAPS_ROUTES_DRIVE_ENABLED",
+  "MAPS_ROUTES_MODE_ENABLED",
+  "MAPS_ROUTES_TRANSIT_ENABLED",
+  "MAPS_ROUTE_MATRIX_ENABLED",
+  "MAPS_GEOCODE_ENABLED",
+  "MAPS_PLACES_TEXT_SEARCH_ENABLED",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;
