@@ -1,5 +1,5 @@
 /**
- * R312 (ledger `2026-10-04-leg-google-coords-refresh`; R311 — LD 57 extends to transport_legs): a Google
+ * R313 (ledger `2026-10-04-leg-google-coords-refresh`; R311 — LD 57 extends to transport_legs): a Google
  * coordinate on a leg is a CACHE that may live at most this many days from its fetch
  * (`coord_fetched_at`). Google's Places terms set the 30-day ceiling, so the env can only SHORTEN it.
  */

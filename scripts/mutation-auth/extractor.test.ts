@@ -205,9 +205,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 656 / 647 → 657 / 648 (PR #1283, daily facts recheck registration): POST /internal/jobs/facts-recheck,
  * the scheduler's trigger behind requireInternalSecret — "other" / public-or-system like its sibling
  * /internal/jobs/* triggers: other 219 → 220, public-or-system 40 → 41.
- * 657 / 648 → 658 / 649 (ledger `2026-10-04-leg-google-coords-refresh`, R312): POST
+ * 657 / 648 → 658 / 649 (ledger `2026-10-04-leg-google-coords-refresh`, R313): POST
  * /internal/jobs/leg-google-coords, the daily leg Google-coordinate refresh behind requireInternalSecret —
- * "other" / public-or-system like its sibling triggers: other 220 → 221, public-or-system 41 → 42.
+ * "other" / public-or-system like its sibling triggers: other 220 → 221, public-or-system 40 → 41 (after
+ * #1284 moved one route public-or-system → session-self).
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -239,7 +240,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/expert/inbox/questions/:id/answer (ledger `2026-10-04-expert-inbox-questions`):
   // user-data, session-self; under the expert role backstop.
   // + POST /internal/jobs/facts-recheck (PR #1283): other, public-or-system — the internal-secret trigger.
-  // + POST /internal/jobs/leg-google-coords (R312): other, public-or-system — the internal-secret trigger.
+  // + POST /internal/jobs/leg-google-coords (R313): other, public-or-system — the internal-secret trigger.
   assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 229, other: 221 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
@@ -250,9 +251,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // POST /api/optimization-preview: briefly public-or-system when step 6 (R296) removed its only session
   // read (the retired free re-run); R297 gives it the plan-route session gate (decision-maker ruling,
   // Oct 4, 2026), so it is session-self again — 401 anonymous, the plan read gate when it names a plan.
+  // POST /api/geocode moved public-or-system -> session-self (R312, ledger `2026-10-04-maps-session-and-browser-key`):
+  // every call spends a Geocoding request, so it requires a session (decision-maker ruling, Oct 4, 2026).
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 336, "resource-owner": 97,
-    signature: 6, "public-or-system": 42, unknown: 0,
+    "admin-role": 168, "session-self": 337, "resource-owner": 97,
+    signature: 6, "public-or-system": 41, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

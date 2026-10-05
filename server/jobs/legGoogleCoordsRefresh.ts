@@ -1,5 +1,5 @@
 /**
- * `leg-google-coords` — the daily refresh-or-clear of Google coordinates on legs (R312, ledger
+ * `leg-google-coords` — the daily refresh-or-clear of Google coordinates on legs (R313, ledger
  * `2026-10-04-leg-google-coords-refresh`; the follow-up R311 named — LD 57 extends to transport_legs).
  *
  * A leg built from a Google Places point says so (`coord_source = 'google'`, `coord_fetched_at`,

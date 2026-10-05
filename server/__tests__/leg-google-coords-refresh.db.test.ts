@@ -1,5 +1,5 @@
 /**
- * R312 — the daily refresh-or-clear of Google coordinates on legs (ledger
+ * R313 — the daily refresh-or-clear of Google coordinates on legs (ledger
  * `2026-10-04-leg-google-coords-refresh`; R311 — LD 57 extends to transport_legs).
  *
  *   J1  a plan is a candidate only when it holds a Google-sourced leg within a day of the max age (or

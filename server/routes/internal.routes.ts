@@ -202,7 +202,7 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // ISO week, and every other day answers `already_drafted` without a model call. Still a real pass.
   { job: "travelpulse-weekly", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   { job: "facts-recheck", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
-  // R312: refresh-or-clear Google coordinates on legs — daily, so none outlives the 30-day ceiling.
+  // R313: refresh-or-clear Google coordinates on legs — daily, so none outlives the 30-day ceiling.
   { job: "leg-google-coords", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
@@ -398,7 +398,7 @@ router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, 
   res.status(status).json(body);
 });
 
-// R312 (ledger `2026-10-04-leg-google-coords-refresh`): refresh a leg's Google coordinate from the
+// R313 (ledger `2026-10-04-leg-google-coords-refresh`): refresh a leg's Google coordinate from the
 // stay's live point, or delete the leg past the max age. Per-plan failures are counts; only a failed
 // candidate scan is an error, which never stamps a success heartbeat.
 router.post("/internal/jobs/leg-google-coords", requireInternalSecret, async (_req, res) => {

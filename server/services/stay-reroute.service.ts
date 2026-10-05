@@ -109,7 +109,7 @@ export async function stayPointForPlan(tripId: string): Promise<StayPoint | null
   // The item's own coordinate first — a Google fact is read only when the row has none it can trust.
   const own = rowCoordinatesTrusted(item as any) ? point(item.latitude, item.longitude) : null;
   if (own) return { itemId: item.id, name, ...own, source: "item", fetchedAt: null };
-  // An EXPIRED Places fact is never a pin (R312): `factsForTrip` keeps a stale view (ranked last) for
+  // An EXPIRED Places fact is never a pin (R313): `factsForTrip` keeps a stale view (ranked last) for
   // display, so the stay reads only its unexpired facts — past Google's 30 days the point is gone.
   const live = (await factsForTrip(tripId))[item.id]?.filter((f) => !f.stale) ?? [];
   const [day] = applyGooglePins([{ activities: [{ id: item.id, lat: null as number | null, lng: null as number | null }] }], { [item.id]: live } as any);

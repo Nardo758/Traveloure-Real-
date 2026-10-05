@@ -35,6 +35,7 @@ import {
   Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
 // rating is null when the location has no real review aggregate yet (render "New").
 interface MapProvider {
@@ -405,7 +406,7 @@ export function ExperienceMap({
   highlightedActivityId,
   onSetLocation
 }: ExperienceMapProps) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const apiKey = MAPS_BROWSER_KEY;
 
   // Use parent-provided destination center if available, otherwise do our own geocoding as fallback
   const { data: locationData } = useQuery<Array<{ geoCode?: { latitude: number; longitude: number } }>>({

@@ -236,7 +236,7 @@ test("C5: no Places fact reaches a public route", async () => {
     // a leg is a CACHE (max 30 days, refreshed or cleared by a scheduled job), recorded on the leg as
     // `coord_source='google'` + `coord_fetched_at` (migration 350).
     "server/services/stay-reroute.service.ts",
-    // R312 (ledger `2026-10-04-leg-google-coords-refresh`): the daily leg job re-runs ONE plan's stay
+    // R313 (ledger `2026-10-04-leg-google-coords-refresh`): the daily leg job re-runs ONE plan's stay
     // lookup through the one writer (`enrichPlanItems`) so the re-route can rebuild its Google legs, then
     // deletes any still past the max age. No public output; nothing leaves it but counts.
     "server/jobs/legGoogleCoordsRefresh.ts",
