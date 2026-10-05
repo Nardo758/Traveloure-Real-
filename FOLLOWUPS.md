@@ -965,3 +965,23 @@ scheduled date, notes, party details and the like), pinned by `server/utils/__te
 so an unlisted key is dropped rather than leaked. Before choosing the list, inventory what the expert
 and provider consoles actually read from `bookingDetails`, and drop nothing they render. Decision-maker
 asked for this Sep 27, 2026; not a blocker for #1122 or lane 2.
+
+## From the Ready Made share lane (Slice B1/B2, R331–R332, #1304/#1305)
+
+### FU-RMT-1 — Coral FILL on the `/t/:slug` buy button (for the coral lane)
+`client/src/pages/ready-made-preview.tsx:73` (the "Get this trip" button) fills with
+`--earn-coral-ink` behind white text. Under the 5 Oct coral ruling (ledger
+`2026-10-05-coral-fill-contrast`) that token is for accents and outlines only, not fills.
+Not fixed in #1304 on the decision-maker's instruction: the coral FILL token does not exist until
+the coral lane lands it, and a raw hex would fail `check-page-hex`. The coral lane swaps this one
+class for the fill token; no other colour on the page is coral.
+
+### FU-RMT-2 — "on Unsplash" credit on the two older Ready Made surfaces — CHECKED, NO PR NEEDED
+`client/src/pages/ready-made-detail.tsx` and `client/src/components/expert/ready-made-listing-panel.tsx`
+still say "on Unsplash" rather than calling `photoSourceName` (`shared/ready-made-preview.ts`).
+Checked whether a non-Unsplash cover can reach either page: it cannot through the app. The only
+writer, `PATCH /api/expert/ready-made/:id`, refuses a `heroImageUrl` not on `images.unsplash.com`
+and requires `heroImageMeta.unsplashId` + `photographer` + `profileUrl`; the earn-demo seed writes
+no `photographer`, so neither page renders a credit for it. The Pexels cover seen in the B2 samples
+came from a local-only demo row, not from any committed seed or route. If a second photo source is
+ever admitted, switch both pages to `photoSourceName` in the same PR that admits it.
