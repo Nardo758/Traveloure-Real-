@@ -31,6 +31,11 @@ export default defineConfig({
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
+  // R312: the browser's Google Maps key is its OWN variable, `GOOGLE_MAPS_BROWSER_KEY`, so it can be
+  // restricted (HTTP referrers, Maps JavaScript API only) apart from the server's `GOOGLE_MAPS_API_KEY`
+  // (which must never reach the bundle — this prefix does not match it). `VITE_` stays for every
+  // other client variable.
+  envPrefix: ["VITE_", "GOOGLE_MAPS_BROWSER_"],
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,

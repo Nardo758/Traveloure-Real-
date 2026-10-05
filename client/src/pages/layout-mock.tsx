@@ -8,8 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { APIProvider, Map } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+const GOOGLE_MAPS_API_KEY = MAPS_BROWSER_KEY;
 
 export default function LayoutMock() {
   const [startDate, setStartDate] = useState<Date | undefined>(new Date());
@@ -195,7 +196,7 @@ export default function LayoutMock() {
               <div className="text-center text-muted-foreground">
                 <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>Map unavailable</p>
-                <p className="text-sm">Add VITE_GOOGLE_MAPS_API_KEY to enable</p>
+                <p className="text-sm">Add GOOGLE_MAPS_BROWSER_KEY to enable</p>
               </div>
             </div>
           )}

@@ -33,6 +33,7 @@ import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { TransportSection, LegBookingPanel } from "@/components/plancard/TransportSection";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { useAuth } from "@/hooks/use-auth";
+import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
 interface SharedItineraryResponse {
   variant: {
@@ -336,7 +337,7 @@ export default function ItineraryViewPage() {
 
   const destination = data.variant.destination || data.variant.name;
   const templateConfig = getTemplateConfig(null);
-  const GOOGLE_MAPS_AVAILABLE = !!(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
+  const GOOGLE_MAPS_AVAILABLE = !!MAPS_BROWSER_KEY;
 
   const planCardTrip: PlanCardTrip = {
     id: data.variant.id,

@@ -87,6 +87,9 @@ jobs:
       - name: post-internal-jobs.sh — cold-start warm-up + bounded retry (vs a local stub server)
         run: bash scripts/ci/post-internal-jobs.test.sh
 
+      - name: Facts recheck — route, auth, success heartbeat and failure/overlap semantics
+        run: npx vitest run --config vitest.facts-recheck.config.ts
+
       # Migrations are the fixture; the composite action is mandatory (ci-db-setup-lint forbids
       # inline DB setup). No authenticated routes here — every suite creates its own rows directly.
       - name: Set up CI database (migrations + sessions table)

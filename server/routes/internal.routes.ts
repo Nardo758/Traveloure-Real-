@@ -28,6 +28,7 @@ import { runOccasionDrafts } from "../services/occasion-drafts.service";
 import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-job-runner";
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
+import { runFactsRecheck } from "../jobs/factsRecheck";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
 import { runPaymentSchedule } from "../automations/payments/runtime";
 import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
@@ -199,6 +200,7 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // TravelPulse weekly (ledger `2026-09-30-travelpulse-weekly-schedule`): posted daily; drafts once per
   // ISO week, and every other day answers `already_drafted` without a model call. Still a real pass.
   { job: "travelpulse-weekly", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  { job: "facts-recheck", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -383,6 +385,13 @@ router.post("/internal/jobs/travel-matrix-refresh", requireInternalSecret, async
 router.post("/internal/jobs/travelpulse-weekly", requireInternalSecret, async (_req, res) => {
   const { runTravelPulseWeeklyJob } = await import("../services/travelpulse-weekly.service");
   const { status, body } = await runJob("travelpulse-weekly", () => runTravelPulseWeeklyJob(), (r) => r?.status === "failed");
+  res.status(status).json(body);
+});
+
+// T-3 plan facts re-check: idempotent notices; candidate-scan errors must never
+// stamp a success heartbeat. Per-plan failures remain counts, per the job contract.
+router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("facts-recheck", () => runFactsRecheck(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 
