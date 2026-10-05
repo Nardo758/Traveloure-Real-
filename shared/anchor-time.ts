@@ -49,3 +49,53 @@ export function anchorWallClockString(date: string | null | undefined, time: str
   if (hh > 23 || mm > 59 || ss > 59) return null;
   return `${d}T${String(hh).padStart(2, "0")}:${t[2]}:${String(ss).padStart(2, "0")}`;
 }
+
+// ── Readers (R318, ledger `2026-10-05-anchor-readers-wall-clock`) ──────────────────────────────────
+// Every server or client reader that needs an anchor's DAY, TIME or minutes-of-day takes them from
+// here — never from `getHours()` / `toTimeString()` / `toLocaleTimeString()` without `timeZone: "UTC"`,
+// which read the stored wall-clock in the MACHINE's zone and moved it by that machine's offset.
+
+export interface AnchorWallClock {
+  /** "YYYY-MM-DD" — the plan's calendar day. */
+  date: string;
+  /** "HH:MM" (24h). */
+  time: string;
+  /** Minutes since the plan-day's midnight. */
+  minutes: number;
+}
+
+/** The anchor's wall-clock day and time; null when the value is unreadable. */
+export function anchorWallClockParts(value: string | Date | null | undefined): AnchorWallClock | null {
+  const ms = anchorWallClockMs(value);
+  if (!Number.isFinite(ms)) return null;
+  const d = new Date(ms);
+  const hh = d.getUTCHours();
+  const mm = d.getUTCMinutes();
+  return {
+    date: d.toISOString().slice(0, 10),
+    time: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`,
+    minutes: hh * 60 + mm,
+  };
+}
+
+/** A calendar day ("YYYY-MM-DD") from a plan's start date given as a date string or a Date. */
+function planDay(start: string | Date | null | undefined): string | null {
+  if (start instanceof Date) return Number.isFinite(start.getTime()) ? start.toISOString().slice(0, 10) : null;
+  const m = /^\d{4}-\d{2}-\d{2}/.exec(String(start ?? "").trim());
+  return m ? m[0] : null;
+}
+
+/** The plan day an anchor falls on (day 1 = the start date), by calendar date; null when either is unreadable. */
+export function anchorDayNumber(value: string | Date | null | undefined, tripStart: string | Date | null | undefined): number | null {
+  const parts = anchorWallClockParts(value);
+  const start = planDay(tripStart);
+  if (!parts || !start) return null;
+  return Math.round((Date.parse(`${parts.date}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+}
+
+/** "2:00 PM"-style label of the anchor's wall-clock time (en-US, 12h); null when unreadable. */
+export function anchorTimeLabel12h(value: string | Date | null | undefined): string | null {
+  const ms = anchorWallClockMs(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "UTC" });
+}

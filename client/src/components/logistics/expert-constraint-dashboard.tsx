@@ -1,3 +1,4 @@
+import { anchorWallClockMs } from "@shared/anchor-time";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -210,9 +211,11 @@ export function ExpertConstraintDashboard({ tripId }: ExpertConstraintDashboardP
             <div className="space-y-3">
               {anchors.map((anchor) => {
                 const Icon = ANCHOR_ICONS[anchor.anchorType] || Clock;
-                const dt = new Date(anchor.anchorDatetime);
-                const timeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                const dateStr = dt.toLocaleDateString([], { month: "short", day: "numeric" });
+                // R318: the stored value is the plan's wall-clock (its UTC parts) — shown in UTC, so the
+                // expert's own zone cannot move a 14:00 ceremony.
+                const dt = new Date(anchorWallClockMs(anchor.anchorDatetime));
+                const timeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+                const dateStr = dt.toLocaleDateString([], { month: "short", day: "numeric", timeZone: "UTC" });
 
                 return (
                   <div key={anchor.id} className="border rounded-lg p-3">

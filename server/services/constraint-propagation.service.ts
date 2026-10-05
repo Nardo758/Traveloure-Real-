@@ -9,6 +9,7 @@
 
 import { storage } from "../storage";
 import type { TemporalAnchor, ExpertVendorCoordination, ProviderBookingRequest } from "@shared/schema";
+import { anchorWallClockMs, anchorWallClockParts } from "@shared/anchor-time";
 
 export interface PropagationResult {
   anchorId: string;
@@ -99,12 +100,13 @@ function analyzeVendorImpact(
   vendors: ExpertVendorCoordination[],
   previousDatetime?: string
 ): AffectedVendor[] {
-  const anchorTime = new Date(anchor.anchorDatetime);
-  const anchorTimeStr = anchorTime.toTimeString().slice(0, 5);
+  // R318: the anchor's wall-clock day, minutes and "HH:MM" — never the server's zone.
+  const anchorParts = anchorWallClockParts(anchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
+  const anchorTimeStr = anchorParts.time;
   const bufferBefore = anchor.bufferBefore || 0;
 
   // Only vendors linked to this anchor or on the same date
-  const anchorDate = anchorTime.toISOString().slice(0, 10);
+  const anchorDate = anchorParts.date;
   const relatedVendors = vendors.filter(v =>
     v.primaryAnchorId === anchor.id || v.serviceDate === anchorDate
   );
@@ -118,7 +120,7 @@ function analyzeVendorImpact(
     if (vendor.primaryAnchorId === anchor.id) {
       // This vendor is directly linked to the changed anchor
       // Calculate suggested times based on anchor + buffer
-      const anchorMinutes = anchorTime.getHours() * 60 + anchorTime.getMinutes();
+      const anchorMinutes = anchorParts.minutes;
       const vendorMustEndBy = anchorMinutes - bufferBefore;
 
       if (vendor.endTime) {
@@ -180,9 +182,9 @@ function analyzeBookingImpact(
   bookings: ProviderBookingRequest[],
   previousDatetime?: string
 ): AffectedBooking[] {
-  const anchorTime = new Date(anchor.anchorDatetime);
-  const anchorDate = anchorTime.toISOString().slice(0, 10);
-  const anchorTimeStr = anchorTime.toTimeString().slice(0, 5);
+  const anchorParts = anchorWallClockParts(anchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
+  const anchorDate = anchorParts.date;
+  const anchorTimeStr = anchorParts.time;
   const bufferBefore = anchor.bufferBefore || 0;
 
   // Only active bookings on the same date
@@ -242,18 +244,18 @@ function detectPropagationConflicts(
   bookings: ProviderBookingRequest[]
 ): PropagationConflict[] {
   const conflicts: PropagationConflict[] = [];
-  const anchorTime = new Date(changedAnchor.anchorDatetime);
-  const anchorDate = anchorTime.toISOString().slice(0, 10);
-  const anchorTimeStr = anchorTime.toTimeString().slice(0, 5);
+  const anchorTime = new Date(anchorWallClockMs(changedAnchor.anchorDatetime));
+  const anchorParts = anchorWallClockParts(changedAnchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
+  const anchorDate = anchorParts.date;
+  const anchorTimeStr = anchorParts.time;
 
   // Check anchor-to-anchor conflicts (same day)
   const sameDayAnchors = allAnchors.filter(a => {
-    const d = new Date(a.anchorDatetime).toISOString().slice(0, 10);
-    return d === anchorDate && a.id !== changedAnchor.id;
+    return anchorWallClockParts(a.anchorDatetime)?.date === anchorDate && a.id !== changedAnchor.id;
   });
 
   for (const other of sameDayAnchors) {
-    const otherTime = new Date(other.anchorDatetime);
+    const otherTime = new Date(anchorWallClockMs(other.anchorDatetime));
     const diffMinutes = Math.abs(anchorTime.getTime() - otherTime.getTime()) / 60000;
     const requiredGap = (changedAnchor.bufferAfter || 0) + (other.bufferBefore || 0);
 

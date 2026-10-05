@@ -60,6 +60,7 @@ import {
   createOptimizerGeocodeBudget,
   resolveOptimizerActivityCoordinates,
 } from "./services/optimizer-activity-geocoder.service";
+import { anchorTimeLabel12h } from "@shared/anchor-time";
 
 // Anthropic is the optimizer's ONE provider (ledger `2026-09-30-retire-xai`): the Grok primary it
 // used to try first is gone, so a failure here is the real failure, reported as one.
@@ -464,7 +465,8 @@ export function selectThirdVariantStrategy(
 }
 
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
-  const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  // R318: the anchor's wall-clock time, formatted in UTC so the server's zone cannot move it.
+  const time = anchorTimeLabel12h(anchor.anchorDatetime) ?? "";
   const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   let desc = `${type} at ${time}`;
   if (anchor.bufferBefore > 0) desc += `, ${anchor.bufferBefore}min buffer before`;

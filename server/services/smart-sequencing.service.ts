@@ -5,6 +5,8 @@
  * physical intensity, timing optimization, and user preferences.
  */
 
+import { anchorDayNumber, anchorWallClockMs, anchorWallClockParts } from "@shared/anchor-time";
+
 // Activity categories for sequencing logic
 export type ActivityCategory =
   | 'adventure' | 'hiking' | 'water_sports' | 'skiing' | 'climbing'
@@ -1400,14 +1402,11 @@ export function parseAnchorConstraints(
   }>,
   tripStartDate: string | Date
 ): AnchorConstraint[] {
-  const tripStart = new Date(tripStartDate);
-  tripStart.setHours(0, 0, 0, 0);
-
   return anchors.map(anchor => {
-    const dt = new Date(anchor.anchorDatetime);
-    const diffMs = dt.getTime() - tripStart.getTime();
-    const dayNumber = Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
-    const startTimeMinutes = dt.getHours() * 60 + dt.getMinutes();
+    // R318: day and minutes from the anchor's wall-clock, never the server's zone.
+    const dt = new Date(anchorWallClockMs(anchor.anchorDatetime));
+    const dayNumber = anchorDayNumber(anchor.anchorDatetime, tripStartDate) ?? Number.NaN;
+    const startTimeMinutes = anchorWallClockParts(anchor.anchorDatetime)?.minutes ?? 0;
 
     return {
       anchorType: anchor.anchorType,

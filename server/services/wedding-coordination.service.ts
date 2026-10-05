@@ -12,6 +12,7 @@
 
 import { storage } from "../storage";
 import type { TemporalAnchor, ExpertVendorCoordination } from "@shared/schema";
+import { anchorWallClockParts } from "@shared/anchor-time";
 
 export interface WeddingTimeline {
   ceremonyTime: string; // "15:00"
@@ -104,10 +105,11 @@ export async function buildWeddingTimeline(tripId: string): Promise<WeddingTimel
     };
   }
 
-  const ceremonyDt = new Date(ceremonyAnchor.anchorDatetime);
-  const ceremonyDate = ceremonyDt.toISOString().slice(0, 10);
-  const ceremonyMinutes = ceremonyDt.getHours() * 60 + ceremonyDt.getMinutes();
-  const ceremonyTimeStr = ceremonyDt.toTimeString().slice(0, 5);
+  // R318: the ceremony's wall-clock day, minutes and "HH:MM" — one reader, never the server's zone.
+  const ceremony = anchorWallClockParts(ceremonyAnchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
+  const ceremonyDate = ceremony.date;
+  const ceremonyMinutes = ceremony.minutes;
+  const ceremonyTimeStr = ceremony.time;
 
   // Build timeline blocks from defaults, adjusted to ceremony time
   const blocks: TimelineBlock[] = [];
