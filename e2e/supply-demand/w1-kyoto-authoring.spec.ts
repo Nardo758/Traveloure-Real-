@@ -10,6 +10,7 @@
  *      (the folded-in InlineAddItemForm); the publish gate needs a stop on every day.
  *   3. every leg between located stops is picked, tipped and CONFIRMED on its LegRow
  *   4. GET …/readiness reports no blocking line, and the listing's Submit succeeds
+ *   (L2-5) while legs are open, Submit is disabled and the checklist's "Show" lands on a leg/gap row
  *
  * STATED DIVERGENCES (R-1, each filed as a finding): this CI has no Google key, so the real
  * `transport-legs/generate` routes nothing — the PROPOSED leg is seeded (never a confirmed one: the
@@ -119,6 +120,22 @@ test('W1: an expert builds a 3-day Kyoto trip on the Workstation and submits it'
   await expect(legRows.first()).toBeVisible({ timeout: 30_000 });
   const legIds = (await legRows.evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')!))).map((t) => t.replace('leg-row-', ''));
   expect(legIds.length).toBeGreaterThan(0);
+
+  // L2-5 (ledger `2026-10-05-readiness-checklist-ui`): with the legs still open, the checklist's "Show"
+  // on the legs line lands on this surface's own leg or gap row (step 7a's `@shared/plan-jump-targets`
+  // ids), outlined — no second jump resolution, no legacy panel.
+  await page.getByTestId('tab-right-distribute').click();
+  const jumpLegs = page.getByTestId('button-readiness-jump-legs').first();
+  await expect(jumpLegs).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('button-submit-listing')).toBeDisabled();
+  await jumpLegs.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll('[id^="plan-leg-"], [id^="plan-gap-"]')).some((e) => (e as HTMLElement).style.outline.includes('2px')),
+      ),
+    )
+    .toBeTruthy();
 
   for (const legId of legIds) {
     const patch = () =>
