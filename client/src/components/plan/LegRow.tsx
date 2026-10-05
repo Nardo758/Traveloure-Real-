@@ -76,6 +76,9 @@ export interface StopLegRowProps {
   onConfirm?: () => void;
   onRemove?: () => void;
   busy?: boolean;
+  /** Stamp the readiness jump ids (default). A copy of the row elsewhere (the leg review drawer, L2-4)
+   *  passes false, so an id names exactly one element and a checklist jump lands on the day surface. */
+  domIds?: boolean;
 }
 
 export function legModeLabel(mode: string): string {
@@ -109,6 +112,7 @@ export function StopLegRow({
   onConfirm,
   onRemove,
   busy = false,
+  domIds = true,
 }: Omit<StopLegRowProps, "kind">) {
   const [pickupPoint, setPickupPoint] = useState(leg.pickupPoint ?? "");
   const [pickupTime, setPickupTime] = useState(leg.pickupTime ?? "");
@@ -129,13 +133,13 @@ export function StopLegRow({
     : null;
   return (
     <div
-      id={planLegDomId(leg.id)}
+      id={domIds ? planLegDomId(leg.id) : undefined}
       className="ml-4 border-l-2 border-dashed border-border px-3 py-2 space-y-1.5"
       data-testid={`leg-row-${leg.id}`}
       data-pair-id={pairId}
       data-leg-status={leg.proposalStatus ?? "none"}
     >
-      {pairId ? <span id={pairId} aria-hidden="true" /> : null}
+      {pairId && domIds ? <span id={pairId} aria-hidden="true" /> : null}
       <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         <span className="font-medium text-foreground" data-testid={`leg-mode-${leg.id}`}>{legModeLabel(mode)}</span>
         {typeof leg.estimatedDurationMinutes === "number" ? (

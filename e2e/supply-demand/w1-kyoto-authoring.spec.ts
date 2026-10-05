@@ -11,6 +11,7 @@
  *   3. every leg between located stops is picked, tipped and CONFIRMED on its LegRow
  *   4. GET …/readiness reports no blocking line, and the listing's Submit succeeds
  *   (L2-5) while legs are open, Submit is disabled and the checklist's "Show" lands on a leg/gap row
+ *   (L2-4) the first leg is picked, tipped and confirmed in the leg review stepper (inline hop map)
  *
  * STATED DIVERGENCES (R-1, each filed as a finding): this CI has no Google key, so the real
  * `transport-legs/generate` routes nothing — the PROPOSED leg is seeded (never a confirmed one: the
@@ -137,7 +138,41 @@ test('W1: an expert builds a 3-day Kyoto trip on the Workstation and submits it'
     )
     .toBeTruthy();
 
-  for (const legId of legIds) {
+  // L2-4 (ledger `2026-10-05-leg-review-stepper`): the FIRST leg is reviewed in the stepper drawer —
+  // it opens on the first unpicked leg, shows the inline hop map (two stops, a dashed line, no tiles),
+  // and its LegRow picks, tips and confirms through the same PATCH rail. The rest go row by row.
+  {
+    const legId = legIds[0];
+    await page.getByTestId('button-review-legs').click();
+    const drawer = page.getByTestId('leg-review-drawer');
+    await expect(drawer).toBeVisible({ timeout: 10_000 });
+    await expect(drawer.getByTestId('leg-review-hop-map')).toBeVisible();
+    await expect(drawer.getByTestId('leg-review-hop-line')).toHaveCount(1);
+    await expect(drawer.locator('img, .leaflet-container')).toHaveCount(0);
+    const patch = () =>
+      page.waitForResponse((r) => r.url().endsWith(`/api/trips/${tripId}/transport-legs/${legId}`) && r.request().method() === 'PATCH');
+    const select = drawer.getByTestId(`leg-mode-select-${legId}`);
+    const current = await select.inputValue();
+    const options = await select.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    const pick = options.includes('train') && current !== 'train' ? 'train' : options.find((o) => o !== current)!;
+    let p = patch();
+    await select.selectOption(pick);
+    expect((await p).ok()).toBeTruthy();
+    await expect(drawer.getByTestId(`leg-mode-select-${legId}`)).toHaveValue(pick);
+    await drawer.getByTestId(`leg-tip-input-${legId}`).fill(TIP);
+    p = patch();
+    await drawer.getByTestId(`leg-tip-save-${legId}`).click();
+    expect((await p).ok()).toBeTruthy();
+    p = patch();
+    await drawer.getByTestId(`leg-confirm-${legId}`).click();
+    expect((await p).ok()).toBeTruthy();
+    // Confirming the last open leg closes the drawer (back to the checklist); otherwise it advances.
+    if (await drawer.isVisible().catch(() => false)) await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden({ timeout: 10_000 });
+    await expect(page.getByTestId(`leg-status-${legId}`)).toHaveText('Confirmed');
+  }
+
+  for (const legId of legIds.slice(1)) {
     const patch = () =>
       page.waitForResponse((r) => r.url().endsWith(`/api/trips/${tripId}/transport-legs/${legId}`) && r.request().method() === 'PATCH');
     // Pick a mode other than the current one, so the pick is the author's own.

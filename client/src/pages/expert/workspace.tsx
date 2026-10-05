@@ -22,6 +22,8 @@ import { PlatformContentPickerCore } from "@/components/expert/platform-content-
 import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { isReadinessQueryKey } from "@/lib/readiness-checklist";
+import { workstationCanEdit } from "@/lib/leg-review";
+import { LegReviewDrawer } from "@/components/plan/LegReviewDrawer";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
@@ -1056,7 +1058,14 @@ function workstationDays(days: readonly PlanCardDay[], dayCount: number): PlanCa
 function WorkstationCanvas({
   tripId, destination, items, maxDay, focusDay, onFocusDay, workspaceMode, onDayMoved, onOpenBookingBrief,
   focusItemId, onFocusHandled, suggestOrderForDay, onSuggestHandled, dayCount, section = "all",
+  canEdit = false, onFocusItem, onReviewFinished,
 }: {
+  /** L2-4: `workstationCanEdit` — false hides every edit control (pending advisor, loading context). */
+  canEdit?: boolean;
+  /** L2-4: the leg review's "Show this stop" (the Workstation's focus one-shot). */
+  onFocusItem?: (itemId: string) => void;
+  /** L2-4: the last open leg confirmed — back to the readiness checklist. */
+  onReviewFinished?: () => void;
   /** "map": the map alone (it sits above every build format, as the old canvas map did); "days":
    *  the transport bar and the day rows (the days view, and the Structure view's "Day list"). */
   section?: "map" | "days" | "all";
@@ -1175,6 +1184,8 @@ function WorkstationCanvas({
   const itemById = new globalThis.Map(items.map((i) => [i.id, i] as const));
   const selectedDayIdx = Math.max(0, planDays.findIndex((d) => d.dayNum === focusDay));
   const runGenerate = () => { setConfirmGenerateOpen(false); generateMutation.mutate(); };
+  const [legReviewOpen, setLegReviewOpen] = useState(false);
+  const hasLegPairs = planDays.some((d) => (d.activities?.length ?? 0) > 1);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="workstation-canvas">
@@ -1197,6 +1208,17 @@ function WorkstationCanvas({
           <span style={{ fontSize: 11.5, color: MID }}>
             Legs between stops: {legs.length - proposedCount} confirmed, {proposedCount} proposed.
           </span>
+          {canEdit ? (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {hasLegPairs ? (
+            <button
+              onClick={() => setLegReviewOpen(true)}
+              data-testid="button-review-legs"
+              style={{ ...btnQuietStyle, padding: "6px 12px", fontSize: 12 }}
+            >
+              Review legs
+            </button>
+          ) : null}
           <button
             onClick={() => (proposedCount > 0 ? setConfirmGenerateOpen(true) : runGenerate())}
             disabled={generateMutation.isPending}
@@ -1206,6 +1228,8 @@ function WorkstationCanvas({
             {generateMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RefreshCw style={{ width: 13, height: 13 }} />}
             Generate transport
           </button>
+          </div>
+          ) : null}
         </div>
         {confirmGenerateOpen ? (
           <div data-testid="panel-confirm-generate" style={{ fontSize: 11.5, color: INK, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -1226,13 +1250,25 @@ function WorkstationCanvas({
         ) : null}
       </div>
 
+      <LegReviewDrawer
+        open={legReviewOpen}
+        onOpenChange={setLegReviewOpen}
+        tripId={tripId}
+        days={planDays}
+        legs={legs}
+        canEdit={canEdit}
+        onLegPatch={(legId, patch) => legPatchMutation.mutateAsync({ legId, patch: patch as LegPatch })}
+        onShowStop={(itemId) => onFocusItem?.(itemId)}
+        onFinished={() => onReviewFinished?.()}
+        busy={legPatchMutation.isPending}
+      />
       <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, padding: "6px 0" }}>
         <WorkstationDays
           days={planDays}
           placeFacts={plan?.placeFacts}
           timeZone={plan?.trip?.timezone ?? null}
           legs={legs}
-          canEdit
+          canEdit={canEdit}
           busy={legPatchMutation.isPending || legDeleteMutation.isPending || reorderMutation.isPending}
           onReorder={(dayNumber, itemIds) => reorderMutation.mutate({ dayNumber, itemIds })}
           onRemove={(a) => {
@@ -1897,12 +1933,16 @@ export default function ExpertWorkspace() {
     mode: "assignment" | "authoring";
     trip: any;
     listing?: ReadyMadeListing | null;
+    assignment?: { status?: string | null } | null;
   }>({
     queryKey: [`/api/expert/workspace-context/${tripId}`],
     enabled: !!tripId,
     retry: false,
   });
   const isAuthoring = workspaceCtx?.mode === "authoring";
+  // L2-4: who may edit on the Workstation — the author, or a §12 WRITE-status advisor (the shared
+  // predicate). A pending advisor sees no edit controls; the server's requireWriteAccess still guards.
+  const canEditWorkstation = workstationCanEdit(workspaceCtx);
   const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
 
   // Decision-maker ruling (Aug 8 2026): the workspace ALWAYS lands on Add — building comes
@@ -3105,6 +3145,9 @@ export default function ExpertWorkspace() {
                     focusDay={focusDay}
                     onFocusDay={setFocusDay}
                     workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  canEdit={canEditWorkstation}
+                  onFocusItem={setFocusItemId}
+                  onReviewFinished={() => setRightTab("distribute")}
                     onDayMoved={triggerEnergyRecalc}
                     onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                     focusItemId={null}
@@ -3131,6 +3174,9 @@ export default function ExpertWorkspace() {
                   focusDay={focusDay}
                   onFocusDay={setFocusDay}
                   workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  canEdit={canEditWorkstation}
+                  onFocusItem={setFocusItemId}
+                  onReviewFinished={() => setRightTab("distribute")}
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                   focusItemId={null}
@@ -3150,6 +3196,9 @@ export default function ExpertWorkspace() {
                   focusDay={focusDay}
                   onFocusDay={setFocusDay}
                   workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  canEdit={canEditWorkstation}
+                  onFocusItem={setFocusItemId}
+                  onReviewFinished={() => setRightTab("distribute")}
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                   focusItemId={focusItemId}
@@ -3180,6 +3229,9 @@ export default function ExpertWorkspace() {
                       focusDay={focusDay}
                       onFocusDay={setFocusDay}
                       workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  canEdit={canEditWorkstation}
+                  onFocusItem={setFocusItemId}
+                  onReviewFinished={() => setRightTab("distribute")}
                       onDayMoved={triggerEnergyRecalc}
                       onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                       focusItemId={focusItemId}
