@@ -68,7 +68,16 @@ export function hostRows(rows: ReadonlyArray<any> | null | undefined): Array<{ i
 export function browseAddBody(place: BrowsePlace, dayNumber: number): Record<string, unknown> {
   const located = place.lat != null && place.lng != null;
   if (place.kind === "listing") {
-    return { title: place.name, itemType: "activity", providerServiceId: place.id, dayNumber, locationName: place.name };
+    // R323 (R322 carry-over): a listing placed from its OWN coordinates carries them, so the stop is
+    // located and can have a leg; an unlocated listing still adds, unlocated (§13 — never a guess).
+    return {
+      title: place.name,
+      itemType: "activity",
+      providerServiceId: place.id,
+      dayNumber,
+      locationName: place.name,
+      ...(located ? { latitude: String(place.lat), longitude: String(place.lng) } : {}),
+    };
   }
   return {
     title: place.name,

@@ -1875,11 +1875,17 @@ export default function ExpertWorkspace() {
   // Item 16 / R322: "Go to item" — a one-shot signal consumed by the canvas's WorkstationDays, which
   // opens the item's day, scrolls to its ItemRow and opens its edit panel, then clears this to null.
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
+  // R323 (R322 carry-over): the Structure view's toggle, held here so "go to item" can open the
+  // Day list first — the rows (and the stop's edit panel) live there.
+  const [formatView, setFormatView] = useState<"structure" | "day-list">("structure");
   // Advisor Phase 2-4: a second one-shot signal, same shape as focusItemId — the reorder-nudge
   // card's "See suggested order" button sets a dayNumber here; the canvas fires its OWN
   // optimize-order for that day (never a duplicated algorithm/write here), then
   // clears this back to null via onSuggestHandled.
   const [suggestOrderForDay, setSuggestOrderForDay] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusItemId || suggestOrderForDay != null) setFormatView("day-list");
+  }, [focusItemId, suggestOrderForDay]);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -3162,6 +3168,8 @@ export default function ExpertWorkspace() {
                   keeps the row controls for editing (Structure is the default). */}
               {buildFormat.grouping !== "days" && trip && (
                 <ClientFormatView
+                  view={formatView}
+                  onViewChange={setFormatView}
                   format={buildFormat}
                   destination={trip.destination || null}
                   days={days}

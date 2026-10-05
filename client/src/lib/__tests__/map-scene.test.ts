@@ -99,6 +99,12 @@ test("M3 Browse layer: hollow teal markers for places with their own coordinates
   assert.ok(!("lat" in (hosts[0] as object)));
   // "Add" is the existing itinerary-items POST body.
   assert.equal((browseAddBody(listings[0], 2) as any).providerServiceId, "L1");
+  // R323 (R322 carry-over): a located listing carries its coordinates; an unlocated one carries none.
+  for (const l of listings) {
+    const b = browseAddBody(l, 2) as any;
+    if (l.lat != null && l.lng != null) assert.deepEqual([b.latitude, b.longitude], [String(l.lat), String(l.lng)]);
+    else assert.ok(!("latitude" in b) && !("longitude" in b));
+  }
   assert.equal((browseAddBody(partner[0], 2) as any).affiliateProductId, "A1");
 });
 
