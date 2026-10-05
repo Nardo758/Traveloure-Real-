@@ -12,19 +12,73 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags } from "../runtime-flags";
 
+const MAPS_HEALTH_NAMES = [
+  "MAPS_ROUTES_DRIVE_ENABLED",
+  "MAPS_ROUTES_MODE_ENABLED",
+  "MAPS_ROUTES_TRANSIT_ENABLED",
+  "MAPS_ROUTE_MATRIX_ENABLED",
+  "MAPS_GEOCODE_ENABLED",
+  "MAPS_PLACES_TEXT_SEARCH_ENABLED",
+] as const;
+
 test("F1: the named switches, booleans, '1' is on", () => {
   const f = healthFlags({ PLACE_FACTS_PLACES_ENABLED: "1", AFFILIATE_PAGE_EXTRACT_ENABLED: "true", DMO_INGEST_ENABLED: "0", FLIGHT_LOOKUP_ENABLED: "1" });
   assert.deepEqual(Object.keys(f), [...HEALTH_FLAG_NAMES]);
-  assert.deepEqual(f, { PLACE_FACTS_PLACES_ENABLED: true, AFFILIATE_PAGE_EXTRACT_ENABLED: false, DMO_INGEST_ENABLED: false, E2E_AI_STUB: false, FLIGHT_LOOKUP_ENABLED: true, EXPERT_SCRAPE_JOBS_ENABLED: false });
+  assert.deepEqual(f, {
+    PLACE_FACTS_PLACES_ENABLED: true,
+    AFFILIATE_PAGE_EXTRACT_ENABLED: false,
+    DMO_INGEST_ENABLED: false,
+    E2E_AI_STUB: false,
+    FLIGHT_LOOKUP_ENABLED: true,
+    EXPERT_SCRAPE_JOBS_ENABLED: false,
+    MAPS_ROUTES_DRIVE_ENABLED: false,
+    MAPS_ROUTES_MODE_ENABLED: false,
+    MAPS_ROUTES_TRANSIT_ENABLED: false,
+    MAPS_ROUTE_MATRIX_ENABLED: false,
+    MAPS_GEOCODE_ENABLED: false,
+    MAPS_PLACES_TEXT_SEARCH_ENABLED: false,
+  });
   for (const v of Object.values(healthFlags({}))) assert.equal(typeof v, "boolean");
 });
 
 test("F2: no env value is ever echoed", () => {
   const secret = "sk_live_should_never_appear";
-  const out = JSON.stringify(healthFlags({ E2E_AI_STUB: secret, GOOGLE_MAPS_API_KEY: secret, FLIGHT_LOOKUP_API_KEY: secret, DMO_INGEST_ENABLED: "1" }));
+  const out = JSON.stringify(healthFlags({
+    E2E_AI_STUB: secret,
+    GOOGLE_MAPS_API_KEY: secret,
+    GOOGLE_MAPS_BROWSER_KEY: secret,
+    FLIGHT_LOOKUP_API_KEY: secret,
+    DMO_INGEST_ENABLED: "1",
+    MAPS_ROUTES_DRIVE_ENABLED: secret,
+    MAPS_ROUTES_DRIVE_DAILY_CAP: secret,
+    MAPS_ROUTES_DRIVE_USD_PER_1000: secret,
+  }));
   assert.equal(out.includes(secret), false);
   assert.equal(out.includes("GOOGLE_MAPS_API_KEY"), false, "only the named switches");
   assert.equal(out.includes("FLIGHT_LOOKUP_API_KEY"), false, "the flight switch is reported, never its key");
+  assert.equal(out.includes("GOOGLE_MAPS_BROWSER_KEY"), false, "never report the browser credential");
+  assert.equal(out.includes("MAPS_ROUTES_DRIVE_DAILY_CAP"), false, "caps are not health switches");
+  assert.equal(out.includes("MAPS_ROUTES_DRIVE_USD_PER_1000"), false, "prices are not health switches");
+});
+
+test("Maps: all six switches use strict '1' semantics independently", () => {
+  for (const name of MAPS_HEALTH_NAMES) {
+    for (const value of [undefined, "", "0", "false", "true", "01", " 1 ", "1"]) {
+      const flags = healthFlags({ [name]: value });
+      assert.equal(flags[name], value === "1", `${name} must only enable for the exact string '1'`);
+      for (const other of MAPS_HEALTH_NAMES) {
+        if (other !== name) assert.equal(flags[other], false, `${name} must not enable ${other}`);
+      }
+    }
+  }
+});
+
+test("Maps: all switches can be enabled while expert scrape remains off", () => {
+  const flags = healthFlags(Object.fromEntries(MAPS_HEALTH_NAMES.map((name) => [name, "1"])));
+  for (const name of MAPS_HEALTH_NAMES) assert.equal(flags[name], true);
+  assert.equal(flags.EXPERT_SCRAPE_JOBS_ENABLED, false);
+  assert.equal(flags.PLACE_FACTS_PLACES_ENABLED, false, "Maps switches do not enable the separate facts switch");
+  assert.equal(Object.values(flags).every((value) => typeof value === "boolean"), true);
 });
 
 test("F3: every /api/health answer carries the flags", () => {
