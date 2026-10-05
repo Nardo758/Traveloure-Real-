@@ -8,6 +8,8 @@
  *   hours    the plan's stored opening-hours facts (`factsForTrip`), with their own checkedAt
  *   anchors  the plan's temporal anchors (the ONE overlap rule validate-schedule uses)
  *   energy   the plan's `energy_tracking` rows (its pace verdict per day)
+ *   legs     the plan's own transport legs (the rows the traveler sees) — reachability reads their
+ *            minutes and nothing else (Slice A2, `shared/leg-reachability.ts`)
  *
  * R-f: only KINDS and COUNTS leave this module — never a re-sequenced order. Read behind the
  * caller's own plan gate (`GET /api/optimization-preview`, `authorizeTripLogistics`).
@@ -29,6 +31,8 @@ import {
 } from "@shared/optimizer-lead";
 import { factPointsForTrip, factsForTrip } from "./content-facts/place-facts.service";
 import { storage } from "../storage";
+import { legUnreachableFinding, unreachableStops } from "@shared/leg-reachability";
+import { getTripTransportLegs } from "./trip-transport-legs.service";
 
 function addDays(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -58,6 +62,7 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
       locationName: itineraryItems.locationName,
       locationAddress: itineraryItems.locationAddress,
       itemType: itineraryItems.itemType,
+      durationMinutes: itineraryItems.durationMinutes,
       providerServiceId: itineraryItems.providerServiceId,
       bookingId: itineraryItems.bookingId,
     })
@@ -113,7 +118,15 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   // e. the plan's own energy verdicts.
   const energy = await storage.getEnergyTracking(tripId);
 
+  // f. reachability: the plan's OWN legs (the rows the traveler sees) against its own times.
+  const legs = await getTripTransportLegs(tripId);
+  const reach = unreachableStops(
+    items.map((r) => ({ id: r.id, title: r.title, dayNumber: r.dayNumber, startTime: r.startTime, endTime: r.endTime, durationMinutes: r.durationMinutes ?? null })),
+    legs.map((l: any) => ({ id: l.id, dayNumber: l.dayNumber, fromActivityId: l.fromActivityId, toActivityId: l.toActivityId, estimatedDurationMinutes: l.estimatedDurationMinutes })),
+  );
+
   const findings = leadFindings([
+    legUnreachableFinding(reach.unreachable),
     closedOnArrival(timed, hours, start),
     timedEntryConflicts(anchors as any, scheduled),
     cityCrossings(days),
