@@ -25,6 +25,10 @@ import { itemFactsLine } from "@/lib/place-facts";
 import { planDayDomId, planItemDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { effectiveRoutingStatus } from "@/lib/item-booking-state";
 import { ROUTING_TINTS } from "@/components/plancard/slip-tokens";
+import { legBetween, located } from "@/lib/leg-review";
+
+// L2-4: `located` and `legBetween` moved to `@/lib/leg-review` (one home, read by the leg review too).
+export { legBetween, located };
 
 /**
  * The expert READS every routing state (contract §2): a stop the traveler sent to the expert, staged
@@ -74,14 +78,6 @@ export interface WorkstationDaysProps {
 }
 
 /** Pure. The leg between two consecutive stops, or null. Same pair identity as the server's `pairKey`. */
-export function legBetween(legs: readonly StopLeg[], dayNumber: number, fromId: string, toId: string): StopLeg | null {
-  return legs.find((l) => l.dayNumber === dayNumber && l.fromActivityId === fromId && l.toActivityId === toId) ?? null;
-}
-
-function located(a: PlanCardActivity): boolean {
-  return typeof a.lat === "number" && typeof a.lng === "number" && Number.isFinite(a.lat) && Number.isFinite(a.lng) && !(a.lat === 0 && a.lng === 0);
-}
-
 /** Pure. What a gap with no leg row says (§13): never a time, never a mode it does not have. */
 export function legGapLine(from: PlanCardActivity, to: PlanCardActivity): string {
   if (!located(from) || !located(to)) return "Add a location to both stops to route this leg";
