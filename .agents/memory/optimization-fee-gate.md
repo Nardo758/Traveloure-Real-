@@ -11,9 +11,7 @@ The full `/api/itinerary-comparisons` LLM optimizer is now gated behind a one-ti
 ## How to apply
 
 ### Complexity tier → fee mapping
-- `simple` ($4.99): vacation, birthday, adventure, cultural, general
-- `standard` ($9.99): honeymoon, proposal, anniversary, multi-city
-- `complex` ($19.99): wedding, corporate
+- Historical price amounts have been removed: they were stale against the current development configuration. Discover amounts from the active fee configuration; do not use this memory as a price source.
 - Lookup: `complexityTier(eventType)` in `server/services/smart-sequencing.service.ts`
 
 ### 24h free re-run

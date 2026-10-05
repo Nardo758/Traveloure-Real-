@@ -27,7 +27,9 @@ import {
   destinationSeasons,
   trips,
 } from "@shared/schema";
-import { eq, and, inArray, gte, lte, desc, or, ilike, isNull } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, desc, or, ilike, isNull, sql } from "drizzle-orm";
+import { finishComparisonGeneration } from "./services/itinerary-generation-outcome.service";
+import { GENERATION_TIMEOUT_MS } from "./services/itinerary-outcome-email";
 import {
   reorderItinerary,
   calculateItineraryMetrics,
@@ -874,7 +876,26 @@ export async function generateOptimizedItineraries(
    */
   runRecord?: RunRecordContext
 ): Promise<{ success: boolean; error?: string }> {
+  let attemptStartedAt = new Date();
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   try {
+    // Stamp at entry so preprocessing is part of this attempt's five-minute deadline.
+    const [started] = await db.update(itineraryComparisons)
+      .set({
+        status: "generating",
+        // Distinct even for overlapping attempts beginning in the same millisecond.
+        updatedAt: sql`GREATEST(${attemptStartedAt.toISOString()}::timestamp,
+          COALESCE(${itineraryComparisons.updatedAt}, '-infinity'::timestamp) + INTERVAL '1 millisecond')`,
+      })
+      .where(eq(itineraryComparisons.id, comparisonId)).returning({ updatedAt: itineraryComparisons.updatedAt });
+    if (!started) return { success: false, error: "Comparison no longer exists" };
+    attemptStartedAt = started.updatedAt!;
+    deadlineTimer = setTimeout(() => {
+      void finishComparisonGeneration({
+        comparisonId, startedAt: attemptStartedAt, outcome: "failed",
+      }).catch((err) => console.error("[Optimizer] deadline outcome persistence failed; sweep will retry", err));
+    }, GENERATION_TIMEOUT_MS + 1);
+    deadlineTimer.unref();
     let anchorConstraints: AnchorConstraint[] = [];
     let boundaryConstraints: DayBoundaryConstraint[] = [];
     let anchorPromptSection = '';
@@ -1005,15 +1026,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     const [variantA, variantB] = selectVariantStrategy(tripPreferences);
     const variantC = selectThirdVariantStrategy(variantA, variantB);
 
-    // Stamp updatedAt on every transition INTO "generating" (not just create-time insert) so the
-    // stale-generating sweep (server/services/itinerary-generation-sweep-scheduler.service.ts)
-    // measures staleness from when THIS attempt actually started, not from a re-run's original,
-    // possibly days-old, createdAt/updatedAt. Without this, a regenerate call on an old comparison
-    // row would look instantly "stale" to the sweep the moment it starts.
-    await db
-      .update(itineraryComparisons)
-      .set({ status: "generating", updatedAt: new Date() } as any)
-      .where(eq(itineraryComparisons.id, comparisonId));
+    // The entry stamp identifies this attempt and is never refreshed by preprocessing.
 
     const baselineVariant = await db
       .insert(itineraryVariants)
@@ -1900,29 +1913,26 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
     // optimize run (§15b posture); `null` just means no recommendation is persisted for this run.
     const segmentationProposal = computeSegmentationProposal(baselineItems, startDate, endDate, travelers);
 
-    await db
-      .update(itineraryComparisons)
-      .set({
-        status: "generated",
-        optimizedAt: new Date(),
-        updatedAt: new Date(),
-        segmentationProposal: segmentationProposal as any,
-      } as any)
-      .where(eq(itineraryComparisons.id, comparisonId));
-
-    return { success: true };
+    const result = await finishComparisonGeneration({
+      comparisonId, startedAt: attemptStartedAt, outcome: "ready",
+      generatedPatch: { segmentationProposal },
+    });
+    return result.transitioned && result.outcome === "ready"
+      ? { success: true }
+      : { success: false, error: "Generation attempt timed out or was superseded" };
   } catch (error) {
     console.error("Error generating optimized itineraries:", error);
 
-    await db
-      .update(itineraryComparisons)
-      .set({ status: "failed", updatedAt: new Date() })
-      .where(eq(itineraryComparisons.id, comparisonId));
+    await finishComparisonGeneration({
+      comparisonId, startedAt: attemptStartedAt, outcome: "failed",
+    });
 
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
     };
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
   }
 }
 

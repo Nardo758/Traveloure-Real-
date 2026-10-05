@@ -217,8 +217,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 658);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 649);
+  assert.equal(result.mutations.length, 661);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 652);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -228,9 +228,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 649);
-  assert.equal(manifest.rawRegistrationCount, 658);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 649);
+  assert.equal(endpointRows.length, 652);
+  assert.equal(manifest.rawRegistrationCount, 661);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 652);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -241,7 +241,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // user-data, session-self; under the expert role backstop.
   // + POST /internal/jobs/facts-recheck (PR #1283): other, public-or-system — the internal-secret trigger.
   // + POST /internal/jobs/leg-google-coords (R313): other, public-or-system — the internal-secret trigger.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 229, other: 221 });
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 230, other: 223 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -253,8 +253,12 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // Oct 4, 2026), so it is session-self again — 401 anonymous, the plan read gate when it names a plan.
   // POST /api/geocode moved public-or-system -> session-self (R312, ledger `2026-10-04-maps-session-and-browser-key`):
   // every call spends a Geocoding request, so it requires a session (decision-maker ruling, Oct 4, 2026).
+  // #1274 (traveler itinerary emails, R314): + PATCH /api/me/itinerary-email-preferences (user-data,
+  // session-self) and + POST /email-preferences (other, session-self) — both isAuthenticated, the user
+  // from the session; + POST /email-preferences/unsubscribe/:token (other, resource-owner) — the token
+  // resolves the traveler from their own email_outbox row, one 404 otherwise. 658/649 → 661/652.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 337, "resource-owner": 97,
+    "admin-role": 168, "session-self": 339, "resource-owner": 98,
     signature: 6, "public-or-system": 41, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

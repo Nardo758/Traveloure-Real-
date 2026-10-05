@@ -241,6 +241,11 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
   assert.deepEqual(
     [...found].sort(),
     [
+      // NOT a Stripe key (#1274, traveler itinerary emails): the messaging automation registry's
+      // documented dedupe key for the three itinerary follow-up emails. The pin scans every server
+      // file for `idempotencyKey:` templates, so an email key is caught too; it is listed, never
+      // excluded by path, so the set stays exact.
+      "${kind}:{comparisonId}",
       "${params.idempotencyKey}-recover",
       "${stripeRequestOptions.idempotencyKey}-recover",
       // Ledger `2026-09-17-ld50-remainder-and-artifact-refund` (LD 46 / D-27's money outcome): the admin
@@ -258,6 +263,12 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
       "coord-fee-${coordinationId}",
       "coord-refund-${coordinationId}",
       "expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}",
+      // NOT a Stripe key (#1274): the Resend idempotency key for one itinerary follow-up send, keyed on
+      // its email_outbox row so a retried send is one email.
+      "itinerary-followup-${outboxId}",
+      // NOT a Stripe key (#1274): the Resend idempotency key the email outbox drain sets for an
+      // itinerary ready/failed email, keyed on its email_outbox row.
+      "itinerary-outbox-${outboxId}",
       "pi-${idempotencyKey}",
       // Ledger `2026-09-18-quote-born-charge` (LD 49's filed charge lane): the QUOTE-BORN arm of
       // `POST /api/checkout`. ONE accepted quote mints ONE booking and that booking is charged
