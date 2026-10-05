@@ -10,9 +10,12 @@
  *
  * THE PRICE LINE IS WHAT THE BUYER PAYS. `readyMadeBuyerTotalCents` is the number every price the
  * preview prints, and it equals what the purchase route charges (`listing.priceCents`): today the
- * purchase adds no traveler service fee (spec v1.3.5 §15 — none on the Ready Made purchase in beta),
- * so "fees included" is true. `ready-made-preview.db.test.ts` P4 pins the two together, so a change to
- * either one fails CI rather than letting the printed price drift from the charge.
+ * purchase adds no traveler service fee (R-bc: none on the Ready Made purchase in beta), so the line
+ * says "no fee on this purchase" — deliberately narrow, because bookings made from the copy DO carry
+ * the traveler fee and "fees included" could be read as covering them. `ready-made-preview.db.test.ts`
+ * P4 pins the charge and this number together, so a change to either one fails CI rather than letting
+ * the printed price drift from the charge. R-bc's admin toggle is DEFERRED, not withdrawn: it lands
+ * with the fee itself, in one PR where the charge and this line read the same setting.
  */
 
 export const READY_MADE_SLUG_TOKEN_LENGTH = 10;
@@ -61,12 +64,12 @@ function dollars(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`;
 }
 
-/** "From $49 · fees included" / "From $49 per traveler · fees included"; null when no price is set (§13). */
+/** "From $49 · no fee on this purchase" / "From $49 per traveler · no fee on this purchase"; null when no price is set (§13). */
 export function readyMadePriceLine(listing: { priceCents: number | null | undefined; pricingMode?: string | null }): string | null {
   const total = readyMadeBuyerTotalCents(listing);
   if (total == null) return null;
   const per = listing.pricingMode === "per_traveler" ? " per traveler" : "";
-  return `From ${dollars(total)}${per} · fees included`;
+  return `From ${dollars(total)}${per} · no fee on this purchase`;
 }
 
 export interface ReadyMadePreviewStop {

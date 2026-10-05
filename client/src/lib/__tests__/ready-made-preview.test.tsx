@@ -1,7 +1,7 @@
 /**
  * Slice B1 — the Ready Made Trip's public preview, pure + render (ledger `2026-10-05-rmt-public-preview`).
  *   V1 the slug is the title in kebab case plus the id's token; the token alone is authoritative
- *   V2 the price line is the purchase's own total, "fees included"; no price ⇒ no line
+ *   V2 the price line is the purchase's own total, "no fee on this purchase"; no price ⇒ no line
  *   V3 the sample day carries titles, times, types and place names, and only CONFIRMED legs with
  *      their own minutes — never a coordinate, a note or a price
  *   V4 the page draws the cover credit, the expert, the verified stamp only when true, the price,
@@ -50,8 +50,8 @@ describe("V1 slug", () => {
 describe("V2 price line", () => {
   it("is the purchase's own total", () => {
     assert.equal(readyMadeBuyerTotalCents({ priceCents: 4900 }), 4900);
-    assert.equal(readyMadePriceLine({ priceCents: 4900, pricingMode: "fixed" }), "From $49 · fees included");
-    assert.equal(readyMadePriceLine({ priceCents: 2950, pricingMode: "per_traveler" }), "From $29.50 per traveler · fees included");
+    assert.equal(readyMadePriceLine({ priceCents: 4900, pricingMode: "fixed" }), "From $49 · no fee on this purchase");
+    assert.equal(readyMadePriceLine({ priceCents: 2950, pricingMode: "per_traveler" }), "From $29.50 per traveler · no fee on this purchase");
   });
   it("no price ⇒ no line", () => {
     for (const p of [null, undefined, 0, -5]) {
@@ -98,7 +98,7 @@ function preview(over: Partial<ReadyMadePreview> = {}): ReadyMadePreview {
     planLabel: "Cultural trip",
     heroImageUrl: "https://images.unsplash.com/photo-1",
     heroCredit: { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann" },
-    priceLine: "From $49 · fees included",
+    priceLine: "From $49 · no fee on this purchase",
     expert: { name: "Aiko", handle: "aiko-kyoto", localVerified: true },
     sampleDay: sampleDayOf(items as any, legs),
     lockedDays: 2,
@@ -115,7 +115,7 @@ describe("V4 the page", () => {
     assert.match(html, /3 days/);
     assert.match(html, /href="\/s\/aiko-kyoto"/);
     assert.match(html, /Local · verified in Kyoto/);
-    assert.match(html, /From \$49 · fees included/);
+    assert.match(html, /From \$49 · no fee on this purchase/);
     assert.match(html, /href="\/ready-made\/3f9a1c2b-7e44-4d1a-9c0e-5b6a7d8e9f01"[^>]*>Get this trip/);
     assert.match(html, /A sample day · Day 1/);
     assert.match(html, /22 min \(confirmed\)/);
