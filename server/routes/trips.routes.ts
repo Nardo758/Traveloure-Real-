@@ -3,6 +3,7 @@ import { setItemLock } from '../services/item-lock.service';
 import { platformCarFits } from '../services/airport-leg.service';
 import { anchorConflicts } from '@shared/optimizer-lead';
 import { anchorDatetimeFromInput, anchorWallClockString } from '@shared/anchor-time';
+import { mergeExpertTimeEdit } from '@shared/expert-time-edit';
 import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -2797,28 +2798,15 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
       const resolvedActivityDiffs = activityDiffs || {};
       const resolvedTransportDiffs = transportDiffs || {};
 
-      // Helper: merge HH:MM expert edit with the original ISO date to produce a full ISO timestamp
-      const mergeExpertTime = (originalISO: string | null | undefined, hhMM: string | undefined): string | null | undefined => {
-        if (!hhMM) return originalISO;
-        if (!originalISO) return originalISO;
-        try {
-          const base = new Date(originalISO);
-          const [h, m] = hhMM.split(":").map(Number);
-          base.setHours(h, m, 0, 0);
-          return base.toISOString();
-        } catch {
-          // Malformed date/time input — keep the original ISO string unchanged.
-          return originalISO;
-        }
-      };
-
       const editedActivities = originalItems.map(item => {
         const diff = resolvedActivityDiffs[item.id];
         if (!diff) return { id: item.id, name: item.name, startTime: item.startTime, endTime: item.endTime, dayNumber: item.dayNumber, sortOrder: item.sortOrder, location: item.location, description: item.description };
         return {
           id: item.id,
           name: diff.name ?? item.name,
-          startTime: mergeExpertTime(item.startTime, diff.startTime) ?? item.startTime,
+          // R318: the expert's HH:MM replaces the wall-clock time in place (never Date/setHours — that dropped a
+          // bare "HH:MM" edit and shifted a date-time by the server's zone).
+          startTime: mergeExpertTimeEdit(item.startTime, diff.startTime) ?? item.startTime,
           endTime: item.endTime,
           dayNumber: item.dayNumber,
           sortOrder: item.sortOrder,
