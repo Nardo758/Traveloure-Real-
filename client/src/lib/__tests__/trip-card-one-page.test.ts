@@ -151,12 +151,17 @@ describe("T6 prepared is not booked (LD 44 (e))", () => {
   });
 });
 
-describe("T7 one suppression predicate for Back to planning", () => {
-  it("the rail reads the SHARED date-arm predicate, not a hand-rolled window", () => {
-    const rail = code("components/plancard/TripCardRail.tsx");
-    assert.match(rail, /tripCardForcedPrimaryByDateAlone\(/);
-    assert.match(rail, /from\s+"@shared\/trip-primary-surface"/);
-    assert.ok(!/48\s*\*\s*60/.test(rail), "the rail must not restate the 48-hour window");
+describe("T7 Back to planning — one rule on both surfaces (R321 S11-1 retired the date-arm suppression)", () => {
+  it("both surfaces offer Reopen on any finalized plan, underway included — no date window at all", () => {
+    // Decision-maker, smoke 11 (ledger `2026-10-05-smoke11-fixes`): Reopen is always available to
+    // the owner of a finalized plan. Neither surface reads the date arm, and neither restates a window.
+    for (const f of ["components/plancard/TripCardRail.tsx", "components/plancard/SlipRail.tsx"]) {
+      const src = code(f);
+      assert.ok(!/tripCardForcedPrimaryByDateAlone\(/.test(src), `${f} no longer suppresses Reopen by date`);
+      assert.ok(!/48\s*\*\s*60/.test(src), `${f} must not restate the 48-hour window`);
+    }
+    assert.match(code("components/plancard/TripCardRail.tsx"), /if \(!trip\.finalizedAt\) return null;/);
+    assert.match(code("components/plancard/SlipRail.tsx"), /const showReopen = isOwner && !!trip\.finalizedAt;/);
   });
   it("reopen is the SHARED mutation — one implementation, two callers", () => {
     assert.match(code("components/plancard/TripCardRail.tsx"), /from\s+"\.\/use-reopen-mutation"/);
