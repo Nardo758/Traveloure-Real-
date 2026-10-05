@@ -247,6 +247,8 @@
 
 ## Decisions the next lanes need (not taken here)
 
+> **Answered 2026-10-05, 17:42 ET** by `experiences-map-planner-rulings-2.md` (ledger R332–R335). Lane 1: three tokens and `.console-scope` fills move (rulings 1–2). Lane 2: the real city is stored (3). Lane 3: ungrouped rows under "See all" only (5), Proposal under "One evening" (4), `IntakePanel` leaves `/experiences` in 8a (6). Lane 4: no area marks (7), no day-less items (8), the map opens on Browse (9), signed-out browsing last (10). Lane 5: the two gaps (11–12). Kept below as asked.
+
 1. **Lane 1:** do `.console-scope` `--primary` (and its four siblings) move with `:root`? Do the 39 `var(--earn-coral-ink)` fills move to a new fill token?
 2. **Lane 2:** store the event's real locality (a column, plus a seeder fill exception), or derive it?
 3. **Lane 3:**
