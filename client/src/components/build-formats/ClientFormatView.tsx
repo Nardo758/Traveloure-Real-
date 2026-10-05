@@ -29,10 +29,18 @@ interface ClientFormatViewProps {
   bestSeason?: string | null;
   /** The exact day rows the days-grouping renders — the Day list view. */
   dayListView: ReactNode;
+  /** Controlled view (R323): the Workstation opens "Day list" when something asks to go to a stop. */
+  view?: "structure" | "day-list";
+  onViewChange?: (view: "structure" | "day-list") => void;
 }
 
-export function ClientFormatView({ format, destination, days, bestSeason, dayListView }: ClientFormatViewProps) {
-  const [view, setView] = useState<"structure" | "day-list">("structure");
+export function ClientFormatView({ format, destination, days, bestSeason, dayListView, view: viewControlled, onViewChange }: ClientFormatViewProps) {
+  const [viewLocal, setViewLocal] = useState<"structure" | "day-list">("structure");
+  const view = viewControlled ?? viewLocal;
+  const setView = (v: "structure" | "day-list") => {
+    setViewLocal(v);
+    onViewChange?.(v);
+  };
 
   const structure =
     format.grouping === "neighborhoods" ? (

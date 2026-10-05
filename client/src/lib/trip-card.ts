@@ -108,6 +108,29 @@ export function cardProvenanceLine(input: {
   return parts.length ? parts.join(" · ") : null;
 }
 
+/**
+ * R-be (R323, step 7b): where a bought copy came from — "from Haruka's Ready Made Trip" — on the slip
+ * header and the Trip Card. Null when the plan is no copy (§13). The author is named by display name
+ * only; with none, the sentence says "a Ready Made Trip" and never invents one.
+ */
+export function readyMadeSourceLine(src: { authorDisplayName: string | null } | null | undefined): string | null {
+  if (!src) return null;
+  const who = src.authorDisplayName?.trim();
+  return who ? `from ${who}'s Ready Made Trip` : "from a Ready Made Trip";
+}
+
+/** R-bf (R323): "Legs checked by Haruka · 2 Oct" — only where a stamp exists (§13). */
+export function legsCheckedLine(
+  src: { authorDisplayName: string | null; legsCheckedAt?: string | null } | null | undefined,
+  timeZone?: string | null,
+): string | null {
+  if (!src?.legsCheckedAt) return null;
+  const day = shortDate(src.legsCheckedAt, timeZone);
+  if (!day) return null;
+  const who = src.authorDisplayName?.trim();
+  return who ? `Legs checked by ${who} · ${day}` : `Legs checked · ${day}`;
+}
+
 /** R-e: a plan finalized without a run carries airport legs only, and says how to get the rest. */
 export const CARD_ADD_TRAVEL_TIMES_LINE = "Add travel times · Optimize";
 

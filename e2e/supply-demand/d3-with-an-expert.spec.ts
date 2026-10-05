@@ -152,51 +152,18 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
     }
   }
 
-  // ── Hire E onto the plan via the slip's HireExpertDialog (ruling 42 D6/D7) ──
+  // ── Hire E onto the plan (R323, step 7b) ──
+  // The slip's "Hand off to a local expert" now opens the ONE handoff chooser, whose ask places a
+  // Stripe hold that CI's stub key cannot authorize (HELD:stripe — the handoff is proven at the
+  // service seam, server/__tests__/handoff-lifecycle.db.test.ts). The named expert is hired through
+  // the owner-gated rail the storefront uses, which is what this journey goes on to exercise.
   await page.goto(`/plans/${tripId}`);
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await shot(page, 'D3', '04', 'slip-before-hire');
-
   const expertUser = await userByEmail(expertE.email);
-  const hireTrigger = testid(page, 'slip-action-hire-expert');
-  const hireTriggerVisible = await appears(hireTrigger, 5000);
-  let hired = false;
-  if (hireTriggerVisible) {
-    await hireTrigger.click().catch(() => {});
-    await page.waitForTimeout(800);
-    await shot(page, 'D3', '05', 'hire-dialog-open');
-    const specificOption = expertUser?.id ? testid(page, `hire-expert-option-${expertUser.id}`) : null;
-    const specificVisible = specificOption ? await appears(specificOption, 4000) : false;
-    if (specificVisible && specificOption) {
-      await specificOption.click().catch(() => {});
-    } else {
-      const anyOption = page.locator('[data-testid^="hire-expert-option-"]');
-      const anyCount = await anyOption.count().catch(() => 0);
-      if (anyCount > 0) {
-        fileFinding({
-          journey: 'D3',
-          step: 'hire-expert:not-the-named-expert',
-          class: 'SPEC_DIVERGENCE',
-          severity: 'P3',
-          known: null,
-          title: 'HireExpertDialog did not list Expert E specifically for this occasion/destination',
-          expected: 'Expert E (Kyoto, custom-itinerary-planning offering) is one of the listed options',
-          actual: `hire-expert-option-${expertUser?.id} not visible; ${anyCount} other option(s) present — picked the first`,
-          where: 'client/src/components/plancard/HireExpertDialog.tsx',
-          evidence: { shot: 'shots/D3-05-hire-dialog-open.png' },
-          behavioural: true,
-        });
-        await anyOption.first().click().catch(() => {});
-      }
-    }
-    const submit = testid(page, 'button-hire-expert-submit');
-    if (await appears(submit, 3000) && !(await submit.isDisabled().catch(() => false))) {
-      await submit.click().catch(() => {});
-      await page.waitForTimeout(1200);
-      hired = true;
-    }
-    await shot(page, 'D3', '06', 'after-hire-submit');
-  }
+  const hireRes = await page.request.post(`/api/trips/${tripId}/advisors`, { data: { handle: expertE.handle } }).catch(() => null);
+  const hired = !!hireRes && hireRes.status() < 300;
+  await shot(page, 'D3', '06', 'after-hire-submit');
 
   const advisorRow = expertUser?.id
     ? await q(`SELECT status FROM trip_expert_advisors WHERE trip_id = $1 AND local_expert_id = $2`, [tripId, expertUser.id])

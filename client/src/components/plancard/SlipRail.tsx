@@ -135,7 +135,7 @@ import type { SlipTrip } from "./SlipView";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { useReopenMutation } from "./use-reopen-mutation";
-import { HireExpertDialog } from "./HireExpertDialog";
+import { openHandoffChooser } from "@/lib/handoff-client";
 import { SlipOrganizeEventsRow } from "./SlipLogisticsSection";
 import { TripPassCard } from "./TripPassCard";
 
@@ -469,8 +469,7 @@ function BuildCard({
     },
   });
 
-  // ── The expert (ONE picker, ONE message control) ────────────────────────────────────────────
-  const [hireOpen, setHireOpen] = useState(false);
+  // ── The expert (ONE door, ONE message control) ──────────────────────────────────────────────
 
   const optimizerBlock = (
         <>
@@ -548,24 +547,16 @@ function BuildCard({
       {/* THE EXPERT — two states since D22 (see `slipExpertRailState`): nobody on the plan, or
           somebody to message. */}
       {isOwner && expertState.kind === "hire" && (
-        <>
-          <RailRow
-            label="Hand off to a local expert"
-            meta="choose one"
-            icon={<UserPlus className="w-3.5 h-3.5" />}
-            onClick={() => setHireOpen(true)}
-            testId="slip-action-hire-expert"
-          />
-          {/* The plan-level picker: `event={null}` is the plan's implicit unnamed event
-              (Locked Decision 29), which is exactly what "hire for this plan" means. */}
-          <HireExpertDialog
-            tripId={tripId}
-            destination={trip.destination}
-            event={null}
-            open={hireOpen}
-            onOpenChange={setHireOpen}
-          />
-        </>
+        // R323 (step 7b, §12 step 1): THE one door — the handoff chooser (Polish my plan · Book
+        // these for me · Plan it all), mounted once by the slip's `HandoffChooserHost`. The
+        // pick-an-expert dialog that used to open here is retired.
+        <RailRow
+          label="Hand off to a local expert"
+          meta="choose how much help"
+          icon={<UserPlus className="w-3.5 h-3.5" />}
+          onClick={() => openHandoffChooser({})}
+          testId="slip-action-hire-expert"
+        />
       )}
       {isOwner && expertState.kind === "message" && (
         <RailRow

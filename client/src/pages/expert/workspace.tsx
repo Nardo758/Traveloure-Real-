@@ -530,6 +530,18 @@ async function geocodeLocationText(
   return undefined;
 }
 
+/**
+ * R323 (step 7b, R-n): on a traveler's plan the server FILES an expert's write as a suggestion and
+ * answers 202 `{ suggested: true }`; on the expert's own authoring build the write lands. The toast
+ * says which happened — never "saved" for a change the traveler has not accepted (§13).
+ */
+function suggestionFiled(res: unknown, toast: (t: { title: string; description?: string }) => void, tripId: string): boolean {
+  if (!res || typeof res !== "object" || (res as any).suggested !== true) return false;
+  queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/expert-suggestions`] });
+  toast({ title: "Sent as a suggestion", description: "The traveler accepts or declines it on their plan." });
+  return true;
+}
+
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
  *  write as the old AddItemModal. Day-aware (P2-13): the add targets the day in focus.
  *  `estimatedCost` writes to `itinerary_items.estimated_cost`, a decimal(10,2) column —
@@ -547,6 +559,12 @@ function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAd
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: (created: any) => {
+      if (suggestionFiled(created, toast, tripId)) {
+        onAdded(null);
+        setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+        setPlaceCoords(null);
+        return;
+      }
       trackEvent("plan_item_added", {
         item_type: form.itemType,
         source_type: "custom",
@@ -660,11 +678,11 @@ function LogBookingForm({
   const [geocoding, setGeocoding] = useState(false);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       onAdded();
-      toast({ title: "Booking logged", description: `Added to Day ${dayNumber}` });
+      if (!suggestionFiled(res, toast, tripId)) toast({ title: "Booking logged", description: `Added to Day ${dayNumber}` });
       onClose();
     },
     onError: (err: any) => toast({ title: "Failed to log booking", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
@@ -770,9 +788,10 @@ function ItemEditDetails({
       const res = await apiRequest("PATCH", `/api/trips/${tripId}/itinerary-items/${item.id}`, data);
       return res.json();
     },
-    onSuccess: (_res, data) => {
+    onSuccess: (res, data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      if (suggestionFiled(res, toast, tripId)) return;
       if ("dayNumber" in data) {
         onDayMoved();
         toast({ title: "Item moved" });
@@ -1120,7 +1139,10 @@ function WorkstationCanvas({
   const reorderMutation = useMutation({
     mutationFn: async ({ dayNumber, itemIds }: { dayNumber: number; itemIds: string[] }) =>
       (await apiRequest("POST", `/api/trips/${tripId}/itinerary/reorder`, { dayNumber, itemIds })).json(),
-    onSuccess: invalidateItems,
+    onSuccess: (res: any) => {
+      invalidateItems();
+      suggestionFiled(res, toast, tripId);
+    },
     onError: (err: any) => toast({ title: "Failed to reorder", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
   const optimizeMutation = useMutation({
@@ -1139,8 +1161,8 @@ function WorkstationCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestOrderForDay]);
   const deleteMutation = useMutation({
-    mutationFn: async (itemId: string) => { await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`); },
-    onSuccess: () => { invalidateItems(); onDayMoved(); toast({ title: "Item removed" }); },
+    mutationFn: async (itemId: string) => (await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`)).json().catch(() => null),
+    onSuccess: (res: any) => { invalidateItems(); onDayMoved(); if (!suggestionFiled(res, toast, tripId)) toast({ title: "Item removed" }); },
     onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
   const generateMutation = useMutation({
@@ -1158,8 +1180,9 @@ function WorkstationCanvas({
   const legPatchMutation = useMutation({
     mutationFn: async ({ legId, patch }: { legId: string; patch: LegPatch }) =>
       (await apiRequest("PATCH", `/api/trips/${tripId}/transport-legs/${legId}`, patch)).json(),
-    onSuccess: (_r, vars) => {
+    onSuccess: (r: any, vars) => {
       invalidateLegs();
+      if (suggestionFiled(r, toast, tripId)) return;
       if (vars.patch.proposalStatus) toast({ title: "Leg confirmed" });
       else if ("authorTip" in vars.patch) toast({ title: "Tip saved" });
       else if ("pickupPoint" in vars.patch || "pickupTime" in vars.patch) toast({ title: "Pickup details saved" });
@@ -1167,8 +1190,8 @@ function WorkstationCanvas({
     onError: (e: any) => toast({ title: "Couldn't update leg", description: parseApiErrorMessage(e, "Please try again."), variant: "destructive" }),
   });
   const legDeleteMutation = useMutation({
-    mutationFn: async (legId: string) => { await apiRequest("DELETE", `/api/trips/${tripId}/transport-legs/${legId}`); },
-    onSuccess: () => { invalidateLegs(); toast({ title: "Leg removed" }); },
+    mutationFn: async (legId: string) => (await apiRequest("DELETE", `/api/trips/${tripId}/transport-legs/${legId}`)).json().catch(() => null),
+    onSuccess: (res: any) => { invalidateLegs(); if (!suggestionFiled(res, toast, tripId)) toast({ title: "Leg removed" }); },
     onError: (e: any) => toast({ title: "Couldn't remove leg", description: e?.message, variant: "destructive" }),
   });
 
@@ -1878,11 +1901,17 @@ export default function ExpertWorkspace() {
   // Item 16 / R322: "Go to item" — a one-shot signal consumed by the canvas's WorkstationDays, which
   // opens the item's day, scrolls to its ItemRow and opens its edit panel, then clears this to null.
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
+  // R323 (R322 carry-over): the Structure view's toggle, held here so "go to item" can open the
+  // Day list first — the rows (and the stop's edit panel) live there.
+  const [formatView, setFormatView] = useState<"structure" | "day-list">("structure");
   // Advisor Phase 2-4: a second one-shot signal, same shape as focusItemId — the reorder-nudge
   // card's "See suggested order" button sets a dayNumber here; the canvas fires its OWN
   // optimize-order for that day (never a duplicated algorithm/write here), then
   // clears this back to null via onSuggestHandled.
   const [suggestOrderForDay, setSuggestOrderForDay] = useState<number | null>(null);
+  useEffect(() => {
+    if (focusItemId || suggestOrderForDay != null) setFormatView("day-list");
+  }, [focusItemId, suggestOrderForDay]);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -3165,6 +3194,8 @@ export default function ExpertWorkspace() {
                   keeps the row controls for editing (Structure is the default). */}
               {buildFormat.grouping !== "days" && trip && (
                 <ClientFormatView
+                  view={formatView}
+                  onViewChange={setFormatView}
                   format={buildFormat}
                   destination={trip.destination || null}
                   days={days}

@@ -157,7 +157,7 @@ test("A3: Browse services carries this plan's id AND this plan's own destination
   await expect(page.getByTestId("input-location")).toHaveValue("Kyoto, Japan", { timeout: 15_000 });
 });
 
-test("A4: Hand off to a local expert opens the ONE picker", async ({ page }) => {
+test("A4: Hand off to a local expert opens the ONE handoff chooser (R324)", async ({ page }) => {
   const tripId = await registerAndCreateTrip(page, "hire");
   await openSlip(page, tripId);
   // No advisor on a fresh plan ⇒ the hire row, and NO Expert card and NO Message row (§13: the
@@ -165,7 +165,10 @@ test("A4: Hand off to a local expert opens the ONE picker", async ({ page }) => 
   await expect(page.getByTestId("slip-rail-expert")).toHaveCount(0);
   await expect(page.getByTestId("slip-action-message-expert")).toHaveCount(0);
   await page.getByTestId("slip-action-hire-expert").click();
-  await expect(page.getByTestId("dialog-hire-expert")).toBeVisible({ timeout: 10_000 });
+  // R324 (step 7b): the door is the handoff chooser — three answers; nothing is sent by opening it.
+  await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
+  for (const k of ["polish", "book", "plan_all"]) await expect(page.getByTestId(`handoff-kind-${k}`)).toBeVisible();
+  await expect(page.getByTestId("handoff-confirm")).toBeDisabled();
 });
 
 test("A5: the ONE AI action follows the item count, and stops before the external call", async ({

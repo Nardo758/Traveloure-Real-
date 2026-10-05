@@ -1,10 +1,9 @@
 /**
  * PlanCard expert-escalation CTA (CON-A.P7 / N3).
  *
- * One-tap "have an expert polish this" woven into the AI deliverable. Pre-fills
- * an expert_request with the trip + AI snapshot in optimizationContext, lands in
- * the existing routing queue (server/routes/booking-actions.ts:100), respects
- * availability (Phase 4 service → /api/concierge/quote).
+ * One-tap "have an expert polish this" woven into the AI deliverable. Since R323 (step 7b) it
+ * opens the slip's ONE handoff chooser rather than filing a request of its own; availability is
+ * still read from the Phase 4 service (/api/concierge/quote).
  *
  * Always visible, soft style (D2). Bookable-now vs queued copy per D4.
  *
@@ -15,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import { UserCheck, Loader2, CheckCircle2, Clock } from "lucide-react";
 
 interface ExpertOfferingType {
@@ -62,11 +61,11 @@ export function EscalationCTA({
   eventType?: string;
   planSnapshot?: unknown;
 }) {
-  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const { data: polishOffering } = useAiPlanPolishOffering();
   const [availability, setAvailability] = useState<ExpertAvailability | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState<{ queued: boolean; etaHours?: number } | null>(null);
+  const [done] = useState<{ queued: boolean; etaHours?: number } | null>(null);
 
   // Availability lookup — reuses the Phase 5 router to get an expert-tier price + ETA.
   useEffect(() => {
@@ -101,43 +100,12 @@ export function EscalationCTA({
     };
   }, [tripId, destination, eventType]);
 
-  async function handleEscalate() {
+  // R323 (step 7b, surface spec §10 "one expert door, one `expert_requests` route"): the CTA no
+  // longer files its own request — it opens the plan's slip with the ONE handoff chooser, which
+  // quotes from the server, holds the fee and sends the ask.
+  function handleEscalate() {
     setSubmitting(true);
-    try {
-      const res = await fetch("/api/expert-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          requestType: "ai_plan_polish",
-          offeringTypeKey: "ai_plan_polish",
-          tripId,
-          destination,
-          notes: "Please review and polish my AI-generated plan.",
-          optimizationContext: {
-            source: "plancard_escalation",
-            offeringTypeKey: "ai_plan_polish",
-            tripId,
-            destination,
-            eventType,
-            planSnapshot,
-          },
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`Request failed (${res.status})`);
-      }
-      const queued = availability ? !availability.available : false;
-      setDone({ queued, etaHours: availability?.etaHours });
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Couldn't send your request",
-        description: err.message ?? "Please try again.",
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    navigate(`/plans/${tripId}?handoff=open`);
   }
 
   if (done) {

@@ -10,7 +10,8 @@
  *   • Booking agent    → POST /api/affiliate-booking-requests per partner-bookable stop, by
  *                        opaque bookingToken only (§16 — the affiliate URL never leaves the
  *                        server). Available only when the plan has partner-bookable stops.
- *   • Travel expert    → POST /api/expert-requests (routes the trip to an expert to refine; the owner still books and pays at checkout — LD 42 D19).
+ *   • Travel expert    → the ONE handoff chooser (R323, step 7b) with the unbooked stops ticked; the
+ *                        request, its fee and its hold are the chooser's, never this modal's.
  *   • Concierge        → hand off to the concierge surface (/concierge), which owns the quote.
  *
  * Guarantees drawn in the mock and enforced here: choosing a person gives them ACCESS to the
@@ -23,6 +24,7 @@
  * staged-but-unbooked items exist, this chooser says so inline — finalize stays one press.
  */
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { openHandoffChooser } from "@/lib/handoff-client";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -123,18 +125,10 @@ export function FinalizeBookingModal({
           variant: ok > 0 ? undefined : "destructive",
         });
       } else if (lane === "expert") {
-        await apiRequest("POST", "/api/expert-requests", {
-          requestType: "ai_plan_polish",
-          tripId: trip.id,
-          destination: trip.destination ?? undefined,
-          notes: "Please review and refine my finalized plan.",
-        });
+        // R323 (step 7b): the expert lane is the ONE handoff door — "Book these for me", every
+        // stop not yet booked ticked. The chooser quotes, holds and sends; this modal sends nothing.
         onOpenChange(false);
-        toast({
-          title: "Sent to a travel expert",
-          description:
-            "An expert will review and refine your plan. You book and pay for each item yourself at checkout — nothing is charged until you do.",
-        });
+        openHandoffChooser({ kind: "book", itemIds: activities.filter((i) => !i.booking?.id).map((i) => i.id) });
       } else if (lane === "concierge") {
         onOpenChange(false);
         // The concierge surface owns the priced quote; hand it the intent (server derives price).

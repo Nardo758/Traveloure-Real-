@@ -29,8 +29,8 @@ export const FEEDBACK_CODES: Readonly<Record<FeedbackMoment, readonly string[]>>
   post_draft: ["fits", "too_packed", "too_light", "wrong_areas", "wrong_stops", "other"],
   // Phase B — codes land with their surfaces: least_travel / best_mornings / kept_favourites / other.
   post_optimize: [],
-  // Phase B (step 7): helped / some / no.
-  post_handoff: [],
+  // Step 7b (R323): on approval of a handoff.
+  post_handoff: ["helped", "some", "no"],
   // Step 6 (Trip Card, T+1): great / fine / rough (+ text).
   post_trip: ["great", "fine", "rough"],
 };
@@ -84,6 +84,7 @@ export function feedbackTimeNoun(timeUnit: string | null | undefined): string {
 export const FEEDBACK_PROMPT: Readonly<Partial<Record<FeedbackMoment, string>>> = {
   post_draft: "Does this draft fit?",
   post_trip: "How was the trip?",
+  post_handoff: "Did your local help?",
 };
 
 /**
@@ -119,6 +120,12 @@ export function feedbackChipLabel(code: string, timeUnit: string | null | undefi
       return "Fine";
     case "rough":
       return "Rough";
+    case "helped":
+      return "Helped";
+    case "some":
+      return "Some";
+    case "no":
+      return "Not really";
     default:
       return code;
   }

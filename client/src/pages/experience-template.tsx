@@ -78,9 +78,7 @@ import { trackSearchEvent } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
 import { ExperienceMap } from "@/components/experience-map";
 import { ItineraryPreviewPanel } from "@/components/experience/itinerary-preview-panel";
-import { LiveChatExperts } from "@/components/live/LiveChatExperts";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
-import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ExperienceTemplateTab, ProviderService, CustomVenue, UserExperience } from "@shared/schema";
 import { filterServices, sortServices } from "@shared/service-filter";
@@ -116,8 +114,6 @@ import { resolveTargetTripId } from "@/lib/trip-target";
 // Locked Decision 32 lane (a): no expert touchpoint without a slip. The mint door, the §13
 // "dates are asked for, never invented" checks and the slip-first ordering all live there.
 import { ensureSlipForExpertRequest, mintTripSlip } from "@/lib/trip-slip";
-import { ExpertRequestReviewSheet } from "@/components/expert-request-review-sheet";
-import { EXPERT_REQUEST_FREE_PRICE } from "@/lib/expert-request-review";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 import { DestinationTransfersSection } from "@/components/destination-transfers-section";
@@ -1224,14 +1220,7 @@ export default function ExperienceTemplatePage() {
   
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
-  const [expertHelpDialogOpen, setExpertHelpDialogOpen] = useState(false);
-  // L19 (ledger `2026-09-07-request-is-a-click`): the review sheet the "Get Expert Help"
-  // controls open. Opening it writes NOTHING — no slip is minted and no lead is sent until its
-  // Send button is pressed.
-  const [expertReviewOpen, setExpertReviewOpen] = useState(false);
-  const [expertRequestSending, setExpertRequestSending] = useState(false);
   const [aiItineraryDialogOpen, setAiItineraryDialogOpen] = useState(false);
-  const [expertHelpTab, setExpertHelpTab] = useState<"ai-match" | "chat">("ai-match");
   
   // Draggable Expert Chat button state
   const [chatButtonPos, setChatButtonPos] = useState({ x: 24, y: 24 }); // Distance from bottom-right
@@ -1594,64 +1583,16 @@ export default function ExperienceTemplatePage() {
     }
   };
 
-  // Tracks the last plan snapshot we shared with the expert queue, so repeated
-  // "Get Expert Help" clicks don't spam a new lead for an unchanged plan.
-  const lastSharedPlanRef = useRef<string>("");
-
-  // The traveler's ASK — correspondence, safe to freeze into the request (dispatch §4
-  // disposition table). Slip/cart CONTENT is deliberately NOT here: copying item
-  // names/prices/providers into the request jsonb was the class-B snapshot failure (an expert
-  // advising against stale data). The expert workspace reads the plan LIVE via the trip
-  // reference; item counts/totals appear only as prose in the notes (correspondence).
-  const buildPlanSnapshot = () => ({
-    source: "template" as const,
-    experienceType: experienceType?.name,
-    experienceSlug: slug,
-    destination,
-    originCity,
-    startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
-    endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
-    // RC-12: the expert reads the traveler's stated party, or none — never the search default.
-    travelers: statedParty,
-    interests: selectedInterests,
-  });
-
   /**
-   * THE DOOR. L19 (ledger `2026-09-07-request-is-a-click`, the brief's finding F1): opening
-   * "Get Expert Help" used to mint a slip and POST `/api/expert-requests` before the traveler
-   * saw anything, then toast "Shared with an expert" — the OPEN was the SEND. This function is
-   * now a READ: it checks the one thing a signed-out traveler must be told, and opens the review
-   * sheet. Everything that writes lives in `sendExpertHelpRequest`, on that sheet's Send button.
+   * THE ONE EXPERT DOOR (R323, step 7b; surface spec §10 "one expert door, one `expert_requests`
+   * route"). Every expert surface on this page — the ribbon, its mobile twin, the checkout banner —
+   * now leads to the SLIP's handoff chooser. Locked Decision 32 still holds first: no expert
+   * touchpoint without a slip, so the slip is resolved (reused, or minted from the basics this page
+   * states — never a guessed date) and the traveler lands on it with the chooser open. The page's
+   * own review sheet, its free-lead POST and its AI-match/live-chat dialog are retired: the request,
+   * its fee and its hold are the chooser's, on the plan they are about.
    */
-  const openExpertChat = () => {
-    if (!user) {
-      // Minting a slip needs an account, so a signed-out traveler has no honest way through
-      // this door yet. Saying so beats opening a review of a request that cannot be sent.
-      toast({
-        title: "Sign in to get expert help",
-        description: "Your plan is saved to your account before an expert can pick it up.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setExpertReviewOpen(true);
-  };
-
-  const sendExpertHelpRequest = async () => {
-    // THE SLIP IS THE PRECONDITION FOR THE TOUCHPOINT ITSELF, not just for the lead (Locked
-    // Decision 32 lane (a), ledger `2026-09-04-template-inquiry-slip`). The Expert Help dialog
-    // is AI expert matching plus a live advisor chat — an expert touchpoint — so it does not
-    // open until a slip exists. A `template_inquiry` with no `tripId` is a DEAD END that
-    // surfaces to nobody: the advisor row, the expert's notification and the Assigned Trips
-    // entry all sit inside `if (tripId)` in booking-actions.ts, and the admin confirm path
-    // answers 400 "Request has no associated trip" — while this page's own bare `catch` told
-    // the traveler it had been "shared". So the slip is resolved FIRST from the basics already
-    // on this page; the dialog opens only once one is in hand, and the request only goes out
-    // bound to it. A trip already in trip context is REUSED, never duplicated. Every one of
-    // those decisions lives in `@/lib/trip-slip` — none is restated here.
-    // Second layer, kept deliberately: the door above already refuses a signed-out traveler,
-    // and this is the one that guards the WRITE. A check on the control that opens a screen is
-    // never the thing that keeps a request out.
+  const openExpertChat = async () => {
     if (!user) {
       toast({
         title: "Sign in to get expert help",
@@ -1660,102 +1601,29 @@ export default function ExperienceTemplatePage() {
       });
       return;
     }
-    const snapshot = buildPlanSnapshot();
-    // Dedup key includes the cart summary (count/total) so a changed plan still re-sends even
-    // though item content no longer rides the snapshot itself. It governs the REQUEST only —
-    // a second click on an unchanged plan must still be able to open the dialog, which is why
-    // it rides in as `skipRequest` rather than short-circuiting the precondition.
-    const sig = JSON.stringify({ ...snapshot, cartCount: cart.length, cartTotal });
-    const alreadyShared = sig === lastSharedPlanRef.current;
-    if (!alreadyShared) lastSharedPlanRef.current = sig;
-
-    setExpertRequestSending(true);
-    let outcome: Awaited<ReturnType<typeof ensureSlipForExpertRequest>>;
-    try {
-      outcome = await ensureSlipForExpertRequest(
+    const outcome = await ensureSlipForExpertRequest(
       {
         existingTripId: getTripContext().tripId,
         basics: {
           destination,
-          // The snapshot's own YYYY-MM-DD dates — absent when the traveler has not set them,
-          // and absent is where this stops. Never a defaulted "today"/"+7 days" (§13).
-          startDate: snapshot.startDate,
-          endDate: snapshot.endDate,
+          startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
+          endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
         },
       },
       {
-        skipRequest: alreadyShared,
+        skipRequest: true,
         mint: (basics) => mintTripSlip(basics),
-        onMinted: (tripId) => {
-          // Bind the new slip to this page's context so the rest of the session (and the
-          // expert's live read) points at the trip the traveler is actually filling in.
-          updateTripContext({ tripId });
-        },
-        onSlipReady: () => {
-          // A slip exists (reused or just minted) — the touchpoint is authorized. This is the
-          // ONLY place the Expert Help dialog opens.
-          setExpertHelpDialogOpen(true);
-        },
-        sendRequest: async (tripId) => {
-          const res = await fetch("/api/expert-requests", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              destination,
-              requestType: "template_inquiry",
-              notes: `Traveler is planning a ${experienceType?.name || "trip"} to ${destination}` +
-                (cart.length ? ` with ${cart.length} selected item(s) (~$${cartTotal}).` : "."),
-              // The slip REFERENCE (Server-truth mode): the expert workspace reads the plan
-              // live through it; nothing is copied. Never optional any more.
-              tripId,
-              optimizationContext: { planSnapshot: snapshot },
-            }),
-          });
-          // `fetch` does not reject on a 4xx/5xx, and the old bare `catch` therefore toasted
-          // "Shared with an expert" for a request the server refused. A claim the platform
-          // cannot back is the §13 class this whole lane is about, so a non-OK answer is a
-          // failure here rather than a silent success.
-          if (!res.ok) throw new Error(`expert-requests responded ${res.status}`);
-          return res;
-        },
+        onMinted: (tripId) => updateTripContext({ tripId }),
+        sendRequest: async () => undefined as any,
       },
-      );
-    } finally {
-      setExpertRequestSending(false);
-    }
-
-    // The review has done its job either way — a refusal is reported on the sheet's own toast,
-    // so the sheet closes on every outcome and the traveler is never left staring at a Send
-    // button that already ran.
-    setExpertReviewOpen(false);
-
-    if (outcome.status === "sent") {
-      toast({
-        title: "Shared with an expert",
-        description: "Your current plan was sent so an expert can jump right in.",
-      });
+    );
+    if (outcome.status === "blocked") {
+      toast({ title: "Your plan needs a few basics first", description: outcome.message, variant: "destructive" });
       return;
     }
-    // The dialog is open on an unchanged plan already in the queue — nothing to say, and
-    // nothing to re-send. `lastSharedPlanRef` is deliberately left alone here.
-    if (outcome.status === "ready") return;
-
-    // Nothing was sent. Let the next click try again.
-    lastSharedPlanRef.current = "";
-    if (outcome.status === "blocked") {
-      // The dialog did NOT open: there is no slip, so there is no touchpoint. The traveler is
-      // told exactly which basic is missing — never a guessed date to make the flow proceed.
-      toast({
-        title: "Your plan needs a few basics first",
-        description: outcome.message,
-        variant: "destructive",
-      });
-    }
-    // `request_failed` keeps the previous non-fatal behaviour: the dialog is already open and
-    // the slip now exists, so the next click retries against the same trip.
+    setLocation(`/plans/${outcome.tripId}?handoff=open`);
   };
-  
+
   const openAiItineraryBuilder = () => {
     // Open the AI Itinerary Builder dialog
     setAiItineraryDialogOpen(true);
@@ -3448,77 +3316,6 @@ export default function ExperienceTemplatePage() {
             toast({ title: "Custom venue added", description: `${venue.name} is now in your plan` });
           }}
         />
-        
-        {/* L19's stop screen (ledger `2026-09-07-request-is-a-click`). It writes nothing: the
-            slip mint and the `POST /api/expert-requests` both live behind its Send button, in
-            `sendExpertHelpRequest`. The basics are the page's OWN stated values — an unset date
-            reads "Not set" rather than being filled in for the traveler (§13) — and the price is
-            the free lead rail's, which mints no PaymentIntent. */}
-        <ExpertRequestReviewSheet
-          open={expertReviewOpen}
-          onOpenChange={setExpertReviewOpen}
-          basics={{
-            destination,
-            startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
-            endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
-            party: adults + kids,
-          }}
-          priceLabel={EXPERT_REQUEST_FREE_PRICE}
-          sending={expertRequestSending}
-          onSend={sendExpertHelpRequest}
-        />
-
-        {/* Expert Help Dialog - AI Matching + Chat */}
-        <Dialog open={expertHelpDialogOpen} onOpenChange={setExpertHelpDialogOpen}>
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-primary" />
-                Get Expert Help
-              </DialogTitle>
-              <DialogDescription>
-                Find AI-matched experts or chat with an advisor for personalized travel guidance
-              </DialogDescription>
-            </DialogHeader>
-            <Tabs value={expertHelpTab} onValueChange={(v) => setExpertHelpTab(v as "ai-match" | "chat")} className="mt-4">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="ai-match" className="gap-2" data-testid="tab-ai-match">
-                  <Sparkles className="w-4 h-4" />
-                  AI-Matched Experts
-                </TabsTrigger>
-                <TabsTrigger value="chat" className="gap-2" data-testid="tab-chat">
-                  <MessageCircle className="w-4 h-4" />
-                  Live Chat
-                </TabsTrigger>
-              </TabsList>
-              <div className="mt-4">
-                {expertHelpTab === "ai-match" && (
-                  <AIMatchedExpertsSection
-                    destination={destination}
-                    startDate={startDate}
-                    endDate={endDate}
-                    experienceType={experienceType?.name}
-                    travelers={adults + kids}
-                    preferences={selectedInterests}
-                    userId={user?.id}
-                    isVisible={true}
-                  />
-                )}
-                {expertHelpTab === "chat" && (
-                  <div className="min-h-[400px]">
-                    {/* LD 54: the Live Chat tab lists the destination's local experts, available
-                        now first, each with a real Message button — it no longer points at the AI
-                        widget in the corner. */}
-                    <LiveChatExperts
-                      destination={destination}
-                      subject={experienceType?.name ? `${experienceType.name} in ${destination}` : null}
-                    />
-                  </div>
-                )}
-              </div>
-            </Tabs>
-          </DialogContent>
-        </Dialog>
         
         {/* AI Itinerary Builder Dialog */}
         <Dialog open={aiItineraryDialogOpen} onOpenChange={setAiItineraryDialogOpen}>
