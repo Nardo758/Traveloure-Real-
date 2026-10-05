@@ -6,7 +6,7 @@
  *      title words with the right token still resolve and return the canonical slug
  *   P3 /t/:slug serves real OG/Twitter tags (og:type product, canonical og:url, twitter:image); a stale
  *      slug 301s to the canonical one; an unknown slug falls through to the SPA
- *   P4 the purchase charges `readyMadeBuyerTotalCents` — the price line's own number (pinned by source)
+ *   P4 the purchase charges `listing.priceCents`, and `readyMadeBuyerTotalCents` (the price line) is that number
  *   P5 Slice B2 (ledger `2026-10-05-rmt-share-images`): the four generated cards render at their sizes
  *      behind the same gate; `feed` is the cover's old name; an unknown format is a 400; a download
  *      names the file; the CURRENT version is immutable, any other is the short default
@@ -39,7 +39,7 @@ globalThis.fetch = (async (input: any, init?: any) => {
   if (url.startsWith("https://images.unsplash.com/")) return new Response(PIXEL, { status: 200, headers: { "content-type": "image/png" } });
   return realFetch(input, init);
 }) as typeof fetch;
-const { readyMadeSlug } = await import("@shared/ready-made-preview");
+const { readyMadeSlug, readyMadeBuyerTotalCents } = await import("@shared/ready-made-preview");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -163,7 +163,12 @@ test("P3: /t/:slug carries real OG and Twitter tags; stale 301s; unknown falls t
 test("P4: the purchase charges the price line's own number", () => {
   const src = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/ready-made.routes.ts"), "utf8");
   const purchase = src.slice(src.indexOf('"/api/ready-made/:id/purchase"'));
-  assert.match(purchase.slice(0, 4000), /amount: readyMadeBuyerTotalCents\(listing\)!/);
+  // The charge stays `listing.priceCents` (payment-method-posture A6 pins that literal) …
+  assert.match(purchase.slice(0, 4000), /amount: listing\.priceCents,/);
+  // … and the price line's number is that same value for every priced listing.
+  for (const priceCents of [1, 4900, 12345, 250000]) {
+    assert.equal(readyMadeBuyerTotalCents({ priceCents }), priceCents);
+  }
 });
 
 const pngSize = (b: Buffer) => [b.readUInt32BE(16), b.readUInt32BE(20)];
