@@ -11,7 +11,11 @@
 import { haversineMeters } from "./geo";
 import { anchorWallClockMs } from "./anchor-time";
 
-export type FindingKind = "closed_on_arrival" | "timed_entry_conflict" | "city_crossing" | "walking_saved_km" | "pace_over";
+/**
+ * `leg_unreachable` (Slice A2, ledger `2026-10-05-reachability-from-legs`): a stop the plan's OWN leg
+ * cannot reach in time — `unreachableStops` in `shared/leg-reachability.ts`, the one reachability rule.
+ */
+export type FindingKind = "leg_unreachable" | "closed_on_arrival" | "timed_entry_conflict" | "city_crossing" | "walking_saved_km" | "pace_over";
 
 export interface Finding {
   kind: FindingKind;
@@ -25,7 +29,7 @@ export interface Finding {
 }
 
 /** Problems first, then gains — the order the card reads them in (spec §8). */
-export const FINDING_ORDER: readonly FindingKind[] = ["closed_on_arrival", "timed_entry_conflict", "city_crossing", "walking_saved_km", "pace_over"];
+export const FINDING_ORDER: readonly FindingKind[] = ["leg_unreachable", "closed_on_arrival", "timed_entry_conflict", "city_crossing", "walking_saved_km", "pace_over"];
 export const MAX_FINDINGS = 3;
 
 /** R-v: hours older than this, relative to the trip's first day, still count — with the caveat. */
@@ -346,6 +350,8 @@ const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many
 /** The words for one finding — ONE author, read by the card and its tests. */
 export function findingLine(f: Finding): string {
   switch (f.kind) {
+    case "leg_unreachable":
+      return `${n(f.count, "stop", "stops")} can't be reached in time with the plan's travel times`;
     case "closed_on_arrival":
       return `${n(f.count, "stop is", "stops are")} reached when ${f.count === 1 ? "it's" : "they're"} closed`;
     case "timed_entry_conflict":
@@ -394,12 +400,14 @@ export const ADD_TRAVEL_TIMES = "Add travel times";
 /**
  * Pure. On Finalize, a plan with no run sees its free findings once more as the prompt ("2 stops may
  * not be reachable in time · Add travel times"); the card carries the same line under its day strip.
- * Reachability findings (closed on arrival, timed entries that clash) count STOPS; otherwise the
- * first finding's own line is used. No findings ⇒ null (nothing claimed, §13).
+ * Slice A2 (ledger `2026-10-05-reachability-from-legs`): "reachable in time" counts ONLY the stops the
+ * plan's own legs cannot reach (`leg_unreachable` — the leg's confirmed minutes against the draft's
+ * gap). A stop reached while closed or a clashing timed entry is not a travel-time fact and is no
+ * longer counted as one; it is read with its own words. No findings ⇒ null (nothing claimed, §13).
  */
 export function freeFindingsPromptLine(findings: readonly Finding[] | null | undefined): string | null {
   if (!findings?.length) return null;
-  const reach = findings.filter((f) => f.kind === "closed_on_arrival" || f.kind === "timed_entry_conflict").reduce((n, f) => n + f.count, 0);
+  const reach = findings.filter((f) => f.kind === "leg_unreachable").reduce((n, f) => n + f.count, 0);
   if (reach > 0) return `${reach} ${reach === 1 ? "stop" : "stops"} may not be reachable in time · ${ADD_TRAVEL_TIMES}`;
   return `${findingLine(findings[0])} · ${ADD_TRAVEL_TIMES}`;
 }
