@@ -17,6 +17,7 @@ import {
   users,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { anchorWallClockParts } from "@shared/anchor-time";
 
 export interface ProviderMatchCriteria {
   date: string;           // "2026-03-15"
@@ -227,13 +228,13 @@ export async function buildBookingContext(
 
   // Anchors on this same date
   const sameDayAnchors = anchors.filter(a => {
-    const anchorDate = new Date(a.anchorDatetime).toISOString().slice(0, 10);
-    return anchorDate === requestedDate;
+    return anchorWallClockParts(a.anchorDatetime)?.date === requestedDate;
   });
 
   // Find what's before and after this time slot
   const sortedAnchors = sameDayAnchors
-    .map(a => ({ ...a, time: new Date(a.anchorDatetime).toTimeString().slice(0, 5) }))
+    // R317: the anchor's wall-clock "HH:MM", never the server's `toTimeString()`.
+    .map(a => ({ ...a, time: anchorWallClockParts(a.anchorDatetime)?.time ?? "" }))
     .sort((a, b) => a.time.localeCompare(b.time));
 
   const priorActivity = sortedAnchors
@@ -245,7 +246,7 @@ export async function buildBookingContext(
 
   // Build anchor constraint list
   const anchorConstraints = sameDayAnchors.map(a => {
-    const time = new Date(a.anchorDatetime).toTimeString().slice(0, 5);
+    const time = anchorWallClockParts(a.anchorDatetime)?.time ?? "";
     let constraint = "";
     if (a.isImmovable) {
       constraint = `IMMOVABLE: ${a.anchorType.replace(/_/g, " ")} at ${time}`;

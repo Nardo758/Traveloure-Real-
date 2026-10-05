@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import { storage } from "../storage";
 import type { TemporalAnchor, ExpertVendorCoordination } from "@shared/schema";
+import { anchorWallClockParts } from "@shared/anchor-time";
 
 export interface EventTimelineBlock {
   key: string;
@@ -136,10 +137,11 @@ export async function buildEventTimeline(
     };
   }
 
-  const anchorDt = new Date(anchor.anchorDatetime);
-  const anchorDate = anchorDt.toISOString().slice(0, 10);
-  const anchorMinutes = anchorDt.getHours() * 60 + anchorDt.getMinutes();
-  const anchorTimeStr = anchorDt.toTimeString().slice(0, 5);
+  // R317: the anchor's wall-clock day, minutes and "HH:MM" — one reader, never the server's zone.
+  const anchorParts = anchorWallClockParts(anchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
+  const anchorDate = anchorParts.date;
+  const anchorMinutes = anchorParts.minutes;
+  const anchorTimeStr = anchorParts.time;
 
   const ruleset = (profile.sequencingRuleset ?? []) as Array<{
     key: string;

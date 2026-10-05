@@ -9,6 +9,7 @@
 import { storage } from "../storage";
 import type { TemporalAnchor } from "@shared/schema";
 import { FLIGHT_BUFFER_MIN } from "@shared/getting-there";
+import { anchorDayNumber } from "@shared/anchor-time";
 
 interface AnchorSuggestion {
   anchorType: string;
@@ -58,11 +59,9 @@ export async function generateAnchorSuggestions(
   });
 }
 
+// R317: the plan day by the anchor's wall-clock CALENDAR date, never midnight in the server's zone.
 function getDayNumber(datetime: string | Date, tripStart: string): number {
-  const dt = new Date(datetime);
-  const start = new Date(tripStart);
-  start.setHours(0, 0, 0, 0);
-  return Math.floor((dt.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  return anchorDayNumber(datetime, tripStart) ?? Number.NaN;
 }
 
 function getFlightBufferSuggestions(

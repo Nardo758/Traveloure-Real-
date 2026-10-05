@@ -8,6 +8,7 @@
 
 import { storage } from "../storage";
 import { CoordinationService } from "./coordination.service";
+import { anchorWallClockParts } from "@shared/anchor-time";
 
 const coordinationService = new CoordinationService();
 
@@ -94,8 +95,9 @@ export async function generateStaggeredArrivalPlan(
 
   let deadlineMinutes = 600; // 10:00 by default
   if (meetingAnchor) {
-    const mt = new Date(meetingAnchor.anchorDatetime);
-    deadlineMinutes = mt.getHours() * 60 + mt.getMinutes() - (meetingAnchor.bufferBefore || 15);
+    // R317: the meeting's wall-clock minutes, not the server's reading of them.
+    const mt = anchorWallClockParts(meetingAnchor.anchorDatetime);
+    if (mt) deadlineMinutes = mt.minutes - (meetingAnchor.bufferBefore || 15);
   }
 
   // Build groups
