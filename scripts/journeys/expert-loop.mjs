@@ -310,10 +310,9 @@ async function main() {
     await runStep(
       "Expert: Custom add with a cost (KNOWN estimatedCost type-mismatch defect)",
       async () => {
-        await waitVisible(expertPage, "tab-right-add");
-        await expertPage.click(`[data-testid="tab-right-add"]`);
-        await waitVisible(expertPage, "pill-add-custom");
-        await expertPage.click(`[data-testid="pill-add-custom"]`);
+        // R322: the custom-add form lives on the day itself ("+ Add a stop of your own").
+        await waitVisible(expertPage, "workstation-add-stop-day-1");
+        await expertPage.click(`[data-testid="workstation-add-stop-day-1"]`);
         await waitVisible(expertPage, "input-inline-add-title");
         await expertPage.fill(`[data-testid="input-inline-add-title"]`, CUSTOM_ITEM_TITLE);
         await expertPage.fill(`[data-testid="input-inline-add-cost"]`, "42.50");
@@ -366,10 +365,9 @@ async function main() {
     await runStep(
       "Expert: leave a per-item note (traveler-visible)",
       async () => {
-        await waitVisible(expertPage, "button-toggle-item-editor");
-        await expertPage.click(`[data-testid="button-toggle-item-editor"]`);
-        const expandBtn = await waitVisible(expertPage, `button-expand-item-${ITEM_C}`);
-        await expertPage.click(expandBtn);
+        // R322: the stop's edit panel opens from its ItemRow menu (⋯ → Edit).
+        await expertPage.click(await waitVisible(expertPage, `item-menu-${ITEM_C}`));
+        await expertPage.click(await waitVisible(expertPage, `item-menu-edit-${ITEM_C}`));
         const noteField = await waitVisible(expertPage, `textarea-expert-note-${ITEM_C}`);
         await expertPage.fill(noteField, EXPERT_NOTE_TEXT);
 

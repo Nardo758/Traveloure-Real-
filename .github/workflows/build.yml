@@ -71,6 +71,13 @@ jobs:
       - run: npm ci
       - name: Production build (syntax/bundle gate — does NOT run tsc)
         run: npm run build
+      # R322 (step 7a, R-bh): the Workstation's retired surfaces stay gone — the source (definitions,
+      # mounts, the deleted Leaflet file) and the built bundle (testids only they drew).
+      - name: Workstation retired surfaces (R322) — self-test, source, bundle
+        run: |
+          node scripts/check-workstation-retired.cjs --self-test
+          node scripts/check-workstation-retired.cjs
+          node scripts/check-workstation-retired.cjs --bundle
 
       # 2026-09-05-well-known-static (CLAUDE.md Locked Decision 43(e)): Stripe verifies an Apple
       # Pay domain by fetching /.well-known/apple-developer-merchantid-domain-association, and the

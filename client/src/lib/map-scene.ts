@@ -43,7 +43,8 @@ export interface MapVersion {
 
 export interface BrowsePlace {
   id: string;
-  kind: "listing" | "partner";
+  /** `candidate` (R322): a result the Workstation's open Add-panel drawer published. */
+  kind: "listing" | "partner" | "candidate";
   name: string;
   lat: number | null;
   lng: number | null;

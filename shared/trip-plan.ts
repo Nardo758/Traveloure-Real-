@@ -830,6 +830,10 @@ export function isChauffeuredMode(mode: string | null | undefined): boolean {
   return !!mode && CHAUFFEURED_MODES.includes(mode.toLowerCase());
 }
 
+/** R-ay: an author's tip is at most this many characters (app-enforced; no DB CHECK). Read by the
+ *  leg PATCH schema and by the Workstation's `LegRow` counter (R322) — one number (§18 rule 1). */
+export const AUTHOR_TIP_MAX_CHARS = 140;
+
 /**
  * The mode picker's option set for ONE leg (moved here from the Workstation, work plan L1-10, so the
  * Workstation picker and `GET /api/trips/:tripId/transport-legs/review` read ONE rule — §18 rule 1).
