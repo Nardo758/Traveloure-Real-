@@ -103,6 +103,35 @@ export function hopMapPoints(from: PointLike, to: PointLike, width: number, heig
 }
 
 /**
+ * Slice A1 (ledger `2026-10-05-leg-live-hop-path`): the hop map with the leg's live ROUTE. The two
+ * stops and every point of the route's shape are fitted into ONE box with the same projection
+ * `hopMapPoints` uses, so the numbered stops sit on the path's ends. Null when either stop is
+ * unlocated (nothing is drawn — §13) or the path has fewer than two points (the caller keeps the
+ * dashed stop-order line).
+ */
+export function hopPathPoints(
+  from: PointLike,
+  to: PointLike,
+  path: ReadonlyArray<{ lat: number; lng: number }> | null | undefined,
+  width: number,
+  height: number,
+  pad = 24,
+): { a: { x: number; y: number }; b: { x: number; y: number }; path: { x: number; y: number }[] } | null {
+  if (!located(from) || !located(to) || !path || path.length < 2) return null;
+  const all = [{ lat: from.lat as number, lng: from.lng as number }, ...path, { lat: to.lat as number, lng: to.lng as number }];
+  const lats = all.map((p) => p.lat);
+  const k = Math.cos(((Math.min(...lats) + Math.max(...lats)) / 2) * (Math.PI / 180));
+  const xy = all.map((p) => ({ x: p.lng * k, y: -p.lat }));
+  const minX = Math.min(...xy.map((p) => p.x)), maxX = Math.max(...xy.map((p) => p.x));
+  const minY = Math.min(...xy.map((p) => p.y)), maxY = Math.max(...xy.map((p) => p.y));
+  const scale = Math.min((width - 2 * pad) / Math.max(maxX - minX, 1e-9), (height - 2 * pad) / Math.max(maxY - minY, 1e-9));
+  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2;
+  const proj = (p: { x: number; y: number }) => ({ x: width / 2 + (p.x - mx) * scale, y: height / 2 + (p.y - my) * scale });
+  const projected = xy.map(proj);
+  return { a: projected[0], b: projected[projected.length - 1], path: projected.slice(1, -1) };
+}
+
+/**
  * May this viewer edit legs on the Workstation? The build's author (`authoring` mode), or an advisor
  * whose status grants §12 WRITE access — the ONE shared predicate, never a restated list. A pending
  * advisor, an unknown status, or a context still loading answers false: edit controls fail closed.
