@@ -188,6 +188,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "booking-auto-completion", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // expert field knowledge v2 Phase 2 — the scorer's authoritative runner (idempotent, key-gated).
   { job: "score-neighborhood-claims", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // Step 7b (R323): the handoff clocks — 24 h fallback, 48 h hold release (R-q), 7 d auto-approve (R-s).
+  { job: "handoff-timers", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // jobs-cron.yml — four-hourly, 0 */4 * * *
   { job: "booking-expiry", expectedIntervalSec: 4 * 60 * 60, bucket: "four-hourly" },
   // jobs-cron.yml — six-hourly, 0 */6 * * *
@@ -388,6 +390,14 @@ router.post("/internal/jobs/travel-matrix-refresh", requireInternalSecret, async
 router.post("/internal/jobs/travelpulse-weekly", requireInternalSecret, async (_req, res) => {
   const { runTravelPulseWeeklyJob } = await import("../services/travelpulse-weekly.service");
   const { status, body } = await runJob("travelpulse-weekly", () => runTravelPulseWeeklyJob(), (r) => r?.status === "failed");
+  res.status(status).json(body);
+});
+
+// Step 7b (R323): the handoff clocks. Every transition is an atomic conditional, so a re-run (or a
+// second runner) changes nothing twice.
+router.post("/internal/jobs/handoff-timers", requireInternalSecret, async (_req, res) => {
+  const { runHandoffTimers } = await import("../services/handoff.service");
+  const { status, body } = await runJob("handoff-timers", () => runHandoffTimers());
   res.status(status).json(body);
 });
 

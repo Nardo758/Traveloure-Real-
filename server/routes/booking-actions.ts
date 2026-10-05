@@ -1373,6 +1373,19 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
     if (!nextStatus || !validTransitions[current]?.includes(nextStatus)) {
       return res.status(400).json({ message: `Cannot transition workspace status from '${current}'${nextStatus ? ` to '${nextStatus}'` : ""}. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
+    // Step 7b (R323, §12 step 5): when this (trip, expert) pair holds a live HANDOFF, delivering is
+    // the handoff's deliver — refused while a suggestion is open or a scoped item is unbooked, and
+    // checked BEFORE the workspace flip so the two never disagree. One deliver rule, two doors.
+    let liveHandoffId: string | null = null;
+    if (nextStatus === "delivered") {
+      const { liveHandoffIdFor } = await import("../services/expert-suggestions.service");
+      liveHandoffId = await liveHandoffIdFor(assignment.tripId, userId);
+      if (liveHandoffId) {
+        const { deliverHandoff } = await import("../services/handoff.service");
+        const out = await deliverHandoff(liveHandoffId, userId, { offerOnTripSupport: req.body?.offerOnTripSupport === true });
+        if (!out.ok) return res.status(out.status).json({ code: out.code, message: out.message });
+      }
+    }
     // Task 1028: the helper flips the status AND writes the append-only item_transition_log row
     // (actor, from/to, timestamp) in one transaction — rulings 12/16/18. Pass the acting expert.
     // The status is server-derived (ruling 25): nextStatus, never the raw client value.
@@ -1498,6 +1511,21 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
 
     if (!candidate) {
       return res.status(409).json({ error: 'This trip has no delivered plan awaiting review' });
+    }
+
+    // Step 7b (R323, R-s): a delivered HANDOFF on this plan is answered by the SAME decision — approve
+    // pays the expert and returns the pen; request changes spends one of the two included rounds and
+    // is refused once both are used (checked before the advisor row moves, so the two agree).
+    {
+      const { getTripHandoff, approveHandoff, requestHandoffChanges } = await import('../services/handoff.service');
+      const h = await getTripHandoff(id);
+      if (h && h.status === 'delivered' && h.assignedExpertId === candidate.localExpertId) {
+        const out =
+          decision === 'approve'
+            ? await approveHandoff(h.id, 'traveler', userId)
+            : await requestHandoffChanges(h.id, userId, note ?? null);
+        if (!out.ok) return res.status(out.status).json({ error: out.message, code: out.code });
+      }
     }
 
     const setValues =

@@ -44,6 +44,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { isTripAuthor } from "../utils/trip-authorship";
+import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
 import { db } from "../db";
 import { providerServices } from "@shared/schema";
@@ -125,6 +126,9 @@ router.post("/api/trips/:tripId/transport-legs/generate", isAuthenticated, async
       { requireWriteAccess: true },
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
+    if (await isSuggestingAdvisor(tripId, sessionUserId(req))) {
+      return res.status(403).json({ code: "owner_generates_legs", message: "Only the plan's owner generates legs. Suggest changes to a leg instead." });
+    }
 
     const result = await generateTripTransportLegs(tripId);
 
@@ -213,6 +217,18 @@ async function isExpertSideLegWriter(tripId: string, userId: string | undefined)
   return (await isTripAuthor(tripId, userId)) || (await isTripAdvisorWithWriteAccess(tripId, userId));
 }
 
+/**
+ * Step 7b (R323, R-n, R-bd): the caller writes a TRAVELER's plan as an advisor — not its owner and
+ * not the author of the build. Such a caller's leg writes become `leg` suggestions; legs are
+ * generated only by the plan's owner or the build's author (R300/R310 made permanent).
+ */
+async function isSuggestingAdvisor(tripId: string, userId: string | undefined): Promise<boolean> {
+  if (!userId) return false;
+  if (await verifyTripOwnership(tripId, userId)) return false;
+  if (await isTripAuthor(tripId, userId)) return false;
+  return isTripAdvisorWithWriteAccess(tripId, userId);
+}
+
 router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async (req, res) => {
   try {
     const { tripId, legId } = req.params;
@@ -252,6 +268,18 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
       // No pickup-confirmation column exists yet (work plan L1-7), so none is passed — see legPickupRefusal.
       const refusal = legPickupRefusal(listing ? { transportProvision: listing.transportProvision, pickupConfirmedAt: undefined } : null);
       if (refusal) return res.status(400).json({ message: "That listing cannot be this leg's host pickup", reason: refusal });
+    }
+
+    if (await isSuggestingAdvisor(tripId, sessionUserId(req))) {
+      const { fileExpertSuggestion } = await import("../services/expert-suggestions.service");
+      const suggestion = await fileExpertSuggestion({
+        tripId,
+        expertId: sessionUserId(req)!,
+        kind: "leg",
+        itemId: existing.toActivityId ?? null,
+        payload: { legId, patch: parsed.data, label: `${existing.fromName ?? ""} → ${existing.toName ?? ""}` },
+      });
+      return res.status(202).json({ suggested: true, suggestion });
     }
 
     const leg = await updateTripTransportLeg(tripId, legId, {
@@ -312,6 +340,18 @@ router.delete("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async
 
     const existing = await getTripTransportLeg(tripId, legId);
     if (!existing) return res.status(404).json({ message: "Transport leg not found for this trip" });
+
+    if (await isSuggestingAdvisor(tripId, sessionUserId(req))) {
+      const { fileExpertSuggestion } = await import("../services/expert-suggestions.service");
+      const suggestion = await fileExpertSuggestion({
+        tripId,
+        expertId: sessionUserId(req)!,
+        kind: "leg",
+        itemId: existing.toActivityId ?? null,
+        payload: { legId, remove: true, label: `${existing.fromName ?? ""} → ${existing.toName ?? ""}` },
+      });
+      return res.status(202).json({ suggested: true, suggestion });
+    }
 
     const ok = await deleteTripTransportLeg(tripId, legId);
     if (!ok) return res.status(404).json({ message: "Transport leg not found for this trip" });

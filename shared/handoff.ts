@@ -37,6 +37,7 @@ export const HANDOFF_FEE_TIER: Record<HandoffKind, "review" | "review_and_book" 
 
 /** A handoff row's status (app-enforced on `expert_requests.status`; legacy rows keep their own). */
 export const HANDOFF_STATUSES = [
+  "authorizing", // the row exists; the card hold is being placed
   "proposed", // matched; waiting for the expert to accept
   "unmatched", // routing found nobody; admin can assign
   "accepted", // the expert took it; the fee is captured; the pen is theirs on the scope
@@ -67,7 +68,7 @@ export const WITHDRAWAL_FEE_BAND: Record<Exclude<WithdrawalStage, "before_accept
 export const ON_TRIP_SUPPORT_BAND = "on_trip_support";
 
 export function withdrawalStage(status: string | null | undefined): WithdrawalStage | null {
-  if (status === "proposed" || status === "unmatched") return "before_accept";
+  if (status === "authorizing" || status === "proposed" || status === "unmatched") return "before_accept";
   if (status === "accepted") return "after_accept";
   if (status === "delivered") return "after_delivery";
   return null; // approved / withdrawn / released — nothing left to withdraw from
@@ -103,6 +104,7 @@ export function changeRoundAllowed(changeRounds: number | null | undefined): boo
 
 /** The banner's state for a live request (§12 step 2), from the row and the clock. */
 export type HandoffBannerState =
+  | { kind: "authorizing" }
   | { kind: "finding"; city: string | null }
   | { kind: "fallback_offered" }
   | { kind: "released" }
@@ -116,6 +118,7 @@ export function handoffBannerState(row: {
   city?: string | null;
 }): HandoffBannerState {
   if (row.status === "released") return { kind: "released" };
+  if (row.status === "authorizing") return { kind: "authorizing" };
   if (row.status === "proposed" || row.status === "unmatched") {
     return row.fallbackOfferedAt ? { kind: "fallback_offered" } : { kind: "finding", city: row.city ?? null };
   }
