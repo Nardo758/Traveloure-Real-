@@ -15,6 +15,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
 import {
+  photoSourceName,
   readyMadeBuyerTotalCents,
   readyMadeIdToken,
   readyMadePreviewPath,
@@ -73,6 +74,23 @@ const legs = [
   { fromActivityId: "c", toActivityId: "d", proposalStatus: "confirmed", userSelectedMode: "transit", recommendedMode: "transit", estimatedDurationMinutes: 30 },
 ];
 
+describe("V2b photo credit source", () => {
+  it("names the library the metadata names, never a default", () => {
+    assert.equal(photoSourceName({ unsplashId: "abc" }), "Unsplash");
+    assert.equal(photoSourceName({ profileUrl: "https://unsplash.com/@ann" }), "Unsplash");
+    assert.equal(photoSourceName({ profileUrl: "https://www.pexels.com/@g-n-403098" }), "Pexels");
+    assert.equal(photoSourceName({ profileUrl: "https://commons.wikimedia.org/wiki/User:BM" }), "Wikimedia Commons");
+    assert.equal(photoSourceName({ profileUrl: "https://notunsplash.com.evil/x" }), null);
+    assert.equal(photoSourceName({ profileUrl: "not a url" }), null);
+    assert.equal(photoSourceName({}), null);
+  });
+  it("a credit with no named source names the photographer alone", () => {
+    const html = render(preview({ heroCredit: { photographer: "G N", profileUrl: null, source: null } }));
+    assert.match(html, /Photo by G N/);
+    assert.ok(!html.includes("on Unsplash"));
+  });
+});
+
 describe("V3 sample day", () => {
   it("day 1 only, confirmed legs only, nothing private", () => {
     const day = sampleDayOf(items as any, legs)!;
@@ -97,7 +115,7 @@ function preview(over: Partial<ReadyMadePreview> = {}): ReadyMadePreview {
     durationDays: 3,
     planLabel: "Cultural trip",
     heroImageUrl: "https://images.unsplash.com/photo-1",
-    heroCredit: { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann" },
+    heroCredit: { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann", source: "Unsplash" },
     priceLine: "From $49 · no fee on this purchase",
     expert: { name: "Aiko", handle: "aiko-kyoto", localVerified: true },
     sampleDay: sampleDayOf(items as any, legs),

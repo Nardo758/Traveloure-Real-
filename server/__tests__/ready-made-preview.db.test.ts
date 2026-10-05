@@ -109,7 +109,7 @@ test("P1: an approved listing's preview is the public teaser, nothing private", 
   assert.equal(body.path, `/t/${slug}`);
   assert.equal(body.priceLine, "From $49 · no fee on this purchase");
   assert.deepEqual(body.expert, { name: "Aiko", handle: `rmp${RUN}`, localVerified: false });
-  assert.deepEqual(body.heroCredit, { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann" });
+  assert.deepEqual(body.heroCredit, { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann", source: "Unsplash" });
   assert.deepEqual(body.sampleDay.stops.map((s: any) => s.title), ["Fushimi Inari", "Tofuku-ji", "Nishiki Market"]);
   assert.deepEqual(body.sampleDay.legs, [{ fromIndex: 0, toIndex: 1, mode: "walking", minutes: 22 }]);
   assert.equal(body.lockedDays, 2);

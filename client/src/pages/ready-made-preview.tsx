@@ -40,8 +40,8 @@ export function ReadyMadePreviewView({ preview }: { preview: ReadyMadePreview })
                 Photo by{" "}
                 {preview.heroCredit.profileUrl ? (
                   <a href={preview.heroCredit.profileUrl} target="_blank" rel="noopener noreferrer nofollow" className="underline">{preview.heroCredit.photographer}</a>
-                ) : preview.heroCredit.photographer}{" "}
-                on Unsplash
+                ) : preview.heroCredit.photographer}
+                {preview.heroCredit.source ? ` on ${preview.heroCredit.source}` : null}
               </figcaption>
             ) : null}
           </figure>

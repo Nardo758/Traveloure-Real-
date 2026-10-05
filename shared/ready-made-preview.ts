@@ -95,7 +95,7 @@ export interface ReadyMadePreview {
   durationDays: number;
   planLabel: string;
   heroImageUrl: string | null;
-  heroCredit: { photographer: string; profileUrl: string | null } | null;
+  heroCredit: { photographer: string; profileUrl: string | null; source: string | null } | null;
   priceLine: string | null;
   expert: { name: string; handle: string | null; localVerified: boolean };
   sampleDay: { dayNumber: number; stops: ReadyMadePreviewStop[]; legs: ReadyMadePreviewLeg[] } | null;
@@ -129,4 +129,26 @@ export function sampleDayOf(
   }
   out.sort((a, b) => a.fromIndex - b.fromIndex);
   return { dayNumber: 1, stops, legs: out };
+}
+
+const PHOTO_SOURCES: ReadonlyArray<[host: string, name: string]> = [
+  ["unsplash.com", "Unsplash"],
+  ["pexels.com", "Pexels"],
+  ["wikimedia.org", "Wikimedia Commons"],
+];
+
+/**
+ * The library a cover photo came from, as its own metadata says — an Unsplash id, or the host of the
+ * photographer's profile URL. NULL when neither names one: the credit then names the photographer
+ * alone (§13 — crediting the wrong library is worse than naming none).
+ */
+export function photoSourceName(meta: { profileUrl?: string | null; unsplashId?: string | null } | null | undefined): string | null {
+  if (meta?.unsplashId) return "Unsplash";
+  if (!meta?.profileUrl) return null;
+  try {
+    const host = new URL(meta.profileUrl).hostname.toLowerCase();
+    return PHOTO_SOURCES.find(([h]) => host === h || host.endsWith(`.${h}`))?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
