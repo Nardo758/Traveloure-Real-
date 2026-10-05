@@ -64,7 +64,7 @@ const FONTS_DIR = fs.existsSync(FONTS_DIR_DEV) ? FONTS_DIR_DEV : FONTS_DIR_PROD;
 const interRegular = fs.readFileSync(path.join(FONTS_DIR, "Inter-Regular.woff"));
 const interBold = fs.readFileSync(path.join(FONTS_DIR, "Inter-Bold.woff"));
 
-const FONT_CONFIG = [
+export const FONT_CONFIG = [
   { name: "Inter", data: interRegular, weight: 400 as const, style: "normal" as const },
   { name: "Inter", data: interBold, weight: 700 as const, style: "normal" as const },
 ];
@@ -75,8 +75,6 @@ export type ShareImageKind =
   | "service-feed"
   | "service-story"
   | "review"
-  | "ready-made-feed"
-  | "ready-made-story"
   | "service-route";
 
 export interface ServiceShareImageData {
@@ -93,17 +91,9 @@ export interface ServiceShareImageData {
   path: string;
 }
 
-export interface ReadyMadeShareImageData {
-  title: string;
-  market: string;
-  durationDays: number;
-  /** Real price in cents, or null when the listing has no price set (§13 — never invent one). */
-  priceCents: number | null;
-  authorName?: string | null;
-  authorHandle?: string | null;
-  /** Footer path text, e.g. "/p/somehandle" or "/ready-made/abc123". */
-  path: string;
-}
+// The Ready Made Trip's cards moved to `ready-made-share-image.service.ts` (Slice B2): one data
+// object, four formats, the real cover photo and the logo. The old text-only template is deleted
+// (§18c — its one caller now renders the new cards).
 
 export interface ServiceRouteShareImageData {
   serviceName: string;
@@ -201,9 +191,9 @@ function clampStarRating(rating: number): number {
 // Loosely typed: satori's `element: ReactNode` param is structurally satisfied by this shape at
 // runtime (a satori "VNode" is exactly {type, props:{style, children}}), but we don't pull in a
 // React dependency just for the type, so the tree is built + passed as `any`.
-type El = { type: string; props: Record<string, any> };
+export type El = { type: string; props: Record<string, any> };
 
-function h(type: string, style: Record<string, any>, children?: any): El {
+export function h(type: string, style: Record<string, any>, children?: any): El {
   return { type, props: { style, children } };
 }
 
@@ -287,145 +277,6 @@ function buildServiceElement(
           color: DARK_SECONDARY,
         },
         earnerText,
-      ),
-    );
-  }
-
-  return h(
-    "div",
-    {
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "space-between",
-      width,
-      height,
-      padding: pad,
-      backgroundColor: DARK_BG,
-      fontFamily: "Inter",
-    },
-    [
-      h(
-        "div",
-        {
-          display: "flex",
-          fontFamily: "Inter",
-          fontWeight: 700,
-          fontSize: story ? 32 : 26,
-          letterSpacing: 4,
-          color: DARK_SECONDARY,
-        },
-        "TRAVELOURE",
-      ),
-      h(
-        "div",
-        { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" },
-        middleChildren,
-      ),
-      h(
-        "div",
-        {
-          display: "flex",
-          flexDirection: "column",
-          borderTop: `2px solid ${DARK_SECONDARY}`,
-          paddingTop: story ? 36 : 26,
-        },
-        [
-          h(
-            "div",
-            { display: "flex", fontFamily: "Inter", fontWeight: 700, fontSize: footerSize, color: DARK_TEXT },
-            "Book on Traveloure",
-          ),
-          h(
-            "div",
-            {
-              display: "flex",
-              fontFamily: "Inter",
-              fontWeight: 400,
-              fontSize: smallSize,
-              color: DARK_SECONDARY,
-              marginTop: 8,
-            },
-            data.path,
-          ),
-        ],
-      ),
-    ],
-  );
-}
-
-function buildReadyMadeElement(
-  data: ReadyMadeShareImageData,
-  opts: { width: number; height: number; story: boolean },
-): El {
-  const { width, height, story } = opts;
-  const pad = story ? 96 : 72;
-  const titleSize = story ? 88 : 68;
-  const metaSize = story ? 42 : 34;
-  const smallSize = story ? 32 : 26;
-  const footerSize = story ? 36 : 30;
-
-  const priceText = formatPrice(data.priceCents != null ? data.priceCents / 100 : null);
-  const authorText = formatEarnerLine(data.authorName, data.authorHandle);
-
-  const middleChildren: El[] = [
-    h(
-      "div",
-      {
-        display: "flex",
-        fontFamily: "Inter",
-        fontWeight: 700,
-        fontSize: titleSize,
-        lineHeight: 1.15,
-        color: DARK_TEXT,
-        marginBottom: story ? 44 : 30,
-      },
-      data.title,
-    ),
-    h(
-      "div",
-      {
-        display: "flex",
-        fontFamily: "Inter",
-        fontWeight: 400,
-        fontSize: metaSize,
-        color: DARK_SECONDARY,
-        marginBottom: story ? 22 : 16,
-      },
-      `${data.durationDays}-day · ${data.market}`,
-    ),
-  ];
-
-  if (priceText) {
-    middleChildren.push(
-      h(
-        "div",
-        {
-          display: "flex",
-          fontFamily: "Inter",
-          fontWeight: 700,
-          fontSize: metaSize,
-          color: DARK_TEXT,
-          marginBottom: story ? 22 : 16,
-        },
-        `From ${priceText}`,
-      ),
-    );
-  }
-
-  // No rating line here — there is no rating aggregate for Ready Made Trips (§13, never fabricate).
-
-  if (authorText) {
-    middleChildren.push(
-      h(
-        "div",
-        {
-          display: "flex",
-          fontFamily: "Inter",
-          fontWeight: 400,
-          fontSize: smallSize,
-          color: DARK_SECONDARY,
-        },
-        authorText,
       ),
     );
   }
@@ -707,11 +558,10 @@ function buildServiceRouteElement(
 
 export function renderShareImage(kind: "service-feed" | "service-story", data: ServiceShareImageData): Promise<Buffer>;
 export function renderShareImage(kind: "review", data: ReviewShareImageData): Promise<Buffer>;
-export function renderShareImage(kind: "ready-made-feed" | "ready-made-story", data: ReadyMadeShareImageData): Promise<Buffer>;
 export function renderShareImage(kind: "service-route", data: ServiceRouteShareImageData): Promise<Buffer>;
 export async function renderShareImage(
   kind: ShareImageKind,
-  data: ServiceShareImageData | ReviewShareImageData | ReadyMadeShareImageData | ServiceRouteShareImageData,
+  data: ServiceShareImageData | ReviewShareImageData | ServiceRouteShareImageData,
 ): Promise<Buffer> {
   let element: El;
   let width: number;
@@ -729,14 +579,6 @@ export async function renderShareImage(
     width = 1080;
     height = 1350;
     element = buildReviewElement(data as ReviewShareImageData);
-  } else if (kind === "ready-made-feed") {
-    width = 1080;
-    height = 1350;
-    element = buildReadyMadeElement(data as ReadyMadeShareImageData, { width, height, story: false });
-  } else if (kind === "ready-made-story") {
-    width = 1080;
-    height = 1920;
-    element = buildReadyMadeElement(data as ReadyMadeShareImageData, { width, height, story: true });
   } else if (kind === "service-route") {
     width = 1080;
     height = 1350;
