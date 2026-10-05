@@ -80,6 +80,20 @@ function orderItems<T extends { dayNumber: number | null; sortOrder: number | nu
   );
 }
 
+/**
+ * THE PLAN'S CONTENT HASH (R321, S11-1) — the ONE fingerprint finalize compares against the latest
+ * version, exported so the plancard can say whether the working plan differs from the card being
+ * shown ("Make it final again"). Pure over the trip row and its raw item rows.
+ */
+export function planContentHash(trip: Record<string, any>, rawItems: readonly any[]): string {
+  const ordered = orderItems([...rawItems] as any[]);
+  const fingerprint = {
+    trip: pick(trip, SNAPSHOT_TRIP_FIELDS),
+    items: ordered.map((it) => pick(it, FINGERPRINT_ITEM_FIELDS)),
+  };
+  return crypto.createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+}
+
 export interface FinalizeResult {
   final: TripFinal;      // the latest final (existing one on an idempotent re-final, or the new row)
   version: number;       // its version
@@ -161,11 +175,7 @@ export async function finalizeTrip(tripId: string, actorId: string): Promise<Fin
     const card = await finalCardMeta(tx, tripId, ordered as any[], photos);
     const snapshot = { trip: snapshotTrip, items: snapshotItems, card };
 
-    const fingerprint = {
-      trip: snapshotTrip,
-      items: ordered.map((it) => pick(it, FINGERPRINT_ITEM_FIELDS)),
-    };
-    const contentHash = crypto.createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+    const contentHash = planContentHash(trip as any, ordered as any[]);
 
     // 3. Idempotent re-final rule: unchanged plan writes no new version.
     const [latest] = await tx

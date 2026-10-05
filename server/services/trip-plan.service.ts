@@ -79,7 +79,8 @@ import { geocodeAddress } from "../utils/geocode";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
 import { checkoutProjectionRefusals } from "./buy-action-payload";
 import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
-import { getLatestTripFinal } from "./trip-finalize.service";
+import { getLatestTripFinal, planContentHash } from "./trip-finalize.service";
+import { isoTimestamp } from "@shared/iso-timestamp";
 
 /**
  * Phase 2 snapshot-only render (ledger 2026-08-31-two-surfaces-one-handoff): overlay the LIVE
@@ -466,7 +467,7 @@ async function resolvePlanApproval(tripId: string): Promise<TripPlanPlanApproval
   return {
     workspaceStatus: row.workspaceStatus ?? null,
     status: (row.planApprovalStatus as "approved" | "changes_requested" | null) ?? null,
-    approvedAt: row.planApprovedAt ? String(row.planApprovedAt) : null,
+    approvedAt: isoTimestamp(row.planApprovedAt),
     reviewNote: row.planReviewNote ?? null,
   };
 }
@@ -691,6 +692,10 @@ export async function assembleTripPlan(
   // tools first, then leaving the notice-only page) — it is deliberately NOT done here to avoid a
   // half-stripped page. Do not treat this live-render branch as final behavior.
   const latestFinal = await getLatestTripFinal(tripId);
+  // R321 S11-1: does the WORKING plan differ from the latest final? The SAME fingerprint finalize
+  // compares (planContentHash, §18 rule 1), over the live rows before any snapshot overlay. Null
+  // when there is no final — there is nothing to be out of date against (§13).
+  const finalOutOfDate = latestFinal ? planContentHash(trip as any, items as any[]) !== latestFinal.contentHash : null;
   // Only an explicit `render: "final"` (the Trip Card) gets the snapshot; the default is live.
   const renderingSnapshot = latestFinal != null && options.render === "final";
   if (renderingSnapshot) {
@@ -1157,7 +1162,8 @@ export async function assembleTripPlan(
       fromStatus: t.fromStatus ?? null,
       toStatus: t.toStatus ?? null,
       actorType: t.actorType,
-      createdAt: String(t.createdAt),
+      // R321 S11-12: ISO 8601; a diary row always carries its created_at.
+      createdAt: isoTimestamp(t.createdAt) ?? String(t.createdAt),
     }),
   );
 
@@ -1233,7 +1239,7 @@ export async function assembleTripPlan(
         // R-F (migration 173): additive — null on every trip until Finalize is pressed. The
         // client derives Trip Card primacy from this + startDate/endDate via
         // shared/trip-primary-surface.ts, never from `status`.
-        finalizedAt: (trip as any).finalizedAt ? String((trip as any).finalizedAt) : null,
+        finalizedAt: isoTimestamp((trip as any).finalizedAt),
         // Phase 2 (ledger 2026-08-31-two-surfaces-one-handoff): the version of the trip_finals
         // snapshot this card is rendering — null when the trip has no final (the not-final state).
         // The client shows "Final · vN" when finalizedAt is set, and "Plan being revised on the
@@ -1241,6 +1247,7 @@ export async function assembleTripPlan(
         // never loses the card mid-revision. Which version renders is finalVersion; whether the
         // card is dressed final is finalizedAt (§: two independent signals).
         finalVersion: latestFinal?.version ?? null,
+        finalOutOfDate,
         // §21 (migration 187): the traveler-facing trip-level Expert Note. PlanCard renders it as
         // "From your expert". The PRIVATE trips.expertNotes must never appear on this object.
         expertTravelerNote: (trip as any).expertTravelerNote ?? null,

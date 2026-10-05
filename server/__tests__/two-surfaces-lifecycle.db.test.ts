@@ -12,6 +12,8 @@
  *       the seam Phase-4's M-tests and L-tests each see only one half of.
  *   S3  a booking-STATUS change on an existing snapshot item forks NO version — the render still
  *       reads v2, getTrips still reports 2, and the live status is overlaid, not frozen.
+ *   S4  (R321 S11-1) an edit after the final reports `finalOutOfDate`, the card keeps v2 until
+ *       "Make it final again", which appends v3 carrying the edit — one plan, one card.
  *
  * DISPOSABLE DB ONLY. Serialize: npx tsx --test --test-concurrency=1 server/__tests__/two-surfaces-lifecycle.db.test.ts
  */
@@ -145,4 +147,30 @@ test("S3 a booking-status change on an existing item forks NO version — status
   // The live status overlays onto the frozen snapshot item (render still shows the original stop).
   const plan: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" /* the Trip Card asks explicitly; live is the default */ });
   assert.ok(snapshotTitles(plan).has(ORIGINAL), "the frozen snapshot item still renders (with live status overlaid)");
+});
+
+test("S4 (R321 S11-1) underway: edit after final → finalOutOfDate → Make it final again → card v3 carries the edit, one card", async () => {
+  // The trip above is finalized at v2. Reopen-then-edit and edit-while-final are the same seam
+  // here: the card keeps its last version until the plan is made final again.
+  const EDITED = `Edited stop ${RUN}`;
+  await db.update(itineraryItems).set({ title: EDITED } as any).where(eq(itineraryItems.id, existingItemId));
+
+  const live: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId });
+  assert.equal(live.plancard?.trip?.finalOutOfDate, true, "the working plan differs from the final");
+
+  const before: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" });
+  assert.ok(!snapshotTitles(before).has(EDITED), "the card keeps its last version until made final again");
+  assert.equal(before.plancard?.trip?.finalVersion, 2);
+
+  const again = await finalizeTrip(tripId, userId);
+  assert.equal(again.version, 3, "Make it final again appends the next version");
+  assert.equal(again.finalCreated, true);
+
+  const after: any = await assembleTripPlan(tripId, "full", { tripRole: "owner", viewerId: userId, render: "final" });
+  assert.ok(snapshotTitles(after).has(EDITED), "the card now shows the edit");
+  assert.equal(after.plancard?.trip?.finalVersion, 3);
+  assert.equal(after.plancard?.trip?.finalOutOfDate, false, "nothing left to make final");
+
+  const list = await storage.getTrips(userId);
+  assert.equal(list.filter((t) => t.id === tripId).length, 1, "one card, never a second plan");
 });

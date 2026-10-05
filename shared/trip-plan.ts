@@ -635,6 +635,9 @@ export interface TripPlanPlancardExtras {
      *  exists but `finalizedAt` is NULL the trip is being revised on the slip and the card still
      *  renders this version. */
     finalVersion?: number | null;
+    /** R321 S11-1: the working plan differs from the latest final (the same fingerprint finalize
+     *  compares). NULL when there is no final — nothing to be out of date against (§13). */
+    finalOutOfDate?: boolean | null;
     /** §21 (migration 187): the traveler-facing trip-level Expert Note, emitted by the assembler
      *  and rendered by PlanCard as "From your expert". The PRIVATE trips.expertNotes never appears
      *  here. Absent/undefined on a pre-migration response → renders nothing (§13). */

@@ -17,7 +17,7 @@ import { Loader2 } from "lucide-react";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import type { SlipData } from "@/components/plancard/SlipView";
-import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
+import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { planVersionsTarget, versionsRunState } from "@/lib/plan-versions";
 
 const LegacyComparison = lazy(() => import("@/pages/itinerary-comparison"));
@@ -57,11 +57,8 @@ export default function PlanVersionsPage() {
     },
   });
 
-  const fee = useQuery<OptimizationFeeQuote>({
-    queryKey: [`/api/optimization-fee?tripId=${encodeURIComponent(tripId ?? "")}`],
-    enabled: !!tripId,
-    retry: false,
-  });
+  // R321 S11-8: the SAME data the slip's OptimizerLead reads (§18 rule 1) — findings included.
+  const leadData = useOptimizerLeadData(tripId ?? "", !!tripId);
 
   if (target.kind === "loading" || (tripId && plan.isLoading)) {
     return (
@@ -119,10 +116,10 @@ export default function PlanVersionsPage() {
         noRunCta={
           <OptimizerLead
             drafted={(plan.data.days ?? []).some((d) => (d.activities ?? []).length > 0)}
-            findings={undefined}
-            hasPricedItems={false}
-            fee={fee.data ?? null}
-            realised={null}
+            findings={leadData.findings}
+            hasPricedItems={leadData.hasPricedItems}
+            fee={leadData.fee}
+            realised={leadData.realised as any}
             testId="plan-versions-optimize"
             onClick={() => setLocation(optimizeHref)}
           />
