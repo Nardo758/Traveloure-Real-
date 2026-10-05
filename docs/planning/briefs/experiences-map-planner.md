@@ -19,7 +19,7 @@ about what exists today, the code is right and the brief is wrong: report it, do
 - App, not yet changed: `client/src/index.css` `--primary` (line 12, and the second light value at line 124)
   becomes `3 55.8% 51.2%`. `--earn-coral-ink: #E85D55` stays, for accents and borders only. 26 client files
   reference `E85D55` directly and need checking. The dark theme is not ruled.
-- **Amended 2026-10-05, 17:42 ET (rulings-2 rulings 1–2; ledger `2026-10-05-coral-three-tokens`, R332).**
+- **Amended 2026-10-05, 17:42 ET (rulings-2 rulings 1–2; ledger `2026-10-05-coral-three-tokens`).**
   Three named colours, one token each: fill `#C8443D`, text `#B8403A`, accent/outline `#E85D55`.
   "`--earn-coral-ink: #E85D55` stays, for accents and borders only" now reads: it stays as the accent, and
   its fill uses are retokenized. "26 client files" is corrected to **28**; "the second light value at line
@@ -50,7 +50,7 @@ about what exists today, the code is right and the brief is wrong: report it, do
 6. **Plan with AI.** Signed in: the plan is created, opens on the map, and the free draft is written into
    it. Signed out: browse freely; sign-in comes at the first write and the pending action runs after it.
    Guest plans stay held.
-   **Amended 2026-10-05, 17:42 ET (rulings-2 ruling 10; R334):** the end state stands, the order changes —
+   **Amended 2026-10-05, 17:42 ET (rulings-2 ruling 10; `2026-10-05-step8-rulings`):** the end state stands, the order changes —
    signed-out map browsing is step 8d, last; 8b ships with sign-in at the finish, as now.
 7. **The AI delivers into the plan,** never a chat or a separate page: the free draft directly, Ask AI as a
    proposal applied on confirm, Optimize through the review board. (Locked Decisions 41 and 45 stand.)
@@ -78,7 +78,7 @@ about what exists today, the code is right and the brief is wrong: report it, do
   the primary action with Optimize not offered.
 - What the free AI draft produces for an event.
 - Whether Proposal stays a hidden two-person evening or moves into hosted events (a catalog change).
-  **Ruled 2026-10-05, 17:42 ET (rulings-2 ruling 4; R334) — removed from this list:** Proposal sits under
+  **Ruled 2026-10-05, 17:42 ET (rulings-2 ruling 4; `2026-10-05-step8-rulings`) — removed from this list:** Proposal sits under
   "One evening"; "hidden" hides the plan from sharing, not the occasion from the picker. No catalog change.
 - Event detail: whether traveler comments are reviewed before they appear, and who may comment.
 - Whether the vibe filters on Events filter destinations only.
@@ -95,10 +95,10 @@ Two gaps found while drawing, for a ruling before the pets lane builds:
   animal. Ruling A4.6 needs that field offered on trips.
 
 **Both gaps ruled 2026-10-05, 17:42 ET (rulings-2 rulings 11–12; ledger `2026-10-05-pets-fields-and-service-animal`,
-R335):** two optional plan fields, pet kind and pet count (additive, nullable, no default; the migration held
+`2026-10-05-pets-fields-and-service-animal`):** two optional plan fields, pet kind and pet count (additive, nullable, no default; the migration held
 until the pets lane's hard stop); the accessibility note is offered on trips only when opened from the
 service-animal line (a narrow LD 38 amendment); service animals never trigger a pet surcharge or filter and
-are not counted in the pet fields. Rulings-2 also rules: an event's real city is stored (ruling 3, R333);
+are not counted in the pet fields. Rulings-2 also rules: an event's real city is stored (ruling 3, `2026-10-05-event-real-city`);
 step 8 (Lanes 3–4) carries rulings 4–10 in `step-8-brief.md`. See
 `docs/planning/briefs/experiences-map-planner-rulings-2.md`.
 
@@ -135,7 +135,7 @@ below 4.5:1. No behaviour change.
 - 2c: locals' notes and traveler comments. **Not armed** until section B's comment questions are ruled.
 
 ### Lane 3 — Groups-first picker.
-**Amended 2026-10-05, 17:42 ET (R334):** Lanes 3 and 4 are built as step 8 in five PRs (8a entry; 8b-1 extraction; 8b-2 map layout; 8c retirements; 8d signed-out browsing) under `docs/planning/briefs/step-8-brief.md` revision 3.1, which carries rulings-2 rulings 4–10 and Phase 0 decisions D1–D6 (ledger `2026-10-05-step8-phase0-decisions`).
+**Amended 2026-10-05, 17:42 ET (`2026-10-05-step8-rulings`):** Lanes 3 and 4 are built as step 8 in five PRs (8a entry; 8b-1 extraction; 8b-2 map layout; 8c retirements; 8d signed-out browsing) under `docs/planning/briefs/step-8-brief.md` revision 3.1, which carries rulings-2 rulings 4–10 and Phase 0 decisions D1–D6 (ledger `2026-10-05-step8-phase0-decisions`).
 One picker component used by the pop-up's first step (`client/src/components/trip/plan-modal.tsx`, the
 `step === "occasion"` body, a flat grid today) and by the Experiences starting state. The group of an
 occasion is `experienceGroupFor` in `shared/experience-group.ts`; do not restate the rule. The five
@@ -152,7 +152,7 @@ The AI button follows Locked Decision 41: free only while the plan is empty.
 ### Lane 5 — Pets on trips. **Not armed** until the two gaps in section B are ruled.
 The Who question; the pet line and filter on stays and places; the three sources in order; the border
 link; the accessibility note on trips. Needs a migration: hard stop before it.
-**Amended 2026-10-05, 17:42 ET (R335):** the two gaps are ruled (see §B); the lane comes after step 8b, and its migration stays held until its hard stop.
+**Amended 2026-10-05, 17:42 ET (`2026-10-05-pets-fields-and-service-animal`):** the two gaps are ruled (see §B); the lane comes after step 8b, and its migration stays held until its hard stop.
 
 ### Not a lane yet
 Venue-led planners; the When and Who boards (the existing modal already shapes these steps by occasion,

@@ -5,7 +5,7 @@
 map from Track A's Phase 0 report of 5 Oct (section "Decisions from Phase 0" below). 3.1 folds in Track
 A's corrections from its re-read: the `plan-steps.ts` edit, the finish named by branch, the partner rows
 that stay out, and the flights flag. Reference: surface
-spec v1.3.7 as amended by R330; `docs/planning/briefs/experiences-map-planner.md` (A1, A3; its Lanes 3
+spec v1.3.7 as amended by `2026-10-05-experiences-map-planner`; `docs/planning/briefs/experiences-map-planner.md` (A1, A3; its Lanes 3
 and 4 are built here); the Lane 0 audit `experiences-map-planner-phase0-audit.md` (cited as "audit");
 boards in `docs/design/experiences-map-planner/`.
 
