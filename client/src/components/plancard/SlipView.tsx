@@ -67,7 +67,7 @@ import { itemFactsLine } from "@/lib/place-facts";
 import { ITEM_MENU_LABELS, ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { ItemSheet } from "@/components/plan/ItemSheet";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
-import { navigateHref } from "@/lib/trip-card";
+import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
 import {
   GETTING_THERE_TOOL,
@@ -144,6 +144,9 @@ import {
   useOptionSets,
 } from "./SlipOptionSets";
 import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
+import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
+import { HandoffBanner, SuggestionStrip, useExpertSuggestions } from "@/components/plan/HandoffBanner";
+import { openHandoffChooser } from "@/lib/handoff-client";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -485,6 +488,12 @@ function SlipHeader({
       <h1 className={`${SLIP_TITLE_FONT_CLASS} text-2xl font-bold text-foreground`} data-testid="slip-title">
         {trip?.title || trip?.destination || "Trip plan"}
       </h1>
+      {readyMadeSourceLine(data.readyMadeSource) ? (
+        <p className="text-xs text-muted-foreground" data-testid="slip-ready-made-source">
+          {readyMadeSourceLine(data.readyMadeSource)}
+          {legsCheckedLine(data.readyMadeSource, (trip as any)?.timezone ?? null) ? ` · ${legsCheckedLine(data.readyMadeSource, (trip as any)?.timezone ?? null)}` : ""}
+        </p>
+      ) : null}
       <SlipHeaderMeta
         tripId={trip?.id ?? ""}
         startDate={trip?.startDate ?? null}
@@ -763,8 +772,12 @@ function SlipDayItem({
         onFindHost: onFindHost ? () => onFindHost(findHostCategory(a.type)) : undefined,
         onBuildAround: promotable ? promote : undefined,
         onSetAsStay: canSetAsStay ? (replacingStay ? () => setConfirmStay(true) : setAsStay) : undefined,
+        // R323 (step 7b): the ONE handoff door, with this stop ticked. Owner only — the ask is theirs.
+        onBookForMe: isOwner ? () => openHandoffChooser({ kind: "book", itemIds: [a.id] }) : undefined,
       }
     : null;
+  // R323 (§12 step 3): an expert's change to this stop arrives as a suggestion ON the row.
+  const { data: suggestionData } = useExpertSuggestions(tripId, hasAdvisor && (isOwner || isExpertViewer));
   return (
     <ItemRow
       item={a}
@@ -803,6 +816,9 @@ function SlipDayItem({
       expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
       onOpenDetails={() => setSheetOpen(true)}
     >
+      {suggestionData?.suggestions?.length ? (
+        <SuggestionStrip tripId={tripId} itemId={a.id} suggestions={suggestionData.suggestions} canAnswer={isOwner} />
+      ) : null}
       <ItemSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
@@ -815,7 +831,24 @@ function SlipDayItem({
         askLocalLabel={menu?.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}
         navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, city)}
         bookingLine={slipItemBookingLine(a)}
-        bookingAction={isOwner && itemBookingAction(a) ? <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} /> : null}
+        bookingAction={
+          isOwner && itemBookingAction(a) ? (
+            <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
+          ) : isOwner && !a.booking?.id ? (
+            // R323 (step 7b, §12 step 1): "Book this for me" opens the ONE handoff chooser.
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSheetOpen(false);
+                openHandoffChooser({ kind: "book", itemIds: [a.id] });
+              }}
+              data-testid={`item-sheet-book-for-me-${a.id}`}
+            >
+              {ITEM_MENU_LABELS.bookForMe}
+            </Button>
+          ) : null
+        }
       />
       {/* S10-6: replacing the plan's stay is confirmed by name first; the SAME stay row is rewritten. */}
       {confirmStay && replacingStay ? (
@@ -1875,6 +1908,12 @@ export function SlipView({
         <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} activities={allActivities} />
       )}
 
+      {/* R323 (§12 step 1): the ONE handoff chooser — hosted once, opened by every door. */}
+      <HandoffChooserHost
+        tripId={tripId}
+        enabled={isOwner}
+        items={allActivities.map((a) => ({ id: a.id, title: a.name, dayNum: days.find((d) => d.activities.includes(a))?.dayNum ?? null }))}
+      />
       <SlipHeader
         expertControl={
           expertDoorLive && expertDoorState === "dismissed" ? (
@@ -2072,6 +2111,8 @@ export function SlipView({
         </div>
       ) : (
       <>
+      {/* R323 (§12): the handoff's banner and the ONE chooser host every door opens. */}
+      {isOwner || isExpertViewer ? <HandoffBanner tripId={tripId} isOwner={isOwner} /> : null}
       {expertDoorLive && expertDoorState === "open" && data.trip ? (
         <ExpertDoorCard
           trip={{

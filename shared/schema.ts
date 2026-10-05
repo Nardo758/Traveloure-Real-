@@ -9062,6 +9062,29 @@ export const expertRequests = pgTable("expert_requests", {
   assignedAt: timestamp("assigned_at"),
   completedAt: timestamp("completed_at"),
   fallbackMessage: text("fallback_message"),
+  // Step 7b (R323, migration 354): the handoff's lifecycle on its ONE row. Nullable, no DEFAULT /
+  // CHECK / index / FK; NULL = not happened / not a handoff row (§13). Server-written only.
+  handoffKind: varchar("handoff_kind", { length: 20 }),
+  scopeItemIds: jsonb("scope_item_ids"),
+  feeCents: integer("fee_cents"),
+  travelerFeeCents: integer("traveler_fee_cents"),
+  paymentIntentId: varchar("payment_intent_id"),
+  authorizedAt: timestamp("authorized_at"),
+  acceptedAt: timestamp("accepted_at"),
+  capturedAt: timestamp("captured_at"),
+  fallbackOfferedAt: timestamp("fallback_offered_at"),
+  releasedAt: timestamp("released_at"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  withdrawalFeeCents: integer("withdrawal_fee_cents"),
+  refundId: varchar("refund_id"),
+  deliveredAt: timestamp("delivered_at"),
+  changeRounds: integer("change_rounds"),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by", { length: 20 }),
+  onTripSupportOfferedAt: timestamp("on_trip_support_offered_at"),
+  onTripSupportAcceptedAt: timestamp("on_trip_support_accepted_at"),
+  onTripSupportPaymentIntentId: varchar("on_trip_support_payment_intent_id"),
+  sourcePurchaseId: varchar("source_purchase_id"),
 }, (table) => ({
   destinationIdx: index("expert_requests_destination_idx").on(table.destinationCity),
   statusIdx: index("expert_requests_status_idx").on(table.status),
@@ -10865,6 +10888,23 @@ export const funnelEvents = pgTable("funnel_events", {
 // nullable with no DEFAULT/CHECK/index/FK. ONE writer, `answerInboxQuestion`
 // (server/services/expert-inbox-questions.service.ts), which also enforces one answer per question.
 // `status` is app-enforced: 'answered' is the only value written.
+// Step 7b (R323, migration 354): one row per expert change to a traveler's plan. Nothing reaches the
+// plan until the traveler accepts. New table, PK only (the new-table rule); vocabularies in
+// shared/handoff.ts. Written only by server/services/expert-suggestions.service.ts.
+export const expertSuggestions = pgTable("expert_suggestions", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id"),
+  itemId: varchar("item_id"),
+  requestId: varchar("request_id"),
+  expertId: varchar("expert_id"),
+  kind: varchar("kind", { length: 20 }),
+  payload: jsonb("payload"),
+  status: varchar("status", { length: 20 }),
+  createdAt: timestamp("created_at"),
+  resolvedAt: timestamp("resolved_at"),
+});
+export type ExpertSuggestion = typeof expertSuggestions.$inferSelect;
+
 export const expertQuestionAnswers = pgTable("expert_question_answers", {
   id: varchar("id").primaryKey(),
   questionEventId: varchar("question_event_id"),

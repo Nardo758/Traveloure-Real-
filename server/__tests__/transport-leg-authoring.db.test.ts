@@ -4,7 +4,7 @@
  *
  *   T1  the trip author PATCHes a tip; it round-trips, blank clears it to NULL
  *   T2  a tip over 140 chars is refused 400 and nothing is written
- *   T3  the traveler-owner and a PENDING advisor are refused 403 on a tip; an ACCEPTED advisor may
+ *   T3  the traveler-owner and a PENDING advisor are refused 403 on a tip; an ACCEPTED advisor's tip is FILED as a suggestion (R323)
  *   P1  a host pickup naming a listing that does not offer pickup ⇒ 400 pickup_not_offered;
  *       an unknown listing ⇒ 400 pickup_listing_not_found; a pickup-capable listing ⇒ 400
  *       pickup_not_provider_confirmed (no confirmation column until L1-7 — the stated limit)
@@ -150,7 +150,7 @@ test("T2: a tip over 140 chars is refused and nothing is written", async () => {
   assert.equal(ok.status, 200);
 });
 
-test("T3: owner and pending advisor may not write a tip; an accepted advisor may", async () => {
+test("T3: owner and pending advisor may not write a tip; an accepted advisor's tip is FILED as a suggestion (R323)", async () => {
   await resetLeg();
   for (const who of [ids.owner, ids.pending]) {
     const r = await patchAs(who, { authorTip: "nope" });
@@ -159,9 +159,11 @@ test("T3: owner and pending advisor may not write a tip; an accepted advisor may
     assert.equal(p.status, 403, who);
   }
   assert.equal((await legRow()).author_tip, null);
+  // R323 (step 7b, R-n): on a traveler's plan the advisor's tip is a suggestion the owner accepts.
   const a = await patchAs(ids.accepted, { authorTip: "Bus 206 is quicker in rain." });
-  assert.equal(a.status, 200);
-  assert.equal((await legRow()).author_tip, "Bus 206 is quicker in rain.");
+  assert.equal(a.status, 202, JSON.stringify(a.body));
+  assert.equal(a.body.suggestion.kind, "leg");
+  assert.equal((await legRow()).author_tip, null, "nothing written until the owner accepts");
 });
 
 test("P1: host pickup refusals (R-az), and nothing written", async () => {

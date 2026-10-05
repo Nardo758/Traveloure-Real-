@@ -44,6 +44,8 @@ export async function completeExpertRequest(
     SELECT id, status, assigned_expert_id, optimization_context
     FROM expert_requests
     WHERE id = ${requestId} AND assigned_expert_id = ${expertUserId}
+      -- Step 7b (R323): a handoff row completes by the traveler's APPROVAL (R-n), never here.
+      AND handoff_kind IS NULL
     LIMIT 1
   `);
   const row = existing.rows?.[0] as any;
@@ -97,7 +99,7 @@ export async function completeExpertRequest(
  * credits; a duplicate matches 0 rows and does nothing. The expert earning is born `held` on
  * the escrow spine (migration 112) and clears via the release scheduler.
  */
-async function creditExpertReviewSplit(
+export async function creditExpertReviewSplit(
   requestId: string,
   expertUserId: string,
   paymentIntentId: string,
@@ -157,6 +159,7 @@ export async function getPaidUncompletedExpertRequestIds(
       AND assigned_expert_id = ${expertUserId}
       AND status <> 'completed'
       AND optimization_context ->> 'paymentIntentId' IS NOT NULL
+      AND handoff_kind IS NULL
   `);
   return (result.rows || []).map((r: any) => String(r.id));
 }

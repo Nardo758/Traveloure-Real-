@@ -104,6 +104,12 @@ export async function feedbackState(tripId: string, userId: string): Promise<{
     const [fin] = await db.select({ id: tripFinals.id }).from(tripFinals).where(eq(tripFinals.tripId, tripId)).limit(1);
     if (postTripOpen(t?.endDate as any, !!fin, new Date())) open.push("post_trip");
   }
+  // Step 7b (R323): the handoff tap opens once the plan's handoff is APPROVED (by the traveler or
+  // the window) — the moment it means something.
+  if (!answers.post_handoff) {
+    const r = await db.execute(sql`SELECT 1 FROM expert_requests WHERE trip_id = ${tripId} AND handoff_kind IS NOT NULL AND status = 'approved' LIMIT 1`);
+    if (r.rows?.length) open.push("post_handoff");
+  }
   return { answers, open, groupKey: (await planContext(tripId)).groupKey };
 }
 

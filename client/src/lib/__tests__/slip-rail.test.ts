@@ -387,7 +387,9 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     // ONE PICKER (D7): the slip no longer mounts the older AssignExpertSlot.
     assert.ok(!view.includes("AssignExpertSlot"), "the second expert picker is not mounted here");
     assert.ok(!view.includes("button-find-expert"), "nor its CTA");
-    assert.ok(rail.includes("<HireExpertDialog"), "the pick-based picker is the one that stays");
+    // R323 (step 7b): the pick-an-expert dialog is retired; the rail opens the ONE handoff chooser.
+    assert.ok(!rail.includes("<HireExpertDialog"), "the pick-an-expert dialog is retired");
+    assert.ok(rail.includes("openHandoffChooser("), "the rail opens the one handoff door");
     // The bulk-route helper survives — it is Finalize's.
     const modal = codeClient("components/plancard/FinalizeBookingModal.tsx");
     assert.ok(

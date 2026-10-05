@@ -243,9 +243,12 @@ jobs:
       # 128 measured 2026-09-27 (ledger `2026-09-27-form-fields-admitted`): one of the two orphaned
       # client files that lane deleted (AssignExpertDialog.tsx, quick-start-itinerary.tsx — no
       # importer, §18c) carried a type error. ZERO new type errors in any file it touched.
+      # 117 measured 2026-10-05 (R324, step 7b, ledger `2026-10-05-step7b-handoff`): the retired
+      # `ExpertPolishDialog` in PlanCard.tsx carried a type error. ZERO new type errors in any file
+      # the lane touched.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '118'
+          TSC_BASELINE: '117'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"

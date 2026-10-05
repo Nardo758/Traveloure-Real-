@@ -508,6 +508,15 @@ export interface OptimizationDelta {
 
 export interface PlanCardData {
   tripRole?: PlanCardRole;
+  /** R-be (R300/R301; read since R323): where a bought copy came from. Null ⇒ not a copy (§13). */
+  readyMadeSource?: {
+    sourceReadyMadeTripId: string;
+    listingTitle: string;
+    authorDisplayName: string | null;
+    authorHandle: string | null;
+    lastVerifiedAt: string | null;
+    legsCheckedAt?: string | null;
+  } | null;
   /**
    * Ledger `2026-09-26-send-to-expert-needs-expert` (audit G2): an advisor in a §12 WRITE status
    * (accepted/assigned) is on this plan — the SAME predicate the routing rail refuses "Send to

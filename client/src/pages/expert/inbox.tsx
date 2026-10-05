@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import { SellerQuotesPanel } from "@/components/quotes/SellerQuotesPanel";
+import { HANDOFF_KIND_LABEL } from "@shared/handoff";
 // QA-1 (ledger 90 follow-up): this page had its own hand-written History predicate
 // (`status === "confirmed" || status === "completed"`), never the shared module Inbox/Today/
 // Customers/Money all consume — the same "sixth answer" ledger 90 closed elsewhere. Consuming
@@ -344,6 +345,77 @@ function DisputedBookingsSection() {
 
 // ─── Queue · Section 2: Assignment invites ──────────────────────────────────
 
+// ─── Queue · Handoffs to accept (R323, step 7b; surface spec §12 step 2, R-n) ───────────────────
+// Routing PROPOSES; the expert ACCEPTS here. Accepting captures the traveler's held fee (R-q) and
+// opens the plan in suggestion mode — every change the expert makes is a suggestion the traveler
+// accepts or declines. Declining sends the ask back to the admin queue.
+interface InboxHandoff {
+  id: string;
+  tripId: string;
+  kind: "polish" | "book" | "plan_all";
+  status: string;
+  scopeItemIds: string[];
+  feeCents: number | null;
+  prepaid: boolean;
+}
+
+function HandoffsSection() {
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<{ proposed: InboxHandoff[]; working: InboxHandoff[] }>({ queryKey: ["/api/expert/handoffs"] });
+  const answer = useMutation({
+    mutationFn: async ({ id, decision }: { id: string; decision: "accept" | "decline" }) => {
+      const res = await apiRequest("POST", `/api/handoffs/${id}/${decision}`, {});
+      return res.json();
+    },
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/handoffs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/assigned-trips"] });
+      toast({ title: v.decision === "accept" ? "Accepted" : "Declined", description: v.decision === "accept" ? "Open the plan in your workspace — your changes go to the traveler as suggestions." : "We'll find another local." });
+    },
+    onError: (err: any) => toast({ title: "That didn't go through", description: err.message, variant: "destructive" }),
+  });
+  const proposed = data?.proposed ?? [];
+  return (
+    <section data-testid="section-inbox-handoffs">
+      <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+        Handoffs to accept {proposed.length > 0 && `(${proposed.length})`}
+      </h2>
+      {isLoading ? (
+        <Skeleton className="h-20 rounded-lg" />
+      ) : proposed.length === 0 ? (
+        <EmptyState icon={MapPin} title="No handoffs waiting" body="When a traveler asks for a local and you're the match, it appears here." testId="empty-inbox-handoffs" />
+      ) : (
+        <div className="space-y-2">
+          {proposed.map((h) => (
+            <Card key={h.id} className="border border-console-light" data-testid={`inbox-handoff-${h.id}`}>
+              <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-medium text-console-darkest">{HANDOFF_KIND_LABEL[h.kind] ?? h.kind}</p>
+                  <p className="text-xs text-console-mid">
+                    {h.kind === "plan_all" ? "The whole plan" : `${h.scopeItemIds.length} stop${h.scopeItemIds.length === 1 ? "" : "s"}`}
+                    {h.prepaid ? " · included revision" : h.feeCents ? ` · fee $${(h.feeCents / 100).toFixed(2)}` : ""}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" asChild data-testid={`button-handoff-view-${h.id}`}>
+                    <Link href={`/expert/workspace/${h.tripId}`}>Read the plan</Link>
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={answer.isPending} onClick={() => answer.mutate({ id: h.id, decision: "decline" })} data-testid={`button-handoff-decline-${h.id}`}>
+                    Decline
+                  </Button>
+                  <Button size="sm" disabled={answer.isPending} onClick={() => answer.mutate({ id: h.id, decision: "accept" })} data-testid={`button-handoff-accept-${h.id}`}>
+                    Accept
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AssignmentInvitesSection() {
   const { toast } = useToast();
   const { data: assignedTrips, isLoading } = useQuery<AssignedTrip[]>({
@@ -364,7 +436,10 @@ function AssignmentInvitesSection() {
     },
   });
 
-  const pending = (assignedTrips ?? []).filter((t) => t.status === "pending");
+  // R323: a pending row that is a HANDOFF's proposal is answered in "Handoffs to accept" above.
+  const { data: handoffData } = useQuery<{ proposed: InboxHandoff[] }>({ queryKey: ["/api/expert/handoffs"] });
+  const handoffTrips = new Set((handoffData?.proposed ?? []).map((h) => h.tripId));
+  const pending = (assignedTrips ?? []).filter((t) => t.status === "pending" && !handoffTrips.has(t.trip_id));
 
   return (
     <section data-testid="section-inbox-assignments">
@@ -1753,6 +1828,7 @@ export default function ExpertInbox() {
               <SellerQuotesPanel />
             </section>
             <BookingsSection />
+            <HandoffsSection />
             <AssignmentInvitesSection />
             <CoordinationEngagementsSection />
             <AgentBookingRequestsSection />
