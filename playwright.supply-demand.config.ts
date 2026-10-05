@@ -91,5 +91,8 @@ export default defineConfig({
     // worker runs it after demand. Iterating locally on an already-populated run id:
     //   E2E_RUN_ID=<id> npx playwright test -c playwright.supply-demand.config.ts --project=lifecycle --no-deps
     { name: 'lifecycle', testMatch: 'p3-*.spec.ts', dependencies: ['supply'], use: { ...devices['Desktop Chrome'] } },
+    // R322 (step 7a): the Workstation build. Self-contained (the seeded CI expert, its own build) and
+    // deliberately depends on NOTHING and is depended on by nothing — a red here skips no other spec.
+    { name: 'workstation', testMatch: 'w*-*.spec.ts', use: { ...devices['Desktop Chrome'] } },
   ],
 });

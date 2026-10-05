@@ -1033,6 +1033,17 @@ interface TripTransportLegsResponse { legs: TripTransportLeg[]; variantId: strin
 interface GenerateLegsSkip { dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string; reason: "missing_coordinates"; }
 interface GenerateLegsResult { tripId: string; proposalStatus: "proposed"; created: number; keptConfirmed: number; replacedProposed: number; skipped: GenerateLegsSkip[]; }
 
+/** R322: the plan's days, plus an EMPTY day for every day 1..dayCount that holds no stop yet (the
+ *  plancard derives its days from items, so an empty day would otherwise have no row to add from).
+ *  An empty day claims nothing: no date it was not given, no stops (§13). */
+function workstationDays(days: readonly PlanCardDay[], dayCount: number): PlanCardDay[] {
+  const byNum = new globalThis.Map(days.map((d) => [d.dayNum, d] as const));
+  for (let n = 1; n <= dayCount; n++) {
+    if (!byNum.has(n)) byNum.set(n, { dayNum: n, date: "", dateIso: null, label: "", activities: [], transports: [] });
+  }
+  return Array.from(byNum.values()).sort((a, b) => a.dayNum - b.dayNum);
+}
+
 /** R322 (step 7a, R-bh): the Workstation canvas — ONE `MapControlCenter` (with the open Add-panel
  *  drawer's candidates and "Add to Day N") over ONE `WorkstationDays` (`DayBlock` + `ItemRow` role
  *  expert + `LegRow`s). Replaces `CanvasMapSection`, `ItemsEditorPanel` and `TransportLegsPanel`.
@@ -1043,12 +1054,18 @@ interface GenerateLegsResult { tripId: string; proposalStatus: "proposed"; creat
  *             the `.strict()` allowlist: mode, tip (R-ay), host pickup (R-az), confirm (R-bf stamp)). */
 function WorkstationCanvas({
   tripId, destination, items, maxDay, focusDay, onFocusDay, workspaceMode, onDayMoved, onOpenBookingBrief,
-  focusItemId, onFocusHandled, suggestOrderForDay, onSuggestHandled,
+  focusItemId, onFocusHandled, suggestOrderForDay, onSuggestHandled, dayCount, section = "all",
 }: {
+  /** "map": the map alone (it sits above every build format, as the old canvas map did); "days":
+   *  the transport bar and the day rows (the days view, and the Structure view's "Day list"). */
+  section?: "map" | "days" | "all";
   tripId: string;
   destination: string;
   items: ItineraryItem[];
   maxDay: number;
+  /** The build's length: every day 1..dayCount is drawn, an empty one included, so its own-stop
+   *  add has a home (the publish gate needs a stop on every day). */
+  dayCount: number;
   focusDay: number;
   onFocusDay: (day: number) => void;
   workspaceMode: "assignment" | "authoring";
@@ -1069,7 +1086,17 @@ function WorkstationCanvas({
     queryKey: [`/api/trips/${tripId}/plancard`],
     enabled: !!tripId,
   });
-  const planDays = [...(plan?.days ?? [])].sort((a, b) => a.dayNum - b.dayNum);
+  const planDays = workstationDays(plan?.days ?? [], dayCount);
+  // Every Add-panel drawer writes through the item route and refreshes the trip's ITEM list; the
+  // rows read the plancard. One signature of the item list keeps the two in step, whichever of the
+  // many add paths wrote (R322) — never a per-drawer invalidation to remember.
+  const itemsSignature = items.map((i) => `${i.id}:${i.dayNumber}`).sort().join("|");
+  const planSignature = planDays.flatMap((d) => d.activities.map((a) => `${a.id}:${d.dayNum}`)).sort().join("|");
+  useEffect(() => {
+    // The empty-state canvas passes no items; it has nothing to compare and never forces a read.
+    if (!plan || items.length === 0 || itemsSignature === planSignature) return;
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  }, [itemsSignature, planSignature, tripId, !!plan, items.length]);
   const { data: legsData } = useQuery<TripTransportLegsResponse>({
     queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
     enabled: !!tripId,
@@ -1148,7 +1175,8 @@ function WorkstationCanvas({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="workstation-canvas">
-      {planDays.length > 0 ? (
+      {/* The map renders on an EMPTY build too: the first stop can come from the map (R322). */}
+      {section !== "days" && (
         <MapControlCenter
           tripId={tripId}
           tripDestination={destination}
@@ -1158,8 +1186,9 @@ function WorkstationCanvas({
           candidates={candidates.source ? { sourceLabel: candidates.sourceLabel, items: candidates.items } : null}
           onAddCandidate={(id) => candidates.onAdd(id)}
         />
-      ) : null}
+      )}
 
+      {section === "map" || planDays.length === 0 ? null : (<>
       <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11.5, color: MID }}>
@@ -1281,6 +1310,7 @@ function WorkstationCanvas({
           }}
         />
       </div>
+      </>)}
     </div>
   );
 }
@@ -2875,6 +2905,16 @@ export default function ExpertWorkspace() {
   // below) the highest real day, and merge it into the rendered range.
   const existingMaxDay = dayNumbers.length > 0 ? Math.max(...dayNumbers) : 1;
   const maxDay = Math.max(extraMaxDay, existingMaxDay);
+  // R322: the build's own length — an authoring build's listing `durationDays`, else the trip's date
+  // span — so the canvas draws every day, an empty one included. Never below the days already used.
+  const buildDayCount = (() => {
+    const fromListing = isAuthoring ? Number((listing as any)?.durationDays) : NaN;
+    if (Number.isFinite(fromListing) && fromListing > 0) return Math.max(fromListing, maxDay);
+    const a = trip?.start_date ? Date.parse(String(trip.start_date).slice(0, 10)) : NaN;
+    const b = trip?.end_date ? Date.parse(String(trip.end_date).slice(0, 10)) : NaN;
+    const span = Number.isFinite(a) && Number.isFinite(b) && b >= a ? Math.round((b - a) / 86_400_000) + 1 : 0;
+    return Math.max(span, maxDay);
+  })();
   const displayDayNumbers: number[] = Array.from(
     new Set([...dayNumbers, ...Array.from({ length: maxDay }, (_, i) => i + 1)]),
   ).sort((a, b) => a - b);
@@ -3049,18 +3089,61 @@ export default function ExpertWorkspace() {
               <button onClick={() => { setRightTab("add"); setAddSource("dmo"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Plus style={{ width: 14, height: 14 }} /> Add your first item
               </button>
+              {/* R322: the map is here from the first stop on — an open Add-panel drawer's results
+                  are its candidates, and "Add to Day N" adds through that drawer. */}
+              {tripId && (
+                <div style={{ textAlign: "left", marginTop: 24 }}>
+                  <WorkstationCanvas
+                    tripId={tripId}
+                    destination={destination}
+                    items={[]}
+                    maxDay={maxDay}
+                    dayCount={buildDayCount}
+                    focusDay={focusDay}
+                    onFocusDay={setFocusDay}
+                    workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                    onDayMoved={triggerEnergyRecalc}
+                    onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                    focusItemId={null}
+                    onFocusHandled={() => {}}
+                    suggestOrderForDay={null}
+                    onSuggestHandled={() => {}}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <>
               {/* F1: the format registry picks the structure; client:default = the day list.
                   R322 (step 7a, R-bh): the Workstation surface — ONE MapControlCenter over the shared
                   DayBlock / ItemRow (role expert) / LegRow rows. */}
+              {tripId && (
+                <WorkstationCanvas
+                  section="map"
+                  tripId={tripId}
+                  destination={destination}
+                  items={days.flatMap((d) => d.items)}
+                  maxDay={maxDay}
+                  dayCount={buildDayCount}
+                  focusDay={focusDay}
+                  onFocusDay={setFocusDay}
+                  workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  onDayMoved={triggerEnergyRecalc}
+                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  focusItemId={null}
+                  onFocusHandled={() => {}}
+                  suggestOrderForDay={null}
+                  onSuggestHandled={() => {}}
+                />
+              )}
               {buildFormat.grouping === "days" && trip && tripId && (
                 <WorkstationCanvas
+                  section="days"
                   tripId={tripId!}
                   destination={destination}
                   items={days.flatMap((d) => d.items)}
                   maxDay={maxDay}
+                  dayCount={buildDayCount}
                   focusDay={focusDay}
                   onFocusDay={setFocusDay}
                   workspaceMode={workspaceCtx?.mode ?? "assignment"}
@@ -3085,10 +3168,12 @@ export default function ExpertWorkspace() {
                   bestSeason={listing?.bestSeason ?? null}
                   dayListView={
                     <WorkstationCanvas
+                      section="days"
                       tripId={tripId!}
                       destination={destination}
                       items={days.flatMap((d) => d.items)}
                       maxDay={maxDay}
+                      dayCount={buildDayCount}
                       focusDay={focusDay}
                       onFocusDay={setFocusDay}
                       workspaceMode={workspaceCtx?.mode ?? "assignment"}
