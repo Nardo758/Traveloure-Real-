@@ -58,8 +58,16 @@ import {
   MessageSquare,
   Lightbulb,
   ConciergeBell,
+  HelpCircle,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import {
+  answerRefusal,
+  questionContext,
+  questionText,
+  questionsTabLabel,
+  type InboxQuestion,
+} from "@/lib/inbox-questions";
 import { readBookingRequestClaim } from "@/lib/booking-agent-claim";
 // Ledger `2026-09-20-handoff-born-received`: a pooled row can now be born `received` (the ruled
 // value) as well as the legacy `pending` — this reader is the ONE place that already maps both to
@@ -1602,9 +1610,113 @@ function MessageThreadsSection() {
   );
 }
 
+// ─── Questions tab: Ask-a-local questions (L2-9, R-bj, spec v1.3.5 §1) ─────
+// GET /api/expert/inbox/questions (R309) decides which questions this expert may see; the answer
+// lands on the traveler's own thread for that stop. No traveler identity is shown — none is sent.
+
+const INBOX_QUESTIONS_KEY = ["/api/expert/inbox/questions"];
+
+function QuestionRow({ q }: { q: InboxQuestion }) {
+  const { toast } = useToast();
+  const [answer, setAnswer] = useState("");
+  const asked = questionText(q);
+
+  const answerMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/expert/inbox/questions/${encodeURIComponent(q.id)}/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ answer }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error(answerRefusal(res.status, body)), { status: res.status });
+      return body;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: INBOX_QUESTIONS_KEY });
+      toast({ title: "Answer sent", description: "The traveler sees it on that stop in their plan." });
+      setAnswer("");
+    },
+    onError: (err: Error & { status?: number }) => {
+      // Answered elsewhere or no longer open: the row is stale, so refresh the list either way.
+      if (err.status === 409 || err.status === 404) queryClient.invalidateQueries({ queryKey: INBOX_QUESTIONS_KEY });
+      toast({ title: "Answer not sent", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card className="border border-console-light" data-testid={`inbox-question-${q.id}`}>
+      <CardContent className="p-4 space-y-2">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-console-mid" data-testid={`text-question-context-${q.id}`}>{questionContext(q)}</p>
+          <div className="flex items-center gap-2">
+            {q.fromYourReadyMadeTrip && (
+              <Badge variant="outline" className="text-[10px]" data-testid={`badge-question-ready-made-${q.id}`}>From your Ready Made Trip</Badge>
+            )}
+            <span className="text-[11px] text-console-mid">{new Date(q.askedAt).toLocaleDateString()}</span>
+          </div>
+        </div>
+        <p
+          className={asked.written ? "text-sm text-console-darkest" : "text-sm text-console-mid italic"}
+          data-testid={`text-question-${q.id}`}
+        >
+          {asked.written ? `"${asked.text}"` : asked.text}
+        </p>
+        <div className="flex items-start gap-2">
+          <Textarea
+            placeholder="Write your answer…"
+            className="text-sm min-h-[36px]"
+            rows={2}
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            data-testid={`input-question-answer-${q.id}`}
+          />
+          <Button
+            size="sm"
+            className="flex-shrink-0 gap-1.5"
+            onClick={() => answerMutation.mutate()}
+            disabled={answerMutation.isPending || !answer.trim()}
+            data-testid={`button-answer-question-${q.id}`}
+          >
+            {answerMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Answer
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuestionsSection() {
+  const { data, isLoading, isError } = useQuery<{ questions: InboxQuestion[] }>({ queryKey: INBOX_QUESTIONS_KEY });
+  const questions = data?.questions ?? [];
+  return (
+    <section data-testid="section-inbox-questions">
+      <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">Questions from travelers</h2>
+      {isLoading ? (
+        <Skeleton className="h-20 rounded-lg" />
+      ) : isError ? (
+        <p className="text-sm text-console-mid" data-testid="text-inbox-questions-error">Couldn't load questions. Try again in a moment.</p>
+      ) : questions.length === 0 ? (
+        <EmptyState
+          icon={HelpCircle}
+          title="No questions yet"
+          body="When a traveler asks a local about a stop in your market — or on a copy of your Ready Made Trip — it appears here."
+          testId="empty-inbox-questions"
+        />
+      ) : (
+        <div className="space-y-2">
+          {questions.map((q) => <QuestionRow key={q.id} q={q} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────
 
-const INBOX_TABS = ["queue", "assignments", "history", "messages"];
+const INBOX_TABS = ["queue", "assignments", "history", "messages", "questions"];
 
 export default function ExpertInbox() {
   // ?tab= deep-link (the console convention — analytics.tsx pattern). The retired
@@ -1612,6 +1724,9 @@ export default function ExpertInbox() {
   const search = useSearch();
   const tabParam = new URLSearchParams(search).get("tab") ?? "queue";
   const initialTab = INBOX_TABS.includes(tabParam) ? tabParam : "queue";
+  // L2-9: the same query the Questions tab reads, so its label can carry a count (never "(0)").
+  const { data: questionData } = useQuery<{ questions: InboxQuestion[] }>({ queryKey: INBOX_QUESTIONS_KEY });
+  const questionCount = questionData?.questions.length;
 
   return (
     <ExpertLayout title="Inbox">
@@ -1629,6 +1744,7 @@ export default function ExpertInbox() {
             <TabsTrigger value="assignments" data-testid="tab-inbox-assigned-trips">Assigned Trips</TabsTrigger>
             <TabsTrigger value="history" data-testid="tab-inbox-history">History</TabsTrigger>
             <TabsTrigger value="messages" data-testid="tab-inbox-messages">Messages</TabsTrigger>
+            <TabsTrigger value="questions" data-testid="tab-inbox-questions">{questionsTabLabel(questionCount)}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="queue" className="space-y-8">
@@ -1654,6 +1770,10 @@ export default function ExpertInbox() {
 
           <TabsContent value="messages">
             <MessageThreadsSection />
+          </TabsContent>
+
+          <TabsContent value="questions">
+            <QuestionsSection />
           </TabsContent>
         </Tabs>
       </div>
