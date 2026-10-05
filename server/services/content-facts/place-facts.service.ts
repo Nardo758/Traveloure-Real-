@@ -11,6 +11,7 @@
  *     server/__tests__/place-facts-public.db.test.ts).
  *   · The free path (brief §7) reads the cache and Places only; `budgetCents` is 0 here.
  */
+import { canonicalAreaLine } from "@shared/place-address";
 import crypto from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
@@ -265,7 +266,10 @@ async function renameToDisplayName(tripId: string, item: EnrichItem, name: strin
 export function attachedArea(kept: readonly FactDraft[]): string | null {
   const address = kept.find((d) => d.factType === "address" && d.origin === "places_api");
   const area = (address?.value as Record<string, unknown> | undefined)?.area;
-  return typeof area === "string" && area.trim() ? area.trim() : null;
+  // R321 S11-10: at attach, the ward is canonical — a cached fact recorded before the rule (e.g.
+  // "Nakagyou Ward, Kyoto") is adopted in the same spelling as a fresh one ("Nakagyo Ward, Kyoto").
+  const canonical = typeof area === "string" ? canonicalAreaLine(area) : "";
+  return canonical ? canonical : null;
 }
 async function adoptGoogleArea(tripId: string, item: EnrichItem, area: string): Promise<boolean> {
   const drafted = item.locationName ?? null;

@@ -110,3 +110,8 @@ export function cardProvenanceLine(input: {
 
 /** R-e: a plan finalized without a run carries airport legs only, and says how to get the rest. */
 export const CARD_ADD_TRAVEL_TIMES_LINE = "Add travel times · Optimize";
+
+/** R321 (S11-2): the stay's line in a Trip Card day header — the stay is the day's anchor, not a stop. */
+export function stayingAtLine(name: string): string {
+  return `Staying at ${name}`;
+}

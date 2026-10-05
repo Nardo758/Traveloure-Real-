@@ -96,7 +96,9 @@ test("P4 read mode: no menu; Navigate per row and per day", () => {
       const m = new RegExp(`data-testid="slip-item-navigate-${a.id}"`).test(html);
       assert.ok(m, `Navigate on ${a.name}`);
     }
-    assert.match(html, /href="https:\/\/www\.google\.com\/maps\/dir\/\?api=1&(amp;)?travelmode=/);
+    assert.match(html, /href="https:\/\/www\.google\.com\/maps\/dir\/\?api=1&(amp;)?destination=/);
+    // R321 (S11-9): no travel-mode parameter on any Maps link — Maps chooses.
+    assert.doesNotMatch(html, /travelmode=/);
     assert.ok(!/key=/.test(html.match(/google\.com\/maps\/dir[^"]*/g)?.join(" ") ?? ""), "no API key in a deep link");
     assert.ok(html.includes(`data-testid="card-day-navigate-card-${d.dayNum}"`) || html.includes(`data-testid="card-day-navigate-${d.dayNum}"`));
   }

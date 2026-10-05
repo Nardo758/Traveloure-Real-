@@ -75,6 +75,18 @@ export function parseActivityTime(timeStr: string, dateStr: string, timezone?: s
  * time and no started successor stays "upcoming" until the traveler marks it, which is the
  * honest reading of a row that never said how long it runs (§13).
  */
+/**
+ * R321 (S11-2): the stay is not a stop. A plan's stay is its `accommodation`-type item — the slip's own
+ * test (`SlipView`, where-to-stay). It renders as the day's anchor ("Staying at …"), never in the stop
+ * list and never as Up next.
+ */
+export function isStayActivity(a: Pick<PlanCardActivity, "type">): boolean {
+  return a.type === "accommodation";
+}
+
+/** One hour, the now-line's margin either side of the day (R321 S11-3). */
+const NOW_LINE_MARGIN_MS = 60 * 60 * 1000;
+
 export function computeTemporalStates(
   activities: PlanCardActivity[],
   dateStr: string,
@@ -97,7 +109,8 @@ export function computeTemporalStates(
       !end && starts.slice(i + 1).some((s) => s != null && now >= s);
     if (endedByOwnClock || laterHasStarted) {
       out[act.id] = "past";
-    } else if (!foundUpcoming) {
+    } else if (!foundUpcoming && starts[i] != null && !isStayActivity(act)) {
+      // R321 (S11-2): Up next is the next TIMED stop — never the stay, never an untimed row.
       out[act.id] = "upcoming";
       foundUpcoming = true;
     } else {
@@ -203,6 +216,14 @@ export interface UpNextInfo<TLeg extends InlineTransportLegData = InlineTranspor
   upNextLeg: TLeg | null;
   upNextMode: TraveloureMode;
   lastPastIndex: number;
+  /**
+   * R321 (S11-3): where the now-line draws, as the index of the row it sits ABOVE (`activities.length`
+   * = below the last row); null = no line. It draws whenever now is within [first stop's start − 1 h,
+   * last stop's end + 1 h] on the live day: above the first stop before it starts, between stops
+   * during, below the last after. Stays and untimed rows do not set the window.
+   */
+  nowLineIndex: number | null;
+  /** = nowLineIndex !== null (kept for callers). */
   showNowLine: boolean;
 }
 
@@ -250,7 +271,8 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
     ? activities.reduce((mx, a, i) => (states[a.id] === "past" ? i : mx), -1)
     : -1;
 
-  const showNowLine = lastPastIndex >= 0 && upNextIndex > lastPastIndex;
+  const nowLineIndex = isLiveDay ? nowLinePosition(activities, dayIso!, now, timezone) : null;
+  const showNowLine = nowLineIndex !== null;
 
   const upNextActivity = upNextIndex >= 0 ? activities[upNextIndex] : null;
   const upNextLeg = upNextIndex > 0 ? legs[upNextIndex - 1] ?? null : null;
@@ -260,7 +282,37 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
       : "walk"
   );
 
-  return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, showNowLine };
+  return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, nowLineIndex, showNowLine };
+}
+
+/** Pure. R321 (S11-3): the now-line's position on a live day, or null outside the day's window. */
+export function nowLinePosition(
+  activities: readonly PlanCardActivity[],
+  dateStr: string,
+  now: Date,
+  timezone?: string | null,
+): number | null {
+  const timed = activities
+    .map((a, i) => {
+      if (isStayActivity(a)) return null;
+      const start = parseActivityTime(a.time, dateStr, timezone);
+      if (!start) return null;
+      const end = a.endTime ? parseActivityTime(a.endTime, dateStr, timezone) : null;
+      return { i, start, end: end && end > start ? end : start };
+    })
+    .filter((x): x is { i: number; start: Date; end: Date } => x !== null);
+  if (!timed.length) return null;
+  const dayStart = timed[0].start.getTime();
+  const dayEnd = Math.max(...timed.map((t) => t.end.getTime()));
+  const t = now.getTime();
+  if (t < dayStart - NOW_LINE_MARGIN_MS || t > dayEnd + NOW_LINE_MARGIN_MS) return null;
+  // The line sits above the first stop not yet over. A stop with no end time of its own runs until
+  // the next timed stop starts — the same reading `computeTemporalStates` takes of "past".
+  const current = timed.find((x, k) => {
+    const over = x.end > x.start ? x.end.getTime() : timed[k + 1]?.start.getTime() ?? x.start.getTime();
+    return over > t;
+  });
+  return current ? current.i : activities.length;
 }
 
 /**

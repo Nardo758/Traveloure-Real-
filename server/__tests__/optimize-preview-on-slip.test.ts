@@ -54,7 +54,9 @@ const railSrc = readFileSync(
   join(ROOT, "client", "src", "components", "plancard", "SlipRail.tsx"),
   "utf8",
 );
-const slipSurfaceSrc = slipSrc + "\n" + railSrc;
+// R321 S11-8: the OptimizerLead's three reads live in ONE hook both mounts call.
+const leadDataSrc = readFileSync(join(ROOT, "client", "src", "components", "plan", "use-optimizer-lead-data.ts"), "utf-8");
+const slipSurfaceSrc = slipSrc + "\n" + railSrc + "\n" + leadDataSrc;
 const cartSrc = readFileSync(join(ROOT, "client", "src", "pages", "cart.tsx"), "utf-8");
 
 /** A plan with real room to improve: five items crammed onto one day, all the same kind. */
@@ -289,7 +291,10 @@ test("S7: the slip surface renders the OptimizerLead with the server's fee, and 
   assert.ok(slipSurfaceSrc.includes("<OptimizerLead"), "the Build card mounts the OptimizerLead");
   assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-preview"'));
   assert.ok(slipSurfaceSrc.includes('queryKey: ["/api/optimization-fee"'));
-  assert.ok(slipSurfaceSrc.includes("fee={previewEnabled ? feeQuote : null}"), "the CTA's fee is the server's quote");
+  // R321 S11-8: the fee is the hook's, and the hook answers null unless the preview is enabled.
+  assert.ok(railSrc.includes("useOptimizerLeadData(trip.id, previewEnabled)"), "the Build card reads the ONE lead-data hook");
+  assert.ok(railSrc.includes("fee={leadData.fee}"), "the CTA's fee is the server's quote");
+  assert.ok(leadDataSrc.includes("fee: enabled ? fee ?? null : null"), "no fee is shown unless Optimize could run");
   for (const forbidden of ["estimatedSavingsPct", "estimatedCostDelta", "estimatedScheduleTighteningPct", "/100"]) {
     assert.ok(!slipSurfaceSrc.includes(forbidden), `the slip must not render ${forbidden}`);
   }

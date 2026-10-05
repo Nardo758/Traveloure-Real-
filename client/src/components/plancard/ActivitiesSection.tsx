@@ -718,7 +718,7 @@ export function ActivitiesSection({
 
   if (!day) return null;
 
-  const { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, lastPastIndex, showNowLine } =
+  const { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, lastPastIndex, nowLineIndex } =
     getUpNextInfo(day, legs, now, visited, timezone);
 
   const upNextMode: TraveloureMode = canonicalMode(
@@ -775,7 +775,7 @@ export function ActivitiesSection({
 
         return (
           <div key={a.id}>
-            {showNowLine && i === upNextIndex && (
+            {nowLineIndex === i && (
               <div className="flex items-center gap-2 py-1.5 -mx-1" data-testid="now-line">
                 <div className="flex-1 h-px bg-red-400/60" />
                 <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full shrink-0 border border-red-200 dark:border-red-800">
@@ -1066,6 +1066,15 @@ export function ActivitiesSection({
           </div>
         );
       })}
+      {nowLineIndex === activities.length && activities.length > 0 && (
+        <div className="flex items-center gap-2 py-1.5 -mx-1" data-testid="now-line">
+          <div className="flex-1 h-px bg-red-400/60" />
+          <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full shrink-0 border border-red-200 dark:border-red-800">
+            {nowHHMM(now)} now
+          </span>
+          <div className="flex-1 h-px bg-red-400/60" />
+        </div>
+      )}
 
       {fabCanShow && (
         <div className="sticky bottom-0 mt-4 flex justify-end pb-1 pointer-events-none">

@@ -90,6 +90,14 @@ export interface MapControlCenterProps {
   /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
   versionKey?: string;
   onVersionChange?: (key: string) => void;
+  /**
+   * R322 (step 7a, R-bh): the Workstation's open Add-panel drawer — its own already-filtered,
+   * already-located results (`useMapCandidates`). Drawn as hollow browse markers and rows, with the
+   * SAME "Add to Day N" card the Browse layer uses; the add itself is the drawer's own handler
+   * (`onAddCandidate`), which posts the existing item route for the selected day. No second add rail.
+   */
+  candidates?: { sourceLabel: string | null; items: ReadonlyArray<{ id: string; title: string; lat: number; lng: number; price?: string | null }> } | null;
+  onAddCandidate?: (id: string, dayNumber: number) => void;
 }
 
 export function MapControlCenter({
@@ -111,6 +119,8 @@ export function MapControlCenter({
   showTravelMinutes = false,
   versionKey: versionKeyControlled,
   onVersionChange,
+  candidates = null,
+  onAddCandidate,
 }: MapControlCenterProps) {
   const { toast } = useToast();
   const [planLayer, setPlanLayer] = useState(true);
@@ -156,9 +166,20 @@ export function MapControlCenter({
       return res.json();
     },
   });
+  const candidatePlaces: BrowsePlace[] = useMemo(
+    () =>
+      !readOnly && onAddCandidate && candidates
+        ? candidates.items.map((c) => ({ id: c.id, kind: "candidate" as const, name: c.title, lat: c.lat, lng: c.lng, category: candidates.sourceLabel, priceLabel: c.price ?? null }))
+        : [],
+    [readOnly, onAddCandidate, candidates],
+  );
+  const candidatesOn = candidatePlaces.length > 0;
   const browsePlaces: BrowsePlace[] = useMemo(
-    () => (browseOn ? [...listingPlaces(listings), ...partnerPlaces(partner?.products, browseState.categoryKey)] : []),
-    [browseOn, listings, partner, browseState.categoryKey],
+    () => [
+      ...candidatePlaces,
+      ...(browseOn ? [...listingPlaces(listings), ...partnerPlaces(partner?.products, browseState.categoryKey)] : []),
+    ],
+    [candidatePlaces, browseOn, listings, partner, browseState.categoryKey],
   );
   const hosts = browseOn ? hostRows(experts).slice(0, 8) : [];
   const selectedBrowse = browsePlaces.find((b) => `${b.kind}:${b.id}` === selectedBrowseId) ?? null;
@@ -168,6 +189,8 @@ export function MapControlCenter({
       (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, browseAddBody(place, dayNumber ?? 1))).json(),
     onSuccess: (_out, place) => {
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      // R322: the Workstation reads the trip's item list directly; keep it in step with the add.
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       toast({ title: `Added ${place.name} to day ${dayNumber ?? 1}` });
       setSelectedBrowseId(null);
     },
@@ -193,7 +216,7 @@ export function MapControlCenter({
     showAreas,
     emphasizeAreas,
     browse: browsePlaces,
-    layers: { plan: planLayer, browse: browseOn },
+    layers: { plan: planLayer, browse: browseOn || candidatesOn },
   });
   const dayDiff = version && dayNumber != null ? version.days.find((d) => d.dayNumber === dayNumber) ?? null : null;
 
@@ -385,7 +408,7 @@ export function MapControlCenter({
         ) : null}
 
         {/* ── Browse: the selected place's card, the places, and hosts (never pins) ─────────── */}
-        {browseOn ? (
+        {browseOn || candidatesOn ? (
           <div className="space-y-2 border-t border-border pt-2" data-testid="map-browse-panel">
             {browseState.categoryKey ? (
               <p className="text-xs text-muted-foreground" data-testid="map-browse-filter">
@@ -399,9 +422,25 @@ export function MapControlCenter({
               <div className="rounded-md border border-teal-600/40 p-2 space-y-1" data-testid="map-browse-card">
                 <p className="text-sm font-semibold">{selectedBrowse.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {[selectedBrowse.kind === "listing" ? "Traveloure listing" : "Partner place", selectedBrowse.category, selectedBrowse.priceLabel].filter(Boolean).join(" · ")}
+                  {[
+                    selectedBrowse.kind === "listing" ? "Traveloure listing" : selectedBrowse.kind === "candidate" ? null : "Partner place",
+                    selectedBrowse.category,
+                    selectedBrowse.priceLabel,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
-                <Button size="sm" onClick={() => add.mutate(selectedBrowse)} disabled={add.isPending} data-testid="map-browse-add">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (selectedBrowse.kind === "candidate") {
+                      onAddCandidate?.(selectedBrowse.id, dayNumber ?? 1);
+                      setSelectedBrowseId(null);
+                    } else add.mutate(selectedBrowse);
+                  }}
+                  disabled={add.isPending}
+                  data-testid="map-browse-add"
+                >
                   <Plus className="mr-1 h-3.5 w-3.5" /> Add to day {dayNumber ?? 1}
                 </Button>
               </div>
@@ -422,7 +461,7 @@ export function MapControlCenter({
                 </li>
               ))}
             </ul>
-            {hosts.length ? (
+            {browseOn && hosts.length ? (
               <div data-testid="map-browse-hosts">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Local hosts</p>
                 <ul className="text-xs">

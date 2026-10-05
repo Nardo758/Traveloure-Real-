@@ -15,6 +15,7 @@
  */
 import type { ContentNeed } from "@shared/content-facts";
 import { PLACES_ATTRIBUTION } from "@shared/content-facts";
+import { placesAddressLine, placesAreaText } from "@shared/place-address";
 import type { FactDraft, FetchRequest, SourceAdapter } from "./source-adapter";
 import {
   factTtlDays,
@@ -65,17 +66,8 @@ export const PLACES_BASE_FIELDS = [
 /** R297: how many photo references one Details answer keeps. */
 export const PLACES_PHOTO_REFS_MAX = 3;
 
-export const PLACES_AREA_COMPONENT_TYPES = ["ward", "sublocality_level_1", "locality"] as const;
-export function placesAreaText(components: unknown): string | null {
-  if (!Array.isArray(components)) return null;
-  const out: string[] = [];
-  for (const type of PLACES_AREA_COMPONENT_TYPES) {
-    const c = components.find((x: any) => Array.isArray(x?.types) && x.types.includes(type));
-    const t = typeof c?.longText === "string" ? c.longText.trim() : "";
-    if (t && !out.includes(t)) out.push(t);
-  }
-  return out.length ? out.join(", ") : null;
-}
+// R321: the area and address-line rules moved to `@shared/place-address` (CJK dropped, wards canonical).
+export { PLACES_AREA_COMPONENT_TYPES, placesAreaText, placesAddressLine } from "@shared/place-address";
 /** Atmosphere-tier fields — named so a test can prove the default asks none of them. */
 export const PLACES_ATMOSPHERE_FIELDS = [
   "reservable",
@@ -243,10 +235,13 @@ export class PlacesAdapter implements SourceAdapter {
     const formatted = typeof p.formattedAddress === "string" ? p.formattedAddress.trim() : "";
     const short = typeof p.shortFormattedAddress === "string" ? p.shortFormattedAddress.trim() : "";
     const area = placesAreaText(p.addressComponents);
-    if (formatted || short || area) {
+    // R321 S11-11: the line a traveler reads, built from the English components, CJK dropped.
+    const addressLine = placesAddressLine(p.addressComponents);
+    if (formatted || short || area || addressLine) {
       const v: Record<string, unknown> = { query: text };
       if (formatted) v.formattedAddress = formatted;
       if (short) v.shortFormattedAddress = short;
+      if (addressLine) v.addressLine = addressLine;
       if (area) v.area = area;
       push({ need: req.need, factType: "address", value: v, expiresAt: expiry(fetchedAt, factTtlDays("address")) });
     }

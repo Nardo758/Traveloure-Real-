@@ -575,8 +575,8 @@ export interface TripLegPatch {
   stampCheckedBy?: string;
 }
 
-/** R-ay: an author's tip is at most this many characters (app-enforced; no DB CHECK). */
-export const AUTHOR_TIP_MAX_CHARS = 140;
+/** R-ay: an author's tip is at most this many characters — stated ONCE in `@shared/trip-plan` (R322). */
+export { AUTHOR_TIP_MAX_CHARS } from "@shared/trip-plan";
 
 /** R-az: the `transport_provision` values under which a listing can carry a traveler to a stop. */
 export const PICKUP_CAPABLE_PROVISIONS = ["pickup_included", "pickup_available"] as const;

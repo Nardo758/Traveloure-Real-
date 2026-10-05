@@ -23,10 +23,12 @@ export interface DayBlockProps {
   photo?: ReactNode;
   /** Step 6: a line beside the header (the Trip Card's "Today", the day's Navigate link). */
   aside?: ReactNode;
+  /** R322: the day's jump target (`planDayDomId`), stamped as the section's `id`. */
+  domId?: string;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, children }: DayBlockProps) {
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;
   const toggle = () => {
@@ -36,7 +38,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
   };
   const Chevron = isOpen ? ChevronDown : ChevronRight;
   return (
-    <section className="py-2 first:pt-0 last:pb-0" data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"}>
+    <section id={domId} className="py-2 first:pt-0 last:pb-0" data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"}>
       <button
         type="button"
         className="flex w-full items-start gap-1.5 px-3 pt-1 pb-0.5 text-left"
