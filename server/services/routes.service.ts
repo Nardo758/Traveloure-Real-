@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { gatedMapsCallOrNull } from "./maps-billing/maps-billing.service";
-import { DRIVE_FIELD_MASK, MODE_FIELD_MASK, drivingRouteBody, modeRouteBody } from "./maps-billing/maps-requests";
+import { DRIVE_FIELD_MASK, MODE_FIELD_MASK, MODE_PATH_FIELD_MASK, drivingRouteBody, modeRouteBody } from "./maps-billing/maps-requests";
+import type { LegPathTravelMode } from "@shared/leg-route-path";
 
 const ROUTES_API_URL = "https://routes.googleapis.com/directions/v2:computeRoutes";
 
@@ -412,6 +413,46 @@ export async function getRouteForMode(
     return { value: { minutes: Math.max(1, Math.ceil(seconds / 60)), distanceMeters: route.distanceMeters! } };
   }).catch((error) => {
     console.error(`[Routes] ${travelMode} route request failed:`, error);
+    return null;
+  });
+}
+
+/**
+ * Slice A1 (ledger `2026-10-05-leg-live-hop-path`): the ROUTE SHAPE for one leg in one travel mode,
+ * for the leg review's hop map. Drawn live and NEVER stored — no column, no cache (Google's caching
+ * terms for route geometry). DRIVE reuses the drive request (its mask already carries the polyline,
+ * gated by `routes_drive`); WALK / BICYCLE / TRANSIT ask the same Essentials request the mode tier
+ * uses, with only the polyline in the mask (gated by `routes_mode`). Null = no shape (no key, the
+ * cap, an error, no route) — the drawer keeps its dashed stop-order line and says so.
+ */
+export async function getRoutePathForMode(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  travelMode: LegPathTravelMode,
+): Promise<string | null> {
+  if (travelMode === "DRIVE") {
+    const r = await getTrafficAwareDrivingRoute({ origin, destination });
+    return r?.polyline || null;
+  }
+  return gatedMapsCallOrNull("routes_mode", async (apiKey) => {
+    const response = await fetch(ROUTES_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": MODE_PATH_FIELD_MASK,
+      },
+      body: JSON.stringify(modeRouteBody(origin, destination, travelMode)),
+    });
+    if (!response.ok) {
+      console.error(`[Routes] ${travelMode} path failed:`, response.status);
+      return { value: null, success: false };
+    }
+    const data = (await response.json()) as { routes?: Array<{ polyline?: { encodedPolyline?: string } }> };
+    const encoded = data.routes?.[0]?.polyline?.encodedPolyline;
+    return { value: encoded || null };
+  }).catch((error) => {
+    console.error(`[Routes] ${travelMode} path request failed:`, error);
     return null;
   });
 }
