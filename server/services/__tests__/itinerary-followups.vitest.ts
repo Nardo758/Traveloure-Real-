@@ -109,13 +109,16 @@ for (let loop = 1; loop <= 2; loop++) {
       }, { bookable: true, expert: loop === 1 });
     });
   }
-  test(`cancellation loop ${loop}: booking within one hour physically cancels all three`, async () => {
+  test(`cancellation loop ${loop}: a booking within one hour cancels all three at the first send`, async () => {
     await withFixture(async (fixture) => {
       await db.insert(serviceBookings).values({
         id: randomUUID(), travelerId: fixture.userId, totalAmount: "99.00", status: loop === 1 ? "confirmed" : "payment_pending",
       });
-      expect((await notices(fixture.userId)).map((row) => row.status)).toEqual(["cancelled", "cancelled", "cancelled"]);
+      // No trigger (migration 351 rejected): the booking write cancels nothing by itself.
+      expect((await notices(fixture.userId)).map((row) => row.status)).toEqual(["pending", "pending", "pending"]);
       const send = sender();
+      expect(await deliverItineraryFollowup(await claim(fixture, "itinerary_nudge_2h"), send)).toBe("cancelled");
+      expect((await notices(fixture.userId)).map((row) => row.status)).toEqual(["cancelled", "cancelled", "cancelled"]);
       for (const row of await notices(fixture.userId)) expect(await deliverItineraryFollowup(row.id, send)).toBe("skipped");
       expect(send).not.toHaveBeenCalled();
     }, { bookable: true, expert: true, ageHours: 0.25 });
@@ -159,6 +162,9 @@ test("mid-sequence cancellation preserves already-sent 2h mail and stops both re
     const id = await claim(fixture, "itinerary_nudge_2h");
     expect(await deliverItineraryFollowup(id, sender())).toBe("sent");
     await db.insert(serviceBookings).values({ id: randomUUID(), travelerId: fixture.userId, totalAmount: "99", status: "pending" });
+    const send = sender();
+    expect(await deliverItineraryFollowup(await claim(fixture, "itinerary_followup_24h"), send)).toBe("cancelled");
+    expect(send).not.toHaveBeenCalled();
     const rows = await notices(fixture.userId);
     expect(rows.find((row) => row.id === id)?.status).toBe("sent");
     expect(rows.filter((row) => row.id !== id).every((row) => row.status === "cancelled")).toBe(true);
@@ -207,10 +213,19 @@ test("daily marketing cap defers, consent/deletion cancel, retries retain provid
     const third = await claim(fixture, "itinerary_reengagement_5d");
     expect(await deliverItineraryFollowup(third, sender())).toBe("cancelled");
     await db.delete(itineraryComparisons).where(eq(itineraryComparisons.id, fixture.itineraryId));
+    // No delete trigger (migration 351 rejected): a removed itinerary is caught at each send.
+    const removedSend = sender();
+    for (const row of (await notices(fixture.userId)).filter((entry) => entry.status === "pending")) {
+      await db.update(emailOutbox).set({ status: "processing" }).where(eq(emailOutbox.id, row.id));
+      expect(await deliverItineraryFollowup(row.id, removedSend)).toBe("cancelled");
+    }
+    expect(removedSend).not.toHaveBeenCalled();
     expect((await notices(fixture.userId)).filter((row) => row.status === "pending")).toHaveLength(0);
   });
 });
-test("legacy, affiliate, and coordination booking writers are guarded at the database boundary", async () => {
+test("a booking on the legacy, affiliate or coordination rail cancels the follow-ups at send time", async () => {
+  // Migration 351's database triggers were rejected (decision-maker, Oct 4, 2026): no booking writer
+  // touches email_outbox. The guard is bookingExists, read under the traveler's row lock at send time.
   for (const rail of ["legacy", "affiliate", "coordination"]) await withFixture(async (fixture) => {
     if (rail === "legacy") await db.execute(sql`INSERT INTO bookings(id, user_id, status) VALUES (${randomUUID()}, ${fixture.userId}, 'confirmed')`);
     else if (rail === "affiliate") await db.insert(affiliateBookingRequests).values({
@@ -224,6 +239,12 @@ test("legacy, affiliate, and coordination booking writers are guarded at the dat
         id: randomUUID(), coordinationId, itemType: "activity", itemId: randomUUID(), itemName: "QA ONLY", status: "pending",
       });
     }
+    // Nothing is cancelled by the write itself.
+    expect((await notices(fixture.userId)).some((row) => row.status === "pending")).toBe(true);
+    const id = await claim(fixture, "itinerary_nudge_2h");
+    const send = sender();
+    expect(await deliverItineraryFollowup(id, send)).toBe("cancelled");
+    expect(send).not.toHaveBeenCalled();
     expect((await notices(fixture.userId)).every((row) => row.status === "cancelled")).toBe(true);
     // The historical tables have different FK delete policies; remove only our fixture's rows.
     if (rail === "legacy") await db.execute(sql`DELETE FROM bookings WHERE user_id = ${fixture.userId}`);
@@ -296,7 +317,7 @@ function deferred() {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 }
-test("real two-connection race, both orders: no provider attempt after booking commit", async () => {
+test("booking vs send, both orders: a committed booking stops the send; a send in flight blocks the booking", async () => {
   for (const winner of ["booking", "send"]) await withFixture(async (fixture) => {
     const id = await claim(fixture, "itinerary_nudge_2h");
     const events: string[] = [];
@@ -308,12 +329,14 @@ test("real two-connection race, both orders: no provider attempt after booking c
     };
     if (winner === "booking") {
       await booking(); release.resolve();
-      expect(await deliverItineraryFollowup(id, attempt)).toBe("skipped");
+      expect(await deliverItineraryFollowup(id, attempt)).toBe("cancelled");
       expect(events).toEqual(["booking-committed"]);
     } else {
       const sending = deliverItineraryFollowup(id, attempt);
       await entered.promise;
       const writing = booking();
+      // No trigger (migration 351 rejected): the booking waits because service_bookings.traveler_id
+      // references users, and the foreign-key check's KEY SHARE lock waits on the send's FOR UPDATE.
       // PostgreSQL itself proves the competing writer is blocked, not a mock mutex.
       let blocked = false;
       for (let index = 0; index < 50 && !blocked; index++) {
@@ -326,6 +349,10 @@ test("real two-connection race, both orders: no provider attempt after booking c
       finally { release.resolve(); }
       expect(await sending).toBe("sent"); await writing;
       expect(events).toEqual(["provider", "booking-committed"]);
+      // The remaining follow-ups for this itinerary are cancelled at their own send time.
+      const send = sender();
+      expect(await deliverItineraryFollowup(await claim(fixture, "itinerary_followup_24h"), send)).toBe("cancelled");
+      expect(send).not.toHaveBeenCalled();
     }
   });
 });

@@ -1927,11 +1927,7 @@ export const MIGRATION_FILES = [
   // extends to legs). Two nullable columns, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts.
   // APPROVED Oct 4, 2026.
   "350_transport_leg_coord_source.sql",
-  // 351 — itinerary follow-up booking guard (ledger 2026-10-04-itinerary-traveler-emails; #1274).
-  // CREATE OR REPLACE FUNCTION + BEFORE INSERT/UPDATE triggers on service_bookings, bookings,
-  // affiliate_booking_requests and coordination_bookings, and a BEFORE DELETE trigger on
-  // itinerary_comparisons. No table, column, index or CHECK. Renumbered from 346 (taken on main by
-  // 346_place_photos). HELD — NOT APPROVED: the booking triggers take a users-row lock on the money
-  // path and await the decision-maker's ruling.
-  "351_itinerary_followup_booking_guard.sql",
+  // 351 — RETIRED, never applied: the itinerary follow-up booking-guard triggers (#1274) were rejected
+  // by the decision-maker on Oct 4, 2026 (surface spec v1.3.5 §9: no functions, triggers,
+  // CREATE OR REPLACE or DO blocks in any migration). The number is not reused.
 ] as const;

@@ -21,7 +21,8 @@ export interface FollowupMetadata {
   deliveryCalendarDay?: string;
 }
 
-/** Same row lock as migration 351's booking triggers. Do not substitute a process-local mutex. */
+/** The traveler's users-row lock, held while a follow-up is checked and sent. Do not substitute a process-local mutex.
+ * There is no database trigger (migration 351 was rejected): a booking is caught by bookingExists at send time. */
 export async function lockFollowupTraveler(tx: Tx, travelerId: string) {
   await tx.execute(sql`SELECT id FROM users WHERE id = ${travelerId} FOR UPDATE`);
 }
