@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags } from "../runtime-flags";
+import { MAPS_CALLERS, MAPS_CALLER_KEYS } from "@shared/maps-billing";
 
 const MAPS_HEALTH_NAMES = [
   "MAPS_ROUTES_DRIVE_ENABLED",
@@ -79,6 +80,18 @@ test("Maps: all switches can be enabled while expert scrape remains off", () => 
   assert.equal(flags.EXPERT_SCRAPE_JOBS_ENABLED, false);
   assert.equal(flags.PLACE_FACTS_PLACES_ENABLED, false, "Maps switches do not enable the separate facts switch");
   assert.equal(Object.values(flags).every((value) => typeof value === "boolean"), true);
+});
+
+test("Maps: the reported switches are exactly the Maps billing table's own switches", () => {
+  // The health list is written by hand; this pins it to `MAPS_CALLERS` (R299) so a switch renamed or
+  // added there cannot silently go unreported. The two Places calls share PLACE_FACTS_PLACES_ENABLED,
+  // which health already reports under its own name.
+  const tableSwitches = [...new Set(MAPS_CALLER_KEYS.map((k) => MAPS_CALLERS[k].enabledEnv))]
+    .filter((name) => name !== "PLACE_FACTS_PLACES_ENABLED")
+    .sort();
+  assert.deepEqual([...MAPS_HEALTH_NAMES].sort(), tableSwitches);
+  for (const name of tableSwitches) assert.ok((HEALTH_FLAG_NAMES as readonly string[]).includes(name), `${name} is reported`);
+  assert.ok((HEALTH_FLAG_NAMES as readonly string[]).includes("PLACE_FACTS_PLACES_ENABLED"));
 });
 
 test("F3: every /api/health answer carries the flags", () => {
