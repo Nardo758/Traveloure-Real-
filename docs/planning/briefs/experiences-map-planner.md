@@ -135,7 +135,7 @@ below 4.5:1. No behaviour change.
 - 2c: locals' notes and traveler comments. **Not armed** until section B's comment questions are ruled.
 
 ### Lane 3 — Groups-first picker.
-**Amended 2026-10-05, 17:42 ET (R334):** Lanes 3 and 4 are built as step 8 (8a entry; 8b map layout; 8c retirements; 8d signed-out browsing) under `docs/planning/briefs/step-8-brief.md` revision 2, which carries rulings-2 rulings 4–10.
+**Amended 2026-10-05, 17:42 ET (R334):** Lanes 3 and 4 are built as step 8 in five PRs (8a entry; 8b-1 extraction; 8b-2 map layout; 8c retirements; 8d signed-out browsing) under `docs/planning/briefs/step-8-brief.md` revision 3.1, which carries rulings-2 rulings 4–10 and Phase 0 decisions D1–D6 (ledger `2026-10-05-step8-phase0-decisions`).
 One picker component used by the pop-up's first step (`client/src/components/trip/plan-modal.tsx`, the
 `step === "occasion"` body, a flat grid today) and by the Experiences starting state. The group of an
 occasion is `experienceGroupFor` in `shared/experience-group.ts`; do not restate the rule. The five
