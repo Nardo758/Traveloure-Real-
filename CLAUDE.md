@@ -1419,6 +1419,20 @@ This document captures architectural decisions to maintain consistency across co
     occasion's roles in an e2e: the chips' rules are proven purely, and their silence is proven in
     the DOM.
 
+    **AMENDED — THREE PLANNERS ON ONE PLAN; EXPERIENCES IS THE MAP PLANNER (decision-maker Leon Dixon,
+    Oct 5, 2026, ET — ledger `2026-10-05-experiences-map-planner`; brief
+    `docs/planning/briefs/experiences-map-planner.md` §A3; boards `docs/design/experiences-map-planner/`).**
+    This entry's heading reads "THE SLIP IS THE ONE PLANNING SURFACE", and surface spec R-b read "the
+    slip is the **only** planning surface; Browse is a map layer on the slip". Both are amended: there
+    are **three planners — feed, calendar, map** — and Experiences is the **map planner**, a planner in
+    its own right. **What does NOT move:** there is still ONE plan — the map planner reads and writes the
+    same `trips` row and `itinerary_items` through the slip's existing writers (LD 39, no second store,
+    no second admission rail); every AI write is still a proposal or the free draft on an empty plan
+    (LD 41, LD 45); the owner-only edit render rule (D16) and D8 stand; fee disclosure stays at checkout.
+    A new plan started from Experiences or from Plan with AI lands on the map (scope assumed, not ruled;
+    every other door unchanged). Which other doors land on the map, venue-led planners, Trip Pass, the
+    Ask AI drawer and the Optimize comparison on the map are **NOT ruled** (brief §B).
+
 43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;
     ONE SOFT SAVE PROMPT (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-payment-method-posture`; this lane = `2026-09-05-wallets-on-platform-intents`).
@@ -1803,6 +1817,12 @@ This document captures architectural decisions to maintain consistency across co
     standing — the slip — says **NOTHING** (§13). **No undo is drawn** (LD 42 D18), and LD 41 (b)'s
     empty-plan branch is kept although it cannot fire post-final. **L16 is complete**; lane 5 was ruled
     out by D-45.
+    **(7) AMENDED — THE FILL BEHIND WHITE TEXT IS `#C8443D` (decision-maker Leon Dixon, Oct 5, 2026,
+    ET — ledger `2026-10-05-coral-fill-contrast`; brief `experiences-map-planner.md` §A1).** (7) reads
+    "the traveler console adopts the ONE site grammar — coral primary (`#E85D55`)". `#E85D55` stays the
+    brand ACCENT and OUTLINE and is never a background behind white text (3.43:1); any filled surface
+    carrying white text uses `#C8443D` (4.83:1); coral as text on a light ground stays `#B8403A`. The
+    `--primary` change and the contrast test are the brief's Lane 1. The dark theme is not ruled.
 
 46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
     WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all
