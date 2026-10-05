@@ -27,6 +27,8 @@ export interface ItemSheetProps {
   /** "Ask a local about this" — the row's own R-m door (records interest with no local live). */
   onAskLocal?: (() => void) | null;
   askLocalLabel?: string;
+  /** R321 (S11-5): the question panel, drawn under the actions while open (the card records interest here). */
+  askLocalPanel?: ReactNode;
   navigateHref?: string | null;
   /** The row's existing booking action, when a path exists ("Book this for me" lands in step 7). */
   bookingAction?: ReactNode;
@@ -87,6 +89,7 @@ export function ItemSheet(props: ItemSheetProps) {
             ) : null}
             {props.bookingAction ?? null}
           </div>
+          {props.askLocalPanel ?? null}
         </div>
       </SheetContent>
     </Sheet>

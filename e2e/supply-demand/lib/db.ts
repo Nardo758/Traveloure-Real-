@@ -230,3 +230,45 @@ export async function seedReadyMadeConfirmedLegs(tripId: string): Promise<number
   );
   return res.rowCount ?? 0;
 }
+
+/**
+ * seedReadyMadeProposedLegs — TEST-FIXTURE-ONLY write, the same R-1 class as the two above, and
+ * deliberately WEAKER than `seedReadyMadeConfirmedLegs`: it seeds the engine's half only. With no
+ * Google key (this CI), `POST …/transport-legs/generate` routes nothing (`route_unavailable`), so no
+ * leg exists for the author to review. This inserts ONE `proposed` leg — no chosen mode, no tip, no
+ * stamp — for each consecutive pair of LOCATED stops lacking a leg, AFTER the real generate was
+ * driven. The author's half (pick the mode, write the tip, Confirm → `checked_by/checked_at`) is then
+ * done for real in the UI (R322). Every call site logs it as a SPEC_DIVERGENCE/P3 finding.
+ */
+export async function seedReadyMadeProposedLegs(tripId: string): Promise<number> {
+  const res = await db().query(
+    `WITH ordered AS (
+       SELECT id, title, day_number, latitude, longitude,
+              LEAD(id) OVER w AS next_id, LEAD(title) OVER w AS next_title,
+              LEAD(latitude) OVER w AS next_lat, LEAD(longitude) OVER w AS next_lng
+         FROM itinerary_items
+        WHERE trip_id = $1
+       WINDOW w AS (PARTITION BY day_number ORDER BY sort_order NULLS LAST, start_time NULLS LAST)
+     ), gaps AS (
+       SELECT o.* FROM ordered o
+        WHERE o.next_id IS NOT NULL
+          AND o.latitude IS NOT NULL AND o.longitude IS NOT NULL
+          AND o.next_lat IS NOT NULL AND o.next_lng IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM transport_legs l
+             WHERE l.trip_id = $1 AND l.variant_id IS NULL AND l.day_number = o.day_number
+               AND l.from_activity_id = o.id AND l.to_activity_id = o.next_id)
+     )
+     INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
+                                 to_activity_id, to_name, to_lat, to_lng, distance_meters, distance_display,
+                                 recommended_mode, alternative_modes, estimated_duration_minutes, proposal_status)
+     SELECT gen_random_uuid()::text, $1, day_number, 0, id, title, latitude::float8, longitude::float8,
+            next_id, next_title, next_lat::float8, next_lng::float8, 0, 'e2e seeded', 'walk',
+            '[{"mode":"train","durationMinutes":12,"costUsd":null,"energyCost":1,"reason":"e2e seeded"}]'::jsonb,
+            10, 'proposed'
+       FROM gaps
+     RETURNING id`,
+    [tripId],
+  );
+  return res.rowCount ?? 0;
+}

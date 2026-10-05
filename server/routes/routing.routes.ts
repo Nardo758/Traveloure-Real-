@@ -71,6 +71,7 @@
  * failure never fails the transition: the routing status is the source of truth, the cart is
  * the derived view, and the reconciler is re-runnable.
  */
+import { isoTimestamp } from "@shared/iso-timestamp";
 import { activateTripTransport } from "../services/trip-transport-legs.service";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { Router } from "express";
@@ -517,7 +518,7 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
       // re-flipping the render signal. Idempotent, not an error (R-F).
       return res.json({
         alreadyFinalized: true,
-        finalizedAt: String(result.finalizedAt),
+        finalizedAt: isoTimestamp(result.finalizedAt),
         finalVersion: result.version,
         finalCreated: result.finalCreated,
       });
@@ -584,7 +585,7 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
 
     return res.json({
       alreadyFinalized: false,
-      finalizedAt: String(result.finalizedAt),
+      finalizedAt: isoTimestamp(result.finalizedAt),
       stagedCount: Number(stagedRow?.n ?? 0),
       finalVersion: result.version,
       ...(transportLegsCreated !== undefined ? { transportLegsCreated } : {}),

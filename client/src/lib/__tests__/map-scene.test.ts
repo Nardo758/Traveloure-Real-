@@ -181,17 +181,21 @@ test("M7 no travel minutes unless the travel-time service is on", () => {
   assert.ok(!/durationMinutes\}|minutes\b.*\{/.test(read("client/src/components/plancard/VersionsBoard.tsx")));
 });
 
-test("M8 MapControlCenter is the only map on the slip, the Trip Card and the comparison screen", () => {
+test("M8 MapControlCenter is the only map on the slip, the Trip Card, the comparison screen and the Workstation", () => {
   for (const rel of [
     "client/src/components/plancard/SlipView.tsx",
     "client/src/components/plancard/PlanCard.tsx",
     "client/src/pages/itinerary-comparison.tsx",
     "client/src/components/plancard/VersionsBoard.tsx",
+    "client/src/pages/expert/workspace.tsx",
   ]) {
     const src = read(rel);
     assert.ok(!/<(LeafletPlanMap|ExperienceMap|ProposalComparisonMap|GoogleMap)\b/.test(src), `${rel} mounts no other map`);
   }
   assert.match(read("client/src/components/plancard/VersionsBoard.tsx"), /<MapControlCenter/);
-  // The Workstation keeps its own map until step 7 (ruling 8).
-  assert.match(read("client/src/pages/expert/workspace.tsx"), /LeafletPlanMap|GoogleMap|Map/);
+  // R322 (step 7a, R-bh): the Workstation's own map is gone — it mounts MapControlCenter, and
+  // draws no Google <Map> of its own (the Places autocomplete loads Maps for suggestions only).
+  const ws = read("client/src/pages/expert/workspace.tsx");
+  assert.match(ws, /<MapControlCenter/);
+  assert.ok(!/<Map\b/.test(ws), "the Workstation mounts no inline Google map");
 });

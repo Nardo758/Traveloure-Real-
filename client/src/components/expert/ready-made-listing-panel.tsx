@@ -22,10 +22,10 @@ import { Check, ImageIcon, Loader2, Search, Send, X } from "lucide-react";
 import { READY_MADE_PLAN_TYPES, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { trackEvent } from "@/lib/analytics";
 import {
-  readinessJumpTarget,
+  firstPresentTarget,
+  readinessLineTargets,
   readinessQueryKey,
   submitBlockedByReadiness,
-  type ReadinessJump,
   type ReadinessLine,
   type ReadinessResponse,
 } from "@/lib/readiness-checklist";
@@ -107,7 +107,7 @@ interface ListingDayGroup {
 }
 
 export default function ReadyMadeListingPanel({
-  listing, tripId, days, onJump,
+  listing, tripId, days,
 }: {
   listing: ReadyMadeListing;
   tripId: string;
@@ -115,8 +115,6 @@ export default function ReadyMadeListingPanel({
    * listing's duration once real items exist (L8: was an independently-editable `durationDays`
    * that drifted from the real itinerary, producing a "phantom" empty day at submit time). */
   days: ListingDayGroup[];
-  /** L2-5: the readiness checklist's jump — the workspace opens the stop, day or leg a line names. */
-  onJump?: (target: NonNullable<ReadinessJump>) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -159,6 +157,21 @@ export default function ReadyMadeListingPanel({
   const daysSignature = days.map((d) => `${d.dayNumber}:${(d.items as Array<{ id?: string }>).map((i) => i?.id ?? "").join(",")}`).join("|");
   useEffect(() => { void refetchReadiness(); }, [daysSignature]); // eslint-disable-line react-hooks/exhaustive-deps
   const submitBlocked = submitBlockedByReadiness(readiness);
+  // L2-5 "Show": the first of the line's jump targets (step 7a's `@shared/plan-jump-targets`, stamped on
+  // the Workstation's days, stops, legs and gaps) that is on the page — scrolled to and briefly outlined.
+  const jumpTo = (line: ReadinessLine) => {
+    const id = firstPresentTarget(readinessLineTargets(line), (i) => !!document.getElementById(i));
+    const el = id ? document.getElementById(id) : null;
+    if (!el) {
+      toast({ title: "Not on the page right now", description: "Open the build's days to see it." });
+      return;
+    }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const { outline, outlineOffset } = el.style;
+    el.style.outline = "2px solid #F59E0B";
+    el.style.outlineOffset = "2px";
+    window.setTimeout(() => { el.style.outline = outline; el.style.outlineOffset = outlineOffset; }, 1600);
+  };
 
   const { data: heroResults, isFetching: heroFetching } = useQuery<{ ready: boolean; reason?: string; results: HeroResult[] }>({
     queryKey: ["/api/expert/ready-made/hero-search", heroSubmitted],
@@ -544,7 +557,7 @@ export default function ReadyMadeListingPanel({
           <div style={{ fontSize: 11, color: G[500], lineHeight: 1.5, marginBottom: 8 }}>
             An admin reviews it before it appears in Ready Made Trips.
           </div>
-          <ReadinessChecklist readiness={readiness} failed={readinessError} onJump={onJump} />
+          <ReadinessChecklist readiness={readiness} failed={readinessError} onJump={jumpTo} />
           <button
             onClick={() => submit.mutate()}
             disabled={submit.isPending || dirty || submitBlocked}
@@ -741,7 +754,7 @@ function ReadinessChecklist({
 }: {
   readiness: ReadinessResponse | undefined;
   failed: boolean;
-  onJump?: (target: NonNullable<ReadinessJump>) => void;
+  onJump: (line: ReadinessLine) => void;
 }) {
   if (failed) {
     return (
@@ -754,7 +767,7 @@ function ReadinessChecklist({
     return <div data-testid="readiness-loading" style={{ fontSize: 11, color: G[400], marginBottom: 8 }}>Checking your build…</div>;
   }
   const row = (line: ReadinessLine, i: number, tone: "block" | "advise") => {
-    const target = readinessJumpTarget(line);
+    const jumpable = readinessLineTargets(line).length > 0;
     return (
       <div
         key={`${line.requirement}-${i}`}
@@ -763,9 +776,9 @@ function ReadinessChecklist({
       >
         <span aria-hidden style={{ flexShrink: 0 }}>{tone === "block" ? "•" : "◦"}</span>
         <span style={{ flex: 1, minWidth: 0 }}>{line.message}</span>
-        {target && onJump && (
+        {jumpable && (
           <button
-            onClick={() => onJump(target)}
+            onClick={() => onJump(line)}
             data-testid={`button-readiness-jump-${line.requirement}`}
             style={{ flexShrink: 0, background: "none", border: `1px solid ${G[300]}`, borderRadius: 6, padding: "1px 7px", fontSize: 10.5, fontWeight: 600, color: G[700], cursor: "pointer" }}
           >

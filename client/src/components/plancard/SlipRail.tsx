@@ -80,12 +80,9 @@ import {
   requestOptimizationGate,
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
-import {
-  type OptimizationFeeQuote,
-  type TripOptimizationPreview,
-} from "@/lib/optimization-preview";
 import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
+import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { FEEDBACK_CODES } from "@shared/feedback";
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
@@ -132,7 +129,6 @@ import {
 } from "@/lib/coordination-engagement";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
-import { tripCardForcedPrimaryByDateAlone } from "@shared/trip-primary-surface";
 import type { PlanCardActivity } from "./plancard-types";
 import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
@@ -356,20 +352,8 @@ function BuildCard({
    * and fail-soft: a refusal leaves the line rendering NOTHING rather than a zero (§13).
    */
   const previewEnabled = isOwner && aiAction === "optimize" && !optimizeDisabledReason;
-  const { data: previewData } = useQuery<TripOptimizationPreview>({
-    queryKey: ["/api/optimization-preview", { tripId: trip.id }],
-    enabled: previewEnabled,
-  });
-  const { data: feeQuote } = useQuery<OptimizationFeeQuote>({
-    queryKey: ["/api/optimization-fee", { tripId: trip.id }],
-    enabled: previewEnabled,
-  });
-  // After a paid run the card shows the REALISED delta from the run record (the plancard's own
-  // `optimizationDelta`, read from the cache the slip already filled — no second fetch).
-  const { data: planData } = useQuery<{ optimizationDelta?: unknown; lastOptimizedAt?: string | null }>({
-    queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: false,
-  });
+  // R321 S11-8: the ONE data source both OptimizerLead mounts read (the versions board too).
+  const leadData = useOptimizerLeadData(trip.id, previewEnabled);
 
   async function runComparison(
     optimizationPaymentId?: string,
@@ -495,10 +479,10 @@ function BuildCard({
           <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
           <OptimizerLead
             drafted={aiAction === "optimize"}
-            findings={previewEnabled ? previewData?.findings : undefined}
-            hasPricedItems={!!previewData?.hasPricedItems}
-            fee={previewEnabled ? feeQuote : null}
-            realised={planData?.lastOptimizedAt ? (planData.optimizationDelta as any) ?? null : null}
+            findings={leadData.findings}
+            hasPricedItems={leadData.hasPricedItems}
+            fee={leadData.fee}
+            realised={leadData.realised as any}
             testId="slip-action-optimize"
             onClick={() => {
               if (optimizing || creatingComparison || optimizeDisabledReason) return;
@@ -1101,9 +1085,9 @@ function useFinalizeMutation(tripId: string) {
  *
  * FINISHED: the plan is snapshotted, and this is the ONLY home of "View as Trip card" — before a
  * snapshot exists that link bounces back to the slip, which is why the pre-final `Preview Trip
- * Card` button is gone. "Reopen plan" keeps its existing 48-hour suppression verbatim: inside the
- * window (or underway) the Trip Card is primary regardless, so offering a reversal that would
- * change nothing would be dishonest (R-F).
+ * Card` button is gone. "Back to planning" is offered to the owner of any finalized plan, underway
+ * included (R321 S11-1), and "Make it final again" appears whenever a final exists and the working
+ * plan is not it.
  *
  * The finished state is keyed on the SAME `tripCardIsPrimary` rule the banner above the header
  * reads, passed in as `isPrimary` — one rule, read once by the caller (§18 rule 1).
@@ -1125,7 +1109,10 @@ function FinishCard({
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   // Step 6 R-ay: a plan with no run sees its free findings once more before it is made final —
   // the SAME findings the Optimize card reads (shared query key), and the ONE line rule.
-  const { data: finishPlan } = useQuery<{ lastOptimizedAt?: string | null }>({ queryKey: [`/api/trips/${trip.id}/plancard`], enabled: false });
+  const { data: finishPlan } = useQuery<{
+    lastOptimizedAt?: string | null;
+    trip?: { finalVersion?: number | null; finalOutOfDate?: boolean | null };
+  }>({ queryKey: [`/api/trips/${trip.id}/plancard`], enabled: false });
   const unoptimized = !finishPlan?.lastOptimizedAt;
   const { data: finishPreview } = useQuery<{ findings?: Finding[] }>({
     queryKey: ["/api/optimization-preview", { tripId: trip.id }],
@@ -1147,13 +1134,23 @@ function FinishCard({
   });
   const slipFeeDisplay = travelerFeePreviewDisplay(cartForFee.data?.travelerFeePreview?.byTrip?.[trip.id]);
 
-  const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-  // Reopen is owner-gated server-side (verifyTripOwnership) and only offered when it would
-  // actually change something — never when the date arm alone already forces Trip Card primacy.
-  const showReopen = isOwner && !!trip.finalizedAt && !forcedByDateAlone;
+  // R321 S11-1 (decision-maker, smoke 11): Reopen is ALWAYS offered to the owner of a finalized
+  // plan, underway included — a traveler mid-trip may need to change the plan. It is owner-gated
+  // server-side (verifyTripOwnership). The 48-hour suppression it carried is retired: inside the
+  // window the Trip Card stays primary, and the card keeps its last version until the plan is
+  // made final again, so reopening there is a real (and reversible) step, not a false one.
+  const showReopen = isOwner && !!trip.finalizedAt;
+  // "Make it final again": a final exists and the working plan is not it — either it was edited
+  // after the final (the server's own fingerprint comparison, `finalOutOfDate`) or it was
+  // reopened. Re-finalizing appends the next `trip_finals` version; nothing else changes the card.
+  const hasFinal = finishPlan?.trip?.finalVersion != null;
+  const offerRefinal = hasFinal && (finishPlan?.trip?.finalOutOfDate === true || !trip.finalizedAt);
+  const refinalize = () =>
+    finalizeMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true);
+      },
+    });
 
   // A non-owner viewer has no finish controls at all: finalize, reopen and the chooser are all
   // owner-gated server-side, so the card would be a list of 403s.
@@ -1187,8 +1184,20 @@ function FinishCard({
         <RailNote>
           {trip.finalizedAt
             ? "This plan is locked as a Trip Card. Editing changes the working plan; make it final again to update the card."
-            : "Your trip is close — the Trip Card is the surface to travel with."}
+            : hasFinal
+              ? "Your Trip Card keeps its last version until you make the plan final again."
+              : "Your trip is close — the Trip Card is the surface to travel with."}
         </RailNote>
+        {offerRefinal && (
+          <RailRow
+            label="Make it final again"
+            icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+            primary
+            onClick={refinalize}
+            busy={finalizeMutation.isPending}
+            testId="slip-action-refinalize"
+          />
+        )}
         <RailRow
           label="View as Trip card"
           meta="read-only"
@@ -1224,17 +1233,11 @@ function FinishCard({
         </p>
       ) : null}
       <RailRow
-        label="Finalize Plan"
+        label={hasFinal ? "Make it final again" : "Finalize Plan"}
         icon={<CheckCircle2 className="w-3.5 h-3.5" />}
         primary
-        onClick={() =>
-          finalizeMutation.mutate(undefined, {
-            // Open the chooser only when a NEW version was actually captured.
-            onSuccess: (data) => {
-              if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true);
-            },
-          })
-        }
+        // Open the chooser only when a NEW version was actually captured (inside `refinalize`).
+        onClick={refinalize}
         busy={finalizeMutation.isPending}
         testId="slip-action-finalize-plan"
       />

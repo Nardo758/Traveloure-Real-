@@ -41,54 +41,6 @@ function safeLocToken(lat?: number | null, lng?: number | null, name?: string): 
   return name ?? "";
 }
 
-// ── Travel-mode tables ───────────────────────────────────────────────────────
-
-export const GOOGLE_TRAVEL_MODES: Record<string, string> = {
-  walk: "walking",
-  bicycle: "bicycling",
-  bike: "bicycling",
-  transit: "transit",
-  train: "transit",
-  tram: "transit",
-  bus: "transit",
-  metro: "transit",
-  subway: "transit",
-  ferry: "transit",
-  boat: "transit",
-  taxi: "driving",
-  rideshare: "driving",
-  private_car: "driving",
-  private_driver: "driving",
-  rental_car: "driving",
-  rickshaw: "driving",
-  auto_rickshaw: "driving",
-  tuk_tuk: "driving",
-  cable_car: "driving",
-};
-
-export const APPLE_TRAVEL_FLAGS: Record<string, string> = {
-  walk: "w",
-  bicycle: "w",
-  bike: "c",
-  transit: "r",
-  train: "r",
-  tram: "r",
-  bus: "r",
-  metro: "r",
-  subway: "r",
-  ferry: "r",
-  boat: "r",
-  taxi: "d",
-  rideshare: "d",
-  private_car: "d",
-  private_driver: "d",
-  rental_car: "d",
-  rickshaw: "d",
-  auto_rickshaw: "d",
-  tuk_tuk: "d",
-  cable_car: "w",
-};
-
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export type TransportMode =
@@ -155,10 +107,11 @@ export function buildGoogleMapsDeepLink(places: Place[], mode?: TransportMode): 
   // stop.mapsUrl precedence: a single destination that carries an explicit,
   // provider-canonical link opens that exact place instead of a coordinate URL.
   if (places.length === 1 && places[0].mapsUrl) return places[0].mapsUrl!;
-  const travelMode = GOOGLE_TRAVEL_MODES[mode ?? ""] || "driving";
+  // R321 (S11-9): no `travelmode` on any Maps link — Maps chooses (the hero said walking while rows
+  // said driving). `mode` stays in the signature for callers and is ignored.
+  void mode;
   const base = "https://www.google.com/maps/dir/?api=1";
   const sp = new URLSearchParams();
-  sp.set("travelmode", travelMode);
 
   if (places.length === 1) {
     const p = places[0];
@@ -191,9 +144,8 @@ export function buildGoogleMapsDeepLink(places: Place[], mode?: TransportMode): 
  */
 export function buildAppleMapsDeepLink(places: Place[], mode?: TransportMode): string {
   if (places.length === 0) return "";
-  const flag = APPLE_TRAVEL_FLAGS[mode ?? ""] || "d";
+  void mode; // R321 (S11-9): no `dirflg` — Maps chooses the mode.
   const sp = new URLSearchParams();
-  sp.set("dirflg", flag);
   sp.set("t", "m");
 
   if (places.length === 1) {

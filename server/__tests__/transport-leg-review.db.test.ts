@@ -114,9 +114,12 @@ test("V2: candidates are the Workstation picker's own rule", () => {
     return Array.from(set).sort();
   })();
   assert.deepEqual(legModeOptions(sample), preMove);
+  // R322 (step 7a): the Workstation's mode picker is the shared LegRow (role expert) now.
+  const legRow = fs.readFileSync(path.resolve(import.meta.dirname, "../../client/src/components/plan/LegRow.tsx"), "utf8");
+  assert.match(legRow, /import \{[^}]*\blegModeOptions\b[^}]*\} from "@shared\/trip-plan";/);
+  assert.match(legRow, /legModeOptions\(leg\)/, "the picker's options are the shared rule");
   const ws = fs.readFileSync(path.resolve(import.meta.dirname, "../../client/src/pages/expert/workspace.tsx"), "utf8");
-  assert.match(ws, /import \{[^}]*\blegModeOptions\b[^}]*\} from "@shared\/trip-plan";/);
-  assert.doesNotMatch(ws, /function legModeOptions\(/, "no second copy of the rule");
+  for (const src of [ws, legRow]) assert.doesNotMatch(src, /function legModeOptions\(/, "no second copy of the rule");
 });
 
 test("V3: all picked ⇒ null; a confirmed host pickup counts as picked", async () => {

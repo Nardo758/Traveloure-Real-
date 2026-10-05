@@ -36,6 +36,7 @@ import { AnchorRow } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
 import { PlacePhoto } from "./PlacePhoto";
 import type { PhotoView } from "@shared/place-photos";
+import { planItemDomId } from "@shared/plan-jump-targets";
 
 export type ItemRowMode = "edit" | "read";
 export type ItemRowRole = "traveler" | "expert";
@@ -43,6 +44,10 @@ export type ItemRowRouting = "own" | "with_expert";
 
 /** The ⋯ menu's actions. An absent handler is an absent entry — never a greyed one (§13). */
 export interface ItemRowMenu {
+  /** R322 (Workstation, role expert): open this stop's edit panel (day, location, expert note, …). */
+  onEdit?: () => void;
+  /** R322: add a stop of the expert's own after this one (the folded-in `InlineAddItemForm`). */
+  onAddAfter?: () => void;
   /** Smoke 7 item 4: a question is already saved on this row ⇒ the entry reads "See your question". */
   askLocalSaved?: boolean;
   onSwap?: () => void;
@@ -227,6 +232,7 @@ export function ItemRow(props: ItemRowProps) {
   return (
     <div
       ref={props.rowRef}
+      id={planItemDomId(a.id)}
       className={`py-3 px-3 rounded-lg transition-shadow ${highlighted ? "ring-2 ring-primary/60 bg-primary/5" : ""}`}
       data-testid={`slip-item-${a.id}`}
       data-item-mode={mode}
@@ -263,7 +269,7 @@ export function ItemRow(props: ItemRowProps) {
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
-  return !!(m.onDetails || m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround || m.onSetAsStay);
+  return !!(m.onEdit || m.onAddAfter || m.onDetails || m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround || m.onSetAsStay);
 }
 
 /** The labels, ONCE (spec §3's order). */
@@ -280,6 +286,9 @@ export const ITEM_MENU_LABELS = {
   setAsStay: SET_AS_STAY_LABEL,
   lock: "Keep this",
   unlock: "Unlock",
+  // R322: the Workstation's two expert entries (drawn first on that surface; the slip draws neither).
+  edit: "Edit",
+  addAfter: "Add a stop after this",
 } as const;
 
 /** R-ah: the row's own word for a locked item. Optimize, Regenerate and Build-around leave it in place. */
@@ -299,6 +308,12 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {menu.onEdit ? (
+          <DropdownMenuItem onSelect={menu.onEdit} data-testid={`item-menu-edit-${id}`}>{ITEM_MENU_LABELS.edit}</DropdownMenuItem>
+        ) : null}
+        {menu.onAddAfter ? (
+          <DropdownMenuItem onSelect={menu.onAddAfter} data-testid={`item-menu-add-after-${id}`}>{ITEM_MENU_LABELS.addAfter}</DropdownMenuItem>
+        ) : null}
         {menu.onDetails ? (
           <DropdownMenuItem onSelect={menu.onDetails} data-testid={`item-menu-details-${id}`}>{ITEM_MENU_LABELS.details}</DropdownMenuItem>
         ) : null}

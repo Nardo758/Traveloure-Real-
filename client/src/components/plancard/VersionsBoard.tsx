@@ -91,7 +91,8 @@ export function VersionsBoard({
   const versionsKey = [`/api/trips/${tripId}/versions`];
   const { data: view } = useQuery<VersionsBoardView>({ queryKey: versionsKey, retry: false, staleTime: 15_000 });
   const { data: fee } = useQuery<{ feeCents?: number; currency?: string; coveredByTripPass?: boolean }>({
-    queryKey: [`/api/optimization-fee?tripId=${encodeURIComponent(tripId)}`],
+    // R321 S11-8: the SAME cache key the OptimizerLead's one data source reads.
+    queryKey: ["/api/optimization-fee", { tripId }],
     retry: false,
     staleTime: 60_000,
   });

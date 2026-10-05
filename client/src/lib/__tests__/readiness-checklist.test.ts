@@ -1,6 +1,7 @@
 /**
  * L2-5 — the readiness checklist's client rules (ledger `2026-10-05-readiness-checklist-ui`).
- *   C1 a line jumps to the most specific thing it names: leg > stop > day; an anchor line does not jump
+ *   C1 a line's jump targets are step 7a's shared helper's (leg > gap > stop > anchor > day); the first on
+ *      the page wins, a collapsed day falls back to the day, a line naming nothing has none
  *   C2 submit is disabled only on a KNOWN blocking line — loading or a failed read never blocks it
  *   C3 one readiness key, matched by the invalidator for any listing and nothing else
  *
@@ -8,34 +9,29 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readinessJumpTargets } from "@shared/plan-jump-targets";
 import {
+  firstPresentTarget,
   isReadinessQueryKey,
-  readinessJumpTarget,
+  readinessLineTargets,
   readinessQueryKey,
   submitBlockedByReadiness,
 } from "../readiness-checklist";
 
-describe("C1 jump targets", () => {
-  it("a confirmed-leg line jumps to the leg, with its stops", () => {
-    assert.deepEqual(
-      readinessJumpTarget({ requirement: "legs", message: "m", dayNumber: 2, legId: "L1", fromItemId: "a", toItemId: "b" }),
-      { kind: "leg", legId: "L1", fromItemId: "a", toItemId: "b" },
-    );
+describe("C1 jump targets come from the shared helper, first present wins", () => {
+  it("a line's targets are exactly @shared/plan-jump-targets' order", () => {
+    const line = { requirement: "legs", message: "m", dayNumber: 2, legId: "L1", fromItemId: "a", toItemId: "b" };
+    assert.deepEqual(readinessLineTargets(line), readinessJumpTargets(line));
+    assert.deepEqual(readinessLineTargets(line), ["plan-leg-L1", "plan-gap-2-a-b", "plan-day-2"]);
   });
-  it("a missing leg (no id yet) jumps to the gap between its two stops", () => {
-    assert.deepEqual(
-      readinessJumpTarget({ requirement: "legs", message: "m", dayNumber: 2, fromItemId: "a", toItemId: "b" }),
-      { kind: "leg", legId: null, fromItemId: "a", toItemId: "b" },
-    );
+  it("a whole-listing line names nothing and has no targets", () => {
+    assert.deepEqual(readinessLineTargets({ requirement: "price", message: "Set a price" }), []);
   });
-  it("a stop line jumps to the stop; a day line to the day", () => {
-    assert.deepEqual(readinessJumpTarget({ requirement: "hours", message: "m", dayNumber: 1, itemId: "i" }), { kind: "item", itemId: "i" });
-    assert.deepEqual(readinessJumpTarget({ requirement: "x", message: "m", dayNumber: 3 }), { kind: "day", dayNumber: 3 });
-  });
-  it("an anchor line, a whole-listing line or an unknown line does not jump", () => {
-    assert.equal(readinessJumpTarget({ requirement: "anchor_window", message: "m", anchorId: "an" }), null);
-    assert.equal(readinessJumpTarget({ requirement: "price", message: "Set a price" }), null);
-    assert.equal(readinessJumpTarget({ requirement: "something_new", message: "m" }), null);
+  it("the first id present on the page wins; a collapsed day falls back to the day", () => {
+    const ids = ["plan-item-i", "plan-day-3"];
+    assert.equal(firstPresentTarget(ids, (id) => id === "plan-item-i" || id === "plan-day-3"), "plan-item-i");
+    assert.equal(firstPresentTarget(ids, (id) => id === "plan-day-3"), "plan-day-3");
+    assert.equal(firstPresentTarget(ids, () => false), null);
   });
 });
 

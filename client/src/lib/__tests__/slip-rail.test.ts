@@ -122,6 +122,7 @@ const CARD_ROWS: Record<string, string[]> = {
   share: ["slip-action-share", "slip-action-pdf", "slip-action-calendar"],
   finish: [
     "slip-action-finalize-plan",
+    "slip-action-refinalize",
     "slip-action-go-to-checkout",
     "slip-action-reopen",
     "slip-action-view-trip-card",
@@ -304,6 +305,8 @@ describe("slip rail — four cards, and every rail kept a home", () => {
       "slip-action-message-expert",
       "slip-action-calendar",
       "slip-action-go-to-checkout",
+      // R321 S11-1: "Make it final again" on a finalized plan whose working copy changed.
+      "slip-action-refinalize",
     ]);
     for (const testid of shipped) {
       assert.ok(

@@ -635,6 +635,9 @@ export interface TripPlanPlancardExtras {
      *  exists but `finalizedAt` is NULL the trip is being revised on the slip and the card still
      *  renders this version. */
     finalVersion?: number | null;
+    /** R321 S11-1: the working plan differs from the latest final (the same fingerprint finalize
+     *  compares). NULL when there is no final — nothing to be out of date against (§13). */
+    finalOutOfDate?: boolean | null;
     /** §21 (migration 187): the traveler-facing trip-level Expert Note, emitted by the assembler
      *  and rendered by PlanCard as "From your expert". The PRIVATE trips.expertNotes never appears
      *  here. Absent/undefined on a pre-migration response → renders nothing (§13). */
@@ -829,6 +832,10 @@ export const CHAUFFEURED_MODES: readonly string[] = [
 export function isChauffeuredMode(mode: string | null | undefined): boolean {
   return !!mode && CHAUFFEURED_MODES.includes(mode.toLowerCase());
 }
+
+/** R-ay: an author's tip is at most this many characters (app-enforced; no DB CHECK). Read by the
+ *  leg PATCH schema and by the Workstation's `LegRow` counter (R322) — one number (§18 rule 1). */
+export const AUTHOR_TIP_MAX_CHARS = 140;
 
 /**
  * The mode picker's option set for ONE leg (moved here from the Workstation, work plan L1-10, so the

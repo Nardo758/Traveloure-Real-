@@ -5,10 +5,11 @@
  * The server's `GET /api/expert/ready-made/:id/readiness` (R305) returns `{ blocking, advisory }`.
  * `blocking` IS the publish gate's own output (`assertReadyMadeComplete`), so this module NEVER
  * restates a rule (§18 rule 1): no title / hero / price / empty-day / leg check lives here. It only
- * decides, from the ids a line already carries, WHERE a line jumps and WHETHER submit is offered.
+ * decides, through step 7a's shared jump-target helper, WHERE a line jumps and WHETHER submit is offered.
  *
  * Pure — no DOM, no network.
  */
+import { readinessJumpTargets } from "@shared/plan-jump-targets";
 
 /** One line as the server sends it. Unknown requirements are rendered by their message as-is. */
 export interface ReadinessLine {
@@ -27,24 +28,22 @@ export interface ReadinessResponse {
   advisory: ReadinessLine[];
 }
 
-/** Where a line jumps. `null` = the line names nothing the workspace can show; it still renders. */
-export type ReadinessJump =
-  | { kind: "leg"; legId: string | null; fromItemId: string | null; toItemId: string | null }
-  | { kind: "item"; itemId: string }
-  | { kind: "day"; dayNumber: number }
-  | null;
+/**
+ * The DOM ids a line can jump to, most specific first. ONE resolution, owned by step 7a's
+ * `@shared/plan-jump-targets` (`readinessJumpTargets`) — the same module that stamps those ids on the
+ * Workstation's days, stops, legs and gaps — so the checklist and the surface cannot disagree (§18
+ * rule 1). A line naming nothing has no targets and offers no "Show" (§13 — never a guessed target).
+ */
+export function readinessLineTargets(line: ReadinessLine): string[] {
+  return readinessJumpTargets(line);
+}
 
 /**
- * Most specific target first: a leg (its id, or the stop pair a missing leg sits between), then a
- * stop, then a day. An anchor line has no Workstation target yet and does not jump (§13 — never a
- * guessed destination).
+ * The first target actually on the page. A collapsed day hides its stops and legs, so the day id
+ * (always last in the list) is the honest fallback; null when nothing the line names is on the page.
  */
-export function readinessJumpTarget(line: ReadinessLine): ReadinessJump {
-  if (line.legId || (line.fromItemId && line.toItemId)) {
-    return { kind: "leg", legId: line.legId ?? null, fromItemId: line.fromItemId ?? null, toItemId: line.toItemId ?? null };
-  }
-  if (line.itemId) return { kind: "item", itemId: line.itemId };
-  if (typeof line.dayNumber === "number" && Number.isFinite(line.dayNumber)) return { kind: "day", dayNumber: line.dayNumber };
+export function firstPresentTarget(ids: readonly string[], isPresent: (id: string) => boolean): string | null {
+  for (const id of ids) if (isPresent(id)) return id;
   return null;
 }
 

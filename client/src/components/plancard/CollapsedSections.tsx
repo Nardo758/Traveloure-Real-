@@ -139,7 +139,7 @@ export function CollapsedSections({
       {day && activitiesCount > 0 && (
         <SectionShell
           icon={<MapIcon className="w-3.5 h-3.5 text-blue-500" />}
-          title="Map preview"
+          title="Open in maps"
           meta={`${activitiesCount} stop${activitiesCount !== 1 ? "s" : ""} · Day ${day.dayNum}`}
           testId={`collapsed-map-${tripId}`}
         >
