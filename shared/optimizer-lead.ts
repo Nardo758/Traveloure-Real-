@@ -9,6 +9,7 @@
  * anything. Zero findings is an answer ("this draft already works"), never a reason to invent one.
  */
 import { haversineMeters } from "./geo";
+import { anchorWallClockMs } from "./anchor-time";
 
 export type FindingKind = "closed_on_arrival" | "timed_entry_conflict" | "city_crossing" | "walking_saved_km" | "pace_over";
 
@@ -166,15 +167,9 @@ export interface ScheduledItem {
  * that wall-clock. An item's `date` + `startTime` are wall-clock strings too (LD 30). So both sides are
  * read as UTC-naive milliseconds: a zone-less string is read as UTC, never in the server's own zone —
  * which is what made the rule depend on the machine's TZ (an item at 13:00 against a 14:00 take-off
- * passed on a Tokyo or US server and failed only on a UTC one).
+ * passed on a Tokyo or US server and failed only on a UTC one). The anchor side is read by the ONE
+ * convention module, `anchorWallClockMs` in `./anchor-time` (R316); the item side below.
  */
-function wallClockMs(value: string | Date | null | undefined): number {
-  if (value instanceof Date) return value.getTime();
-  const s = String(value ?? "").trim();
-  if (!s) return NaN;
-  // A string that names its own zone (Z or ±HH:MM) is parsed as given; a zone-less one is wall-clock.
-  return Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s : `${s}Z`);
-}
 
 /** An item's wall-clock instant on its own date ("HH:MM" or "HH:MM:SS"); NaN when either is missing. */
 function itemWallClockMs(date: string | null | undefined, time: string | null | undefined): number {
@@ -187,13 +182,13 @@ function itemWallClockMs(date: string | null | undefined, time: string | null | 
 /**
  * Pure. Items overlapping an anchor's buffer window — THE rule `POST /api/trips/:tripId/validate-schedule`
  * applies (moved here so the preview and that route read one implementation, §18 rule 1). Anchor and
- * item are compared in ONE wall-clock frame (`wallClockMs`), whatever the server's TZ; an item with no
+ * item are compared in ONE wall-clock frame (`anchorWallClockMs`), whatever the server's TZ; an item with no
  * time, no date or an unreadable one is not checked.
  */
 export function anchorConflicts(anchors: readonly AnchorWindow[], items: readonly ScheduledItem[]): Array<{ anchorId: string; anchorType: string; conflict: string; dayNumber: number | null }> {
   const out: Array<{ anchorId: string; anchorType: string; conflict: string; dayNumber: number | null }> = [];
   for (const anchor of anchors) {
-    const anchorTime = wallClockMs(anchor.anchorDatetime);
+    const anchorTime = anchorWallClockMs(anchor.anchorDatetime);
     if (!Number.isFinite(anchorTime)) continue;
     const bufferStart = anchorTime - (anchor.bufferBefore || 0) * 60000;
     const bufferEnd = anchorTime + (anchor.bufferAfter || 0) * 60000;

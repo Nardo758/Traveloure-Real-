@@ -1,3 +1,4 @@
+import { anchorWallClockMs, anchorWallClockString } from "@shared/anchor-time";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -142,9 +143,17 @@ export function TemporalAnchorManager({ tripId, allowedTypes, title, description
       toast({ variant: "destructive", title: "Missing fields", description: "Anchor type and date/time are required." });
       return;
     }
+    // R316: a `datetime-local` value ("YYYY-MM-DDTHH:MM") is the plan's wall-clock — sent zone-less,
+    // never converted through the browser's zone (`@shared/anchor-time`).
+    const [d, t] = anchorDatetime.split("T");
+    const wallClock = anchorWallClockString(d, t);
+    if (!wallClock) {
+      toast({ variant: "destructive", title: "Invalid date/time", description: "Enter a date and time for the anchor." });
+      return;
+    }
     createMutation.mutate({
       anchorType,
-      anchorDatetime: new Date(anchorDatetime).toISOString(),
+      anchorDatetime: wallClock,
       bufferBefore: parseInt(bufferBefore) || 0,
       bufferAfter: parseInt(bufferAfter) || 0,
       location: location || null,
@@ -163,13 +172,16 @@ export function TemporalAnchorManager({ tripId, allowedTypes, title, description
     return found ? found.label : type;
   }
 
+  // R316: the stored value is the plan's wall-clock (its UTC parts), so it is shown in UTC — showing it
+  // in the browser's zone would move a 14:00 departure by the viewer's offset.
   function formatDatetime(dt: string) {
-    return new Date(dt).toLocaleString(undefined, {
+    return new Date(anchorWallClockMs(dt)).toLocaleString(undefined, {
       weekday: "short",
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "UTC",
     });
   }
 

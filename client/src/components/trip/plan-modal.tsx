@@ -1,3 +1,4 @@
+import { anchorWallClockString } from "@shared/anchor-time";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Calendar, Clock, MapPin, Minus, Plus, X } from "lucide-react";
@@ -881,11 +882,11 @@ export function PlanModal({
   }
 
   async function writeMainMomentAnchor(tripId: string, dateYmd: string, time: string) {
-    // Local wall-clock → instant, the same conversion TemporalAnchorManager does on its
-    // `datetime-local` input. The traveler typed a time in their own day, not in UTC.
-    const at = new Date(`${dateYmd}T${time}:00`);
-    if (isNaN(at.getTime())) return;
-    const iso = at.toISOString();
+    // R316: the traveler typed the time of THEIR plan's day — the plan's wall-clock, which is what
+    // `anchor_datetime` stores (`@shared/anchor-time`). It is sent zone-less, never converted through
+    // the browser's own zone (that stored a true instant, off by the browser's offset for every reader).
+    const iso = anchorWallClockString(dateYmd, time);
+    if (!iso) return;
     let existingId: string | undefined;
     try {
       const res = await apiRequest("GET", `/api/trips/${tripId}/anchors`);
