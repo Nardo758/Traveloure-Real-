@@ -15,6 +15,7 @@
  * Auth rules (brief §2, hard): the authoring check is isTripAuthor (explicit, present-value
  * comparison). NEVER routed through getTripRole.
  */
+import { readyMadeBuyerTotalCents } from "@shared/ready-made-preview";
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
@@ -1210,6 +1211,26 @@ router.get("/api/ready-made", async (req, res) => {
 // preview:true so the page renders exactly what a buyer would see (preview-as-buyer: what the
 // author ships is what they previewed). Never exposes sourceTripId — the itinerary is the paid
 // product; a buyer reaches it only through their own clone.
+/**
+ * GET /api/ready-made/preview/:slug — Slice B1 (work plan L3-1 + L3-14; ledger
+ * `2026-10-05-rmt-public-preview`). The public preview `/t/<slug>` reads: cover, title, days, the
+ * expert and their local-verified stamp, the price the buyer pays, ONE sample day. The public detail's
+ * gate (approved + active); every other case is the same 404 (no draft oracle). The slug's id token
+ * is authoritative; the response carries the canonical slug so a retitled listing re-points.
+ */
+router.get("/api/ready-made/preview/:slug", async (req, res) => {
+  try {
+    const { loadReadyMadePreview } = await import("../services/ready-made-preview.service");
+    const preview = await loadReadyMadePreview(req.params.slug);
+    if (!preview) return res.status(404).json({ message: "Trip not found" });
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(preview);
+  } catch (err: any) {
+    console.error("[ready-made] preview error:", err);
+    res.status(500).json({ message: "Failed to load trip" });
+  }
+});
+
 router.get("/api/ready-made/:id", async (req, res) => {
   try {
     const rows = await db
@@ -1409,7 +1430,9 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
     });
     const paymentIntent = await stripeClient.paymentIntents.create(
       {
-        amount: listing.priceCents, // §14: server-derived from the listing, price locked at PI creation
+        // §14: server-derived from the listing, price locked at PI creation. Slice B1: through the ONE
+        // `readyMadeBuyerTotalCents`, the same answer every public price line prints ("fees included").
+        amount: readyMadeBuyerTotalCents(listing)!,
         currency: "usd",
         metadata: {
           type: "ready_made_purchase",
