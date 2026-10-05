@@ -160,7 +160,7 @@ export interface ScheduledItem {
 }
 
 /**
- * ONE frame for the overlap rule (R314, ledger `2026-10-05-anchor-overlap-wall-clock`). An anchor's
+ * ONE frame for the overlap rule (R315, ledger `2026-10-05-anchor-overlap-wall-clock`). An anchor's
  * `anchor_datetime` is a plain timestamp holding the plan's WALL-CLOCK (R-aa writes "YYYY-MM-DDTHH:MM:00";
  * `anchorWallTime` reads it back the same way), and drizzle hands it over as a Date whose UTC parts ARE
  * that wall-clock. An item's `date` + `startTime` are wall-clock strings too (LD 30). So both sides are
