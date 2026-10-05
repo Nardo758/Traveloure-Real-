@@ -12,9 +12,13 @@
  *  · photos (step 6, `place_photos`): read from what is already on hand — the listing's own image, a
  *    cached Google photo reference, a cached Commons row — and NEVER by a network call from this read.
  *    A stop whose photo was never looked up is "not checked yet", never "no photo" (§13).
+ *  · reachability (Slice A2, ledger `2026-10-05-reachability-from-legs`): a stop the build's own leg
+ *    can't reach in time, read by `unreachableStops` — the SAME rule and the SAME leg minutes the
+ *    Finish card reads; a pair with no leg or no times is not checked, never called reachable.
  */
 import { anchorConflicts } from "@shared/optimizer-lead";
 import { isLodgingItem } from "@shared/where-to-stay";
+import { unreachableLine, unreachableStops, type ReachLeg } from "@shared/leg-reachability";
 import type { ReadyMadeLegLine } from "./trip-transport-legs.service";
 
 export type ReadinessLine = {
@@ -75,8 +79,16 @@ export function readinessAdvisory(input: {
   anchors: readonly Anchor[];
   buildStartDate: string | null;
   durationDays: number;
+  /** The build's trip-scoped legs with their minutes — reachability reads nothing else. */
+  legs?: readonly ReachLeg[];
 }): ReadinessLine[] {
   const out: ReadinessLine[] = [...input.legAdvisory];
+
+  if (input.legs?.length) {
+    for (const u of unreachableStops(input.items, input.legs).unreachable) {
+      out.push({ requirement: "reachability", message: unreachableLine(u), dayNumber: u.dayNumber, itemId: u.toItemId, fromItemId: u.fromItemId, toItemId: u.toItemId, legId: u.legId });
+    }
+  }
 
   // Stops with no opening hours on file: located, non-lodging stops only (a hotel or a transfer has
   // no opening hours to check).

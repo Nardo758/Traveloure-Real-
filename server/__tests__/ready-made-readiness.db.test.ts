@@ -188,3 +188,27 @@ test("U1: an hours fact or a lodging item is not flagged", () => {
   assert.deepEqual(lines.filter((l) => l.requirement === "hours").map((l) => l.itemId), ["z"]);
   assert.equal(lines.some((l) => l.requirement === "anchor_window" || l.requirement === "schedule"), false, "no build date ⇒ no date checks");
 });
+
+test("U2 (Slice A2): reachability reads the build's own leg minutes and names the leg", () => {
+  const items = [
+    { id: "a", title: "Fushimi Inari", dayNumber: 1, itemType: "activity", latitude: 34.96, longitude: 135.77, startTime: "09:00", endTime: "10:30" },
+    { id: "b", title: "Arashiyama", dayNumber: 1, itemType: "activity", latitude: 35.01, longitude: 135.67, startTime: "10:45" },
+    { id: "c", title: "Kinkaku-ji", dayNumber: 1, itemType: "activity", latitude: 35.03, longitude: 135.72, startTime: "14:00" },
+  ];
+  const lines = readinessAdvisory({
+    items,
+    legAdvisory: [],
+    factTypesByItem: new Map([["a", new Set(["hours"])], ["b", new Set(["hours"])], ["c", new Set(["hours"])]]),
+    anchors: [],
+    buildStartDate: null,
+    durationDays: 1,
+    legs: [
+      { id: "L1", dayNumber: 1, fromActivityId: "a", toActivityId: "b", estimatedDurationMinutes: 42 },
+      { id: "L2", dayNumber: 1, fromActivityId: "b", toActivityId: "c", estimatedDurationMinutes: 20 },
+    ],
+  });
+  const reach = lines.filter((l) => l.requirement === "reachability");
+  assert.deepEqual(reach.map((l) => [l.legId, l.itemId, l.dayNumber]), [["L1", "b", 1]]);
+  assert.equal(reach[0].message, "Day 1: Arashiyama can't be reached in time — the leg from Fushimi Inari takes 42 min and the plan leaves 15 min");
+  assert.equal(readinessAdvisory({ items, legAdvisory: [], factTypesByItem: new Map(), anchors: [], buildStartDate: null, durationDays: 1 }).some((l) => l.requirement === "reachability"), false, "no legs ⇒ nothing checked, nothing claimed");
+});
