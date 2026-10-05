@@ -108,6 +108,11 @@ export const FULL_CONCIERGE_PERCENT_BAND = "full_concierge_percent";
 
 /** The reviewing expert's share of an expert-review fee (migration 142). Fallback-backed. */
 export const EXPERT_REVIEW_EXPERT_SHARE_BAND = "expert_review_expert_share";
+// R324 (step 7b, migration 354): the handoff's three bands — two withdrawal shares (R-t) and the
+// on-trip support price (§12 step 6). Declared so the Fees screen states what turning each off does.
+export const HANDOFF_WITHDRAWAL_ACCEPTED_BAND = "handoff_withdrawal_accepted";
+export const HANDOFF_WITHDRAWAL_DELIVERED_BAND = "handoff_withdrawal_delivered";
+export const ON_TRIP_SUPPORT_BAND = "on_trip_support";
 
 /** Explicit categories that the resolver can receive on known booking paths. */
 export const COMMISSION_CATEGORY_BAND_KEYS = [
@@ -394,6 +399,41 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
       value: 0.75, // fee-literal-ok: documented fallback default, read by booking-actions.service
       unit: "fraction",
     },
+  },
+  // R324 (step 7b, R-t): the share of a captured handoff fee KEPT when the traveler withdraws.
+  // Absent ⇒ the withdrawal keeps NOTHING and refunds the whole fee — the traveler-safe answer.
+  {
+    bandKey: HANDOFF_WITHDRAWAL_ACCEPTED_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "handoff withdrawal after accept (handoff.service, R-t)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "withdrawHandoff (handoff.service)",
+      value: 0, // fee-literal-ok: documented fallback default — keep nothing, refund all
+      unit: "fraction",
+    },
+  },
+  {
+    bandKey: HANDOFF_WITHDRAWAL_DELIVERED_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "handoff withdrawal after delivery (handoff.service, R-t)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "withdrawHandoff (handoff.service)",
+      value: 0, // fee-literal-ok: documented fallback default — keep nothing, refund all
+      unit: "fraction",
+    },
+  },
+  // R324 (step 7b, §12 step 6): on-trip support has NO price without this band, so it is not
+  // offered at all while the band is absent — there is no number to fall back to.
+  {
+    bandKey: ON_TRIP_SUPPORT_BAND,
+    expectedType: "flat",
+    required: true,
+    owner: "handoff on-trip support (handoff.service, §12 step 6)",
+    fallback: { kind: "none", reader: "onTripSupportCents (handoff.service) — on-trip support is not offered without it" },
   },
 ];
 
