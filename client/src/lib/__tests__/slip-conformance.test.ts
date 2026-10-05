@@ -138,6 +138,9 @@ function functionBody(src: string, declaration: string): string {
  * pin is about the control existing and pointing where it did, never about which file holds it.
  */
 const ALLOWED_ADDITIONS = {
+  // R321 S11-1 (ledger `2026-10-05-smoke11-fixes`): on a finalized plan whose working copy changed
+  // (or that was reopened), the Finished card offers the SAME finalize mutation again.
+  "slip-action-refinalize": "R321 S11-1 — Make it final again; appends the next trip_finals version",
   // A1 · the Trips frame (ledger `2026-09-29-a1-trips-frame`): the empty Trip's anchor question
   // card carries ONE existing rail each, owner only — the services browse for a stay, or the day-1
   // add control for a fixed dated item (product map §M7).
@@ -228,6 +231,13 @@ const ALLOWED_ADDITIONS = {
  * addition or a removal is, rather than the pin being loosened for every control at once.
  */
 const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
+  "slip-action-finalize-plan": {
+    to: ["onClick:refinalize"],
+    reason:
+      "R321 S11-1 (ledger `2026-10-05-smoke11-fixes`) — the SAME finalize mutation with the SAME " +
+      "chooser rule, named once as `refinalize` so \"Finalize Plan\" and \"Make it final again\" " +
+      "share it (§18 rule 1). Its label reads \"Make it final again\" once a final exists.",
+  },
   "slip-browse-services": {
     to: ["href:slipBrowseServicesHref(tripId, trip.destination)"],
     reason:

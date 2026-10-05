@@ -7,6 +7,7 @@
  * §13: hours are shown for the plan DAY's own weekday, and only when the day has a date — a plan
  * with no dates has no weekday to name, so the hours line is omitted rather than guessed.
  */
+import { canonicalAreaLine, containsCjk } from "@shared/place-address";
 import type { FactView } from "@shared/content-facts";
 import { unverifiedAreaText } from "@shared/ai-place-text";
 
@@ -109,7 +110,8 @@ export function itemPlaceLine(
   timeZone?: string | null,
 ): { text: string; provenance: string | null; checked: string | null; sourceUrl: string | null } | null {
   const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
-  const area = typeof fact?.value?.area === "string" && fact.value.area.trim() ? fact.value.area.trim() : null;
+  // R321 S11-10: the same canonical ward spelling facts-attach stores, so a cached fact reads alike.
+  const area = typeof fact?.value?.area === "string" && fact.value.area.trim() ? canonicalAreaLine(fact.value.area) || null : null;
   if (fact && area) {
     return {
       text: area,
@@ -153,7 +155,10 @@ function factText(f: FactView): string | null {
     return days.length ? days.join(" · ") : null;
   }
   if (f.factType === "address") {
-    const a = [v.formattedAddress, v.shortFormattedAddress, v.address, v.text].find((x) => typeof x === "string" && x.trim());
+    // R321 S11-11: the English component line first; a Google string carrying CJK is never shown.
+    const a = [v.addressLine, v.formattedAddress, v.shortFormattedAddress, v.address, v.text].find(
+      (x) => typeof x === "string" && x.trim() && !containsCjk(x),
+    );
     return typeof a === "string" ? a.trim() : null;
   }
   const t = [v.text, v.summary, v.rule, v.name, v.title, v.value].find((x) => typeof x === "string" && x.trim());

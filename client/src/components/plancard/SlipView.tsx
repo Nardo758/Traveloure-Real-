@@ -84,8 +84,9 @@ import { ToolsTray } from "@/components/plan/ToolsTray";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHostHref } from "@/lib/item-row-menu";
+import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { isLocated } from "@/components/plancard/MapControlCenter";
-import { areaShading, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
+import { areaShading, planMapAnchor, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
 import type { VersionsBoardView } from "@/lib/versions-board";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
@@ -631,62 +632,6 @@ function useToggleItemLock(tripId: string, itemId: string, locked: boolean): () 
   };
 }
 
-/** R-r — the item-level question when no local is live in the city. Existing rail, nothing charged. */
-function ItemAskLocalPanel({ tripId, itemId, onClose }: { tripId: string; itemId: string; onClose: () => void }) {
-  const { toast } = useToast();
-  const [question, setQuestion] = useState("");
-  const [savedCity, setSavedCity] = useState<string | null | undefined>(undefined);
-  const save = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", `/api/trips/${tripId}/slip-events`, {
-        type: "expert_interest",
-        level: "question",
-        itemId,
-        question: question.trim(),
-      });
-      const overview = queryClient.getQueryData<{ market?: { cityName: string | null } }>([`/api/trips/${tripId}/expert-help`]);
-      return overview?.market?.cityName ?? null;
-    },
-    onSuccess: (city) => {
-      setSavedCity(city);
-      // Smoke 7 item 4: the saved state is read back from the plan, so it survives a reload.
-      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-    },
-    onError: () => toast({ title: "Couldn't save your question", variant: "destructive" }),
-  });
-  if (savedCity !== undefined) {
-    return (
-      <p className="mt-2 text-xs text-muted-foreground" data-testid={`item-ask-local-saved-${itemId}`}>
-        {ASK_LOCAL_WORDS.saved(savedCity)}
-      </p>
-    );
-  }
-  return (
-    <div className="mt-2 space-y-2 rounded-md border border-border p-2" data-testid={`item-ask-local-${itemId}`}>
-      <label className="block text-xs text-muted-foreground" htmlFor={`item-ask-local-input-${itemId}`}>
-        {ASK_LOCAL_WORDS.prompt}
-      </label>
-      <textarea
-        id={`item-ask-local-input-${itemId}`}
-        className="w-full rounded-md border border-border bg-background p-2 text-sm"
-        rows={2}
-        maxLength={500}
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        data-testid={`item-ask-local-input-${itemId}`}
-      />
-      <div className="flex gap-2">
-        <Button size="sm" onClick={() => save.mutate()} disabled={!question.trim() || save.isPending} data-testid={`item-ask-local-save-${itemId}`}>
-          {ASK_LOCAL_WORDS.save}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onClose} data-testid={`item-ask-local-cancel-${itemId}`}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function SlipDayItem({
   tripId,
   activity,
@@ -715,6 +660,7 @@ function SlipDayItem({
   onFindHost,
   savedQuestion = null,
   savedCity = null,
+  detailsRequest = 0,
 }: {
   tripId: string;
   activity: PlanCardActivity;
@@ -755,6 +701,8 @@ function SlipDayItem({
   /** Smoke 7 item 4: the viewer's saved question on this item, if any, and the plan's market city. */
   savedQuestion?: { question: string | null } | null;
   savedCity?: string | null;
+  /** R321 (S11-4): a change in this number opens the row's `ItemSheet` (the day photo's tap). */
+  detailsRequest?: number;
 }) {
   const a = activity;
   const [askSignal, setAskSignal] = useState(0);
@@ -786,6 +734,9 @@ function SlipDayItem({
   const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
   // Step 6 R-ap: the stop's ItemSheet — title tap, ⋯ → Details. Its photo is read only while open.
   const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (detailsRequest > 0) setSheetOpen(true);
+  }, [detailsRequest]);
   const sheetPhotos = usePlacePhotos(tripId, sheetOpen ? [a.id] : []);
   const showThread = hasAdvisor && (isOwner || isExpertViewer);
   const menu: ItemRowMenu | null = canEditItems
@@ -1690,13 +1641,7 @@ export function SlipView({
   const [openTool, setOpenTool] = useState<ToolKey | null>(null);
   // ── Step 5: the slip map's anchor, neighbourhood shading and versions (spec §2.3; R-d) ─────────
   // The anchor: the plan's stay when it has one located, else the item the plan is built around.
-  const mapAnchor: MapAnchor | null = (() => {
-    const stay = planActivities.find((act) => act.type === "accommodation" && isLocated(act));
-    if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng! };
-    const built = anchorItemId ? planActivities.find((act) => act.id === anchorItemId && isLocated(act)) : undefined;
-    if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng! };
-    return null;
-  })();
+  const mapAnchor: MapAnchor | null = planMapAnchor(planActivities, anchorItemId);
   // Neighbourhoods are shaded whenever the stay is located, and emphasised while the AnchorPanel is
   // open (on the slip or in the tray) — spec v1.3.4 §2.3, step 6 (`areaShading`).
   const anchorPanelOpen = anchorSurface.slip === "drafted" || (!!tripsAnchor && anchorPanelEmpty) || openTool === "where_to_stay";
@@ -1718,6 +1663,7 @@ export function SlipView({
     if (first) dayPhotoItemId.set(d.dayNum, first.id);
   }
   const dayPhotos = usePlacePhotos(tripId, Array.from(dayPhotoItemId.values()));
+  const [detailsRequests, setDetailsRequests] = useState<Record<string, number>>({});
   // A paid run's versions: the Draft / A / B / C toggle (read gate; a non-reader is one 404 ⇒ no toggle).
   const { data: versionsView } = useQuery<VersionsBoardView>({
     queryKey: [`/api/trips/${tripId}/versions`],
@@ -2238,7 +2184,15 @@ export function SlipView({
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 photo={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
-                    <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} testId={`slip-day-photo-${slot.dayNum}`} />
+                    <PlacePhoto
+                      photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]}
+                      testId={`slip-day-photo-${slot.dayNum}`}
+                      // R321 (S11-4): the day's photo opens its stop's ItemSheet.
+                      onClick={() => {
+                        const id = dayPhotoItemId.get(slot.dayNum!)!;
+                        setDetailsRequests((r) => ({ ...r, [id]: (r[id] ?? 0) + 1 }));
+                      }}
+                    />
                   ) : null
                 }
               >
@@ -2320,6 +2274,7 @@ export function SlipView({
                       onFindHost={openFindHost}
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
                       savedCity={data.savedQuestions?.cityName ?? null}
+                      detailsRequest={detailsRequests[a.id] ?? 0}
                     />
                     {a.id === arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                     {a.id === departureItemId ? <AnchorConflictLine kind="departure" text={departureConflict} /> : null}

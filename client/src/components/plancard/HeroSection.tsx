@@ -225,11 +225,14 @@ export function HeroSection({
   // date math — so the hero agrees with the summary card once a trip is underway.
   const now = new Date();
   const isActiveNow = !!(startDate && endDate && now >= startDate && now <= endDate);
-  const statusLabel = isActiveNow
+  const timeLabel = isActiveNow
     ? "Active"
     : daysUntil != null && daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
     : "Planning";
+  // R321 (S11-7): a finalized plan is not "Planning" — its card carries "Final · vN" instead, so the
+  // fall-through label is dropped there (time labels like "Active" still show).
+  const statusLabel = finalDress && !revising && timeLabel === "Planning" ? null : timeLabel;
 
   const destinationParts = trip.destination?.split(",") || [trip.destination];
   const city = destinationParts[0]?.trim() || trip.destination;

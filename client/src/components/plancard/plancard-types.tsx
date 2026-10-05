@@ -561,6 +561,8 @@ export interface PlanCardData {
   trip?: {
     finalizedAt?: string | null;
     finalVersion?: number | null;
+    /** R321 S11-1: the working plan differs from the latest final (null = no final). */
+    finalOutOfDate?: boolean | null;
     expertTravelerNote?: string | null;
     /**
      * Locked Decision 30 — the plan's ONE IANA zone, SPREAD by the plancard route only when the
