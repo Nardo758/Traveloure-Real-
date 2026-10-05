@@ -141,6 +141,8 @@ const ALLOWED_ADDITIONS = {
   // R321 S11-1 (ledger `2026-10-05-smoke11-fixes`): on a finalized plan whose working copy changed
   // (or that was reopened), the Finished card offers the SAME finalize mutation again.
   "slip-action-refinalize": "R321 S11-1 — Make it final again; appends the next trip_finals version",
+  // R323 (step 7b, R-be/L2-6): a bought copy's provenance line on the slip header.
+  "slip-ready-made-source": "R323 R-be — \"from {author}'s Ready Made Trip\" (+ legs-checked stamp where one exists)",
   // A1 · the Trips frame (ledger `2026-09-29-a1-trips-frame`): the empty Trip's anchor question
   // card carries ONE existing rail each, owner only — the services browse for a stay, or the day-1
   // add control for a fixed dated item (product map §M7).
@@ -231,6 +233,13 @@ const ALLOWED_ADDITIONS = {
  * addition or a removal is, rather than the pin being loosened for every control at once.
  */
 const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
+  "slip-action-hire-expert": {
+    to: ["onClick:() => openHandoffChooser({})"],
+    reason:
+      "R323 (step 7b, surface spec §12/§10 — ledger R323) — \"Hand off to a local expert\" now opens " +
+      "the ONE handoff chooser (Polish my plan · Book these for me · Plan it all); the pick-an-expert " +
+      "dialog it opened is retired. A deliberate ruling, not a relayout.",
+  },
   "slip-action-finalize-plan": {
     to: ["onClick:refinalize"],
     reason:
@@ -576,9 +585,12 @@ describe("2 — D6: the event header asks the PROVIDER question, and reads the r
   it("the hire CONTROL left the event header; the advisor STANDING stayed", () => {
     // D6: the plan-level expert picker has ONE home, the rail's Build card.
     assert.doesNotMatch(slipCode, /slip-event-hire-/, "no per-event hire button remains");
-    assert.doesNotMatch(viewCode, /<HireExpertDialog/, "the picker is not mounted by the view");
-    assert.match(railCode, /<HireExpertDialog/, "it is mounted by the rail, once");
-    assert.equal((railCode.match(/<HireExpertDialog/g) ?? []).length, 1);
+    // R323 (step 7b): the plan-level door is the ONE handoff chooser, hosted once by the view and
+    // opened from the rail; the pick-an-expert dialog is retired.
+    assert.doesNotMatch(viewCode, /<HireExpertDialog/, "the retired picker is not mounted by the view");
+    assert.doesNotMatch(railCode, /<HireExpertDialog/, "nor by the rail");
+    assert.match(railCode, /openHandoffChooser\(/, "the rail opens the one door");
+    assert.equal((viewCode.match(/<HandoffChooserHost/g) ?? []).length, 1, "the view hosts it once");
     // And the standing text is unchanged, in the same words, from the ONE derivation.
     assert.match(slipCode, /data-testid=\{`slip-event-advisor-\$\{event\.id\}`\}/);
     assert.match(slipCode, /slipAdvisorStandingLine\(/);

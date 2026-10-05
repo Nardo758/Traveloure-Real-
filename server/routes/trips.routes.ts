@@ -214,7 +214,6 @@ import { planDatesAreConfirmed } from "@shared/plan-dates";
 import { resolveTripTimezone } from "../services/trip-timezone";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
 // the same module for the full rationale. Advisor-only gate — never owner, never author.
-import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { buildItineraryViewOgTags, injectIntoHead } from "../utils/html-head";
@@ -3141,11 +3140,8 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // `trip_collaborators` row fell through to the author branch instead.) The audit-logged admin
       // V-29 admitted is none of the three and takes no branch here.
       const authorMayMutate = (ownsTrip || isWriteAdvisor) ? false : await isTripAuthor(tripId, userId);
-      // FABLE-REVIEW: the mode-flip gate — the advisor-only branch (never the owner; never the
-      // authored-build author, who is not an advisor row).
-      if (isWriteAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
-        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
-      }
+      // Step 7b (R323, R-n): the plan-approval mode-flip that used to 409 here is SUBSUMED — an
+      // advisor's edit becomes a suggestion at the point of write below, before and after approval.
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
       // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
@@ -3257,6 +3253,31 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
         });
         if (refusal) return res.status(400).json({ message: refusal });
       }
+      // Step 7b (R323; §12 step 3, R-n): an advisor's edit on a traveler's plan is FILED as a
+      // suggestion carrying the final, validated `safeBody`; the owner's accept replays this same
+      // storage write. The expert's OWN note (LD 21 / D4 — their words, attributed to them, not the
+      // plan's content) stays a direct write: a traveler "accepting" a note would make them its
+      // author of record.
+      if (isWriteAdvisor) {
+        const { expertNote, ...planChanges } = safeBody as any;
+        let noteRow: unknown = null;
+        if (expertNote !== undefined) {
+          noteRow = await storage.updateItineraryItem(itemId, { expertNote } as any);
+        }
+        if (Object.keys(planChanges).length === 0) {
+          if (!noteRow) return res.status(404).json({ message: "Item not found" });
+          return res.json(noteRow);
+        }
+        const { fileExpertSuggestion } = await import("../services/expert-suggestions.service");
+        const suggestion = await fileExpertSuggestion({
+          tripId,
+          expertId: userId,
+          kind: "edit",
+          itemId,
+          payload: { updates: planChanges, title: (existing as any).title ?? null },
+        });
+        return res.status(202).json({ suggested: true, suggestion });
+      }
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       // Smoke 10 S10-5: a time (or day) change re-sorts the item's day by time, so the list reads in
@@ -3294,10 +3315,6 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       if (denial) return res.status(denial.status).json({ message: "Access denied" });
       const ownsTrip = await verifyTripOwnership(tripId, userId);
       const isWriteAdvisor = ownsTrip ? false : await storage.isExpertAssignedToTripForWrite(tripId, userId);
-      // FABLE-REVIEW: the mode-flip gate — see the PATCH handler above for the full rationale.
-      if (isWriteAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
-        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
-      }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
       // A BOOKED ROW IS MONEY, AND NO ROLE MAY DELETE IT (ledger `2026-09-05-slip-own-your-plan`,
@@ -3312,6 +3329,18 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       // sentence. ONE predicate, shared with the rebuild guard and with the slip's own tools.
       if (itineraryItemIsMoneyCommitted(existing)) {
         return res.status(409).json(ITEM_BOOKED_DELETE_ERROR);
+      }
+      // Step 7b (R323, R-n): an advisor's removal on a traveler's plan is a `remove` suggestion.
+      if (isWriteAdvisor) {
+        const { fileExpertSuggestion } = await import("../services/expert-suggestions.service");
+        const suggestion = await fileExpertSuggestion({
+          tripId,
+          expertId: userId,
+          kind: "remove",
+          itemId,
+          payload: { title: (existing as any).title ?? null },
+        });
+        return res.status(202).json({ suggested: true, suggestion });
       }
       // R15 (ledger 2026-08-17-partner-demand-r15-transition-log): record WHO removed the item on
       // the same-transaction `item_removed` diary row. The actor is derived from the trip

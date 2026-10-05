@@ -55,6 +55,8 @@ export interface ItemRowMenu {
   onMoveDown?: (() => void) | null;
   onRemove?: () => void;
   onAskLocal?: () => void;
+  /** Step 7b (R323, §12 step 1): "Book this for me" — the ONE handoff chooser, this stop ticked. */
+  onBookForMe?: () => void;
   /** Generic items only: the existing search, with the category preset. */
   findHostHref?: string | null;
   /** Step 5: on the slip, "Find a host" opens the map's Browse layer filtered to the item's category. */
@@ -269,7 +271,7 @@ export function ItemRow(props: ItemRowProps) {
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
-  return !!(m.onEdit || m.onAddAfter || m.onDetails || m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.findHostHref || m.onBuildAround || m.onSetAsStay);
+  return !!(m.onEdit || m.onAddAfter || m.onDetails || m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.onBookForMe || m.findHostHref || m.onBuildAround || m.onSetAsStay);
 }
 
 /** The labels, ONCE (spec §3's order). */
@@ -289,6 +291,8 @@ export const ITEM_MENU_LABELS = {
   // R322: the Workstation's two expert entries (drawn first on that surface; the slip draws neither).
   edit: "Edit",
   addAfter: "Add a stop after this",
+  // R323 (step 7b): the one handoff door, from the row.
+  bookForMe: "Book this for me",
 } as const;
 
 /** R-ah: the row's own word for a locked item. Optimize, Regenerate and Build-around leave it in place. */
@@ -334,11 +338,14 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
         {menu.onRemove ? (
           <DropdownMenuItem onSelect={menu.onRemove} data-testid={`item-menu-remove-${id}`}>{ITEM_MENU_LABELS.remove}</DropdownMenuItem>
         ) : null}
-        {(menu.onAskLocal || menu.findHostHref || menu.onBuildAround || menu.onSetAsStay) && (menu.onSwap || menu.onRemove || menu.onToggleLock || menu.onMoveUp || menu.onMoveDown) ? (
+        {(menu.onAskLocal || menu.onBookForMe || menu.findHostHref || menu.onBuildAround || menu.onSetAsStay) && (menu.onSwap || menu.onRemove || menu.onToggleLock || menu.onMoveUp || menu.onMoveDown) ? (
           <DropdownMenuSeparator />
         ) : null}
         {menu.onAskLocal ? (
           <DropdownMenuItem onSelect={menu.onAskLocal} data-testid={`item-menu-ask-local-${id}`}>{menu.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}</DropdownMenuItem>
+        ) : null}
+        {menu.onBookForMe ? (
+          <DropdownMenuItem onSelect={menu.onBookForMe} data-testid={`item-menu-book-for-me-${id}`}>{ITEM_MENU_LABELS.bookForMe}</DropdownMenuItem>
         ) : null}
         {menu.findHostHref && menu.onFindHost ? (
           <DropdownMenuItem onSelect={menu.onFindHost} data-testid={`item-menu-find-host-${id}`}>

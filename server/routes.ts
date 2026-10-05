@@ -253,6 +253,7 @@ import providerListingHealthRoutes from "./routes/provider-listing-health.routes
 import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
 import feedbackRoutes from "./routes/feedback.routes";
+import handoffRoutes from "./routes/handoff.routes";
 import versionsRoutes from "./routes/versions.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
@@ -382,7 +383,6 @@ import { isManagingEaForTrip } from "./services/ea-plan-delegate.service";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): once the customer
 // approves a delivered plan, the assigned expert's DIRECT item writes on that trip are refused —
 // checked ONLY on the advisor/assigned-expert path, never for the owner or an authored-build author.
-import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./utils/plan-approval";
 import { sanitizeInput } from "./utils/sanitize";
 import { locationQueryMatches } from "@shared/location-match";
 import { refuseIfComparisonApplyToCartDisabled } from "./config/comparison-apply-to-cart.config";
@@ -1266,6 +1266,7 @@ export async function registerRoutes(
   app.use(marketsRoutes);
   // Feedback at the moments it means something (ledger 2026-10-04-feedback-phase-a).
   app.use(feedbackRoutes);
+  app.use(handoffRoutes);
   // Surface step 5: the versions board — read, per-day apply, day re-time (R-ac).
   app.use(versionsRoutes);
   app.use(adminMarketsRoutes);
@@ -13178,12 +13179,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // for the executive. Never an advisor (no mode-flip gate, no expert note, never "expert").
       const managingEa = (owned || assigned || authored) ? false : await isManagingEaForTrip(tripId, userId);
       if (!owned && !assigned && !authored && !managingEa) return res.status(403).json({ message: "Access denied" });
-      // FABLE-REVIEW: the mode-flip gate. Advisor-only (never owner, never author) — see
-      // server/utils/plan-approval.ts. Pre-approval (NULL/changes_requested) is byte-identical
-      // to today; suggestions (POST /trips/:id/suggestions) are unaffected by this gate.
-      if (isAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
-        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
-      }
+      // Step 7b (R323, R-n): the plan-approval mode-flip that used to 409 here is SUBSUMED — an
+      // advisor's write on a traveler's plan never reaches storage at all; it becomes a suggestion
+      // at the point of write below, before AND after approval.
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const itemData = parsed.data as any;
@@ -13293,6 +13291,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // by the reader rather than deleted from the row.
       const authoringRefusal = authored ? authoredItemPriceRefusal(itemData) : null;
       if (authoringRefusal) return res.status(400).json({ message: authoringRefusal });
+      // Step 7b (R323; surface spec §12 step 3, R-n): "nothing is written to the plan without the
+      // traveler's accept". On a traveler's plan an advisor's add is FILED as a suggestion carrying
+      // the final, validated write object; the owner's accept replays this same storage write. The
+      // expert's own authoring build is the AUTHOR branch, never `isAdvisor`, and writes directly.
+      if (isAdvisor) {
+        const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
+        const suggestion = await fileExpertSuggestion({ tripId, expertId: userId, kind: "add", payload: { item: itemData } });
+        return res.status(202).json({ suggested: true, suggestion });
+      }
       const gemWrite = pendingGemId
         ? await storage.createPendingBillboardGemItemIfAbsent(
             { ...itemData, notes: pendingPlanItemMarker(pendingGemId) },
@@ -13392,10 +13399,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // grants; it only refuses the advisor branch once the assignment's plan is approved.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
       const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
-      if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
-        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
-      }
       const { dayNumber, itemIds } = req.body;
+      // Step 7b (R323, R-n): an advisor's reorder on a traveler's plan is a `move` suggestion.
+      if (isAdvisor) {
+        if (!Number.isInteger(Number(dayNumber)) || !Array.isArray(itemIds) || itemIds.length > 200) {
+          return res.status(400).json({ message: "Send a day and its stops in order" });
+        }
+        const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
+        const suggestion = await fileExpertSuggestion({
+          tripId: req.params.tripId,
+          expertId: userId,
+          kind: "move",
+          payload: { dayNumber: Number(dayNumber), itemIds: itemIds.map(String) },
+        });
+        return res.status(202).json({ suggested: true, suggestion });
+      }
       const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
       // Change-log role, derived honestly (§13 applies to logs): this used to hardcode "owner",
       // which was a lie for every non-owner caller. `authorizeTripLogistics` returns null for EVERY
@@ -13439,11 +13457,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // endpoint only COMPUTES a suggested order (no write), but gating it too means an
       // advisor on an approved plan can't even fish for a machine order to hand-apply via
       // the reorder endpoint under a different guise.
-      const owned = await verifyTripOwnership(req.params.tripId, userId);
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
-      if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
-        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
-      }
+      // Step 7b (R323): this only COMPUTES an order; applying one goes through the reorder rail, where
+      // an advisor's order becomes a suggestion — so the old approval gate here has nothing to guard.
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });
