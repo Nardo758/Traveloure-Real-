@@ -516,7 +516,7 @@ class Component extends DCLogic {
     var selObj = byId[selId] || null;
     var sel = selObj ? vm(selObj, 0) : { meta: '', name: '', why: '', hasWhy: false, areaOnly: false, showPet: false, petLine: '', petFg: '#6A7480', petWeight: '400', btnLabel: '', btnBorder: NAVY, btnBg: NAVY, btnFg: '#FFFFFF', toggle: null };
 
-    var TABS = [['activities', 'Activities', data.activities.length], ['hotels', 'Hotels', data.stays.length], ['services', 'Services', data.services.length], ['dining', 'Dining', 0], ['flights', 'Flights', 0], ['transportation', 'Transportation', 0]];
+    var TABS = [['activities', 'Activities', data.activities.length], ['hotels', 'Hotels', data.stays.length], ['services', 'Services', data.services.length], ['dining', 'Dining', 0], ['transportation', 'Transportation', 0]];
     var tabs = TABS.map(function (t) {
       var on = t[0] === tab;
       return { label: t[1], n: '' + t[2], hasN: t[2] > 0, on: on, line: on ? CORAL : 'transparent', fg: on ? NAVY : '#6A7480',

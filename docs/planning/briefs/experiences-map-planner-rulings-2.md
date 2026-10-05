@@ -55,8 +55,9 @@ map yet". The rings are removed from the boards.
 **10. Signed-out map browsing is a last sub-step, 8d.** 8b ships with sign-in at the finish, as now.
 Amends A3.6's order, not its end state.
 
-Rulings 4–10 are carried into `docs/planning/briefs/step-8-brief.md` (revision 2), which is the build
-brief for Lanes 3 and 4.
+Rulings 4–10 are carried into `docs/planning/briefs/step-8-brief.md` (revision 3.1), which is the build
+brief for Lanes 3 and 4. That brief also records six decisions taken on Track A's Phase 0 report (D1–D6),
+one of which amends LD 33 narrowly (the pop-up may open at When from the Experiences start page).
 
 ## Pets (brief A4; Lane 5)
 
@@ -73,7 +74,7 @@ Rulings 11 and 12 close the two gaps in section B. The pets lane still comes aft
 ## Boards changed with these rulings
 
 `docs/design/experiences-map-planner/`: `ExperienceMap`, `ExperienceMapMobile` (no rings; no "No day yet"
-group; adds name the day; "Not on the map yet" wording and count; taller boards), and the six venue-led
+group; adds name the day; "Not on the map yet" wording and count; no Flights tab; taller boards), and the six venue-led
 boards (vendor rings replaced: a vendor with an address is a pin, one without is listed only). `canvas.json`
 and `README.md` updated to match. The venue-led boards are still drawn, not ruled.
 
