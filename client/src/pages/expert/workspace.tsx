@@ -21,6 +21,7 @@ import { parsePartnerSource } from "@/lib/partner-source";
 import { PlatformContentPickerCore } from "@/components/expert/platform-content-picker";
 import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
+import { isReadinessQueryKey } from "@/lib/readiness-checklist";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
@@ -1112,6 +1113,8 @@ function WorkstationCanvas({
   const invalidateLegs = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-legs`] });
     queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    // L2-5: a leg write can open or close a readiness line.
+    queryClient.invalidateQueries({ predicate: (q) => isReadinessQueryKey(q.queryKey) });
   };
 
   const reorderMutation = useMutation({
@@ -4611,7 +4614,7 @@ export default function ExpertWorkspace() {
                 </div>
                 {isAuthoring ? (
                   listing ? (
-                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} days={days} />
+<ReadyMadeListingPanel listing={listing} tripId={tripId!} days={days} />
                   ) : (
                     <div style={{ padding: "12px" }}>
                       <div style={{ fontSize: 12.5, color: MID, lineHeight: 1.55, marginBottom: 10 }}>

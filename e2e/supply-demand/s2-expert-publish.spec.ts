@@ -755,6 +755,43 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
       }
     }
 
+    // L2-5 (ledger `2026-10-05-readiness-checklist-ui`): Submit is now disabled while the readiness
+    // checklist names a blocking line, and the legs above were confirmed or seeded behind the
+    // panel's back (page.request / a DB write). Reload so the checklist refetches, reselect the
+    // Distribute tab the panel lives under (a reload resets it — see the hero block above), and
+    // re-read the button rather than trusting a value read before the legs existed.
+    if (tripId) {
+      await page.reload();
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const distributeTabAfterLegs = testid(page, 'tab-right-distribute');
+      if (await appears(distributeTabAfterLegs, 8000)) {
+        await distributeTabAfterLegs.click().catch(() => {});
+        await page.waitForTimeout(700);
+      }
+      submittable = false;
+      for (let i = 0; i < 20 && !submittable; i++) {
+        submittable = await submitBtn.isEnabled().catch(() => false);
+        if (submittable) break;
+        await page.waitForTimeout(500);
+      }
+      if (!submittable) {
+        const blocking = await page.locator('[data-testid="readiness-blocking"]').innerText().catch(() => '(no checklist rendered)');
+        fileFinding({
+          journey: 'S2',
+          step: 'readymade:readiness-blocking',
+          class: 'SPEC_DIVERGENCE',
+          severity: 'P2',
+          known: null,
+          title: 'Submit stayed disabled after the legs were confirmed — the readiness checklist still names a blocking line',
+          expected: 'readiness-blocking is empty once title, plan type, price, hero, days and legs are satisfied',
+          actual: blocking.slice(0, 500),
+          where: 'GET /api/expert/ready-made/:id/readiness (blocking = assertReadyMadeComplete)',
+          evidence: {},
+          behavioural: true,
+        });
+      }
+    }
+
     if (submittable) {
       // Retry with a swallowed error, not a bare `.click()` (found live, run 4: `isEnabled()`
       // read true a moment earlier, but the click itself hit Playwright's own actionability wait
