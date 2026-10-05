@@ -623,6 +623,7 @@ export async function readyMadeReadiness(
         toActivityId: transportLegs.toActivityId,
         proposalStatus: transportLegs.proposalStatus,
         userSelectedMode: transportLegs.userSelectedMode,
+        estimatedDurationMinutes: transportLegs.estimatedDurationMinutes,
       })
       .from(transportLegs)
       .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId))),
@@ -639,6 +640,7 @@ export async function readyMadeReadiness(
     anchors,
     buildStartDate: build?.startDate ? String(build.startDate) : null,
     durationDays: listing.durationDays,
+    legs,
   });
   return { blocking, advisory };
 }

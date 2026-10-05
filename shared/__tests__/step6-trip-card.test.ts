@@ -135,11 +135,17 @@ test("T5 finalize smoke: 'ready' only when a final exists — slip banner, card 
 });
 
 test("T6 R-ay: the free plan's prompt", () => {
+  // Slice A2 (ledger `2026-10-05-reachability-from-legs`): "reachable in time" counts only stops the
+  // plan's own legs can't reach; a closed stop or a clashing entry is read with its own words.
   const f: Finding[] = [
+    { kind: "leg_unreachable", count: 2, days: [1, 3] },
     { kind: "closed_on_arrival", count: 1, days: [2] },
-    { kind: "timed_entry_conflict", count: 1, days: [5] },
   ];
   assert.equal(freeFindingsPromptLine(f), "2 stops may not be reachable in time · Add travel times");
+  assert.equal(
+    freeFindingsPromptLine([{ kind: "closed_on_arrival", count: 1, days: [2] }, { kind: "timed_entry_conflict", count: 1, days: [5] }]),
+    "1 stop is reached when it's closed · Add travel times",
+  );
   assert.match(freeFindingsPromptLine([{ kind: "city_crossing", count: 2, days: [1, 3], est: true }])!, /cross the city .* · Add travel times$/);
   assert.equal(freeFindingsPromptLine([]), null);
   assert.equal(freeFindingsPromptLine(undefined), null);
