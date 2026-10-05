@@ -321,11 +321,12 @@ test.describe("Lane 1 Phase 1d — Trip Card routing UI (browser)", () => {
     expect(routeRes.status()).toBe(200);
 
     await expertPage.goto(`${BASE_URL}/expert/workspace/${tripId}`);
-    await expertPage.waitForSelector(`[data-testid="card-plan-${tripId}"]`, { timeout: 30_000 });
-    await expertPage.waitForSelector(`[data-testid="activity-row-${itemId}"]`, { timeout: 15_000 });
+    // R322 (step 7a): the Workstation surface is the shared rows (DayBlock / ItemRow role expert).
+    await expertPage.waitForSelector(`[data-testid="workstation-days"]`, { timeout: 30_000 });
+    await expertPage.waitForSelector(`[data-testid="slip-item-${itemId}"]`, { timeout: 15_000 });
 
-    // READ: the badge is visible to the expert (contract §2 — expert workspace READS every state).
-    await expect(expertPage.locator(`[data-testid="badge-routing-with-expert-${itemId}"]`)).toBeVisible();
+    // READ: the routing state is visible to the expert (contract §2 — expert workspace READS every state).
+    await expect(expertPage.locator(`[data-testid="slip-item-booking-${itemId}"]`)).toHaveText("With your expert");
 
     // NEVER: no owner-only routing action renders for this viewer, on this item or any other.
     await expect(expertPage.locator('[data-testid^="button-route-"]')).toHaveCount(0);

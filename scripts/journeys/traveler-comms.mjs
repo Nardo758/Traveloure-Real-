@@ -335,11 +335,10 @@ async function main() {
         // silently skips the click, leaving the Structure view active.
         await waitVisible(expertPage, "toggle-format-day-list");
         await expertPage.click(`[data-testid="toggle-format-day-list"]`);
-        await waitVisible(expertPage, `activities-section-${TRIP_ID}`);
-        await waitVisible(expertPage, "button-toggle-item-editor");
-        await expertPage.click(`[data-testid="button-toggle-item-editor"]`);
-        const expandBtn = await waitVisible(expertPage, `button-expand-item-${ITEM_ID}`);
-        await expertPage.click(expandBtn);
+        await waitVisible(expertPage, "workstation-days");
+        // R322: the stop's edit panel opens from its ItemRow menu (⋯ → Edit).
+        await expertPage.click(await waitVisible(expertPage, `item-menu-${ITEM_ID}`));
+        await expertPage.click(await waitVisible(expertPage, `item-menu-edit-${ITEM_ID}`));
         await waitVisible(expertPage, `item-comments-${ITEM_ID}`);
         await expertPage.click(`[data-testid="button-toggle-comments-${ITEM_ID}"]`);
         await waitVisible(expertPage, `comment-thread-${ITEM_ID}`);

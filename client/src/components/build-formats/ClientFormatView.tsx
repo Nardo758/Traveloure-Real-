@@ -4,9 +4,9 @@
  *   "neighborhoods"  → KyotoCulturalView (client:kyoto-cultural)
  *   "venue-timeline" → VenueTimelineView (client:kyoto-wedding / client:event)
  *
- * A QUIET "Structure · Day list" toggle lets the expert flip to the same PlanCard-embedded
- * block the days-grouping renders today — the structured views are v1 renderings and the
- * expert still needs PlanCard's item controls for editing. Structure is the default.
+ * A QUIET "Structure · Day list" toggle lets the expert flip to the same day rows the days-grouping
+ * renders (since R322 the shared DayBlock / ItemRow / LegRow) — the structured views are v1
+ * renderings and the expert edits on the rows. Structure is the default.
  *
  * Expert-notes contract (binding): item-level notes render WITH their item inside whatever
  * group/panel the format assigns (handled by the views). No trip-level CLIENT-FACING notes
@@ -27,7 +27,7 @@ interface ClientFormatViewProps {
   destination: string | null;
   days: FormatDay[];
   bestSeason?: string | null;
-  /** The exact PlanCard embedded block the days-grouping renders — the Day list view. */
+  /** The exact day rows the days-grouping renders — the Day list view. */
   dayListView: ReactNode;
 }
 
@@ -46,7 +46,7 @@ export function ClientFormatView({ format, destination, days, bestSeason, dayLis
 
   return (
     <div data-testid="client-format-view">
-      {/* Quiet view toggle — Structure (the format's rendering) · Day list (PlanCard editing). */}
+      {/* Quiet view toggle — Structure (the format's rendering) · Day list (the editing rows). */}
       <div style={{ display: "flex", gap: 12, alignItems: "baseline", marginBottom: 10 }}>
         {(
           [

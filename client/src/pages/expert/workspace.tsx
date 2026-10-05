@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
-import { PlanCard } from "@/components/plancard/PlanCard";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { WorkstationDays, type LegPatch } from "@/components/plan/WorkstationDays";
+import { HOST_PICKUP_UNAVAILABLE_NOTE, type StopLeg } from "@/components/plan/LegRow";
+import type { PlanCardDay } from "@/components/plancard/plancard-types";
+import type { FactView } from "@shared/content-facts";
 import { ItemComments } from "@/components/plancard/ItemComments";
 import { ItemFactConfirm } from "@/components/expert/ItemFactConfirm";
 import { useParams, useLocation } from "wouter";
@@ -22,11 +26,8 @@ import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { VerifyRequestButton } from "@/components/booking-agent/VerifyRequestButton";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
-import { APIProvider, Map, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
-import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
-// Advisor Phase 1 — the route layer's per-day polylines on the Google branch (Leaflet's own
-// react-leaflet Polyline is used directly inside leaflet-plan-map.tsx instead).
-import { Polyline } from "@/components/ui/map-polyline";
+// R322: the canvas map is MapControlCenter now; only the Places autocomplete still loads Maps here.
+import { APIProvider, useMapsLibrary } from "@vis.gl/react-google-maps";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
   Send, MessageSquare, Plus, Lock, Eye, EyeOff,
@@ -36,20 +37,12 @@ import {
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
   Trash2, RefreshCw, Route, Building2,
 } from "lucide-react";
-// L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
-// server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
-import { isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
-import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { parseApiErrorMessage } from "@/lib/api-error";
 // W5-A (QA_PUNCH_LIST item 19) — the discovery-layer candidate-pin publish/subscribe store. Every
-// Add-panel source drawer publishes its own current results here; CanvasMapSection reads the
-// single active publisher. See client/src/lib/map-candidates.ts for the full contract.
+// Add-panel source drawer publishes its own current results here; the canvas's MapControlCenter
+// reads the single active publisher (R322). See client/src/lib/map-candidates.ts for the full contract.
 import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/lib/map-candidates";
 import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
-// WORKSTATION_LOCATION_MAP_SPEC Part B — keyless OSM fallback for CanvasMapSection's plan map,
-// rendered instead of the Google block when VITE_GOOGLE_MAPS_API_KEY is unset (see that file's
-// doc comment for the "Google swap point" contract).
-import { LeafletPlanMap } from "@/components/expert/leaflet-plan-map";
 import { trackEvent } from "@/lib/analytics";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
@@ -542,7 +535,7 @@ async function geocodeLocationText(
  *  `insertItineraryItemSchema` (drizzle-zod) expects a STRING for decimal columns, so a raw
  *  `parseFloat` JS number 400s with "invalid_type expected string received number" (the same
  *  drift `server/routes.ts:1271,7793` already guard against via `String(...)`). */
-function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAdded }: { tripId: string; dayNumber: number; destination?: string; workspaceMode: "assignment" | "authoring"; onAdded: () => void }) {
+function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAdded }: { tripId: string; dayNumber: number; destination?: string; workspaceMode: "assignment" | "authoring"; onAdded: (created?: { id?: string } | null) => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
   const [geocoding, setGeocoding] = useState(false);
@@ -552,7 +545,7 @@ function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAd
   const [placeCoords, setPlaceCoords] = useState<{ lat: string; lng: string } | null>(null);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
-    onSuccess: () => {
+    onSuccess: (created: any) => {
       trackEvent("plan_item_added", {
         item_type: form.itemType,
         source_type: "custom",
@@ -560,7 +553,8 @@ function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAd
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      onAdded();
+      // R322: the created row (its id) lets "Add a stop after this" place it.
+      onAdded(created && typeof created === "object" ? (created.item ?? created) : null);
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
       setPlaceCoords(null);
@@ -745,187 +739,49 @@ function LogBookingForm({
   );
 }
 
-/** D-1 (Workstation audit): local section-scoped error boundary for the Platform-services
- *  browse map ONLY. Google Maps can throw (billing/key errors — BillingNotEnabledMapError
- *  and friends) at mount; without a boundary that unwinds the whole workspace. This class
- *  wraps just the map block so the results LIST beneath it (which fetches independently)
- *  keeps working, with a one-line honest notice in place of the map. */
-class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[Workstation] Browse map failed to render:", error, info.componentStack);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
-          <MapPin style={{ width: 24, height: 24, color: FAINT }} />
-          <span style={{ fontSize: 12, color: MID }}>Map unavailable — showing list results</span>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
-/** A-2 / C-1 (Workstation audit): the canvas item editor. Collapsible, day-grouped list of
- *  every item on the build with a "Move to day" select (A-2) and an "Expert note" textarea
- *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
- *  write through the existing PATCH /api/trips/:tripId/itinerary-items/:itemId endpoint
- *  (trips.routes.ts) — no new server surface for A-2; C-1's server change is the read-side
- *  column preference in plancard.routes.ts.
- *
- *  QA_PUNCH_LIST item 18: also the within-day reorder UI (up/down arrows per item calling the
- *  existing POST .../itinerary/reorder with the day's full ordered id list — properly
- *  authorizeTripLogistics- AND now plan-approval-mode-flip-gated server-side, see routes.ts) and
- *  a per-day "Suggest best order" action (POST .../itinerary/optimize-order) that stages the
- *  machine's proposed order for an explicit "Apply this order?" confirm — never auto-applied
- *  (D1a posture: the machine proposes, the expert confirms). This panel is also item 16's
- *  "Go to item" scroll target (see focusItemId/onFocusHandled below) — the only per-item,
- *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
- *  read-mostly component this lane deliberately does not modify). */
-function ItemsEditorPanel({
-  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
-  suggestOrderForDay, onSuggestHandled,
+/** R322 (step 7a): a stop's edit panel on the Workstation's `ItemRow` (menu → Edit). Carried over
+ *  verbatim in behaviour from the retired `ItemsEditorPanel` row: Move to day (A-2), the location
+ *  editor (exact Places pick, else the shared submit-time geocode — coords PATCHed only when NEW ones
+ *  were resolved, §13), the traveler-visible Expert note (C-1b), the partner Booking Brief (W3-A),
+ *  the crawled-fact confirm (A6) and the per-item thread (W3-C). Every write is the existing trip-
+ *  scoped PATCH `/api/trips/:tripId/itinerary-items/:itemId`, which carries the authored-build branch. */
+function ItemEditDetails({
+  tripId, item, maxDay, destination, onDayMoved, onOpenBookingBrief, onClose,
 }: {
   tripId: string;
-  days: { dayNumber: number; items: ItineraryItem[] }[];
+  item: ItineraryItem;
   maxDay: number;
-  /** Geocode disambiguation suffix for the location editor below — same role it plays in
-   *  InlineAddItemForm ("<location>, <destination>"), never the sole address (§13). */
   destination?: string;
   onDayMoved: () => void;
-  // W3-A: opens the shared BookingBriefModal for a partner-sourced item. The item's mere
-  // presence here is the gate itself — on an assignment trip a partner item ONLY reaches
-  // itinerary_items via an approved suggestion (partner-catalog-picker.tsx never creates the
-  // item directly there), so any row this panel can show is already either author-owned or
-  // client-approved. Nothing here needs to re-check approval state.
   onOpenBookingBrief: (network: string) => void;
-  // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
-  // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
-  // request (a one-shot signal, not a controlled/sticky prop).
-  focusItemId?: string | null;
-  onFocusHandled?: () => void;
-  // WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa": a located row's pin-icon button reports
-  // itself here so the plan map can pan to and select the matching pin. Undefined for a row with
-  // no coordinates (nothing to show — never a guessed pin, §13).
-  onSelectItem?: (itemId: string) => void;
-  // Advisor Phase 2-4: a THIRD one-shot signal, same shape/contract as focusItemId above — when
-  // set, this panel opens (if closed) and fires its OWN optimizeMutation for that day (the
-  // existing staged "Suggested order" apply/discard UI below takes over from there — never a
-  // second, duplicated write/algorithm), then reports back via onSuggestHandled so the caller
-  // clears the request.
-  suggestOrderForDay?: number | null;
-  onSuggestHandled?: () => void;
+  onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
-  // Location editor (workstation improvement, Aug 9 2026): per-item drafts mirroring noteDrafts,
-  // plus the exact-Places-pick coords (cleared on hand-edit — edited text may no longer match the
-  // picked place) and which row is mid-geocode. This is the fix-up path for the plan map's
-  // "not on map" tray: before this, an unlocated item had NO surface in the Workstation where a
-  // location could be added at all.
-  const [locationDrafts, setLocationDrafts] = useState<Record<string, string>>({});
-  const [locationPickCoords, setLocationPickCoords] = useState<Record<string, { lat: string; lng: string } | null>>({});
-  const [geocodingItemId, setGeocodingItemId] = useState<string | null>(null);
-  // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
-  // explicit confirm (never auto-applied).
-  const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
-
-  useEffect(() => {
-    if (!focusItemId) return;
-    setOpen(true);
-    setExpandedId(focusItemId);
-    // Wait one paint for the (possibly just-opened) panel to render the row before scrolling.
-    const t = setTimeout(() => {
-      const el = document.querySelector(`[data-testid="item-editor-row-${focusItemId}"]`);
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-      onFocusHandled?.();
-    }, 60);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusItemId]);
-
-  const reorderMutation = useMutation({
-    mutationFn: async ({ dayNumber, itemIds }: { dayNumber: number; itemIds: string[] }) => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/reorder`, { dayNumber, itemIds });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-    },
-    // Same mode-flip 409 as the other item mutations above — surfaced honestly, not generically.
-    onError: (err: any) => toast({ title: "Failed to reorder", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
-  });
-
-  const moveWithinDay = (day: { dayNumber: number; items: ItineraryItem[] }, index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= day.items.length) return;
-    const itemIds = day.items.map(i => i.id);
-    [itemIds[index], itemIds[target]] = [itemIds[target], itemIds[index]];
-    reorderMutation.mutate({ dayNumber: day.dayNumber, itemIds });
-  };
-
-  const optimizeMutation = useMutation({
-    mutationFn: async (dayNumber: number) => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/optimize-order`, { dayNumber });
-      const json = await res.json();
-      return { dayNumber, optimizedOrder: (json.optimizedOrder ?? []) as string[] };
-    },
-    onSuccess: ({ dayNumber, optimizedOrder }) => {
-      setSuggestedOrder(s => ({ ...s, [dayNumber]: optimizedOrder }));
-    },
-    onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
-  });
-
-  // Advisor Phase 2-4's one-shot: open the panel and fire the SAME optimizeMutation the per-day
-  // "Suggest best order" button uses — the staged suggestion (with its existing Apply/Discard UI
-  // below) is what actually appears; this effect only triggers the existing flow, it never
-  // computes or applies an order itself.
-  useEffect(() => {
-    if (suggestOrderForDay == null) return;
-    setOpen(true);
-    optimizeMutation.mutate(suggestOrderForDay);
-    onSuggestHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestOrderForDay]);
-
-  const applySuggestedOrder = (dayNumber: number) => {
-    const itemIds = suggestedOrder[dayNumber];
-    if (!itemIds) return;
-    reorderMutation.mutate({ dayNumber, itemIds }, {
-      onSuccess: () => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; }),
-    });
-  };
-  const discardSuggestedOrder = (dayNumber: number) => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; });
+  const [noteDraft, setNoteDraft] = useState<string>(item.expertNote ?? "");
+  const [locationDraft, setLocationDraft] = useState<string>(item.locationName ?? "");
+  const [pickCoords, setPickCoords] = useState<{ lat: string; lng: string } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
+  const partnerSource = parsePartnerSource(item.description);
 
   const updateMutation = useMutation({
-    mutationFn: async ({ itemId, data }: { itemId: string; data: Record<string, any> }) => {
-      const res = await apiRequest("PATCH", `/api/trips/${tripId}/itinerary-items/${itemId}`, data);
+    mutationFn: async (data: Record<string, any>) => {
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/itinerary-items/${item.id}`, data);
       return res.json();
     },
-    onSuccess: (_res, vars) => {
+    onSuccess: (_res, data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      if ("dayNumber" in vars.data) {
+      if ("dayNumber" in data) {
         onDayMoved();
         toast({ title: "Item moved" });
-      } else if ("locationName" in vars.data) {
+      } else if ("locationName" in data) {
         // Honest wording (§13): only claim a pin when coordinates were actually attached.
         toast({
           title: "Location saved",
-          description: "latitude" in vars.data
+          description: "latitude" in data
             ? "Pinned on the plan map."
-            : vars.data.locationName
+            : data.locationName
               ? "No map pin yet — the location couldn't be geocoded right now."
               : undefined,
         });
@@ -933,305 +789,110 @@ function ItemsEditorPanel({
         toast({ title: "Expert note saved" });
       }
     },
-    // Plan-approval mode flip (migration 164): once the client approves a delivered plan, this
-    // PATCH 409s with an honest "send it as a suggestion instead" message — surface it verbatim
-    // rather than the generic fallback (the existing parseApiErrorMessage pattern above).
+    // Plan-approval mode flip (migration 164): the PATCH 409s with an honest "send it as a
+    // suggestion instead" message — surfaced verbatim.
     onError: (err: any) => toast({ title: "Failed to update item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
-  // FIX 2 (QA pass): item-level delete. Must use the TRIP-SCOPED endpoint — the bare
-  // DELETE /api/itinerary-items/:id gates on trips.userId only (verifyTripOwnership), which 403s
-  // on authored builds (userId=NULL); the trip-scoped route carries the parallel isTripAuthor
-  // branch, the same reason move-item's PATCH above uses it. Mirrors the move-item mutation's
-  // invalidation set (itinerary-items + plancard) and also triggers the same energy recalc a
-  // day-move does via onDayMoved, since removing an item changes a day's load too.
-  const deleteMutation = useMutation({
-    mutationFn: async (itemId: string) => {
-      await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`);
-    },
-    onSuccess: (_res, itemId) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      onDayMoved();
-      if (expandedId === itemId) setExpandedId(null);
-      toast({ title: "Item removed" });
-    },
-    // See the update mutation's onError above — same mode-flip 409, same honest surfacing.
-    onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
-  });
-
-  // Same two-tier resolution as InlineAddItemForm: an exact Places pick wins; otherwise the
-  // shared submit-time geocode. Coords are PATCHed only when NEW ones were actually resolved —
-  // clearing the text never wipes existing coordinates, which may be real facts from the item's
-  // source (a DMO row's own lat/lng) rather than derived from this label (§13: don't destroy
-  // real data on a label edit; the pin outliving a cleared label is the honest state).
-  const saveLocation = async (item: ItineraryItem) => {
-    const text = (locationDrafts[item.id] ?? item.locationName ?? "").trim();
-    const picked = locationPickCoords[item.id];
+  const saveLocation = async () => {
+    const text = locationDraft.trim();
     let coords: { latitude: string; longitude: string } | undefined;
-    if (picked) {
-      coords = { latitude: picked.lat, longitude: picked.lng };
+    if (pickCoords) {
+      coords = { latitude: pickCoords.lat, longitude: pickCoords.lng };
     } else if (text) {
-      setGeocodingItemId(item.id);
+      setGeocoding(true);
       coords = await geocodeLocationText(text, destination);
-      setGeocodingItemId(null);
+      setGeocoding(false);
     }
-    updateMutation.mutate(
-      { itemId: item.id, data: { locationName: text || null, ...(coords ?? {}) } },
-      { onSuccess: () => setLocationPickCoords(c => ({ ...c, [item.id]: null })) },
-    );
+    updateMutation.mutate({ locationName: text || null, ...(coords ?? {}) }, { onSuccess: () => setPickCoords(null) });
   };
-
-  const allItems = days.flatMap(d => d.items);
-  if (allItems.length === 0) return null;
 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
   const fieldStyle: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${LINE}`, fontSize: 12.5, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
 
   return (
-    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginTop: 12 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        data-testid="button-toggle-item-editor"
-        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-      >
-        <Pencil style={{ width: 12, height: 12, color: MID }} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Edit items</span>
-        <span style={{ fontSize: 11, color: FAINT }}>({allItems.length})</span>
-        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
-          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
-        </span>
-      </button>
-      {open && (
-        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {days.filter(d => d.items.length > 0).map(day => {
-            const suggestion = suggestedOrder[day.dayNumber];
-            return (
-              <div key={day.dayNumber} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.05em" }}>Day {day.dayNumber}</span>
-                  <button
-                    onClick={() => optimizeMutation.mutate(day.dayNumber)}
-                    disabled={day.items.length < 2 || (optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)}
-                    data-testid={`button-suggest-order-day-${day.dayNumber}`}
-                    title="Compute a suggested order for this day — nothing changes until you apply it"
-                    style={{ ...btnQuietStyle, marginLeft: "auto", padding: "2px 8px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4, opacity: day.items.length < 2 ? 0.5 : 1 }}
-                  >
-                    {(optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)
-                      ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
-                      : <Sparkles style={{ width: 10, height: 10 }} />}
-                    Suggest best order
-                  </button>
-                </div>
-
-                {suggestion && (
-                  <div data-testid={`panel-suggested-order-day-${day.dayNumber}`} style={{ background: BRAND_SOFT, border: `1px dashed ${BRAND}`, borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: INK }}>Suggested order for Day {day.dayNumber}</div>
-                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: MID, display: "flex", flexDirection: "column", gap: 2 }}>
-                      {suggestion.map(id => (
-                        <li key={id}>{day.items.find(i => i.id === id)?.title ?? id}</li>
-                      ))}
-                    </ol>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => discardSuggestedOrder(day.dayNumber)} data-testid={`button-discard-order-day-${day.dayNumber}`} style={{ ...btnQuietStyle, flex: 1, padding: "5px", fontSize: 11 }}>Discard</button>
-                      <button
-                        onClick={() => applySuggestedOrder(day.dayNumber)}
-                        disabled={reorderMutation.isPending}
-                        data-testid={`button-apply-order-day-${day.dayNumber}`}
-                        style={{ ...btnPrimaryStyle, flex: 2, padding: "5px", fontSize: 11, opacity: reorderMutation.isPending ? 0.6 : 1 }}
-                      >
-                        Apply this order?
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {day.items.map((item, index) => {
-                  const isExpanded = expandedId === item.id;
-                  const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
-                  // W3-A: an item carrying the "Partner: <Network>" marker (written by
-                  // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
-                  // `days` at all IS the gate — see the prop comment above.
-                  const partnerSource = parsePartnerSource(item.description);
-                  return (
-                    <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {/* Item 18: within-day reorder — swaps this item with its neighbor and
-                            sends the day's full ordered id list to the existing reorder endpoint.
-                            Disabled at the day's edges. */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                          <button
-                            onClick={() => moveWithinDay(day, index, -1)}
-                            disabled={index === 0 || reorderMutation.isPending}
-                            data-testid={`button-move-up-${item.id}`}
-                            title="Move earlier"
-                            style={{ background: "none", border: "none", cursor: index === 0 ? "default" : "pointer", padding: 1, color: index === 0 ? FAINT : MID, opacity: index === 0 ? 0.4 : 1, display: "flex" }}
-                          >
-                            <ChevronUp style={{ width: 12, height: 12 }} />
-                          </button>
-                          <button
-                            onClick={() => moveWithinDay(day, index, 1)}
-                            disabled={index === day.items.length - 1 || reorderMutation.isPending}
-                            data-testid={`button-move-down-${item.id}`}
-                            title="Move later"
-                            style={{ background: "none", border: "none", cursor: index === day.items.length - 1 ? "default" : "pointer", padding: 1, color: index === day.items.length - 1 ? FAINT : MID, opacity: index === day.items.length - 1 ? 0.4 : 1, display: "flex" }}
-                          >
-                            <ChevronDown style={{ width: 12, height: 12 }} />
-                          </button>
-                        </div>
-                        {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-                        {/* WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa": only rendered for a
-                            row that actually has real coordinates — an unlocated item has no pin
-                            to show, and this button never pretends otherwise (§13). */}
-                        {onSelectItem && isLocatedItem(item) && (
-                          <button
-                            onClick={() => onSelectItem(item.id)}
-                            data-testid={`button-show-on-map-${item.id}`}
-                            title="Show on map"
-                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: MID, display: "flex" }}
-                          >
-                            <MapPin style={{ width: 13, height: 13 }} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                          data-testid={`button-expand-item-${item.id}`}
-                          style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
-                        >
-                          {isExpanded ? "Close" : "Edit"}
-                        </button>
-                      </div>
-                      {isExpanded && (
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div>
-                      <label style={labelStyle}>Move to day</label>
-                      <select
-                        value={item.dayNumber}
-                        onChange={e => updateMutation.mutate({ itemId: item.id, data: { dayNumber: parseInt(e.target.value, 10) } })}
-                        disabled={updateMutation.isPending}
-                        data-testid={`select-move-day-${item.id}`}
-                        style={fieldStyle}
-                      >
-                        {Array.from({ length: maxDay }, (_, i) => i + 1).map(n => (
-                          <option key={n} value={n}>Day {n}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={labelStyle}>
-                        Location{" "}
-                        <span style={{ fontWeight: 400, color: FAINT }}>
-                          {isLocatedItem(item) ? "(pinned on the plan map)" : "(no map pin yet)"}
-                        </span>
-                      </label>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <div style={{ flex: 1 }}>
-                          <PlacesAutocompleteInput
-                            value={locationDrafts[item.id] ?? (item.locationName ?? "")}
-                            onChange={v => {
-                              setLocationDrafts(d => ({ ...d, [item.id]: v }));
-                              setLocationPickCoords(c => ({ ...c, [item.id]: null }));
-                            }}
-                            onPlaceSelected={place => {
-                              setLocationDrafts(d => ({ ...d, [item.id]: place.text }));
-                              setLocationPickCoords(c => ({
-                                ...c,
-                                [item.id]: place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null,
-                              }));
-                            }}
-                            placeholder="Venue or address…"
-                            testId={`input-item-location-${item.id}`}
-                            style={fieldStyle}
-                          />
-                        </div>
-                        <button
-                          onClick={() => void saveLocation(item)}
-                          disabled={updateMutation.isPending || geocodingItemId === item.id}
-                          data-testid={`button-save-location-${item.id}`}
-                          style={{ ...btnPrimaryStyle, padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5, opacity: updateMutation.isPending || geocodingItemId === item.id ? 0.6 : 1 }}
-                        >
-                          {geocodingItemId === item.id ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : null}
-                          Save location
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Expert note <span style={{ fontWeight: 400, color: FAINT }}>(traveler-visible tip)</span></label>
-                      <textarea
-                        value={draftNote}
-                        onChange={e => setNoteDrafts(d => ({ ...d, [item.id]: e.target.value }))}
-                        placeholder="A tip your traveler will see on this item…"
-                        data-testid={`textarea-expert-note-${item.id}`}
-                        style={{ ...fieldStyle, minHeight: 56, resize: "vertical", fontFamily: "inherit" }}
-                      />
-                      <button
-                        onClick={() => updateMutation.mutate({ itemId: item.id, data: { expertNote: draftNote.trim() || null } })}
-                        disabled={updateMutation.isPending}
-                        data-testid={`button-save-expert-note-${item.id}`}
-                        style={{ ...btnPrimaryStyle, marginTop: 6, padding: "5px 12px", fontSize: 11.5 }}
-                      >
-                        Save note
-                      </button>
-                    </div>
-                    {partnerSource && (
-                      <button
-                        onClick={() => onOpenBookingBrief(partnerSource.network)}
-                        data-testid={`button-booking-brief-${item.id}`}
-                        style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
-                      >
-                        <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
-                        deleteMutation.mutate(item.id);
-                      }}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-item-${item.id}`}
-                      style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, color: DANGER, display: "flex", alignItems: "center", gap: 5, opacity: deleteMutation.isPending ? 0.6 : 1 }}
-                    >
-                      <Trash2 style={{ width: 12, height: 12 }} /> Remove item
-                    </button>
-
-                    {/* QA_PUNCH_LIST W3-C item 12 — the expert-side half of the per-item thread.
-                        Shared component with the Trip Card's ActivitiesSection; plain shadcn
-                        tokens read fine inside this console-scoped panel (same posture as the
-                        other shared Add-panel pickers on this page). */}
-                    {/* A6 (4): confirm a crawled web fact into a verified nugget (draws nothing when none). */}
-                    <ItemFactConfirm tripId={tripId} itemId={item.id} />
-                    <ItemComments tripId={tripId} itemId={item.id} />
-                  </div>
-                )}
-              </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+    <div data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div>
+        <label style={labelStyle}>Move to day</label>
+        <select
+          value={item.dayNumber}
+          onChange={e => updateMutation.mutate({ dayNumber: parseInt(e.target.value, 10) })}
+          disabled={updateMutation.isPending}
+          data-testid={`select-move-day-${item.id}`}
+          style={fieldStyle}
+        >
+          {Array.from({ length: maxDay }, (_, i) => i + 1).map(n => (
+            <option key={n} value={n}>Day {n}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label style={labelStyle}>
+          Location{" "}
+          <span style={{ fontWeight: 400, color: FAINT }}>
+            {isLocatedItem(item) ? "(pinned on the plan map)" : "(no map pin yet)"}
+          </span>
+        </label>
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ flex: 1 }}>
+            <PlacesAutocompleteInput
+              value={locationDraft}
+              onChange={v => { setLocationDraft(v); setPickCoords(null); }}
+              onPlaceSelected={place => {
+                setLocationDraft(place.text);
+                setPickCoords(place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null);
+              }}
+              placeholder="Venue or address…"
+              testId={`input-item-location-${item.id}`}
+              style={fieldStyle}
+            />
+          </div>
+          <button
+            onClick={() => void saveLocation()}
+            disabled={updateMutation.isPending || geocoding}
+            data-testid={`button-save-location-${item.id}`}
+            style={{ ...btnPrimaryStyle, padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5, opacity: updateMutation.isPending || geocoding ? 0.6 : 1 }}
+          >
+            {geocoding ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : null}
+            Save location
+          </button>
         </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Expert note <span style={{ fontWeight: 400, color: FAINT }}>(traveler-visible tip)</span></label>
+        <textarea
+          value={noteDraft}
+          onChange={e => setNoteDraft(e.target.value)}
+          placeholder="A tip your traveler will see on this item…"
+          data-testid={`textarea-expert-note-${item.id}`}
+          style={{ ...fieldStyle, minHeight: 56, resize: "vertical", fontFamily: "inherit" }}
+        />
+        <button
+          onClick={() => updateMutation.mutate({ expertNote: noteDraft.trim() || null })}
+          disabled={updateMutation.isPending}
+          data-testid={`button-save-expert-note-${item.id}`}
+          style={{ ...btnPrimaryStyle, marginTop: 6, padding: "5px 12px", fontSize: 11.5 }}
+        >
+          Save note
+        </button>
+      </div>
+      {partnerSource && (
+        <button
+          onClick={() => onOpenBookingBrief(partnerSource.network)}
+          data-testid={`button-booking-brief-${item.id}`}
+          style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
+        >
+          <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
+        </button>
       )}
+      {/* A6 (4): confirm a crawled web fact into a verified nugget (draws nothing when none). */}
+      <ItemFactConfirm tripId={tripId} itemId={item.id} />
+      <ItemComments tripId={tripId} itemId={item.id} />
+      <button onClick={onClose} data-testid={`button-close-item-edit-${item.id}`} style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "4px 10px", fontSize: 11 }}>
+        Done
+      </button>
     </div>
   );
-}
-
-// ── L4b: the between-stops transport-leg editor (docs/briefs/L4-transport-legs.md) ──────────────
-// Server contracts (L4a, migration 154 — final, do not adjust to fit the client):
-//   POST   /api/trips/:tripId/transport-legs/generate           → born 'proposed', replaces the
-//          trip's OWN proposed rows, never touches confirmed ones; response carries created/
-//          keptConfirmed/replacedProposed/skipped[] (reason: 'missing_coordinates' only).
-//   GET    /api/trips/:tripId/transport-legs?includeProposed=1  → { legs, variantId }; legs mixes
-//          this trip's rows (proposalStatus set) with any legacy variant rows (proposalStatus
-//          NULL) — filtered out below, they are a separate mechanism.
-//   PATCH  /api/trips/:tripId/transport-legs/:legId             → allow-list ONLY: userSelectedMode,
-//          pickupPoint, pickupTime, proposalStatus ('proposed'|'confirmed'). Never a body spread.
-//   DELETE /api/trips/:tripId/transport-legs/:legId
-
-/** Mirrors the server's own pair identity (`pairKey` in trip-transport-legs.service.ts) so a leg
- *  from the fetched list is matched to the exact same-day gap it was computed for. */
-function legPairKey(dayNumber: number, fromId: string | null | undefined, toId: string | null | undefined): string {
-  return `${dayNumber}|${fromId ?? ""}|${toId ?? ""}`;
 }
 
 /** Mirrors the server's own `realCoord` guard (trip-transport-legs.service.ts): rejects null/NaN,
@@ -1245,57 +906,6 @@ function isLocatedItem(item: { latitude?: unknown; longitude?: unknown }): boole
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
   if (lat === 0 && lng === 0) return false;
   return true;
-}
-
-/** Item 16 (QA_PUNCH_LIST): "fit the map to these pins" — mirrors the Trip Card's own
- *  MapControlCenter bounds-fit (`client/src/components/plancard/MapControlCenter.tsx`), a
- *  proven pattern: `useMap()` + `google.maps.LatLngBounds` + `map.fitBounds`. Needs a `<Map>`
- *  ancestor to call `useMap()`, so it renders nothing and lives INSIDE the `<Map>` below. */
-function PlanMapFitBounds({ items }: { items: ItineraryItem[] }) {
-  const map = useMap();
-  // Stable dependency: only re-fit when the actual set of pinned coordinates changes, not on
-  // every parent re-render (a fresh `items` array reference on every render is expected here).
-  const fitKey = items.map(i => `${i.id}:${i.latitude}:${i.longitude}`).join("|");
-  useEffect(() => {
-    if (!map || typeof google === "undefined" || !google.maps || items.length === 0) return;
-    if (items.length === 1) {
-      map.setCenter({ lat: parseFloat(String(items[0].latitude)), lng: parseFloat(String(items[0].longitude)) });
-      map.setZoom(14);
-      return;
-    }
-    const bounds = new google.maps.LatLngBounds();
-    items.forEach(i => bounds.extend({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) }));
-    map.fitBounds(bounds, 48);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, fitKey]);
-  return null;
-}
-
-/** WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa" of PlanMapFitBounds above: a list-row
- *  selection (the row's "Show on map" pin button) pans the plan map to that one pin and reports
- *  the match back so the caller can select it (opens the InfoWindow). Looks up against the FULL
- *  located set, not the day-filtered `visibleItems` — CanvasMapSection widens the day filter in
- *  its own effect when needed, so this never silently misses an item sitting outside today's
- *  filter. Needs a `<Map>` ancestor for `useMap()`, so it renders nothing and lives INSIDE the
- *  `<Map>` below, beside PlanMapFitBounds. */
-function PlanMapFocusFromList({
-  focusId, items, onFocus,
-}: {
-  focusId: string | null;
-  items: ItineraryItem[];
-  onFocus: (item: ItineraryItem) => void;
-}) {
-  const map = useMap();
-  useEffect(() => {
-    if (!focusId || !map) return;
-    const item = items.find(i => i.id === focusId);
-    if (!item) return;
-    map.setCenter({ lat: parseFloat(String(item.latitude)), lng: parseFloat(String(item.longitude)) });
-    map.setZoom(15);
-    onFocus(item);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, focusId]);
-  return null;
 }
 
 /** W5-A (QA_PUNCH_LIST item 19) — thin mount/unmount publisher for the Platform-services drawer,
@@ -1397,436 +1007,6 @@ function GooglePlaceSplitButton({
   );
 }
 
-/** QA_PUNCH_LIST item 16 (plan layer) + item 19 (discovery layer) — the plan map ON the build
- *  canvas.
- *
- *  PLAN layer (always on, unchanged from #374): pins for items already IN the plan, filtered by
- *  `mapDayFilter`. Never fabricates a pin (§13): only items passing `isLocatedItem` are ever
- *  rendered; the unlocated count below the map is real.
- *
- *  DISCOVERY layer (item 19, ratified): whenever an Add-panel source drawer is open, that
- *  drawer's CURRENT results render as candidate pins on this SAME map, in a visually distinct
- *  (hollow) style — read from the single active publisher via `useMapCandidates`. ONE filter
- *  state drives both the drawer's list and its pins (no separate map filter bar — see
- *  map-candidates.ts). Clicking a candidate opens a preview InfoWindow with an "Add to Day N"
- *  action that calls back into the SAME add handler the drawer's own list button uses — never a
- *  duplicated write path. Only items with real coords ever publish as candidates (§13); the
- *  drawer's list remains the complete view regardless of what the map can show.
- *
- *  Collapsible (closed→open persisted per-trip in sessionStorage, mirroring the "closed by
- *  default" convention ItemsEditorPanel/TransportLegsPanel already use for canvas sections).
- *  Reuses the file's existing @vis.gl/react-google-maps imports and the MapSectionErrorBoundary
- *  pattern verbatim (a Maps billing/key failure collapses to a one-line notice, never blanks the
- *  canvas — see that class's doc comment above). */
-function CanvasMapSection({
-  tripId, days, destination, onGoToItem, discoveryDayNumber, focusFromListId, onListFocusHandled,
-}: {
-  tripId: string;
-  days: { dayNumber: number; items: ItineraryItem[] }[];
-  destination: string;
-  onGoToItem: (itemId: string) => void;
-  /** The Add panel's current day-focus (item 19) — labels/targets the discovery layer's
-   *  "Add to Day N" action. Purely a label/target for candidates; never affects plan pins. */
-  discoveryDayNumber: number;
-  /** WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa": a one-shot signal from a list row's
-   *  "Show on map" button. Handled below by opening the map (if closed), widening the day filter
-   *  so the target pin is guaranteed to be in `visibleItems`, then reported back via
-   *  onListFocusHandled once consumed. */
-  focusFromListId?: string | null;
-  onListFocusHandled?: () => void;
-}) {
-  const storageKey = `workstation-map-open-${tripId}`;
-  const [open, setOpen] = useState<boolean>(() => {
-    try { return sessionStorage.getItem(storageKey) === "1"; } catch { return false; }
-  });
-  useEffect(() => {
-    try { sessionStorage.setItem(storageKey, open ? "1" : "0"); } catch { /* sessionStorage unavailable — the toggle just won't persist */ }
-  }, [open, storageKey]);
-
-  // Map-local day filter — mirrors the Add panel's day-focus control (all-days default,
-  // focusing a day filters the pins to it). Deliberately its OWN state, not the Add panel's
-  // `focusDay`: that control picks WHERE a new item is added; this picks WHICH pins show.
-  const [mapDayFilter, setMapDayFilter] = useState<number | "all">("all");
-  // Runtime key rejection (gm_authFailure) — flips the render below to the Leaflet fallback.
-  const mapsAuthFailed = useGoogleMapsAuthFailed();
-  const googleMapActive = !!MAPS_KEY && !mapsAuthFailed;
-  const [selectedPinItem, setSelectedPinItem] = useState<ItineraryItem | null>(null);
-  // Item 19 — the discovery layer's own selection, kept separate from the plan layer's so
-  // opening one InfoWindow never closes/overrides the other's state by accident.
-  const [selectedCandidate, setSelectedCandidate] = useState<MapCandidate | null>(null);
-  const { source: candidateSource, sourceLabel: candidateSourceLabel, items: candidateItems, onAdd: onAddCandidate } = useMapCandidates();
-  // Drawer switched (or its filter narrowed the set to nothing) — drop any stale selection
-  // rather than leave an InfoWindow open referencing a candidate that's no longer published.
-  useEffect(() => {
-    setSelectedCandidate(null);
-  }, [candidateSource, candidateSourceLabel]);
-
-  const allItems = days.flatMap(d => d.items);
-  const locatedItems = allItems.filter(isLocatedItem);
-  // §13: the honest "not on map" tray (Part B) — the actual rows, not just a count, so an expert
-  // can see WHICH items still need a location rather than guessing from a number.
-  const unlocatedItems = allItems.filter(i => !isLocatedItem(i));
-  const visibleItems = mapDayFilter === "all" ? locatedItems : locatedItems.filter(i => i.dayNumber === mapDayFilter);
-  const dayNumbersWithItems = Array.from(new Set(days.filter(d => d.items.length > 0).map(d => d.dayNumber))).sort((a, b) => a - b);
-  // Resolved once against the FULL located set (never the day-filtered `visibleItems`) so a
-  // cross-day focus request is never missed by a stale filter — see LeafletPlanMap's FocusFromList
-  // doc comment for why this matters there specifically.
-  const focusFromListItem = focusFromListId ? (locatedItems.find(i => i.id === focusFromListId) ?? null) : null;
-
-  // WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa": open the map and widen the day filter (if
-  // narrower than the target's own day) so the requested pin is guaranteed to render — the actual
-  // pan happens in PlanMapFocusFromList/LeafletPlanMap below, which need a map instance.
-  useEffect(() => {
-    if (!focusFromListId) return;
-    if (!focusFromListItem) { onListFocusHandled?.(); return; }
-    setOpen(true);
-    setMapDayFilter(f => (f === "all" || f === focusFromListItem.dayNumber ? f : "all"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusFromListId]);
-
-  // The Leaflet branch has no `<Map>`-descendant to report the InfoWindow-equivalent selection
-  // back up (its FocusFromList only pans — it has no reason to also own selection state), so that
-  // half of "vice versa" is handled here instead, gated to when Leaflet is actually the active
-  // renderer. The Google branch's own PlanMapFocusFromList/onFocus callback covers that branch.
-  useEffect(() => {
-    if (googleMapActive || !focusFromListItem) return;
-    setSelectedPinItem(focusFromListItem);
-    onListFocusHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusFromListItem?.id]);
-
-  // Center fallback ONLY needed when the plan has zero located items anywhere (not just the
-  // current filter) — same destination-geocode rail the Add panel's Platform-services browse
-  // map already fetches (`["/api/geocode", destination]`); broadening its `enabled` here reuses
-  // that query/cache rather than adding a parallel fetch.
-  const { data: fallbackCenter } = useQuery<{ lat: number; lng: number } | null>({
-    queryKey: ["/api/geocode", destination],
-    queryFn: async () => {
-      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
-      if (!res.ok) return null;
-      const j = await res.json();
-      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
-    },
-    enabled: open && !!destination && locatedItems.length === 0,
-    staleTime: Infinity,
-  });
-
-  // ── Advisor Phase 1 — route layer (persisted per-trip like the map-open toggle above). ──
-  const routesStorageKey = `workstation-map-routes-${tripId}`;
-  const [routesOn, setRoutesOn] = useState<boolean>(() => {
-    try { return sessionStorage.getItem(routesStorageKey) === "1"; } catch { return false; }
-  });
-  useEffect(() => {
-    try { sessionStorage.setItem(routesStorageKey, routesOn ? "1" : "0"); } catch { /* best-effort */ }
-  }, [routesOn, routesStorageKey]);
-
-  // Same query key TransportLegsPanel uses (`includeProposed: 1`) — a shared react-query cache
-  // entry, not a second fetch; enabled only while the map is open, matching this section's own
-  // "only pay for it while visible" convention (mirrors the fallback-geocode query above).
-  const { data: routeLegsData } = useQuery<TripTransportLegsResponse>({
-    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
-    enabled: !!tripId && open,
-  });
-  // Trip-scoped legs only (proposalStatus NULL = legacy variant-scoped legs — see
-  // TransportLegsPanel's identical filter/comment below).
-  const routeTripLegs = (routeLegsData?.legs ?? []).filter(
-    (l) => l.proposalStatus === "proposed" || l.proposalStatus === "confirmed",
-  );
-  const hasRouteLegsData = routeTripLegs.length > 0;
-  const routeDistanceMetersByDay: Record<number, number> = {};
-  for (const leg of routeTripLegs) {
-    routeDistanceMetersByDay[leg.dayNumber] = (routeDistanceMetersByDay[leg.dayNumber] ?? 0) + (leg.distanceMeters || 0);
-  }
-  // Respect mapDayFilter — only visible days ever get a line or a chip.
-  const routeVisibleDayNumbers = mapDayFilter === "all" ? dayNumbersWithItems : [mapDayFilter];
-  // §13: never estimate a distance client-side — a line is drawn from the items' OWN real
-  // coordinates (order-visualization only), a chip is drawn ONLY from the engine's own leg sums.
-  const routeDayColor = (dayNumber: number): string =>
-    [BRAND, "var(--console-info)", OK, WARN][(dayNumber - 1) % 4];
-  const routeLines: { day: number; color: string; points: { lat: number; lng: number }[] }[] = routesOn
-    ? days
-        .filter((d) => routeVisibleDayNumbers.includes(d.dayNumber))
-        .map((d) => ({
-          day: d.dayNumber,
-          color: routeDayColor(d.dayNumber),
-          points: d.items
-            .filter(isLocatedItem)
-            .map((i) => ({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) })),
-        }))
-        .filter((r) => r.points.length >= 2)
-    : [];
-  const routeDistanceChipDays = routesOn && hasRouteLegsData
-    ? routeVisibleDayNumbers.filter((d) => routeDistanceMetersByDay[d] != null).sort((a, b) => a - b)
-    : [];
-
-  if (allItems.length === 0) return null;
-
-  // Three-tier center rule (item 16 spec): located pins → bounds-fit; none but a destination
-  // geocode exists → center there; neither → no map box at all, honest notice only.
-  const hasAnyLocated = locatedItems.length > 0;
-  const canShowMap = hasAnyLocated || !!fallbackCenter;
-  const initialCenter = visibleItems[0]
-    ? { lat: parseFloat(String(visibleItems[0].latitude)), lng: parseFloat(String(visibleItems[0].longitude)) }
-    : (fallbackCenter ?? { lat: 35.0116, lng: 135.7681 }); // Kyoto — only reached when canShowMap is already false and this value is never rendered
-
-  return (
-    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginBottom: 12 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        data-testid="button-toggle-plan-map"
-        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-      >
-        <MapPinned style={{ width: 12, height: 12, color: MID }} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Plan map</span>
-        <span style={{ fontSize: 11, color: FAINT }}>({locatedItems.length} located)</span>
-        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
-          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
-        </span>
-      </button>
-      {open && (
-        <div style={{ padding: "0 14px 12px" }}>
-          {(dayNumbersWithItems.length > 1 || locatedItems.length > 0) && (
-            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8, alignItems: "center" }}>
-              {dayNumbersWithItems.length > 1 && (
-                <>
-                  <button
-                    onClick={() => setMapDayFilter("all")}
-                    data-testid="button-map-day-filter-all"
-                    style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
-                  >
-                    All days
-                  </button>
-                  {dayNumbersWithItems.map(n => (
-                    <button
-                      key={n}
-                      onClick={() => setMapDayFilter(n)}
-                      data-testid={`button-map-day-filter-${n}`}
-                      style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
-                    >
-                      Day {n}
-                    </button>
-                  ))}
-                </>
-              )}
-              {/* Advisor Phase 1 — route layer toggle. Draws per-day polylines connecting that
-                  day's located items in their current order (never a distance claim by itself —
-                  see the distance-chip gating below, which needs real engine data). */}
-              <button
-                onClick={() => setRoutesOn(r => !r)}
-                data-testid="button-toggle-routes"
-                style={{ marginLeft: dayNumbersWithItems.length > 1 ? "auto" : undefined, display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: routesOn ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: routesOn ? BRAND_SOFT : CARD, color: routesOn ? BRAND : MID }}
-              >
-                <Route style={{ width: 11, height: 11 }} /> Routes
-              </button>
-            </div>
-          )}
-
-          <div style={{ height: 260, borderRadius: 8, overflow: "hidden", position: "relative" }}>
-            <MapSectionErrorBoundary>
-              {googleMapActive && canShowMap ? (
-                <APIProvider apiKey={MAPS_KEY}>
-                  <Map
-                    mapId={GOOGLE_MAPS_MAP_ID}
-                    defaultCenter={initialCenter}
-                    defaultZoom={13}
-                    gestureHandling="greedy"
-                    disableDefaultUI={true}
-                    style={{ width: "100%", height: "100%" }}
-                    onClick={() => { setSelectedPinItem(null); setSelectedCandidate(null); }}
-                  >
-                    <PlanMapFitBounds items={visibleItems} />
-                    <PlanMapFocusFromList
-                      focusId={focusFromListId ?? null}
-                      items={locatedItems}
-                      onFocus={(item) => { setSelectedPinItem(item); onListFocusHandled?.(); }}
-                    />
-
-                    {/* Advisor Phase 1 — route layer: per-day polylines, day-color cycling. */}
-                    {routeLines.map(r => (
-                      <Polyline
-                        key={`route-${r.day}`}
-                        path={r.points}
-                        strokeColor={r.color}
-                        strokeOpacity={0.9}
-                        strokeWeight={3}
-                      />
-                    ))}
-
-                    {visibleItems.map(item => (
-                      <MapMarker
-                        key={item.id}
-                        position={{ lat: parseFloat(String(item.latitude)), lng: parseFloat(String(item.longitude)) }}
-                        onClick={() => setSelectedPinItem(item)}
-                      >
-                        <div
-                          data-testid={`map-pin-${item.id}`}
-                          title={item.title}
-                          style={{
-                            width: 22, height: 22, borderRadius: "50%",
-                            background: "var(--console-brand)", color: "var(--console-card)",
-                            border: selectedPinItem?.id === item.id ? "2px solid var(--console-card)" : "2px solid transparent",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
-                            fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-                          }}
-                        >
-                          {item.dayNumber}
-                        </div>
-                      </MapMarker>
-                    ))}
-
-                    {selectedPinItem && isLocatedItem(selectedPinItem) && (
-                      <InfoWindow
-                        position={{ lat: parseFloat(String(selectedPinItem.latitude)), lng: parseFloat(String(selectedPinItem.longitude)) }}
-                        onCloseClick={() => setSelectedPinItem(null)}
-                      >
-                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedPinItem.title}</div>
-                          <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>Day {selectedPinItem.dayNumber}</div>
-                          <button
-                            onClick={() => { const id = selectedPinItem.id; setSelectedPinItem(null); onGoToItem(id); }}
-                            data-testid={`button-goto-item-${selectedPinItem.id}`}
-                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
-                          >
-                            Go to item
-                          </button>
-                        </div>
-                      </InfoWindow>
-                    )}
-
-                    {/* Item 19 — DISCOVERY layer: candidate pins from whichever Add-panel source
-                        drawer is currently open (empty when none is), hollow/secondary style to
-                        stay visually distinct from the plan layer's solid brand-filled pins. */}
-                    {candidateItems.map(cand => (
-                      <MapMarker
-                        key={`candidate-${cand.id}`}
-                        position={{ lat: cand.lat, lng: cand.lng }}
-                        onClick={() => setSelectedCandidate(cand)}
-                      >
-                        <div
-                          data-testid={`map-candidate-pin-${cand.id}`}
-                          title={cand.title}
-                          style={{
-                            width: 20, height: 20, borderRadius: "50%",
-                            background: "var(--console-card)",
-                            border: `2.5px solid var(--console-brand)`,
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                          }}
-                        >
-                          <Plus style={{ width: 10, height: 10, color: "var(--console-brand)" }} />
-                        </div>
-                      </MapMarker>
-                    ))}
-
-                    {selectedCandidate && (
-                      <InfoWindow
-                        position={{ lat: selectedCandidate.lat, lng: selectedCandidate.lng }}
-                        onCloseClick={() => setSelectedCandidate(null)}
-                      >
-                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedCandidate.title}</div>
-                          <div style={{ fontSize: 11.5, color: MID, marginBottom: selectedCandidate.price ? 2 : 8 }}>{candidateSourceLabel}</div>
-                          {selectedCandidate.price && (
-                            <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>{selectedCandidate.price}</div>
-                          )}
-                          <button
-                            onClick={() => { const id = selectedCandidate.id; setSelectedCandidate(null); onAddCandidate(id); }}
-                            data-testid={`button-add-candidate-${selectedCandidate.id}`}
-                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
-                          >
-                            Add to Day {discoveryDayNumber}
-                          </button>
-                        </div>
-                      </InfoWindow>
-                    )}
-                  </Map>
-                </APIProvider>
-              ) : canShowMap ? (
-                // WORKSTATION_LOCATION_MAP_SPEC Part B — the "Google swap point": no client Maps
-                // key OR a runtime key rejection (gm_authFailure) ⇒ Leaflet + OSM tiles (keyless)
-                // instead of an unavailable notice / dead AuthFailure overlay. The moment a valid
-                // MAPS_KEY loads cleanly, the branch above takes over on its own.
-                <LeafletPlanMap
-                  items={visibleItems.map(item => ({
-                    id: item.id,
-                    title: item.title,
-                    dayNumber: item.dayNumber,
-                    lat: parseFloat(String(item.latitude)),
-                    lng: parseFloat(String(item.longitude)),
-                  }))}
-                  center={initialCenter}
-                  selectedId={selectedPinItem?.id ?? null}
-                  onSelect={(id) => setSelectedPinItem(id ? (visibleItems.find(i => i.id === id) ?? null) : null)}
-                  onGoToItem={(id) => { setSelectedPinItem(null); onGoToItem(id); }}
-                  focusTarget={focusFromListItem ? {
-                    id: focusFromListItem.id,
-                    title: focusFromListItem.title,
-                    dayNumber: focusFromListItem.dayNumber,
-                    lat: parseFloat(String(focusFromListItem.latitude)),
-                    lng: parseFloat(String(focusFromListItem.longitude)),
-                  } : null}
-                  candidates={candidateItems}
-                  candidateSourceLabel={candidateSourceLabel}
-                  onAddCandidate={onAddCandidate}
-                  addCandidateLabel={`Add to Day ${discoveryDayNumber}`}
-                  routes={routeLines.map(r => ({ day: r.day, color: r.color, points: r.points.map(p => [p.lat, p.lng] as [number, number]) }))}
-                />
-              ) : (
-                <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
-                  <MapPin style={{ width: 24, height: 24, color: FAINT }} />
-                  <span style={{ fontSize: 12, color: MID }}>No located items to show yet</span>
-                </div>
-              )}
-            </MapSectionErrorBoundary>
-
-            {/* Advisor Phase 1 — per-day distance chips, engine sums only. Lines draw as soon as
-                Routes is on (order-visualization); a distance chip only ever appears once the
-                transport-legs engine has actually computed that day — never a client estimate
-                (§13). No legs data ⇒ no chips, even with the lines showing. */}
-            {routeDistanceChipDays.length > 0 && (
-              <div style={{ position: "absolute", left: 8, bottom: 8, zIndex: 20, display: "flex", flexDirection: "column", gap: 3 }}>
-                {routeDistanceChipDays.map(d => (
-                  <div
-                    key={d}
-                    data-testid={`chip-route-distance-day-${d}`}
-                    style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}
-                  >
-                    Day {d} · {(routeDistanceMetersByDay[d] / 1000).toFixed(1)} km
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* §13: honest, never fabricated — the "not on map" tray lists the actual unlocated
-              rows (Part B), not just a count, so an expert can see and jump to WHICH items still
-              need a location rather than guessing from a number. */}
-          {unlocatedItems.length > 0 && (
-            <div data-testid="tray-unlocated-items" style={{ marginTop: 8, borderRadius: 8, border: `1px solid ${LINE}`, background: GROUND, padding: "6px 8px" }}>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: MID, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
-                Not on map — {unlocatedItems.length} item{unlocatedItems.length === 1 ? "" : "s"} have no location yet
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 120, overflowY: "auto" }}>
-                {unlocatedItems.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => onGoToItem(item.id)}
-                    data-testid={`button-unlocated-item-${item.id}`}
-                    style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "3px 2px", textAlign: "left", color: MID, fontSize: 11.5 }}
-                  >
-                    <span style={{ fontWeight: 700, color: FAINT, flexShrink: 0 }}>D{item.dayNumber}</span>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 interface TransportLegAlternative { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string; }
 interface TripTransportLeg {
   id: string;
@@ -1853,176 +1033,118 @@ interface TripTransportLegsResponse { legs: TripTransportLeg[]; variantId: strin
 interface GenerateLegsSkip { dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string; reason: "missing_coordinates"; }
 interface GenerateLegsResult { tripId: string; proposalStatus: "proposed"; created: number; keptConfirmed: number; replacedProposed: number; skipped: GenerateLegsSkip[]; }
 
-// The mode picker's option set for ONE leg is `legModeOptions` (@shared/trip-plan, work plan L1-10):
-// the same rule the leg-review read returns, so the two pickers cannot disagree.
-
-function transportModeLabel(mode: string): string {
-  return TRANSPORT_MODE_LABELS[mode] || mode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+/** R322: the plan's days, plus an EMPTY day for every day 1..dayCount that holds no stop yet (the
+ *  plancard derives its days from items, so an empty day would otherwise have no row to add from).
+ *  An empty day claims nothing: no date it was not given, no stops (§13). */
+function workstationDays(days: readonly PlanCardDay[], dayCount: number): PlanCardDay[] {
+  const byNum = new globalThis.Map(days.map((d) => [d.dayNum, d] as const));
+  for (let n = 1; n <= dayCount; n++) {
+    if (!byNum.has(n)) byNum.set(n, { dayNum: n, date: "", dateIso: null, label: "", activities: [], transports: [] });
+  }
+  return Array.from(byNum.values()).sort((a, b) => a.dayNum - b.dayNum);
 }
-function transportModeIcon(mode: string): string {
-  return TRANSPORT_MODE_ICONS[mode] || "🚌";
-}
 
-/** One leg's row: mode icon/duration/distance/status, the mode picker, chauffeured-only pickup
- *  fields, Confirm, and Remove. Pickup fields save via an explicit button (mirrors the Edit
- *  items expert-note pattern above) so a half-typed pickup note is never PATCHed on every
- *  keystroke; the mode select PATCHes immediately (mirrors the Edit items "Move to day" select). */
-function TransportLegRow({
-  leg, draft, onDraftChange, onModeChange, onSavePickup, onConfirm, onDelete, pending,
+/** R322 (step 7a, R-bh): the Workstation canvas — ONE `MapControlCenter` (with the open Add-panel
+ *  drawer's candidates and "Add to Day N") over ONE `WorkstationDays` (`DayBlock` + `ItemRow` role
+ *  expert + `LegRow`s). Replaces `CanvasMapSection`, `ItemsEditorPanel` and `TransportLegsPanel`.
+ *  Every write is an EXISTING route, unchanged (7a converts no access — R300/R310 stand):
+ *    items  — PATCH/DELETE /api/trips/:tripId/itinerary-items/:itemId, POST …/itinerary/reorder,
+ *             POST …/itinerary/optimize-order (staged; applied only on "Apply this order?")
+ *    legs   — POST …/transport-legs/generate, PATCH/DELETE …/transport-legs/:legId (the PATCH is
+ *             the `.strict()` allowlist: mode, tip (R-ay), host pickup (R-az), confirm (R-bf stamp)). */
+function WorkstationCanvas({
+  tripId, destination, items, maxDay, focusDay, onFocusDay, workspaceMode, onDayMoved, onOpenBookingBrief,
+  focusItemId, onFocusHandled, suggestOrderForDay, onSuggestHandled, dayCount, section = "all",
 }: {
-  leg: TripTransportLeg;
-  draft: { pickupPoint: string; pickupTime: string };
-  onDraftChange: (d: { pickupPoint: string; pickupTime: string }) => void;
-  onModeChange: (mode: string) => void;
-  onSavePickup: (d: { pickupPoint: string; pickupTime: string }) => void;
-  onConfirm: () => void;
-  onDelete: () => void;
-  pending: boolean;
+  /** "map": the map alone (it sits above every build format, as the old canvas map did); "days":
+   *  the transport bar and the day rows (the days view, and the Structure view's "Day list"). */
+  section?: "map" | "days" | "all";
+  tripId: string;
+  destination: string;
+  items: ItineraryItem[];
+  maxDay: number;
+  /** The build's length: every day 1..dayCount is drawn, an empty one included, so its own-stop
+   *  add has a home (the publish gate needs a stop on every day). */
+  dayCount: number;
+  focusDay: number;
+  onFocusDay: (day: number) => void;
+  workspaceMode: "assignment" | "authoring";
+  onDayMoved: () => void;
+  onOpenBookingBrief: (network: string) => void;
+  focusItemId: string | null;
+  onFocusHandled: () => void;
+  suggestOrderForDay: number | null;
+  onSuggestHandled: () => void;
 }) {
-  const currentMode = leg.userSelectedMode || leg.recommendedMode;
-  const chauffeured = isChauffeuredMode(currentMode);
-  const options = legModeOptions(leg);
-  const pickupDirty = draft.pickupPoint !== (leg.pickupPoint ?? "") || draft.pickupTime !== (leg.pickupTime ?? "");
-
-  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
-  const fieldStyle: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${LINE}`, fontSize: 12.5, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK, minHeight: 44 };
-
-  return (
-    <div data-testid={`transport-leg-row-${leg.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "9px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 15, lineHeight: 1 }}>{transportModeIcon(currentMode)}</span>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {leg.fromName} → {leg.toName}
-        </span>
-        <StateChip tone={leg.proposalStatus === "confirmed" ? "ok" : "warn"} testId={`chip-leg-status-${leg.id}`}>
-          {leg.proposalStatus === "confirmed" ? "Confirmed" : "Proposed"}
-        </StateChip>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11.5, color: MID }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Clock style={{ width: 11, height: 11 }} /> {leg.estimatedDurationMinutes} min</span>
-        <span>{leg.distanceDisplay}</span>
-      </div>
-
-      <div>
-        <label style={labelStyle}>Mode</label>
-        <select
-          value={currentMode}
-          onChange={(e) => onModeChange(e.target.value)}
-          disabled={pending}
-          data-testid={`select-transport-mode-${leg.id}`}
-          style={fieldStyle}
-        >
-          {options.map((m) => <option key={m} value={m}>{transportModeLabel(m)}</option>)}
-        </select>
-      </div>
-
-      {/* Chauffeured-only: an expert-stated arrangement fact, not a booking record (§18/L4a). */}
-      {chauffeured && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <div>
-            <label style={labelStyle}>Pickup point</label>
-            <input
-              value={draft.pickupPoint}
-              onChange={(e) => onDraftChange({ ...draft, pickupPoint: e.target.value })}
-              placeholder="e.g. Hotel lobby"
-              data-testid={`input-pickup-point-${leg.id}`}
-              style={fieldStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Pickup time</label>
-            <input
-              value={draft.pickupTime}
-              onChange={(e) => onDraftChange({ ...draft, pickupTime: e.target.value })}
-              placeholder="e.g. 9:15 AM"
-              data-testid={`input-pickup-time-${leg.id}`}
-              style={fieldStyle}
-            />
-          </div>
-          {pickupDirty && (
-            <button
-              onClick={() => onSavePickup(draft)}
-              disabled={pending}
-              data-testid={`button-save-pickup-${leg.id}`}
-              style={{ ...btnQuietStyle, gridColumn: "1 / -1", padding: "6px", fontSize: 11.5, minHeight: 44 }}
-            >
-              Save pickup details
-            </button>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 8 }}>
-        {leg.proposalStatus === "proposed" && (
-          <button
-            onClick={onConfirm}
-            disabled={pending}
-            data-testid={`button-confirm-leg-${leg.id}`}
-            style={{ ...btnPrimaryStyle, flex: 1, padding: "7px", fontSize: 11.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, minHeight: 44, opacity: pending ? 0.6 : 1 }}
-          >
-            <CheckCircle style={{ width: 12, height: 12 }} /> Confirm
-          </button>
-        )}
-        <button
-          onClick={onDelete}
-          disabled={pending}
-          data-testid={`button-delete-leg-${leg.id}`}
-          style={{ ...btnQuietStyle, flex: leg.proposalStatus === "proposed" ? undefined : 1, padding: "7px 10px", fontSize: 11.5, color: DANGER, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, minHeight: 44, opacity: pending ? 0.6 : 1 }}
-        >
-          <Trash2 style={{ width: 12, height: 12 }} /> Remove
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** The panel itself: collapsible (closed by default, mirrors Edit items), a "Generate transport"
- *  action with a replace-warning dialog when proposed legs already exist, an honest summary of
- *  the last generate response, and per-day gap rows. A day with fewer than two located stops
- *  renders ONE honest line instead of gap rows that could never route (§13); a located pair with
- *  no leg yet renders a neutral "not routed yet" placeholder — never a fabricated leg. */
-function TransportLegsPanel({ tripId, days }: { tripId: string; days: { dayNumber: number; items: ItineraryItem[] }[] }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
-  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
+  const candidates = useMapCandidates();
   const [lastResult, setLastResult] = useState<GenerateLegsResult | null>(null);
-  const [pickupDrafts, setPickupDrafts] = useState<Record<string, { pickupPoint: string; pickupTime: string }>>({});
+  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
+  const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
 
-  const totalItems = days.reduce((n, d) => n + d.items.length, 0);
-
-  const { data, isLoading } = useQuery<TripTransportLegsResponse>({
-    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
-    enabled: !!tripId && open,
+  const { data: plan } = useQuery<{ days?: PlanCardDay[]; placeFacts?: Record<string, FactView[]>; trip?: { timezone?: string | null } }>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: !!tripId,
   });
+  const planDays = workstationDays(plan?.days ?? [], dayCount);
+  // Every Add-panel drawer writes through the item route and refreshes the trip's ITEM list; the
+  // rows read the plancard. One signature of the item list keeps the two in step, whichever of the
+  // many add paths wrote (R322) — never a per-drawer invalidation to remember.
+  const itemsSignature = items.map((i) => `${i.id}:${i.dayNumber}`).sort().join("|");
+  const planSignature = planDays.flatMap((d) => d.activities.map((a) => `${a.id}:${d.dayNum}`)).sort().join("|");
+  useEffect(() => {
+    // The empty-state canvas passes no items; it has nothing to compare and never forces a read.
+    if (!plan || items.length === 0 || itemsSignature === planSignature) return;
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  }, [itemsSignature, planSignature, tripId, !!plan, items.length]);
+  const { data: legsData } = useQuery<TripTransportLegsResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
+    enabled: !!tripId,
+  });
+  // Trip-scoped legs only; legacy variant legs (proposalStatus NULL) are a separate mechanism.
+  const legs = (legsData?.legs ?? []).filter((l) => l.proposalStatus === "proposed" || l.proposalStatus === "confirmed") as unknown as StopLeg[];
+  const proposedCount = legs.filter((l) => l.proposalStatus === "proposed").length;
 
-  // Trip-scoped legs only. `proposalStatus` is NULL on legacy variant-scoped legs (migration 154
-  // grandfather) — those ride a separate mechanism this editor does not touch, so they're
-  // filtered out here rather than rendered as an unexplained third state.
-  const tripLegs = (data?.legs ?? []).filter(
-    (l) => l.proposalStatus === "proposed" || l.proposalStatus === "confirmed",
-  );
-  // globalThis.Map: the `Map` component from @vis.gl/react-google-maps (imported above) shadows
-  // the global constructor within this file — same workaround as the energy-tracking dedup above.
-  const legByPair = new globalThis.Map<string, TripTransportLeg>();
-  for (const leg of tripLegs) legByPair.set(legPairKey(leg.dayNumber, leg.fromActivityId, leg.toActivityId), leg);
-  const proposedCount = tripLegs.filter((l) => l.proposalStatus === "proposed").length;
-  const confirmedCount = tripLegs.filter((l) => l.proposalStatus === "confirmed").length;
-
-  const invalidate = () => {
+  const invalidateItems = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  };
+  const invalidateLegs = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-legs`] });
-    // Confirming/removing a leg can change what a traveler-facing surface renders (only
-    // 'confirmed' legs are ever traveler-visible) — keep the embedded PlanCard in sync.
     queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
   };
 
-  const generateMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/transport-legs/generate`, {});
-      return (await res.json()) as GenerateLegsResult;
+  const reorderMutation = useMutation({
+    mutationFn: async ({ dayNumber, itemIds }: { dayNumber: number; itemIds: string[] }) =>
+      (await apiRequest("POST", `/api/trips/${tripId}/itinerary/reorder`, { dayNumber, itemIds })).json(),
+    onSuccess: invalidateItems,
+    onError: (err: any) => toast({ title: "Failed to reorder", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+  const optimizeMutation = useMutation({
+    mutationFn: async (dayNumber: number) => {
+      const json = await (await apiRequest("POST", `/api/trips/${tripId}/itinerary/optimize-order`, { dayNumber })).json();
+      return { dayNumber, optimizedOrder: (json.optimizedOrder ?? []) as string[] };
     },
+    onSuccess: ({ dayNumber, optimizedOrder }) => setSuggestedOrder((s) => ({ ...s, [dayNumber]: optimizedOrder })),
+    onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+  // Advisor Phase 2-4's one-shot: fire the SAME suggest-order flow for a day (never a second algorithm).
+  useEffect(() => {
+    if (suggestOrderForDay == null) return;
+    optimizeMutation.mutate(suggestOrderForDay);
+    onSuggestHandled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestOrderForDay]);
+  const deleteMutation = useMutation({
+    mutationFn: async (itemId: string) => { await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`); },
+    onSuccess: () => { invalidateItems(); onDayMoved(); toast({ title: "Item removed" }); },
+    onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+  const generateMutation = useMutation({
+    mutationFn: async () => (await (await apiRequest("POST", `/api/trips/${tripId}/transport-legs/generate`, {})).json()) as GenerateLegsResult,
     onSuccess: (result) => {
       setLastResult(result);
-      invalidate();
+      invalidateLegs();
       toast({
         title: "Transport legs generated",
         description: `${result.created} proposed · ${result.keptConfirmed} confirmed kept · ${result.replacedProposed} replaced${result.skipped.length ? ` · ${result.skipped.length} skipped` : ""}`,
@@ -2030,157 +1152,165 @@ function TransportLegsPanel({ tripId, days }: { tripId: string; days: { dayNumbe
     },
     onError: (e: any) => toast({ title: "Couldn't generate transport legs", description: e?.message, variant: "destructive" }),
   });
-
-  const patchMutation = useMutation({
-    mutationFn: async ({ legId, data }: { legId: string; data: Record<string, any> }) => {
-      const res = await apiRequest("PATCH", `/api/trips/${tripId}/transport-legs/${legId}`, data);
-      return res.json();
+  const legPatchMutation = useMutation({
+    mutationFn: async ({ legId, patch }: { legId: string; patch: LegPatch }) =>
+      (await apiRequest("PATCH", `/api/trips/${tripId}/transport-legs/${legId}`, patch)).json(),
+    onSuccess: (_r, vars) => {
+      invalidateLegs();
+      if (vars.patch.proposalStatus) toast({ title: "Leg confirmed" });
+      else if ("authorTip" in vars.patch) toast({ title: "Tip saved" });
+      else if ("pickupPoint" in vars.patch || "pickupTime" in vars.patch) toast({ title: "Pickup details saved" });
     },
-    onSuccess: (_res, vars) => {
-      invalidate();
-      if ("proposalStatus" in vars.data) toast({ title: "Leg confirmed" });
-      else if ("pickupPoint" in vars.data || "pickupTime" in vars.data) toast({ title: "Pickup details saved" });
-    },
-    onError: (e: any) => toast({ title: "Couldn't update leg", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Couldn't update leg", description: parseApiErrorMessage(e, "Please try again."), variant: "destructive" }),
   });
-
-  const deleteMutation = useMutation({
+  const legDeleteMutation = useMutation({
     mutationFn: async (legId: string) => { await apiRequest("DELETE", `/api/trips/${tripId}/transport-legs/${legId}`); },
-    onSuccess: () => { invalidate(); toast({ title: "Leg removed" }); },
+    onSuccess: () => { invalidateLegs(); toast({ title: "Leg removed" }); },
     onError: (e: any) => toast({ title: "Couldn't remove leg", description: e?.message, variant: "destructive" }),
   });
 
-  if (totalItems === 0) return null;
-
+  const itemById = new globalThis.Map(items.map((i) => [i.id, i] as const));
+  const selectedDayIdx = Math.max(0, planDays.findIndex((d) => d.dayNum === focusDay));
   const runGenerate = () => { setConfirmGenerateOpen(false); generateMutation.mutate(); };
-  const onGenerateClick = () => { if (proposedCount > 0) setConfirmGenerateOpen(true); else runGenerate(); };
-  const rowPending = patchMutation.isPending || deleteMutation.isPending;
 
   return (
-    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginTop: 12 }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        data-testid="button-toggle-transport-legs"
-        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, minHeight: 44 }}
-      >
-        <Route style={{ width: 12, height: 12, color: MID }} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Transport legs</span>
-        {(proposedCount + confirmedCount) > 0 && (
-          <span style={{ fontSize: 11, color: FAINT }}>({confirmedCount} confirmed, {proposedCount} proposed)</span>
-        )}
-        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
-          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
-        </span>
-      </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="workstation-canvas">
+      {/* The map renders on an EMPTY build too: the first stop can come from the map (R322). */}
+      {section !== "days" && (
+        <MapControlCenter
+          tripId={tripId}
+          tripDestination={destination}
+          days={planDays}
+          selectedDay={selectedDayIdx}
+          onSelectDay={(i) => { const d = planDays[i]; if (d) onFocusDay(d.dayNum); }}
+          candidates={candidates.source ? { sourceLabel: candidates.sourceLabel, items: candidates.items } : null}
+          onAddCandidate={(id) => candidates.onAdd(id)}
+        />
+      )}
 
-      {open && (
-        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, color: MID }}>Run the routing engine across this trip's same-day stops.</span>
-            <button
-              onClick={onGenerateClick}
-              disabled={generateMutation.isPending}
-              data-testid="button-generate-transport"
-              style={{ ...btnPrimaryStyle, padding: "7px 14px", fontSize: 12, display: "flex", alignItems: "center", gap: 6, minHeight: 44, opacity: generateMutation.isPending ? 0.6 : 1 }}
-            >
-              {generateMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RefreshCw style={{ width: 13, height: 13 }} />}
-              Generate transport
-            </button>
+      {section === "map" || planDays.length === 0 ? null : (<>
+      <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, color: MID }}>
+            Legs between stops: {legs.length - proposedCount} confirmed, {proposedCount} proposed.
+          </span>
+          <button
+            onClick={() => (proposedCount > 0 ? setConfirmGenerateOpen(true) : runGenerate())}
+            disabled={generateMutation.isPending}
+            data-testid="button-generate-transport"
+            style={{ ...btnPrimaryStyle, padding: "6px 12px", fontSize: 12, display: "flex", alignItems: "center", gap: 6, opacity: generateMutation.isPending ? 0.6 : 1 }}
+          >
+            {generateMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RefreshCw style={{ width: 13, height: 13 }} />}
+            Generate transport
+          </button>
+        </div>
+        {confirmGenerateOpen ? (
+          <div data-testid="panel-confirm-generate" style={{ fontSize: 11.5, color: INK, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            Re-running replaces the {proposedCount} proposed leg{proposedCount === 1 ? "" : "s"}; confirmed legs are kept.
+            <button onClick={runGenerate} data-testid="button-confirm-generate" style={{ ...btnPrimaryStyle, padding: "4px 10px", fontSize: 11 }}>Replace proposals</button>
+            <button onClick={() => setConfirmGenerateOpen(false)} style={{ ...btnQuietStyle, padding: "4px 10px", fontSize: 11 }}>Cancel</button>
           </div>
-
-          {lastResult && (
-            <div style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }} data-testid="panel-generate-result">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>
-                  {lastResult.created} proposed · {lastResult.keptConfirmed} confirmed kept · {lastResult.replacedProposed} replaced
-                </span>
-                <button onClick={() => setLastResult(null)} data-testid="button-dismiss-generate-result" style={{ background: "none", border: "none", cursor: "pointer", color: FAINT, padding: 4, display: "flex" }}>
-                  <X style={{ width: 13, height: 13 }} />
-                </button>
+        ) : null}
+        {lastResult && lastResult.skipped.length > 0 ? (
+          <div data-testid="panel-generate-result" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {lastResult.skipped.map((sk, i) => (
+              <div key={i} data-testid={`generate-skip-${sk.fromItemId}-${sk.toItemId}`} style={{ fontSize: 11, color: WARN, display: "flex", alignItems: "center", gap: 5 }}>
+                <AlertTriangle style={{ width: 11, height: 11, flexShrink: 0 }} />
+                Day {sk.dayNumber}: {sk.fromTitle} → {sk.toTitle} — add a location to route this leg
               </div>
-              {lastResult.skipped.length > 0 && (
-                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
-                  {lastResult.skipped.map((s, i) => (
-                    <div key={i} data-testid={`generate-skip-${s.fromItemId}-${s.toItemId}`} style={{ fontSize: 11, color: WARN, display: "flex", alignItems: "center", gap: 5 }}>
-                      <AlertTriangle style={{ width: 11, height: 11, flexShrink: 0 }} />
-                      Day {s.dayNumber}: {s.fromTitle} → {s.toTitle} — add a location to route this leg
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {isLoading ? (
-            <div style={{ fontSize: 12, color: MID, padding: "8px 0" }}>Loading transport legs…</div>
-          ) : (
-            days.map((day) => {
-              const locatedCount = day.items.filter(isLocatedItem).length;
-              if (day.items.length < 2 || locatedCount < 2) {
-                return (
-                  <div key={day.dayNumber} data-testid={`transport-day-empty-${day.dayNumber}`} style={{ fontSize: 11.5, color: FAINT, padding: "4px 0" }}>
-                    Day {day.dayNumber} — add locations to at least two stops to route transport between them.
-                  </div>
-                );
-              }
-              return (
-                <div key={day.dayNumber} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.06em" }}>Day {day.dayNumber}</span>
-                  {day.items.slice(0, -1).map((from, i) => {
-                    const to = day.items[i + 1];
-                    const bothLocated = isLocatedItem(from) && isLocatedItem(to);
-                    const leg = legByPair.get(legPairKey(day.dayNumber, from.id, to.id));
-                    if (!bothLocated) {
-                      return (
-                        <div key={`${from.id}-${to.id}`} data-testid={`transport-gap-coordless-${from.id}-${to.id}`} style={{ border: `1px dashed ${LINE}`, borderRadius: 8, padding: "7px 10px", fontSize: 11.5, color: FAINT, display: "flex", alignItems: "center", gap: 6 }}>
-                          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
-                          {from.title} → {to.title}: add a location to route this leg
-                        </div>
-                      );
-                    }
-                    if (!leg) {
-                      return (
-                        <div key={`${from.id}-${to.id}`} data-testid={`transport-gap-pending-${from.id}-${to.id}`} style={{ border: `1px dashed ${LINE}`, borderRadius: 8, padding: "7px 10px", fontSize: 11.5, color: MID }}>
-                          {from.title} → {to.title}: not routed yet — use Generate transport above.
-                        </div>
-                      );
-                    }
-                    return (
-                      <TransportLegRow
-                        key={leg.id}
-                        leg={leg}
-                        draft={pickupDrafts[leg.id] ?? { pickupPoint: leg.pickupPoint ?? "", pickupTime: leg.pickupTime ?? "" }}
-                        onDraftChange={(d) => setPickupDrafts((prev) => ({ ...prev, [leg.id]: d }))}
-                        onModeChange={(mode) => patchMutation.mutate({ legId: leg.id, data: { userSelectedMode: mode } })}
-                        onSavePickup={(d) => patchMutation.mutate({ legId: leg.id, data: { pickupPoint: d.pickupPoint.trim() || null, pickupTime: d.pickupTime.trim() || null } })}
-                        onConfirm={() => patchMutation.mutate({ legId: leg.id, data: { proposalStatus: "confirmed" } })}
-                        onDelete={() => deleteMutation.mutate(leg.id)}
-                        pending={rowPending}
-                      />
-                    );
-                  })}
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {confirmGenerateOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ background: CARD, borderRadius: 14, width: "100%", maxWidth: 400, padding: 18 }} data-testid="dialog-confirm-generate-transport">
-            <div style={{ fontSize: 14, fontWeight: 700, color: INK, marginBottom: 6 }}>Regenerate transport legs?</div>
-            <div style={{ fontSize: 12.5, color: MID, lineHeight: 1.5, marginBottom: 14 }}>
-              This trip already has {proposedCount} proposed leg{proposedCount === 1 ? "" : "s"}. Generating again replaces
-              every proposed leg with a fresh route — but any leg you've already confirmed is never touched or replaced.
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => setConfirmGenerateOpen(false)} data-testid="button-cancel-generate-transport" style={{ ...btnQuietStyle, flex: 1, padding: "8px", fontSize: 13, minHeight: 44 }}>Cancel</button>
-              <button onClick={runGenerate} data-testid="button-confirm-generate-transport" style={{ ...btnPrimaryStyle, flex: 1, padding: "8px", fontSize: 13, minHeight: 44 }}>Regenerate</button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
+
+      <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, padding: "6px 0" }}>
+        <WorkstationDays
+          days={planDays}
+          placeFacts={plan?.placeFacts}
+          timeZone={plan?.trip?.timezone ?? null}
+          legs={legs}
+          canEdit
+          busy={legPatchMutation.isPending || legDeleteMutation.isPending || reorderMutation.isPending}
+          onReorder={(dayNumber, itemIds) => reorderMutation.mutate({ dayNumber, itemIds })}
+          onRemove={(a) => {
+            if (!window.confirm(`Remove "${a.name}" from this build?`)) return;
+            deleteMutation.mutate(a.id);
+          }}
+          onLegPatch={(legId, patch) => legPatchMutation.mutate({ legId, patch })}
+          onLegRemove={(legId) => legDeleteMutation.mutate(legId)}
+          pickupChoices={[]}
+          pickupUnavailableReason={HOST_PICKUP_UNAVAILABLE_NOTE}
+          focusItemId={focusItemId}
+          onFocusHandled={onFocusHandled}
+          renderEdit={(a, close) => {
+            const raw = itemById.get(a.id);
+            return raw ? (
+              <ItemEditDetails tripId={tripId} item={raw} maxDay={maxDay} destination={destination} onDayMoved={onDayMoved} onOpenBookingBrief={onOpenBookingBrief} onClose={close} />
+            ) : null;
+          }}
+          renderAddForm={(dayNumber, afterItemId, close) => (
+            <InlineAddItemForm
+              tripId={tripId}
+              dayNumber={dayNumber}
+              destination={destination}
+              workspaceMode={workspaceMode}
+              onAdded={(created) => {
+                onDayMoved();
+                close();
+                // "Add a stop after this": the create appends to the day; one reorder through the
+                // existing route puts it right after the stop it was asked from.
+                const day = planDays.find((d) => d.dayNum === dayNumber);
+                if (afterItemId && created?.id && day) {
+                  const ids = day.activities.map((x) => x.id).filter((x) => x !== created.id);
+                  const at = ids.indexOf(afterItemId);
+                  if (at >= 0 && at < ids.length - 1) {
+                    ids.splice(at + 1, 0, created.id);
+                    reorderMutation.mutate({ dayNumber, itemIds: ids });
+                  }
+                }
+              }}
+            />
+          )}
+          dayAside={(dayNumber) => {
+            const day = planDays.find((d) => d.dayNum === dayNumber);
+            const suggestion = suggestedOrder[dayNumber];
+            const pending = optimizeMutation.isPending && optimizeMutation.variables === dayNumber;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <button
+                  onClick={() => optimizeMutation.mutate(dayNumber)}
+                  disabled={(day?.activities.length ?? 0) < 2 || pending}
+                  data-testid={`button-suggest-order-day-${dayNumber}`}
+                  title="Compute a suggested order for this day — nothing changes until you apply it"
+                  style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "2px 8px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4 }}
+                >
+                  {pending ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Sparkles style={{ width: 10, height: 10 }} />}
+                  Suggest best order
+                </button>
+                {suggestion ? (
+                  <div data-testid={`panel-suggested-order-day-${dayNumber}`} style={{ background: BRAND_SOFT, border: `1px dashed ${BRAND}`, borderRadius: 8, padding: "6px 8px", display: "flex", flexDirection: "column", gap: 4 }}>
+                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: MID }}>
+                      {suggestion.map((id) => <li key={id}>{day?.activities.find((x) => x.id === id)?.name ?? id}</li>)}
+                    </ol>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => setSuggestedOrder((s) => { const n = { ...s }; delete n[dayNumber]; return n; })} data-testid={`button-discard-order-day-${dayNumber}`} style={{ ...btnQuietStyle, flex: 1, padding: "4px", fontSize: 11 }}>Discard</button>
+                      <button
+                        onClick={() => reorderMutation.mutate({ dayNumber, itemIds: suggestion }, { onSuccess: () => setSuggestedOrder((s) => { const n = { ...s }; delete n[dayNumber]; return n; }) })}
+                        disabled={reorderMutation.isPending}
+                        data-testid={`button-apply-order-day-${dayNumber}`}
+                        style={{ ...btnPrimaryStyle, flex: 2, padding: "4px", fontSize: 11 }}
+                      >
+                        Apply this order?
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          }}
+        />
+      </div>
+      </>)}
     </div>
   );
 }
@@ -2645,9 +1775,8 @@ function writeExtraMaxDay(tripId: string, value: number): void {
 
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
-  // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
-  // CanvasMapSection; ExpertWorkspace's own copy served only the retired in-drawer
-  // browse map and was removed with it in the merge.)
+  // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput; the canvas map's
+  // own renderer fallback lives in MapControlCenter — R322.)
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -2727,7 +1856,7 @@ export default function ExpertWorkspace() {
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
-  // log-a-booking form open. One at a time, mirroring ItemsEditorPanel's single-expanded-row pattern.
+  // log-a-booking form open. One at a time (a single-expanded-row pattern).
   const [logBookingOpenFor, setLogBookingOpenFor] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -2743,17 +1872,12 @@ export default function ExpertWorkspace() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedPin, setSelectedPin] = useState<any | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Item 16: "Go to item" from the plan-map InfoWindow — a one-shot signal consumed by
-  // ItemsEditorPanel (the canvas's only per-item, DOM-addressable list) which opens/expands/
-  // scrolls to the row, then clears this back to null.
+  // Item 16 / R322: "Go to item" — a one-shot signal consumed by the canvas's WorkstationDays, which
+  // opens the item's day, scrolls to its ItemRow and opens its edit panel, then clears this to null.
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
-  // WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa" of the above: a one-shot signal in the
-  // OPPOSITE direction, from a list row's "Show on map" button to CanvasMapSection, which pans to
-  // and selects the matching pin, then clears this back to null.
-  const [mapFocusItemId, setMapFocusItemId] = useState<string | null>(null);
-  // Advisor Phase 2-4: a THIRD one-shot signal, same shape as focusItemId — the reorder-nudge
-  // card's "See suggested order" button sets a dayNumber here; ItemsEditorPanel opens itself and
-  // fires its OWN optimizeMutation for that day (never a duplicated algorithm/write here), then
+  // Advisor Phase 2-4: a second one-shot signal, same shape as focusItemId — the reorder-nudge
+  // card's "See suggested order" button sets a dayNumber here; the canvas fires its OWN
+  // optimize-order for that day (never a duplicated algorithm/write here), then
   // clears this back to null via onSuggestHandled.
   const [suggestOrderForDay, setSuggestOrderForDay] = useState<number | null>(null);
 
@@ -2987,16 +2111,15 @@ export default function ExpertWorkspace() {
   });
 
   // QA_PUNCH_LIST item 21 — lazy-loaded only when the AI Gaps tab is actually open, mirroring
-  // TransportLegsPanel's own `enabled: open` gating (the underlying analysis calls the travel-time
+  // the old transport editor's `enabled: open` gating (the underlying analysis calls the travel-time
   // estimator per same-day pair — no reason to pay for it on every workspace load).
   const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
     queryKey: [`/api/trips/${tripId}/transport-gaps`],
     enabled: !!tripId && rightTab === "gaps",
   });
 
-  // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape TransportLegsPanel and
-  // CanvasMapSection's own route layer use (`includeProposed: 1`) — a shared react-query cache
-  // entry, gated the same "only while the tab is open" way transportGaps above is.
+  // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape the canvas's leg rows use
+  // (`includeProposed: 1`, R322) — a shared react-query cache entry, gated the same "only while the tab is open" way transportGaps above is.
   const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
     queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
     enabled: !!tripId && rightTab === "gaps",
@@ -3215,8 +2338,8 @@ export default function ExpertWorkspace() {
   }, [plancardForNote]);
 
   // (The destination-geocode map-center query that lived here served only the retired
-  // in-drawer browse map; CanvasMapSection keeps its own identical query for its fallback
-  // center, so the shared ["/api/geocode", destination] cache entry lives on there.)
+  // in-drawer browse map; the canvas's MapControlCenter keeps its own identical query for its
+  // fallback center, so the shared ["/api/geocode", destination] cache entry lives on there.)
   const destination = (trip as any)?.destination || "";
 
   // ── Browse: live experience search (lives under the Add panel's "Platform services" pill) ──
@@ -3315,7 +2438,7 @@ export default function ExpertWorkspace() {
       toast({ title: "Added to itinerary", description: `${vars.result.name} → Day ${vars.day}` });
       setSelectedPin(null);
     },
-    // Plan-approval mode flip (migration 164) — see ItemsEditorPanel's updateMutation above.
+    // Plan-approval mode flip (migration 164) — see ItemEditDetails's updateMutation above.
     onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
@@ -3765,8 +2888,8 @@ export default function ExpertWorkspace() {
   const travelerName = trip?.traveler_name || "Client";
   const travelerInitials = travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase();
 
-  // F1: the canvas consumes the format registry. client:default resolves to today's PlanCard
-  // day-list — zero visual change from the registry itself.
+  // F1: the canvas consumes the format registry. client:default resolves to the day list (since R322
+  // the WorkstationCanvas: MapControlCenter + DayBlock/ItemRow/LegRow).
   const buildFormat = resolveFormat("client", tripExperienceType, trip?.destination ?? null);
 
   // Day numbers for the day-focus control (P2-13). Fall back to the build's declared duration
@@ -3782,6 +2905,16 @@ export default function ExpertWorkspace() {
   // below) the highest real day, and merge it into the rendered range.
   const existingMaxDay = dayNumbers.length > 0 ? Math.max(...dayNumbers) : 1;
   const maxDay = Math.max(extraMaxDay, existingMaxDay);
+  // R322: the build's own length — an authoring build's listing `durationDays`, else the trip's date
+  // span — so the canvas draws every day, an empty one included. Never below the days already used.
+  const buildDayCount = (() => {
+    const fromListing = isAuthoring ? Number((listing as any)?.durationDays) : NaN;
+    if (Number.isFinite(fromListing) && fromListing > 0) return Math.max(fromListing, maxDay);
+    const a = trip?.start_date ? Date.parse(String(trip.start_date).slice(0, 10)) : NaN;
+    const b = trip?.end_date ? Date.parse(String(trip.end_date).slice(0, 10)) : NaN;
+    const span = Number.isFinite(a) && Number.isFinite(b) && b >= a ? Math.round((b - a) / 86_400_000) + 1 : 0;
+    return Math.max(span, maxDay);
+  })();
   const displayDayNumbers: number[] = Array.from(
     new Set([...dayNumbers, ...Array.from({ length: maxDay }, (_, i) => i + 1)]),
   ).sort((a, b) => a - b);
@@ -3956,45 +3089,77 @@ export default function ExpertWorkspace() {
               <button onClick={() => { setRightTab("add"); setAddSource("dmo"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Plus style={{ width: 14, height: 14 }} /> Add your first item
               </button>
+              {/* R322: the map is here from the first stop on — an open Add-panel drawer's results
+                  are its candidates, and "Add to Day N" adds through that drawer. */}
+              {tripId && (
+                <div style={{ textAlign: "left", marginTop: 24 }}>
+                  <WorkstationCanvas
+                    tripId={tripId}
+                    destination={destination}
+                    items={[]}
+                    maxDay={maxDay}
+                    dayCount={buildDayCount}
+                    focusDay={focusDay}
+                    onFocusDay={setFocusDay}
+                    workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                    onDayMoved={triggerEnergyRecalc}
+                    onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                    focusItemId={null}
+                    onFocusHandled={() => {}}
+                    suggestOrderForDay={null}
+                    onSuggestHandled={() => {}}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <>
-              {/* Item 16 (plan layer) + item 19 (discovery layer, ratified) — the plan map.
-                  Sits above the day list per the punch-list spec. */}
+              {/* F1: the format registry picks the structure; client:default = the day list.
+                  R322 (step 7a, R-bh): the Workstation surface — ONE MapControlCenter over the shared
+                  DayBlock / ItemRow (role expert) / LegRow rows. */}
               {tripId && (
-                <CanvasMapSection
+                <WorkstationCanvas
+                  section="map"
                   tripId={tripId}
-                  days={days}
                   destination={destination}
-                  onGoToItem={(itemId) => setFocusItemId(itemId)}
-                  discoveryDayNumber={focusDay}
-                  focusFromListId={mapFocusItemId}
-                  onListFocusHandled={() => setMapFocusItemId(null)}
+                  items={days.flatMap((d) => d.items)}
+                  maxDay={maxDay}
+                  dayCount={buildDayCount}
+                  focusDay={focusDay}
+                  onFocusDay={setFocusDay}
+                  workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  onDayMoved={triggerEnergyRecalc}
+                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  focusItemId={null}
+                  onFocusHandled={() => {}}
+                  suggestOrderForDay={null}
+                  onSuggestHandled={() => {}}
                 />
               )}
-
-              {/* F1: the format registry picks the structure; client:default = the existing
-                  PlanCard day-list, rendered exactly as before. */}
-              {buildFormat.grouping === "days" && trip && (
-                <PlanCard
-                  trip={{
-                    id: tripId!,
-                    destination: trip.destination,
-                    title: trip.trip_title,
-                    startDate: trip.start_date,
-                    endDate: trip.end_date,
-                    numberOfTravelers: (trip as any).number_of_travelers ?? 1,
-                  }}
-                  role="expert"
-                  stage="full"
-                  embedded
+              {buildFormat.grouping === "days" && trip && tripId && (
+                <WorkstationCanvas
+                  section="days"
+                  tripId={tripId!}
+                  destination={destination}
+                  items={days.flatMap((d) => d.items)}
+                  maxDay={maxDay}
+                  dayCount={buildDayCount}
+                  focusDay={focusDay}
+                  onFocusDay={setFocusDay}
+                  workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                  onDayMoved={triggerEnergyRecalc}
+                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  focusItemId={focusItemId}
+                  onFocusHandled={() => setFocusItemId(null)}
+                  suggestOrderForDay={suggestOrderForDay}
+                  onSuggestHandled={() => setSuggestOrderForDay(null)}
                 />
               )}
 
               {/* F2: the non-days client-channel structures (client:kyoto-cultural neighborhoods,
                   client:kyoto-wedding / client:event venue-timeline). ClientFormatView's quiet
-                  "Day list" toggle re-renders the same PlanCard embedded block above, so the
-                  expert keeps PlanCard's item controls for editing (Structure is the default). */}
+                  "Day list" toggle re-renders the same WorkstationCanvas above, so the expert
+                  keeps the row controls for editing (Structure is the default). */}
               {buildFormat.grouping !== "days" && trip && (
                 <ClientFormatView
                   format={buildFormat}
@@ -4002,19 +3167,23 @@ export default function ExpertWorkspace() {
                   days={days}
                   bestSeason={listing?.bestSeason ?? null}
                   dayListView={
-                    <PlanCard
-                      trip={{
-                        id: tripId!,
-                        destination: trip.destination,
-                        title: trip.trip_title,
-                        startDate: trip.start_date,
-                        endDate: trip.end_date,
-                        numberOfTravelers: (trip as any).number_of_travelers ?? 1,
-                      }}
-                      role="expert"
-                      stage="full"
-                      embedded
-                    />
+                    <WorkstationCanvas
+                      section="days"
+                      tripId={tripId!}
+                      destination={destination}
+                      items={days.flatMap((d) => d.items)}
+                      maxDay={maxDay}
+                      dayCount={buildDayCount}
+                      focusDay={focusDay}
+                      onFocusDay={setFocusDay}
+                      workspaceMode={workspaceCtx?.mode ?? "assignment"}
+                      onDayMoved={triggerEnergyRecalc}
+                      onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                      focusItemId={focusItemId}
+                      onFocusHandled={() => setFocusItemId(null)}
+                      suggestOrderForDay={suggestOrderForDay}
+                      onSuggestHandled={() => setSuggestOrderForDay(null)}
+                />
                   }
                 />
               )}
@@ -4041,25 +3210,6 @@ export default function ExpertWorkspace() {
                 </div>
               )}
 
-              {/* A-2 / C-1b (Workstation audit): day-move + expert-note editor for existing items. */}
-              {tripId && (
-                <ItemsEditorPanel
-                  tripId={tripId}
-                  days={days}
-                  maxDay={maxDay}
-                  destination={destination}
-                  onDayMoved={triggerEnergyRecalc}
-                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
-                  focusItemId={focusItemId}
-                  onFocusHandled={() => setFocusItemId(null)}
-                  onSelectItem={(itemId) => setMapFocusItemId(itemId)}
-                  suggestOrderForDay={suggestOrderForDay}
-                  onSuggestHandled={() => setSuggestOrderForDay(null)}
-                />
-              )}
-
-              {/* L4b (docs/briefs/L4-transport-legs.md): the between-stops transport editor. */}
-              {tripId && <TransportLegsPanel tripId={tripId} days={days} />}
             </>
           )}
         </main>
@@ -4172,10 +3322,18 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {/* Add · Custom — the add-item form, inline; day-aware. */}
+          {/* Add · Custom — R322: the add-item form FOLDED INTO the canvas rows (⋯ → "Add a stop after
+              this", or "+ Add a stop of your own" under a day). It stays here only for a build with
+              no stops yet, where there is no row to start from. */}
           {rightTab === "add" && addSource === "custom" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} destination={destination} workspaceMode={workspaceCtx?.mode ?? "assignment"} onAdded={triggerEnergyRecalc} />
+              {totalItems === 0 ? (
+                <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} destination={destination} workspaceMode={workspaceCtx?.mode ?? "assignment"} onAdded={() => triggerEnergyRecalc()} />
+              ) : (
+                <p data-testid="custom-add-moved" style={{ fontSize: 12.5, color: MID, lineHeight: 1.5 }}>
+                  Add your own stop from the day itself: a stop's ⋯ menu → “Add a stop after this”, or “+ Add a stop of your own” under any day.
+                </p>
+              )}
             </div>
           )}
 
@@ -4691,14 +3849,13 @@ export default function ExpertWorkspace() {
                     } else if (c.cta === "editor") {
                       // Reuses the SAME focusItemId one-shot button-advisor-add-locations uses
                       // above — day-scoped when the check names a day (its first item stands in
-                      // for "this day's row" since ItemsEditorPanel opens/expands by item id,
-                      // not by day), otherwise the plan's first item, otherwise just opens the
-                      // panel via its own toggle (no items to focus at all).
+                      // for "this day's row" since the canvas opens/expands by item id,
+                      // not by day), otherwise the plan's first item; with no items at all there is
+                      // no row to open, so nothing happens (R322 — the old panel toggle is gone).
                       let itemId = c.data?.itemId as string | undefined;
                       if (!itemId && c.dayNumber != null) itemId = days.find(d => d.dayNumber === c.dayNumber)?.items[0]?.id;
                       if (!itemId) itemId = days.flatMap(d => d.items)[0]?.id;
                       if (itemId) setFocusItemId(itemId);
-                      else (document.querySelector('[data-testid="button-toggle-item-editor"]') as HTMLElement | null)?.click();
                     } else if (c.cta === "distribute") {
                       setRightTab("distribute");
                     }
@@ -4818,8 +3975,8 @@ export default function ExpertWorkspace() {
                     )}
                   </div>
                   <button
-                    // Reuses the EXISTING focusItemId one-shot (item 16) — ItemsEditorPanel
-                    // opens/expands/scrolls to this row, where the location field lives.
+                    // Reuses the EXISTING focusItemId one-shot (item 16) — the canvas opens this
+                    // stop's edit panel and scrolls to it, where the location field lives (R322).
                     onClick={() => setFocusItemId(advisorUnlocatedItems[0].id)}
                     data-testid="button-advisor-add-locations"
                     style={{ ...btnPrimaryStyle, padding: "6px 11px", fontSize: 11.5 }}
@@ -4841,7 +3998,7 @@ export default function ExpertWorkspace() {
                   <div data-testid="text-advisor-no-routes" style={{ fontSize: 11.5, color: MID }}>
                     No routes computed yet.{" "}
                     <button
-                      onClick={() => document.querySelector('[data-testid="button-toggle-transport-legs"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                      onClick={() => document.querySelector('[data-testid="button-generate-transport"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
                       data-testid="button-advisor-goto-transport-legs"
                       style={{ background: "none", border: "none", padding: 0, color: BRAND, fontWeight: 700, cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
                     >
@@ -5055,7 +4212,7 @@ export default function ExpertWorkspace() {
               {/* Transport Gaps (QA_PUNCH_LIST item 21) — rules-first checker over the content
                   logistics envelope (item 20). "Propose leg" calls the EXISTING §18 L4
                   leg-proposal engine (POST .../transport-legs/generate, the same action
-                  TransportLegsPanel's "Generate transport" button triggers below on the canvas). */}
+                  canvas's "Generate transport" button triggers — R322). */}
               <div style={{ marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                   <div style={sectionLabelStyle}>Transport Gaps</div>
