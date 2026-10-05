@@ -15,7 +15,6 @@
  * Auth rules (brief §2, hard): the authoring check is isTripAuthor (explicit, present-value
  * comparison). NEVER routed through getTripRole.
  */
-import { readyMadeBuyerTotalCents } from "@shared/ready-made-preview";
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
@@ -1430,9 +1429,9 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
     });
     const paymentIntent = await stripeClient.paymentIntents.create(
       {
-        // §14: server-derived from the listing, price locked at PI creation. Slice B1: through the ONE
-        // `readyMadeBuyerTotalCents`, the same answer every public price line prints ("fees included").
-        amount: readyMadeBuyerTotalCents(listing)!,
+        // §14: server-derived from the listing, price locked at PI creation. Slice B1: every public price
+        // line prints `readyMadeBuyerTotalCents`, which ready-made-preview P4 pins equal to this amount.
+        amount: listing.priceCents,
         currency: "usd",
         metadata: {
           type: "ready_made_purchase",

@@ -8,11 +8,11 @@
  * keeps working and the page answers with its canonical slug. A token that matches no listing — or
  * more than one — is not found (never a guess between two).
  *
- * THE PRICE LINE IS WHAT THE BUYER PAYS. `readyMadeBuyerTotalCents` is the ONE answer to "what does a
- * purchase charge", read by the purchase route AND by every price the preview prints (§18 rule 1), so
- * "fees included" stays true by construction: today the purchase adds no traveler service fee (spec
- * v1.3.5 §15 — no traveler fee on the Ready Made purchase in beta), so the total is the listing price;
- * if that ever changes, it changes here and the printed price moves with the charge.
+ * THE PRICE LINE IS WHAT THE BUYER PAYS. `readyMadeBuyerTotalCents` is the number every price the
+ * preview prints, and it equals what the purchase route charges (`listing.priceCents`): today the
+ * purchase adds no traveler service fee (spec v1.3.5 §15 — none on the Ready Made purchase in beta),
+ * so "fees included" is true. `ready-made-preview.db.test.ts` P4 pins the two together, so a change to
+ * either one fails CI rather than letting the printed price drift from the charge.
  */
 
 export const READY_MADE_SLUG_TOKEN_LENGTH = 10;
