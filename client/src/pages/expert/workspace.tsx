@@ -17,6 +17,7 @@ import { parsePartnerSource } from "@/lib/partner-source";
 import { PlatformContentPickerCore } from "@/components/expert/platform-content-picker";
 import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
+import { isReadinessQueryKey, type ReadinessJump } from "@/lib/readiness-checklist";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
@@ -1981,7 +1982,16 @@ function TransportLegRow({
  *  the last generate response, and per-day gap rows. A day with fewer than two located stops
  *  renders ONE honest line instead of gap rows that could never route (§13); a located pair with
  *  no leg yet renders a neutral "not routed yet" placeholder — never a fabricated leg. */
-function TransportLegsPanel({ tripId, days }: { tripId: string; days: { dayNumber: number; items: ItineraryItem[] }[] }) {
+/** L2-5: a one-shot "show this leg" signal from the readiness checklist — a leg id, or the stop pair a
+ *  missing leg sits between. Same contract as ItemsEditorPanel's `focusItemId`. */
+type TransportLegFocus = { legId: string | null; fromItemId: string | null; toItemId: string | null };
+
+function TransportLegsPanel({ tripId, days, focusLeg, onFocusHandled }: {
+  tripId: string;
+  days: { dayNumber: number; items: ItineraryItem[] }[];
+  focusLeg?: TransportLegFocus | null;
+  onFocusHandled?: () => void;
+}) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
@@ -2008,11 +2018,33 @@ function TransportLegsPanel({ tripId, days }: { tripId: string; days: { dayNumbe
   const proposedCount = tripLegs.filter((l) => l.proposalStatus === "proposed").length;
   const confirmedCount = tripLegs.filter((l) => l.proposalStatus === "confirmed").length;
 
+  // L2-5: open on a checklist jump, then — once the legs have loaded — scroll to the leg row, or to
+  // the gap between the two stops when the leg does not exist yet.
+  useEffect(() => {
+    if (focusLeg) setOpen(true);
+  }, [focusLeg]);
+  useEffect(() => {
+    if (!focusLeg || !open || isLoading) return;
+    const t = setTimeout(() => {
+      const pair = focusLeg.fromItemId && focusLeg.toItemId ? `${focusLeg.fromItemId}-${focusLeg.toItemId}` : null;
+      const el =
+        (focusLeg.legId && document.querySelector(`[data-testid="transport-leg-row-${focusLeg.legId}"]`)) ||
+        (pair && document.querySelector(`[data-testid="transport-gap-pending-${pair}"], [data-testid="transport-gap-coordless-${pair}"]`)) ||
+        document.querySelector('[data-testid="button-toggle-transport-legs"]');
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      onFocusHandled?.();
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusLeg, open, isLoading]);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-legs`] });
     // Confirming/removing a leg can change what a traveler-facing surface renders (only
     // 'confirmed' legs are ever traveler-visible) — keep the embedded PlanCard in sync.
     queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    // L2-5: a leg write can open or close a readiness line.
+    queryClient.invalidateQueries({ predicate: (q) => isReadinessQueryKey(q.queryKey) });
   };
 
   const generateMutation = useMutation({
@@ -2747,6 +2779,7 @@ export default function ExpertWorkspace() {
   // ItemsEditorPanel (the canvas's only per-item, DOM-addressable list) which opens/expands/
   // scrolls to the row, then clears this back to null.
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
+  const [focusLeg, setFocusLeg] = useState<TransportLegFocus | null>(null);
   // WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa" of the above: a one-shot signal in the
   // OPPOSITE direction, from a list row's "Show on map" button to CanvasMapSection, which pans to
   // and selects the matching pin, then clears this back to null.
@@ -4059,7 +4092,7 @@ export default function ExpertWorkspace() {
               )}
 
               {/* L4b (docs/briefs/L4-transport-legs.md): the between-stops transport editor. */}
-              {tripId && <TransportLegsPanel tripId={tripId} days={days} />}
+              {tripId && <TransportLegsPanel tripId={tripId} days={days} focusLeg={focusLeg} onFocusHandled={() => setFocusLeg(null)} />}
             </>
           )}
         </main>
@@ -5454,7 +5487,22 @@ export default function ExpertWorkspace() {
                 </div>
                 {isAuthoring ? (
                   listing ? (
-                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} days={days} />
+                    <ReadyMadeListingPanel
+                      listing={listing}
+                      tripId={tripId!}
+                      days={days}
+                      // L2-5: the checklist's "Show" — a stop or a day opens the item editor (the
+                      // SAME focusItemId one-shot the Advisor uses; a day stands in by its first stop),
+                      // a leg opens the Transport legs panel at that leg or gap.
+                      onJump={(t: NonNullable<ReadinessJump>) => {
+                        if (t.kind === "leg") setFocusLeg({ legId: t.legId, fromItemId: t.fromItemId, toItemId: t.toItemId });
+                        else if (t.kind === "item") setFocusItemId(t.itemId);
+                        else {
+                          const first = days.find((d) => d.dayNumber === t.dayNumber)?.items[0]?.id;
+                          if (first) setFocusItemId(first);
+                        }
+                      }}
+                    />
                   ) : (
                     <div style={{ padding: "12px" }}>
                       <div style={{ fontSize: 12.5, color: MID, lineHeight: 1.55, marginBottom: 10 }}>

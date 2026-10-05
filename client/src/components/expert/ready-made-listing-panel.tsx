@@ -14,13 +14,21 @@
  *  • Approval is not self-service: status is displayed, never edited here (D1a). Changing a
  *    headline claim on an approved listing sends it back for re-review, and we say so out loud.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Check, ImageIcon, Loader2, Search, Send, X } from "lucide-react";
 import { READY_MADE_PLAN_TYPES, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { trackEvent } from "@/lib/analytics";
+import {
+  readinessJumpTarget,
+  readinessQueryKey,
+  submitBlockedByReadiness,
+  type ReadinessJump,
+  type ReadinessLine,
+  type ReadinessResponse,
+} from "@/lib/readiness-checklist";
 
 // Same neutral scale as the workspace right rail this panel is rendered inside
 // (client/src/pages/expert/workspace.tsx) so it doesn't read as a foreign element. The primary
@@ -99,7 +107,7 @@ interface ListingDayGroup {
 }
 
 export default function ReadyMadeListingPanel({
-  listing, tripId, days,
+  listing, tripId, days, onJump,
 }: {
   listing: ReadyMadeListing;
   tripId: string;
@@ -107,6 +115,8 @@ export default function ReadyMadeListingPanel({
    * listing's duration once real items exist (L8: was an independently-editable `durationDays`
    * that drifted from the real itinerary, producing a "phantom" empty day at submit time). */
   days: ListingDayGroup[];
+  /** L2-5: the readiness checklist's jump — the workspace opens the stop, day or leg a line names. */
+  onJump?: (target: NonNullable<ReadinessJump>) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -137,6 +147,18 @@ export default function ReadyMadeListingPanel({
   const { data: earnings, isLoading: earningsLoading } = useQuery<EarningsPreview>({
     queryKey: [`/api/expert/ready-made/${listing.id}/earnings-preview`],
   });
+
+  // L2-5 (R-bi, spec v1.3.5 §1): the server's own checklist — `blocking` IS the publish gate.
+  // Nothing here restates a rule; a line is rendered by its message and jumps by the ids it carries.
+  const { data: readiness, isError: readinessError, refetch: refetchReadiness } = useQuery<ReadinessResponse>({
+    queryKey: readinessQueryKey(listing.id),
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+  // Any item edit changes `days`; refetch so the checklist never shows a fixed line as open.
+  const daysSignature = days.map((d) => `${d.dayNumber}:${(d.items as Array<{ id?: string }>).map((i) => i?.id ?? "").join(",")}`).join("|");
+  useEffect(() => { void refetchReadiness(); }, [daysSignature]); // eslint-disable-line react-hooks/exhaustive-deps
+  const submitBlocked = submitBlockedByReadiness(readiness);
 
   const { data: heroResults, isFetching: heroFetching } = useQuery<{ ready: boolean; reason?: string; results: HeroResult[] }>({
     queryKey: ["/api/expert/ready-made/hero-search", heroSubmitted],
@@ -236,9 +258,13 @@ export default function ReadyMadeListingPanel({
         surface: "expert_ready_made_panel",
       });
       qc.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
+      qc.invalidateQueries({ queryKey: readinessQueryKey(listing.id) });
       toast({ title: "Submitted for review", description: "It goes live in the store once an admin approves it." });
     },
-    onError: (e: Error) => toast({ title: "Not ready to submit", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      qc.invalidateQueries({ queryKey: readinessQueryKey(listing.id) });
+      toast({ title: "Not ready to submit", description: e.message, variant: "destructive" });
+    },
   });
 
   // W2-B: withdraw a submitted/approved/rejected listing from the store. Existing buyers keep
@@ -516,19 +542,19 @@ export default function ReadyMadeListingPanel({
         <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12, marginBottom: 14 }}>
           <span style={label}>{listing.status === "draft" ? "Publish to the store" : "Resubmit"}</span>
           <div style={{ fontSize: 11, color: G[500], lineHeight: 1.5, marginBottom: 8 }}>
-            Needs a plan type, a cover photo, a price, and no empty days. An admin reviews it before it
-            appears in Ready Made Trips.
+            An admin reviews it before it appears in Ready Made Trips.
           </div>
+          <ReadinessChecklist readiness={readiness} failed={readinessError} onJump={onJump} />
           <button
             onClick={() => submit.mutate()}
-            disabled={submit.isPending || dirty}
+            disabled={submit.isPending || dirty || submitBlocked}
             data-testid="button-submit-listing"
-            title={dirty ? "Save your listing details first" : undefined}
+            title={dirty ? "Save your listing details first" : submitBlocked ? "Fix the items under \"Before you can submit\" first" : undefined}
             style={{
               width: "100%", padding: "8px", borderRadius: 8, border: "none", fontSize: 12.5, fontWeight: 700,
-              background: !dirty && !submit.isPending ? "#15803D" : G[200],
-              color: !dirty && !submit.isPending ? "white" : G[400],
-              cursor: !dirty && !submit.isPending ? "pointer" : "not-allowed",
+              background: !dirty && !submit.isPending && !submitBlocked ? "#15803D" : G[200],
+              color: !dirty && !submit.isPending && !submitBlocked ? "white" : G[400],
+              cursor: !dirty && !submit.isPending && !submitBlocked ? "pointer" : "not-allowed",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             }}
           >
@@ -699,6 +725,72 @@ export default function ReadyMadeListingPanel({
               )}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * L2-5: the persistent checklist. Two groups — what stops a submit, and what is worth a look but
+ * never stops one. Lines are the server's words; a line with something to show offers "Show".
+ * A failed read says so and shows no list (§13 — never an empty list presented as "all clear").
+ */
+function ReadinessChecklist({
+  readiness, failed, onJump,
+}: {
+  readiness: ReadinessResponse | undefined;
+  failed: boolean;
+  onJump?: (target: NonNullable<ReadinessJump>) => void;
+}) {
+  if (failed) {
+    return (
+      <div data-testid="readiness-unavailable" style={{ fontSize: 11, color: G[500], marginBottom: 8 }}>
+        Couldn't load the checklist. Submitting still checks everything.
+      </div>
+    );
+  }
+  if (!readiness) {
+    return <div data-testid="readiness-loading" style={{ fontSize: 11, color: G[400], marginBottom: 8 }}>Checking your build…</div>;
+  }
+  const row = (line: ReadinessLine, i: number, tone: "block" | "advise") => {
+    const target = readinessJumpTarget(line);
+    return (
+      <div
+        key={`${line.requirement}-${i}`}
+        data-testid={`readiness-${tone === "block" ? "blocking" : "advisory"}-${line.requirement}`}
+        style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, lineHeight: 1.45, color: tone === "block" ? "#991B1B" : G[600], padding: "3px 0" }}
+      >
+        <span aria-hidden style={{ flexShrink: 0 }}>{tone === "block" ? "•" : "◦"}</span>
+        <span style={{ flex: 1, minWidth: 0 }}>{line.message}</span>
+        {target && onJump && (
+          <button
+            onClick={() => onJump(target)}
+            data-testid={`button-readiness-jump-${line.requirement}`}
+            style={{ flexShrink: 0, background: "none", border: `1px solid ${G[300]}`, borderRadius: 6, padding: "1px 7px", fontSize: 10.5, fontWeight: 600, color: G[700], cursor: "pointer" }}
+          >
+            Show
+          </button>
+        )}
+      </div>
+    );
+  };
+  return (
+    <div data-testid="readiness-checklist" style={{ marginBottom: 10 }}>
+      {readiness.blocking.length > 0 ? (
+        <div data-testid="readiness-blocking" style={{ background: "#FEF2F2", borderRadius: 8, padding: "7px 9px", marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", marginBottom: 2 }}>Before you can submit</div>
+          {readiness.blocking.map((l, i) => row(l, i, "block"))}
+        </div>
+      ) : (
+        <div data-testid="readiness-ready" style={{ fontSize: 11.5, fontWeight: 600, color: "#15803D", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+          <Check style={{ width: 12, height: 12 }} /> Nothing blocks submitting
+        </div>
+      )}
+      {readiness.advisory.length > 0 && (
+        <div data-testid="readiness-advisory" style={{ background: G[50], borderRadius: 8, padding: "7px 9px" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: G[600], marginBottom: 2 }}>Worth a look (doesn't block submitting)</div>
+          {readiness.advisory.map((l, i) => row(l, i, "advise"))}
         </div>
       )}
     </div>
