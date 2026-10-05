@@ -4,12 +4,12 @@
  *
  *   W1  a pending advisor is refused 403 on PATCH and DELETE `/api/trips/:tripId/transport-legs/:legId`
  *       and on the trip-scoped `PATCH /api/transport-legs/:legId/mode`; the leg is unchanged
- *   W2  an accepted advisor and the trip owner may confirm and re-mode
+ *   W2  an accepted advisor's write is FILED as a suggestion (R323); the trip owner confirms and re-modes
  *   W3  the owner may delete
  *   R1  the pending advisor still READS the legs (`GET /api/trips/:tripId/transport-legs?includeProposed=1`)
  *   G1  a pending advisor is refused 403 on `POST /api/trips/:tripId/transport-legs/generate`, which
  *       replaces the plan's proposed legs; the proposed leg survives
- *   G2  the owner and an accepted advisor may generate (200)
+ *   G2  the owner may generate (200); an accepted advisor may not (403, R323)
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test server/__tests__/leg-write-access.db.test.ts
@@ -115,9 +115,14 @@ test("W1: a pending advisor cannot confirm, re-mode or delete a leg", async () =
   assert.deepEqual(await legRow(ids.leg), { proposal_status: "proposed", user_selected_mode: null });
 });
 
-test("W2: an accepted advisor and the owner may confirm and re-mode", async () => {
+test("W2: an accepted advisor's change is FILED as a suggestion (R323); the owner confirms and re-modes", async () => {
+  // R323 (step 7b, R-n): on a traveler's plan an advisor's leg write never lands — it is filed.
   const byAdvisor = await call(ids.accepted, "PATCH", `/api/trips/${ids.trip}/transport-legs/${ids.leg}`, { proposalStatus: "confirmed", userSelectedMode: "walk" });
-  assert.equal(byAdvisor.status, 200, JSON.stringify(byAdvisor.body));
+  assert.equal(byAdvisor.status, 202, JSON.stringify(byAdvisor.body));
+  assert.equal(byAdvisor.body.suggestion.kind, "leg");
+  assert.deepEqual(await legRow(ids.leg), { proposal_status: "proposed", user_selected_mode: null }, "nothing written");
+  const byOwner = await call(ids.owner, "PATCH", `/api/trips/${ids.trip}/transport-legs/${ids.leg}`, { proposalStatus: "confirmed" });
+  assert.equal(byOwner.status, 200, JSON.stringify(byOwner.body));
   const mode = await call(ids.owner, "PATCH", `/api/transport-legs/${ids.leg}/mode`, { selectedMode: "bus" });
   assert.equal(mode.status, 200, JSON.stringify(mode.body));
   assert.deepEqual(await legRow(ids.leg), { proposal_status: "confirmed", user_selected_mode: "bus" });
@@ -141,9 +146,10 @@ test("G1: a pending advisor cannot regenerate the plan's legs", async () => {
   assert.deepEqual(await legRow(ids.leg3), { proposal_status: "proposed", user_selected_mode: null });
 });
 
-test("G2: the owner and an accepted advisor may regenerate the plan's legs", async () => {
+test("G2: the owner may regenerate the plan's legs; an accepted advisor may not (R323 — R300/R310 permanent)", async () => {
   const byOwner = await call(ids.owner, "POST", `/api/trips/${ids.trip}/transport-legs/generate`);
   assert.equal(byOwner.status, 200, JSON.stringify(byOwner.body));
   const byAdvisor = await call(ids.accepted, "POST", `/api/trips/${ids.trip}/transport-legs/generate`);
-  assert.equal(byAdvisor.status, 200, JSON.stringify(byAdvisor.body));
+  assert.equal(byAdvisor.status, 403, JSON.stringify(byAdvisor.body));
+  assert.equal(byAdvisor.body.code, "owner_generates_legs");
 });

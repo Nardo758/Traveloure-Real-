@@ -63,7 +63,8 @@ const RULES = "lib/expert-request-review.ts";
  * act, and a surface absent from it is unchecked, not exonerated (the D13 posture).
  */
 const SURFACES: { file: string; sender: string }[] = [
-  { file: "pages/experience-template.tsx", sender: "sendExpertHelpRequest" },
+  // R323 (step 7b): the template page LEFT this set — its expert surfaces now lead to the slip's
+  // ONE handoff chooser and the page sends no request of its own (pinned by W4 below).
   // Ledger `2026-09-07-concierge-door` (L6): the concierge tier CARDS were retired when
   // `/concierge` became a door into the one plan modal, so the Destination Concierge surface
   // moved from `components/concierge/DeliveryOptions.tsx` (deleted) onto the page itself. The
@@ -194,23 +195,14 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
   });
 
   it("W4 the doors OPEN the review and never call the sender themselves", () => {
-    // The template page's three "Get Expert Help" controls share `openExpertChat`; the concierge
-    // tier button is inline. Either way the trigger's own handler may not be the sender.
+    // R323 (step 7b): the template page's "Get Expert Help" controls share `openExpertChat`, which
+    // resolves the slip and LANDS on it with the one handoff chooser open. The page itself sends no
+    // `/api/expert-requests` and mounts no review sheet any more.
     const template = stripComments(readClient("pages/experience-template.tsx"));
-    assert.ok(
-      /const openExpertChat = \(\) => \{/.test(template),
-      "openExpertChat is the door and is synchronous — an async door is a door that awaits a write",
-    );
-    assert.ok(template.includes("setExpertReviewOpen(true)"), "the door opens the review");
-    for (const at of occurrences(template, "sendExpertHelpRequest")) {
-      // The sender's own declaration line is not a call site; every OTHER mention is.
-      const lineStart = template.lastIndexOf("\n", at) + 1;
-      const lineEnd = template.indexOf("\n", at);
-      const line = template.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
-      if (DECLARATION.test(line)) continue;
-      const fn = enclosingFunction(template, at);
-      assert.notEqual(fn, "openExpertChat", "the door must not call the sender");
-    }
+    assert.ok(/const openExpertChat = async \(\) => \{/.test(template), "openExpertChat is the template's door");
+    assert.ok(template.includes("?handoff=open"), "the door lands on the slip with the chooser open");
+    assert.ok(!template.includes("/api/expert-requests"), "the template page sends no request of its own");
+    assert.ok(!template.includes("<ExpertRequestReviewSheet"), "and mounts no review sheet");
     // The concierge DOOR moved with ledger `2026-09-07-concierge-door`: the tier cards were
     // retired and the tier choice IS the plan modal's finish, so the control that opens the
     // review is the door's own finish handler. Same invariant, one surface along — the handler
@@ -281,12 +273,7 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
     );
   });
 
-  it("W8 the pure module is imported by both the sheet and the free-lead surface", () => {
-    const template = stripComments(readClient("pages/experience-template.tsx"));
-    assert.ok(
-      template.includes("EXPERT_REQUEST_FREE_PRICE"),
-      "the free lead rail names its price from the module, never a typed literal",
-    );
+  it("W8 the pure module exists for the sheet (the template page's free-lead surface is retired, R323)", () => {
     assert.ok(readClient(RULES).length > 0, "the pure module exists");
   });
 });

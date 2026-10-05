@@ -602,7 +602,7 @@ export async function withdrawHandoff(requestId: string, userId: string): Promis
 
   if (stage === "before_accept") {
     const r = await db.execute(sql`
-      UPDATE expert_requests SET status = 'withdrawn', withdrawn_at = NOW(), withdrawal_fee_cents = 0
+      UPDATE expert_requests SET status = 'withdrawn', withdrawn_at = NOW(), withdrawal_fee_cents = ${withdrawalKeptCents(0, null)}
       WHERE id = ${requestId} AND status IN ('authorizing', 'proposed', 'unmatched') RETURNING id
     `);
     if (!r.rows?.length) return { ok: false, status: 409, code: "wrong_status", message: "This handoff changed — refresh." };

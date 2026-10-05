@@ -1339,6 +1339,19 @@ router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (
     const assignment = await storage.getExpertAssignment(assignmentId);
     if (!assignment) return res.status(404).json({ message: "Assignment not found" });
     if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
+    // Step 7b (R323, R-n/R-q): when this pending row is a HANDOFF's proposal, accepting it IS the
+    // handoff's accept — the fee is captured under its claim, and only then does the row reach a
+    // write status. One accept, two doors; this door never bypasses the capture.
+    {
+      const { getTripHandoff, acceptHandoff } = await import("../services/handoff.service");
+      const h = await getTripHandoff(assignment.tripId);
+      if (h && h.status === "proposed" && h.assignedExpertId === userId) {
+        const out = await acceptHandoff(h.id, userId);
+        if (!out.ok) return res.status(out.status).json({ code: out.code, message: out.message });
+        const refreshed = await storage.getExpertAssignment(assignmentId);
+        return res.json(refreshed);
+      }
+    }
     const updated = await storage.acceptTripAssignment(assignmentId, userId);
     if (!updated) return res.status(409).json({ message: "Assignment is not pending (already accepted or rejected)" });
     res.json(updated);
@@ -1382,7 +1395,9 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
       liveHandoffId = await liveHandoffIdFor(assignment.tripId, userId);
       if (liveHandoffId) {
         const { deliverHandoff } = await import("../services/handoff.service");
-        const out = await deliverHandoff(liveHandoffId, userId, { offerOnTripSupport: req.body?.offerOnTripSupport === true });
+        // A yes/no the expert states about their own offer — never an amount or an identity (§14).
+        const offerOnTripSupport = req.body?.offerOnTripSupport === true;
+        const out = await deliverHandoff(liveHandoffId, userId, { offerOnTripSupport });
         if (!out.ok) return res.status(out.status).json({ code: out.code, message: out.message });
       }
     }

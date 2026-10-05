@@ -129,8 +129,8 @@ describe("D-5 — no surface promises milestone, staged, instalment or hourly bi
       // `2026-09-28-landing-reorder`): it is now a one-line strip that names the four steps and
       // links to /pricing, and prices nothing — see M5.
       // AssignExpertDialog.tsx had no importer and was deleted (ledger `2026-09-27-form-fields-admitted`);
-      // HireExpertDialog is the ONE plan-level picker (LD 42 D7) and carries the same rail marker.
-      "components/plancard/HireExpertDialog.tsx",
+      // HireExpertDialog was retired by R323 (step 7b): the slip's one expert door is the handoff
+      // chooser, priced by the server's own quote.
       "pages/travel-experts.tsx",
       "pages/my-events.tsx",
       "pages/expert/workspace.tsx",

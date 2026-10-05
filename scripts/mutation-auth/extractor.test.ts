@@ -210,6 +210,14 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * "other" / public-or-system like its sibling triggers: other 220 → 221, public-or-system 40 → 41 (after
  * #1284 moved one route public-or-system → session-self).
  *
+ * 661 / 652 → 675 / 666 (R323, step 7b — the handoff): fourteen registrations. POST /api/trips/:tripId/handoff
+ * and …/handoff/quote; POST /api/handoffs/:id/{authorized,approve,changes,withdraw,on-trip-support,
+ * on-trip-support/confirm,accept,decline,deliver}; POST /api/trips/:tripId/expert-suggestions/:id/{accept,
+ * decline} and …/accept-all; POST /api/admin/handoffs/:id/assign (behind the blanket /api/admin guard);
+ * POST /internal/jobs/handoff-timers (internal secret). Every handler takes the actor from the session and
+ * answers one 404 for "not yours". admin 168 → 169, user-data 230 → 233, other 223 → 233;
+ * session-self 339 → 350, resource-owner 98 → 99, public-or-system 41 → 42.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -217,8 +225,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 661);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 652);
+  assert.equal(result.mutations.length, 675);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 666);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -228,9 +236,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 652);
-  assert.equal(manifest.rawRegistrationCount, 661);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 652);
+  assert.equal(endpointRows.length, 666);
+  assert.equal(manifest.rawRegistrationCount, 675);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 666);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -241,7 +249,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // user-data, session-self; under the expert role backstop.
   // + POST /internal/jobs/facts-recheck (PR #1283): other, public-or-system — the internal-secret trigger.
   // + POST /internal/jobs/leg-google-coords (R313): other, public-or-system — the internal-secret trigger.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 168, "user-data": 230, other: 223 });
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 169, "user-data": 233, other: 233 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -258,8 +266,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // from the session; + POST /email-preferences/unsubscribe/:token (other, resource-owner) — the token
   // resolves the traveler from their own email_outbox row, one 404 otherwise. 658/649 → 661/652.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 168, "session-self": 339, "resource-owner": 98,
-    signature: 6, "public-or-system": 41, unknown: 0,
+    "admin-role": 169, "session-self": 350, "resource-owner": 99,
+    signature: 6, "public-or-system": 42, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

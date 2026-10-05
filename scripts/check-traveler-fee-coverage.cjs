@@ -15,7 +15,7 @@
  *   recordTravelerServiceFeeLedger | recordLegacyBookingTravelerFeeLedger | recordExpertReviewTravelerFeeLedger
  * or carry an explicit `// traveler-fee-exempt: <reason>` somewhere in the file.
  *
- * STATED NEGATIVE SPACE (ruling 43 / §18d): this gate knows ONLY the four charge-path FILES in the
+ * STATED NEGATIVE SPACE (ruling 43 / §18d): this gate knows ONLY the charge-path FILES in the
  * manifest. It does NOT discover a NEW traveler-charging path (that is the money-guard's job on the
  * req.body side and a human review's job), does NOT verify the fee amount/coverage is CORRECT (only
  * that the wiring is present), and does NOT follow the call through a helper it cannot see textually.
@@ -37,6 +37,8 @@ const MANIFEST = [
   { file: "server/services/booking.service.ts", note: "legacy bookings rail (process-cart)" },
   { file: "server/services/stripe.service.ts", note: "platform transport" },
   { file: "server/routes/booking-actions.ts", note: "expert review service" },
+  // R323 (step 7b): the handoff fee is held at Ask and captured on the expert's accept.
+  { file: "server/services/handoff.service.ts", note: "expert handoff (authorize at Ask, capture on accept)" },
 ];
 
 const RESOLVER = "resolveTravelerServiceFee";

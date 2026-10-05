@@ -30,7 +30,7 @@ export interface ItemSheetProps {
   /** R321 (S11-5): the question panel, drawn under the actions while open (the card records interest here). */
   askLocalPanel?: ReactNode;
   navigateHref?: string | null;
-  /** The row's existing booking action, when a path exists ("Book this for me" lands in step 7). */
+  /** The row's existing booking action, when a path exists ("Book this for me" since step 7b). */
   bookingAction?: ReactNode;
   bookingLine?: string | null;
 }

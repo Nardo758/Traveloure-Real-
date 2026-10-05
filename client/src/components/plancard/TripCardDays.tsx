@@ -27,7 +27,7 @@ import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { factCheckedLabel, itemFactsLine } from "@/lib/place-facts";
-import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine } from "@/lib/trip-card";
+import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine } from "@/lib/trip-card";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { apiRequest } from "@/lib/queryClient";
 import { FEEDBACK_CODES } from "@shared/feedback";
@@ -54,6 +54,8 @@ export interface TripCardDaysProps {
   /** Minutes on legs only when the travel-time service is on (R-h, the slip's own rule). */
   showTravelMinutes: boolean;
   advisorName: string | null;
+  /** R-be (R323): the bought copy's source, from the plancard read; null ⇒ not a copy. */
+  readyMadeSource?: { authorDisplayName: string | null; legsCheckedAt?: string | null } | null;
   isOwner: boolean;
   /** Test seam: "now" (defaults to the clock). Today is read in the plan's zone. */
   now?: Date;
@@ -160,6 +162,12 @@ export function TripCardDays(props: TripCardDaysProps) {
       {provenance ? (
         <p className="text-xs text-muted-foreground" data-testid="card-provenance">
           {provenance}
+        </p>
+      ) : null}
+      {readyMadeSourceLine(props.readyMadeSource) ? (
+        <p className="text-xs text-muted-foreground" data-testid="card-ready-made-source">
+          {readyMadeSourceLine(props.readyMadeSource)}
+          {legsCheckedLine(props.readyMadeSource, timeZone) ? ` · ${legsCheckedLine(props.readyMadeSource, timeZone)}` : ""}
         </p>
       ) : null}
 

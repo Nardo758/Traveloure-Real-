@@ -110,6 +110,8 @@ test("V1: the copy's plancard and Trip Card read carry the provenance", async ()
     authorDisplayName: "Haruka",
     authorHandle: `haruka-${RUN}`,
     lastVerifiedAt: null,
+    // R323: no confirmed, checked leg on the copy ⇒ no stamp (§13).
+    legsCheckedAt: null,
   };
   const slip = await plancardAs(ids.buyer, ids.copy);
   assert.equal(slip.status, 200, JSON.stringify(slip.body));
