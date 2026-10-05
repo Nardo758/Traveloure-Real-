@@ -108,7 +108,7 @@ export async function loadReadyMadeShareInputs(listingId: string): Promise<{ dat
   for (const i of days) if (!chips.some((c) => c.dayNumber === i.dayNumber)) chips.push({ dayNumber: i.dayNumber!, label: i.title });
   const marketSlug = resolveMarketSlug(listing.market ?? "");
   const slug = readyMadeSlug(listing);
-  const meta = (listing.heroImageMeta ?? null) as { photographer?: string } | null;
+  const meta = (listing.heroImageMeta ?? null) as { photographer?: string; profileUrl?: string; unsplashId?: string } | null;
   const heroCredit = heroCreditLine(meta);
   const heroUrl = heroCredit && isAllowedHeroUrl(listing.heroImageUrl) ? listing.heroImageUrl! : null;
   return {

@@ -29,7 +29,7 @@ function sample(over: Record<string, unknown> = {}): any {
     durationDays: 3,
     stopCount: 9,
     confirmedLegCount: 6,
-    priceLine: "From $49 · fees included",
+    priceLine: "From $49 · no fee on this purchase",
     expertName: "Aiko",
     localVerified: true,
     shareUrl: "traveloure.com/t/kyoto-slowly-7d3e2a105b",
@@ -57,7 +57,7 @@ function walk(el: any, texts: string[] = [], imgs: string[] = []): { texts: stri
 describe("I1 the cover", () => {
   it("draws every field from the data object", () => {
     const { texts, imgs } = walk(svc.buildCover(sample()));
-    for (const t of ["Kyoto, Slowly", "by Aiko · Local · verified in Kyoto", "DAY 1", "Fushimi Inari", "DAY 3", "From $49 · fees included", "Get this trip", "traveloure.com/t/kyoto-slowly-7d3e2a105b", "Photo: Ann Lee / Unsplash"]) {
+    for (const t of ["Kyoto, Slowly", "by Aiko · Local · verified in Kyoto", "DAY 1", "Fushimi Inari", "DAY 3", "From $49 · no fee on this purchase", "Get this trip", "traveloure.com/t/kyoto-slowly-7d3e2a105b", "Photo: Ann Lee / Unsplash"]) {
       assert.ok(texts.includes(t), t);
     }
     assert.ok(imgs.includes(PIXEL_PNG), "the real photo");
@@ -86,7 +86,13 @@ describe("I3 never a Google photo", () => {
     for (const ok of ["https://images.unsplash.com/photo-1", "https://upload.wikimedia.org/a.jpg"]) assert.equal(svc.isAllowedHeroUrl(ok), true, ok);
   });
   it("a photo needs its credit", () => {
-    assert.equal(svc.heroCreditLine({ photographer: "Ann Lee" }), "Photo: Ann Lee / Unsplash");
+    // The source is what the metadata names, never a default (a Pexels photo is not credited to Unsplash).
+    assert.equal(svc.heroCreditLine({ photographer: "Ann Lee", unsplashId: "abc" }), "Photo: Ann Lee / Unsplash");
+    assert.equal(svc.heroCreditLine({ photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann" }), "Photo: Ann Lee / Unsplash");
+    assert.equal(svc.heroCreditLine({ photographer: "G N", profileUrl: "https://www.pexels.com/@g-n-403098" }), "Photo: G N / Pexels");
+    assert.equal(svc.heroCreditLine({ photographer: "B M", profileUrl: "https://commons.wikimedia.org/wiki/User:BM" }), "Photo: B M / Wikimedia Commons");
+    assert.equal(svc.heroCreditLine({ photographer: "Ann Lee" }), "Photo: Ann Lee");
+    assert.equal(svc.heroCreditLine({ photographer: "Ann Lee", profileUrl: "https://notunsplash.com.evil/x" }), "Photo: Ann Lee");
     assert.equal(svc.heroCreditLine({ photographer: "  " }), null);
     assert.equal(svc.heroCreditLine(null), null);
   });

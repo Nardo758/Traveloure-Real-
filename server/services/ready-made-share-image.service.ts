@@ -24,6 +24,7 @@ import path from "path";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { FONT_CONFIG, h, type El } from "./share-image.service";
+import { photoSourceName } from "@shared/ready-made-preview";
 
 export const READY_MADE_SHARE_FORMATS = ["cover", "map", "story", "og"] as const;
 export type ReadyMadeShareFormat = (typeof READY_MADE_SHARE_FORMATS)[number];
@@ -93,9 +94,17 @@ export function isAllowedHeroUrl(url: string | null | undefined): boolean {
 }
 
 /** "Photo: Ann Lee / Unsplash"; null when the photographer is unknown (then no photo is used). */
-export function heroCreditLine(meta: { photographer?: string | null } | null | undefined, source = "Unsplash"): string | null {
+/**
+ * The photo credit: the photographer, plus the library the metadata itself names (ONE
+ * `photoSourceName`, shared with the preview page). No photographer ⇒ no credit ⇒ no photo.
+ */
+export function heroCreditLine(
+  meta: { photographer?: string | null; profileUrl?: string | null; unsplashId?: string | null } | null | undefined,
+): string | null {
   const name = meta?.photographer?.trim();
-  return name ? `Photo: ${name} / ${source}` : null;
+  if (!name) return null;
+  const source = photoSourceName(meta);
+  return source ? `Photo: ${name} / ${source}` : `Photo: ${name}`;
 }
 
 function text(content: string, style: Record<string, any>): El {
