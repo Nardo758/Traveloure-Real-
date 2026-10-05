@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Experiences, start a plan (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#226B6B}a:hover{color:#1E3A5F}
+.ph-kyoto{background-image:url(/_blob/f286cda1c9fa6f4e477b93bbc2b4d3c9)}
+.ph-porto{background-image:url(/_blob/8f66e65e509eca93cc9d8117757e5434)}
+.ph-bogota{background-image:url(/_blob/8e90eb03d6688937314d5e874cf0502c)}
+.ph-cartagena{background-image:url(/_blob/bbb698a1f8708a2b4cb639a1d08a4787)}
+.ph-mumbai{background-image:url(/_blob/cb22d172ed645a90876aeca59caa4ac5)}
+.ph-goa{background-image:url(/_blob/8d2e1a0bb3ef92eba2280b3464c3ee00)}
+.ph-jaipur{background-image:url(/_blob/9cc44dd641fc30f39b36ccf842e9c36f)}
+.ph-none{background-color:#1E3A5F}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 3120px; box-sizing: border-box; background: #FAFAF8; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
+
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; min-height: 56px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="font-weight: 700; letter-spacing: 0.14em; font-size: 14px; color: #485960">TRAVELOURE</span>
+      <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 999px; border: 1px solid #FCCACA; background: #FFF4F4; color: #B8403A">BETA</span>
+    </div>
+    <button type="button" aria-label="Open menu" style="width: 44px; height: 44px; border: 0; background: transparent; color: #1F2733; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg>
+    </button>
+  </header>
+
+  <section aria-label="Start a plan" style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; padding: 20px 16px 16px; display: flex; flex-direction: column; gap: 8px">
+    <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #B8403A">EXPERIENCES · START A PLAN</span>
+    <h1 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 32px; line-height: 1.05; color: #1E3A5F">What are you planning?</h1>
+    <p style="margin: 0; font-size: 15px; color: #3C4652">Pick what it is and where. We ask when and who, then your plan opens on the map.</p>
+    <div style="padding-top: 6px">
+      <ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; font-weight: 500">
+          <sc-for list="{{ steps }}" as="sx" hint-placeholder-count="4">
+            <li style="padding: 6px 11px; border-radius: 8px; border: 1px solid {{ sx.border }}; background: {{ sx.bg }}; color: {{ sx.fg }}">{{ sx.label }}</li>
+          </sc-for>
+          <li style="padding: 6px 11px; border-radius: 8px; border: 1px dashed #D5D0C8; color: #1F2733">Your plan opens on the map</li>
+        </ol>
+    </div>
+  </section>
+
+  <main style="padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 16px">
+
+    <section aria-label="What it is" style="background: #FFFFFF; border: 1px solid #E7E4DD; border-radius: 14px; display: flex; flex-direction: column">
+      <span style="padding: 14px 14px 0; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">1 · WHAT IT IS</span>
+      <div style="display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E7E4DD">
+          <label for="occ-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">Search occasions</label>
+          <input id="occ-search" type="search" placeholder="Search occasions, e.g. honeymoon" style="flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 14px">
+        </div>
+        <div style="max-height: 860px; overflow-y: auto">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+          <div style="border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 {{ g.mark }}">
+            <button type="button" onClick="{{ g.toggle }}" aria-expanded="{{ g.open }}" style="width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border: 0; background: transparent; color: #1F2733; font: inherit; text-align: left; cursor: pointer">
+              <span style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.15; color: #1E3A5F">{{ g.title }}</span>
+                <span style="font-size: 13px; color: #3C4652">{{ g.sub }}</span>
+                <sc-if value="{{ g.picked }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #B8403A; padding-top: 2px">{{ g.pickedLine }}</span>
+                </sc-if>
+              </span>
+              <span aria-hidden="true" style="flex: none; display: inline-flex; align-items: center; gap: 10px">
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ g.count }}</span>
+                <span style="width: 28px; height: 28px; box-sizing: border-box; border-radius: 999px; border: 1px solid #D5D0C8; display: flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; color: #1F2733">{{ g.sign }}</span>
+              </span>
+            </button>
+            <sc-if value="{{ g.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                  <sc-for list="{{ g.occs }}" as="oc" hint-placeholder-count="4">
+                    <button type="button" onClick="{{ oc.pick }}" aria-pressed="{{ oc.on }}" style="min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #1E3A5F; background: {{ oc.bg }}; color: {{ oc.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ oc.name }}</button>
+                  </sc-for>
+                </div>
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ g.tools }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        </div>
+        <div style="padding: 6px 14px 10px">
+          <button type="button" onClick="{{ allToggle }}" style="min-height: 44px; padding: 0; border: 0; background: transparent; color: #226B6B; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ allLabel }}</button>
+        </div>
+    </section>
+
+    <section aria-label="Where" style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">2 · WHERE</span>
+        <span style="font-size: 14px; color: #3C4652">{{ whereLine }}</span>
+      </div>
+      <div style="position: relative; aspect-ratio: 1100 / 480; border: 1px solid #E7E4DD; border-radius: 14px; overflow: hidden; background: #EAF0F1">
+          <img src="/_blob/a2bef454fde66617ca4f820b82940347" alt="World map with the eight cities marked" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+          <sc-for list="{{ cities }}" as="cp" hint-placeholder-count="8">
+            <span aria-hidden="true" style="position: absolute; left: {{ cp.x }}; top: {{ cp.y }}; transform: translate(-50%, -50%); width: {{ cp.size }}; height: {{ cp.size }}; box-sizing: border-box; border-radius: 999px; border: 3px solid #FFFFFF; background: {{ cp.dot }}; box-shadow: 0 1px 5px rgba(13, 33, 55, 0.45); z-index: {{ cp.z }}"></span>
+          </sc-for>
+          <sc-for list="{{ cities }}" as="cl" hint-placeholder-count="8">
+          <sc-if value="{{ cl.sel }}" hint-placeholder-val="{{ false }}">
+            <span aria-hidden="true" style="position: absolute; left: {{ cl.x }}; top: {{ cl.y }}; transform: {{ cl.labelTf }}; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; color: {{ cl.labelFg }}; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF, 0 0 3px #FFFFFF; white-space: nowrap; pointer-events: none; z-index: 5">{{ cl.label }}</span>
+          </sc-if>
+          </sc-for>
+        </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px">
+          <sc-for list="{{ cities }}" as="c" hint-placeholder-count="8">
+            <button type="button" onClick="{{ c.pick }}" aria-pressed="{{ c.sel }}" style="min-width: 0; padding: 0; border: 1px solid {{ c.cardBorder }}; box-shadow: {{ c.cardShadow }}; border-radius: 12px; overflow: hidden; background: #FFFFFF; color: #1F2733; font: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column">
+              <span class="{{ c.ph }}" style="display: flex; align-items: flex-end; height: 92px; background-color: #1E3A5F; background-size: cover; background-position: center">
+                <sc-if value="{{ c.noPhoto }}" hint-placeholder-val="{{ false }}">
+                  <span style="padding: 10px 12px; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; color: #FFFFFF">{{ c.name }}</span>
+                </sc-if>
+              </span>
+              <span style="padding: 10px 12px; min-height: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 1px">
+                <span style="font-size: 15px; font-weight: 600; color: #1E3A5F">{{ c.name }}</span>
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ c.meta }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; color: #6A7480">Photos: Alec Doualetas, Yuri Félix, Daniel Sarmiento, Yaroslav Shuraev, Nguyen Hung, Lucksborn Sangma, Yan Krukau · Pexels. No photo yet for Edinburgh. Map: Natural Earth.</span>
+    </section>
+
+    <section aria-label="Continue" style="padding: 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E7E4DD; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; color: #3C4652">{{ nextNote }}</span>
+      <div style="display: flex">
+        <sc-if value="{{ ready }}" hint-placeholder-val="{{ false }}">
+          <a href="PlanModalWhenMobile.dc.html" style="flex: 1; justify-content: center; display: inline-flex; align-items: center; min-height: 46px; padding: 0 20px; border-radius: 8px; background: #C8443D; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none">Next: dates and travelers</a>
+        </sc-if>
+        <sc-if value="{{ notReady }}" hint-placeholder-val="{{ true }}">
+          <span aria-disabled="true" style="flex: 1; justify-content: center; display: inline-flex; align-items: center; min-height: 46px; box-sizing: border-box; padding: 0 20px; border-radius: 8px; border: 1px solid #E7E4DD; background: #F6F5F1; color: #6A7480; font-size: 14px; font-weight: 600">Next: dates and travelers</span>
+        </sc-if>
+      </div>
+    </section>
+
+    <section aria-label="Plan around a show or festival" style="background: #0D2137; color: #FFFFFF; border-radius: 16px; padding: 18px 0 16px; display: flex; flex-direction: column; gap: 14px">
+      <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #F9B8B4">SHOW / FESTIVAL</span>
+        <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 25px; line-height: 1.1; color: #FFFFFF; text-wrap: balance">Going for a show? Start from the ticket.</h2>
+        <p style="margin: 0; font-size: 14px; color: #D6DEE8">Pick the event and the plan is built around that night.</p>
+      </div>
+
+      <div style="display: flex; gap: 12px; overflow-x: auto; padding: 0 16px">
+        <article style="position: relative; flex: none; width: 250px; min-height: 250px; border-radius: 12px; overflow: hidden; background: #1E3A5F; display: flex; flex-direction: column; justify-content: flex-end">
+          <img src="/_blob/8e90eb03d6688937314d5e874cf0502c" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(13, 33, 55, 0.10) 0%, rgba(13, 33, 55, 0.35) 45%, rgba(13, 33, 55, 0.92) 100%)"></div>
+          <span style="position: absolute; top: 10px; left: 10px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 9px; border-radius: 999px; background: #FFFFFF; color: #1E3A5F">10 – 12 OCT · IN 5 DAYS</span>
+          <div style="position: relative; display: flex; flex-direction: column; gap: 4px; padding: 14px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.1em; color: #FFFFFF">BOGOTÁ · PARQUE SIMÓN BOLÍVAR</span>
+            <h3 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.15; color: #FFFFFF">Rock al Parque 2026</h3>
+            <a href="#" style="align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; background: #FFFFFF; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Plan around it</a>
+          </div>
+        </article>
+        <article style="position: relative; flex: none; width: 250px; min-height: 250px; border-radius: 12px; overflow: hidden; background: #1E3A5F; display: flex; flex-direction: column; justify-content: flex-end">
+          <img src="/_blob/b2302978ba7adf3bdd2ae41c353dbf3d" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(13, 33, 55, 0.10) 0%, rgba(13, 33, 55, 0.35) 45%, rgba(13, 33, 55, 0.92) 100%)"></div>
+          <span style="position: absolute; top: 10px; left: 10px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 9px; border-radius: 999px; background: #FFFFFF; color: #1E3A5F">17 OCT · IN 12 DAYS</span>
+          <div style="position: relative; display: flex; flex-direction: column; gap: 4px; padding: 14px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.1em; color: #FFFFFF">EDINBURGH · USHER HALL</span>
+            <h3 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.15; color: #FFFFFF">Starsailor</h3>
+            <a href="#" style="align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; background: #FFFFFF; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Plan around it</a>
+          </div>
+        </article>
+        <article style="position: relative; flex: none; width: 250px; min-height: 250px; border-radius: 12px; overflow: hidden; background: #1E3A5F; display: flex; flex-direction: column; justify-content: flex-end">
+          <img src="/_blob/cb22d172ed645a90876aeca59caa4ac5" alt="" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(13, 33, 55, 0.10) 0%, rgba(13, 33, 55, 0.35) 45%, rgba(13, 33, 55, 0.92) 100%)"></div>
+          <span style="position: absolute; top: 10px; left: 10px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 9px; border-radius: 999px; background: #FFFFFF; color: #1E3A5F">24 OCT · IN 19 DAYS</span>
+          <div style="position: relative; display: flex; flex-direction: column; gap: 4px; padding: 14px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.1em; color: #FFFFFF">MUMBAI · NMACC</span>
+            <h3 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.15; color: #FFFFFF">Max Richter Live</h3>
+            <a href="#" style="align-self: flex-start; margin-top: 6px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; background: #FFFFFF; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Plan around it</a>
+          </div>
+        </article>
+      </div>
+
+      <div style="padding: 0 16px; display: flex; flex-direction: column; gap: 8px">
+        <a href="Mobile.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #FFFFFF; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none">
+          <span>All events</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+        </a>
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; color: #B9C4D2">City photos, not photos of the event.</span>
+      </div>
+    </section>
+
+    <section aria-label="Other ways to start" style="display: flex; flex-direction: column; font-size: 14px; color: #3C4652">
+      <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px">Already have a plan? <a href="ExperienceMapMobile.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; text-decoration: none">Open it on the map</a></span>
+      <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px">Would rather hand it over? <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; text-decoration: none">Find a local expert</a></span>
+      <span style="display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px">Want a finished plan? <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; text-decoration: none">Browse Ready-Made Trips</a></span>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":3120}}'>
+class Component extends DCLogic {
+  groupData() {
+    return [
+      { k: 'trip', title: 'A trip', sub: 'Built around where you stay.',
+        tools: 'Getting there · Where to stay · Travel party · Getting around · Pace',
+        occ: ['Travel', 'Honeymoon', 'Anniversary Trip', 'Romantic Getaways', 'Golf trip', 'Sports Event'] },
+      { k: 'evening', title: 'One evening', sub: 'Built around one reservation.',
+        tools: 'The reservation · Timing check · Getting home',
+        occ: ['Date Night', 'Proposal', 'Show / Festival'] },
+      { k: 'celebration', title: 'A celebration', sub: 'Built around the place it happens.',
+        tools: 'The venue · Guests · Vendors · Budget',
+        occ: ['Birthday', 'Milestone Birthday', 'Wedding Anniversary', 'Engagement Party', 'Baby Shower', 'Graduation Party', 'Retirement Party', 'Holiday Party', 'Housewarming Party', 'Farewell Party', 'Career Achievement Party', 'Corporate Events'] },
+      { k: 'hosted', title: 'A hosted event', sub: 'Built around the venue.',
+        tools: 'Run of show · Guest invites · Vendor contracts · Arrivals & split groups',
+        occ: ['Wedding', 'Reunions', 'Corporate Retreats'] },
+      { k: 'group', title: 'A group getaway', sub: 'Built around where everyone stays.',
+        tools: "Getting there · Shared lodging · Who's coming · Split activities · Who pays what",
+        occ: ['Bachelor/Bachelorette Party', 'Girls Trip', 'Boys Trip', 'Retreats', 'Family Occasion'] }
+    ];
+  }
+
+  cityData() {
+    /* x / y are percentages on the 1100 x 480 world map, taken from the same projection that drew it. */
+    return [
+      { name: 'Kyoto', country: 'Japan', ph: 'ph-kyoto', x: 91.1, y: 46.9, side: 'l' },
+      { name: 'Edinburgh', country: 'United Kingdom', ph: 'ph-none', x: 40.0, y: 21.3, side: 'r' },
+      { name: 'Porto', country: 'Portugal', ph: 'ph-porto', x: 38.0, y: 40.3, side: 'l' },
+      { name: 'Bogotá', country: 'Colombia', ph: 'ph-bogota', x: 13.9, y: 74.5, side: 'r' },
+      { name: 'Cartagena', country: 'Colombia', ph: 'ph-cartagena', x: 13.4, y: 69.6, side: 'r' },
+      { name: 'Mumbai', country: 'India', ph: 'ph-mumbai', x: 68.0, y: 62.1, side: 'l' },
+      { name: 'Goa', country: 'India', ph: 'ph-goa', x: 68.3, y: 65.2, side: 'r' },
+      { name: 'Jaipur', country: 'India', ph: 'ph-jaipur', x: 69.0, y: 54.9, side: 'r' }
+    ];
+  }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var grp = st.grp || '';
+    var occ = st.occ || '';
+    var all = !!st.all;
+    var city = st.city || '';
+
+    var NAVY = '#1E3A5F';
+    var TEALINK = '#226B6B';
+    var CORAL = '#E85D55';
+    var data = this.groupData();
+    var total = 0;
+    data.forEach(function (g) { total += g.occ.length; });
+
+    var groups = data.map(function (g) {
+      var open = all || grp === g.k;
+      var holds = g.occ.indexOf(occ) !== -1;
+      return {
+        title: g.title,
+        sub: g.sub,
+        count: '' + g.occ.length,
+        open: open,
+        sign: open ? '–' : '+',
+        picked: holds,
+        pickedLine: holds ? 'PICKED · ' + occ.toUpperCase() : '',
+        mark: holds ? CORAL : 'transparent',
+        tools: 'ON YOUR PLAN · ' + g.tools,
+        toggle: function () { self.setState({ grp: (!all && grp === g.k) ? '' : g.k, all: false }); },
+        occs: g.occ.map(function (n) {
+          var on = n === occ;
+          return {
+            name: n, on: on,
+            bg: on ? NAVY : '#FFFFFF',
+            fg: on ? '#FFFFFF' : NAVY,
+            pick: function () { self.setState({ occ: on ? '' : n, grp: all ? grp : g.k }); }
+          };
+        })
+      };
+    });
+
+    var cityObj = null;
+    var cities = this.cityData().map(function (c) {
+      var sel = c.name === city;
+      if (sel) { cityObj = c; }
+      return {
+        name: c.name,
+        meta: c.country.toUpperCase() + (sel ? ' · PICKED' : ''),
+        ph: c.ph,
+        noPhoto: c.ph === 'ph-none',
+        sel: sel,
+        x: c.x + '%',
+        y: c.y + '%',
+        size: sel ? '22px' : '14px',
+        dot: sel ? CORAL : NAVY,
+        z: sel ? 6 : 4,
+        aria: c.name + ', ' + c.country,
+        label: c.name.toUpperCase(),
+        labelTf: c.side === 'l' ? 'translate(-100%, -50%) translateX(-13px)' : 'translate(13px, -50%)',
+        labelFg: sel ? '#B8403A' : '#1F2733',
+        cardBorder: sel ? CORAL : '#E7E4DD',
+        cardShadow: sel ? '0 0 0 2px #E85D55' : 'none',
+        pick: function () { self.setState({ city: sel ? '' : c.name }); }
+      };
+    });
+
+    var hasOcc = occ !== '';
+    var hasCity = city !== '';
+    var ready = hasOcc && hasCity;
+
+    /* Step strip: a step is done once answered; the first unanswered one is current. */
+    var current = !hasOcc ? 1 : (!hasCity ? 2 : 3);
+    var steps = [[1, 'What', hasOcc], [2, 'Where', hasCity], [3, 'When', false], [4, 'Who', false]].map(function (s) {
+      var done = s[2];
+      var cur = !done && s[0] === current;
+      return {
+        label: (done ? '✓ ' : s[0] + ' · ') + s[1],
+        bg: cur ? NAVY : '#FFFFFF',
+        fg: cur ? '#FFFFFF' : (done ? TEALINK : '#1F2733'),
+        border: cur ? NAVY : (done ? TEALINK : '#E7E4DD')
+      };
+    });
+
+    return {
+      groups: groups,
+      allLabel: all ? 'Show the five groups only' : 'See all ' + total + ' occasions',
+      allToggle: function () { self.setState({ all: !all }); },
+
+      cities: cities,
+      whereLine: cityObj ? cityObj.name + ', ' + cityObj.country : 'Eight cities to start. Pick one on the map or from the cards.',
+
+      steps: steps,
+      ready: ready,
+      notReady: !ready,
+      nextNote: ready
+        ? occ + ' · ' + city
+        : (!hasOcc && !hasCity ? 'Pick what it is and where to continue.' : (!hasOcc ? city + ' picked. Now pick what it is.' : occ + ' picked. Now pick where.')),
+
+      hasOcc: hasOcc,
+      noOcc: !hasOcc,
+      modalNote: hasOcc ? occ : 'Pick an occasion to continue.'
+    };
+  }
+}
+</script>
+</body>
+</html>
