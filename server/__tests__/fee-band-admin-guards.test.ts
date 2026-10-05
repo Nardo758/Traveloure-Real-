@@ -259,6 +259,62 @@ test("D6b — the admin page hard-filters no rate_type out of the list (V-6)", (
   assert.match(page, /deactivation\.consequence/, "V-5: the page must show the SERVER's consequence");
 });
 
+// ── D8 — a new band ships with its Fees-screen control (decision-maker, Oct 5, 2026) ──────
+// "Every fee editable in admin, no deploy; a band the screen can't see fails it." The screen
+// lists EVERY fee_bands row (D6b) with edit, confirm and the audit log; what a band can still lack
+// is its line in the resolver manifest, without which the screen says "not declared" and claims
+// nothing about what turning it off does. From migration 354 on, a migration that seeds a band
+// must declare it in the SAME PR. Earlier seeds are the D4b baseline and are not retro-required.
+const D8_FROM_MIGRATION = 354;
+
+function migrationSeededBandKeys(minNumber: number): Array<{ file: string; bandKey: string }> {
+  const dir = path.join(ROOT, "server/migrations");
+  const out: Array<{ file: string; bandKey: string }> = [];
+  for (const file of fs.readdirSync(dir)) {
+    const m = file.match(/^(\d+)[a-z]?_.*\.sql$/);
+    if (!m || Number(m[1]) < minNumber) continue;
+    const sql = stripComments(fs.readFileSync(path.join(dir, file), "utf8"));
+    const insert = sql.match(/INSERT\s+INTO\s+fee_bands[\s\S]*?;/gi) ?? [];
+    for (const stmt of insert) {
+      const values = stmt.slice(stmt.search(/VALUES/i));
+      for (const row of values.matchAll(/\(\s*'([^']+)'/g)) out.push({ file, bandKey: row[1] });
+    }
+  }
+  return out;
+}
+
+test("D8 — every band a migration seeds (from 354 on) is declared in the manifest the Fees screen reads", () => {
+  const seeded = migrationSeededBandKeys(D8_FROM_MIGRATION);
+  assert.ok(
+    seeded.some((r) => r.bandKey === "handoff_withdrawal_accepted"),
+    "the extractor must see migration 354's seeds — otherwise this pin has stopped looking",
+  );
+  for (const { file, bandKey } of seeded) {
+    assert.ok(
+      feeBandRequirement(bandKey),
+      `${file} seeds fee band '${bandKey}', but RESOLVER_FEE_BAND_REQUIREMENTS does not declare it — ` +
+        `the Fees screen would show it as "not declared" and say nothing about turning it off. ` +
+        `Declare it (and its fallback) in server/services/fee-band-requirements.ts in the same PR.`,
+    );
+  }
+});
+
+test("D8b — the handoff bands (R324): what the Fees screen says about each", () => {
+  for (const k of ["handoff_withdrawal_accepted", "handoff_withdrawal_delivered"]) {
+    const ruling = feeBandDeactivationRuling(k);
+    assert.equal(ruling.allowed, true);
+    assert.equal(declaredFallbackValue(k), 0, "turned off ⇒ a withdrawal keeps nothing (traveler-safe)");
+  }
+  assert.equal(feeBandDeactivationRuling("on_trip_support").allowed, false, "no price to fall back to");
+  // The service reads the declared fallback rather than restating it (§8).
+  assert.match(readStripped("server/services/handoff.service.ts"), /declaredFallbackValue\(bandKey\)/);
+  // The shared names the client and service use are the manifest's names.
+  const shared = readStripped("shared/handoff.ts");
+  for (const k of ["handoff_withdrawal_accepted", "handoff_withdrawal_delivered", "on_trip_support"]) {
+    assert.ok(shared.includes(`"${k}"`), `shared/handoff.ts names ${k}`);
+  }
+});
+
 // ── V-4 — the cap ─────────────────────────────────────────────────────────────────────────
 
 test("V-4 — max_amount round-trips: selected by the read, accepted by the patch, and never confused with max_rate", () => {

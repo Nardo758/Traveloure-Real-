@@ -584,8 +584,10 @@ async function bandShare(bandKey: string): Promise<number | null> {
   const { getBand } = await import("./commission");
   const band = await getBand(bandKey);
   if (!band || band.rateType !== "percent" || !(band.rate > 0)) {
-    if (!band) console.warn(`[handoff] withdrawal band ${bandKey} is missing — keeping nothing (§13)`);
-    return null;
+    // The manifest's documented fallback (§8: read, never restated) — keep nothing, refund all.
+    const { declaredFallbackValue } = await import("./fee-band-requirements");
+    if (!band) console.warn(`[handoff] withdrawal band ${bandKey} is missing — using its declared fallback (§13)`);
+    return declaredFallbackValue(bandKey);
   }
   return band.rate;
 }
