@@ -263,6 +263,13 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
       "coord-fee-${coordinationId}",
       "coord-refund-${coordinationId}",
       "expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}",
+      // R324 (step 7b, ledger `2026-10-05-step7b-handoff`): NEW keys, none moved. The handoff's hold
+      // is keyed on its own expert_requests row (one ask, one PaymentIntent); on-trip support likewise;
+      // the withdrawal refund is keyed on the row so a retried withdrawal refunds once. The capture,
+      // cancel and release keys are passed positionally and do not appear in this extraction.
+      "handoff-auth-${id}",
+      "handoff-ots-auth-${requestId}",
+      "handoff-withdraw-refund-${row.id}",
       // NOT a Stripe key (#1274): the Resend idempotency key for one itinerary follow-up send, keyed on
       // its email_outbox row so a retried send is one email.
       "itinerary-followup-${outboxId}",
