@@ -29,6 +29,7 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
+import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
 import { runPaymentSchedule } from "../automations/payments/runtime";
 import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
@@ -201,6 +202,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // ISO week, and every other day answers `already_drafted` without a model call. Still a real pass.
   { job: "travelpulse-weekly", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   { job: "facts-recheck", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // R313: refresh-or-clear Google coordinates on legs — daily, so none outlives the 30-day ceiling.
+  { job: "leg-google-coords", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -392,6 +395,14 @@ router.post("/internal/jobs/travelpulse-weekly", requireInternalSecret, async (_
 // stamp a success heartbeat. Per-plan failures remain counts, per the job contract.
 router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("facts-recheck", () => runFactsRecheck(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
+// R313 (ledger `2026-10-04-leg-google-coords-refresh`): refresh a leg's Google coordinate from the
+// stay's live point, or delete the leg past the max age. Per-plan failures are counts; only a failed
+// candidate scan is an error, which never stamps a success heartbeat.
+router.post("/internal/jobs/leg-google-coords", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("leg-google-coords", () => runLegGoogleCoordsRefresh(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 

@@ -36,6 +36,7 @@ const JOB_ROUTES = [
   "/internal/jobs/travel-matrix-refresh",
   "/internal/jobs/travelpulse-weekly",
   "/internal/jobs/facts-recheck",
+  "/internal/jobs/leg-google-coords",
 ];
 
 async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {
