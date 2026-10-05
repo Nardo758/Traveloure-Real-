@@ -14,7 +14,7 @@ body{margin:0}
 a{color:#226B6B}a:hover{color:#1E3A5F}
 </style>
 </helmet>
-<div style="width: 390px; min-height: 3540px; box-sizing: border-box; background: #FAFAF8; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
+<div style="width: 390px; min-height: 3680px; box-sizing: border-box; background: #FAFAF8; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
 
   <header style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; min-height: 56px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
     <div style="display: flex; align-items: center; gap: 8px">
@@ -98,9 +98,6 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
           <span aria-hidden="true" style="position: absolute; left: {{ sg.x }}; top: {{ sg.y }}; width: {{ sg.w }}; height: 0; border-top: 2px dashed #1E3A5F; transform-origin: 0 0; transform: {{ sg.tf }}; z-index: 6"></span>
         </sc-for>
 
-        <sc-for list="{{ rings }}" as="rg" hint-placeholder-count="0">
-          <button type="button" onClick="{{ rg.pick }}" aria-label="{{ rg.aria }}" style="position: absolute; left: {{ rg.x }}; top: {{ rg.y }}; transform: translate(-50%, -50%); width: 60px; height: 60px; box-sizing: border-box; border-radius: 999px; border: 2px dashed {{ rg.border }}; background: {{ rg.bg }}; color: #1E3A5F; display: flex; align-items: flex-start; justify-content: center; padding: 3px 0 0; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 600; cursor: pointer; z-index: {{ rg.z }}">{{ rg.label }}</button>
-        </sc-for>
 
         <sc-for list="{{ pins }}" as="p" hint-placeholder-count="6">
           <button type="button" onClick="{{ p.pick }}" aria-label="{{ p.aria }}" style="position: absolute; left: {{ p.x }}; top: {{ p.y }}; transform: translate(-50%, -50%); width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: {{ p.z }}">
@@ -144,7 +141,7 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
                 <span style="font-size: 12.5px; font-weight: {{ sel.petWeight }}; color: {{ sel.petFg }}; text-wrap: pretty">{{ sel.petLine }}</span>
               </sc-if>
               <sc-if value="{{ sel.areaOnly }}" hint-placeholder-val="{{ false }}">
-          <span style="font-size: 12.5px; color: #6A7480">Shown by area. No exact point has been set, so there is no pin.</span>
+          <span style="font-size: 12.5px; color: #6A7480">Not on the map yet. No exact location is on record.</span>
         </sc-if>
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding-top: 4px">
           <button type="button" onClick="{{ sel.toggle }}" style="min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid {{ sel.btnBorder }}; background: {{ sel.btnBg }}; color: {{ sel.btnFg }}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">{{ sel.btnLabel }}</button>
@@ -190,7 +187,10 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
           <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px">
             <button type="button" onClick="{{ it.pick }}" aria-pressed="{{ it.sel }}" style="align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer">{{ it.name }}</button>
             <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ it.meta }}</span>
-            <sc-if value="{{ it.showPet }}" hint-placeholder-val="{{ true }}">
+            <sc-if value="{{ it.areaOnly }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 12.5px; color: #6A7480">Not on the map yet. No exact location is on record.</span>
+              </sc-if>
+              <sc-if value="{{ it.showPet }}" hint-placeholder-val="{{ true }}">
                 <span style="font-size: 12.5px; font-weight: {{ it.petWeight }}; color: {{ it.petFg }}; text-wrap: pretty">{{ it.petLine }}</span>
               </sc-if>
               <sc-if value="{{ it.hasWhy }}" hint-placeholder-val="{{ true }}">
@@ -204,7 +204,10 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
         </article>
       </sc-for>
 
-      <sc-if value="{{ showPetEmpty }}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{ showOffMap }}" hint-placeholder-val="{{ false }}">
+          <span style="display: block; padding: 12px 14px; font-size: 12.5px; color: #6A7480">{{ offMapText }}</span>
+        </sc-if>
+        <sc-if value="{{ showPetEmpty }}" hint-placeholder-val="{{ false }}">
           <div style="margin: 14px; padding: 16px; border: 1px dashed #D5D0C8; border-radius: 12px; font-size: 13.5px; color: #3C4652">Nothing here has a pet policy on record yet. That is not a no. Ask a local, or show everything.</div>
         </sc-if>
         <sc-if value="{{ showPetHidden }}" hint-placeholder-val="{{ false }}">
@@ -252,7 +255,7 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
                   <button type="button" onClick="{{ sp.pick }}" aria-pressed="{{ sp.sel }}" style="align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer">{{ sp.name }}</button>
                   <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ sp.meta }}</span>
                   <sc-if value="{{ sp.areaOnly }}" hint-placeholder-val="{{ false }}">
-                    <span style="font-size: 12.5px; color: #6A7480">Shown by area, so it is not on the line.</span>
+                    <span style="font-size: 12.5px; color: #6A7480">Not on the map yet.</span>
                   </sc-if>
                 </div>
                 <button type="button" onClick="{{ sp.toggle }}" style="flex: none; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Remove</button>
@@ -264,24 +267,6 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
             </div>
           </sc-for>
 
-          <sc-if value="{{ hasLoose }}" hint-placeholder-val="{{ false }}">
-            <div style="display: flex; flex-direction: column">
-              <span style="padding: 10px 14px 8px; background: #FAFAF8; border-bottom: 1px solid #E7E4DD; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #1F2733">NO DAY YET</span>
-              <sc-for list="{{ loose }}" as="lp" hint-placeholder-count="0">
-              <article style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 {{ lp.mark }}; background: {{ lp.bg }}">
-                <span aria-hidden="true" style="flex: none; width: 30px; height: 30px; box-sizing: border-box; border-radius: 999px; border: 2px {{ lp.badgeLine }} {{ lp.badgeBorder }}; background: {{ lp.badgeBg }}; color: {{ lp.badgeFg }}; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600">{{ lp.num }}</span>
-                <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px">
-                  <button type="button" onClick="{{ lp.pick }}" aria-pressed="{{ lp.sel }}" style="align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer">{{ lp.name }}</button>
-                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ lp.meta }}</span>
-                  <sc-if value="{{ lp.areaOnly }}" hint-placeholder-val="{{ false }}">
-                    <span style="font-size: 12.5px; color: #6A7480">Shown by area, so it is not on the line.</span>
-                  </sc-if>
-                </div>
-                <button type="button" onClick="{{ lp.toggle }}" style="flex: none; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Remove</button>
-              </article>
-              </sc-for>
-            </div>
-          </sc-if>
 
           <sc-if value="{{ planFilled }}" hint-placeholder-val="{{ false }}">
             <div style="padding: 16px 14px; display: flex; flex-direction: column; gap: 14px">
@@ -323,7 +308,7 @@ a{color:#226B6B}a:hover{color:#1E3A5F}
   </main>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":3540}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":3680}}'>
 class Component extends DCLogic {
   placeData() {
     return {
@@ -368,7 +353,8 @@ class Component extends DCLogic {
     var st = this.state || {};
     var tab = st.tab || 'activities';
     var layer = st.layer || 'browse';
-    var added = st.added || {};
+    /* The plan is an ordered list of { id, day }. Every item has a day: there is no day-less item. */
+    var plan = st.plan || [];
     var selId = st.sel === undefined ? 'a1' : st.sel;
     var member = st.member === undefined ? true : !!st.member;
     var drafted = !!st.drafted;
@@ -396,45 +382,35 @@ class Component extends DCLogic {
     var filtering = hasPet && petOnly;
     var shown = filtering ? petYes : list;
 
-    /* The plan, in order: drafted days first, then anything added by hand with no day yet. */
+    var dayOf = {};
+    plan.forEach(function (p) { dayOf[p.id] = p.day; });
+    /* An add from Browse goes to the day being shown; with all days shown it goes to day 1 and says so. */
+    var addDay = day || 1;
     var planDays = DRAFT.map(function (d) {
-      var stops = drafted
-        ? d.ids.filter(function (id) { return !!added[id]; }).map(function (id) { return byId[id]; })
-        : [];
-      return { n: d.n, label: d.label, stops: stops };
+      return { n: d.n, label: d.label, stops: plan.filter(function (p) { return p.day === d.n; }).map(function (p) { return byId[p.id]; }) };
     });
-    var inDay = {};
-    planDays.forEach(function (d) { d.stops.forEach(function (o) { inDay[o.id] = d.n; }); });
-    var looseList = everything.filter(function (o) { return !!added[o.id] && !inDay[o.id]; });
     var order = [];
     planDays.forEach(function (d) { d.stops.forEach(function (o) { order.push(o); }); });
-    looseList.forEach(function (o) { order.push(o); });
     var numOf = {};
     order.forEach(function (o, i) { numOf[o.id] = i + 1; });
     var planCount = order.length;
     var planEmpty = planCount === 0;
 
-    function copyAdded() {
-      var nx = {};
-      Object.keys(added).forEach(function (k) { nx[k] = true; });
-      return nx;
-    }
     function draftState() {
-      var nx = {};
-      DRAFT.forEach(function (d) { d.ids.forEach(function (id) { nx[id] = true; }); });
-      return { added: nx, drafted: true, layer: 'plan', day: 0, sel: DRAFT[0].ids[0], gate: '', member: true };
+      var nx = [];
+      DRAFT.forEach(function (d) { d.ids.forEach(function (id) { nx.push({ id: id, day: d.n }); }); });
+      return { plan: nx, drafted: true, layer: 'plan', day: 0, sel: DRAFT[0].ids[0], gate: '', member: true };
     }
     function toggleFn(id) {
       return function () {
         if (!member) { self.setState({ gate: 'add:' + id }); return; }
-        var nx = copyAdded();
-        if (nx[id]) { delete nx[id]; } else { nx[id] = true; }
-        var left = Object.keys(nx).length;
-        self.setState(left === 0 ? { added: nx, drafted: false, day: 0 } : { added: nx });
+        var nx = plan.filter(function (p) { return p.id !== id; });
+        if (nx.length === plan.length) { nx.push({ id: id, day: addDay }); }
+        self.setState(nx.length === 0 ? { plan: nx, drafted: false } : { plan: nx });
       };
     }
     function vm(o, num) {
-      var isAdded = !!added[o.id];
+      var isAdded = dayOf[o.id] !== undefined;
       var isSel = o.id === selId;
       return {
         id: o.id,
@@ -456,7 +432,7 @@ class Component extends DCLogic {
         badgeBorder: o.exact ? (isAdded ? TEALINK : NAVY) : TEALINK,
         badgeBg: o.exact ? (isAdded ? TEALINK : NAVY) : '#FFFFFF',
         badgeFg: o.exact ? '#FFFFFF' : NAVY,
-        btnLabel: isAdded ? 'On your plan · Remove' : 'Add to plan',
+        btnLabel: isAdded ? 'On Day ' + dayOf[o.id] + ' · Remove' : (member ? 'Add to Day ' + addDay : 'Add to plan'),
         btnBorder: isAdded ? TEALINK : NAVY,
         btnBg: isAdded ? '#FFFFFF' : NAVY,
         btnFg: isAdded ? TEALINK : '#FFFFFF',
@@ -466,51 +442,39 @@ class Component extends DCLogic {
     }
     var items = shown.map(function (o, i) { return vm(o, i + 1); });
 
-    /* Map: Browse shows the open tab; Your plan shows the plan in plan order. */
+    /* Map: only items with an exact location get a mark. An item known only by area is listed, never drawn. */
     var mapSource = layer === 'plan'
-      ? order.filter(function (o) { return day === 0 || inDay[o.id] === day; })
+      ? order.filter(function (o) { return day === 0 || dayOf[o.id] === day; })
       : shown;
     var pins = [];
-    var rings = [];
     mapSource.forEach(function (o, idx) {
-      var isAdded = !!added[o.id];
+      if (!o.exact) { return; }
+      var isAdded = dayOf[o.id] !== undefined;
       var isSel = o.id === selId;
-      var label = '' + (layer === 'plan' ? numOf[o.id] : idx + 1);
-      if (o.exact) {
-        pins.push({
-          x: o.x + '%', y: o.y + '%', label: label,
-          size: isSel ? '38px' : '30px',
-          bg: isSel ? '#FFFFFF' : (isAdded ? TEALINK : NAVY),
-          fg: isSel ? NAVY : '#FFFFFF',
-          border: isSel ? CORAL : '#FFFFFF',
-          z: isSel ? 12 : 10,
-          pet: hasPet && !!o.pet && o.pet.ok,
-          aria: o.n + ', ' + o.area + (isAdded ? ', on your plan' : '') + (hasPet && o.pet && o.pet.ok ? ', pets welcome' : ''),
-          pick: function () { self.setState({ sel: o.id }); }
-        });
-      } else if (layer === 'plan' || tab === 'services' || isSel) {
-        rings.push({
-          x: o.x + '%', y: o.y + '%', label: label,
-          border: isSel ? CORAL : TEALINK,
-          bg: isSel ? 'rgba(232, 93, 85, 0.14)' : (isAdded ? 'rgba(34, 107, 107, 0.16)' : 'rgba(255, 255, 255, 0.35)'),
-          z: isSel ? 9 : 8,
-          aria: o.n + ', ' + o.area + ' area',
-          pick: function () { self.setState({ sel: o.id }); }
-        });
-      }
+      pins.push({
+        x: o.x + '%', y: o.y + '%', label: '' + (layer === 'plan' ? numOf[o.id] : idx + 1),
+        size: isSel ? '38px' : '30px',
+        bg: isSel ? '#FFFFFF' : (isAdded ? TEALINK : NAVY),
+        fg: isSel ? NAVY : '#FFFFFF',
+        border: isSel ? CORAL : '#FFFFFF',
+        z: isSel ? 12 : 10,
+        pet: hasPet && !!o.pet && o.pet.ok,
+        aria: o.n + ', ' + o.area + (isAdded ? ', on your plan' : '') + (hasPet && o.pet && o.pet.ok ? ', pets welcome' : ''),
+        pick: function () { self.setState({ sel: o.id }); }
+      });
     });
 
     /* Sequence lines: straight, between located stops of the same day only. The map is 1048 x 1120,
        so a vertical percentage is scaled into width units before the length and angle are taken. */
     var segs = [];
-    var located = 0;
-    var shown = 0;
-    if (layer === 'plan' && drafted) {
+    var locatedCount = 0;
+    var stopCount = 0;
+    if (layer === 'plan') {
       planDays.forEach(function (d) {
         if (day !== 0 && d.n !== day) { return; }
-        shown += d.stops.length;
+        stopCount += d.stops.length;
         var ex = d.stops.filter(function (o) { return o.exact; });
-        located += ex.length;
+        locatedCount += ex.length;
         for (var i = 1; i < ex.length; i++) {
           var a = ex[i - 1];
           var b = ex[i];
@@ -522,6 +486,7 @@ class Component extends DCLogic {
         }
       });
     }
+    var offMap = shown.filter(function (o) { return !o.exact; }).length;
 
     var selObj = byId[selId] || null;
     var sel = selObj ? vm(selObj, 0) : { meta: '', name: '', why: '', hasWhy: false, areaOnly: false, showPet: false, petLine: '', petFg: '#6A7480', petWeight: '400', btnLabel: '', btnBorder: NAVY, btnBg: NAVY, btnFg: '#FFFFFF', toggle: null };
@@ -535,7 +500,7 @@ class Component extends DCLogic {
     var layers = [['browse', 'Browse'], ['plan', 'Your plan']].map(function (l) {
       var on = l[0] === layer;
       return { label: l[1], on: on, bg: on ? NAVY : 'transparent', fg: on ? '#FFFFFF' : '#1F2733',
-        pick: function () { self.setState({ layer: l[0], day: 0 }); } };
+        pick: function () { self.setState({ layer: l[0] }); } };
     });
     var dayChips = [{ n: 0, label: 'All' }].concat(DRAFT.map(function (d) { return { n: d.n, label: '' + d.n }; })).map(function (c) {
       var on = c.n === day;
@@ -547,15 +512,14 @@ class Component extends DCLogic {
     var tabLabel = '';
     TABS.forEach(function (t) { if (t[0] === tab) { tabLabel = t[1]; } });
 
-    /* Plan rail: one group per day once a draft exists, then anything with no day yet. */
-    var days = drafted ? planDays.map(function (d) {
+    /* Plan rail: one group per day of the trip. A signed-out visitor has no plan, so no days. */
+    var days = member ? planDays.map(function (d) {
       return {
         title: 'DAY ' + d.n + ' · ' + d.label,
         open: d.stops.length === 0,
         stops: d.stops.map(function (o) { return vm(o, numOf[o.id]); })
       };
     }) : [];
-    var loose = looseList.map(function (o) { return vm(o, numOf[o.id]); });
 
     /* The one AI button. Free only while the plan is empty; a guest signs in before anything is made. */
     var ai;
@@ -582,9 +546,7 @@ class Component extends DCLogic {
       var gid = gate.slice(4);
       gateNext = (byId[gid] ? byId[gid].n : 'Your pick') + ' is added as soon as you are in.';
       gateDo = function () {
-        var nx = copyAdded();
-        nx[gid] = true;
-        self.setState({ member: true, gate: '', added: nx });
+        self.setState({ member: true, gate: '', plan: [{ id: gid, day: 1 }] });
       };
     } else if (gate === 'start') {
       gateNext = 'Your empty plan opens here, on the map.';
@@ -598,7 +560,7 @@ class Component extends DCLogic {
       acctFg: member ? NAVY : '#FFFFFF',
       acctBorder: member ? '#D5D0C8' : CORAL_FILL,
       acctToggle: function () {
-        if (member) { self.setState({ member: false, added: {}, drafted: false, day: 0, gate: '', layer: 'browse' }); }
+        if (member) { self.setState({ member: false, plan: [], drafted: false, day: 0, gate: '', layer: 'browse' }); }
         else { self.setState({ member: true, gate: '' }); }
       },
       bandEyebrow: member ? 'YOUR PLAN · TRIP' : 'NO PLAN YET · TRIP',
@@ -639,19 +601,18 @@ class Component extends DCLogic {
       planEmptyText: member
         ? 'Nothing on your plan yet. Add places from Browse, or let AI draft the whole trip for free.'
         : 'You have no plan yet. Browse the map freely. Your plan is created when you sign in.',
-      toBrowse: function () { self.setState({ layer: 'browse', day: 0 }); },
+      toBrowse: function () { self.setState({ layer: 'browse' }); },
       days: days,
-      hasLoose: loose.length > 0,
-      loose: loose,
 
       pins: pins,
-      rings: rings,
       segs: segs,
       layers: layers,
-      showDayChips: layer === 'plan' && drafted,
+      showDayChips: member,
       dayChips: dayChips,
-      showLocated: layer === 'plan' && drafted && shown > 0,
-      locatedText: located + ' of ' + shown + ' stops located. Straight lines, not routes.',
+      showLocated: layer === 'plan' && stopCount > 0,
+      locatedText: locatedCount + ' of ' + stopCount + ' stops located. Straight lines, not routes.',
+      showOffMap: layer !== 'plan' && offMap > 0,
+      offMapText: offMap + (offMap === 1 ? ' here is' : ' here are') + ' not on the map yet: no exact location is on record.',
       hasSel: selObj != null,
       sel: sel,
 

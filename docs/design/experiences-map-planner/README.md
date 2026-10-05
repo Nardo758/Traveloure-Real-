@@ -28,8 +28,8 @@ from it until it is. Row numbers follow the canvas.
 
 | Row | File | Shows | Status |
 |---|---|---|---|
-| 1 | `ExperienceMap.dc.html`, `ExperienceMapMobile.dc.html` | Trip map planner: Browse / Your plan, AI button states, guest sign-in gate, free draft with straight lines, tier rows, pets (party line, border note, "Pets welcome" filter, paw badge) | **ruled** (map planner, Plan with AI, pets). Ask AI drawer and Optimize comparison are not drawn. |
-| 1 | `EventPlanner.dc.html`, `EventPlannerMobile.dc.html` | Wedding: venue first, vendors as area rings, run of show, roles to hire, guest tools, Ready-Made and expert slots | **drawn** |
+| 1 | `ExperienceMap.dc.html`, `ExperienceMapMobile.dc.html` | Trip map planner: Browse / Your plan, adds go to the day shown, pins only for exact locations ("Not on the map yet" for the rest), AI button states, guest sign-in gate (step 8d), free draft with straight lines, tier rows, pets (party line, border note, "Pets welcome" filter, paw badge) | **ruled** (map planner, Plan with AI, pets). Ask AI drawer and Optimize comparison are not drawn. The "All" day chip is drawn, not ruled. |
+| 1 | `EventPlanner.dc.html`, `EventPlannerMobile.dc.html` | Wedding: venue first, vendors with an address as pins, the rest listed only, run of show, roles to hire, guest tools, Ready-Made and expert slots | **drawn** |
 | 1 | `ProposalPlanner.dc.html`, `ProposalPlannerMobile.dc.html` | Proposal: the spot first, hidden plan, the evening | **drawn** |
 | 1 | `CelebrationPlanner.dc.html`, `CelebrationPlannerMobile.dc.html` | Birthday: the venue, the day hour by hour, guests, budget | **drawn** |
 | 2 | `Experiences.dc.html`, `ExperiencesMobile.dc.html` | Experiences starting state: five groups, then occasions; Where on the world map and city cards | **ruled** (groups first; entry folded into the map) |

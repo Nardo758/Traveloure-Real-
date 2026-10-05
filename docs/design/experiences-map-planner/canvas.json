@@ -14,7 +14,7 @@
       "x": 0,
       "y": 0,
       "w": 1440,
-      "h": 1920,
+      "h": 2020,
       "title": "Trip · map planner · desktop",
       "is_interactive": true,
       "expand": "fill"
@@ -23,7 +23,7 @@
       "x": 1520,
       "y": 0,
       "w": 390,
-      "h": 3540,
+      "h": 3680,
       "title": "Trip · map planner · phone",
       "is_interactive": true
     },
@@ -80,7 +80,7 @@
     },
     "Experiences.dc.html": {
       "x": 0,
-      "y": 3700,
+      "y": 3840,
       "w": 1440,
       "h": 1580,
       "title": "Experiences · start a plan · desktop",
@@ -89,7 +89,7 @@
     },
     "ExperiencesMobile.dc.html": {
       "x": 1520,
-      "y": 3700,
+      "y": 3840,
       "w": 390,
       "h": 3120,
       "title": "Experiences · start a plan · phone",
@@ -97,7 +97,7 @@
     },
     "PlanModal.dc.html": {
       "x": 1990,
-      "y": 3700,
+      "y": 3840,
       "w": 760,
       "h": 960,
       "title": "Pop-up · 1 What",
@@ -105,7 +105,7 @@
     },
     "PlanModalWhen.dc.html": {
       "x": 2830,
-      "y": 3700,
+      "y": 3840,
       "w": 760,
       "h": 960,
       "title": "Pop-up · 3 When",
@@ -113,7 +113,7 @@
     },
     "PlanModalWho.dc.html": {
       "x": 3670,
-      "y": 3700,
+      "y": 3840,
       "w": 760,
       "h": 960,
       "title": "Pop-up · 4 Who and the finish",
@@ -121,7 +121,7 @@
     },
     "PlanModalWhenMobile.dc.html": {
       "x": 4510,
-      "y": 3700,
+      "y": 3840,
       "w": 390,
       "h": 1000,
       "title": "Pop-up · 3 When · phone",
@@ -129,7 +129,7 @@
     },
     "PlanModalWhoMobile.dc.html": {
       "x": 4980,
-      "y": 3700,
+      "y": 3840,
       "w": 390,
       "h": 1140,
       "title": "Pop-up · 4 Who · phone",
@@ -137,7 +137,7 @@
     },
     "Main.dc.html": {
       "x": 0,
-      "y": 6980,
+      "y": 7120,
       "w": 1440,
       "h": 3060,
       "title": "Events · desktop · calendar as the stage",
@@ -146,7 +146,7 @@
     },
     "EventDetail.dc.html": {
       "x": 1520,
-      "y": 6980,
+      "y": 7120,
       "w": 1440,
       "h": 2080,
       "title": "Event detail · desktop",
@@ -155,7 +155,7 @@
     },
     "Mobile.dc.html": {
       "x": 3040,
-      "y": 6980,
+      "y": 7120,
       "w": 390,
       "h": 5400,
       "title": "Events · phone",
@@ -163,7 +163,7 @@
     },
     "EventDetailMobile.dc.html": {
       "x": 3510,
-      "y": 6980,
+      "y": 7120,
       "w": 390,
       "h": 3800,
       "title": "Event detail · phone",
