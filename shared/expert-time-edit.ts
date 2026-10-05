@@ -1,5 +1,5 @@
 /**
- * An expert's "HH:MM" edit to an itinerary item's start time (R318, ledger
+ * An expert's "HH:MM" edit to an itinerary item's start time (R319, ledger
  * `2026-10-05-expert-item-time-wall-clock`). One rule, no Date parsing, no machine zone (§18 rule 1).
  *
  * `itinerary_variant_items.start_time` is a varchar holding the plan's WALL-CLOCK — in practice a bare

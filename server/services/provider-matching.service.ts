@@ -233,7 +233,7 @@ export async function buildBookingContext(
 
   // Find what's before and after this time slot
   const sortedAnchors = sameDayAnchors
-    // R317: the anchor's wall-clock "HH:MM", never the server's `toTimeString()`.
+    // R318: the anchor's wall-clock "HH:MM", never the server's `toTimeString()`.
     .map(a => ({ ...a, time: anchorWallClockParts(a.anchorDatetime)?.time ?? "" }))
     .sort((a, b) => a.time.localeCompare(b.time));
 

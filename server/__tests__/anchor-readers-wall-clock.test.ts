@@ -1,5 +1,5 @@
 /**
- * R317 — anchor readers read the plan's wall-clock, never the server's zone
+ * R318 — anchor readers read the plan's wall-clock, never the server's zone
  * (ledger `2026-10-05-anchor-readers-wall-clock`).
  *   R1 smart sequencing pins an anchor on its own day and minute on a UTC, Tokyo and Los Angeles process
  *   R2 an anchor late in the evening stays on its own plan day (the server-midnight bug moved it)

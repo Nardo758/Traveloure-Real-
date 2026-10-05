@@ -100,7 +100,7 @@ function analyzeVendorImpact(
   vendors: ExpertVendorCoordination[],
   previousDatetime?: string
 ): AffectedVendor[] {
-  // R317: the anchor's wall-clock day, minutes and "HH:MM" — never the server's zone.
+  // R318: the anchor's wall-clock day, minutes and "HH:MM" — never the server's zone.
   const anchorParts = anchorWallClockParts(anchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
   const anchorTimeStr = anchorParts.time;
   const bufferBefore = anchor.bufferBefore || 0;

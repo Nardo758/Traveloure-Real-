@@ -211,7 +211,7 @@ export function ExpertConstraintDashboard({ tripId }: ExpertConstraintDashboardP
             <div className="space-y-3">
               {anchors.map((anchor) => {
                 const Icon = ANCHOR_ICONS[anchor.anchorType] || Clock;
-                // R317: the stored value is the plan's wall-clock (its UTC parts) — shown in UTC, so the
+                // R318: the stored value is the plan's wall-clock (its UTC parts) — shown in UTC, so the
                 // expert's own zone cannot move a 14:00 ceremony.
                 const dt = new Date(anchorWallClockMs(anchor.anchorDatetime));
                 const timeStr = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });

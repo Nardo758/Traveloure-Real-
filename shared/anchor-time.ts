@@ -50,7 +50,7 @@ export function anchorWallClockString(date: string | null | undefined, time: str
   return `${d}T${String(hh).padStart(2, "0")}:${t[2]}:${String(ss).padStart(2, "0")}`;
 }
 
-// ── Readers (R317, ledger `2026-10-05-anchor-readers-wall-clock`) ──────────────────────────────────
+// ── Readers (R318, ledger `2026-10-05-anchor-readers-wall-clock`) ──────────────────────────────────
 // Every server or client reader that needs an anchor's DAY, TIME or minutes-of-day takes them from
 // here — never from `getHours()` / `toTimeString()` / `toLocaleTimeString()` without `timeZone: "UTC"`,
 // which read the stored wall-clock in the MACHINE's zone and moved it by that machine's offset.

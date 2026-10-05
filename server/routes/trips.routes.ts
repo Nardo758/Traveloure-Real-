@@ -2804,7 +2804,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
         return {
           id: item.id,
           name: diff.name ?? item.name,
-          // R318: the expert's HH:MM replaces the wall-clock time in place (never Date/setHours — that dropped a
+          // R319: the expert's HH:MM replaces the wall-clock time in place (never Date/setHours — that dropped a
           // bare "HH:MM" edit and shifted a date-time by the server's zone).
           startTime: mergeExpertTimeEdit(item.startTime, diff.startTime) ?? item.startTime,
           endTime: item.endTime,

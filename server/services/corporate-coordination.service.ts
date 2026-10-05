@@ -95,7 +95,7 @@ export async function generateStaggeredArrivalPlan(
 
   let deadlineMinutes = 600; // 10:00 by default
   if (meetingAnchor) {
-    // R317: the meeting's wall-clock minutes, not the server's reading of them.
+    // R318: the meeting's wall-clock minutes, not the server's reading of them.
     const mt = anchorWallClockParts(meetingAnchor.anchorDatetime);
     if (mt) deadlineMinutes = mt.minutes - (meetingAnchor.bufferBefore || 15);
   }

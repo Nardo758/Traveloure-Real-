@@ -465,7 +465,7 @@ export function selectThirdVariantStrategy(
 }
 
 function formatAnchorForPrompt(anchor: AnchorConstraint): string {
-  // R317: the anchor's wall-clock time, formatted in UTC so the server's zone cannot move it.
+  // R318: the anchor's wall-clock time, formatted in UTC so the server's zone cannot move it.
   const time = anchorTimeLabel12h(anchor.anchorDatetime) ?? "";
   const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   let desc = `${type} at ${time}`;

@@ -1150,7 +1150,7 @@ export async function generatePresetsForTrip(
     return { anchorsCreated: 0, boundariesCreated: 0 };
   }
 
-  // R317: the event's CALENDAR day — a date string as written, a Date by its UTC day — never midnight in
+  // R318: the event's CALENDAR day — a date string as written, a Date by its UTC day — never midnight in
   // the server's zone.
   const baseDay = eventDate instanceof Date ? eventDate.toISOString().slice(0, 10) : String(eventDate).slice(0, 10);
   let anchorsCreated = 0;
@@ -1172,7 +1172,7 @@ export async function generatePresetsForTrip(
   for (const preset of presets.anchors) {
     if (existingAnchorTypes.has(preset.anchorType)) continue;
 
-    // R317: the preset's day + time are the plan's wall-clock (`@shared/anchor-time`), built on the
+    // R318: the preset's day + time are the plan's wall-clock (`@shared/anchor-time`), built on the
     // plan's calendar with UTC day arithmetic — `setHours` stored it in the server's zone.
     const day = new Date(Date.parse(`${baseDay}T00:00:00Z`) + preset.dayOffset * 86_400_000).toISOString().slice(0, 10);
     const wallClock = anchorWallClockString(day, preset.defaultTimeOfDay);

@@ -5,7 +5,7 @@
  *   A2 the route-boundary reader stores a zone-less string as its wall-clock on a UTC, Tokyo and
  *      Los Angeles process alike; a string naming its own zone is taken as given; garbage is Invalid
  *   A3 the overlap rule's anchor reader agrees with what the route stored
- * R317 — the readers (ledger `2026-10-05-anchor-readers-wall-clock`):
+ * R318 — the readers (ledger `2026-10-05-anchor-readers-wall-clock`):
  *   A4 day / time / minutes of an anchor are its wall-clock on a UTC, Tokyo and Los Angeles process alike
  *   A5 the plan-day number is a calendar-day difference, not a server-midnight one
  *   A6 the 12h label is the wall-clock; an unreadable value is null, never a guessed time

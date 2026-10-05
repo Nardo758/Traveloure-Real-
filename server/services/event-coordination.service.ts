@@ -137,7 +137,7 @@ export async function buildEventTimeline(
     };
   }
 
-  // R317: the anchor's wall-clock day, minutes and "HH:MM" — one reader, never the server's zone.
+  // R318: the anchor's wall-clock day, minutes and "HH:MM" — one reader, never the server's zone.
   const anchorParts = anchorWallClockParts(anchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
   const anchorDate = anchorParts.date;
   const anchorMinutes = anchorParts.minutes;

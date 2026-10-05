@@ -1,5 +1,5 @@
 /**
- * R318 — an expert's HH:MM edit to an item's start time (ledger `2026-10-05-expert-item-time-wall-clock`).
+ * R319 — an expert's HH:MM edit to an item's start time (ledger `2026-10-05-expert-item-time-wall-clock`).
  *   E1 a bare "HH:MM" original takes the edit (the old helper silently dropped it)
  *   E2 a dated original keeps its date and suffix; only HH:MM changes — on a UTC, Tokyo and LA process alike
  *   E3 no original takes the edit; an unreadable edit or original keeps the original (§13)

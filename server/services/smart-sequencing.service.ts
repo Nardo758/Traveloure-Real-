@@ -1403,7 +1403,7 @@ export function parseAnchorConstraints(
   tripStartDate: string | Date
 ): AnchorConstraint[] {
   return anchors.map(anchor => {
-    // R317: day and minutes from the anchor's wall-clock, never the server's zone.
+    // R318: day and minutes from the anchor's wall-clock, never the server's zone.
     const dt = new Date(anchorWallClockMs(anchor.anchorDatetime));
     const dayNumber = anchorDayNumber(anchor.anchorDatetime, tripStartDate) ?? Number.NaN;
     const startTimeMinutes = anchorWallClockParts(anchor.anchorDatetime)?.minutes ?? 0;

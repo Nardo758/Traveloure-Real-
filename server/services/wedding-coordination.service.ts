@@ -105,7 +105,7 @@ export async function buildWeddingTimeline(tripId: string): Promise<WeddingTimel
     };
   }
 
-  // R317: the ceremony's wall-clock day, minutes and "HH:MM" — one reader, never the server's zone.
+  // R318: the ceremony's wall-clock day, minutes and "HH:MM" — one reader, never the server's zone.
   const ceremony = anchorWallClockParts(ceremonyAnchor.anchorDatetime) ?? { date: "", time: "00:00", minutes: 0 };
   const ceremonyDate = ceremony.date;
   const ceremonyMinutes = ceremony.minutes;

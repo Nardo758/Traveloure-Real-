@@ -59,7 +59,7 @@ export async function generateAnchorSuggestions(
   });
 }
 
-// R317: the plan day by the anchor's wall-clock CALENDAR date, never midnight in the server's zone.
+// R318: the plan day by the anchor's wall-clock CALENDAR date, never midnight in the server's zone.
 function getDayNumber(datetime: string | Date, tripStart: string): number {
   return anchorDayNumber(datetime, tripStart) ?? Number.NaN;
 }
