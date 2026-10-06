@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Events, phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#226B6B}a:hover{color:#1E3A5F}
+.ph-kyoto{background-image:url(/_blob/f286cda1c9fa6f4e477b93bbc2b4d3c9)}
+.ph-bogota{background-image:url(/_blob/8e90eb03d6688937314d5e874cf0502c)}
+.ev-bogota{background-image:url(/_blob/8e90eb03d6688937314d5e874cf0502c)}
+.ev-kyoto{background-image:url(/_blob/f66f579ce7ddd5001301d8941fb245b9)}
+.ev-mumbai{background-image:url(/_blob/cb22d172ed645a90876aeca59caa4ac5)}
+.ev-cartagena{background-image:url(/_blob/bbb698a1f8708a2b4cb639a1d08a4787)}
+.ev-jaipur{background-image:url(/_blob/9cc44dd641fc30f39b36ccf842e9c36f)}
+.ev-goa{background-image:url(/_blob/8d2e1a0bb3ef92eba2280b3464c3ee00)}
+.ev-porto{background-image:url(/_blob/8f66e65e509eca93cc9d8117757e5434)}
+.ev-night{background-image:url(/_blob/b2302978ba7adf3bdd2ae41c353dbf3d)}
+.ph-none{background-color:#1E3A5F}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 5400px; box-sizing: border-box; background: #FAFAF8; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
+
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; min-height: 56px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="font-weight: 700; letter-spacing: 0.14em; font-size: 14px; color: #485960">TRAVELOURE</span>
+      <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 999px; border: 1px solid #FCCACA; background: #FFF4F4; color: #B8403A">BETA</span>
+    </div>
+    <button type="button" aria-label="Open menu" style="width: 44px; height: 44px; border: 0; background: transparent; color: #1F2733; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg>
+    </button>
+  </header>
+
+  <section aria-label="Events masthead" style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; padding: 18px 16px 14px; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="width: 42px; height: 42px; border-radius: 12px; background: rgba(46, 139, 139, 0.10); color: #226B6B; display: flex; align-items: center; justify-content: center; flex: none">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path><path d="M13 5v2"></path><path d="M13 17v2"></path><path d="M13 11v2"></path></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <h1 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 26px; line-height: 1.15; color: #1E3A5F">Events</h1>
+        <p style="margin: 0; font-size: 13px; color: #6A7480">What's on in our eight cities, and when each one is at its best.</p>
+      </div>
+    </div>
+    <nav aria-label="Marketplace" style="display: flex; gap: 6px; overflow-x: auto; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 500">
+      <a href="#" style="flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #E7E4DD; color: #1F2733; text-decoration: none">Destinations</a>
+      <a href="#" style="flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #E7E4DD; color: #1F2733; text-decoration: none">Ready-Made</a>
+      <a href="#" aria-current="page" style="flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #1E3A5F; background: #1E3A5F; color: #FFFFFF; text-decoration: none">Events</a>
+      <a href="#" style="flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #E7E4DD; color: #1F2733; text-decoration: none">Services</a>
+    </nav>
+  </section>
+
+  <main style="padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 16px">
+
+    <section aria-label="Event filters" style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; gap: 8px; overflow-x: auto">
+        <sc-for list="{{ kinds }}" as="k" hint-placeholder-count="5">
+          <button type="button" onClick="{{ k.pick }}" aria-pressed="{{ k.on }}" style="flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid {{ k.border }}; background: {{ k.bg }}; color: {{ k.fg }}; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+            <span>{{ k.label }}</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; opacity: 0.85">{{ k.n }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 8px; overflow-x: auto">
+        <sc-for list="{{ cities }}" as="c" hint-placeholder-count="9">
+          <button type="button" onClick="{{ c.pick }}" aria-pressed="{{ c.on }}" style="flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid {{ c.border }}; background: {{ c.bg }}; color: {{ c.fg }}; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">
+            <span>{{ c.label }}</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; opacity: 0.85">{{ c.n }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </section>
+
+    <section aria-label="Calendar, the year ahead" style="background: #FFFFFF; border: 1px solid #E7E4DD; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">THE YEAR AHEAD</span>
+        <div role="group" aria-label="Select by" style="display: flex; gap: 4px">
+          <sc-for list="{{ modes }}" as="md" hint-placeholder-count="3">
+            <button type="button" onClick="{{ md.pick }}" aria-pressed="{{ md.on }}" style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid {{ md.border }}; background: {{ md.bg }}; color: {{ md.fg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ md.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px">
+        <sc-for list="{{ months }}" as="mo" hint-placeholder-count="12">
+          <button type="button" onClick="{{ mo.pick }}" aria-pressed="{{ mo.on }}" aria-label="{{ mo.aria }}" style="flex: none; width: 60px; min-height: 56px; padding: 6px 0; border-radius: 10px; border: 1px solid {{ mo.pillBorder }}; background: {{ mo.pillBg }}; color: {{ mo.pillFg }}; font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600; letter-spacing: 0.08em">{{ mo.name }}</span>
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; color: {{ mo.pillSubFg }}">{{ mo.pillSub }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.2; color: #1E3A5F">{{ calTitle }}</h2>
+          <span style="font-size: 12.5px; color: #6A7480">{{ hint }}</span>
+        </div>
+        <div style="display: flex; gap: 6px">
+          <button type="button" onClick="{{ toggleGrid }}" aria-expanded="{{ showGrid }}" style="min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ gridLabel }}</button>
+          <button type="button" onClick="{{ goToday }}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #E7E4DD; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Today</button>
+        </div>
+      </div>
+
+      <sc-if value="{{ showGrid }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <div aria-hidden="true" style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480; text-align: center">
+          <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px">
+          <sc-for list="{{ selCells }}" as="cell" hint-placeholder-count="35">
+            <button type="button" onClick="{{ cell.pick }}" disabled="{{ cell.off }}" aria-label="{{ cell.aria }}" style="visibility: {{ cell.vis }}; height: 44px; padding: 0; border: 0; border-bottom: 2px solid {{ cell.under }}; border-radius: {{ cell.radius }}; background: {{ cell.bg }}; color: {{ cell.fg }}; box-shadow: {{ cell.ring }}; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 14px; font-weight: {{ cell.weight }}; cursor: pointer">{{ cell.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <sc-if value="{{ hasSelBand }}" hint-placeholder-val="{{ true }}">
+        <span style="display: block; padding: 6px 10px; border-radius: 8px; background: rgba(93, 202, 165, 0.18); color: #1F5C48; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.04em">ALL MONTH · {{ selBand }}</span>
+      </sc-if>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding-top: 10px; border-top: 1px solid #E7E4DD; font-size: 12px; color: #6A7480">
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: rgba(46, 139, 139, 0.16)"></span>One event</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: rgba(46, 139, 139, 0.50)"></span>Two or more</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 2px; background: #2E8B8B"></span>Long run</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; background: #1E3A5F"></span>Today</span>
+      </div>
+      </div>
+      </sc-if>
+    </section>
+
+    <section aria-label="What's on in the selected period" style="background: #FFFFFF; border: 1px solid #E7E4DD; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 4px">
+      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 12px">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">WHAT'S ON · {{ selKindLabel }}</span>
+          <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 24px; line-height: 1.15; color: #1E3A5F">{{ selTitle }}</h2>
+          <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: #6A7480">{{ selSub }}</span>
+        </div>
+        <sc-if value="{{ showBack }}" hint-placeholder-val="{{ false }}">
+          <button type="button" onClick="{{ wholeMonth }}" style="flex: none; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #E7E4DD; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ backLabel }}</button>
+        </sc-if>
+      </div>
+
+      <sc-for list="{{ rows }}" as="row" hint-placeholder-count="4">
+          <sc-if value="{{ row.primary }}" hint-placeholder-val="{{ false }}">
+            <article style="display: flex; flex-direction: column; margin-bottom: 12px; border: 1px solid #E7E4DD; border-radius: 14px; overflow: hidden; background: #FFFFFF">
+              <div class="{{ row.ph }}" style="position: relative; height: 188px; background-color: #0D2137; background-size: cover; background-position: center">
+                <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(13, 33, 55, 0.15) 0%, rgba(13, 33, 55, 0.30) 45%, rgba(13, 33, 55, 0.90) 100%)"></div>
+                <div style="position: absolute; top: 12px; left: 12px; width: 50px; border-radius: 10px; overflow: hidden; text-align: center; background: #FFFFFF">
+                  <div style="background: #C8443D; color: #FFFFFF; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 2px 0">{{ row.mon }}</div>
+                  <div style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 19px; font-weight: 600; color: #1E3A5F; padding: 3px 0 4px">{{ row.day }}</div>
+                </div>
+                <span style="position: absolute; top: 12px; right: 12px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; padding: 4px 9px; border-radius: 999px; background: #FFFFFF; color: #1E3A5F">{{ row.chip }}</span>
+                <div style="position: absolute; left: 14px; right: 14px; bottom: 12px; display: flex; flex-direction: column; gap: 4px">
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.1em; color: #FFFFFF">{{ row.tag }}</span>
+                  <h3 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 23px; line-height: 1.15; color: #FFFFFF; text-wrap: balance">{{ row.title }}</h3>
+                </div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 14px">
+                <span style="font-size: 13px; font-weight: 600; color: #1F2733">{{ row.when }}</span>
+                <span style="font-size: 13px; color: #6A7480">{{ row.place }}</span>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-top: 8px">
+                  <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; background: #C8443D; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none">Plan around it</a>
+                  <a href="EventDetailMobile.dc.html" style="display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-size: 13.5px; font-weight: 600; text-decoration: none">
+                    <span>Event details</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+                  </a>
+                </div>
+                <span style="padding-top: 2px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; color: #6A7480">{{ row.credit }}</span>
+              </div>
+            </article>
+          </sc-if>
+          <sc-if value="{{ row.secondary }}" hint-placeholder-val="{{ true }}">
+            <article style="display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid #E7E4DD">
+              <div class="{{ row.ph }}" style="position: relative; flex: none; width: 96px; height: 96px; border-radius: 12px; overflow: hidden; background-color: #0D2137; background-size: cover; background-position: center">
+                <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(13, 33, 55, 0.05) 30%, rgba(13, 33, 55, 0.88) 100%)"></div>
+                <div style="position: absolute; left: 9px; bottom: 7px; display: flex; flex-direction: column; color: #FFFFFF; font-family: 'Geist Mono', ui-monospace, Menlo, monospace">
+                  <span style="font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em">{{ row.mon }}</span>
+                  <span style="font-size: 22px; font-weight: 600; line-height: 1.05">{{ row.day }}</span>
+                </div>
+              </div>
+              <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px">
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.1em; color: #6A7480">{{ row.tag }}</span>
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.06em; padding: 1px 7px; border-radius: 6px; border: 1px solid #E7E4DD; color: #1F2733">{{ row.count }}</span>
+                </div>
+                <h3 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 17px; line-height: 1.25; color: #1E3A5F; text-wrap: pretty">{{ row.title }}</h3>
+                <span style="font-size: 13px; color: #1F2733">{{ row.when }}</span>
+                <span style="font-size: 13px; color: #6A7480">{{ row.place }}</span>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding-top: 4px">
+                  <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; color: #1E3A5F; font-size: 13px; font-weight: 600; text-decoration: none">Plan around it</a>
+                  <a href="EventDetailMobile.dc.html" style="display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-size: 13px; font-weight: 600; text-decoration: none">
+                    <span>Event details</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+                  </a>
+                </div>
+              </div>
+            </article>
+          </sc-if>
+        </sc-for>
+
+        <sc-if value="{{ hasRows }}" hint-placeholder-val="{{ true }}">
+          <span style="padding: 10px 0 6px; border-top: 1px solid #E7E4DD; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; color: #6A7480">City photos, not photos of the event. Credits on each event page.</span>
+        </sc-if>
+
+      <sc-if value="{{ hasBands }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 0 4px; border-top: 1px solid #E7E4DD">
+          <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #1F5C48">IN SEASON ALL MONTH</span>
+          <sc-for list="{{ selBands }}" as="sb" hint-placeholder-count="1">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: rgba(93, 202, 165, 0.12)">
+              <span style="font-size: 14px; font-weight: 600; color: #1F2733">{{ sb.title }}</span>
+              <span style="font-size: 13px; color: #3C4652">{{ sb.sub }}</span>
+              <a href="#" style="align-self: flex-start; margin-top: 4px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">{{ sb.cta }}</a>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px; border: 1px dashed #D5D0C8; border-radius: 12px">
+          <span style="font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 18px; line-height: 1.25; color: #1E3A5F">{{ emptyTitle }}</span>
+          <span style="font-size: 13px; color: #6A7480">{{ emptyBody }}</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-if value="{{ hasJump }}" hint-placeholder-val="{{ true }}">
+              <button type="button" onClick="{{ jump }}" style="min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #1E3A5F; background: #1E3A5F; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">{{ jumpLabel }}</button>
+            </sc-if>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 14px; font-weight: 600; text-decoration: none">Browse destinations</a>
+          </div>
+        </div>
+      </sc-if>
+    </section>
+
+    <section aria-label="Where to go" style="background: #FFFFFF; border: 1px solid #E7E4DD; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #B8403A">WHERE TO GO</span>
+        <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 22px; line-height: 1.2; color: #1E3A5F">{{ destTitle }}</h2>
+        <p style="margin: 0; font-size: 13px; color: #6A7480">Recommendations based on weather, events and crowd levels. Best season first; a city we have not rated yet says so.</p>
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: #6A7480">{{ destCount }}</span>
+      </div>
+
+      <div role="group" aria-label="Filter destinations by vibe" style="display: flex; gap: 8px; overflow-x: auto">
+        <sc-for list="{{ vibes }}" as="vb" hint-placeholder-count="9">
+          <button type="button" onClick="{{ vb.pick }}" aria-pressed="{{ vb.on }}" style="flex: none; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid {{ vb.border }}; background: {{ vb.bg }}; color: {{ vb.fg }}; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ vb.label }}</button>
+        </sc-for>
+      </div>
+
+      <sc-for list="{{ dests }}" as="d" hint-placeholder-count="4">
+        <article style="display: flex; flex-direction: column; border: 1px solid #E7E4DD; border-radius: 14px; overflow: hidden; background: #FFFFFF">
+          <div class="{{ d.ph }}" style="position: relative; height: 120px; background-size: cover; background-position: center">
+            <span style="position: absolute; top: 10px; left: 10px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.1em; padding: 3px 8px; border-radius: 6px; background: {{ d.chipBg }}; color: #FFFFFF">{{ d.label }}</span>
+            <sc-if value="{{ d.noPhoto }}" hint-placeholder-val="{{ false }}">
+              <span style="position: absolute; left: 14px; bottom: 10px; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 26px; line-height: 1.1; color: #FFFFFF">{{ d.city }}</span>
+            </sc-if>
+            <sc-if value="{{ d.hasCredit }}" hint-placeholder-val="{{ false }}">
+              <span style="position: absolute; bottom: 6px; right: 8px; padding: 1px 6px; border-radius: 4px; background: rgba(13, 33, 55, 0.66); color: #FFFFFF; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 9px">{{ d.credit }}</span>
+            </sc-if>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 14px">
+            <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px">
+              <span style="font-size: 16px; font-weight: 600; color: #1F2733">{{ d.city }}</span>
+              <span style="font-size: 12.5px; color: #6A7480">{{ d.country }}</span>
+            </div>
+            <sc-if value="{{ d.hasFacts }}" hint-placeholder-val="{{ true }}">
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: #1F2733">{{ d.facts }}</span>
+            </sc-if>
+            <span style="font-size: 12.5px; color: #6A7480">{{ d.tags }}</span>
+            <sc-if value="{{ d.hasEv }}" hint-placeholder-val="{{ true }}">
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: #226B6B">{{ d.evLine }}</span>
+            </sc-if>
+            <a href="#" style="align-self: flex-start; margin-top: 4px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">{{ d.cta }}</a>
+          </div>
+        </article>
+      </sc-for>
+
+      <sc-if value="{{ destEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px; border: 1px dashed #D5D0C8; border-radius: 12px">
+          <span style="font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 18px; line-height: 1.25; color: #1E3A5F">{{ destEmptyText }}</span>
+          <span style="font-size: 13px; color: #6A7480">Try another month, or clear the filter to see every destination.</span>
+          <button type="button" onClick="{{ clearVibe }}" style="min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Clear filter</button>
+        </div>
+      </sc-if>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":5400}}'>
+class Component extends DCLogic {
+  pad(n) { return (n < 10 ? '0' : '') + n; }
+  ymd(y, mo, d) { return y + '-' + this.pad(mo) + '-' + this.pad(d); }
+  ts(k) { var p = k.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+  diff(a, b) { return Math.round((this.ts(b) - this.ts(a)) / 86400000); }
+  keyOf(t) { var d = new Date(t); return this.ymd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()); }
+
+  evData() {
+    var list = [
+      { t: 'Rock al Parque 2026', c: 'Bogotá', v: 'Parque Simón Bolívar', s: '2026-10-10', e: '2026-10-12', k: 'music' },
+      { t: 'IMAGINE NOH — Legends and Laughter on Stage', c: 'Kyoto', v: 'Kyoto Kanze Kaikan (京都観世会館)', s: '2026-10-14', e: '2026-11-05', k: 'other' },
+      { t: 'Aitana — Cuarto Azul World Tour', c: 'Bogotá', v: 'Movistar Arena', s: '2026-10-16', tm: '21:30', k: 'music' },
+      { t: 'Starsailor', c: 'Edinburgh', v: 'Usher Hall', s: '2026-10-17', tm: '19:00', k: 'music' },
+      { t: 'Max Richter Live', c: 'Mumbai', v: 'Nita Mukesh Ambani Cultural Centre', s: '2026-10-24', tm: '19:30', k: 'music' },
+      { t: 'YOASOBI — Chowakusei dome tour', c: 'Kyoto', v: 'Kyocera Dome Osaka', loc: 'Osaka', s: '2026-10-24', tm: '18:00', k: 'music' },
+      { t: 'YOASOBI — Chowakusei dome tour', c: 'Kyoto', v: 'Kyocera Dome Osaka', loc: 'Osaka', s: '2026-10-25', tm: '17:00', k: 'music' },
+      { t: 'Mitsuko Uchida Piano Recital 2026', c: 'Kyoto', v: 'Kyoto Concert Hall', s: '2026-11-12', tm: '19:00', k: 'music' },
+      { t: 'MotoGP Grande Prémio de Portugal 2026', c: 'Porto', v: 'Autódromo Internacional do Algarve', loc: 'Portimão', s: '2026-11-20', e: '2026-11-22', k: 'motorsport' },
+      { t: 'Royal Enfield Motoverse 2026', c: 'Goa', v: 'Vagator', s: '2026-11-27', e: '2026-11-29', k: 'other' },
+      { t: 'Serendipity Arts Festival 2026', c: 'Goa', v: 'The Old GMC Complex', s: '2026-12-13', e: '2026-12-20', k: 'other' },
+      { t: 'Sunburn Festival 2026', c: 'Mumbai', v: 'Mahalaxmi Racecourse', s: '2026-12-18', e: '2026-12-19', k: 'music' },
+      { t: "Edinburgh's Hogmanay — Torchlight Procession", c: 'Edinburgh', v: 'Old Town', s: '2026-12-29', tm: '18:30', k: 'music' },
+      { t: 'Hogmanay in the Gardens with Underworld + Street Party', c: 'Edinburgh', v: 'Princes Street Gardens', s: '2026-12-31', tm: '20:00', k: 'music' },
+      { t: 'Cartagena Festival de Música 2027', c: 'Cartagena', v: 'Multiple venues', s: '2027-01-09', e: '2027-01-17', k: 'music' },
+      { t: 'Jaipur Literature Festival 2027', c: 'Jaipur', v: 'Hotel Clarks Amer', s: '2027-01-14', e: '2027-01-18', k: 'other' },
+      { t: 'Gulaab — Ghazals by Shilpa Rao', c: 'Mumbai', v: 'Nita Mukesh Ambani Cultural Centre', s: '2027-01-16', tm: '19:30', k: 'music' },
+      { t: 'Lollapalooza India 2027', c: 'Mumbai', v: 'Mahalaxmi Racecourse', s: '2027-01-23', e: '2027-01-24', k: 'music' },
+      { t: 'Hay Festival Cartagena 2027', c: 'Cartagena', v: 'Centro Histórico', s: '2027-01-28', e: '2027-01-31', k: 'other' },
+      { t: 'Festival Estéreo Picnic 2027', c: 'Bogotá', v: 'Parque Simón Bolívar', s: '2027-03-19', e: '2027-03-21', k: 'music' },
+      { t: 'Snarky Puppy', c: 'Porto', v: 'Coliseu Porto Ageas', s: '2027-04-01', tm: '21:00', k: 'music' },
+      { t: 'F1 Japanese Grand Prix 2027', c: 'Kyoto', v: 'Suzuka Circuit', loc: 'Suzuka', s: '2027-04-09', e: '2027-04-11', k: 'motorsport' }
+    ];
+    list.forEach(function (ev) { if (!ev.e) ev.e = ev.s; });
+    return list;
+  }
+
+  bandData() {
+    return [
+      { t: 'Autumn foliage season (Koyo)', short: 'AUTUMN FOLIAGE, KYOTO', c: 'Kyoto', ym: ['2026-10', '2026-11'], span: 'October and November' },
+      { t: 'Cherry blossom season (Hanami)', short: 'CHERRY BLOSSOM, KYOTO', c: 'Kyoto', ym: ['2027-03', '2027-04'], span: 'March and April' },
+      { t: 'Gion Matsuri', short: 'GION MATSURI, KYOTO', c: 'Kyoto', ym: ['2027-07'], span: 'July' },
+      { t: 'Edinburgh Festival Fringe', short: 'FESTIVAL FRINGE, EDINBURGH', c: 'Edinburgh', ym: ['2027-08'], span: 'August' }
+    ];
+  }
+
+  seasonData() {
+    return [
+      { city: 'Kyoto',
+        r: ['good', 'good', 'best', 'best', 'good', 'avoid', 'average', 'average', 'good', 'best', 'best', 'good'],
+        temp: ['2-7°C', '3-9°C', '8-14°C', '13-19°C', '17-23°C', '21-26°C', '25-30°C', '26-31°C', '22-27°C', '16-22°C', '11-17°C', '5-12°C'],
+        crowd: ['Low', 'Low', 'High', 'High', 'Medium', 'Low', 'High', 'High', 'Medium', 'High', 'High', 'Medium'] },
+      { city: 'Edinburgh',
+        r: ['average', 'average', 'good', 'best', 'best', 'best', 'good', 'good', 'best', 'good', 'average', 'average'],
+        temp: ['2-8°C', '2-9°C', '4-11°C', '7-15°C', '10-18°C', '13-21°C', '14-23°C', '14-23°C', '12-19°C', '9-15°C', '5-11°C', '3-9°C'],
+        crowd: ['Low', 'Low', 'Medium', 'High', 'High', 'Very high', 'Very high', 'Very high', 'Medium', 'Medium', 'Low', 'Medium'] }
+    ];
+  }
+
+  cityData() {
+    return [
+      { city: 'Kyoto', country: 'Japan', vibes: ['Cultural', 'Foodie', 'Nature', 'Romantic'], ph: 'ph-kyoto', credit: 'Photo: Alec Doualetas · Pexels' },
+      { city: 'Edinburgh', country: 'United Kingdom', vibes: ['Cultural', 'Nightlife', 'Family'], ph: 'ph-none', credit: '' },
+      { city: 'Porto', country: 'Portugal', vibes: ['Foodie', 'Romantic', 'Cultural'], ph: 'ev-porto', credit: 'Photo: Yuri Félix · Pexels' },
+      { city: 'Bogotá', country: 'Colombia', vibes: ['Nightlife', 'Cultural', 'Foodie'], ph: 'ph-bogota', credit: 'Photo: Daniel Sarmiento · Pexels' },
+      { city: 'Cartagena', country: 'Colombia', vibes: ['Beach', 'Romantic', 'Nightlife'], ph: 'ev-cartagena', credit: 'Photo: Yaroslav Shuraev · Pexels' },
+      { city: 'Mumbai', country: 'India', vibes: ['Nightlife', 'Foodie', 'Cultural'], ph: 'ev-mumbai', credit: 'Photo: Nguyen Hung · Pexels' },
+      { city: 'Goa', country: 'India', vibes: ['Beach', 'Nightlife', 'Adventure'], ph: 'ev-goa', credit: 'Photo: Lucksborn Sangma · Pexels' },
+      { city: 'Jaipur', country: 'India', vibes: ['Cultural', 'Romantic', 'Family'], ph: 'ev-jaipur', credit: 'Photo: Yan Krukau · Pexels' }
+    ];
+  }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var mode = st.mode || 'month';
+    var selM = st.m == null ? 0 : st.m;
+    var selD = st.d == null ? null : st.d;
+    var selW = st.ws || null;
+    var kind = st.kind || 'all';
+    var city = st.city || 'all';
+    var vibe = st.vibe || 'all';
+    var showGrid = st.grid != null ? st.grid : mode !== 'month';
+
+    var TODAY = '2026-10-05';
+    var DAYMS = 86400000;
+    var MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    var MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var DOWFULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var KLABEL = { music: 'MUSIC', motorsport: 'MOTORSPORT', other: 'FESTIVAL & CULTURE' };
+    var NAVY = '#1E3A5F';
+    var TEALINK = '#226B6B';
+    var CORAL = '#E85D55';
+    var LINE = '#E7E4DD';
+    var WASH1 = 'rgba(46, 139, 139, 0.16)';
+    var WASH2 = 'rgba(46, 139, 139, 0.50)';
+    var wEnd = selW ? self.keyOf(self.ts(selW) + 6 * DAYMS) : null;
+
+    var win = [];
+    for (var i = 0; i < 12; i++) {
+      win.push({ i: i, y: 2026 + Math.floor((9 + i) / 12), mo: ((9 + i) % 12) + 1 });
+    }
+
+    var all = this.evData();
+    var bandsAll = this.bandData();
+
+    function inCity(c) { return city === 'all' || c === city; }
+    function inKind(k) { return kind === 'all' || kind === k; }
+    function fmtDay(k) {
+      var d = new Date(self.ts(k));
+      return DOW[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MON3[d.getUTCMonth()];
+    }
+    function chip(on) {
+      return on
+        ? { border: TEALINK, bg: TEALINK, fg: '#FFFFFF' }
+        : { border: LINE, bg: '#FFFFFF', fg: '#1F2733' };
+    }
+
+    var dated = all.filter(function (ev) { return inCity(ev.c) && inKind(ev.k); });
+    var bands = bandsAll.filter(function (b) { return inCity(b.c) && (kind === 'all' || kind === 'season'); });
+
+    var cityDated = all.filter(function (ev) { return inCity(ev.c); });
+    var cityBands = bandsAll.filter(function (b) { return inCity(b.c); });
+    function countKind(k) { return cityDated.filter(function (ev) { return ev.k === k; }).length; }
+    var kinds = [
+      { id: 'all', label: 'All', n: cityDated.length + cityBands.length },
+      { id: 'music', label: 'Music', n: countKind('music') },
+      { id: 'motorsport', label: 'Motorsport', n: countKind('motorsport') },
+      { id: 'other', label: 'Festivals & culture', n: countKind('other') },
+      { id: 'season', label: 'Seasons', n: cityBands.length }
+    ].filter(function (k) { return k.id === 'all' || k.n > 0; }).map(function (k) {
+      var on = k.id === kind;
+      var c = chip(on);
+      return { label: k.label, n: '' + k.n, on: on, border: c.border, bg: c.bg, fg: c.fg,
+        pick: function () { self.setState({ kind: k.id, d: null, ws: null }); } };
+    });
+
+    var cityRows = this.cityData();
+    function countCity(name) {
+      return all.filter(function (ev) { return ev.c === name; }).length +
+        bandsAll.filter(function (b) { return b.c === name; }).length;
+    }
+    var cities = [{ id: 'all', label: 'All eight cities', n: all.length + bandsAll.length }]
+      .concat(cityRows.map(function (cr) { return { id: cr.city, label: cr.city, n: countCity(cr.city) }; }))
+      .map(function (ci) {
+        var on = ci.id === city;
+        var c = chip(on);
+        return { label: ci.label, n: '' + ci.n, on: on, border: c.border, bg: c.bg, fg: c.fg,
+          pick: function () { self.setState({ city: ci.id, d: null, ws: null }); } };
+      });
+
+    var modes = [['month', 'Month'], ['week', 'Week'], ['day', 'Day']].map(function (p) {
+      var on = p[0] === mode;
+      return { label: p[1], on: on, bg: on ? NAVY : '#FFFFFF', fg: on ? '#FFFFFF' : '#1F2733', border: on ? NAVY : LINE,
+        pick: function () { self.setState({ mode: p[0], d: null, ws: null, grid: null }); } };
+    });
+    var hint = mode === 'month' ? 'Pick a month, or a date inside it.' : (mode === 'week' ? 'Pick a week in any month.' : 'Pick a date.');
+
+    var months = win.map(function (w) {
+      var dim = new Date(Date.UTC(w.y, w.mo, 0)).getUTCDate();
+      var first = self.ymd(w.y, w.mo, 1);
+      var last = self.ymd(w.y, w.mo, dim);
+      var dow = (new Date(Date.UTC(w.y, w.mo - 1, 1)).getUTCDay() + 6) % 7;
+      var ym = w.y + '-' + self.pad(w.mo);
+      var isSel = w.i === selM;
+      var inMonth = dated.filter(function (ev) { return ev.s <= last && ev.e >= first; });
+      var mBands = bands.filter(function (b) { return b.ym.indexOf(ym) >= 0; });
+
+      var marks = [];
+      for (var d = 1; d <= dim; d++) {
+        var k = self.ymd(w.y, w.mo, d);
+        var n = 0;
+        var isLong = false;
+        for (var j = 0; j < inMonth.length; j++) {
+          var ev = inMonth[j];
+          if (ev.s <= k && ev.e >= k) {
+            if (self.diff(ev.s, ev.e) + 1 > 10) { isLong = true; } else { n++; }
+          }
+        }
+        marks.push({ d: d, k: k, n: n, isLong: isLong });
+      }
+
+      var cells = [];
+      for (var b = 0; b < dow; b++) {
+        cells.push({ label: '', vis: 'hidden', off: true, aria: '', bg: 'transparent', fg: '#1F2733', radius: '6px', under: 'transparent', ring: 'none', weight: '400', pick: null });
+      }
+      marks.forEach(function (mk, idx) {
+        var col = (dow + idx) % 7;
+        var prev = idx > 0 && marks[idx - 1].n > 0 && col !== 0 && marks[idx - 1].k !== TODAY;
+        var next = idx < marks.length - 1 && marks[idx + 1].n > 0 && col !== 6 && marks[idx + 1].k !== TODAY;
+        var isToday = mk.k === TODAY;
+        var wsKey = self.keyOf(self.ts(mk.k) - col * DAYMS);
+        var inWeek = mode === 'week' && selW != null && mk.k >= selW && mk.k <= wEnd;
+        var picked = mode === 'day' && isSel && selD === mk.d;
+        var bg = mk.n === 0 ? 'transparent' : (mk.n === 1 ? WASH1 : WASH2);
+        var fg = '#1F2733';
+        var radius = (prev ? '0' : '6px') + ' ' + (next ? '0' : '6px') + ' ' + (next ? '0' : '6px') + ' ' + (prev ? '0' : '6px');
+        if (mk.n === 0) { radius = '6px'; }
+        if (isToday) { bg = NAVY; fg = '#FFFFFF'; radius = '6px'; }
+        var ring = 'none';
+        if (picked) {
+          ring = 'inset 0 0 0 2px ' + CORAL;
+        } else if (inWeek) {
+          var leftEnd = col === 0 || mk.d === 1;
+          var rightEnd = col === 6 || mk.d === dim;
+          var parts = ['inset 0 2px 0 0 ' + CORAL, 'inset 0 -2px 0 0 ' + CORAL];
+          if (leftEnd) { parts.push('inset 2px 0 0 0 ' + CORAL); }
+          if (rightEnd) { parts.push('inset -2px 0 0 0 ' + CORAL); }
+          ring = parts.join(', ');
+          radius = (leftEnd ? '6px' : '0') + ' ' + (rightEnd ? '6px' : '0') + ' ' + (rightEnd ? '6px' : '0') + ' ' + (leftEnd ? '6px' : '0');
+        }
+        var total = mk.n + (mk.isLong ? 1 : 0);
+        cells.push({
+          label: '' + mk.d,
+          vis: 'visible',
+          off: false,
+          aria: fmtDay(mk.k) + ' ' + w.y + (total ? ', ' + total + (total === 1 ? ' event' : ' events') : ''),
+          bg: bg,
+          fg: fg,
+          radius: radius,
+          under: mk.isLong && !isToday ? '#2E8B8B' : 'transparent',
+          ring: ring,
+          weight: mk.n > 1 ? '700' : ((total > 0 || isToday) ? '600' : '400'),
+          pick: function () {
+            if (mode === 'day') { self.setState({ m: w.i, d: mk.d, ws: null }); }
+            else if (mode === 'week') { self.setState({ m: w.i, d: null, ws: wsKey }); }
+            else { self.setState({ mode: 'day', m: w.i, d: mk.d, ws: null, grid: null }); }
+          }
+        });
+      });
+
+      var hasAny = inMonth.length > 0 || mBands.length > 0;
+      return {
+        name: MON[w.mo - 1],
+        yr: (w.i === 0 || w.mo === 1) ? '' + w.y : '',
+        n: '' + inMonth.length,
+        hasN: inMonth.length > 0,
+        band: mBands.length ? mBands[0].short + (mBands.length > 1 ? ' +' + (mBands.length - 1) : '') : '',
+        hasBand: mBands.length > 0,
+        on: isSel,
+        aria: MONTH[w.mo - 1] + ' ' + w.y + ', ' + inMonth.length + (inMonth.length === 1 ? ' event' : ' events'),
+        border: isSel ? NAVY : 'transparent',
+        bg: isSel ? '#FAFAF8' : 'transparent',
+        nameFg: (hasAny || isSel) ? NAVY : '#6A7480',
+        pillBorder: isSel ? NAVY : LINE,
+        pillBg: isSel ? NAVY : '#FFFFFF',
+        pillFg: isSel ? '#FFFFFF' : (hasAny ? '#1F2733' : '#6A7480'),
+        pillSub: inMonth.length > 0 ? '' + inMonth.length : (mBands.length > 0 ? 'season' : '–'),
+        pillSubFg: isSel ? '#FFFFFF' : (inMonth.length > 0 ? TEALINK : '#6A7480'),
+        cells: cells,
+        pick: function () { self.setState({ m: w.i, d: null, ws: null }); }
+      };
+    });
+
+    var sw = win[selM];
+    var sDim = new Date(Date.UTC(sw.y, sw.mo, 0)).getUTCDate();
+    var sFirst = self.ymd(sw.y, sw.mo, 1);
+    var sLast = self.ymd(sw.y, sw.mo, sDim);
+    var monthName = MONTH[sw.mo - 1];
+
+    var selKind = (mode === 'day' && selD != null) ? 'day' : ((mode === 'week' && selW != null) ? 'week' : 'month');
+    var ra = sFirst;
+    var rb = sLast;
+    if (selKind === 'day') { ra = self.ymd(sw.y, sw.mo, selD); rb = ra; }
+    if (selKind === 'week') { ra = selW; rb = wEnd; }
+
+    var selList = dated.filter(function (ev) { return ev.s <= rb && ev.e >= ra; });
+    selList = selList.slice().sort(function (a, b) { return a.s < b.s ? -1 : (a.s > b.s ? 1 : 0); });
+
+    var nextIdx = -1;
+    for (var q = 0; q < selList.length; q++) {
+      if (selList[q].e >= TODAY) { nextIdx = q; break; }
+    }
+    var EVPH = { 'Bogotá': 'ev-bogota', 'Kyoto': 'ev-kyoto', 'Mumbai': 'ev-mumbai', 'Edinburgh': 'ev-night', 'Cartagena': 'ev-cartagena', 'Jaipur': 'ev-jaipur', 'Goa': 'ev-goa', 'Porto': 'ev-porto' };
+    var EVCREDIT = { 'Bogotá': 'Photo: Daniel Sarmiento · Pexels', 'Kyoto': 'Photo: Julien · Pexels', 'Mumbai': 'Photo: Nguyen Hung · Pexels', 'Edinburgh': 'Photo: Pexels', 'Cartagena': 'Photo: Yaroslav Shuraev · Pexels', 'Jaipur': 'Photo: Yan Krukau · Pexels', 'Goa': 'Photo: Lucksborn Sangma · Pexels', 'Porto': 'Photo: Yuri Félix · Pexels' };
+    var globalNext = null;
+    dated.forEach(function (ev) {
+      if (ev.e >= TODAY && (globalNext == null || ev.s < globalNext.s)) { globalNext = ev; }
+    });
+    var rows = selList.map(function (ev, idx) {
+      var sd = new Date(self.ts(ev.s));
+      var nights = self.diff(ev.s, ev.e) + 1;
+      var until = self.diff(TODAY, ev.s);
+      var count = until < 0 ? (ev.e >= TODAY ? 'ON NOW' : 'ENDED') : (until === 0 ? 'TODAY' : (until === 1 ? 'TOMORROW' : 'IN ' + until + ' DAYS'));
+      var when = nights > 1 ? fmtDay(ev.s) + ' – ' + fmtDay(ev.e) : fmtDay(ev.s) + (ev.tm ? ' · ' + ev.tm : '');
+      var place = ev.v + (ev.loc ? ', ' + ev.loc + ' · outside the city, planned from ' + ev.c : ' · ' + ev.c);
+      return {
+        mon: MON[sd.getUTCMonth()],
+        day: '' + sd.getUTCDate(),
+        tag: KLABEL[ev.k] + ' · ' + (nights > 10 ? nights + '-DAY RUN' : (nights > 1 ? nights + ' DAYS' : (ev.tm ? 'ONE EVENING' : 'ONE DAY'))),
+        chip: (ev === globalNext ? 'NEXT UP · ' : '') + count,
+        count: count,
+        title: ev.t,
+        when: when,
+        place: place,
+        ph: EVPH[ev.c] || 'ev-night',
+        credit: EVCREDIT[ev.c] || '',
+        primary: idx === nextIdx,
+        secondary: idx !== nextIdx
+      };
+    });
+
+    var ymA = ra.slice(0, 7);
+    var ymB = rb.slice(0, 7);
+    var selBands = bands.filter(function (b) { return b.ym.indexOf(ymA) >= 0 || b.ym.indexOf(ymB) >= 0; }).map(function (b) {
+      return { title: b.t, sub: b.c + ' · ' + b.span + ' · no fixed dates published', cta: 'See ' + b.c + ' in ' + monthName };
+    });
+
+    var citySet = {};
+    selList.forEach(function (ev) { citySet[ev.c] = true; });
+    var nCities = Object.keys(citySet).length;
+    var selTitle = monthName + ' ' + sw.y;
+    if (selKind === 'day') {
+      var sdd = new Date(self.ts(ra));
+      selTitle = DOWFULL[sdd.getUTCDay()] + ' ' + selD + ' ' + monthName;
+    }
+    if (selKind === 'week') {
+      var da = new Date(self.ts(ra));
+      var db = new Date(self.ts(rb));
+      selTitle = da.getUTCMonth() === db.getUTCMonth()
+        ? da.getUTCDate() + ' – ' + db.getUTCDate() + ' ' + MONTH[db.getUTCMonth()]
+        : da.getUTCDate() + ' ' + MON3[da.getUTCMonth()] + ' – ' + db.getUTCDate() + ' ' + MON3[db.getUTCMonth()];
+    }
+    var selSub = selList.length === 0
+      ? 'No dated events'
+      : selList.length + (selList.length === 1 ? ' event' : ' events') + ' · ' + nCities + (nCities === 1 ? ' city' : ' cities');
+
+    var jumpIdx = -1;
+    for (var z = selM + 1; z < 12; z++) {
+      if (months[z].hasN || months[z].hasBand) { jumpIdx = z; break; }
+    }
+
+    var seasonBy = {};
+    this.seasonData().forEach(function (s) { seasonBy[s.city] = s; });
+    var RANK = { best: 0, good: 1, average: 2, events: 3, unrated: 4, off: 5 };
+    var GLABEL = { best: 'BEST TIME', good: 'GOOD TIME', average: 'AVERAGE', events: 'EVENTS ON', unrated: 'NOT RATED YET', off: 'OFF SEASON' };
+    var GBG = { best: '#1F5C48', good: TEALINK, average: '#8A6414', events: NAVY, unrated: '#485960', off: '#5A6470' };
+    var dests = cityRows.map(function (cr) {
+      var s = seasonBy[cr.city];
+      var r = s ? s.r[sw.mo - 1] : null;
+      var nEv = all.filter(function (ev) { return ev.c === cr.city && ev.s <= sLast && ev.e >= sFirst; }).length;
+      var group = 'unrated';
+      if (r === 'best' || r === 'good' || r === 'average') { group = r; }
+      else if (r === 'avoid') { group = 'off'; }
+      else if (nEv > 0) { group = 'events'; }
+      var rated = s != null;
+      return {
+        group: group,
+        vibes: cr.vibes,
+        city: cr.city,
+        country: cr.country,
+        label: GLABEL[group],
+        chipBg: GBG[group],
+        facts: rated ? s.temp[sw.mo - 1] + ' · ' + s.crowd[sw.mo - 1] + ' crowds' : '',
+        hasFacts: rated,
+        tags: cr.vibes.slice(0, 3).join(' · '),
+        evLine: nEv + (nEv === 1 ? ' event' : ' events') + ' in ' + monthName,
+        hasEv: nEv > 0,
+        cta: 'See ' + cr.city + ' in ' + monthName,
+        ph: cr.ph,
+        noPhoto: cr.ph === 'ph-none',
+        credit: cr.credit,
+        hasCredit: cr.credit !== ''
+      };
+    }).filter(function (d) {
+      return vibe === 'all' || d.vibes.indexOf(vibe) >= 0;
+    }).sort(function (a, b) { return RANK[a.group] - RANK[b.group]; });
+
+    var vibes = ['all', 'Romantic', 'Adventure', 'Cultural', 'Beach', 'Foodie', 'Nightlife', 'Family', 'Nature'].map(function (v) {
+      var on = v === vibe;
+      var c = chip(on);
+      return { label: v === 'all' ? 'All destinations' : v, on: on, border: c.border, bg: c.bg, fg: c.fg,
+        pick: function () { self.setState({ vibe: v }); } };
+    });
+
+    return {
+      kinds: kinds,
+      cities: cities,
+      modes: modes,
+      hint: hint,
+      months: months,
+      calTitle: monthName + ' ' + sw.y,
+      selCells: months[selM].cells,
+      selBand: months[selM].band,
+      hasSelBand: months[selM].hasBand,
+      rows: rows,
+      hasRows: rows.length > 0,
+      selBands: selBands,
+      hasBands: selBands.length > 0,
+      empty: rows.length === 0 && selBands.length === 0,
+      emptyTitle: selKind === 'day' ? 'Nothing on this date yet' : (selKind === 'week' ? 'Nothing dated this week yet' : 'Nothing dated in ' + monthName + ' yet'),
+      selKindLabel: selKind === 'day' ? 'DAY' : (selKind === 'week' ? 'WEEK' : 'MONTH'),
+      selTitle: selTitle,
+      selSub: selSub,
+      emptyBody: 'No organizer in ' + (city === 'all' ? 'our cities' : city) + ' has published dates for this period.',
+      showGrid: showGrid,
+      gridLabel: showGrid ? 'Hide dates' : 'Show dates',
+      toggleGrid: function () { self.setState({ grid: !showGrid }); },
+      showBack: selKind !== 'month',
+      backLabel: 'All of ' + monthName,
+      wholeMonth: function () { self.setState({ d: null, ws: null }); },
+      goToday: function () { self.setState({ mode: 'day', m: 0, d: 5, ws: null, grid: null }); },
+      hasJump: jumpIdx >= 0,
+      jumpLabel: jumpIdx >= 0 ? 'Go to ' + MONTH[win[jumpIdx].mo - 1] + ' ' + win[jumpIdx].y : '',
+      jump: function () { if (jumpIdx >= 0) { self.setState({ m: jumpIdx, d: null, ws: null }); } },
+      vibes: vibes,
+      dests: dests,
+      destTitle: 'Where to go in ' + monthName,
+      destCount: dests.length + (dests.length === 1 ? ' destination' : ' destinations') + (vibe !== 'all' ? ' · ' + vibe : ''),
+      destEmpty: dests.length === 0,
+      destEmptyText: vibe !== 'all' ? 'No ' + vibe.toLowerCase() + ' destinations for ' + monthName + ' yet' : 'No destination data for ' + monthName + ' yet',
+      clearVibe: function () { self.setState({ vibe: 'all' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

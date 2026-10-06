@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pop-up, step 3 When (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#226B6B}a:hover{color:#1E3A5F}
+.ph-kyoto{background-image:url(/_blob/f286cda1c9fa6f4e477b93bbc2b4d3c9)}
+.ph-porto{background-image:url(/_blob/8f66e65e509eca93cc9d8117757e5434)}
+.ph-bogota{background-image:url(/_blob/8e90eb03d6688937314d5e874cf0502c)}
+.ph-cartagena{background-image:url(/_blob/bbb698a1f8708a2b4cb639a1d08a4787)}
+.ph-mumbai{background-image:url(/_blob/cb22d172ed645a90876aeca59caa4ac5)}
+.ph-goa{background-image:url(/_blob/8d2e1a0bb3ef92eba2280b3464c3ee00)}
+.ph-jaipur{background-image:url(/_blob/9cc44dd641fc30f39b36ccf842e9c36f)}
+.ph-none{background-color:#1E3A5F}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 1000px; box-sizing: border-box; background: #FFFFFF; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
+  <div role="dialog" aria-label="Start a plan" style="display: flex; flex-direction: column">
+    <div style="padding: 18px 16px 14px; border-bottom: 1px solid #E7E4DD; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #B8403A">START A PLAN</span>
+        <button type="button" aria-label="Close" style="width: 44px; height: 44px; border: 0; border-radius: 8px; background: transparent; color: #1F2733; display: flex; align-items: center; justify-content: center; cursor: pointer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 28px; line-height: 1.1; color: #1E3A5F">{{ title }}</h2>
+      <ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; font-weight: 500">
+        <sc-for list="{{ steps }}" as="sx" hint-placeholder-count="4">
+          <li style="padding: 5px 10px; border-radius: 8px; border: 1px solid {{ sx.border }}; background: {{ sx.bg }}; color: {{ sx.fg }}">{{ sx.label }}</li>
+        </sc-for>
+      </ol>
+    </div>
+    
+    <sc-if value="{{ isWhat }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column">
+        <div style="display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E7E4DD">
+          <label for="occ-search-modal" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">Search occasions</label>
+          <input id="occ-search-modal" type="search" placeholder="Search occasions, e.g. honeymoon" style="flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 14px">
+        </div>
+        <div style="max-height: 560px; overflow-y: auto">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+          <div style="border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 {{ g.mark }}">
+            <button type="button" onClick="{{ g.toggle }}" aria-expanded="{{ g.open }}" style="width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; border: 0; background: transparent; color: #1F2733; font: inherit; text-align: left; cursor: pointer">
+              <span style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.15; color: #1E3A5F">{{ g.title }}</span>
+                <span style="font-size: 13px; color: #3C4652">{{ g.sub }}</span>
+                <sc-if value="{{ g.picked }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #B8403A; padding-top: 2px">{{ g.pickedLine }}</span>
+                </sc-if>
+              </span>
+              <span aria-hidden="true" style="flex: none; display: inline-flex; align-items: center; gap: 10px">
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ g.count }}</span>
+                <span style="width: 28px; height: 28px; box-sizing: border-box; border-radius: 999px; border: 1px solid #D5D0C8; display: flex; align-items: center; justify-content: center; font-size: 16px; line-height: 1; color: #1F2733">{{ g.sign }}</span>
+              </span>
+            </button>
+            <sc-if value="{{ g.open }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                  <sc-for list="{{ g.occs }}" as="oc" hint-placeholder-count="4">
+                    <button type="button" onClick="{{ oc.pick }}" aria-pressed="{{ oc.on }}" style="min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #1E3A5F; background: {{ oc.bg }}; color: {{ oc.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ oc.name }}</button>
+                  </sc-for>
+                </div>
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ g.tools }}</span>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        </div>
+        <div style="padding: 6px 14px 10px">
+          <button type="button" onClick="{{ allToggle }}" style="min-height: 44px; padding: 0; border: 0; background: transparent; color: #226B6B; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ allLabel }}</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWhere }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13.5px; color: #3C4652">Eight cities to start. Pick one.</span>
+        <sc-for list="{{ cities }}" as="c" hint-placeholder-count="8">
+          <button type="button" onClick="{{ c.pick }}" aria-pressed="{{ c.sel }}" style="display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px 6px 6px; border: 1px solid {{ c.border }}; box-shadow: {{ c.shadow }}; border-radius: 10px; background: #FFFFFF; color: #1F2733; font: inherit; text-align: left; cursor: pointer">
+            <span class="{{ c.ph }}" aria-hidden="true" style="flex: none; width: 44px; height: 44px; border-radius: 8px; background-color: #1E3A5F; background-size: cover; background-position: center"></span>
+            <span style="min-width: 0; flex: 1; display: flex; flex-direction: column">
+              <span style="font-size: 15px; font-weight: 600; color: #1E3A5F">{{ c.name }}</span>
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ c.country }}</span>
+            </span>
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #B8403A">{{ c.mark }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWhen }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 16px 16px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px">
+          <div style="flex: 1 1 140px; padding: 10px 12px; border: 1px solid #E7E4DD; border-radius: 10px; display: flex; flex-direction: column; gap: 2px">
+            <sc-if value="{{ isRange }}" hint-placeholder-val="{{ true }}"><span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #6A7480">FIRST DAY</span></sc-if>
+            <sc-if value="{{ isDayShape }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #6A7480">THE DAY</span></sc-if>
+            <span style="font-size: 15px; font-weight: 600; color: #1E3A5F">{{ firstDay }}</span>
+          </div>
+          <sc-if value="{{ isRange }}" hint-placeholder-val="{{ true }}">
+            <div style="flex: 1 1 140px; padding: 10px 12px; border: 1px solid #E7E4DD; border-radius: 10px; display: flex; flex-direction: column; gap: 2px">
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #6A7480">LAST DAY</span>
+              <span style="font-size: 15px; font-weight: 600; color: #1E3A5F">{{ lastDay }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isDayShape }}" hint-placeholder-val="{{ false }}">
+            <div style="flex: 1 1 140px; padding: 10px 12px; border: 1px solid #E7E4DD; border-radius: 10px; display: flex; flex-direction: column; gap: 2px">
+              <label for="plan-time" style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #6A7480">STARTS AT</label>
+              <input id="plan-time" type="time" value="19:00" style="min-height: 28px; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600">
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="border: 1px solid #E7E4DD; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+            <button type="button" onClick="{{ prevMonth }}" disabled="{{ prevOff }}" aria-label="Previous month" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #E7E4DD; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 16px; cursor: pointer">‹</button>
+            <span style="font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 19px; color: #1E3A5F">{{ monthTitle }}</span>
+            <button type="button" onClick="{{ nextMonth }}" disabled="{{ nextOff }}" aria-label="Next month" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #E7E4DD; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 16px; cursor: pointer">›</button>
+          </div>
+          <div aria-hidden="true" style="display: grid; grid-template-columns: repeat(7, 1fr); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480; text-align: center">
+            <span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px">
+            <sc-for list="{{ cells }}" as="cl" hint-placeholder-count="35">
+              <button type="button" onClick="{{ cl.pick }}" disabled="{{ cl.off }}" aria-label="{{ cl.aria }}" style="visibility: {{ cl.vis }}; min-height: 44px; padding: 0; border: 0; border-radius: 8px; background: {{ cl.bg }}; color: {{ cl.fg }}; box-shadow: {{ cl.ring }}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">{{ cl.label }}</button>
+            </sc-for>
+          </div>
+          <span style="font-size: 13px; color: #3C4652">{{ whenHint }}</span>
+        </div>
+
+        <sc-if value="{{ showMain }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 14px; border-radius: 12px; background: #FAFAF8; border: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 #E85D55; display: flex; flex-direction: column; gap: 8px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #B8403A">THE MAIN MOMENT</span>
+            <span style="font-size: 13.5px; color: #3C4652">{{ mainHint }}</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <sc-for list="{{ mainDays }}" as="md" hint-placeholder-count="3">
+                <button type="button" onClick="{{ md.pick }}" aria-pressed="{{ md.on }}" style="min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #1E3A5F; background: {{ md.bg }}; color: {{ md.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ md.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWho }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 16px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px">
+          <div style="flex: 1 1 200px; padding: 10px 12px; border: 1px solid #E7E4DD; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px">
+            <span style="font-size: 14.5px; font-weight: 600">Adults</span>
+            <div style="display: flex; align-items: center; gap: 6px">
+              <button type="button" onClick="{{ whoA.less }}" aria-label="Fewer adults" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 18px; cursor: pointer">−</button>
+              <span aria-live="polite" style="min-width: 34px; text-align: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 600; color: #1E3A5F">{{ whoA.value }}</span>
+              <button type="button" onClick="{{ whoA.more }}" aria-label="More adults" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 18px; cursor: pointer">+</button>
+            </div>
+          </div>
+          <div style="flex: 1 1 200px; padding: 10px 12px; border: 1px solid #E7E4DD; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px">
+            <span style="font-size: 14.5px; font-weight: 600">Kids</span>
+            <div style="display: flex; align-items: center; gap: 6px">
+              <button type="button" onClick="{{ whoK.less }}" aria-label="Fewer kids" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 18px; cursor: pointer">−</button>
+              <span aria-live="polite" style="min-width: 34px; text-align: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 600; color: #1E3A5F">{{ whoK.value }}</span>
+              <button type="button" onClick="{{ whoK.more }}" aria-label="More kids" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 18px; cursor: pointer">+</button>
+            </div>
+          </div>
+        </div>
+        <span style="font-size: 13.5px; color: #3C4652">{{ partyLine }}</span>
+        <sc-if value="{{ askPet }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 14px; border: 1px solid #E7E4DD; border-radius: 12px; display: flex; flex-direction: column; gap: 10px">
+            <span style="font-size: 14.5px; font-weight: 600">Bringing a pet? <span style="font-weight: 400; color: #6A7480">Optional</span></span>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+              <sc-for list="{{ petKinds }}" as="pk" hint-placeholder-count="3">
+                <button type="button" onClick="{{ pk.pick }}" aria-pressed="{{ pk.on }}" style="min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #1E3A5F; background: {{ pk.bg }}; color: {{ pk.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ pk.label }}</button>
+              </sc-for>
+              <sc-if value="{{ showPetCount }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; align-items: center; gap: 6px; padding-left: 6px">
+                  <button type="button" onClick="{{ petCount.less }}" aria-label="Fewer pets" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 18px; cursor: pointer">−</button>
+                  <span aria-live="polite" style="min-width: 28px; text-align: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 600; color: #1E3A5F">{{ petCount.value }}</span>
+                  <button type="button" onClick="{{ petCount.more }}" aria-label="More pets" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 18px; cursor: pointer">+</button>
+                </div>
+              </sc-if>
+            </div>
+            <span style="font-size: 12.5px; color: #6A7480">Leave it empty if not. It is only used to show where pets are welcome.</span>
+            <span style="font-size: 12.5px; color: #3C4652">A service animal is not a pet. It goes under accessibility and is never filtered out or charged for. <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; text-decoration: none">Add an accessibility note</a></span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ askAccess }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <label for="plan-access" style="font-size: 13.5px; font-weight: 600">Anything the party needs? <span style="font-weight: 400; color: #6A7480">Optional</span></label>
+            <textarea id="plan-access" rows="2" placeholder="Step-free access, dietary needs, anyone who cannot stand for long" style="box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 15px; resize: vertical"></textarea>
+          </div>
+        </sc-if>
+        <sc-if value="{{ askApprover }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-wrap: wrap; gap: 10px">
+            <div style="flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px">
+              <label for="plan-approver" style="font-size: 13.5px; font-weight: 600">Who approves the budget? <span style="font-weight: 400; color: #6A7480">Optional</span></label>
+              <input id="plan-approver" type="text" placeholder="Name" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 15px">
+            </div>
+            <div style="flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px">
+              <label for="plan-approver-email" style="font-size: 13.5px; font-weight: 600">Their email <span style="font-weight: 400; color: #6A7480">Optional</span></label>
+              <input id="plan-approver-email" type="email" placeholder="name@company.com" style="min-height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 15px">
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isEvents }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 16px; display: flex; flex-direction: column; gap: 12px">
+        <span style="font-size: 13.5px; color: #3C4652">Pick what is part of it. Each one goes onto the schedule and can be moved later.</span>
+        <sc-if value="{{ hasMoments }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-for list="{{ moments }}" as="mt" hint-placeholder-count="5">
+              <button type="button" onClick="{{ mt.pick }}" aria-pressed="{{ mt.on }}" style="min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #1E3A5F; background: {{ mt.bg }}; color: {{ mt.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">{{ mt.name }}</button>
+            </sc-for>
+            <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px dashed #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">Something else</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noMoments }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 16px; border: 1px dashed #D5D0C8; border-radius: 12px; font-size: 13.5px; color: #3C4652">[The preset moments for this occasion load here. Not filled in this mock.]</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showFinish }}" hint-placeholder-val="{{ false }}">
+      <div style="margin: 0 16px 16px; padding: 16px; border-radius: 12px; background: #FAFAF8; border: 1px solid #E7E4DD; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">LAST THING · WHO BUILDS IT</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <a href="{{ finishHref }}" style="flex: 1 1 150px; display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Plan it myself</a>
+          <a href="{{ finishHref }}" style="flex: 1 1 150px; display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 14px; border-radius: 8px; background: #C8443D; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none">Draft it with AI · free</a>
+          <a href="{{ finishHref }}" style="flex: 1 1 150px; display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Plan with a local</a>
+        </div>
+        <span style="font-size: 12.5px; color: #6A7480">Any of the three creates your plan and opens it on the map. If you are signed out, you sign in first and your answers are kept.</span>
+      </div>
+    </sc-if>
+    <div style="padding: 12px 16px; border-top: 1px solid #E7E4DD; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px">
+      <div style="min-width: 0; flex: 1 1 200px; display: flex; align-items: center; gap: 10px">
+        <sc-if value="{{ canBack }}" hint-placeholder-val="{{ true }}">
+          <button type="button" onClick="{{ back }}" style="flex: none; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Back</button>
+        </sc-if>
+        <span style="font-size: 13px; color: #3C4652">{{ summary }}</span>
+      </div>
+      <sc-if value="{{ nextOn }}" hint-placeholder-val="{{ true }}">
+        <button type="button" onClick="{{ next }}" style="min-height: 44px; padding: 0 20px; border-radius: 8px; border: 0; background: #C8443D; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">{{ nextLabel }}</button>
+      </sc-if>
+      <sc-if value="{{ nextOffState }}" hint-placeholder-val="{{ false }}">
+        <span aria-disabled="true" style="display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 20px; border-radius: 8px; border: 1px solid #E7E4DD; background: #F6F5F1; color: #6A7480; font-size: 14px; font-weight: 600">{{ nextLabel }}</span>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+  /* The one planning pop-up: What, Where, When, Who, then "What's happening" when the occasion has a schedule.
+     Each occasion's shape (one day or a range, guest wording, schedule) is the seeded catalog row. */
+  start() { return {"step": "when", "occ": "Wedding", "city": "Kyoto", "mo": 7, "d1": "2027-05-14", "d2": "2027-05-16", "main": "2027-05-15", "adults": null, "kids": null, "petKind": "", "petN": 1, "phone": true}; }
+
+  groupData() {
+    return [
+      { k: 'trip', title: 'A trip', sub: 'Built around where you stay.', tools: 'Getting there · Where to stay · Travel party · Getting around · Pace',
+        occ: ['Travel', 'Honeymoon', 'Anniversary Trip', 'Romantic Getaways', 'Golf trip', 'Sports Event'] },
+      { k: 'evening', title: 'One evening', sub: 'Built around one reservation.', tools: 'The reservation · Timing check · Getting home',
+        occ: ['Date Night', 'Proposal', 'Show / Festival'] },
+      { k: 'celebration', title: 'A celebration', sub: 'Built around the place it happens.', tools: 'The venue · Guests · Vendors · Budget',
+        occ: ['Birthday', 'Milestone Birthday', 'Wedding Anniversary', 'Engagement Party', 'Baby Shower', 'Graduation Party', 'Retirement Party', 'Holiday Party', 'Housewarming Party', 'Farewell Party', 'Career Achievement Party', 'Corporate Events'] },
+      { k: 'hosted', title: 'A hosted event', sub: 'Built around the venue.', tools: 'Run of show · Guest invites · Vendor contracts · Arrivals & split groups',
+        occ: ['Wedding', 'Reunions', 'Corporate Retreats'] },
+      { k: 'group', title: 'A group getaway', sub: 'Built around where everyone stays.', tools: "Getting there · Shared lodging · Who's coming · Split activities · Who pays what",
+        occ: ['Bachelor/Bachelorette Party', 'Girls Trip', 'Boys Trip', 'Retreats', 'Family Occasion'] }
+    ];
+  }
+
+  /* [one day?, has a schedule?, has a guest list?, party word] per occasion, from the catalog seed. */
+  shapeData() {
+    return {
+      'Travel': [0, 0, 0, 'travelers'], 'Honeymoon': [0, 0, 0, 'travelers'], 'Anniversary Trip': [0, 0, 0, 'travelers'],
+      'Romantic Getaways': [0, 0, 0, 'travelers'], 'Golf trip': [0, 1, 0, 'travelers'], 'Sports Event': [0, 1, 0, 'travelers'],
+      'Date Night': [1, 1, 0, 'travelers'], 'Proposal': [1, 1, 0, 'travelers'], 'Show / Festival': [1, 1, 0, 'travelers'],
+      'Birthday': [1, 1, 1, 'guests'], 'Milestone Birthday': [1, 1, 1, 'guests'], 'Wedding Anniversary': [1, 1, 1, 'guests'],
+      'Engagement Party': [1, 1, 1, 'guests'], 'Baby Shower': [1, 1, 1, 'guests'], 'Graduation Party': [1, 1, 1, 'guests'],
+      'Retirement Party': [1, 1, 1, 'guests'], 'Holiday Party': [1, 1, 1, 'guests'], 'Housewarming Party': [1, 0, 1, 'guests'],
+      'Farewell Party': [1, 1, 1, 'guests'], 'Career Achievement Party': [1, 1, 1, 'guests'], 'Corporate Events': [1, 1, 1, 'attendees'],
+      'Wedding': [0, 1, 1, 'guests'], 'Reunions': [0, 1, 1, 'guests'], 'Corporate Retreats': [0, 1, 1, 'attendees'],
+      'Bachelor/Bachelorette Party': [0, 1, 1, 'guests'], 'Girls Trip': [0, 1, 1, 'guests'], 'Boys Trip': [0, 1, 1, 'travelers'],
+      'Retreats': [0, 1, 1, 'attendees'], 'Family Occasion': [0, 1, 1, 'guests']
+    };
+  }
+
+  /* The server's preset moments, for the three occasions whose planners are drawn. */
+  presetData() {
+    return {
+      'Wedding': ['Welcome drinks', 'Rehearsal Dinner', 'Hair & Makeup', 'Photographer Arrival', 'Ceremony', 'Reception', 'Farewell brunch'],
+      'Proposal': ['Dinner Reservation', 'Secret Photographer', 'The Proposal'],
+      'Birthday': ['Birthday Activity', 'Birthday Dinner', 'Cake & Surprise']
+    };
+  }
+
+  cityData() {
+    return [['Kyoto', 'Japan', 'ph-kyoto'], ['Edinburgh', 'United Kingdom', 'ph-none'], ['Porto', 'Portugal', 'ph-porto'], ['Bogotá', 'Colombia', 'ph-bogota'],
+      ['Cartagena', 'Colombia', 'ph-cartagena'], ['Mumbai', 'India', 'ph-mumbai'], ['Goa', 'India', 'ph-goa'], ['Jaipur', 'India', 'ph-jaipur']];
+  }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var S = this.start();
+    function val(k) { return st[k] === undefined ? S[k] : st[k]; }
+    var step = val('step');
+    var grp = st.grp || '';
+    var all = !!st.all;
+    var occ = val('occ');
+    var city = val('city');
+    var mo = val('mo');
+    var d1 = val('d1');
+    var d2 = val('d2');
+    var main = val('main');
+    var adults = val('adults');
+    var kids = val('kids');
+    var picked = st.picked || {};
+    var petKind = val('petKind');
+    var petN = val('petN');
+
+    var NAVY = '#1E3A5F';
+    var TEALINK = '#226B6B';
+    var CORAL = '#E85D55';
+    var TODAY = '2026-10-05';
+    var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    var shape = this.shapeData()[occ] || [0, 0, 0, 'travelers'];
+    var isDay = !!shape[0];
+    var hasSched = !!shape[1];
+    var hasGuests = !!shape[2];
+    var noun = shape[3];
+    var groupOf = '';
+    var data = this.groupData();
+    var total = 0;
+    data.forEach(function (g) { total += g.occ.length; if (g.occ.indexOf(occ) !== -1) { groupOf = g.k; } });
+
+    /* ---- step 1, the same picker the Experiences start screen uses ---- */
+    var groups = data.map(function (g) {
+      var open = all || grp === g.k;
+      var holds = g.occ.indexOf(occ) !== -1;
+      return {
+        title: g.title, sub: g.sub, count: '' + g.occ.length, open: open, sign: open ? '–' : '+',
+        picked: holds, pickedLine: holds ? 'PICKED · ' + occ.toUpperCase() : '', mark: holds ? CORAL : 'transparent',
+        tools: 'ON YOUR PLAN · ' + g.tools,
+        toggle: function () { self.setState({ grp: (!all && grp === g.k) ? '' : g.k, all: false }); },
+        occs: g.occ.map(function (n) {
+          var on = n === occ;
+          return { name: n, on: on, bg: on ? NAVY : '#FFFFFF', fg: on ? '#FFFFFF' : NAVY,
+            pick: function () { self.setState({ occ: on ? '' : n, grp: all ? grp : g.k, d1: '', d2: '', main: '', adults: null, kids: null, picked: {} }); } };
+        })
+      };
+    });
+
+    /* ---- step 2 ---- */
+    var cities = this.cityData().map(function (c) {
+      var sel = c[0] === city;
+      return { name: c[0], country: c[1], ph: c[2], sel: sel, border: sel ? CORAL : '#E7E4DD', shadow: sel ? '0 0 0 2px #E85D55' : 'none',
+        mark: sel ? 'Picked' : '', pick: function () { self.setState({ city: sel ? '' : c[0] }); } };
+    });
+
+    /* ---- step 3: one month at a time, twelve months ahead ---- */
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function ymd(y, m, d) { return y + '-' + pad(m + 1) + '-' + pad(d); }
+    function nice(k) {
+      if (!k) { return ''; }
+      var p = k.split('-');
+      var dt = new Date(+p[0], +p[1] - 1, +p[2]);
+      return DOW[dt.getDay()] + ' ' + (+p[2]) + ' ' + MONTHS[+p[1] - 1].slice(0, 3) + ' ' + p[0];
+    }
+    var yy = 2026 + Math.floor((9 + mo) / 12);
+    var mm = (9 + mo) % 12;
+    var first = new Date(yy, mm, 1).getDay();
+    var lead = (first + 6) % 7;
+    var dim = new Date(yy, mm + 1, 0).getDate();
+    function clickDay(k) {
+      return function () {
+        if (isDay) { self.setState({ d1: k, d2: '', main: '' }); return; }
+        if (!d1 || d2) { self.setState({ d1: k, d2: '', main: '' }); return; }
+        if (k < d1) { self.setState({ d1: k }); return; }
+        self.setState({ d2: k });
+      };
+    }
+    var cells = [];
+    var i;
+    for (i = 0; i < lead; i++) { cells.push({ label: '', vis: 'hidden', off: true, bg: 'transparent', fg: NAVY, ring: 'none', aria: '', pick: null }); }
+    for (i = 1; i <= dim; i++) {
+      var k = ymd(yy, mm, i);
+      var past = k < TODAY;
+      var isEnd = k === d1 || k === d2;
+      var inside = !!d1 && !!d2 && k > d1 && k < d2;
+      cells.push({
+        label: '' + i, vis: 'visible', off: past,
+        bg: isEnd ? NAVY : (inside ? 'rgba(46, 139, 139, 0.18)' : 'transparent'),
+        fg: isEnd ? '#FFFFFF' : (past ? '#B5BAC1' : '#1F2733'),
+        ring: k === main ? 'inset 0 0 0 2px ' + CORAL : (k === TODAY ? 'inset 0 0 0 1px ' + NAVY : 'none'),
+        aria: nice(k) + (k === d1 ? ', first day' : '') + (k === d2 ? ', last day' : '') + (k === main ? ', the main moment' : ''),
+        pick: clickDay(k)
+      });
+    }
+    var whenDone = isDay ? !!d1 : (!!d1 && !!d2);
+    var mainDays = [];
+    if (!isDay && hasSched && d1 && d2) {
+      var p1 = d1.split('-');
+      var cur = new Date(+p1[0], +p1[1] - 1, +p1[2]);
+      var guard = 0;
+      while (guard < 7) {
+        var ck = ymd(cur.getFullYear(), cur.getMonth(), cur.getDate());
+        if (ck > d2) { break; }
+        (function (key) {
+          var on = key === main;
+          mainDays.push({ label: nice(key).slice(0, -5), on: on, bg: on ? NAVY : '#FFFFFF', fg: on ? '#FFFFFF' : NAVY,
+            pick: function () { self.setState({ main: on ? '' : key }); } });
+        })(ck);
+        cur.setDate(cur.getDate() + 1);
+        guard++;
+      }
+    }
+
+    /* ---- step 4: an untouched stepper stays empty, never a default ---- */
+    function stepper(key, v) {
+      return {
+        value: v == null ? '—' : '' + v,
+        less: function () { var nx = {}; nx[key] = (v == null || v <= 0) ? null : v - 1; self.setState(nx); },
+        more: function () { var nx = {}; nx[key] = v == null ? 1 : v + 1; self.setState(nx); }
+      };
+    }
+    var party = (adults == null && kids == null) ? null : (adults || 0) + (kids || 0);
+    var partyLine = party == null ? 'Not answered yet. You can skip this and add it later.' : party + ' ' + (party === 1 ? noun.slice(0, -1) : noun);
+    var whoQ = noun === 'guests' ? 'How many guests?' : (noun === 'attendees' ? 'How many attendees?' : 'Who is traveling?');
+
+    /* A pet is optional and stays unanswered unless a kind is picked; it is asked where travel is involved. */
+    var askPet = groupOf === 'trip' || groupOf === 'group';
+    var petKinds = [['dog', 'Dog'], ['cat', 'Cat'], ['other', 'Another animal']].map(function (k) {
+      var on = petKind === k[0];
+      return { label: k[1], on: on, bg: on ? NAVY : '#FFFFFF', fg: on ? '#FFFFFF' : NAVY,
+        pick: function () { self.setState({ petKind: on ? '' : k[0], petN: 1 }); } };
+    });
+    var petWord = petKind === 'other' ? (petN === 1 ? 'pet' : 'pets') : petKind + (petN === 1 ? '' : 's');
+
+    /* ---- step 5 ---- */
+    var presets = this.presetData()[occ] || [];
+    var moments = presets.map(function (n) {
+      var on = !!picked[n];
+      return { name: n, on: on, bg: on ? NAVY : '#FFFFFF', fg: on ? '#FFFFFF' : NAVY,
+        pick: function () { var nx = {}; Object.keys(picked).forEach(function (q) { nx[q] = true; }); if (on) { delete nx[n]; } else { nx[n] = true; } self.setState({ picked: nx }); } };
+    });
+
+    /* ---- the steps, the strip and the footer ---- */
+    var order = ['what', 'where', 'when', 'who'];
+    if (hasSched) { order.push('events'); }
+    var LABEL = { what: 'What', where: 'Where', when: 'When', who: 'Who', events: "What's happening" };
+    var TITLE = {
+      what: 'What are you planning?', where: 'Where?',
+      when: isDay ? 'Which day?' : 'When is it?', who: whoQ, events: "What's happening?"
+    };
+    var ok = { what: occ !== '', where: city !== '', when: whenDone, who: true, events: true };
+    var at = order.indexOf(step);
+    if (at < 0) { at = 0; step = 'what'; }
+    var isLast = at === order.length - 1;
+    var steps = order.map(function (s, n) {
+      var done = n < at && ok[s];
+      var cur2 = n === at;
+      return { label: (done ? '✓ ' : (n + 1) + ' · ') + LABEL[s], bg: cur2 ? NAVY : '#FFFFFF', fg: cur2 ? '#FFFFFF' : (done ? TEALINK : '#1F2733'), border: cur2 ? NAVY : (done ? TEALINK : '#E7E4DD') };
+    });
+    var nextStep = isLast ? '' : order[at + 1];
+    var bits = [];
+    if (occ) { bits.push(occ); }
+    if (city) { bits.push(city); }
+    if (d1) { bits.push(isDay || !d2 ? nice(d1) : nice(d1).slice(0, -5) + ' – ' + nice(d2)); }
+    if (party != null) { bits.push(partyLine); }
+    if (askPet && petKind) { bits.push(petN + ' ' + petWord); }
+
+    var sfx = S.phone ? 'Mobile.dc.html' : '.dc.html';
+    var board = { trip: 'ExperienceMap', group: 'ExperienceMap', hosted: 'EventPlanner', celebration: 'CelebrationPlanner', evening: 'ProposalPlanner' }[groupOf] || 'ExperienceMap';
+
+    return {
+      title: TITLE[step],
+      steps: steps,
+      isWhat: step === 'what', isWhere: step === 'where', isWhen: step === 'when', isWho: step === 'who', isEvents: step === 'events',
+
+      groups: groups,
+      allLabel: all ? 'Show the five groups only' : 'See all ' + total + ' occasions',
+      allToggle: function () { self.setState({ all: !all }); },
+
+      cities: cities,
+
+      monthTitle: MONTHS[mm] + ' ' + yy,
+      canPrev: mo > 0, canNext: mo < 11,
+      prevOff: mo <= 0, nextOff: mo >= 11,
+      prevMonth: function () { if (mo > 0) { self.setState({ mo: mo - 1 }); } },
+      nextMonth: function () { if (mo < 11) { self.setState({ mo: mo + 1 }); } },
+      cells: cells,
+      whenHint: isDay ? 'One day. Pick the date.' : (!d1 ? 'Pick the first day.' : (!d2 ? 'Now pick the last day.' : 'Pick again to change the dates.')),
+      isRange: !isDay,
+      isDayShape: isDay,
+      firstDay: d1 ? nice(d1) : 'Not picked',
+      lastDay: d2 ? nice(d2) : 'Not picked',
+      showMain: mainDays.length > 0,
+      mainDays: mainDays,
+      mainTitle: 'The main moment',
+      mainHint: 'Which day is the ' + (occ ? occ.toLowerCase() : 'main moment') + ' itself? The rest is planned around it.',
+
+      whoA: stepper('adults', adults),
+      whoK: stepper('kids', kids),
+      partyLine: partyLine,
+      askAccess: hasGuests,
+      askApprover: noun === 'attendees',
+      askPet: askPet,
+      petKinds: petKinds,
+      showPetCount: askPet && petKind !== '',
+      petCount: {
+        value: '' + petN,
+        less: function () { if (petN > 1) { self.setState({ petN: petN - 1 }); } },
+        more: function () { self.setState({ petN: petN + 1 }); }
+      },
+
+      moments: moments,
+      hasMoments: moments.length > 0,
+      noMoments: moments.length === 0,
+
+      showFinish: isLast && step !== 'what' && step !== 'where' && step !== 'when',
+      finishHref: board + sfx,
+      canBack: at > 0,
+      back: function () { self.setState({ step: order[at - 1] }); },
+      showNext: !isLast,
+      nextOn: !isLast && ok[step],
+      nextOffState: !isLast && !ok[step],
+      nextLabel: isLast ? '' : 'Next: ' + LABEL[nextStep].toLowerCase(),
+      next: function () { if (!isLast && ok[step]) { self.setState({ step: nextStep }); } },
+      summary: bits.length ? bits.join(' · ') : 'Nothing picked yet.'
+    };
+  }
+}
+</script>
+</body>
+</html>

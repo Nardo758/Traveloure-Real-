@@ -735,6 +735,13 @@ This document captures architectural decisions to maintain consistency across co
     **never inferred from the viewer's role** (an expert planning their own holiday is a traveler),
     it grants nothing, and no door sets it today — the expert authoring builds are server rails with
     no plan-modal surface yet.
+    **AMENDED — THE NOTE REACHES A TRIP ONLY THROUGH THE SERVICE-ANIMAL LINE (decision-maker Leon Dixon,
+    Oct 5, 2026, 17:42 ET — ledger `2026-10-05-pets-fields-and-service-animal`; rulings-2 ruling 12).** This
+    entry reads "the note when **`default_guests` is explicitly true**". That stands, with ONE narrow
+    addition: on a trip, the accessibility note is also offered when the traveler opens it from the
+    service-animal line of the pets question — and from nowhere else. Service animals are not pets: they
+    never trigger a pet surcharge or a pet filter and are never counted in the pet fields (pet kind and
+    count, two optional plan fields whose migration is held until the pets lane's hard stop). Not built.
 
 39. **EVERY ADD SURFACE IS A VIEW OF `itinerary_items`, AND THE CART IS ONE OF THEM (decision-maker
     ratified Sep 4, 2026 — ledger rows `2026-09-03-slip-convergence`, `2026-09-03-trip-pdf`,
@@ -1419,6 +1426,20 @@ This document captures architectural decisions to maintain consistency across co
     occasion's roles in an e2e: the chips' rules are proven purely, and their silence is proven in
     the DOM.
 
+    **AMENDED — THREE PLANNERS ON ONE PLAN; EXPERIENCES IS THE MAP PLANNER (decision-maker Leon Dixon,
+    Oct 5, 2026, ET — ledger `2026-10-05-experiences-map-planner`; brief
+    `docs/planning/briefs/experiences-map-planner.md` §A3; boards `docs/design/experiences-map-planner/`).**
+    This entry's heading reads "THE SLIP IS THE ONE PLANNING SURFACE", and surface spec R-b read "the
+    slip is the **only** planning surface; Browse is a map layer on the slip". Both are amended: there
+    are **three planners — feed, calendar, map** — and Experiences is the **map planner**, a planner in
+    its own right. **What does NOT move:** there is still ONE plan — the map planner reads and writes the
+    same `trips` row and `itinerary_items` through the slip's existing writers (LD 39, no second store,
+    no second admission rail); every AI write is still a proposal or the free draft on an empty plan
+    (LD 41, LD 45); the owner-only edit render rule (D16) and D8 stand; fee disclosure stays at checkout.
+    A new plan started from Experiences or from Plan with AI lands on the map (scope assumed, not ruled;
+    every other door unchanged). Which other doors land on the map, venue-led planners, Trip Pass, the
+    Ask AI drawer and the Optimize comparison on the map are **NOT ruled** (brief §B).
+
 43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;
     ONE SOFT SAVE PROMPT (decision-maker ratified Sep 5, 2026, evening — ledger
     `2026-09-05-payment-method-posture`; this lane = `2026-09-05-wallets-on-platform-intents`).
@@ -1803,6 +1824,16 @@ This document captures architectural decisions to maintain consistency across co
     standing — the slip — says **NOTHING** (§13). **No undo is drawn** (LD 42 D18), and LD 41 (b)'s
     empty-plan branch is kept although it cannot fire post-final. **L16 is complete**; lane 5 was ruled
     out by D-45.
+    **(7) AMENDED — THE FILL BEHIND WHITE TEXT IS `#C8443D` (decision-maker Leon Dixon, Oct 5, 2026,
+    ET — ledger `2026-10-05-coral-fill-contrast`; brief `experiences-map-planner.md` §A1).** (7) reads
+    "the traveler console adopts the ONE site grammar — coral primary (`#E85D55`)". `#E85D55` stays the
+    brand ACCENT and OUTLINE and is never a background behind white text (3.43:1); any filled surface
+    carrying white text uses `#C8443D` (4.83:1); coral as text on a light ground stays `#B8403A`. The
+    `--primary` change and the contrast test are the brief's Lane 1. The dark theme is not ruled.
+    **Extended the same day, 17:42 ET (ledger `2026-10-05-coral-three-tokens`):** three named colours,
+    ONE token each — fill `#C8443D`, text `#B8403A`, accent/outline `#E85D55`; `.console-scope` fills
+    (`--primary`, `--sidebar-primary`, `--console-brand` as a background) take the fill, focus rings stay the
+    accent; a guard-batch check fails on any coral literal outside the three token definitions (Lane 1).
 
 46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
     WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all

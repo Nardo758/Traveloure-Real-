@@ -1,0 +1,196 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-05T04:20:00Z"
+  },
+  "title": "Events page redesign",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "ExperienceMap.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 2020,
+      "title": "Trip · map planner · desktop",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "ExperienceMapMobile.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 390,
+      "h": 3680,
+      "title": "Trip · map planner · phone",
+      "is_interactive": true
+    },
+    "EventPlanner.dc.html": {
+      "x": 1990,
+      "y": 0,
+      "w": 1440,
+      "h": 1920,
+      "title": "Wedding · hosted-event planner · desktop",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "EventPlannerMobile.dc.html": {
+      "x": 3510,
+      "y": 0,
+      "w": 390,
+      "h": 3280,
+      "title": "Wedding · hosted-event planner · phone",
+      "is_interactive": true
+    },
+    "ProposalPlanner.dc.html": {
+      "x": 3980,
+      "y": 0,
+      "w": 1440,
+      "h": 1570,
+      "title": "Proposal · planner · desktop",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "ProposalPlannerMobile.dc.html": {
+      "x": 5500,
+      "y": 0,
+      "w": 390,
+      "h": 2470,
+      "title": "Proposal · planner · phone",
+      "is_interactive": true
+    },
+    "CelebrationPlanner.dc.html": {
+      "x": 5970,
+      "y": 0,
+      "w": 1440,
+      "h": 1540,
+      "title": "Birthday · celebration planner · desktop",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "CelebrationPlannerMobile.dc.html": {
+      "x": 7490,
+      "y": 0,
+      "w": 390,
+      "h": 2440,
+      "title": "Birthday · celebration planner · phone",
+      "is_interactive": true
+    },
+    "Experiences.dc.html": {
+      "x": 0,
+      "y": 3840,
+      "w": 1440,
+      "h": 1580,
+      "title": "Experiences · start a plan · desktop",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "ExperiencesMobile.dc.html": {
+      "x": 1520,
+      "y": 3840,
+      "w": 390,
+      "h": 3120,
+      "title": "Experiences · start a plan · phone",
+      "is_interactive": true
+    },
+    "PlanModal.dc.html": {
+      "x": 1990,
+      "y": 3840,
+      "w": 760,
+      "h": 960,
+      "title": "Pop-up · 1 What",
+      "is_interactive": true
+    },
+    "PlanModalWhen.dc.html": {
+      "x": 2830,
+      "y": 3840,
+      "w": 760,
+      "h": 960,
+      "title": "Pop-up · 3 When",
+      "is_interactive": true
+    },
+    "PlanModalWho.dc.html": {
+      "x": 3670,
+      "y": 3840,
+      "w": 760,
+      "h": 960,
+      "title": "Pop-up · 4 Who and the finish",
+      "is_interactive": true
+    },
+    "PlanModalWhenMobile.dc.html": {
+      "x": 4510,
+      "y": 3840,
+      "w": 390,
+      "h": 1000,
+      "title": "Pop-up · 3 When · phone",
+      "is_interactive": true
+    },
+    "PlanModalWhoMobile.dc.html": {
+      "x": 4980,
+      "y": 3840,
+      "w": 390,
+      "h": 1140,
+      "title": "Pop-up · 4 Who · phone",
+      "is_interactive": true
+    },
+    "Main.dc.html": {
+      "x": 0,
+      "y": 7120,
+      "w": 1440,
+      "h": 3060,
+      "title": "Events · desktop · calendar as the stage",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "EventDetail.dc.html": {
+      "x": 1520,
+      "y": 7120,
+      "w": 1440,
+      "h": 2080,
+      "title": "Event detail · desktop",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "Mobile.dc.html": {
+      "x": 3040,
+      "y": 7120,
+      "w": 390,
+      "h": 5400,
+      "title": "Events · phone",
+      "is_interactive": true
+    },
+    "EventDetailMobile.dc.html": {
+      "x": 3510,
+      "y": 7120,
+      "w": 390,
+      "h": 3800,
+      "title": "Event detail · phone",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "ExperienceMap.dc.html",
+    "ExperienceMapMobile.dc.html",
+    "EventPlanner.dc.html",
+    "EventPlannerMobile.dc.html",
+    "ProposalPlanner.dc.html",
+    "ProposalPlannerMobile.dc.html",
+    "CelebrationPlanner.dc.html",
+    "CelebrationPlannerMobile.dc.html",
+    "Experiences.dc.html",
+    "ExperiencesMobile.dc.html",
+    "PlanModal.dc.html",
+    "PlanModalWhen.dc.html",
+    "PlanModalWho.dc.html",
+    "PlanModalWhenMobile.dc.html",
+    "PlanModalWhoMobile.dc.html",
+    "Main.dc.html",
+    "EventDetail.dc.html",
+    "Mobile.dc.html",
+    "EventDetailMobile.dc.html"
+  ],
+  "notes": {},
+  "designSystems": []
+}

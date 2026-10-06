@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Experiences, map planner (desktop)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#226B6B}a:hover{color:#1E3A5F}
+</style>
+</helmet>
+<div style="min-height: 2020px; background: #FAFAF8; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
+
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD">
+    <div style="max-width: 1392px; margin: 0 auto; padding: 0 24px; min-height: 64px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 28px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-weight: 700; letter-spacing: 0.14em; font-size: 15px; color: #485960">TRAVELOURE</span>
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 999px; border: 1px solid #FCCACA; background: #FFF4F4; color: #B8403A">BETA</span>
+      </div>
+      <nav aria-label="Site" style="display: flex; flex-wrap: wrap; gap: 6px 26px; font-size: 14px">
+        <a href="Main.dc.html" style="color: #6A7480; text-decoration: none">Marketplace</a>
+        <a href="#" style="color: #6A7480; text-decoration: none">Experts &amp; Services</a>
+        <a href="Experiences.dc.html" aria-current="page" style="color: #1F2733; text-decoration: none; font-weight: 600">Experiences</a>
+        <a href="#" style="color: #6A7480; text-decoration: none">Planning Tools</a>
+        <a href="#" style="color: #6A7480; text-decoration: none">Ways to Earn</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <sc-if value="{{ isMember }}" hint-placeholder-val="{{ true }}">
+          <span aria-label="Signed in as Leon" style="width: 34px; height: 34px; border-radius: 999px; background: #1E3A5F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600">L</span>
+        </sc-if>
+        <button type="button" onClick="{{ acctToggle }}" style="min-height: 36px; padding: 0 16px; border-radius: 8px; border: 1px solid {{ acctBorder }}; background: {{ acctBg }}; color: {{ acctFg }}; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer">{{ acctLabel }}</button>
+      </div>
+    </div>
+  </header>
+
+  <section aria-label="Your plan" style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD">
+    <div style="max-width: 1392px; margin: 0 auto; padding: 20px 24px 16px; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 32px">
+      <div style="flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ bandEyebrow }}</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px">
+          <h1 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 32px; line-height: 1.1; color: #1E3A5F">Kyoto trip</h1>
+          <span style="font-size: 14px; color: #3C4652">{{ partyLine }}</span>
+          <a href="#" style="font-size: 13px; font-weight: 600; text-decoration: none">Change</a>
+          <button type="button" onClick="{{ petToggle }}" style="padding: 0; border: 0; background: transparent; color: #226B6B; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ petBtn }}</button>
+        </div>
+        <sc-if value="{{ hasPet }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 10px; background: #FAFAF8; border: 1px solid #E7E4DD; font-size: 12.5px; color: #3C4652">
+            <span><span style="font-weight: 600; color: #1F2733">{{ petBorderLine }}</span> <a href="#" style="display: inline-flex; align-items: center; min-height: 0; font-weight: 600; text-decoration: none">Official page: Animal Quarantine Service, Japan</a> · checked [DATE]</span>
+            <span>Trains and taxis: pet rules are not on record yet. Ask a local.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isGuest }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size: 13px; color: #3C4652">Browse freely. Your plan is created when you sign in, and these answers come with you.</span>
+        </sc-if>
+        <div aria-label="Tools for this plan" style="display: flex; flex-wrap: wrap; gap: 6px; padding-top: 4px">
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 13px; font-weight: 500; text-decoration: none">Getting there</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 13px; font-weight: 500; text-decoration: none">Where to stay</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 13px; font-weight: 500; text-decoration: none">Travel party</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 13px; font-weight: 500; text-decoration: none">Getting around</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 13px; font-weight: 500; text-decoration: none">Pace</a>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px 14px">
+        <div role="group" aria-label="View" style="display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #F6F5F1">
+          <span aria-current="true" style="display: inline-flex; align-items: center; min-height: 34px; padding: 0 16px; border-radius: 8px; background: #1E3A5F; color: #FFFFFF; font-size: 13px; font-weight: 600">Map</span>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 34px; padding: 0 16px; border-radius: 8px; color: #1F2733; font-size: 13px; font-weight: 600; text-decoration: none">List</a>
+        </div>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 8px; border: 1px solid #1E3A5F; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Get expert help</a>
+        <sc-if value="{{ showAskAi }}" hint-placeholder-val="{{ false }}">
+          <a href="#" style="font-size: 13.5px; font-weight: 600; text-decoration: none">Ask AI · $2.99</a>
+        </sc-if>
+        <button type="button" onClick="{{ ai.act }}" style="min-height: 40px; padding: 0 18px; border-radius: 8px; border: 0; background: #C8443D; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">{{ ai.label }}</button>
+      </div>
+      <span style="font-size: 12px; color: #6A7480">{{ ai.note }}</span>
+      </div>
+    </div>
+  </section>
+
+  <main style="max-width: 1392px; margin: 0 auto; padding: 20px 24px 48px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px">
+
+    <section aria-label="Browse and plan" style="flex: 1 1 380px; min-width: 0; background: #FFFFFF; border: 1px solid #E7E4DD; border-radius: 14px; display: flex; flex-direction: column">
+      <sc-if value="{{ railBrowse }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column">
+      <div role="tablist" aria-label="What to browse" style="display: flex; gap: 2px; overflow-x: auto; padding: 8px 8px 0; border-bottom: 1px solid #E7E4DD">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="6">
+          <button type="button" role="tab" aria-selected="{{ tb.on }}" onClick="{{ tb.pick }}" style="flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 0; border-bottom: 3px solid {{ tb.line }}; background: transparent; color: {{ tb.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">
+            <span>{{ tb.label }}</span>
+            <sc-if value="{{ tb.hasN }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ tb.n }}</span>
+            </sc-if>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #E7E4DD">
+        <label for="map-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%)">Search Kyoto</label>
+        <input id="map-search" type="search" placeholder="Search Kyoto" style="flex: 1; min-width: 0; min-height: 38px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 14px">
+        <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 8px; border: 1px solid #1F2733; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">Filters</button>
+      </div>
+
+      <div style="display: flex; flex-direction: column">
+        <sc-if value="{{ hasPet }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 10px 14px; border-bottom: 1px solid #E7E4DD; background: #FAFAF8">
+            <span style="font-size: 13px; color: #3C4652">{{ petPrompt }}</span>
+            <button type="button" onClick="{{ petFilterToggle }}" aria-pressed="{{ petFilterOn }}" style="display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #1F5C48; background: {{ petFilterBg }}; color: {{ petFilterFg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Pets welcome</button>
+          </div>
+        </sc-if>
+        <sc-for list="{{ items }}" as="it" hint-placeholder-count="6">
+          <article style="display: flex; gap: 12px; padding: 14px; border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 {{ it.mark }}; background: {{ it.bg }}">
+            <span aria-hidden="true" style="flex: none; width: 30px; height: 30px; box-sizing: border-box; border-radius: 999px; border: 2px {{ it.badgeLine }} {{ it.badgeBorder }}; background: {{ it.badgeBg }}; color: {{ it.badgeFg }}; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600">{{ it.num }}</span>
+            <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px">
+              <button type="button" onClick="{{ it.pick }}" aria-pressed="{{ it.sel }}" style="align-self: flex-start; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer">{{ it.name }}</button>
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ it.meta }}</span>
+              <sc-if value="{{ it.areaOnly }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 12.5px; color: #6A7480">Not on the map yet. No exact location is on record.</span>
+              </sc-if>
+              <sc-if value="{{ it.showPet }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size: 12.5px; font-weight: {{ it.petWeight }}; color: {{ it.petFg }}; text-wrap: pretty">{{ it.petLine }}</span>
+              </sc-if>
+              <sc-if value="{{ it.hasWhy }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size: 12.5px; color: #3C4652; text-wrap: pretty">{{ it.why }}</span>
+              </sc-if>
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding-top: 4px">
+                <button type="button" onClick="{{ it.toggle }}" aria-pressed="{{ it.added }}" style="min-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid {{ it.btnBorder }}; background: {{ it.btnBg }}; color: {{ it.btnFg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ it.btnLabel }}</button>
+                <a href="#" style="font-size: 13px; font-weight: 600; text-decoration: none">Ask a local</a>
+              </div>
+            </div>
+          </article>
+        </sc-for>
+
+        <sc-if value="{{ showOffMap }}" hint-placeholder-val="{{ false }}">
+          <span style="display: block; padding: 12px 14px; font-size: 12.5px; color: #6A7480">{{ offMapText }}</span>
+        </sc-if>
+        <sc-if value="{{ showPetEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="margin: 14px; padding: 16px; border: 1px dashed #D5D0C8; border-radius: 12px; font-size: 13.5px; color: #3C4652">Nothing here has a pet policy on record yet. That is not a no. Ask a local, or show everything.</div>
+        </sc-if>
+        <sc-if value="{{ showPetHidden }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 12px 14px">
+            <span style="font-size: 12.5px; color: #6A7480">{{ petHiddenText }}</span>
+            <button type="button" onClick="{{ petFilterToggle }}" style="min-height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid #E7E4DD; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Show all</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ showPlaceholder }}" hint-placeholder-val="{{ false }}">
+          <div style="margin: 14px; padding: 18px; border: 1px dashed #D5D0C8; border-radius: 12px; font-size: 13.5px; color: #3C4652">{{ placeholderText }}</div>
+        </sc-if>
+
+        <sc-if value="{{ hasOutside }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 14px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ outsideText }}</span>
+            <button type="button" style="min-height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid #E7E4DD; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Zoom out</button>
+          </div>
+        </sc-if>
+      </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ railPlan }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; border-bottom: 1px solid #E7E4DD">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ planTitle }}</span>
+              <sc-if value="{{ isDrafted }}" hint-placeholder-val="{{ false }}">
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 999px; background: #F6F5F1; color: #1F2733">DRAFT · FREE</span>
+              </sc-if>
+            </div>
+            <button type="button" onClick="{{ toBrowse }}" style="min-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #1F2733; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Add places</button>
+          </div>
+
+          <sc-if value="{{ planEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 14px; padding: 18px; border: 1px dashed #D5D0C8; border-radius: 12px; font-size: 13.5px; color: #3C4652; text-wrap: pretty">{{ planEmptyText }}</div>
+          </sc-if>
+
+          <sc-for list="{{ days }}" as="dy" hint-placeholder-count="0">
+            <div style="display: flex; flex-direction: column">
+              <span style="padding: 10px 14px 8px; background: #FAFAF8; border-bottom: 1px solid #E7E4DD; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #1F2733">{{ dy.title }}</span>
+              <sc-for list="{{ dy.stops }}" as="sp" hint-placeholder-count="0">
+              <article style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 {{ sp.mark }}; background: {{ sp.bg }}">
+                <span aria-hidden="true" style="flex: none; width: 30px; height: 30px; box-sizing: border-box; border-radius: 999px; border: 2px {{ sp.badgeLine }} {{ sp.badgeBorder }}; background: {{ sp.badgeBg }}; color: {{ sp.badgeFg }}; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600">{{ sp.num }}</span>
+                <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px">
+                  <button type="button" onClick="{{ sp.pick }}" aria-pressed="{{ sp.sel }}" style="align-self: flex-start; min-height: 34px; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer">{{ sp.name }}</button>
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ sp.meta }}</span>
+                  <sc-if value="{{ sp.areaOnly }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 12.5px; color: #6A7480">Not on the map yet.</span>
+                  </sc-if>
+                </div>
+                <button type="button" onClick="{{ sp.toggle }}" style="flex: none; min-height: 34px; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Remove</button>
+              </article>
+              </sc-for>
+              <sc-if value="{{ dy.open }}" hint-placeholder-val="{{ false }}">
+                <span style="padding: 12px 14px; border-bottom: 1px solid #E7E4DD; font-size: 13px; color: #6A7480">Open day. Add places from Browse.</span>
+              </sc-if>
+            </div>
+          </sc-for>
+
+
+          <sc-if value="{{ planFilled }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 16px 14px; display: flex; flex-direction: column; gap: 14px">
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #6A7480">WHAT YOU CAN DO NEXT</span>
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 14px; font-weight: 600; color: #1E3A5F">Finalize · free</span>
+                  <span style="font-size: 13px; color: #3C4652; text-wrap: pretty">Get your Trip Card to share, print or add to a calendar.</span>
+                </div>
+                <button type="button" style="flex: none; min-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Finalize</button>
+              </div>
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 14px; font-weight: 600; color: #1E3A5F">Ask AI · $2.99 a change</span>
+                  <span style="font-size: 13px; color: #3C4652; text-wrap: pretty">One change to this plan. You see it first and pay when you apply it.</span>
+                </div>
+                <button type="button" style="flex: none; min-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Ask AI</button>
+              </div>
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 14px; font-weight: 600; color: #1E3A5F">Optimize · $5.99</span>
+                  <span style="font-size: 13px; color: #3C4652; text-wrap: pretty">Three versions of this plan, compared on this map.</span>
+                  <span style="margin-top: 4px; padding: 8px 10px; border: 1px dashed #D5D0C8; border-radius: 8px; font-size: 12.5px; color: #6A7480">[The free preview of what Optimize would change shows here, before any charge.]</span>
+                </div>
+                <button type="button" style="flex: none; min-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Optimize</button>
+              </div>
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+                <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 14px; font-weight: 600; color: #1E3A5F">Get expert help</span>
+                  <span style="font-size: 13px; color: #3C4652; text-wrap: pretty">A local can polish it, book it or plan it all.</span>
+                </div>
+                <button type="button" style="flex: none; min-height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">See options</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </section>
+
+    <section aria-label="Map of Kyoto" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+      <div style="position: relative; aspect-ratio: 1048 / 1120; border: 1px solid #E7E4DD; border-radius: 14px; overflow: hidden; background: #F3F0E9">
+        <img src="/_blob/4e23db1e7792ba94ad13cd5b17eb5c79" alt="Map of central Kyoto showing rivers, parks and main roads" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+
+        <span aria-hidden="true" style="position: absolute; left: 35.7%; top: 22.1%; transform: translate(-50%, 22px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">NISHIJIN</span>
+        <span aria-hidden="true" style="position: absolute; left: 61.9%; top: 52.6%; transform: translate(-130%, -34px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">PONTOCHO</span>
+        <span aria-hidden="true" style="position: absolute; left: 67%; top: 58.2%; transform: translate(26px, -8px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">GION</span>
+        <span aria-hidden="true" style="position: absolute; left: 72.3%; top: 64.7%; transform: translate(-50%, 24px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">HIGASHIYAMA</span>
+        <span aria-hidden="true" style="position: absolute; left: 48.7%; top: 80.9%; transform: translate(-50%, 22px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">KYOTO STATION</span>
+
+<sc-for list="{{ segs }}" as="sg" hint-placeholder-count="0">
+          <span aria-hidden="true" style="position: absolute; left: {{ sg.x }}; top: {{ sg.y }}; width: {{ sg.w }}; height: 0; border-top: 2px dashed #1E3A5F; transform-origin: 0 0; transform: {{ sg.tf }}; z-index: 6"></span>
+        </sc-for>
+
+
+        <sc-for list="{{ pins }}" as="p" hint-placeholder-count="6">
+          <button type="button" onClick="{{ p.pick }}" aria-label="{{ p.aria }}" style="position: absolute; left: {{ p.x }}; top: {{ p.y }}; transform: translate(-50%, -50%); width: {{ p.size }}; height: {{ p.size }}; box-sizing: border-box; border-radius: 999px; border: 3px solid {{ p.border }}; background: {{ p.bg }}; color: {{ p.fg }}; box-shadow: 0 2px 6px rgba(13, 33, 55, 0.35); display: flex; align-items: center; justify-content: center; padding: 0; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 600; cursor: pointer; z-index: {{ p.z }}">{{ p.label }}<sc-if value="{{ p.pet }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position: absolute; top: -7px; right: -7px; width: 16px; height: 16px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid #FFFFFF; background: #1F5C48; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px; fill: #FFFFFF"><circle cx="6.5" cy="9.5" r="2.4"></circle><circle cx="12" cy="6.5" r="2.4"></circle><circle cx="17.5" cy="9.5" r="2.4"></circle><path d="M12 11.5c-3 0-5.5 2.8-5.5 5.2 0 1.6 1.3 2.5 2.9 2.5 1 0 1.7-.5 2.6-.5s1.6.5 2.6.5c1.6 0 2.9-.9 2.9-2.5 0-2.4-2.5-5.2-5.5-5.2z"></path></svg></span></sc-if></button>
+        </sc-for>
+
+        <div role="group" aria-label="Map layer" style="position: absolute; top: 14px; left: 14px; display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #FFFFFF; box-shadow: 0 2px 8px rgba(13, 33, 55, 0.18); z-index: 20">
+          <sc-for list="{{ layers }}" as="ly" hint-placeholder-count="2">
+            <button type="button" onClick="{{ ly.pick }}" aria-pressed="{{ ly.on }}" style="min-height: 34px; padding: 0 14px; border: 0; border-radius: 8px; background: {{ ly.bg }}; color: {{ ly.fg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ ly.label }}</button>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ showDayChips }}" hint-placeholder-val="{{ false }}">
+          <div role="group" aria-label="Day shown on the map" style="position: absolute; top: 62px; left: 14px; display: flex; align-items: center; gap: 4px; padding: 3px 3px 3px 10px; border-radius: 10px; background: #FFFFFF; box-shadow: 0 2px 8px rgba(13, 33, 55, 0.18); z-index: 20">
+            <span aria-hidden="true" style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #6A7480; padding-right: 4px">DAY</span>
+            <sc-for list="{{ dayChips }}" as="ch" hint-placeholder-count="6">
+              <button type="button" onClick="{{ ch.pick }}" aria-label="{{ ch.aria }}" aria-pressed="{{ ch.on }}" style="min-width: 34px; min-height: 34px; padding: 0 8px; border: 0; border-radius: 8px; background: {{ ch.bg }}; color: {{ ch.fg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ ch.label }}</button>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+          <div style="position: absolute; top: 14px; right: 14px; width: 300px; max-width: calc(100% - 28px); box-sizing: border-box; padding: 14px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 4px 16px rgba(13, 33, 55, 0.22); display: flex; flex-direction: column; gap: 6px; z-index: 20">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #226B6B">{{ sel.meta }}</span>
+            <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 19px; line-height: 1.2; color: #1E3A5F; text-wrap: balance">{{ sel.name }}</h2>
+            <sc-if value="{{ sel.hasWhy }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size: 13px; color: #3C4652; text-wrap: pretty">{{ sel.why }}</span>
+            </sc-if>
+            <sc-if value="{{ sel.showPet }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size: 12.5px; font-weight: {{ sel.petWeight }}; color: {{ sel.petFg }}; text-wrap: pretty">{{ sel.petLine }}</span>
+              </sc-if>
+              <sc-if value="{{ sel.areaOnly }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size: 12.5px; color: #6A7480">Not on the map yet. No exact location is on record.</span>
+            </sc-if>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-top: 4px">
+              <button type="button" onClick="{{ sel.toggle }}" style="min-height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid {{ sel.btnBorder }}; background: {{ sel.btnBg }}; color: {{ sel.btnFg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ sel.btnLabel }}</button>
+              <a href="#" style="font-size: 13px; font-weight: 600; text-decoration: none">Ask a local</a>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="position: absolute; left: 14px; right: 14px; bottom: 14px; box-sizing: border-box; padding: 12px 14px; border-radius: 12px; background: #FFFFFF; box-shadow: 0 4px 16px rgba(13, 33, 55, 0.22); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; z-index: 20">
+          <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ trayTitle }}</span>
+            <span style="font-size: 13.5px; color: #1F2733">{{ trayNames }}</span>
+          </div>
+          <button type="button" onClick="{{ trayAct }}" style="display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 16px; border-radius: 8px; border: 0; background: #1E3A5F; color: #FFFFFF; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer">
+            <span>{{ trayBtn }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>
+          </button>
+        </div>
+
+        <sc-if value="{{ hasGate }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; inset: 0; box-sizing: border-box; padding: 20px; background: rgba(13, 33, 55, 0.5); display: flex; align-items: center; justify-content: center; z-index: 30">
+          <div role="dialog" aria-label="Sign in to start your plan" style="width: 400px; max-width: 100%; box-sizing: border-box; padding: 20px; border-radius: 14px; background: #FFFFFF; box-shadow: 0 8px 28px rgba(13, 33, 55, 0.3); display: flex; flex-direction: column; gap: 10px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">SIGN IN TO START YOUR PLAN</span>
+            <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 22px; line-height: 1.2; color: #1E3A5F; text-wrap: balance">Your plan is created when you sign in</h2>
+            <span style="font-size: 13.5px; color: #3C4652; text-wrap: pretty">Kyoto, Thu 12 – Mon 16 Nov and 2 travelers are kept from your answers.</span>
+            <span style="font-size: 13.5px; font-weight: 600; color: #1F2733; text-wrap: pretty">{{ gateNext }}</span>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding-top: 4px">
+              <button type="button" onClick="{{ gateSignIn }}" style="min-height: 34px; padding: 0 18px; border-radius: 8px; border: 1px solid #C8443D; background: #C8443D; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Sign in</button>
+              <button type="button" onClick="{{ gateSignIn }}" style="min-height: 34px; padding: 0 16px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Create account</button>
+              <button type="button" onClick="{{ gateClose }}" style="min-height: 34px; padding: 0 8px; border: 0; background: transparent; color: #226B6B; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Keep browsing</button>
+            </div>
+          </div>
+          </div>
+        </sc-if>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; font-size: 12px; color: #6A7480">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px">
+          <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 999px; background: #1E3A5F"></span>Exact place</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 999px; background: #226B6B"></span>On your plan</span>
+          <sc-if value="{{ hasPet }}" hint-placeholder-val="{{ true }}"><span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 16px; height: 16px; border-radius: 999px; background: #1F5C48; display: flex; align-items: center; justify-content: center"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 10px; height: 10px; fill: #FFFFFF"><circle cx="6.5" cy="9.5" r="2.4"></circle><circle cx="12" cy="6.5" r="2.4"></circle><circle cx="17.5" cy="9.5" r="2.4"></circle><path d="M12 11.5c-3 0-5.5 2.8-5.5 5.2 0 1.6 1.3 2.5 2.9 2.5 1 0 1.7-.5 2.6-.5s1.6.5 2.6.5c1.6 0 2.9-.9 2.9-2.5 0-2.4-2.5-5.2-5.5-5.2z"></path></svg></span>Pets welcome, with a source</span></sc-if>
+          <sc-if value="{{ showLocated }}" hint-placeholder-val="{{ false }}">
+            <span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 18px; height: 0; border-top: 2px dashed #1E3A5F"></span>{{ locatedText }}</span>
+          </sc-if>
+        </div>
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px">Map data © OpenStreetMap contributors</span>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2020}}'>
+class Component extends DCLogic {
+  placeData() {
+    return {
+      activities: [
+        { id: 'a1', n: 'Gion Corner (Gion-Kaburenjo)', type: 'CULTURAL', area: 'Gion', price: '$$', why: 'Authentic cultural experience without the tourist crush of peak hours', x: 67.0, y: 58.2, exact: true },
+        { id: 'a2', n: 'Kiyomizu-dera Temple', type: 'TEMPLE', area: 'Higashiyama', price: '$', why: 'Less crowded early morning visits reveal genuine sacred atmosphere', x: 72.3, y: 64.7, exact: true },
+        { id: 'a3', n: 'Pontocho Alley', type: 'CULTURAL', area: 'Pontocho', price: '$$$', why: 'Summer riverside seating (kawayuka) is uniquely atmospheric', x: 61.9, y: 52.6, exact: true },
+        { id: 'a4', n: 'Nishiki Market', type: 'MARKET', area: 'Kawaramachi / Sanjo', price: '$$', why: '', x: 59.0, y: 50.8, exact: true },
+        { id: 'a5', n: 'Kyoto Tower', type: 'LANDMARK', area: 'Kyoto Station Area', price: '$$', why: '', x: 48.7, y: 80.9, exact: true },
+        { id: 'a6', n: 'Nishijin Textile Museum', type: 'MUSEUM', area: 'Nishijin', price: '$', why: '', x: 35.7, y: 22.1, exact: true },
+        { id: 'a7', n: 'Hanami Koji Street', type: 'STREET', area: 'Gion', price: '$$', why: 'Quintessential Kyoto evening wandering, best at dusk', x: 67.0, y: 58.2, exact: false },
+        { id: 'a8', n: 'Sannenzaka Shopping Street', type: 'SHOPPING', area: 'Higashiyama', price: '$$', why: 'Finds authentic souvenirs beyond the souvenir shops', x: 72.3, y: 64.7, exact: false }
+      ],
+      stays: [
+        { id: 'h1', n: '[Stay name]', type: 'STAY', area: 'Gion', price: '', why: '', x: 67.0, y: 58.2, exact: true, pet: { ok: true, line: 'Pets welcome · confirmed by the host · checked [DATE]' } },
+        { id: 'h2', n: '[Stay name]', type: 'STAY', area: 'Higashiyama', price: '', why: '', x: 72.3, y: 64.7, exact: true, pet: { ok: true, line: 'Pets welcome · verified by [Local expert name] · checked [DATE]' } },
+        { id: 'h3', n: '[Stay name]', type: 'STAY', area: 'Kyoto Station Area', price: '', why: '', x: 48.7, y: 80.9, exact: true, pet: { ok: true, line: 'Dogs allowed · Google Maps · checked [DATE]' } },
+        { id: 'h4', n: '[Stay name]', type: 'STAY', area: 'Nishijin', price: '', why: '', x: 35.7, y: 22.1, exact: true },
+        { id: 'h5', n: '[Stay name]', type: 'STAY', area: 'Kawaramachi / Sanjo', price: '', why: '', x: 59.0, y: 50.8, exact: true, pet: { ok: false, line: 'No pets · stated by the host · checked [DATE]' } }
+      ],
+      services: [
+        { id: 's1', n: 'Gion Walking Tour with Photographer', type: 'HOSTED', area: 'Gion', price: 'FROM $150', why: '', x: 67.0, y: 58.2, exact: false },
+        { id: 's2', n: 'Temple Meditation Session', type: 'HOSTED', area: 'Higashiyama', price: 'FROM $60', why: '', x: 72.3, y: 64.7, exact: false },
+        { id: 's3', n: 'Pontocho Riverside Dining Reservation Service', type: 'HOSTED', area: 'Pontocho', price: 'FROM $200', why: '', x: 61.9, y: 52.6, exact: false },
+        { id: 's4', n: 'Nishiki Market Food Tour', type: 'HOSTED', area: 'Kawaramachi / Sanjo', price: 'FROM $100', why: '', x: 59.0, y: 50.8, exact: false }
+      ]
+    };
+  }
+
+  draftData() {
+    return [
+      { n: 1, label: 'THU 12 NOV', ids: ['a5', 'a4', 'a3'] },
+      { n: 2, label: 'FRI 13 NOV', ids: ['a2', 'a8', 'a1'] },
+      { n: 3, label: 'SAT 14 NOV', ids: ['a6'] },
+      { n: 4, label: 'SUN 15 NOV', ids: [] },
+      { n: 5, label: 'MON 16 NOV', ids: [] }
+    ];
+  }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var tab = st.tab || 'activities';
+    var layer = st.layer || 'browse';
+    /* The plan is an ordered list of { id, day }. Every item has a day: there is no day-less item. */
+    var plan = st.plan || [];
+    var selId = st.sel === undefined ? 'a1' : st.sel;
+    var member = st.member === undefined ? true : !!st.member;
+    var drafted = !!st.drafted;
+    var gate = st.gate || '';
+    var day = st.day || 0;
+    /* A pet is a party fact from the Who step: '' means not answered, never "no pet". */
+    var petKind = st.pet === undefined ? 'dog' : st.pet;
+    var petOnly = !!st.petOnly;
+    var hasPet = petKind !== '';
+
+    var NAVY = '#1E3A5F';
+    var TEALINK = '#226B6B';
+    var CORAL = '#E85D55';
+    var CORAL_FILL = '#C8443D';
+    var data = this.placeData();
+    var DRAFT = this.draftData();
+    var everything = data.activities.concat(data.stays, data.services);
+    var byId = {};
+    everything.forEach(function (o) { byId[o.id] = o; });
+    var list = tab === 'activities' ? data.activities : (tab === 'hotels' ? data.stays : (tab === 'services' ? data.services : []));
+    /* The filter keeps only what a source says yes to. No record is never read as a no; it is counted and offered back. */
+    var petYes = list.filter(function (o) { return !!o.pet && o.pet.ok; });
+    var petNo = list.filter(function (o) { return !!o.pet && !o.pet.ok; }).length;
+    var petUnknown = list.filter(function (o) { return !o.pet; }).length;
+    var filtering = hasPet && petOnly;
+    var shown = filtering ? petYes : list;
+
+    var dayOf = {};
+    plan.forEach(function (p) { dayOf[p.id] = p.day; });
+    /* An add from Browse goes to the day being shown; with all days shown it goes to day 1 and says so. */
+    var addDay = day || 1;
+    var planDays = DRAFT.map(function (d) {
+      return { n: d.n, label: d.label, stops: plan.filter(function (p) { return p.day === d.n; }).map(function (p) { return byId[p.id]; }) };
+    });
+    var order = [];
+    planDays.forEach(function (d) { d.stops.forEach(function (o) { order.push(o); }); });
+    var numOf = {};
+    order.forEach(function (o, i) { numOf[o.id] = i + 1; });
+    var planCount = order.length;
+    var planEmpty = planCount === 0;
+
+    function draftState() {
+      var nx = [];
+      DRAFT.forEach(function (d) { d.ids.forEach(function (id) { nx.push({ id: id, day: d.n }); }); });
+      return { plan: nx, drafted: true, layer: 'plan', day: 0, sel: DRAFT[0].ids[0], gate: '', member: true };
+    }
+    function toggleFn(id) {
+      return function () {
+        if (!member) { self.setState({ gate: 'add:' + id }); return; }
+        var nx = plan.filter(function (p) { return p.id !== id; });
+        if (nx.length === plan.length) { nx.push({ id: id, day: addDay }); }
+        self.setState(nx.length === 0 ? { plan: nx, drafted: false } : { plan: nx });
+      };
+    }
+    function vm(o, num) {
+      var isAdded = dayOf[o.id] !== undefined;
+      var isSel = o.id === selId;
+      return {
+        id: o.id,
+        num: '' + num,
+        name: o.n,
+        meta: o.type + ' · ' + o.area.toUpperCase() + (o.price ? ' · ' + o.price : ''),
+        showPet: hasPet,
+        petLine: o.pet ? o.pet.line : 'Pet policy not known. Ask a local.',
+        petFg: o.pet ? (o.pet.ok ? '#1F5C48' : '#1F2733') : '#6A7480',
+        petWeight: o.pet ? '600' : '400',
+        why: o.why,
+        hasWhy: o.why !== '',
+        areaOnly: !o.exact,
+        sel: isSel,
+        added: isAdded,
+        mark: isSel ? CORAL : 'transparent',
+        bg: isSel ? '#FFF9F8' : '#FFFFFF',
+        badgeLine: o.exact ? 'solid' : 'dashed',
+        badgeBorder: o.exact ? (isAdded ? TEALINK : NAVY) : TEALINK,
+        badgeBg: o.exact ? (isAdded ? TEALINK : NAVY) : '#FFFFFF',
+        badgeFg: o.exact ? '#FFFFFF' : NAVY,
+        btnLabel: isAdded ? 'On Day ' + dayOf[o.id] + ' · Remove' : (member ? 'Add to Day ' + addDay : 'Add to plan'),
+        btnBorder: isAdded ? TEALINK : NAVY,
+        btnBg: isAdded ? '#FFFFFF' : NAVY,
+        btnFg: isAdded ? TEALINK : '#FFFFFF',
+        toggle: toggleFn(o.id),
+        pick: function () { self.setState({ sel: o.id }); }
+      };
+    }
+    var items = shown.map(function (o, i) { return vm(o, i + 1); });
+
+    /* Map: only items with an exact location get a mark. An item known only by area is listed, never drawn. */
+    var mapSource = layer === 'plan'
+      ? order.filter(function (o) { return day === 0 || dayOf[o.id] === day; })
+      : shown;
+    var pins = [];
+    mapSource.forEach(function (o, idx) {
+      if (!o.exact) { return; }
+      var isAdded = dayOf[o.id] !== undefined;
+      var isSel = o.id === selId;
+      pins.push({
+        x: o.x + '%', y: o.y + '%', label: '' + (layer === 'plan' ? numOf[o.id] : idx + 1),
+        size: isSel ? '38px' : '30px',
+        bg: isSel ? '#FFFFFF' : (isAdded ? TEALINK : NAVY),
+        fg: isSel ? NAVY : '#FFFFFF',
+        border: isSel ? CORAL : '#FFFFFF',
+        z: isSel ? 12 : 10,
+        pet: hasPet && !!o.pet && o.pet.ok,
+        aria: o.n + ', ' + o.area + (isAdded ? ', on your plan' : '') + (hasPet && o.pet && o.pet.ok ? ', pets welcome' : ''),
+        pick: function () { self.setState({ sel: o.id }); }
+      });
+    });
+
+    /* Sequence lines: straight, between located stops of the same day only. The map is 1048 x 1120,
+       so a vertical percentage is scaled into width units before the length and angle are taken. */
+    var segs = [];
+    var locatedCount = 0;
+    var stopCount = 0;
+    if (layer === 'plan') {
+      planDays.forEach(function (d) {
+        if (day !== 0 && d.n !== day) { return; }
+        stopCount += d.stops.length;
+        var ex = d.stops.filter(function (o) { return o.exact; });
+        locatedCount += ex.length;
+        for (var i = 1; i < ex.length; i++) {
+          var a = ex[i - 1];
+          var b = ex[i];
+          var dx = b.x - a.x;
+          var dy = (b.y - a.y) * (1120 / 1048);
+          var len = Math.sqrt(dx * dx + dy * dy);
+          var ang = Math.atan2(dy, dx) * 180 / Math.PI;
+          segs.push({ x: a.x + '%', y: a.y + '%', w: len.toFixed(2) + '%', tf: 'rotate(' + ang.toFixed(1) + 'deg)' });
+        }
+      });
+    }
+    var offMap = shown.filter(function (o) { return !o.exact; }).length;
+
+    var selObj = byId[selId] || null;
+    var sel = selObj ? vm(selObj, 0) : { meta: '', name: '', why: '', hasWhy: false, areaOnly: false, showPet: false, petLine: '', petFg: '#6A7480', petWeight: '400', btnLabel: '', btnBorder: NAVY, btnBg: NAVY, btnFg: '#FFFFFF', toggle: null };
+
+    var TABS = [['activities', 'Activities', data.activities.length], ['hotels', 'Hotels', data.stays.length], ['services', 'Services', data.services.length], ['dining', 'Dining', 0], ['transportation', 'Transportation', 0]];
+    var tabs = TABS.map(function (t) {
+      var on = t[0] === tab;
+      return { label: t[1], n: '' + t[2], hasN: t[2] > 0, on: on, line: on ? CORAL : 'transparent', fg: on ? NAVY : '#6A7480',
+        pick: function () { self.setState({ tab: t[0] }); } };
+    });
+    var layers = [['browse', 'Browse'], ['plan', 'Your plan']].map(function (l) {
+      var on = l[0] === layer;
+      return { label: l[1], on: on, bg: on ? NAVY : 'transparent', fg: on ? '#FFFFFF' : '#1F2733',
+        pick: function () { self.setState({ layer: l[0] }); } };
+    });
+    var dayChips = [{ n: 0, label: 'All' }].concat(DRAFT.map(function (d) { return { n: d.n, label: '' + d.n }; })).map(function (c) {
+      var on = c.n === day;
+      return { label: c.label, on: on, bg: on ? NAVY : '#FFFFFF', fg: on ? '#FFFFFF' : '#1F2733',
+        aria: c.n === 0 ? 'All days' : 'Day ' + c.n,
+        pick: function () { self.setState({ day: c.n }); } };
+    });
+
+    var tabLabel = '';
+    TABS.forEach(function (t) { if (t[0] === tab) { tabLabel = t[1]; } });
+
+    /* Plan rail: one group per day of the trip. A signed-out visitor has no plan, so no days. */
+    var days = member ? planDays.map(function (d) {
+      return {
+        title: 'DAY ' + d.n + ' · ' + d.label,
+        open: d.stops.length === 0,
+        stops: d.stops.map(function (o) { return vm(o, numOf[o.id]); })
+      };
+    }) : [];
+
+    /* The one AI button. Free only while the plan is empty; a guest signs in before anything is made. */
+    var ai;
+    if (planEmpty) {
+      ai = {
+        label: 'Draft it with AI · free',
+        note: member ? 'Free while your plan is empty.' : 'You sign in first. Your answers are kept.',
+        act: member ? function () { self.setState(draftState()); } : function () { self.setState({ gate: 'draft' }); }
+      };
+    } else {
+      ai = {
+        label: 'Optimize · $5.99',
+        note: 'You see what would change before you pay.',
+        act: function () {}
+      };
+    }
+
+    var gateNext = '';
+    var gateDo = function () { self.setState({ member: true, gate: '' }); };
+    if (gate === 'draft') {
+      gateNext = 'Your free draft starts as soon as you are in.';
+      gateDo = function () { self.setState(draftState()); };
+    } else if (gate.indexOf('add:') === 0) {
+      var gid = gate.slice(4);
+      gateNext = (byId[gid] ? byId[gid].n : 'Your pick') + ' is added as soon as you are in.';
+      gateDo = function () {
+        self.setState({ member: true, gate: '', plan: [{ id: gid, day: 1 }] });
+      };
+    } else if (gate === 'start') {
+      gateNext = 'Your empty plan opens here, on the map.';
+    }
+
+    return {
+      isMember: member,
+      isGuest: !member,
+      acctLabel: member ? 'Sign out' : 'Sign In',
+      acctBg: member ? '#FFFFFF' : CORAL_FILL,
+      acctFg: member ? NAVY : '#FFFFFF',
+      acctBorder: member ? '#D5D0C8' : CORAL_FILL,
+      acctToggle: function () {
+        if (member) { self.setState({ member: false, plan: [], drafted: false, day: 0, gate: '', layer: 'browse' }); }
+        else { self.setState({ member: true, gate: '' }); }
+      },
+      bandEyebrow: member ? 'YOUR PLAN · TRIP' : 'NO PLAN YET · TRIP',
+      partyLine: 'Thu 12 – Mon 16 Nov 2026 · 2 travelers' + (hasPet ? ' · 1 ' + petKind : ''),
+      hasPet: hasPet,
+      petBtn: hasPet ? 'Remove the pet' : 'Bringing a pet?',
+      petToggle: function () { self.setState({ pet: hasPet ? '' : 'dog', petOnly: false }); },
+      petFilterOn: filtering,
+      petFilterBg: filtering ? '#1F5C48' : '#FFFFFF',
+      petFilterFg: filtering ? '#FFFFFF' : '#1F5C48',
+      petFilterToggle: function () { self.setState({ petOnly: !petOnly }); },
+      petPrompt: filtering ? 'Showing only where a source says pets are welcome.' : 'You are bringing a ' + petKind + '.',
+      showPetHidden: filtering && (petUnknown + petNo) > 0,
+      petHiddenText: (petUnknown ? petUnknown + ' with no pet policy on record' : '') + (petUnknown && petNo ? ', ' : '') + (petNo ? petNo + (petNo === 1 ? ' that says no pets' : ' that say no pets') : '') + (petUnknown + petNo === 1 ? ' is hidden.' : ' are hidden.'),
+      petBorderLine: 'Bringing a ' + petKind + ' into Japan has entry rules.',
+      ai: ai,
+      showAskAi: !planEmpty,
+
+      hasGate: gate !== '',
+      gateNext: gateNext,
+      gateSignIn: gateDo,
+      gateClose: function () { self.setState({ gate: '' }); },
+
+      railBrowse: layer !== 'plan',
+      railPlan: layer === 'plan',
+      tabs: tabs,
+      items: items,
+      showPlaceholder: list.length === 0,
+      showPetEmpty: filtering && list.length > 0 && petYes.length === 0,
+      placeholderText: '[' + tabLabel + ' for Kyoto load here: same cards, same pins. Not filled in this mock.]',
+      hasOutside: (tab === 'activities' || tab === 'services') && !filtering,
+      outsideText: tab === 'activities' ? '3 more outside this view: Arashiyama, Fushimi' : '2 more outside this view: Arashiyama, Fushimi',
+
+      planTitle: planEmpty ? 'YOUR PLAN · EMPTY' : 'YOUR PLAN · ' + planCount + (planCount === 1 ? ' STOP' : ' STOPS'),
+      isDrafted: drafted,
+      planEmpty: planEmpty,
+      planFilled: !planEmpty,
+      planEmptyText: member
+        ? 'Nothing on your plan yet. Add places from Browse, or let AI draft the whole trip for free.'
+        : 'You have no plan yet. Browse the map freely. Your plan is created when you sign in.',
+      toBrowse: function () { self.setState({ layer: 'browse' }); },
+      days: days,
+
+      pins: pins,
+      segs: segs,
+      layers: layers,
+      showDayChips: member,
+      dayChips: dayChips,
+      showLocated: layer === 'plan' && stopCount > 0,
+      locatedText: locatedCount + ' of ' + stopCount + ' stops located. Straight lines, not routes.',
+      showOffMap: layer !== 'plan' && offMap > 0,
+      offMapText: offMap + (offMap === 1 ? ' here is' : ' here are') + ' not on the map yet: no exact location is on record.',
+      hasSel: selObj != null,
+      sel: sel,
+
+      trayTitle: member ? (planEmpty ? 'YOUR PLAN · EMPTY' : 'YOUR PLAN · ' + planCount + ' ADDED') : 'NO PLAN YET',
+      trayNames: member
+        ? (planEmpty ? 'Nothing added yet. Add from the list or a pin.' : order.map(function (o) { return o.n; }).join(' · '))
+        : 'Browse freely. Your plan is created when you sign in.',
+      trayBtn: member ? 'Open list view' : 'Sign in to start',
+      trayAct: member ? function () {} : function () { self.setState({ gate: 'start' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

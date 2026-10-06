@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Proposal planner (phone)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&amp;family=Geist+Mono:wght@400;500;600&amp;family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#226B6B}a:hover{color:#1E3A5F}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 2470px; box-sizing: border-box; background: #FAFAF8; color: #1F2733; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.45">
+
+  <header style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; min-height: 56px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="font-weight: 700; letter-spacing: 0.14em; font-size: 14px; color: #485960">TRAVELOURE</span>
+      <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 999px; border: 1px solid #FCCACA; background: #FFF4F4; color: #B8403A">BETA</span>
+    </div>
+    <button type="button" aria-label="Open menu" style="width: 44px; height: 44px; border: 0; background: transparent; color: #1F2733; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg>
+    </button>
+  </header>
+
+  <section aria-label="Your plan" style="background: #FFFFFF; border-bottom: 1px solid #E7E4DD; padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+      <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ eyebrow }}</span>
+        <h1 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 26px; line-height: 1.1; color: #1E3A5F">{{ title }}</h1>
+        <span style="font-size: 13px; color: #3C4652">{{ whenLine }}</span>
+      </div>
+      <div role="group" aria-label="View" style="flex: none; display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #F6F5F1">
+        <span aria-current="true" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; background: #1E3A5F; color: #FFFFFF; font-size: 13px; font-weight: 600">Map</span>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; color: #1F2733; font-size: 13px; font-weight: 600; text-decoration: none">List</a>
+      </div>
+    </div>
+    <sc-if value="{{ hasSecrecy }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px">
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #1E3A5F; color: #FFFFFF; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em">HIDDEN PLAN</span>
+            <span style="font-size: 13px; color: #3C4652">{{ secrecyLine }}</span>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 600; text-decoration: none">Who can see it</a>
+          </div>
+        </sc-if>
+    <div aria-label="Tools for this plan" style="display: flex; gap: 6px; overflow-x: auto">
+      <sc-for list="{{ tools }}" as="tl" hint-placeholder-count="4">
+        <a href="#" style="flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid #E7E4DD; color: #1F2733; font-size: 13px; font-weight: 500; text-decoration: none">{{ tl.label }}</a>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px">
+      <sc-if value="{{ aiEmpty }}" hint-placeholder-val="{{ false }}">
+          <a href="#" style="flex: 1; justify-content: center; display: inline-flex; align-items: center; min-height: 46px; padding: 0 16px; border-radius: 8px; border: 1px solid #1E3A5F; color: #1E3A5F; font-size: 14px; font-weight: 600; text-decoration: none">Get expert help</a>
+        </sc-if>
+        <sc-if value="{{ aiEmpty }}" hint-placeholder-val="{{ false }}">
+          <button type="button" style="flex: 1; justify-content: center; display: inline-flex; align-items: center; min-height: 46px; padding: 0 18px; border-radius: 8px; border: 0; background: #C8443D; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Draft it with AI · free</button>
+        </sc-if>
+        <sc-if value="{{ aiFilled }}" hint-placeholder-val="{{ true }}">
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 46px; font-size: 13.5px; font-weight: 600; text-decoration: none">Ask AI · $2.99</a>
+        </sc-if>
+        <sc-if value="{{ aiFilled }}" hint-placeholder-val="{{ true }}">
+          <a href="#" style="flex: 1; justify-content: center; display: inline-flex; align-items: center; min-height: 46px; padding: 0 18px; border-radius: 8px; background: #C8443D; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none">Get expert help</a>
+        </sc-if>
+    </div>
+    <span style="font-size: 12.5px; color: #6A7480">{{ aiNote }}</span>
+  </section>
+
+  <main style="padding: 14px 16px 40px; display: flex; flex-direction: column; gap: 12px">
+    <section aria-label="Map of Kyoto" style="display: flex; flex-direction: column; gap: 6px">
+      <div style="position: relative; aspect-ratio: 1048 / 1120; border: 1px solid #E7E4DD; border-radius: 14px; overflow: hidden; background: #F3F0E9">
+        <img src="/_blob/4e23db1e7792ba94ad13cd5b17eb5c79" alt="Map of central Kyoto showing rivers, parks and main roads" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover">
+        <span aria-hidden="true" style="position: absolute; left: 35.7%; top: 22.1%; transform: translate(-50%, 22px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">NISHIJIN</span>
+        <span aria-hidden="true" style="position: absolute; left: 67.0%; top: 58.2%; transform: translate(26px, -8px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">GION</span>
+        <span aria-hidden="true" style="position: absolute; left: 48.7%; top: 80.9%; transform: translate(-50%, 22px); font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 9.5px; letter-spacing: 0.12em; color: #485960; text-shadow: 0 0 3px #FFFFFF, 0 0 3px #FFFFFF">KYOTO STATION</span>
+
+        <sc-for list="{{ pins }}" as="p" hint-placeholder-count="1">
+          <button type="button" onClick="{{ p.pick }}" aria-label="{{ p.aria }}" style="position: absolute; left: {{ p.x }}; top: {{ p.y }}; transform: translate(-50%, -50%); width: 44px; height: 44px; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: {{ p.z }}">
+            <span aria-hidden="true" style="width: {{ p.size }}; height: {{ p.size }}; box-sizing: border-box; border-radius: 999px; border: 3px solid {{ p.border }}; background: {{ p.bg }}; color: {{ p.fg }}; box-shadow: 0 2px 6px rgba(13, 33, 55, 0.35); display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600">{{ p.label }}</span>
+          </button>
+        </sc-for>
+        <sc-for list="{{ anchors }}" as="an" hint-placeholder-count="1">
+          <span aria-hidden="true" style="position: absolute; left: {{ an.x }}; top: {{ an.y }}; transform: translate(-50%, 26px); padding: 3px 8px; border-radius: 999px; background: #1E3A5F; color: #FFFFFF; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; white-space: nowrap; pointer-events: none; z-index: 14">{{ an.text }}</span>
+        </sc-for>
+
+        <div role="group" aria-label="Map layer" style="position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #FFFFFF; box-shadow: 0 2px 8px rgba(13, 33, 55, 0.18); z-index: 20">
+          <sc-for list="{{ layers }}" as="ly" hint-placeholder-count="2">
+            <button type="button" onClick="{{ ly.pick }}" aria-pressed="{{ ly.on }}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 8px; background: {{ ly.bg }}; color: {{ ly.fg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ ly.label }}</button>
+          </sc-for>
+        </div>
+        
+      </div>
+      <span style="align-self: flex-end; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; color: #6A7480">Map data © OpenStreetMap contributors</span>
+    </section>
+
+    <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+          <div style="padding: 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 #E85D55; display: flex; flex-direction: column; gap: 6px">
+            <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.1em; color: #226B6B">{{ sel.meta }}</span>
+            <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 19px; line-height: 1.2; color: #1E3A5F; text-wrap: balance">{{ sel.name }}</h2>
+            <sc-if value="{{ sel.hasNote }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size: 12.5px; color: #3C4652; text-wrap: pretty">{{ sel.note }}</span>
+            </sc-if>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding-top: 4px">
+              <button type="button" onClick="{{ sel.act }}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid {{ sel.btnBorder }}; background: {{ sel.btnBg }}; color: {{ sel.btnFg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ sel.btnLabel }}</button>
+              <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 600; text-decoration: none">Ask a local</a>
+            </div>
+          </div>
+        </sc-if>
+
+    <section aria-label="Your plan so far" style="padding: 12px 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E7E4DD; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ trayTitle }}</span>
+        <span style="font-size: 13.5px; color: #1F2733">{{ trayNames }}</span>
+      </div>
+      <a href="#" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: 8px; background: #1E3A5F; color: #FFFFFF; font-size: 14px; font-weight: 600; text-decoration: none"><span>Open list view</span><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></a>
+    </section>
+
+    <section aria-label="Browse and plan" style="background: #FFFFFF; border: 1px solid #E7E4DD; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column">
+      <sc-if value="{{ railBrowse }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column">
+          <div role="tablist" aria-label="What to browse" style="display: flex; gap: 2px; overflow-x: auto; padding: 8px 8px 0; border-bottom: 1px solid #E7E4DD">
+            <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="6">
+              <button type="button" role="tab" aria-selected="{{ tb.on }}" onClick="{{ tb.pick }}" style="flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 0; border-bottom: 3px solid {{ tb.line }}; background: transparent; color: {{ tb.fg }}; font: inherit; font-size: 13.5px; font-weight: 600; white-space: nowrap; cursor: pointer">
+                <span>{{ tb.label }}</span>
+                <sc-if value="{{ tb.hasN }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #6A7480">{{ tb.n }}</span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ showAnchorAsk }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 16px 14px; border-bottom: 1px solid #E7E4DD; background: #FAFAF8; display: flex; flex-direction: column; gap: 4px">
+              <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 22px; line-height: 1.15; color: #1E3A5F">{{ anchorQ }}</h2>
+              <span style="font-size: 13.5px; color: #3C4652">{{ anchorHint }}</span>
+            </div>
+          </sc-if>
+          <sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
+          <article style="display: flex; gap: 12px; padding: 14px; border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 {{ it.mark }}; background: {{ it.bg }}">
+            <span aria-hidden="true" style="flex: none; width: 30px; height: 30px; box-sizing: border-box; border-radius: 999px; border: 2px {{ it.badgeLine }} {{ it.badgeBorder }}; background: {{ it.badgeBg }}; color: {{ it.badgeFg }}; display: flex; align-items: center; justify-content: center; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12px; font-weight: 600">{{ it.num }}</span>
+            <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px">
+              <button type="button" onClick="{{ it.pick }}" aria-pressed="{{ it.sel }}" style="align-self: flex-start; min-height: 44px; padding: 0; border: 0; background: transparent; color: #1E3A5F; font: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer">{{ it.name }}</button>
+              <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ it.meta }}</span>
+              <sc-if value="{{ it.hasNote }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 12.5px; color: #3C4652; text-wrap: pretty">{{ it.note }}</span>
+              </sc-if>
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding-top: 4px">
+                <button type="button" onClick="{{ it.act }}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid {{ it.btnBorder }}; background: {{ it.btnBg }}; color: {{ it.btnFg }}; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ it.btnLabel }}</button>
+                <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 600; text-decoration: none">Ask a local</a>
+              </div>
+            </div>
+          </article>
+          </sc-for>
+          <sc-if value="{{ showListNote }}" hint-placeholder-val="{{ true }}">
+            <span style="padding: 12px 14px; font-size: 12.5px; color: #6A7480">{{ listNote }}</span>
+          </sc-if>
+          <sc-if value="{{ showStub }}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 14px; padding: 18px; border: 1px dashed #D5D0C8; border-radius: 12px; font-size: 13.5px; color: #3C4652">{{ stubText }}</div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ railPlan }}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column">
+          <sc-if value="{{ hasVenue }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px; border-bottom: 1px solid #E7E4DD; box-shadow: inset 3px 0 0 0 #E85D55">
+              <div style="min-width: 0; display: flex; flex-direction: column; gap: 3px">
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #B8403A">{{ anchorTitle }}</span>
+                <span style="font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 20px; line-height: 1.2; color: #1E3A5F">{{ venueName }}</span>
+                <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6A7480">{{ venueMeta }}</span>
+              </div>
+              <button type="button" onClick="{{ toVenues }}" style="flex: none; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid #D5D0C8; background: #FFFFFF; color: #1F2733; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Change</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noVenue }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 16px 14px; border-bottom: 1px solid #E7E4DD; background: #FAFAF8; display: flex; flex-direction: column; align-items: flex-start; gap: 6px">
+              <h2 style="margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 600; font-size: 22px; line-height: 1.15; color: #1E3A5F">{{ anchorQ }}</h2>
+              <span style="font-size: 13.5px; color: #3C4652">{{ anchorHint }}</span>
+              <button type="button" onClick="{{ toVenues }}" style="margin-top: 4px; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #1E3A5F; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ browseVenuesLabel }}</button>
+            </div>
+          </sc-if>
+
+          <span style="padding: 14px 14px 8px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ showTitle }}</span>
+          <sc-for list="{{ days }}" as="dy" hint-placeholder-count="1">
+            <div style="display: flex; flex-direction: column">
+              <span style="padding: 8px 14px; background: #FAFAF8; border-top: 1px solid #E7E4DD; border-bottom: 1px solid #E7E4DD; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #1F2733">{{ dy.title }}</span>
+              <sc-for list="{{ dy.rows }}" as="rw" hint-placeholder-count="3">
+                <div style="display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #E7E4DD">
+                  <span style="flex: none; width: 46px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; font-weight: 600; color: #1E3A5F; padding-top: 2px">{{ rw.time }}</span>
+                  <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+                    <span style="font-size: 14.5px; font-weight: 600; color: #1F2733">{{ rw.label }}</span>
+                    <span style="font-size: 12.5px; color: #6A7480; text-wrap: pretty">{{ rw.desc }}</span>
+                  </div>
+                  <sc-if value="{{ rw.fixed }}" hint-placeholder-val="{{ false }}">
+                    <span style="flex: none; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 999px; background: #F6F5F1; color: #1F2733">FIXED</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+
+          <span style="padding: 16px 14px 8px; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">{{ rolesTitle }}</span>
+          <sc-for list="{{ roles }}" as="ro" hint-placeholder-count="6">
+            <div style="display: flex; align-items: center; gap: 10px; min-height: 56px; box-sizing: border-box; padding: 6px 14px; border-top: 1px solid #E7E4DD">
+              <span aria-hidden="true" style="flex: none; width: 12px; height: 12px; box-sizing: border-box; border-radius: 999px; border: 2px solid #226B6B; background: {{ ro.dot }}"></span>
+              <div style="min-width: 0; flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px">
+                <span style="font-size: 14px; font-weight: 600; color: #1F2733">{{ ro.label }}</span>
+                <span style="font-size: 12.5px; color: {{ ro.stateFg }}">{{ ro.state }}</span>
+              </div>
+              <sc-if value="{{ ro.canFind }}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{ ro.find }}" style="flex: none; min-height: 44px; padding: 0 10px; border: 0; background: transparent; color: #226B6B; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ ro.findLabel }}</button>
+              </sc-if>
+            </div>
+          </sc-for>
+
+          <span style="padding: 16px 14px 8px; border-top: 1px solid #E7E4DD; font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">TOOLS FOR THIS PLAN</span>
+          <sc-for list="{{ toolRows }}" as="tr" hint-placeholder-count="3">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 14px; border-top: 1px solid #E7E4DD">
+              <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 14px; font-weight: 600; color: #1E3A5F">{{ tr.t }}</span>
+                <span style="font-size: 13px; color: #3C4652; text-wrap: pretty">{{ tr.b }}</span>
+              </div>
+              <button type="button" style="flex: none; min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #1E3A5F; background: #FFFFFF; color: #1E3A5F; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{ tr.btn }}</button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </section>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px">
+        <section aria-label="Ready-Made Trips" style="padding: 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E7E4DD; display: flex; flex-direction: column; align-items: flex-start; gap: 8px">
+          <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">READY-MADE TRIPS</span>
+          <span style="align-self: stretch; padding: 10px 12px; border: 1px dashed #D5D0C8; border-radius: 8px; font-size: 13px; color: #3C4652; text-wrap: pretty">{{ readyLine }}</span>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13.5px; font-weight: 600; text-decoration: none">Browse Ready-Made Trips</a>
+        </section>
+        <section aria-label="Local experts" style="padding: 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #E7E4DD; display: flex; flex-direction: column; align-items: flex-start; gap: 8px">
+          <span style="font-family: 'Geist Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.12em; color: #226B6B">LOCAL EXPERTS</span>
+          <span style="align-self: stretch; padding: 10px 12px; border: 1px dashed #D5D0C8; border-radius: 8px; font-size: 13px; color: #3C4652; text-wrap: pretty">{{ expertLine }}</span>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px">
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13.5px; font-weight: 600; text-decoration: none">Ask a local</a>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; font-size: 13.5px; font-weight: 600; text-decoration: none">Get expert help</a>
+          </div>
+        </section>
+      </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2470}}'>
+class Component extends DCLogic {
+  /* One venue-led planner, three occasions. CFG is the occasion (tabs, roles and schedule come from the
+     seeded catalog); START is the state this board opens in. Names in [brackets] are placeholders. */
+  cfg() { return {"eyebrow": "YOUR PLAN · MOMENT", "title": "Kyoto proposal", "when": "Sat 14 Nov 2026 · evening · 2 travelers", "tools": ["The reservation", "Timing check", "Getting home"], "vendorTab": "services", "secrecy": "Hidden from your partner. Only you can see this plan.", "anchorTab": "locations", "anchorQ": "Where will you ask?", "anchorHint": "Pick the spot first. The evening is planned around it.", "anchorTitle": "THE SPOT", "anchorTitleCase": "The spot", "noAnchorTitle": "NO SPOT YET", "chooseLabel": "Make this the spot", "browseLabel": "Browse spots", "venuePh": "[Spot name]", "vendorPh": "[Vendor name]", "venueListNote": "[Proposal spots in Kyoto load here. Names are placeholders in this mock.]", "vendorListNote": "[Services listed in Kyoto load here. Names are placeholders in this mock.]", "tabs": [{"k": "secrecy", "label": "Plan Secrecy", "kind": "stub"}, {"k": "locations", "label": "Locations", "kind": "anchor"}, {"k": "services", "label": "Services", "kind": "vendors"}, {"k": "dining", "label": "Celebration Dining", "kind": "stub"}, {"k": "stays", "label": "Accommodations", "kind": "stub"}], "venues": [{"id": "v1", "type": "GARDEN/PARK", "area": "Higashiyama", "extra": "VERY PRIVATE", "x": 72.3, "y": 64.7}, {"id": "v2", "type": "RESTAURANT", "area": "Pontocho", "extra": "SEMI-PRIVATE", "x": 61.9, "y": 52.6}, {"id": "v3", "type": "CITY/ROOFTOP", "area": "Kyoto Station Area", "extra": "SEMI-PRIVATE", "x": 48.7, "y": 80.9}, {"id": "v4", "type": "HISTORIC/CASTLE", "area": "Nishijin", "extra": "PUBLIC (ROMANTIC)", "x": 35.7, "y": 22.1}], "vendors": [{"id": "n1", "tab": "services", "role": "photography", "kind": "PHOTOGRAPHY", "area": "Gion", "x": 67.0, "y": 58.2}, {"id": "n2", "tab": "services", "role": "florist", "kind": "FLORAL DESIGN", "area": "Kawaramachi / Sanjo", "x": 59.0, "y": 50.8}, {"id": "n3", "tab": "services", "role": "videographer", "kind": "VIDEOGRAPHY", "area": "Kyoto Station Area", "x": 48.7, "y": 80.9}, {"id": "n4", "tab": "services", "role": null, "kind": "PROPOSAL PLANNER", "area": null, "x": 0, "y": 0}], "roles": [{"key": "photography", "label": "Photography"}, {"key": "florist", "label": "Florist"}, {"key": "private_chef", "label": "Private chef"}, {"key": "videographer", "label": "Videographer"}], "showTitle": "THE EVENING", "days": [{"title": "SAT 14 NOV", "rows": [{"time": "19:00", "label": "Dinner Reservation", "desc": "Special dinner reservation", "fixed": true}, {"time": "20:00", "label": "Secret Photographer", "desc": "Hidden photographer positioning", "fixed": true}, {"time": "20:30", "label": "The Proposal", "desc": "The proposal moment, everything leads to this", "fixed": true}]}], "toolRows": [{"t": "The reservation", "b": "No table held yet.", "btn": "Open"}, {"t": "Timing check", "b": "Runs once the spot and the photographer are set.", "btn": "Open"}, {"t": "Getting home", "b": "No ride planned yet.", "btn": "Open"}], "readyLine": "[A local's finished Kyoto proposal plan shows here when one is published. Buying one opens it as your draft.]", "expertLine": "[Proposal planners verified in Kyoto show here.]"}; }
+  start() { return {"layer": "browse", "sel": "v1", "venue": "", "onPlan": {}}; }
+
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var C = this.cfg();
+    var S = this.start();
+    var venueId = st.venue === undefined ? S.venue : st.venue;
+    var onPlan = st.onPlan || S.onPlan;
+    var layer = st.layer || S.layer;
+    var tab = st.tab || C.anchorTab;
+    var selId = st.sel === undefined ? S.sel : st.sel;
+
+    var NAVY = '#1E3A5F';
+    var TEALINK = '#226B6B';
+    var CORAL = '#E85D55';
+    var MUTED = '#6A7480';
+
+    var byId = {};
+    C.venues.forEach(function (v) { byId[v.id] = v; });
+    C.vendors.forEach(function (v) { byId[v.id] = v; });
+    var venue = venueId ? byId[venueId] : null;
+    var tabDef = null;
+    C.tabs.forEach(function (t) { if (t.k === tab) { tabDef = t; } });
+    var isAnchorTab = tabDef.kind === 'anchor';
+    var isVendorTab = tabDef.kind === 'vendors';
+    var tabVendors = C.vendors.filter(function (v) { return v.tab === tab; });
+    var planVendors = C.vendors.filter(function (v) { return !!onPlan[v.id]; });
+    var planEmpty = !venue && planVendors.length === 0;
+
+    function venueMeta(v) { return v.type + ' · ' + v.area.toUpperCase() + ' · ' + v.extra; }
+    function vendorMeta(v) { return v.kind + ' · ' + (v.area ? v.area.toUpperCase() : 'NO ADDRESS LISTED'); }
+    function setVenue(id) {
+      return function () { self.setState({ venue: venueId === id ? '' : id, sel: id }); };
+    }
+    function toggleVendor(id) {
+      return function () {
+        var nx = {};
+        Object.keys(onPlan).forEach(function (k) { nx[k] = true; });
+        if (nx[id]) { delete nx[id]; } else { nx[id] = true; }
+        self.setState({ onPlan: nx });
+      };
+    }
+    function pickFn(id) { return function () { self.setState({ sel: id }); }; }
+
+    /* One card shape for a venue and for a vendor, so the list and the selected card share a template. */
+    function venueVm(v, num) {
+      var is = v.id === venueId;
+      var isSel = v.id === selId;
+      return {
+        num: is ? '★' : '' + num,
+        name: C.venuePh,
+        meta: venueMeta(v),
+        note: is ? C.anchorTitle + '. Everything else is planned around it.' : '',
+        hasNote: is,
+        sel: isSel,
+        mark: isSel ? CORAL : 'transparent',
+        bg: isSel ? '#FFF9F8' : '#FFFFFF',
+        badgeLine: 'solid',
+        badgeBorder: is ? CORAL : NAVY,
+        badgeBg: NAVY,
+        badgeFg: '#FFFFFF',
+        btnLabel: is ? C.anchorTitleCase + ' · Change' : (venue ? 'Swap to this one' : C.chooseLabel),
+        btnBorder: is ? TEALINK : NAVY,
+        btnBg: is ? '#FFFFFF' : NAVY,
+        btnFg: is ? TEALINK : '#FFFFFF',
+        act: setVenue(v.id),
+        pick: pickFn(v.id)
+      };
+    }
+    function vendorVm(v, num) {
+      var added = !!onPlan[v.id];
+      var isSel = v.id === selId;
+      return {
+        num: '' + num,
+        name: C.vendorPh,
+        meta: vendorMeta(v),
+        note: v.area ? '' : 'Comes to you, so it is not on the map.',
+        hasNote: !v.area,
+        sel: isSel,
+        mark: isSel ? CORAL : 'transparent',
+        bg: isSel ? '#FFF9F8' : '#FFFFFF',
+        badgeLine: v.area ? 'solid' : 'dashed',
+        badgeBorder: TEALINK,
+        badgeBg: added && v.area ? TEALINK : '#FFFFFF',
+        badgeFg: added && v.area ? '#FFFFFF' : NAVY,
+        btnLabel: added ? 'On your plan · Remove' : 'Add to plan',
+        btnBorder: added ? TEALINK : NAVY,
+        btnBg: added ? '#FFFFFF' : NAVY,
+        btnFg: added ? TEALINK : '#FFFFFF',
+        act: toggleVendor(v.id),
+        pick: pickFn(v.id)
+      };
+    }
+
+    var items = [];
+    if (isAnchorTab) { items = C.venues.map(function (v, i) { return venueVm(v, i + 1); }); }
+    if (isVendorTab) { items = tabVendors.map(function (v, i) { return vendorVm(v, i + 1); }); }
+
+    /* Map. Only a listing with its own address gets a mark: the venue, and vendors that have one.
+       A vendor with no address is listed and never drawn. */
+    var pins = [];
+    var anchors = [];
+    function venuePin(v, label) {
+      var is = v.id === venueId;
+      var isSel = v.id === selId;
+      pins.push({
+        x: v.x + '%', y: v.y + '%', label: is ? '★' : label,
+        size: is ? '44px' : (isSel ? '38px' : '30px'),
+        bg: is ? NAVY : (isSel ? '#FFFFFF' : NAVY),
+        fg: is ? '#FFFFFF' : (isSel ? NAVY : '#FFFFFF'),
+        border: (is || isSel) ? CORAL : '#FFFFFF',
+        z: is ? 13 : (isSel ? 12 : 10),
+        aria: C.venuePh + ', ' + v.area + (is ? ', ' + C.anchorTitleCase.toLowerCase() : ''),
+        pick: pickFn(v.id)
+      });
+      if (is) { anchors.push({ x: v.x + '%', y: v.y + '%', text: C.anchorTitle }); }
+    }
+    function vendorPin(v, label) {
+      if (!v.area) { return; }
+      var isSel = v.id === selId;
+      var added = !!onPlan[v.id];
+      pins.push({
+        x: v.x + '%', y: v.y + '%', label: label,
+        size: isSel ? '38px' : '30px',
+        bg: added ? TEALINK : '#FFFFFF',
+        fg: added ? '#FFFFFF' : TEALINK,
+        border: isSel ? CORAL : TEALINK,
+        z: isSel ? 11 : 9,
+        aria: C.vendorPh + ', ' + v.kind.toLowerCase() + ', ' + v.area + (added ? ', on your plan' : ''),
+        pick: pickFn(v.id)
+      });
+    }
+    if (layer === 'plan') {
+      if (venue) { venuePin(venue, '★'); }
+      planVendors.forEach(function (v, i) { vendorPin(v, '' + (i + 1)); });
+    } else if (isAnchorTab) {
+      C.venues.forEach(function (v, i) { venuePin(v, '' + (i + 1)); });
+    } else {
+      if (venue) { venuePin(venue, '★'); }
+      if (isVendorTab) { tabVendors.forEach(function (v, i) { vendorPin(v, '' + (i + 1)); }); }
+    }
+
+    var selObj = byId[selId] || null;
+    var selIsVenue = !!selObj && C.venues.indexOf(selObj) !== -1;
+    var sel = selObj
+      ? (selIsVenue ? venueVm(selObj, C.venues.indexOf(selObj) + 1) : vendorVm(selObj, 1))
+      : { meta: '', name: '', note: '', hasNote: false, btnLabel: '', btnBorder: NAVY, btnBg: NAVY, btnFg: '#FFFFFF', act: null };
+
+    var tabs = C.tabs.map(function (t) {
+      var on = t.k === tab;
+      var n = t.kind === 'anchor' ? C.venues.length : C.vendors.filter(function (v) { return v.tab === t.k; }).length;
+      return { label: t.label, n: '' + n, hasN: n > 0, on: on, line: on ? CORAL : 'transparent', fg: on ? NAVY : MUTED,
+        pick: function () { self.setState({ tab: t.k, layer: 'browse' }); } };
+    });
+    var layers = [['browse', 'Browse'], ['plan', 'Your plan']].map(function (l) {
+      var on = l[0] === layer;
+      return { label: l[1], on: on, bg: on ? NAVY : 'transparent', fg: on ? '#FFFFFF' : '#1F2733',
+        pick: function () { self.setState({ layer: l[0] }); } };
+    });
+
+    /* Your plan: the schedule (the server's own presets for this occasion), then who still has to be hired. */
+    var days = C.days.map(function (d) {
+      return {
+        title: d.title,
+        rows: d.rows.map(function (r) {
+          return { time: r.time, label: r.label, desc: r.desc, fixed: !!r.fixed };
+        })
+      };
+    });
+    var vendorTabOf = {};
+    C.vendors.forEach(function (v) { if (v.role && !vendorTabOf[v.role]) { vendorTabOf[v.role] = v.tab; } });
+    var roles = C.roles.map(function (r) {
+      var have;
+      var target;
+      if (r.key === 'venue') {
+        have = venue ? C.venuePh + ', ' + venue.area : '';
+        target = C.anchorTab;
+      } else {
+        var mine = planVendors.filter(function (v) { return v.role === r.key; });
+        have = mine.length ? mine.length + ' on your plan' : '';
+        target = vendorTabOf[r.key] || C.vendorTab;
+      }
+      return {
+        label: r.label,
+        state: have || 'None yet',
+        has: have !== '',
+        dot: have ? TEALINK : '#FFFFFF',
+        stateFg: have ? TEALINK : MUTED,
+        canFind: target !== '',
+        findLabel: have ? 'Change' : 'Find',
+        find: function () { self.setState({ tab: target, layer: 'browse' }); }
+      };
+    });
+    var open = roles.filter(function (r) { return !r.has; }).length;
+
+    return {
+      eyebrow: C.eyebrow,
+      title: C.title,
+      whenLine: C.when,
+      tools: C.tools.map(function (t) { return { label: t }; }),
+      hasSecrecy: !!C.secrecy,
+      secrecyLine: C.secrecy || '',
+
+      aiEmpty: planEmpty,
+      aiFilled: !planEmpty,
+      aiNote: planEmpty ? 'Free while your plan is empty.' : 'You see each change first and pay when you apply it.',
+
+      railBrowse: layer !== 'plan',
+      railPlan: layer === 'plan',
+      tabs: tabs,
+      showAnchorAsk: isAnchorTab && !venue,
+      anchorQ: C.anchorQ,
+      anchorHint: C.anchorHint,
+      items: items,
+      showStub: tabDef.kind === 'stub',
+      stubText: '[' + tabDef.label + ' for this plan load here. Not filled in this mock.]',
+      listNote: isAnchorTab ? C.venueListNote : C.vendorListNote,
+      showListNote: !!(isAnchorTab || isVendorTab),
+
+      hasVenue: !!venue,
+      noVenue: !venue,
+      anchorTitle: C.anchorTitle,
+      venueName: C.venuePh,
+      venueMeta: venue ? venueMeta(venue) : '',
+      toVenues: function () { self.setState({ tab: C.anchorTab, layer: 'browse' }); },
+      browseVenuesLabel: C.browseLabel,
+      showTitle: C.showTitle,
+      days: days,
+      rolesTitle: 'WHO YOU NEED · ' + open + ' STILL OPEN',
+      roles: roles,
+      toolRows: C.toolRows,
+
+      pins: pins,
+      anchors: anchors,
+      layers: layers,
+      hasSel: selObj != null,
+      sel: sel,
+      trayTitle: venue ? C.anchorTitle + ' · SET' : C.noAnchorTitle,
+      trayNames: (venue ? C.venuePh + ', ' + venue.area : C.anchorHint) + (planVendors.length ? ' · ' + planVendors.length + (planVendors.length === 1 ? ' vendor' : ' vendors') + ' on your plan' : ''),
+
+      readyLine: C.readyLine,
+      expertLine: C.expertLine
+    };
+  }
+}
+</script>
+</body>
+</html>
