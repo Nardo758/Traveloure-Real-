@@ -35,6 +35,8 @@ export interface StopLeg {
   recommendedMode: string;
   userSelectedMode: string | null;
   alternativeModes?: ReadonlyArray<{ mode: string }> | null;
+  /** S12-1: the server's own mode list for this leg — the one its PATCH accepts. */
+  candidateModes?: ReadonlyArray<string> | null;
   estimatedDurationMinutes?: number | null;
   distanceDisplay?: string | null;
   proposalStatus: "proposed" | "confirmed" | null;
@@ -176,7 +178,7 @@ export function StopLegRow({
               onChange={(e) => onModeChange?.(e.target.value)}
               data-testid={`leg-mode-select-${leg.id}`}
             >
-              {legModeOptions(leg).map((m) => (
+              {(leg.candidateModes ?? legModeOptions(leg)).map((m) => (
                 <option key={m} value={m}>{legModeLabel(m)}</option>
               ))}
             </select>

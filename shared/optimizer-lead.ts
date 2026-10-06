@@ -26,6 +26,8 @@ export interface Finding {
   est?: true;
   /** R-v: hours read more than 14 days before the trip carry this. */
   caveat?: string;
+  /** S12-4: `leg_unreachable` only — the stops it counts, by name and day, so a card can name them. */
+  stops?: Array<{ itemId: string; title: string; day: number }>;
 }
 
 /** Problems first, then gains — the order the card reads them in (spec §8). */
@@ -405,6 +407,15 @@ export const ADD_TRAVEL_TIMES = "Add travel times";
  * gap). A stop reached while closed or a clashing timed entry is not a travel-time fact and is no
  * longer counted as one; it is read with its own words. No findings ⇒ null (nothing claimed, §13).
  */
+/**
+ * S12-4, pure: the stops behind "N stops may not be reachable in time", one line each with its day
+ * ("Day 2 · Yasaka Shrine"), in the finding's own order. Empty when the finding carries none (§13).
+ */
+export function unreachableStopLines(findings: readonly Finding[] | null | undefined): string[] {
+  const f = findings?.find((x) => x.kind === "leg_unreachable");
+  return (f?.stops ?? []).map((s) => `Day ${s.day} · ${s.title}`);
+}
+
 export function freeFindingsPromptLine(findings: readonly Finding[] | null | undefined): string | null {
   if (!findings?.length) return null;
   const reach = findings.filter((f) => f.kind === "leg_unreachable").reduce((n, f) => n + f.count, 0);

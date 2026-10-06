@@ -48,6 +48,7 @@ import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/
 import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
 import { trackEvent } from "@/lib/analytics";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
+import { siblingDayIso } from "@/lib/plan-day";
 
 const MAPS_KEY = MAPS_BROWSER_KEY;
 
@@ -1057,11 +1058,12 @@ interface GenerateLegsResult { tripId: string; proposalStatus: "proposed"; creat
 
 /** R322: the plan's days, plus an EMPTY day for every day 1..dayCount that holds no stop yet (the
  *  plancard derives its days from items, so an empty day would otherwise have no row to add from).
- *  An empty day claims nothing: no date it was not given, no stops (§13). */
+ *  An empty day's date is counted from a sibling day's own date (`siblingDayIso`), else none (§13). */
 function workstationDays(days: readonly PlanCardDay[], dayCount: number): PlanCardDay[] {
   const byNum = new globalThis.Map(days.map((d) => [d.dayNum, d] as const));
   for (let n = 1; n <= dayCount; n++) {
-    if (!byNum.has(n)) byNum.set(n, { dayNum: n, date: "", dateIso: null, label: "", activities: [], transports: [] });
+    // S12-3: an empty day takes its date from a sibling day's own date (null when none has one).
+    if (!byNum.has(n)) byNum.set(n, { dayNum: n, date: "", dateIso: siblingDayIso(n, days), label: "", activities: [], transports: [] });
   }
   return Array.from(byNum.values()).sort((a, b) => a.dayNum - b.dayNum);
 }

@@ -206,6 +206,8 @@ export default function ReadyMadeListingPanel({
       // duration/price/title off this same listing — without this invalidation the caption query
       // stayed cached and showed stale copy until a full reload. Same query key SocialKitCard uses.
       qc.invalidateQueries({ queryKey: [`/api/promo-text?targetType=ready_made&targetId=${listing.id}`] });
+      // S12-2: a title, price or cover save can clear (or raise) a readiness line — re-ask the server.
+      qc.invalidateQueries({ queryKey: readinessQueryKey(listing.id) });
       toast(
         body.reReviewRequired
           ? { title: "Saved — back in review", description: "That change affects what a buyer sees, so the listing re-enters the approval queue." }
@@ -805,7 +807,7 @@ function ReadinessChecklist({
       )}
       {readiness.advisory.length > 0 && (
         <div data-testid="readiness-advisory" style={{ background: G[50], borderRadius: 8, padding: "7px 9px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: G[600], marginBottom: 2 }}>Worth a look (doesn't block submitting)</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: G[600], marginBottom: 2 }}>Worth a look</div>
           {readiness.advisory.map((l, i) => row(l, i, "advise"))}
         </div>
       )}

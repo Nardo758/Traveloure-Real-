@@ -6,7 +6,7 @@
  *         that question and the answered question leaves the list (the server-side half — the answer
  *         landing on the traveler's item thread — is R309's DB test, expert-inbox-questions.db.test.ts)
  *   T02 — an answer refused with 409 (another local answered first) says so and the list refreshes
- *   T03 — no questions: "No questions yet", and the tab label carries no "(0)"
+ *   T03 — no questions: "No questions yet.", and the tab label carries no "(0)"
  *
  * Auth strategy: page.route() intercepts, as expert-booking-decline-dialog.spec.ts does.
  *

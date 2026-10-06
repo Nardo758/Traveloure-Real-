@@ -192,7 +192,7 @@ test.describe('Journey 1B — Guest path with cart migration', () => {
 test.describe('Stage 1 component wiring', () => {
   test.use({ storageState: authFile('traveler') });
 
-  test('EscalationCTA (B10) renders on the finalized Trip Card', async ({ page }) => {
+  test('B10 retired (smoke 12 S12-5): /trip/:id draws no EscalationCTA — Trip Card or not-final notice', async ({ page }) => {
     await page.goto('/my-trips', { waitUntil: 'domcontentloaded' });
     const tripCount = await countVisible(page, SELECTORS.tripCard, 30_000);
     if (tripCount === 0) {
@@ -219,17 +219,19 @@ test.describe('Stage 1 component wiring', () => {
     await page.goto(`/trip/${tripId}`, { waitUntil: 'domcontentloaded' });
 
     await Promise.race([
-      page.waitForSelector(SELECTORS.escalationCta, { timeout: 30_000 }).catch(() => null),
+      page.waitForSelector('[data-testid="trip-card-page"]', { timeout: 30_000 }).catch(() => null),
       page.waitForSelector('[data-testid="trip-not-final-notice"]', { timeout: 30_000 }).catch(() => null),
     ]);
 
-    const hasEscalation = await page.locator(SELECTORS.escalationCta).isVisible().catch(() => false);
-    if (hasEscalation) {
-      await expect(page.locator(SELECTORS.escalationCta)).toBeVisible();
+    // Smoke 12 S12-5 (decision-maker, Oct 6, 2026): the full-stage EscalationCTA could never render
+    // here — this page passes `routingReadOnly`, which suppressed it — and is RETIRED. The one expert
+    // door is the slip's handoff chooser (R324). The pin is amended to its absence, on either state.
+    await expect(page.locator(SELECTORS.escalationCta)).toHaveCount(0);
+    if (await page.locator('[data-testid="trip-card-page"]').isVisible().catch(() => false)) {
       return;
     }
 
-    // Not finalized → the Trip Card (and its EscalationCTA) don't exist yet; the honest notice
+    // Not finalized → the Trip Card doesn't exist yet; the honest notice
     // and its SINGLE action to the slip must render instead (Locked Decision 42 D8). "One action"
     // is asserted as a count, not implied by naming one testid — a second escape hatch appearing
     // beside it is the thing D8 forbids, and a bare visibility check would not see it.
@@ -246,7 +248,7 @@ test.describe('Stage 1 component wiring', () => {
     // ONE fact — does a trip_finals version exist. Post-final: a green "Final · v{N}" chip + primary
     // "View Trip Card" → /trip/:id. Pre-final: primary "Open slip" → /plans/:id. Exactly one primary
     // renders per tile. Seed data may be either state, so assert whichever applies to the first tile
-    // (same defensive posture as the EscalationCTA test above).
+    // (same defensive posture as the B10 test above).
     await page.goto('/my-trips', { waitUntil: 'domcontentloaded' });
     const tripCount = await countVisible(page, SELECTORS.tripCard, 30_000);
     if (tripCount === 0) {

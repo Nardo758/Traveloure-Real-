@@ -27,7 +27,7 @@ test("H2: the day stats", () => {
   // Smoke 10 S10-8: no ward names on a day header, any day.
   assert.equal(dayBlockStats({ stops: 5, hoursOn: 4 }), "5 stops · hours on 4");
   assert.equal(dayBlockStats({ stops: 1, hoursOn: 0 }), "1 stop");
-  assert.equal(dayBlockStats({ stops: 0, hoursOn: 0 }), null);
+  assert.equal(dayBlockStats({ stops: 0, hoursOn: 0 }), "0 stops"); // S12-3: an empty day says so
 });
 
 test("M1: Find a host on a generic item, category preset", () => {

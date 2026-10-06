@@ -119,9 +119,19 @@ export function unreachableLine(u: UnreachableStop): string {
 }
 
 /** The free preview's finding: how many STOPS (unique) the plan's legs can't reach, and on which days. */
-export function legUnreachableFinding(unreachable: readonly UnreachableStop[]): { kind: "leg_unreachable"; count: number; days: number[] } | null {
+export function legUnreachableFinding(
+  unreachable: readonly UnreachableStop[],
+): { kind: "leg_unreachable"; count: number; days: number[]; stops: Array<{ itemId: string; title: string; day: number }> } | null {
   if (!unreachable.length) return null;
-  const stops = new Set(unreachable.map((u) => u.toItemId));
+  // S12-4: the unique stops themselves (day, then title — `unreachableStops`' own order), so the
+  // Finish card can name what it counts.
+  const seen = new Set<string>();
+  const stops: Array<{ itemId: string; title: string; day: number }> = [];
+  for (const u of unreachable) {
+    if (seen.has(u.toItemId)) continue;
+    seen.add(u.toItemId);
+    stops.push({ itemId: u.toItemId, title: u.toTitle, day: u.dayNumber });
+  }
   const days = Array.from(new Set(unreachable.map((u) => u.dayNumber))).sort((a, b) => a - b);
-  return { kind: "leg_unreachable", count: stops.size, days };
+  return { kind: "leg_unreachable", count: stops.length, days, stops };
 }

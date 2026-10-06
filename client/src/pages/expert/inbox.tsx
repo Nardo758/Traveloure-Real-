@@ -1776,7 +1776,7 @@ function QuestionsSection() {
       ) : questions.length === 0 ? (
         <EmptyState
           icon={HelpCircle}
-          title="No questions yet"
+          title="No questions yet."
           body="When a traveler asks a local about a stop in your market — or on a copy of your Ready Made Trip — it appears here."
           testId="empty-inbox-questions"
         />

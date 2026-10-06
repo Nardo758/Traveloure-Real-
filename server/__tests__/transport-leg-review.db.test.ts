@@ -9,6 +9,9 @@
  *   V3  all picked ⇒ `firstUnpickedIndex: null`; a confirmed host-pickup leg counts as picked
  *   V4  a caller with no access gets the same 404 as the Workstation read; `checked_by` is never
  *       returned
+ *   V5  smoke 12 S12-1: the leg PATCH accepts exactly the modes the read serves — a leg whose
+ *       engine default is "driving" can be switched to Taxi and picked back to Driving; a mode the
+ *       leg does not offer is refused 400 with the served list
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test server/__tests__/transport-leg-review.db.test.ts
@@ -33,6 +36,7 @@ const ids = {
   d2: `l110-${RUN}-d2`,
   d1b: `l110-${RUN}-d1b`,
   d1a: `l110-${RUN}-d1a`,
+  drv: `l110-${RUN}-drv`,
 };
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -46,6 +50,30 @@ function assertDisposableDb(): void {
   }
   if (!DISPOSABLE_HOSTS.has(host)) {
     throw new Error(`[transport-leg-review] REFUSING to write fixtures to '${host}'. Opt in with JOURNEY_DB_WRITES_OK=1.`);
+  }
+}
+
+async function patchAs(userId: string, legId: string, body: unknown) {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as any).user = { claims: { sub: userId } };
+    (req as any).isAuthenticated = () => true;
+    next();
+  });
+  app.use(transportLegsRoutes);
+  const server = app.listen(0);
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as AddressInfo;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/trips/${ids.trip}/transport-legs/${legId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json().catch(() => null) };
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
   }
 }
 
@@ -136,4 +164,27 @@ test("V4: no access ⇒ 404; checked_by is never returned", async () => {
   const ok = await reviewAs(ids.author);
   assert.equal(JSON.stringify(ok.body).includes(ids.author), false);
   assert.equal("checkedBy" in ok.body.legs[0], false);
+});
+
+test("V5 (S12-1): the PATCH accepts what the read serves — Taxi, then Driving back", async () => {
+  await db.execute(sql`INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
+      to_activity_id, to_name, to_lat, to_lng, distance_meters, distance_display, recommended_mode, alternative_modes,
+      estimated_duration_minutes, proposal_status)
+    VALUES (${ids.drv}, ${ids.trip}, 3, 0, 'drv-f', 'From drv', 35.0, 135.7, 'drv-t', 'To drv', 35.05, 135.75,
+      6000, '6 km', 'driving', '[]'::jsonb, 14, 'proposed')`);
+  const served = (await reviewAs(ids.author)).body.legs.find((l: any) => l.id === ids.drv).candidateModes as string[];
+  assert.ok(served.includes("driving") && served.includes("taxi"), JSON.stringify(served));
+
+  const taxi = await patchAs(ids.author, ids.drv, { userSelectedMode: "taxi" });
+  assert.equal(taxi.status, 200, JSON.stringify(taxi.body));
+  assert.equal(taxi.body.leg.userSelectedMode, "taxi");
+  assert.ok(taxi.body.leg.candidateModes.includes("driving"), "the write's own response serves the list too");
+
+  const back = await patchAs(ids.author, ids.drv, { userSelectedMode: "driving" });
+  assert.equal(back.status, 200, JSON.stringify(back.body));
+  assert.equal(back.body.leg.userSelectedMode, "driving");
+
+  const bogus = await patchAs(ids.author, ids.drv, { userSelectedMode: "hovercraft" });
+  assert.equal(bogus.status, 400);
+  assert.ok(Array.isArray(bogus.body.candidateModes) && bogus.body.candidateModes.includes("driving"));
 });

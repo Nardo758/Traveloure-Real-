@@ -690,7 +690,7 @@ export interface PlanCardProps {
   /**
    * True when the card renders INSIDE the expert Workstation builder (decision-maker,
    * Jul 27 2026): suppresses the traveler-facing chrome that duplicates or contradicts
-   * the builder's own controls — ConciergeModule and EscalationCTA (hire-an-expert CTAs
+   * the builder's own controls — ConciergeModule (and, until smoke 12 S12-5 retired it, EscalationCTA — hire-an-expert CTAs
    * shown TO the expert), both upsell slots, the optimizer metrics strip, and the
    * card/map view toggle (the Workstation has its own Map tab embedding MapControlCenter).
    * Itinerary content (day selector, sections, activities, transport) still renders.
