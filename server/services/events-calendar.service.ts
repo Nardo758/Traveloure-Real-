@@ -94,7 +94,7 @@ export function composeCalendarEvents(
     if (card.lastDate < today || card.firstDate > windowEnd) continue;
     // Migration 356 (ledger `2026-10-05-event-real-city`): read when the column exists, else not known.
     const venueLocality = (row as CityEvent & { venueLocality?: string | null }).venueLocality ?? null;
-    out.push({ ...card, vertical: isCityEventVertical(row.vertical) ? row.vertical : null, venueLocality });
+    out.push({ ...card, vertical: isCityEventVertical(row.vertical) ? row.vertical : null, venueLocality, sourceId: row.sourceId });
   }
   return out.sort((a, b) => (a.firstDate === b.firstDate ? a.startsAt.localeCompare(b.startsAt) : a.firstDate < b.firstDate ? -1 : 1));
 }

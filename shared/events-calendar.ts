@@ -27,6 +27,19 @@ import type { CityEventCard, CityEventVertical } from "./city-events";
 export interface CalendarEvent extends CityEventCard {
   vertical: CityEventVertical | null;
   venueLocality: string | null;
+  /**
+   * The event page's address (`/events/<source_id>`, ruling E2, ledger `2026-10-06-event-page`).
+   * Only the calendar read carries it; the landing strip's payload is unchanged.
+   */
+  sourceId: string;
+}
+
+/**
+ * The event page's path for a source id (ruling E2). The id is encoded, never trusted as a path:
+ * the server resolves it to exactly one live row or answers 404.
+ */
+export function eventDetailPath(sourceId: string): string {
+  return `/events/${encodeURIComponent(sourceId)}`;
 }
 
 /** One month-level season row, expanded over the window months it covers. */

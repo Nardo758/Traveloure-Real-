@@ -9,6 +9,9 @@
  *   P4 "Plan around it" opens the planning pop-up
  *   P5 a month-level season shows in the band and in "In season all month", never on a day
  *   P6 "Where to go" lists all eight cities; one with no rating says "Not rated yet"
+ *   P7 (2b, ledger `2026-10-06-event-page`) from a row, "Event details" opens the event's own page
+ *   P8 on the page, "Plan around it" opens the pop-up with the event's dates and venue filled in
+ *   P9 an address with no live event is the "not on our calendar" page, not an empty shell
  */
 import { test, expect, type Page } from '@playwright/test';
 
@@ -46,7 +49,7 @@ function card(id: string, firstDate: string, lastDate: string, over: Record<stri
     venue: 'Fixture Hall', startsAt: `${firstDate}T10:00:00.000Z`, endsAt: null, nights,
     daysUntil: Math.round((Date.parse(firstDate) - Date.parse(today)) / 86_400_000),
     firstDate, lastDate, startTime: null, ticketUrl: null, blurb: null, imagePath: null,
-    vertical: 'music', venueLocality: null, ...over,
+    vertical: 'music', venueLocality: null, sourceId: `fixture-${id}`, ...over,
   };
 }
 
@@ -66,6 +69,25 @@ const PAYLOAD = {
     })),
   ],
 };
+
+const EVENT_PAGE = {
+  event: PAYLOAD.events[0],
+  countdown: 'On now',
+  organizer: null,
+  goodToKnow: [{ factType: 'hours', text: 'Gates open at 11:00.', label: 'from Fixture Official', sourceUrl: 'https://fixture.example/hours', checked: 'checked 2 Oct 2026' }],
+  moreInCity: [],
+  verifiedLocals: null,
+};
+
+async function mockEventPage(page: Page) {
+  await page.route('**/api/city-events/fixture-*', (route) => {
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop() ?? '');
+    if (id === 'fixture-underway') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(EVENT_PAGE) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'This event is not on our calendar.' }) });
+  });
+}
 
 async function openEvents(page: Page) {
   await page.route('**/api/city-events/calendar', (route) =>
@@ -133,5 +155,38 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
     await expect(page.getByTestId('events-where-group-kyoto')).toHaveText(/Best time/i);
     await expect(page.getByTestId('events-where-group-goa')).toHaveText(/Not rated yet/i);
     await expect(page.getByTestId('events-where-scope-kyoto')).toContainText('Japan');
+  });
+
+  test('P7 from a row, Event details opens the event page', async ({ page }) => {
+    await mockEventPage(page);
+    await openEvents(page);
+    await page.getByTestId('events-details-underway').click();
+    await expect(page).toHaveURL(/\/events\/fixture-underway$/);
+    await expect(page.getByTestId('event-detail-title')).toHaveText('Fixture underway');
+    await expect(page.getByTestId('event-detail-place')).toHaveText('Kyocera Dome Osaka, Osaka · outside the city, planned from Kyoto');
+    await expect(page.getByTestId('event-detail-countdown')).toHaveText(/On now/i);
+    await expect(page.getByTestId('event-detail-fact')).toContainText('from Fixture Official');
+    // 2c is not armed: no notes and no comments, not even an empty section.
+    await expect(page.getByText(/comment/i)).toHaveCount(0);
+  });
+
+  test('P8 on the page, Plan around it opens the pop-up with the event filled in', async ({ page }) => {
+    await mockEventPage(page);
+    await page.goto(`${BASE_URL}/events/fixture-underway`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.getByTestId('event-detail-plan').click();
+    await expect(page.getByTestId('plan-modal')).toBeVisible({ timeout: 10_000 });
+    const pens = await page.evaluate(() => Object.keys(sessionStorage).map((k) => sessionStorage.getItem(k) ?? ''));
+    const pen = pens.map((v) => { try { return JSON.parse(v); } catch { return null; } }).find((v) => v && v.startDate);
+    expect(pen?.startDate).toBe(plus(-1));
+    expect(pen?.endDate).toBe(plus(1));
+    expect(pen?.destination).toBe('Kyoto');
+    expect(JSON.stringify(pen?.pendingEvents ?? [])).toContain('Kyocera Dome Osaka');
+  });
+
+  test('P9 an unknown address is the not-on-our-calendar page', async ({ page }) => {
+    await mockEventPage(page);
+    await page.goto(`${BASE_URL}/events/fixture-missing`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await expect(page.getByTestId('event-detail-missing')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'This event is not on our calendar' })).toBeVisible();
   });
 });

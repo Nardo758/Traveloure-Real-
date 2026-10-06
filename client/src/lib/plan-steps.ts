@@ -172,6 +172,9 @@ export const DOORS_THAT_START_A_NEW_PLAN: readonly PlanDoor[] = [
   // Step 8a (D4, ledger `2026-10-06-step8a-experiences-entry`): the /experiences start page's
   // Continue — the traveler picked an occasion and a city on the page, for a NEW plan.
   "experiences",
+  // Events lane 2b (E3, ledger `2026-10-06-event-page`): an event's own page plans around that
+  // event from scratch, exactly as the /events list does.
+  "event_detail",
 ];
 
 export function doorStartsNewPlan(

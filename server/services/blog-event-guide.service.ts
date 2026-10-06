@@ -42,7 +42,8 @@ export const EVENT_GUIDE_SYSTEM_PROMPT = [
 export function promptFacts(facts: EventGuideFacts) {
   const { id: _id, ticketUrl: _t, ...event } = facts.event;
   // The attribution links go to the post's source list, never to the model (ruling R-p).
-  const { venueFactSources: _s, ...rest } = facts;
+  // The event page's attributed facts carry the same links, so they stay out too (ledger `2026-10-06-event-page`).
+  const { venueFactSources: _s, attributedFacts: _a, ...rest } = facts;
   return { ...rest, event };
 }
 
