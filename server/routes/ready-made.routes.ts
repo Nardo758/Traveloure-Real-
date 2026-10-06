@@ -623,6 +623,7 @@ export async function readyMadeReadiness(
         toActivityId: transportLegs.toActivityId,
         proposalStatus: transportLegs.proposalStatus,
         userSelectedMode: transportLegs.userSelectedMode,
+        estimatedDurationMinutes: transportLegs.estimatedDurationMinutes,
       })
       .from(transportLegs)
       .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId))),
@@ -639,6 +640,7 @@ export async function readyMadeReadiness(
     anchors,
     buildStartDate: build?.startDate ? String(build.startDate) : null,
     durationDays: listing.durationDays,
+    legs,
   });
   return { blocking, advisory };
 }
@@ -1210,6 +1212,26 @@ router.get("/api/ready-made", async (req, res) => {
 // preview:true so the page renders exactly what a buyer would see (preview-as-buyer: what the
 // author ships is what they previewed). Never exposes sourceTripId — the itinerary is the paid
 // product; a buyer reaches it only through their own clone.
+/**
+ * GET /api/ready-made/preview/:slug — Slice B1 (work plan L3-1 + L3-14; ledger
+ * `2026-10-05-rmt-public-preview`). The public preview `/t/<slug>` reads: cover, title, days, the
+ * expert and their local-verified stamp, the price the buyer pays, ONE sample day. The public detail's
+ * gate (approved + active); every other case is the same 404 (no draft oracle). The slug's id token
+ * is authoritative; the response carries the canonical slug so a retitled listing re-points.
+ */
+router.get("/api/ready-made/preview/:slug", async (req, res) => {
+  try {
+    const { loadReadyMadePreview } = await import("../services/ready-made-preview.service");
+    const preview = await loadReadyMadePreview(req.params.slug);
+    if (!preview) return res.status(404).json({ message: "Trip not found" });
+    res.set("Cache-Control", "public, max-age=300");
+    res.json(preview);
+  } catch (err: any) {
+    console.error("[ready-made] preview error:", err);
+    res.status(500).json({ message: "Failed to load trip" });
+  }
+});
+
 router.get("/api/ready-made/:id", async (req, res) => {
   try {
     const rows = await db
@@ -1409,7 +1431,9 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
     });
     const paymentIntent = await stripeClient.paymentIntents.create(
       {
-        amount: listing.priceCents, // §14: server-derived from the listing, price locked at PI creation
+        // §14: server-derived from the listing, price locked at PI creation. Slice B1: every public price
+        // line prints `readyMadeBuyerTotalCents`, which ready-made-preview P4 pins equal to this amount.
+        amount: listing.priceCents,
         currency: "usd",
         metadata: {
           type: "ready_made_purchase",

@@ -1330,6 +1330,11 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
       ipAddress: req.ip ?? null,
       userAgent: req.get("user-agent") ?? null,
     });
+    // Slice B2 (ledger `2026-10-05-rmt-share-images`): generate-on-publish — render the four share
+    // cards into the cache now. Not awaited and never failing the approval (§15b).
+    void import("../services/ready-made-share-data.service")
+      .then((m) => m.warmReadyMadeShareImages(req.params.id))
+      .catch((e) => console.error("[rmt-share] warm on approve failed:", e?.message ?? e));
     res.json({ success: true, listing: updated });
   } catch (err: any) {
     console.error("Admin ready-made approve error:", err);

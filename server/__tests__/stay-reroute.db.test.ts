@@ -20,6 +20,11 @@
  *   D2  re-dating a plan that is not a copy never moves its anchors
  *   R0  with no way to compute a route (service off, no Google key), the author's end legs are KEPT
  *       and nothing is invented
+ *   G1  Slice A3 (ledger `2026-10-05-stay-reroute-gaps`): copied or AI-drafted lodging is never the
+ *       buyer's stay — an `ai` accommodation item (a clone keeps `ai`) is not read as the stay, and the
+ *       hook it would fire re-routes nothing
+ *   G2  a stay added by hand re-routes through the item rails' hook; a non-stay row costs nothing
+ *   G3  the create / edit / delete item rails call the hook (pinned by source, like H1)
  *
  * NEGATIVE SPACE (§18d): the option-set choose route's hook is pinned by source (H1), not driven;
  * leg durations come from the travel-time service's offline estimate here, so only the shape and the
@@ -71,6 +76,12 @@ const ids = {
   plainStay: `l14-${RUN}-plainstay`,
   buyerFlight: `l14-${RUN}-buyerflight`,
   plainFlight: `l14-${RUN}-plainflight`,
+  copy2: `l14-${RUN}-copy2`,
+  c2hotel: `l14-${RUN}-c2hotel`,
+  c2a: `l14-${RUN}-c2a`,
+  c2b: `l14-${RUN}-c2b`,
+  c2legHA: `l14-${RUN}-c2ha`,
+  c2legAB: `l14-${RUN}-c2ab`,
 };
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -137,7 +148,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM plan_option_sets WHERE trip_id IN (${ids.copy}, ${ids.plain})`).catch(() => {});
   await db.execute(sql`DELETE FROM ready_made_purchases WHERE id = ${ids.purchase}`);
   await db.execute(sql`DELETE FROM ready_made_trips WHERE id = ${ids.listing}`);
-  await db.execute(sql`DELETE FROM trips WHERE id IN (${ids.copy}, ${ids.plain}, ${ids.build})`);
+  await db.execute(sql`DELETE FROM trips WHERE id IN (${ids.copy}, ${ids.plain}, ${ids.build}, ${ids.copy2})`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.author})`);
 });
 
@@ -256,4 +267,62 @@ test("D2: re-dating a plan that is not a copy never moves its anchors", async ()
   const before = String(await at());
   await storage.updateTrip(ids.plain, { startDate: "2026-12-01", endDate: "2026-12-02" } as any);
   assert.equal(String(await at()), before);
+});
+
+async function seedCopy2(): Promise<void> {
+  await db.execute(sql`INSERT INTO trips (id, user_id, author_id, title, destination, start_date, end_date, status) VALUES
+    (${ids.copy2}, ${ids.owner}, NULL, 'A3 copy', 'Kyoto, Japan', '2026-10-04', '2026-10-04', 'draft')`);
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, origin) VALUES
+    (${ids.c2hotel}, ${ids.copy2}, 'Template Ryokan', 'accommodation', 1, 0, 35.000, 135.770, 'expert'),
+    (${ids.c2a}, ${ids.copy2}, 'Kiyomizu-dera', 'activity', 1, 1, 34.9949, 135.7850, 'expert'),
+    (${ids.c2b}, ${ids.copy2}, 'Yasaka Shrine', 'activity', 1, 2, 35.0037, 135.7785, 'expert')`);
+  for (const [id, order, from, to, mode] of [[ids.c2legHA, 0, ids.c2hotel, ids.c2a, "taxi"], [ids.c2legAB, 1, ids.c2a, ids.c2b, "walk"]] as const) {
+    await db.execute(sql`INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
+        to_activity_id, to_name, to_lat, to_lng, distance_meters, distance_display, recommended_mode,
+        estimated_duration_minutes, proposal_status, user_selected_mode, origin)
+      VALUES (${id}, ${ids.copy2}, 1, ${order}, ${from}, 'f', 35.0, 135.7, ${to}, 't', 35.01, 135.71, 900, '0.9 km', 'walk',
+        12, 'confirmed', ${mode}, 'author_pick')`);
+  }
+}
+
+test("G1: copied or AI-drafted lodging is never the buyer's stay", async () => {
+  const { rerouteIfStayItemChanged } = await import("../services/stay-reroute.service");
+  await seedCopy2();
+  assert.equal(await stayPointForPlan(ids.copy2), null, "the template's own (expert) lodging is not the stay");
+  const aiRow = { id: `${ids.copy2}-ai`, itemType: "accommodation" };
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, origin)
+    VALUES (${aiRow.id}, ${ids.copy2}, 'AI-drafted Hotel', 'accommodation', 1, 9, 34.99, 135.76, 'ai')`);
+  assert.equal(await stayPointForPlan(ids.copy2), null, "an AI-drafted (or AI-copied) lodging is not the stay");
+  const before = (await legs(ids.copy2)).map((l) => l.id).sort();
+  await rerouteIfStayItemChanged(ids.copy2, [aiRow]);
+  assert.deepEqual((await legs(ids.copy2)).map((l) => l.id).sort(), before, "nothing re-routed to an AI hotel");
+  await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${aiRow.id}`);
+});
+
+test("G2: a stay added by hand re-routes through the hook; a non-stay row costs nothing", async () => {
+  const { rerouteIfStayItemChanged } = await import("../services/stay-reroute.service");
+  const before = (await legs(ids.copy2)).map((l) => l.id).sort();
+  await rerouteIfStayItemChanged(ids.copy2, [{ itemType: "activity" }, null]);
+  assert.deepEqual((await legs(ids.copy2)).map((l) => l.id).sort(), before);
+  const stay = { id: `${ids.copy2}-mine`, itemType: "accommodation" };
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, origin)
+    VALUES (${stay.id}, ${ids.copy2}, 'My Hotel', 'accommodation', 1, 9, 34.9850, 135.7588, 'traveler')`);
+  await rerouteIfStayItemChanged(ids.copy2, [stay]);
+  const rows = await legs(ids.copy2);
+  const rerouted = rows.filter((l) => l.origin === "rerouted_for_stay");
+  assert.ok(rerouted.length >= 1, "the hand-added stay took the end legs");
+  assert.ok(rerouted.every((l) => l.from_name === "My Hotel" || l.to_name === "My Hotel"));
+  assert.ok(!rows.some((l) => l.id === ids.c2legHA), "the template-lodging leg is replaced");
+  assert.ok(rows.some((l) => l.id === ids.c2legAB && l.origin === "author_pick"), "the author's middle leg is unchanged");
+});
+
+test("G3: the create, edit and delete item rails call the stay hook", () => {
+  const mono = fs.readFileSync(path.resolve(import.meta.dirname, "../routes.ts"), "utf8");
+  const create = mono.slice(mono.indexOf('app.post("/api/trips/:tripId/itinerary-items"'));
+  assert.match(create.slice(0, create.indexOf("Failed to create itinerary item")), /rerouteIfStayItemChanged\(tripId, \[item/);
+  const trips = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/trips.routes.ts"), "utf8");
+  const patch = trips.slice(trips.indexOf('router.patch("/api/trips/:tripId/itinerary-items/:itemId"'));
+  assert.match(patch.slice(0, patch.indexOf("Failed to update itinerary item")), /rerouteIfStayItemChanged\(tripId, \[existing as any, updated as any\]\)/);
+  const del = trips.slice(trips.indexOf('router.delete("/api/trips/:tripId/itinerary-items/:itemId"'));
+  assert.match(del.slice(0, del.indexOf("Failed to delete itinerary item")), /rerouteIfStayItemChanged\(tripId, \[existing as any\]\)/);
 });
