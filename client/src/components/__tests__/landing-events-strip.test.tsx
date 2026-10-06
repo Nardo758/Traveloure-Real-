@@ -110,7 +110,11 @@ describe("city events strip", () => {
   it("S6 each surface sends its own door", () => {
     const src = fs.readFileSync("client/src/components/landing/events-strip.tsx", "utf8");
     assert.match(src, /<CityEventCards events=\{cards\} door="event_strip"/, "the landing strip is event_strip");
-    assert.match(src, /<CityEventCards events=\{data\.events\} door="events_page"/, "the /events block is events_page");
+    // Edited by ledger `2026-10-06-events-calendar`: the /events "Coming up" block is retired, and
+    // /events "What's on" carries the events_page door instead.
+    const whatsOn = fs.readFileSync("client/src/components/events/WhatsOn.tsx", "utf8");
+    assert.match(whatsOn, /planAroundSource\(event, "events_page"\)/, "/events What's on is events_page");
+    assert.ok(!/EventsComingUpBlock/.test(src), "the /events Coming up block is gone");
   });
 
   it("S5 a city with no fallback photo renders no photo", () => {
