@@ -139,3 +139,25 @@ export async function routableExpertFilterSql(): Promise<SQL> {
   const { getPlatformConciergeUserId } = await import("./platform-concierge.service");
   return routableExpertSql(await getPlatformConciergeUserId());
 }
+
+/**
+ * PUBLIC LISTING READERS never show the concierge pool account's listings (decision-maker, Oct 6,
+ * 2026 — ledger `2026-10-06-pool-listings-not-public`). The pool account's `booking_concierge`
+ * listing is reached ONLY as the fallback path (LD 51 as amended); a Services, Destinations or
+ * Browse card for it is the "Booking Concierge · $35 per service · Unknown" row this closes. The
+ * same pool test the directory's `routableExpertSql` carries, as a WHERE clause over a listing's
+ * owner column. No pool configured ⇒ nothing is excluded. Readers BY ID (detail, checkout, the
+ * fallback offer) are deliberately not gated: they are how the fallback is bought.
+ */
+export async function notConciergePoolListingSql(ownerUserIdColumn: SQL | { getSQL(): SQL }): Promise<SQL> {
+  const { getPlatformConciergeUserId } = await import("./platform-concierge.service");
+  const poolId = await getPlatformConciergeUserId();
+  return poolId ? sql`(${ownerUserIdColumn} IS DISTINCT FROM ${poolId})` : sql`TRUE`;
+}
+
+/** The same exclusion over rows already read: drops every row the pool account owns. */
+export async function withoutConciergePoolListings<T>(rows: readonly T[], ownerOf: (row: T) => string | null | undefined): Promise<T[]> {
+  const { getPlatformConciergeUserId } = await import("./platform-concierge.service");
+  const poolId = await getPlatformConciergeUserId();
+  return poolId ? rows.filter((r) => ownerOf(r) !== poolId) : [...rows];
+}

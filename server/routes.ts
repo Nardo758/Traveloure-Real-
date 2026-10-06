@@ -3239,7 +3239,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
     // listings drop out of this public surfacing rail; they reappear automatically once
     // the flag clears. Read-only — no provider_services row is touched.
-    const live = await filterOutAwayOwners(approved, (s) => s.userId);
+    // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
+    const { withoutConciergePoolListings } = await import("./services/expert-routability");
+    const live = await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId);
     // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
     // getAllProviderServices() is shared with admin (which legitimately needs the full row),

@@ -17,6 +17,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 // answers "is this the platform's own reserved Booking Concierge account" — read here so the
 // concierge-fee expert-share re-split is skipped when the listing owner is not a person.
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
+import { notConciergePoolListingSql } from "./services/expert-routability";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
@@ -3193,7 +3194,12 @@ export class DatabaseStorage implements IStorage {
 
   async getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]> {
     // F2 public read-gate: only approved listings surface to public browse (never a submitted/draft one).
-    let conditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
+    let conditions = [
+      eq(providerServices.status, "active"),
+      eq(providerServices.approvalStatus, "approved"),
+      // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
+      await notConciergePoolListingSql(providerServices.userId),
+    ];
     if (categoryId) {
       conditions.push(eq(providerServices.categoryId, categoryId));
     }
@@ -4053,7 +4059,9 @@ export class DatabaseStorage implements IStorage {
     // name setweight 'A' > description 'B') plus a pg_trgm trigram fallback that fires when
     // the tsquery matches nothing (typo tolerance). Backed by migration 219's GIN indexes.
     // Price/rating filters now run in SQL (decimal columns compare numerically), not Node.
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved")];
+    // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
+    const notPool = await notConciergePoolListingSql(providerServices.userId);
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
@@ -4142,6 +4150,7 @@ export class DatabaseStorage implements IStorage {
           .where(and(
             eq(providerServices.status, "active"),
             eq(providerServices.approvalStatus, "approved"),
+            notPool,
             sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) > 0.2`,
           ))
           .orderBy(sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) DESC`)
