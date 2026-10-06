@@ -1938,4 +1938,8 @@ export const MIGRATION_FILES = [
   // are marked `voided_uncaptured` — never deleted. DATA ONLY, idempotent (a second run updates
   // nothing). No schema change, so nothing to declare in shared/schema.ts. HELD.
   "355_refunds_voided_uncaptured.sql",
+  // 356 — city_events.venue_locality (ledger 2026-10-05-event-real-city, R338; events-page lane 2L):
+  // the town the venue is really in. One nullable column, NO DEFAULT/CHECK/index, no backfill.
+  // Declared in shared/schema.ts. APPROVED by the decision-maker, Oct 6, 2026.
+  "356_city_events_venue_locality.sql",
 ] as const;

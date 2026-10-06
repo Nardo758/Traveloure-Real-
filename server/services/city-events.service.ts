@@ -56,8 +56,10 @@ export interface CityEventSeedEntry {
   venueLat?: number | null;
   venueLng?: number | null;
   /**
-   * Lookup-only (never stored): where the venue is, when it differs from `city` (Suzuka, Portimão).
-   * With no coordinates stated, the seeder asks OpenStreetMap for "venue, locality, country".
+   * Where the venue is, when it differs from `city` (Suzuka, Portimão). With no coordinates stated,
+   * the seeder asks OpenStreetMap for "venue, locality, country". Stored as `venue_locality` at insert
+   * (migration 356, ledger `2026-10-05-event-real-city`); omitted = NOT KNOWN, never "same as the
+   * market" (§13).
    */
   venueLocality?: string | null;
   /**
@@ -127,6 +129,9 @@ export function buildCityEventRow(
       vertical,
       seriesKey,
       startTimeKnown: entry.startTimeKnown === true ? true : null,
+      // Migration 356 (ledger `2026-10-05-event-real-city`): what the entry states, for any source.
+      // Never derived from `city`: an entry that names no locality stores NULL, "not known".
+      venueLocality: entry.venueLocality?.trim() || null,
       title: entry.title.trim(),
       city: market.cityName,
       venue: entry.venue.trim(),
@@ -317,6 +322,45 @@ async function fillManualTypingIfNull(row: InsertCityEvent): Promise<boolean> {
   return updated.length > 0;
 }
 
+/**
+ * THE NARROW, SUNSET FILL (decision-maker, Oct 5, 2026 — ledger `2026-10-05-event-real-city`, R338;
+ * rulings-2 ruling 3; LD 59's third ruled rewrite). Rows inserted before migration 356 carry NULL
+ * `venue_locality` even where the seed states one. This fills exactly that one column, on an existing
+ * `source = 'manual'` row, where it is still NULL, from what the seed entry states — ONE atomic
+ * conditional, so a stated value is never replaced and a second run changes nothing. Nothing else on
+ * the row is touched.
+ *
+ * NOT RUN AT BOOT (decision-maker, Oct 6, 2026): `seedCityEvents` never calls it. It runs only by hand,
+ * `tsx server/seeds/city-events.manual.ts --fill-venue-locality`. SUNSET: once the decision-maker has
+ * confirmed the four production rows are filled, a follow-up PR deletes this function and its CLI
+ * flag. It is not a precedent for further seeder rewrites.
+ */
+export async function fillManualVenueLocalityIfNull(sourceId: string, venueLocality: string | null | undefined): Promise<boolean> {
+  const locality = venueLocality?.trim() || null;
+  const id = sourceId.trim();
+  if (!locality || !id) return false;
+  const updated = await db
+    .update(cityEvents)
+    .set({ venueLocality: locality })
+    .where(and(eq(cityEvents.source, "manual"), eq(cityEvents.sourceId, id), isNull(cityEvents.venueLocality)))
+    .returning({ id: cityEvents.id });
+  return updated.length > 0;
+}
+
+/** Runs the sunset fill over the seed list: only entries that state a locality are asked. */
+export async function fillManualVenueLocalities(
+  entries: readonly CityEventSeedEntry[],
+): Promise<{ filled: string[]; unchanged: string[] }> {
+  const filled: string[] = [];
+  const unchanged: string[] = [];
+  for (const entry of entries) {
+    if (entry.source !== "manual" || !entry.venueLocality?.trim()) continue;
+    if (await fillManualVenueLocalityIfNull(entry.sourceId, entry.venueLocality)) filled.push(entry.sourceId);
+    else unchanged.push(entry.sourceId);
+  }
+  return { filled, unchanged };
+}
+
 /** Pure: shape one row into the card the page renders. */
 export function toCityEventCard(row: CityEvent, neighbourhood: string | null, now: Date): CityEventCard {
   const market = getMarketByCityName(row.city);
@@ -340,6 +384,10 @@ export function toCityEventCard(row: CityEvent, neighbourhood: string | null, no
     lastDate: endsAt && row.nights > 1 ? localDate(endsAt, tz) : firstDate,
     // Migration 337: only a published time is shown; NULL/FALSE = date only, never "00:00" (§13).
     startTime: row.startTimeKnown === true ? localTime(startsAt, tz) : null,
+    // Migration 335: NULL = not stated, never guessed from a title.
+    vertical: isCityEventVertical(row.vertical) ? row.vertical : null,
+    // Migration 356: NULL = not known, never "same as the market" (§13).
+    venueLocality: row.venueLocality ?? null,
     ticketUrl: row.ticketUrl,
     blurb: row.blurb,
     imagePath: row.imagePath,

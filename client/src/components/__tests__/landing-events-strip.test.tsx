@@ -40,6 +40,8 @@ function card(i: number, over: Partial<CityEventCard> = {}): CityEventCard {
     ticketUrl: null,
     blurb: i === 1 ? "Three nights of jazz in the old town." : null,
     imagePath: null,
+    vertical: null,
+    venueLocality: null,
     ...over,
   };
 }
