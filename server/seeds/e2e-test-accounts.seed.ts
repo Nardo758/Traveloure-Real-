@@ -174,6 +174,33 @@ async function seedE2EAccounts() {
     console.log(`  + Backfilled fixture owner ${fixture.email} (${Object.keys(patch).filter((k) => k !== "updatedAt").join(", ")})`);
   }
 
+  // ── Routable expert fixtures (smoke 13, R343) ──────────────────────────────────────────────
+  // `/api/experts`, routing, the expert door and matching read ONE routability predicate:
+  // approved application + Identity verified + Stripe Connect complete (the seed domain is relaxed
+  // only by CI's SHOW_DEMO_EXPERTS=1). The two travel_expert fixtures are brought UP to that rule —
+  // the rule is never relaxed for them. A TEST database only: the production refusal at the top of
+  // seedE2EAccounts() gates this block. Insert-if-missing; an existing application gets the two
+  // facts set and its status left alone (a fixture an admin rejected stays rejected).
+  for (const email of ["kyoto-food@traveloure.test", "sofia.chen@traveloure.test"]) {
+    const owner = await db.select().from(users).where(eq(users.email, email)).then((r) => r[0]);
+    if (!owner) continue;
+    await db.execute(sql`
+      INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, city, country, status,
+                                      destinations, identity_verification_status, identity_verified_at, stripe_connect_status)
+      SELECT ${crypto.randomUUID()}, ${owner.id}, ${owner.firstName ?? "Fixture"}, ${owner.lastName ?? "Expert"}, ${email},
+             'Kyoto', 'Japan', 'approved', '["Kyoto","Tokyo","Japan"]'::jsonb, 'verified', NOW(), 'complete'
+      WHERE NOT EXISTS (SELECT 1 FROM local_expert_forms WHERE user_id = ${owner.id})
+    `);
+    await db.execute(sql`
+      UPDATE local_expert_forms
+         SET identity_verification_status = 'verified',
+             identity_verified_at = COALESCE(identity_verified_at, NOW()),
+             stripe_connect_status = 'complete'
+       WHERE user_id = ${owner.id}
+    `);
+    console.log(`  + Routable expert fixture: ${email}`);
+  }
+
   // ── Provider storefront readiness backfill (F-3, Sep 3 2026) ─────────────────────────────
   // The persona drives + provider-console specs authenticate as kyoto-photography expecting a
   // LIVE storefront, but the base account row above is only an identity. The storefront gate
