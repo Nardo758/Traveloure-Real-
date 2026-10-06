@@ -10,6 +10,8 @@
  * Cache-Control lets CDNs/clients cache a render (the content it's built from changes rarely and
  * SH0 ratified render-on-demand, not stored assets).
  */
+import { READY_MADE_SHARE_FORMATS, type ReadyMadeShareFormat } from "../services/ready-made-share-image.service";
+import { getReadyMadeShareImage } from "../services/ready-made-share-data.service";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
@@ -20,7 +22,6 @@ import {
   renderShareImage,
   type ServiceShareImageData,
   type ReviewShareImageData,
-  type ReadyMadeShareImageData,
   type ServiceRouteShareImageData,
 } from "../services/share-image.service";
 
@@ -95,36 +96,30 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
   }
 });
 
-// GET /api/share-image/ready-made/:id.png?format=feed|story
+// GET /api/share-image/ready-made/:id.png?format=cover|map|story|og[&v=<version>][&download=1]
+// Slice B2 (ledger `2026-10-05-rmt-share-images`): the Ready Made Trip's four generated cards
+// (`ready-made-share-image.service.ts`), from ONE data object behind the public gate (approved +
+// active, else 404 — no draft oracle). `feed` is kept as the cover's old name (SocialKitCard). A
+// request naming the CURRENT version is immutable for a day; any other gets the short default.
 router.get("/api/share-image/ready-made/:id.png", heavyReadRateLimiter, async (req, res) => {
   try {
-    const { id } = req.params;
-    const format = req.query.format === "story" ? "story" : "feed";
-
-    const [row] = await db
-      .select()
-      .from(readyMadeTrips)
-      .where(eq(readyMadeTrips.id, id))
-      .limit(1);
-    // F2/§10 read-gate: never render a card for a listing that isn't public yet.
-    if (!row || row.status !== "approved" || row.active !== true) {
-      return res.status(404).json({ message: "Trip not found" });
+    const raw = String(req.query.format ?? "cover");
+    const format = (raw === "feed" ? "cover" : raw) as ReadyMadeShareFormat;
+    if (!(READY_MADE_SHARE_FORMATS as readonly string[]).includes(format)) {
+      return res.status(400).json({ message: "Unknown format" });
     }
-
-    const { name: authorName, handle: authorHandle } = await loadOwnerNameAndHandle(row.authorId);
-
-    const data: ReadyMadeShareImageData = {
-      title: row.title,
-      market: row.market,
-      durationDays: row.durationDays,
-      priceCents: row.priceCents ?? null,
-      authorName,
-      authorHandle,
-      path: authorHandle ? `/s/${authorHandle}` : `/ready-made/${row.id}`,
-    };
-
-    const buf = await renderShareImage(format === "story" ? "ready-made-story" : "ready-made-feed", data);
-    return sendPng(res, buf);
+    const image = await getReadyMadeShareImage(req.params.id, format);
+    if (!image) return res.status(404).json({ message: "Trip not found" });
+    res.setHeader("ETag", `"rmt-${format}-${image.version}"`);
+    if (req.query.download === "1") {
+      res.setHeader("Content-Disposition", `attachment; filename="traveloure-${image.slug}-${format}.png"`);
+    }
+    if (req.query.v === image.version) {
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+      return res.send(image.png);
+    }
+    return sendPng(res, image.png);
   } catch (error: any) {
     console.error("[share-images] ready-made render failed:", error);
     return res.status(500).json({ message: "Failed to render share image" });

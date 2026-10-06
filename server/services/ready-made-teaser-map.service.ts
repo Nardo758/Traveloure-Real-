@@ -95,8 +95,9 @@ function mulberry32(seed: number): () => number {
 }
 
 /** Jitters a real [lat, lon] up to ~250m in a random (but deterministic) direction. Returns
- *  [lon, lat] — matches MarketGeography's point order (projectPoint/projectPath expect it). */
-function jitterPoint(lat: number, lon: number, listingId: string, itemId: string): [number, number] {
+ *  [lon, lat] — matches MarketGeography's point order (projectPoint/projectPath expect it).
+ *  Exported (Slice B2) so the generated map slide redacts with the SAME rule as this teaser. */
+export function jitterPoint(lat: number, lon: number, listingId: string, itemId: string): [number, number] {
   const rng = mulberry32(hashSeed(`${listingId}:${itemId}`));
   const angle = rng() * 2 * Math.PI;
   const magnitudeMeters = rng() * 250; // 0..250m in a random direction ("±~250m")

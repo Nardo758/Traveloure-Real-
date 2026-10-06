@@ -14,6 +14,7 @@
  *  • Approval is not self-service: status is displayed, never edited here (D1a). Changing a
  *    headline claim on an approved listing sends it back for re-review, and we say so out loud.
  */
+import { ReadyMadeShareKit } from "./ready-made-share-kit";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -551,6 +552,8 @@ export default function ReadyMadeListingPanel({
       {/* Submit for review — the push into the store. Offered from draft / needs-changes / W2-B
           withdrawn; the SERVER is the authority on readiness (plan type, hero, price, no empty
           days) and names exactly what's missing, so this button is honest even when incomplete. */}
+      {/* Slice B2: copy the public link and download the four generated cards (approved only). */}
+      {listing.status === "approved" && <ReadyMadeShareKit listing={listing} />}
       {(listing.status === "draft" || listing.status === "rejected" || listing.status === "withdrawn") && (
         <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12, marginBottom: 14 }}>
           <span style={label}>{listing.status === "draft" ? "Publish to the store" : "Resubmit"}</span>

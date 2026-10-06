@@ -7,6 +7,10 @@
  *   P3 /t/:slug serves real OG/Twitter tags (og:type product, canonical og:url, twitter:image); a stale
  *      slug 301s to the canonical one; an unknown slug falls through to the SPA
  *   P4 the purchase charges `listing.priceCents`, and `readyMadeBuyerTotalCents` (the price line) is that number
+ *   P5 Slice B2 (ledger `2026-10-05-rmt-share-images`): the four generated cards render at their sizes
+ *      behind the same gate; `feed` is the cover's old name; an unknown format is a 400; a download
+ *      names the file; the CURRENT version is immutable, any other is the short default
+ *   P6 publishing warms all four; the version moves when what the image says changes
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test server/__tests__/ready-made-preview.db.test.ts
@@ -24,6 +28,17 @@ process.env.STRIPE_SECRET_KEY ||= "sk_test_rmt_preview";
 const { db } = await import("../db");
 const readyMadeRoutes = (await import("../routes/ready-made.routes")).default;
 const storefrontRoutes = (await import("../routes/storefront.routes")).default;
+const shareImagesRoutes = (await import("../routes/share-images.routes")).default;
+const shareData = await import("../services/ready-made-share-data.service");
+
+// No network for the cover photo: the Unsplash fetch answers a 1×1 PNG; every other fetch is real.
+const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async (input: any, init?: any) => {
+  const url = String(input?.url ?? input);
+  if (url.startsWith("https://images.unsplash.com/")) return new Response(PIXEL, { status: 200, headers: { "content-type": "image/png" } });
+  return realFetch(input, init);
+}) as typeof fetch;
 const { readyMadeSlug, readyMadeBuyerTotalCents } = await import("@shared/ready-made-preview");
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -71,6 +86,7 @@ before(async () => {
   const app = express();
   app.use(readyMadeRoutes);
   app.use(storefrontRoutes);
+  app.use(shareImagesRoutes);
   app.use((_req, res) => res.status(404).send("spa-fallthrough"));
   server = app.listen(0);
   await new Promise<void>((r) => server.once("listening", () => r()));
@@ -122,8 +138,13 @@ test("P3: /t/:slug carries real OG and Twitter tags; stale 301s; unknown falls t
   const html = await r.text();
   assert.match(html, /<meta property="og:type" content="product" \/>/);
   assert.match(html, new RegExp(`<meta property="og:url" content="https://traveloure.com/t/${slug}" />`));
-  assert.match(html, /<meta property="og:image" content="https:\/\/images.unsplash.com\/photo-test" \/>/);
-  assert.match(html, /<meta name="twitter:image" content="https:\/\/images.unsplash.com\/photo-test" \/>/);
+  // Slice B2: the generated 1200×630 link card, for the listing as it now reads.
+  const version = await shareData.readyMadeShareVersion(ids.listing);
+  assert.match(version!, /^[0-9a-f]{12}$/);
+  const card = `https://traveloure.com/api/share-image/ready-made/${ids.listing}.png?format=og&amp;v=${version}`;
+  assert.ok(html.includes(`<meta property="og:image" content="${card}" />`), "og:image is the generated card");
+  assert.ok(html.includes(`<meta name="twitter:image" content="${card}" />`));
+  assert.match(html, /<meta property="og:image:width" content="1200" \/>/);
   assert.match(html, new RegExp(`<meta property="og:title" content="${TITLE} \\| Traveloure" />`));
   assert.match(html, /From \$49 · no fee on this purchase/);
   assert.equal((html.match(/property="og:title"/g) ?? []).length, 1, "the template's own tags are stripped");
@@ -148,4 +169,41 @@ test("P4: the purchase charges the price line's own number", () => {
   for (const priceCents of [1, 4900, 12345, 250000]) {
     assert.equal(readyMadeBuyerTotalCents({ priceCents }), priceCents);
   }
+});
+
+const pngSize = (b: Buffer) => [b.readUInt32BE(16), b.readUInt32BE(20)];
+
+test("P5: the four cards render behind the public gate", async () => {
+  const sizes: Record<string, number[]> = { cover: [1080, 1350], feed: [1080, 1350], map: [1080, 1350], story: [1080, 1920], og: [1200, 630] };
+  for (const [format, size] of Object.entries(sizes)) {
+    const r = await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=${format}`);
+    assert.equal(r.status, 200, format);
+    assert.equal(r.headers.get("content-type"), "image/png");
+    assert.deepEqual(pngSize(Buffer.from(await r.arrayBuffer())), size, format);
+  }
+  assert.equal((await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=poster`)).status, 400);
+  assert.equal((await fetch(`${base}/api/share-image/ready-made/${ids.draft}.png?format=cover`)).status, 404, "no card for a draft");
+  const slug = readyMadeSlug({ id: ids.listing, title: TITLE });
+  const dl = await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=story&download=1`);
+  assert.equal(dl.headers.get("content-disposition"), `attachment; filename="traveloure-${slug}-story.png"`);
+  const version = await shareData.readyMadeShareVersion(ids.listing);
+  const pinned = await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=og&v=${version}`);
+  assert.equal(pinned.headers.get("cache-control"), "public, max-age=86400, immutable");
+  assert.equal(pinned.headers.get("etag"), `"rmt-og-${version}"`);
+  const stale = await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=og&v=000000000000`);
+  assert.notEqual(stale.headers.get("cache-control"), "public, max-age=86400, immutable");
+});
+
+test("P6: publishing warms all four; the version moves with what the image says", async () => {
+  shareData._clearReadyMadeShareCaches();
+  assert.equal(await shareData.warmReadyMadeShareImages(ids.listing), 4);
+  assert.equal(await shareData.warmReadyMadeShareImages(ids.draft), 0, "a draft has nothing to warm");
+  const v1 = await shareData.readyMadeShareVersion(ids.listing);
+  assert.equal(await shareData.readyMadeShareVersion(ids.listing), v1, "stable while nothing changes");
+  await db.execute(sql`UPDATE itinerary_items SET title = 'Fushimi Inari Taisha' WHERE id = ${ids.a}`);
+  const v2 = await shareData.readyMadeShareVersion(ids.listing);
+  assert.notEqual(v2, v1, "a stop's new name is a new image");
+  const admin = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/admin.routes.ts"), "utf8");
+  const approve = admin.slice(admin.indexOf('"/api/admin/ready-made/:id/approve"'));
+  assert.match(approve.slice(0, approve.indexOf("Failed to approve listing")), /warmReadyMadeShareImages\(req\.params\.id\)/);
 });
