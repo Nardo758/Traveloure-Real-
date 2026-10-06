@@ -35,15 +35,16 @@ import {
 import { isEarnerRole, isProviderRole } from "@shared/roles";
 import { isTestAccountEmail } from "./demand-test-exclusion";
 import { checkBylineEligibility } from "./blog-byline-gate.service";
+import { routableUserIds } from "./expert-routability";
 import { getMarketByKey, resolveMarketSlug } from "./trend-engine/operating-markets";
 import { parseCoord } from "./advisor-fundamentals.service";
 import { buildListingBuyActions, hasPublishedPrice, resolveNextAvailableSlots, type ListingBuyRow } from "./buy-action-payload";
 import type { BuyAction } from "@shared/buy-action";
 
 /**
- * Candidates: experts with a VERIFIED neighbourhood whose city resolves to the market. Exported for
- * the event page's "N verified in <city>" (ledger `2026-10-06-event-page`), which never counts it
- * bare: it intersects these ids with R343's `routableUserIds` first (`countVerifiedLocals`).
+ * Experts with a VERIFIED neighbourhood whose city resolves to the market. Never read bare: every
+ * reader goes through `verifiedLocalIds`, which keeps only the R343-routable ones (ledger
+ * `2026-10-06-billboard-locals-routable`).
  */
 export async function candidateExpertIds(marketKey: string): Promise<string[]> {
   const rows = await db.execute(sql`
@@ -59,6 +60,27 @@ export async function candidateExpertIds(marketKey: string): Promise<string[]> {
         .map((r) => String(r.id)),
     ),
   ).sort();
+}
+
+/**
+ * The market's verified locals: `candidateExpertIds` ∩ R343's `routableUserIds` (approved
+ * application, Identity verified, Connect complete, never a seed account, never the concierge pool).
+ * ONE set for the billboard's candidates and the event page's "N verified in <city>"
+ * (`countVerifiedLocals`) — ledger `2026-10-06-billboard-locals-routable`, §18 rule 1.
+ */
+export async function verifiedLocalIds(
+  marketKey: string,
+  deps: { candidates?: (k: string) => Promise<string[]>; routable?: (ids: readonly string[]) => Promise<Set<string>> } = {},
+): Promise<string[]> {
+  const ids = await (deps.candidates ?? candidateExpertIds)(marketKey);
+  if (ids.length === 0) return [];
+  const ok = await (deps.routable ?? routableUserIds)(ids);
+  return ids.filter((id) => ok.has(id));
+}
+
+/** The billboard's default candidates: the market's verified locals, R343-gated. */
+export function billboardVerifiedCandidates(marketKey: string): Promise<string[]> {
+  return verifiedLocalIds(marketKey);
 }
 
 /** The injectable steps, so the gate-then-listing rule is testable without a database. */
@@ -123,8 +145,8 @@ async function qualifyFromStorefront(expertId: string, marketKey: string): Promi
   };
 }
 
-const DEFAULT_DEPS: BillboardOverrideDeps = {
-  candidates: candidateExpertIds,
+export const DEFAULT_DEPS: BillboardOverrideDeps = {
+  candidates: billboardVerifiedCandidates,
   gate: checkBylineEligibility,
   qualify: qualifyFromStorefront,
 };
