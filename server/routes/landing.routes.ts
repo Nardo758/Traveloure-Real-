@@ -265,4 +265,19 @@ router.get("/api/city-events/upcoming", async (_req, res) => {
   }
 });
 
+// The /events calendar (ledger `2026-10-06-events-calendar`): twelve months of dated city events
+// (under-way ones included), the month-level seasons, and "Where to go" for the eight markets, in
+// ONE read so the marks and the list cannot disagree. Public, read-only, cached like `upcoming`.
+// A failure is said out loud by the page; it is never an empty calendar presented as "nothing on".
+router.get("/api/city-events/calendar", async (_req, res) => {
+  try {
+    const { loadEventsCalendar } = await import("../services/events-calendar.service");
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json(await loadEventsCalendar(new Date()));
+  } catch (e: any) {
+    console.error("[city-events] calendar read failed:", e?.message);
+    return res.status(503).json({ message: "The events calendar could not be read right now." });
+  }
+});
+
 export default router;
