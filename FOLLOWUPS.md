@@ -1015,3 +1015,23 @@ seeded from that list, which is its own decision.
 So `useSlipViewModel` (and the rail's exported pieces) cannot leave those files until the assertions are scoped to
 what they mean, rather than to a file path. 19 assertions in 9 tests match lines of the moved calculation block.
 The inventory is in `docs/planning/briefs/step-8b1-phase0.md` §3. Not this lane's job.
+
+## From step 8b-2 — the map layout (ledger `2026-10-06-step8b2-map-layout`)
+
+### FU-8B2-1 — `experience-template.tsx` is no longer routed
+`/experiences/:slug` and `/:slug/new` render the start page now (D5). The template page file, its source-text tests
+and `check-planning-entry.cjs`'s `experienceSlug` requirement on it stay until 8c retires it. Nothing imports it from
+`App.tsx` any more.
+
+### FU-8B2-2 — three "located" predicates
+These three predicates express one rule:
+- `isLocated` (`MapControlCenter.tsx`)
+- `map-scene.ts`'s own `located`
+- `isLocatedStop` (`plan-stops.ts`)
+
+The brief's item 17 asks for one predicate. 8b-2 reads `isLocated` everywhere it added code; folding the other two
+into it is a separate cleanup.
+
+### FU-8B2-3 — day chips for a very long window
+`mapDayChips` draws one chip per day of the trip's own window. A months-long plan would draw that many chips. Nothing
+caps it today, because no cap was ruled.

@@ -168,6 +168,18 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # Step 8b-2 (ledger `2026-10-06-step8b2-map-layout`): the map layout end to end — start page →
+      # modal → the map opens on Browse with the trip's days → a listing added to Day 2 is in Your plan.
+      # Same server and database as the slice above; its one fixture listing is written behind the
+      # journey suite's disposable-database guard.
+      - name: Map layout (step 8b-2)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-map-layout.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

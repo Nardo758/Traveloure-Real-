@@ -239,6 +239,11 @@ export type PlanMintOutcome =
   | { ok: false; message?: string };
 
 export interface PlanModalProps {
+  /**
+   * Step 8b-2 (D3): a GUEST finishing on `myself` or `ai` hands the modal's answers to the provider,
+   * which carries them through sign-in in ONE short-lived browser record. Never called for a member.
+   */
+  onGuestGate?: (branch: "myself" | "ai", answers: DraftAnswers) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The door's own context. Null for a door that carries none (the Trip Strip's Edit button). */
@@ -347,6 +352,7 @@ export function PlanModal({
   retryPendingGem,
   onPendingGemRecovered,
   onFinish,
+  onGuestGate,
 }: PlanModalProps) {
   // The finish cards' copy (en + ja, `nav.json` `planFinish.*`; ledger `2026-09-29-expert-door`).
   const { t: tNav } = useTranslation("nav");
@@ -467,6 +473,9 @@ export function PlanModal({
   const seededOccasionSlug = useRef("");
   /** The unminted draft offered back at open, or null. Cleared by Continue and Start over. */
   const [resumeOffer, setResumeOffer] = useState<PenDraft | null>(null);
+  /** Step 8b-2 (D3): a replayed record finishes ONCE per open — never twice. */
+  const autoFinished = useRef(false);
+  const [replayArmed, setReplayArmed] = useState(false);
 
   // The ONE runtime occasion vocabulary. Same query key IntakePanel and the Trip Strip use, so the
   // cache is shared and no two doors can offer different occasions.
@@ -575,7 +584,12 @@ export function PlanModal({
     // An item door is explicitly a NEW plan. Do not seed its dates, party, occasion or events from
     // whichever plan happened to be active; only the source's stated destination crosses over.
     const seedContext = source?.newPlan ? ({} as TripContext) : ctx;
-    seedFormFrom(seedContext, doorDestination);
+    // Step 8b-2 (D3): a plan replayed after sign-in carries the guest's OWN answers — they seed the
+    // form through the same seeder, never a second one (§18 rule 1).
+    seedFormFrom(source?.resumeAnswers ? answersToContext(source.resumeAnswers) : seedContext, doorDestination);
+    autoFinished.current = false;
+    // Armed here and acted on a render LATER, once the seeded answers are in state.
+    setReplayArmed(!!source?.autoFinish);
     // RESUME (audit R-3): an unminted pen holding a destination or dates is offered back, named —
     // and only when the form is showing it (a door naming another city is a different plan).
     const draft = source?.newPlan ? null : resumablePenDraft(ctx);
@@ -1492,6 +1506,9 @@ export function PlanModal({
        * browse the traveler could always reach. `myself` is required (its route is protected) and
        * is attempted for everyone, guest included, because being gated there IS its behaviour.
        */
+      // Step 8b-2 (D3): a guest's answers are handed over BEFORE the gate takes the screen, so sign-in
+      // does not lose them. `myself` gates here (the mint); `ai` gates at the AI form's sign-in.
+      if (!user && (branch === "myself" || branch === "ai")) onGuestGate?.(branch, currentAnswers());
       const mintRequired =
         BRANCHES_THAT_REQUIRE_THE_MINT.includes(branch) || !!source?.pendingItem;
       const shouldMint =
@@ -1613,6 +1630,21 @@ export function PlanModal({
   });
 
   // ── Presentation ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Step 8b-2 (D3): the record was taken (and so cleared) BEFORE this modal opened; finishing here runs
+   * the ONE mint exactly as the traveler's own press would. A failure leaves the answers on screen, in
+   * this modal, to retry with the same finish button.
+   */
+  useEffect(() => {
+    if (!open || !replayArmed || autoFinished.current || !occasions || !startResolved.current) return;
+    const branch = source?.autoFinish;
+    if (branch !== "myself" && branch !== "ai") return;
+    autoFinished.current = true;
+    setReplayArmed(false);
+    void finish(branch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, replayArmed, occasions, step]);
 
   const isLastStep = nextPlanStep(visibleSteps, step) === null;
   const back = previousPlanStep(visibleSteps, step);
@@ -2774,4 +2806,25 @@ export function PlanModal({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Step 8b-2 (D3): a replayed record's answers, in the pen shape the ONE seeder reads. */
+function answersToContext(a: DraftAnswers): TripContext {
+  const stops = a.stops.map((name) => name.trim()).filter((name) => name.length > 0);
+  const adults = Number(a.adults);
+  const kids = Number(a.kids);
+  return {
+    ...(a.title ? { title: a.title } : {}),
+    ...(stops.length ? { destination: stops[0], stops: stops.map((name) => ({ name })) } : {}),
+    ...(a.startDate ? { startDate: a.startDate } : {}),
+    ...(a.endDate ? { endDate: a.endDate } : {}),
+    ...(Number.isFinite(adults) && adults > 0 ? { adults } : {}),
+    ...(Number.isFinite(kids) && kids > 0 ? { kids } : {}),
+    ...(a.budgetApproverName ? { budgetApproverName: a.budgetApproverName } : {}),
+    ...(a.budgetApproverEmail ? { budgetApproverEmail: a.budgetApproverEmail } : {}),
+    ...(a.accessibilityNote ? { accessibilityNote: a.accessibilityNote } : {}),
+    ...(a.mainMomentTime ? { mainMomentTime: a.mainMomentTime } : {}),
+    ...(a.mainMomentDate ? { mainMomentDate: a.mainMomentDate } : {}),
+    ...(a.events.length ? { pendingEvents: a.events.map((e) => ({ ...e })) } : {}),
+  } as TripContext;
 }

@@ -417,8 +417,9 @@ describe("1 — the rail is a fixed right column, and its cards run Build → Pl
     const barBlock = barEnd > 0 ? bar.slice(0, barEnd) : bar;
     assert.match(barBlock, /<SlipStatusStrip activities=/, "the strip is inside the viewbar");
     assert.match(barBlock, /data-testid="slip-view-toggle"/, "and so is the toggle");
-    // The map's honest gate is untouched: Map is offered only when a stop is genuinely located.
-    assert.match(viewCode, /mapDisabledReason/);
+    // Step 8b-2 (item 10, ruling 2 — sanctioned edit): Map is always offered; its honesty about
+    // located stops is the empty "Your plan" line, which carries the old reason text.
+    assert.match(viewCode, /planEmptyReason/);
   });
 
   /**

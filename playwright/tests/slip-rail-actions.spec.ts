@@ -116,12 +116,12 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
   await expect(bar).toBeVisible();
   await expect(bar.getByTestId("slip-status-strip")).toBeVisible();
   await expect(bar.getByTestId("slip-view-toggle")).toBeVisible();
-  // The toggle WORKS: List is the default, Map is refused with its honest reason while no item
-  // on this plan has coordinates (§13 — never a city-centre fallback).
+  // The toggle WORKS: List is the default. Step 8b-2 (item 10, ruling 2 — sanctioned edit): Map is
+  // ALWAYS reachable; with nothing located it opens on Browse, and "Your plan" says why it is empty
+  // (§13 — never a city-centre fallback, never a guessed pin).
   await expect(page.getByTestId("button-slip-view-list")).toBeEnabled();
   const mapBtn = page.getByTestId("button-slip-view-map");
-  await expect(mapBtn).toBeDisabled();
-  await expect(mapBtn).toHaveAttribute("title", /located/i);
+  await expect(mapBtn).toBeEnabled();
 
   // AND ON AN EMPTY PLAN THE ROW IS STILL THERE (ledger `2026-09-06-role-chips-filter`). The bar
   // used to be gated on the plan already holding rows, so a fresh plan had no view bar at all and
@@ -138,8 +138,11 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
   await expect(emptyBar.getByTestId("slip-view-toggle")).toBeVisible();
   await expect(page.getByTestId("button-slip-view-list")).toBeEnabled();
   const emptyMapBtn = page.getByTestId("button-slip-view-map");
-  await expect(emptyMapBtn).toBeDisabled();
-  await expect(emptyMapBtn).toHaveAttribute("title", /located/i);
+  await expect(emptyMapBtn).toBeEnabled();
+  await emptyMapBtn.click();
+  await expect(page.locator(`[data-testid="map-sheet-${emptyTrip}"]`)).toHaveAttribute("data-rail-layer", "browse");
+  await page.getByTestId(`map-layer-browse-${emptyTrip}`).click();
+  await expect(page.getByTestId("map-your-plan-empty")).toHaveText(/No stops are located yet/);
 });
 
 // ── 2 · the Build card's rails ────────────────────────────────────────────────────────────────

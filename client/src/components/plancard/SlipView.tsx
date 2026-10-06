@@ -56,7 +56,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // The action rail, in four cards (ledger `2026-09-05-slip-rail-regroup`). It owns every
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
-import { SlipRail } from "./SlipRail";
+import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPanel";
 import { LegRow } from "@/components/plan/LegRow";
@@ -158,6 +158,7 @@ import { MapControlCenter } from "./MapControlCenter";
 // LD 43(d): mount 2 of 2 — the Finalize success / finished area, and ONLY when the plan
 // actually holds bookable rows. The component itself decides visibility from the vault read.
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
+import { mapDayChips } from "@/lib/map-days";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -1373,10 +1374,13 @@ export function useSlipViewModel({
   tripId,
   data,
   highlightItemId,
+  initialView = null,
 }: {
   tripId: string;
   data: SlipData;
   highlightItemId?: string | null;
+  /** Step 8b-2: `?view=map` opens the map layout. No stored preference — the URL is the only input. */
+  initialView?: "list" | "map" | null;
 }) {
   const days: PlanCardDay[] = data.days ?? [];
   const isOwner = data.tripRole === "owner";
@@ -1481,7 +1485,7 @@ export function useSlipViewModel({
   // filter exactly; unlocated items are named under the map, never guessed onto it; and at
   // ZERO located items the Map view is not offered at all (disabled control with the true
   // reason — the same title-reason pattern the Optimize button uses).
-  const [slipView, setSlipView] = useState<"list" | "map">("list");
+  const [slipView, setSlipView] = useState<"list" | "map">(initialView === "map" ? "map" : "list");
   const [mapDay, setMapDay] = useState(0);
   // LD 43(d): "the plan holds bookable rows" = something staged for checkout, or already booked.
   // Derived from the rows this surface already has — no new fetch, and no claim when there are none.
@@ -1498,10 +1502,33 @@ export function useSlipViewModel({
     setMapBrowse({ open: true, categoryKey });
     setSlipView("map");
   };
-  const mapDisabledReason =
+  // Step 8b-2 (item 10, ruling 2): the map is ALWAYS reachable. This reason no longer disables the Map
+  // toggle; it is the empty "Your plan" line while nothing on the plan is located.
+  const planEmptyReason =
     locatedActivities.length === 0
       ? "No stops are located yet — items need map locations before they can be shown on a map"
       : null;
+  // Ruling 9: with nothing located the map opens on Browse — only "Your plan" waits for located stops.
+  useEffect(() => {
+    if (slipView === "map" && locatedActivities.length === 0 && !mapBrowse.open) setMapBrowse({ open: true, categoryKey: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slipView]);
+  // The URL says which layout is shown (`?view=map`), so a reload or a shared link opens the same one.
+  // Rewritten in place — never a navigation, and nothing is stored.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (slipView === "map") params.set("view", "map");
+      else params.delete("view");
+      const qs = params.toString();
+      const next = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+        window.history.replaceState(window.history.state, "", next);
+      }
+    } catch {
+      /* no URL to write */
+    }
+  }, [slipView]);
 
   // ?item=<itemId>: scroll to + briefly highlight that row on mount.
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -1519,6 +1546,8 @@ export function useSlipViewModel({
   }, [highlightItemId, days.length]);
 
   const sortedDays = [...days].sort((a, b) => a.dayNum - b.dayNum);
+  // Step 8b-2 (ruling 1): the map's day chips — the plan's days plus the trip window's empty ones.
+  const mapDays = useMemo(() => mapDayChips(sortedDays, data.trip), [sortedDays, data.trip]);
   // A3b (ledger `2026-09-29-a3b-option-sets-slip`): the plan's comparisons, with each option's
   // plan-fit derived by the server. Write = the item-tool holders and a §12 WRITE advisor; CHOOSE is
   // the owner's or delegate's alone (R129). Render rules only — the rails refuse on their own.
@@ -1892,7 +1921,8 @@ export function useSlipViewModel({
     mapBrowse,
     setMapBrowse,
     openFindHost,
-    mapDisabledReason,
+    planEmptyReason,
+    mapDays,
     rowRefs,
     highlighted,
     sortedDays,
@@ -1944,10 +1974,13 @@ export function SlipView({
   tripId,
   data,
   highlightItemId,
+  initialView = null,
 }: {
   tripId: string;
   data: SlipData;
   highlightItemId?: string | null;
+  /** Step 8b-2: the layout `?view=map` asks for (D4's landing). */
+  initialView?: "list" | "map" | null;
 }) {
   const {
     days,
@@ -1975,7 +2008,8 @@ export function SlipView({
     mapBrowse,
     setMapBrowse,
     openFindHost,
-    mapDisabledReason,
+    planEmptyReason,
+    mapDays,
     rowRefs,
     highlighted,
     sortedDays,
@@ -2020,7 +2054,9 @@ export function SlipView({
     occasion,
     occasionIsHidden,
     occasionResolved,
-  } = useSlipViewModel({ tripId, data, highlightItemId });
+  } = useSlipViewModel({ tripId, data, highlightItemId, initialView });
+  // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
+  const aiAction = useSlipAiAction(tripId, allActivities);
 
   return (
     <div
@@ -2201,8 +2237,6 @@ export function SlipView({
                   type="button"
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
                   onClick={() => setSlipView("map")}
-                  disabled={!!mapDisabledReason}
-                  title={mapDisabledReason ?? undefined}
                   data-testid="button-slip-view-map"
                 >
                   <MapIcon className="w-3.5 h-3.5" /> Map
@@ -2253,11 +2287,27 @@ export function SlipView({
 
       {slipView === "map" && data.trip ? (
         <div className="space-y-3" data-testid="slip-map-view">
+          {/* ── THE MAP BAND (step 8b-2, item 19; rulings 3 and 4) ─────────────────────────────────
+              The header and the tools tray above are the band's plan name, dates, party, tools and
+              expert door. Its AI button is `SlipDraftAiRow` — the free draft, owner only, and only
+              while the plan is EMPTY (no AI button on a non-empty plan; "List" leads to Optimize) —
+              and Finalize is `FinishCard`. Both are a SECOND PLACEMENT of the rail's own pieces: in
+              map view the rail gives way to the map's Browse / Your plan rail, so exactly one of
+              each renders per view. The save-payment prompt (two files) and the Trip Pass card
+              (once, in SlipRail.tsx) are NOT mounted here. */}
+          <div className="grid gap-3 sm:grid-cols-2" data-testid="map-band">
+            {isOwner && aiAction === "draft" ? (
+              <div className="rounded-lg border border-border p-2" data-testid="map-band-ai">
+                <SlipDraftAiRow trip={data.trip} tripId={tripId} />
+              </div>
+            ) : null}
+            <FinishCard trip={data.trip} isOwner={isOwner} isPrimary={cardReady} activities={allActivities} />
+          </div>
           <MapControlCenter
             tripId={tripId}
             tripDestination={data.trip.destination ?? ""}
-            days={sortedDays}
-            selectedDay={Math.min(mapDay, Math.max(0, sortedDays.length - 1))}
+            days={mapDays}
+            selectedDay={Math.min(mapDay, Math.max(0, mapDays.length - 1))}
             onSelectDay={setMapDay}
             expertTravelerNote={data.trip.expertTravelerNote}
             readOnly={!canEditItems}
@@ -2269,6 +2319,8 @@ export function SlipView({
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
             showTravelMinutes={data.travelTimesShown === true}
+            layout="split"
+            planEmptyNote={planEmptyReason}
           />
           {/* §13: unlocated items are NAMED, never guessed onto the map. */}
           {unlocatedActivities.length > 0 && (
@@ -2606,7 +2658,7 @@ export function SlipView({
             `budgetLine`, `planEvents`, `stopsLine` and `zoneLine` are HANDED DOWN — the
             derivations stay this component's and are never recomputed inside the rail
             (§18 rule 1). */}
-        {data.trip && (
+        {data.trip && slipView !== "map" && (
           /* A1 (ledger `2026-09-29-a1-trips-frame`; track-a-rollout A1, "list before rail on phone"):
              for a Trip the PLAN comes first below `lg`, so the anchor question is the first thing
              the traveler reads on a phone rather than the last. Every other group keeps the

@@ -132,7 +132,6 @@ const EventDetailPage = lazy(() => import("@/pages/event-detail"));
 const DiscoverLocationPage = lazy(() => import("@/pages/discover-location"));
 const ContactPage = lazy(() => import("@/pages/contact"));
 const FeaturesPage = lazy(() => import("@/pages/features"));
-const ExperienceTemplatePage = lazy(() => import("@/pages/experience-template"));
 const ArchitectureDiagram = lazy(() => import("@/pages/architecture-diagram"));
 const ExperiencesPage = lazy(() => import("@/pages/experiences"));
 const DealsPage = lazy(() => import("@/pages/deals"));
@@ -610,11 +609,14 @@ function Router() {
       <Route path="/experiences">
         <Layout><ExperiencesPage /></Layout>
       </Route>
+      {/* Step 8b-2 (D5, item 20; ledger `2026-10-06-step8b2-map-layout`): the slug URLs stay and render
+          the START PAGE with that occasion picked — a slug the catalog does not carry picks nothing.
+          The old template page no longer renders here (8c retires it). */}
       <Route path="/experiences/:slug">
-        <ExperienceTemplatePage />
+        {(params) => <Layout><ExperiencesPage occasionSlug={params.slug} /></Layout>}
       </Route>
       <Route path="/experiences/:slug/new">
-        <ExperienceTemplatePage />
+        {(params) => <Layout><ExperiencesPage occasionSlug={params.slug} /></Layout>}
       </Route>
       <Route path="/discover-experiences">
         <Redirect to="/destinations" />

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 // Type only — the stop list's SHAPE has one definition (§18 rule 1), in the pure reducer module
 // that also owns its rules. Nothing is imported at runtime, so this adds no module to the graph.
+import { hasPendingPlanRecord, pendingPlanRecordTakenThisLoad } from "./pending-plan-record";
 import type { PlanStopPayload } from "./plan-stops";
 import type { PlanEventDraft } from "@shared/plan-events";
 // RC-6 (ledger `2026-09-25-rc6-bound-plan-city`): the ONE "same city?" rule and the ONE decision for an
@@ -731,6 +732,9 @@ async function handOffGuestPen(): Promise<void> {
   }
   const { tripId: _tripId, userExperienceId: _uxId, id: _legacyId, ...answers } = guestPen;
   if (Object.keys(answers).length === 0) return;
+  // Step 8b-2 (D3): a guest's plan carried through sign-in by the ONE pending-plan record is replayed
+  // from that record; this hand-off is SKIPPED so the two can never write different answers.
+  if (hasPendingPlanRecord() || pendingPlanRecordTakenThisLoad()) return;
   if (typeof fetch !== "function") return;
   try {
     // The LEGACY per-user row deliberately (no `?tripId=`): the handed-over blob carries no trip

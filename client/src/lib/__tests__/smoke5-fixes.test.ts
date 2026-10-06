@@ -38,7 +38,9 @@ test("S1 item 2: the legacy lodging card is gone; the panel is the only lodging 
 test("S2 item 4: the AI finish lands on the minted plan first; the form refreshes that slip", () => {
   const ctx = read("../../contexts/PlanningContext.tsx");
   const ai = ctx.slice(ctx.indexOf('if (branch === "ai")'), ctx.indexOf('if (branch === "myself")'));
-  assert.match(ai, /if \(plan\.tripId\) setLocation\(`\/plans\/\$\{plan\.tripId\}`\);\s*setAiOpen\(true\);/);
+  // Step 8b-2 (D4 — sanctioned edit): the AI finish lands on the plan's MAP view, through the ONE
+  // landing rule, and still before the form opens over it.
+  assert.match(ai, /if \(plan\.tripId\) setLocation\(planLandingPath\(plan\.tripId, "ai", source\?\.door\)\);\s*setAiOpen\(true\);/);
   const form = read("../../components/EnhancedPlanningModal.tsx");
   assert.match(form, /\["plancard", "option-sets", "where-to-stay"\]/);
 });

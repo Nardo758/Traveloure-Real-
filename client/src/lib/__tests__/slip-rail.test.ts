@@ -534,9 +534,11 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     }
     assert.ok(!strip.includes("origin"), "no origin counts were added to the strip");
     assert.ok(!strip.includes("aiSketch"), "and the sketch line is the header's, not the strip's");
-    // The List | Map toggle keeps its place above the day list, with the map's honest gating.
+    // The List | Map toggle keeps its place above the day list. Step 8b-2 (item 10, ruling 2 —
+    // sanctioned edit): the map is ALWAYS reachable, and its honesty about located stops moves to
+    // the empty "Your plan" line, which carries the old reason text.
     assert.ok(view.includes('data-testid="slip-view-toggle"'), "the toggle stays");
-    assert.ok(view.includes("mapDisabledReason"), "and the map is still offered only when located");
+    assert.ok(view.includes("planEmptyReason"), "and the map is honest about located: the empty Your plan line");
   });
 
   it("S8 Trip Pass moved into the rail and is still ONE purchase rail", () => {

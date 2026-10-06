@@ -42,6 +42,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getQueryFn, queryClient } from '@/lib/queryClient';
 import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
 import { refreshPlanLists } from "@/lib/plan-lists";
+import { planLandingQuery } from "@/lib/plan-landing";
 
 /**
  * The five FROZEN coarse occasion keys the generator accepts (ruling `2026-09-01-moment-key`).
@@ -139,6 +140,8 @@ interface EnhancedPlanningModalProps {
    * promises a capability nobody wired is the same dishonesty as a disabled control (§13).
    */
   onChangeBasics?: () => void;
+  /** Step 8b-2 (D3): a guest's sign-in goes through the ONE sign-in modal, carrying their answers. */
+  onGuestSignIn?: () => void;
 }
 
 export default function EnhancedPlanningModal({
@@ -152,6 +155,7 @@ export default function EnhancedPlanningModal({
   initialTravelers,
   momentKey,
   onChangeBasics,
+  onGuestSignIn,
   tripId,
 }: EnhancedPlanningModalProps) {
   const [, setLocation] = useLocation();
@@ -387,7 +391,8 @@ export default function EnhancedPlanningModal({
           void queryClient.invalidateQueries({ queryKey: [`/api/trips/${data.tripId}/${k}`] });
         }
         onClose();
-        setLocation(`/plans/${data.tripId}`);
+        // Step 8b-2 (D4): a draft finished on branch `ai` lands on the plan's map view.
+        setLocation(`/plans/${data.tripId}${planLandingQuery("ai")}`);
       } else {
         throw new Error('No plan was returned from the server');
       }
@@ -422,7 +427,11 @@ export default function EnhancedPlanningModal({
               Cancel
             </button>
             <button
-              onClick={() => { onClose(); window.location.href = "/api/login"; }}
+              onClick={() => {
+                onClose();
+                if (onGuestSignIn) onGuestSignIn();
+                else window.location.href = "/api/login";
+              }}
               className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold flex items-center gap-2"
               data-testid="button-signin-from-modal"
             >
