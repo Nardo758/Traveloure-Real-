@@ -2,7 +2,7 @@
  * Footer pages: one layout, tokens only (decision-maker rulings, Sep 28, 2026 — ledger
  * `2026-09-28-footer-pages-one-layout`).
  *
- * F1 one red: the public --primary is coral #E85D55; #FF385C / #FB3B63 and the "two palettes by
+ * F1 one red: the public --primary is the coral fill #C8443D (R337; was #E85D55); #FF385C / #FB3B63 and the "two palettes by
  *    design" comment are gone from the light theme and every footer page. The unused .dark theme
  *    and the app-wide --secondary keep main's values.
  * F2 cream ground: the public --background is the --earn-ground token.
@@ -36,7 +36,9 @@ const PAGE = (f: string) => `client/src/pages/${f}`;
 test("F1 one red: public primary is coral, the retired reds and the by-design comment are gone", () => {
   const css = read("client/src/index.css");
   const root = css.slice(css.indexOf(":root {"), css.indexOf("}", css.indexOf(":root {")));
-  assert.match(root, /--primary:\s*3\.3 76\.2% 62\.2%;/, "public --primary is #E85D55");
+  // Ledger `2026-10-05-coral-three-tokens` (R337): the fill behind white text is #C8443D, not the
+  // #E85D55 accent (3.43:1). Still ONE red: the same coral family, now readable on a filled button.
+  assert.match(root, /--primary:\s*3 55\.8% 51\.2%;/, "public --primary is the coral fill #C8443D");
   assert.doesNotMatch(root, /350 100% 6[15]%/, "the pink primary is retired from the light theme");
   // The .dark theme is left exactly as main has it: no code sets the class, so no page renders it.
   const dark = css.slice(css.indexOf(".dark {"), css.indexOf("}", css.indexOf(".dark {")));
