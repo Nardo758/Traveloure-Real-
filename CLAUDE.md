@@ -2438,7 +2438,13 @@ This document captures architectural decisions to maintain consistency across co
     Oct 2, 2026 — ledger `2026-10-02-city-events-venue-relookup`):** an existing manual row that is still
     UNLOCATED (`venue_lat IS NULL`) and whose seed entry names a different venue takes the corrected venue
     and ONE fresh OSM lookup that boot — never a located row, unreachable leaves it for the next boot, and
-    once the strings agree nothing is asked again. The same migration
+    once the strings agree nothing is asked again. **A THIRD RULED REWRITE, WITH A SUNSET (decision-maker,
+    Oct 5–6, 2026 — ledger `2026-10-05-event-real-city`, built by `2026-10-06-event-real-city-built`;
+    migration 356):** `city_events.venue_locality` (nullable; NULL = not known, never "same as the market")
+    is stored at insert from what the seed states, and the four manual rows inserted before it are filled
+    ONLY by `fillManualVenueLocalityIfNull` — that one column, NULL on manual rows only, idempotent, run by
+    hand and never at boot. It ends once the fill has run in production (a follow-up deletes it) and is not
+    a precedent for further seeder rewrites. The same migration
     adds `blog_posts.city_event_id` with **NO FK** (a new column on an existing table is nullable, no
     DEFAULT/CHECK/index/FK): the link is APP-ENFORCED — the composer sets it, and the post read joins by id
     and renders no door when the event is gone (replacing ON DELETE SET NULL). It is the event an

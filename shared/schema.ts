@@ -10326,6 +10326,10 @@ export const cityEvents = pgTable("city_events", {
   // index. TRUE = the organiser published the time of day `starts_at` carries; NULL and FALSE both
   // mean date only, and the card omits its start time (§13 — never "00:00").
   startTimeKnown: boolean("start_time_known"),
+  // Migration 356 (ledger `2026-10-05-event-real-city`, R338). NULLABLE, no default, no CHECK, no
+  // index, no backfill. The town the venue is really in when it is not the market city ("Osaka" for
+  // a Kyoto-market show at Kyocera Dome). NULL = NOT KNOWN, never "same as the market" (§13).
+  venueLocality: varchar("venue_locality", { length: 100 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   withdrawnAt: timestamp("withdrawn_at"),
 }, (table) => [

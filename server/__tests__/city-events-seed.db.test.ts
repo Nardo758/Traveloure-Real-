@@ -18,6 +18,11 @@
  *   E6  an existing UNLOCATED manual row whose seed entry names a different venue takes the new venue and
  *       ONE fresh lookup that run; unreachable leaves it untouched for the next run; a second run asks
  *       nothing; a LOCATED row is never renamed or looked up again
+ *   E8  the real city (migration 356, ledger `2026-10-05-event-real-city`): an insert stores a stated
+ *       locality and an entry with none leaves NULL (never the market city); the card carries it and the
+ *       vertical; the seeder at boot NEVER fills an existing row; the sunset fill touches only NULL values
+ *       on manual rows, never replaces a stated value, never touches a non-manual row or any other
+ *       column, and a second run changes nothing
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. No network.
  */
@@ -26,7 +31,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
-import { buildCityEventRow, seedCityEvents, toCityEventCard } from "../services/city-events.service";
+import { buildCityEventRow, fillManualVenueLocalities, fillManualVenueLocalityIfNull, seedCityEvents, toCityEventCard } from "../services/city-events.service";
 import { MANUAL_CITY_EVENTS } from "../seeds/city-events.manual";
 import { NOMINATIM_MIN_INTERVAL_MS, resolveVenueFromOsm, venueIsLookupable } from "../services/venue-geocode.service";
 import { distinctiveTokens } from "@shared/place-name-gate";
@@ -243,4 +248,55 @@ test("E7: the two-way name match is Unicode-safe", async () => {
   assert.deepEqual([...distinctiveTokens("Café Lumière", null)], [...distinctiveTokens("Cafe Lumiere", null)], "Latin diacritics still fold");
   assert.equal(venueIsLookupable("Kyoto Concert Hall"), true);
   assert.equal(venueIsLookupable("The Old GMC Complex"), true);
+});
+
+test("E8: the real city is stored at insert, shown on the card, and filled only by the sunset fill", async () => {
+  const quiet = { partnerHosts: async () => [] as string[], sleep: async () => {}, resolveVenue: async () => null };
+  const base = { source: "manual" as const, title: "Away game", city: "Kyoto", venue: "Kyocera Dome Osaka", startsAt: "2027-06-01T18:00:00+09:00", startTimeKnown: true };
+  const row = async (id: string) => {
+    const r: any = await db.execute(sql`SELECT venue_locality AS loc, venue, title, vertical FROM city_events WHERE source_id = ${id}`);
+    return (r.rows ?? r)[0];
+  };
+
+  // Insert: a stated locality is stored; an entry with none stores NULL, never the market city.
+  await seedCityEvents([{ ...base, sourceId: sid("away"), venueLocality: " Osaka ", vertical: "music" }, { ...base, sourceId: sid("home"), venue: "Kyoto Concert Hall" }], quiet);
+  assert.equal((await row(sid("away"))).loc, "Osaka");
+  assert.equal((await row(sid("home"))).loc, null, "not known, never 'Kyoto'");
+
+  // The card carries both new fields; an unstated vertical is null.
+  const now = new Date("2027-01-01T00:00:00Z");
+  const built = buildCityEventRow({ ...base, sourceId: sid("card"), venueLocality: "Osaka", vertical: "music" }, [], []);
+  assert.ok("row" in built);
+  const card = toCityEventCard({ ...(built.row as any), id: "x", createdAt: now, withdrawnAt: null }, null, now);
+  assert.deepEqual([card.venueLocality, card.vertical], ["Osaka", "music"]);
+  const bare = buildCityEventRow({ ...base, sourceId: sid("card2") }, [], []);
+  assert.ok("row" in bare);
+  const bareCard = toCityEventCard({ ...(bare.row as any), id: "y", createdAt: now, withdrawnAt: null }, null, now);
+  assert.deepEqual([bareCard.venueLocality, bareCard.vertical], [null, null]);
+
+  // A row born before migration 356 (NULL locality) is NOT filled by the boot seeder.
+  await db.execute(sql`INSERT INTO city_events (id, source, source_id, title, city, venue, starts_at, nights)
+    VALUES (${crypto.randomUUID()}, 'manual', ${sid("legacy")}, 'Legacy', 'Kyoto', 'Kyocera Dome Osaka', '2027-06-02T09:00:00Z', 1)`);
+  await db.execute(sql`INSERT INTO city_events (id, source, source_id, title, city, venue, starts_at, nights)
+    VALUES (${crypto.randomUUID()}, 'ticketmaster', ${sid("legacy")}, 'Legacy TM', 'Kyoto', 'Kyocera Dome Osaka', '2027-06-02T09:00:00Z', 1)`);
+  const legacyEntry = { ...base, sourceId: sid("legacy"), title: "Legacy", venueLocality: "Osaka" };
+  await seedCityEvents([legacyEntry], quiet);
+  assert.equal((await row(sid("legacy"))).loc, null, "boot never fills");
+
+  // The sunset fill: NULL on a manual row is filled; nothing else on the row moves; the non-manual twin is untouched.
+  const first = await fillManualVenueLocalities([legacyEntry, { ...base, sourceId: sid("home") }]);
+  assert.deepEqual(first, { filled: [sid("legacy")], unchanged: [] }, "an entry that states no locality is not asked");
+  const r: any = await db.execute(sql`SELECT source, venue_locality AS loc, title, venue FROM city_events WHERE source_id = ${sid("legacy")} ORDER BY source`);
+  assert.deepEqual((r.rows ?? r).map((x: any) => [x.source, x.loc, x.title, x.venue]), [
+    ["manual", "Osaka", "Legacy", "Kyocera Dome Osaka"],
+    ["ticketmaster", null, "Legacy TM", "Kyocera Dome Osaka"],
+  ]);
+
+  // A second run changes nothing; a stated value is never replaced.
+  const second = await fillManualVenueLocalities([legacyEntry]);
+  assert.deepEqual(second, { filled: [], unchanged: [sid("legacy")] });
+  assert.equal(await fillManualVenueLocalityIfNull(sid("away"), "Somewhere else"), false);
+  assert.equal((await row(sid("away"))).loc, "Osaka", "a stated value survives");
+  assert.equal(await fillManualVenueLocalityIfNull(sid("home"), ""), false, "an empty locality is not a value");
+  assert.equal((await row(sid("home"))).loc, null);
 });
