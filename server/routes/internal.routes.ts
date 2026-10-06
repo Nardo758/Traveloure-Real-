@@ -395,9 +395,16 @@ router.post("/internal/jobs/travelpulse-weekly", requireInternalSecret, async (_
 
 // Step 7b (R323): the handoff clocks. Every transition is an atomic conditional, so a re-run (or a
 // second runner) changes nothing twice.
-router.post("/internal/jobs/handoff-timers", requireInternalSecret, async (_req, res) => {
+router.post("/internal/jobs/handoff-timers", requireInternalSecret, async (req, res) => {
   const { runHandoffTimers } = await import("../services/handoff.service");
   const { status, body } = await runJob("handoff-timers", () => runHandoffTimers());
+  // Smoke 13 #9: the result body is logged on every pass (counts only — no ids, no amounts), with
+  // the trigger `post-internal-jobs.sh` names (`x-jobs-trigger`: github-actions | replit-scheduled),
+  // so the two triggers that call this route can be told apart in the log.
+  logger.info(
+    { job: "handoff-timers", status, body, trigger: req.get("x-jobs-trigger") ?? "unnamed" },
+    "[internal-jobs] handoff-timers pass",
+  );
   res.status(status).json(body);
 });
 

@@ -78,7 +78,7 @@ async function planMarket(tripId: string): Promise<PlanMarket> {
 }
 
 /** Every earner's approved, active listing that names an expert offering, grouped by owner. */
-async function loadCandidates(marketKey: string) {
+export async function loadCandidates(marketKey: string) {
   const rows = await db
     .select({
       id: providerServices.id,
@@ -101,15 +101,24 @@ async function loadCandidates(marketKey: string) {
       ),
     );
   const byOwner = new Map<string, DoorListing[]>();
+  // Smoke-13 addendum: the concierge pool account is never a door choice — it is the fallback path.
+  const { getPlatformConciergeUserId } = await import("./platform-concierge.service");
+  const pool = await getPlatformConciergeUserId();
   for (const r of rows) {
     if (!isEarnerRole(r.role)) continue;
+    if (pool && r.ownerId === pool) continue;
     // A listing that names a city must be in this market; one with no city is remote help.
     if (r.city && resolveMarketSlug(r.city) !== marketKey) continue;
     const list = byOwner.get(r.ownerId) ?? [];
     list.push({ id: r.id, title: r.title, price: r.price ?? null, priceType: r.priceType ?? null, showPrice: r.showPrice ?? null, offeringTypeKey: r.offeringTypeKey ?? null });
     byOwner.set(r.ownerId, list);
   }
+  // Smoke 13 #3: the door offers ROUTABLE experts only (approved application + Identity verified +
+  // Connect onboarded, never seed-sourced, never the pool) — the predicate routing reads.
+  const { routableUserIds } = await import("./expert-routability");
+  const routable = await routableUserIds(Array.from(byOwner.keys()));
   return Array.from(byOwner.entries())
+    .filter(([expertId]) => routable.has(expertId))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([expertId, listings]) => ({ expertId, listings }));
 }

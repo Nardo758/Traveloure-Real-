@@ -53,7 +53,7 @@ import {
   resolveExpertSuggestion,
   suggestionSummary,
 } from "../services/expert-suggestions.service";
-import { HANDOFF_KINDS, handoffBannerState } from "@shared/handoff";
+import { HANDOFF_KINDS, handoffBannerState, handoffCityName, handoffExpertDisclosed } from "@shared/handoff";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 
@@ -80,8 +80,9 @@ export function projectHandoff(row: HandoffRow | null, opts: { expertName?: stri
     scopeItemIds: Array.isArray(row.scopeItemIds) ? row.scopeItemIds : [],
     feeCents: row.feeCents,
     travelerFeeCents: row.travelerFeeCents,
-    expertId: row.assignedExpertId,
-    expertName: opts.expertName ?? null,
+    // Smoke 13 #4: the expert is named only once they ACCEPT — a proposed expert may decline.
+    expertId: handoffExpertDisclosed(row) ? row.assignedExpertId : null,
+    expertName: handoffExpertDisclosed(row) ? opts.expertName ?? null : null,
     authorizedAt: row.authorizedAt,
     acceptedAt: row.acceptedAt,
     fallbackOfferedAt: row.fallbackOfferedAt,
@@ -136,10 +137,13 @@ router.get("/api/trips/:tripId/handoff", isAuthenticated, async (req: any, res) 
   if (!owner && !(row && row.assignedExpertId === userId && (await isTripAdvisor(tripId, userId)))) {
     return res.status(404).json({ message: "No such plan" });
   }
-  const city = row?.destinationCity ? row.destinationCity.replace(/\b\w/g, (c) => c.toUpperCase()) : null;
+  // Smoke 13 #7: the city NAME ("Kyoto"), never the stored destination ("Kyoto, Japan").
+  const city = handoffCityName(row?.destinationCity);
   res.json({
-    handoff: projectHandoff(row, { expertName: await expertDisplayName(row?.assignedExpertId) }),
-    banner: row ? handoffBannerState({ status: row.status, fallbackOfferedAt: row.fallbackOfferedAt, city }) : null,
+    handoff: projectHandoff(row, {
+      expertName: row && handoffExpertDisclosed(row) ? await expertDisplayName(row.assignedExpertId) : null,
+    }),
+    banner: row ? handoffBannerState({ status: row.status, fallbackOfferedAt: row.fallbackOfferedAt, city, capturedAt: row.capturedAt }) : null,
     city,
     typicalAcceptHours: await typicalAcceptHours().catch(() => null),
     onTripSupportCents: row?.onTripSupportOfferedAt ? await onTripSupportCents() : null,

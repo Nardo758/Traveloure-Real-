@@ -124,10 +124,14 @@ export function HandoffBanner({ tripId, isOwner }: { tripId: string; isOwner: bo
     } catch (e: any) {
       toast({ variant: "destructive", title: "That didn't go through", description: e.message });
     } finally {
+      // Smoke 13 #5: the handoff read and the plancard are REFETCHED (awaited), so the banner moves
+      // to its new state without a reload.
+      await Promise.all([
+        qc.refetchQueries({ queryKey: handoffQueryKey(tripId) }),
+        qc.invalidateQueries({ queryKey: expertSuggestionsQueryKey(tripId) }),
+        qc.refetchQueries({ queryKey: [`/api/trips/${tripId}/plancard`] }),
+      ]).catch(() => {});
       setBusy(null);
-      void qc.invalidateQueries({ queryKey: handoffQueryKey(tripId) });
-      void qc.invalidateQueries({ queryKey: expertSuggestionsQueryKey(tripId) });
-      void qc.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
     }
   };
 

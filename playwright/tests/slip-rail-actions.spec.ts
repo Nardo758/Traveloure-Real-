@@ -30,6 +30,7 @@
  * Run: npx playwright test slip-rail-actions --project=chromium
  */
 import { test, expect, type Page } from "@playwright/test";
+import { execSync } from "child_process";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -378,4 +379,38 @@ test("A12: a PRE-FINAL plan on /trip/:id gets the notice and one action to the s
 
   await page.getByTestId("button-go-to-slip").click();
   await expect(page).toHaveURL(new RegExp(`/plans/${tripId}`), { timeout: 15_000 });
+});
+
+// ── 13 · smoke 13 #5: withdraw confirms on the banner, without a reload ──────────────────────────
+
+/** psql against the CI database (the booking-payment-isolation helper's shape). */
+function psql(query: string): string {
+  const db = process.env.DATABASE_URL;
+  if (!db) throw new Error("DATABASE_URL is not set — cannot seed the handoff row");
+  return execSync(`psql '${db}' -t -A -c '${query.replace(/'/g, `'\\''`)}'`, { encoding: "utf8" }).trim();
+}
+
+test("A13: Withdraw shows 'Request withdrawn — hold released' and the finding line clears, no reload", async ({ page }) => {
+  const tripId = await registerAndCreateTrip(page, "withdraw");
+  const me = await (await page.request.get(`${BASE_URL}/api/auth/user`)).json();
+  // A handoff waiting for a local, with NO hold to release (CI's Stripe key is a stub, so the
+  // authorize step cannot run here — the withdraw path itself is what this pins).
+  const tripSql = tripId.replace(/'/g, "''");
+  const userSql = String(me.id).replace(/'/g, "''");
+  psql(`INSERT INTO expert_requests (user_id, trip_id, destination_city, request_type, status, handoff_kind, scope_item_ids, fee_cents, traveler_fee_cents, change_rounds, authorized_at, created_at)
+        VALUES ('${userSql}', '${tripSql}', 'kyoto, japan', 'handoff_polish', 'proposed', 'polish', '[]'::jsonb, 0, 0, 0, NOW(), NOW())`);
+  await openSlip(page, tripId);
+  const line = page.getByTestId("handoff-banner-line").first();
+  // Smoke 13 #4/#7: no expert named before accept, and the city by name.
+  await expect(line).toHaveText(/^Finding your Kyoto local/, { timeout: 15_000 });
+  let reloaded = false;
+  page.on("framenavigated", (f) => {
+    if (f === page.mainFrame()) reloaded = true;
+  });
+  await page.getByTestId("handoff-withdraw").click();
+  await expect(page.getByTestId("handoff-banner")).toHaveAttribute("data-state", "withdrawn", { timeout: 15_000 });
+  await expect(line).toHaveText("Request withdrawn — hold released");
+  await expect(page.getByText(/Finding your Kyoto local/)).toHaveCount(0);
+  await expect(page.getByTestId("handoff-withdraw")).toHaveCount(0);
+  expect(reloaded, "the banner moved without a page reload").toBe(false);
 });

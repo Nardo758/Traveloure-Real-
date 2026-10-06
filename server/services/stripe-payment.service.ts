@@ -115,7 +115,8 @@ export async function recordRefundAuditRow(input: {
              stripe_charge_id = COALESCE(stripe_charge_id, ${input.chargeId}),
              stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ${input.paymentIntentId}),
              reason = COALESCE(reason, ${input.reason ?? null}),
-             status = CASE WHEN status IN ('succeeded', 'failed', 'canceled') THEN status ELSE ${input.status} END
+             -- 'voided_uncaptured' (migration 355) is terminal too: a released hold never becomes a refund.
+             status = CASE WHEN status IN ('succeeded', 'failed', 'canceled', 'voided_uncaptured') THEN status ELSE ${input.status} END
        WHERE stripe_refund_id = ${input.refundId}
     `);
   });
@@ -1227,6 +1228,21 @@ class StripePaymentService {
     const paymentIntentId =
       typeof charge.payment_intent === 'string' ? charge.payment_intent : (charge.payment_intent as any)?.id ?? null;
 
+    // ── Smoke 13 #1 (ledger `2026-10-06-smoke13-handoff-money`): A RELEASED HOLD IS NOT A REFUND ──
+    // Cancelling an UNCAPTURED manual-capture PaymentIntent (the handoff hold, on-trip support) makes
+    // Stripe mark its charge `refunded` and attach a refund object for the full authorized amount —
+    // but nothing was ever taken (`captured: false`, captured $0). Recording that as a `succeeded`
+    // refund is a phantom money fact (§13). Such a delivery writes NOTHING: no audit row, no
+    // out-of-band stamp, no settlement promote. The release itself is recorded by the path that
+    // cancelled the hold (`released_at` / `withdrawn_at` on the handoff row).
+    if (charge.captured === false) {
+      logger.info(
+        { chargeId: charge.id, paymentIntentId, amount: charge.amount },
+        '[WEBHOOK] charge.refunded on an uncaptured charge — a released hold, not a refund; nothing recorded',
+      );
+      return;
+    }
+
     // R163 amendment (merged design, decision-maker Sep 27, 2026): THE CHARGE'S CUMULATIVE CENTS ARE
     // THE AUTHORITY. The complete refund list is PAGED (never truncated at 100), and a charge whose
     // amounts cannot be trusted is refused BEFORE anything is written — an error answers the
@@ -1988,10 +2004,16 @@ class StripePaymentService {
    * reads the intent first and never cancels one that is `processing` or `succeeded`); this is only
    * the call, under a key derived from the PI, so a retry is the same single cancel.
    */
-  async cancelPaymentIntent(paymentIntentId: string, idempotencyKey: string): Promise<{ id: string; status: string }> {
+  async cancelPaymentIntent(
+    paymentIntentId: string,
+    idempotencyKey: string,
+    // Smoke 13 #5: a traveler's own withdrawal is `requested_by_customer`; a timer's release (and
+    // every pre-existing caller) stays `abandoned`.
+    cancellationReason: 'abandoned' | 'requested_by_customer' = 'abandoned',
+  ): Promise<{ id: string; status: string }> {
     const pi = await stripe.paymentIntents.cancel(
       paymentIntentId,
-      { cancellation_reason: 'abandoned' },
+      { cancellation_reason: cancellationReason },
       { idempotencyKey },
     );
     return { id: pi.id, status: pi.status };
@@ -2013,6 +2035,8 @@ class StripePaymentService {
     idempotencyKey: string;
     destination: string | null;
     travelerServiceFee?: Record<string, unknown> | null;
+    /** Smoke 13 #6: the `expert_requests` row this hold belongs to — named on the PaymentIntent. */
+    requestId?: string | null;
   }): Promise<{ clientSecret: string | null; paymentIntentId: string; amountCents: number }> {
     const pi = await stripe.paymentIntents.create(
       {
@@ -2024,6 +2048,7 @@ class StripePaymentService {
           userId: input.userId,
           tripId: input.tripId,
           handoffKind: input.kind,
+          ...(input.requestId ? { handoffRequestId: input.requestId } : {}),
           ...(input.travelerServiceFee ? { travelerServiceFee: JSON.stringify(input.travelerServiceFee).substring(0, 480) } : {}),
         },
         description: `Local expert handoff${input.destination ? ` - ${input.destination}` : ''}`,

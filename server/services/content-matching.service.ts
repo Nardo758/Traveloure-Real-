@@ -525,7 +525,8 @@ async function resolveExperts(
 
     const topic = rule.expertSpecialties[0] ?? "";
 
-    const scores = await leadRoutingService.scoreExperts({ destination, topic });
+    // Smoke 13 #3: a recommendation is a first match — routable experts only, never the pool account.
+    const scores = await leadRoutingService.scoreExperts({ destination, topic, requireRoutable: true });
 
     return scores
       .filter((s) => s.totalScore > 0)

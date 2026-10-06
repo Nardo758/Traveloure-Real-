@@ -8,6 +8,9 @@
  * neighbourhood, and none of that may ever reach production.
  *
  * The gate's four facts, each written the way the platform writes it:
+ *   0. (smoke 13 #3) ROUTABLE: Stripe Connect `complete` and an email outside the seed domains
+ *      (`expert-routability.ts`) — the door offers only experts routing could name. The admin
+ *      helper keeps the fixture domain; it is never an expert.
  *   1. an approved `local_expert_forms` row (plus identity verified — the same smallest write
  *      `e2e/supply-demand/lib/db.ts seedExpertIdentityVerification` makes, since no Stripe Identity
  *      webhook reaches a test database);
@@ -48,13 +51,13 @@ async function main() {
 
   await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name, role, handle)
-    VALUES (${expertId}, ${`${expertId}@traveloure.test`}, 'Aiko', 'Fixture', 'local_expert', ${handle}),
+    VALUES (${expertId}, ${`${expertId}@kyoto-fixture.invalid`}, 'Aiko', 'Fixture', 'local_expert', ${handle}),
            (${adminId}, ${`${adminId}@traveloure.test`}, 'Fixture', 'Admin', 'admin', NULL)
   `);
   await db.execute(sql`
     INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, city, country, status,
-                                    identity_verification_status, identity_verified_at)
-    VALUES (${crypto.randomUUID()}, ${expertId}, 'Aiko', 'Fixture', ${`${expertId}@traveloure.test`}, 'Kyoto', 'Japan', 'approved', 'verified', now())
+                                    identity_verification_status, identity_verified_at, stripe_connect_status)
+    VALUES (${crypto.randomUUID()}, ${expertId}, 'Aiko', 'Fixture', ${`${expertId}@kyoto-fixture.invalid`}, 'Kyoto', 'Japan', 'approved', 'verified', now(), 'complete')
   `);
   const serviceId = crypto.randomUUID();
   await db.execute(sql`

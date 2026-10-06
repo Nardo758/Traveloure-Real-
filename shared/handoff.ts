@@ -111,14 +111,18 @@ export type HandoffBannerState =
   | { kind: "released" }
   | { kind: "accepted" }
   | { kind: "delivered" }
+  /** Smoke 13 #5: the traveler withdrew. `holdReleased` ⇔ nothing was ever captured. */
+  | { kind: "withdrawn"; holdReleased: boolean }
   | null;
 
 export function handoffBannerState(row: {
   status: string | null;
   fallbackOfferedAt?: string | Date | null;
   city?: string | null;
+  capturedAt?: string | Date | null;
 }): HandoffBannerState {
   if (row.status === "released") return { kind: "released" };
+  if (row.status === "withdrawn") return { kind: "withdrawn", holdReleased: !row.capturedAt };
   if (row.status === "authorizing") return { kind: "authorizing" };
   if (row.status === "proposed" || row.status === "unmatched") {
     return row.fallbackOfferedAt ? { kind: "fallback_offered" } : { kind: "finding", city: row.city ?? null };
@@ -126,6 +130,29 @@ export function handoffBannerState(row: {
   if (row.status === "accepted") return { kind: "accepted" };
   if (row.status === "delivered") return { kind: "delivered" };
   return null;
+}
+
+/**
+ * Smoke 13 #7, pure: the CITY a banner names, from the plan's destination — its first comma part,
+ * title-cased ("kyoto, japan" → "Kyoto"). Empty ⇒ null, and the banner says "your local" (§13).
+ */
+export function handoffCityName(destination: string | null | undefined): string | null {
+  const first = String(destination ?? "").split(",")[0].trim();
+  if (!first) return null;
+  return first
+    .toLowerCase()
+    .split(" ")
+    .map((w) => w.split("-").map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p)).join("-"))
+    .join(" ");
+}
+
+/**
+ * Smoke 13 #4, pure: the expert is NAMED to the traveler only once they have ACCEPTED. Before that
+ * routing has only PROPOSED them (R-n) and they may decline — naming them would claim a match that
+ * does not exist yet. Until then the banner says "Finding your <city> local".
+ */
+export function handoffExpertDisclosed(row: { acceptedAt?: string | Date | null }): boolean {
+  return !!row.acceptedAt;
 }
 
 /** "Finding your Kyoto local · usually within N hours" — the N only when measured (§13). */
