@@ -1934,4 +1934,8 @@ export const MIGRATION_FILES = [
   // additive handoff lifecycle columns on expert_requests, and three fee_bands rows insert-if-missing
   // (values proposed). 352/353 are held by other lanes. Declared in shared/schema.ts. HELD.
   "354_handoff_suggestions.sql",
+  // 356 — city_events.venue_locality (ledger 2026-10-05-event-real-city, R338; events-page lane 2L):
+  // the town the venue is really in. One nullable column, NO DEFAULT/CHECK/index, no backfill.
+  // Declared in shared/schema.ts. HELD for the founder's ruling.
+  "356_city_events_venue_locality.sql",
 ] as const;
