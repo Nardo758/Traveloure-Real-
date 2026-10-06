@@ -10,7 +10,10 @@
  *   · the item a CHOSEN accommodation option set put on the plan (the where-to-stay chooser, a stay
  *     typed by name, or "Set as where you're staying"), primary set first; else
  *   · the latest hand-added accommodation item that is not the author's (`origin` not `expert`, so a
- *     copy's own placeholder ryokan is never mistaken for the buyer's stay);
+ *     copy's own placeholder ryokan is never mistaken for the buyer's stay) and not an AI draft's
+ *     (`origin` not `ai` — Slice A3, ledger `2026-10-05-stay-reroute-gaps`: a clone keeps an AI
+ *     item's `ai` origin, so a template's AI-drafted lodging was passing as the buyer's own stay,
+ *     and an AI draft's hotel suggestion is not a stay the traveler chose either);
  * and its point is the item row's OWN coordinate when trusted (`rowCoordinatesTrusted`); only when the
  * item has none does it take its Google `location` fact — exactly the pin the plancard draws
  * (`applyGooglePins`, §18 rule 1). No point ⇒ no re-route (§13 — never a city centre). The stay is
@@ -32,9 +35,12 @@
  * `confirmed` and `origin='rerouted_for_stay'` ("re-routed for your stay"), with no item on the stay
  * end (`from/to_activity_id` NULL).
  *
- * Never throws into its caller's write (§15b): the anchor route calls it best-effort.
+ * Never throws into its caller's write (§15b). Its callers (Slice A3 completes the list — before it,
+ * a stay typed by hand onto the plan re-routed nothing): the where-to-stay chooser's bind, an
+ * accommodation option set being chosen, and the item create / edit / delete rails whenever the row
+ * is (or was) an accommodation item (`rerouteIfStayItemChanged`).
  */
-import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, planOptionSets, transportLegs, trips } from "@shared/schema";
 import { isLodgingItem } from "@shared/where-to-stay";
@@ -46,6 +52,11 @@ import { SELECTABLE_TRANSPORT_MODES, recomputeLegForMode } from "./trip-transpor
 import { AUTHOR_PICK_ORIGIN } from "./ready-made-clone-legs";
 
 export const REROUTED_FOR_STAY_ORIGIN = "rerouted_for_stay";
+/**
+ * Item origins that are never the buyer's stay (Slice A3): the author's copied lodging (`expert`) and
+ * an AI-drafted one (`ai`, which a clone keeps). `traveler`, `assistant` and a legacy NULL remain.
+ */
+export const NOT_THE_BUYERS_STAY_ORIGINS = ["expert", "ai"] as const;
 export type StayPoint = {
   itemId: string;
   name: string;
@@ -89,7 +100,7 @@ export async function stayItemIdForPlan(tripId: string): Promise<string | null> 
         and(
           eq(itineraryItems.tripId, tripId),
           eq(itineraryItems.itemType, "accommodation"),
-          or(isNull(itineraryItems.origin), ne(itineraryItems.origin, "expert")),
+          or(isNull(itineraryItems.origin), notInArray(itineraryItems.origin, [...NOT_THE_BUYERS_STAY_ORIGINS])),
         ),
       )
       .orderBy(desc(itineraryItems.createdAt), asc(itineraryItems.id))
@@ -239,6 +250,23 @@ export async function rerouteCopyForStay(tripId: string): Promise<RerouteResult>
  * The best-effort hook (§15b): the plan's stay may have changed — after the where-to-stay chooser binds
  * a stay and after an accommodation option set is chosen. Never throws; a no-op off a copy.
  */
+/**
+ * Slice A3 (ledger `2026-10-05-stay-reroute-gaps`): the item rails' hook. Re-route when the row
+ * written — or the row as it was before the write — is an accommodation item; anything else is not a
+ * change of stay and costs nothing. Best-effort: never throws (§15b), a no-op off a copy.
+ */
+export function isStayItemRow(row: { itemType?: string | null } | null | undefined): boolean {
+  return !!row && row.itemType === "accommodation";
+}
+
+export async function rerouteIfStayItemChanged(
+  tripId: string,
+  rows: ReadonlyArray<{ itemType?: string | null } | null | undefined>,
+): Promise<void> {
+  if (!rows.some(isStayItemRow)) return;
+  await rerouteAfterStayChange(tripId);
+}
+
 export async function rerouteAfterStayChange(tripId: string): Promise<void> {
   try {
     await rerouteCopyForStay(tripId);

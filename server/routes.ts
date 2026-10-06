@@ -13345,6 +13345,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // Slice A3 (ledger `2026-10-05-stay-reroute-gaps`): a stay added by hand re-routes a copy's end
+      // legs exactly as the where-to-stay chooser does. Best-effort, never fails the add (§15b).
+      if (!gemWrite || gemWrite.created) {
+        const { rerouteIfStayItemChanged } = await import("./services/stay-reroute.service");
+        await rerouteIfStayItemChanged(tripId, [item as any]);
+      }
+
       res.status(gemWrite && !gemWrite.created ? 200 : 201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
