@@ -52,10 +52,12 @@ export interface HandoffPayments {
     idempotencyKey: string;
     destination: string | null;
     travelerServiceFee?: Record<string, unknown> | null;
+    /** Smoke 13 #6: named on the PaymentIntent's metadata as `handoffRequestId`. */
+    requestId?: string | null;
   }): Promise<{ clientSecret: string | null; paymentIntentId: string; amountCents: number }>;
   retrieve(paymentIntentId: string): Promise<{ id: string; status: string; amountCents: number; amountCapturableCents: number; metadata: Record<string, string> }>;
   capture(paymentIntentId: string, idempotencyKey: string): Promise<{ id: string; status: string; amountReceivedCents: number }>;
-  cancel(paymentIntentId: string, idempotencyKey: string): Promise<{ id: string; status: string }>;
+  cancel(paymentIntentId: string, idempotencyKey: string, reason?: HoldReleaseReason): Promise<{ id: string; status: string }>;
   refund(input: { requestId: string; tripId: string; paymentIntentId: string; amountCents: number; idempotencyKey: string; auditReason: string }): Promise<{ id: string; status: string | null }>;
 }
 
@@ -72,7 +74,7 @@ async function payments(): Promise<HandoffPayments> {
     authorize: (i) => stripePaymentService.createHandoffAuthorization(i),
     retrieve: (id) => stripePaymentService.retrieveHandoffPaymentIntent(id),
     capture: (id, key) => stripePaymentService.captureHandoffPayment(id, key),
-    cancel: (id, key) => stripePaymentService.cancelPaymentIntent(id, key),
+    cancel: (id, key, reason) => stripePaymentService.cancelPaymentIntent(id, key, reason),
     refund: (i) => stripePaymentService.refundHandoffFee(i),
   };
 }
@@ -279,6 +281,7 @@ export async function askHandoff(input: {
       idempotencyKey: `handoff-auth-${id}`,
       destination,
       travelerServiceFee: quote.travelerFeeSnapshot,
+      requestId: id,
     });
     await db.execute(sql`UPDATE expert_requests SET payment_intent_id = ${auth.paymentIntentId} WHERE id = ${id} AND payment_intent_id IS NULL`);
     return { ok: true, request: (await getHandoff(id))!, clientSecret: auth.clientSecret, quote };
@@ -330,10 +333,12 @@ export async function matchHandoff(requestId: string): Promise<void> {
     });
     // The platform concierge account is a POOL MARKER, never an advisor (LD 51): a handoff is
     // proposed to the best-scoring PERSON, and the concierge is the 24 h fallback, not a match.
-    const { isPlatformConciergeUserId } = await import("./platform-concierge.service");
+    // Smoke-13 addendum: the ONE pool-account test (routeLead already excludes it; this is the
+    // second layer at the selector itself).
+    const { isConciergePoolAccount } = await import("./expert-routability");
     for (const s of result.scores ?? []) {
       if (!(s.totalScore > 0)) break;
-      if (await isPlatformConciergeUserId(s.expertId)) continue;
+      if (await isConciergePoolAccount(s.expertId)) continue;
       await proposeTo(requestId, s.expertId);
       return;
     }
@@ -608,7 +613,7 @@ export async function withdrawHandoff(requestId: string, userId: string): Promis
       WHERE id = ${requestId} AND status IN ('authorizing', 'proposed', 'unmatched') RETURNING id
     `);
     if (!r.rows?.length) return { ok: false, status: 409, code: "wrong_status", message: "This handoff changed — refresh." };
-    await releaseHold(row, `handoff-withdraw-${requestId}`);
+    await releaseHold(row, `handoff-withdraw-${requestId}`, "requested_by_customer");
     if (row.tripId && row.assignedExpertId) {
       await db.execute(sql`UPDATE trip_expert_advisors SET status = 'rejected' WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status = 'pending'`);
     }
@@ -665,10 +670,16 @@ async function driveWithdrawalRefund(row: HandoffRow): Promise<{ ok: true; keptC
   }
 }
 
-async function releaseHold(row: HandoffRow, key: string): Promise<void> {
+/**
+ * Smoke 13 #5: the Stripe `cancellation_reason` a released hold carries — the traveler's own
+ * withdrawal is `requested_by_customer`; ONLY the timer's release is `abandoned`.
+ */
+export type HoldReleaseReason = "abandoned" | "requested_by_customer";
+
+async function releaseHold(row: HandoffRow, key: string, reason: HoldReleaseReason): Promise<void> {
   if (!row.paymentIntentId || row.capturedAt) return;
   try {
-    await (await payments()).cancel(row.paymentIntentId, key);
+    await (await payments()).cancel(row.paymentIntentId, key, reason);
   } catch (err) {
     console.error(`[handoff] release of hold ${row.paymentIntentId} failed — Stripe expires an uncaptured hold on its own:`, err);
   }
@@ -702,6 +713,7 @@ export async function startOnTripSupport(requestId: string, userId: string): Pro
     amountCents: cents,
     idempotencyKey: `handoff-ots-auth-${requestId}`,
     destination: row.destinationCity ?? null,
+    requestId,
   });
   await db.execute(sql`UPDATE expert_requests SET on_trip_support_payment_intent_id = ${auth.paymentIntentId} WHERE id = ${requestId} AND on_trip_support_payment_intent_id IS NULL`);
   return { ok: true, clientSecret: auth.clientSecret, amountCents: cents };
@@ -772,7 +784,13 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
         UPDATE expert_requests SET status = 'released', released_at = NOW()
         WHERE id = ${s.id} AND status = 'authorizing' AND created_at < ${releaseCut} RETURNING id
       `);
-      if (rel.rows?.length) out.released += 1;
+      if (rel.rows?.length) {
+        out.released += 1;
+        // Smoke 13 #9: a straggler released by the clock had its PaymentIntent left open; cancel
+        // it too (the conditional above is the claim, so a second run releases nothing twice).
+        const released = await getHandoff(s.id);
+        if (released) await releaseHold(released, `handoff-release-${released.id}`, "abandoned");
+      }
     }
   }
 
@@ -796,7 +814,7 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
     out.released += 1;
     const row = await getHandoff(r.id);
     if (row) {
-      await releaseHold(row, `handoff-release-${row.id}`);
+      await releaseHold(row, `handoff-release-${row.id}`, "abandoned");
       if (row.tripId && row.assignedExpertId) {
         await db.execute(sql`UPDATE trip_expert_advisors SET status = 'rejected' WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status = 'pending'`);
       }

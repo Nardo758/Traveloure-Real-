@@ -25,6 +25,14 @@ runs:
   #   2. The PATTERNS list in the ci-db-setup-lint job.
   # Failure to do so means a renamed/missing script will go undetected in CI.
   steps:
+    - name: Relax the seed-domain clause for CI's seeded fixtures
+      # Smoke 13 #3 (ledger `2026-10-06-smoke13-handoff-money`): SHOW_DEMO_EXPERTS=1 relaxes ONLY
+      # the seed-domain clause of the routability predicate, for every reader (routing, the expert
+      # door, matching, the directory). Approval, Identity and Connect are never relaxed. Every CI
+      # database is a seeded fixture database; production never sets it (/api/health reports it).
+      run: echo "SHOW_DEMO_EXPERTS=1" >> "$GITHUB_ENV"
+      shell: bash
+
     - name: Apply database migrations
       run: npx tsx server/migrations/migrate-entry.ts
       shell: bash

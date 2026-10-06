@@ -1934,4 +1934,8 @@ export const MIGRATION_FILES = [
   // additive handoff lifecycle columns on expert_requests, and three fee_bands rows insert-if-missing
   // (values proposed). 352/353 are held by other lanes. Declared in shared/schema.ts. HELD.
   "354_handoff_suggestions.sql",
+  // 355 — smoke 13 #2: refund rows the webhook wrote for a RELEASED (never captured) handoff hold
+  // are marked `voided_uncaptured` — never deleted. DATA ONLY, idempotent (a second run updates
+  // nothing). No schema change, so nothing to declare in shared/schema.ts. HELD.
+  "355_refunds_voided_uncaptured.sql",
 ] as const;

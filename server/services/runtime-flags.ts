@@ -27,6 +27,9 @@ export const HEALTH_FLAG_NAMES = [
   "MAPS_ROUTE_MATRIX_ENABLED",
   "MAPS_GEOCODE_ENABLED",
   "MAPS_PLACES_TEXT_SEARCH_ENABLED",
+  // Smoke 13 (ledger `2026-10-06-smoke13-handoff-money`): relaxes ONLY the seed-domain clause of the
+  // routability predicate (CI's seeded fixtures). Production must read false.
+  "SHOW_DEMO_EXPERTS",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;

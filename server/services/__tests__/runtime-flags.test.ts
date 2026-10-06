@@ -38,6 +38,7 @@ test("F1: the named switches, booleans, '1' is on", () => {
     MAPS_ROUTE_MATRIX_ENABLED: false,
     MAPS_GEOCODE_ENABLED: false,
     MAPS_PLACES_TEXT_SEARCH_ENABLED: false,
+    SHOW_DEMO_EXPERTS: false,
   });
   for (const v of Object.values(healthFlags({}))) assert.equal(typeof v, "boolean");
 });
