@@ -280,6 +280,14 @@ export interface CityEventCard {
   ticketUrl: string | null;
   blurb: string | null;
   imagePath: string | null;
+  /** One of CITY_EVENT_VERTICALS; null = not stated (migration 335), never guessed from a title. */
+  vertical: CityEventVertical | null;
+  /**
+   * The town the venue is really in when it is outside the market city ("Osaka" under Kyoto), as the
+   * seed states it (migration 356, ledger `2026-10-05-event-real-city`). null = NOT KNOWN, never
+   * "same as the market" (§13).
+   */
+  venueLocality: string | null;
 }
 
 export interface CityEventsPayload {

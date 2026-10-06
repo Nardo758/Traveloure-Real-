@@ -60,8 +60,12 @@ async function createExpertForm(
   bio?: string,
 ) {
   await pool.query(
-    `INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, status, bio)
-     VALUES ($1, $2, 'Storefront', $3, $4, $5, $6)`,
+    // Smoke 13 (R343): an APPROVED fixture is also Identity-verified and Connect-onboarded, so it
+    // meets the routability predicate `/api/experts` lists by (the seed domain is relaxed by CI's
+    // SHOW_DEMO_EXPERTS=1); pending and rejected fixtures stay unverified, as they would be.
+    `INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, status, bio,
+                                    identity_verification_status, stripe_connect_status)
+     VALUES ($1, $2, 'Storefront', $3, $4, $5, $6, $7, $8)`,
     [
       crypto.randomUUID(),
       ownerId,
@@ -69,6 +73,8 @@ async function createExpertForm(
       `storefront-role-${RUN}-${label}@traveloure.test`,
       status,
       bio ?? null,
+      status === "approved" ? "verified" : "pending",
+      status === "approved" ? "complete" : "not_started",
     ],
   );
 }

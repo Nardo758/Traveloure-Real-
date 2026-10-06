@@ -9,6 +9,7 @@ import { sql, eq } from 'drizzle-orm';
 import { withQueryTimer } from '../utils/queryTimer';
 import { adminNotifications, expertRequests } from '../../shared/schema';
 import { aiCostActorMatchesSql } from './ai-cost-tracker';
+import { routableExpertFilterSql } from './expert-routability';
 
 const FALLBACK_MESSAGE =
   "We are finding the best expert for your destination. You will be notified when one is assigned.";
@@ -41,6 +42,12 @@ export interface LeadContext {
   // route to experts who have opted in to booking affiliate offers on a
   // traveler's behalf (local_expert_forms.can_book_on_behalf = true).
   requireCanBookOnBehalf?: boolean;
+  /**
+   * Smoke 13 #3: only ROUTABLE experts (Identity verified + Stripe Connect onboarded + not
+   * seed-sourced — `expert-routability.ts`). `routeLead` always sets it; a display-only scorer
+   * caller (content matching) does not.
+   */
+  requireRoutable?: boolean;
 }
 
 class LeadRoutingService {
@@ -58,6 +65,9 @@ class LeadRoutingService {
       const topic = ctx.topic?.toLowerCase().trim() || '';
 
       const requireCanBookOnBehalf = !!ctx.requireCanBookOnBehalf;
+      const routableFilter = ctx.requireRoutable
+        ? sql`AND ${await routableExpertFilterSql()}`
+        : sql``;
 
       const experts = await withQueryTimer(
         "lead-routing-score-experts",
@@ -76,6 +86,7 @@ class LeadRoutingService {
           WHERE lef.status = 'approved'
             AND (lef.stripe_connect_status IS NULL OR lef.stripe_connect_status != 'restricted')
             ${requireCanBookOnBehalf ? sql`AND lef.can_book_on_behalf = true` : sql``}
+            ${routableFilter}
         `)
       );
 
@@ -182,7 +193,8 @@ class LeadRoutingService {
    * admin dashboards have full visibility into routing failures.
    */
   async routeLead(ctx: LeadContext): Promise<RoutingResult> {
-    const scores = await this.scoreExperts(ctx);
+    // Smoke 13 #3: routing names only a routable expert (verified + payable, never seed-sourced).
+    const scores = await this.scoreExperts({ ...ctx, requireRoutable: true });
 
     if (scores.length === 0) {
       const reason = ctx.requireCanBookOnBehalf

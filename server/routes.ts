@@ -5369,7 +5369,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const location = req.query.location as string | undefined;
     const neighbourhood = req.query.neighbourhood as string | undefined;
 
-    const experts = await storage.getExpertsWithProfiles(experienceTypeId);
+    // Smoke 13 #3: the directory lists ROUTABLE experts only, never the concierge pool account
+    // (expert-routability.ts `directoryExperts` — the same predicate routing reads).
+    const { directoryExperts } = await import("./services/expert-routability");
+    const experts = await directoryExperts(await storage.getExpertsWithProfiles(experienceTypeId) as any[]);
     let filtered = experts as any[];
 
     if (location) {
@@ -5423,7 +5426,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const experienceType = req.query.experienceType as string | undefined;
     const neighbourhood = req.query.neighbourhood as string | undefined;
     const role = req.query.role as string | undefined;
-    const experts = await storage.getExpertsWithProfiles(experienceTypeId);
+    // Smoke 13 #3: the directory lists ROUTABLE experts only, never the concierge pool account
+    // (expert-routability.ts `directoryExperts` — the same predicate routing reads).
+    const { directoryExperts } = await import("./services/expert-routability");
+    const experts = await directoryExperts(await storage.getExpertsWithProfiles(experienceTypeId) as any[]);
 
     let filtered = experts;
 

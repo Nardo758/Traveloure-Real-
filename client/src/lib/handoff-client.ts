@@ -85,10 +85,18 @@ export function handoffBannerLine(read: Pick<HandoffRead, "banner" | "city" | "t
       return `${who} is working on your plan. Their changes arrive as suggestions you accept or decline.`;
     case "delivered":
       return `${who} says your plan is ready. Approve it, or ask for changes.`;
+    case "withdrawn":
+      // Smoke 13 #5: the confirmation after Withdraw, said by the server's own state.
+      return b.holdReleased
+        ? HANDOFF_WITHDRAWN_HOLD_RELEASED
+        : "Request withdrawn — what isn't kept is refunded to your card.";
     default:
       return null;
   }
 }
+
+/** Smoke 13 #5: the confirmation a withdrawal before any capture reads. */
+export const HANDOFF_WITHDRAWN_HOLD_RELEASED = "Request withdrawn — hold released";
 
 /** Pure. What withdrawing costs, said before the tap (R-t). */
 export function withdrawLine(h: ClientHandoff | null): string | null {
