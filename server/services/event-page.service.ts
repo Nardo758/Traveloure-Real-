@@ -9,8 +9,11 @@
  *      nowhere else (brief item 21: no second reader). The page uses its refusal-checked organizer
  *      link and its ATTRIBUTED facts only (`attributedFacts`, ruling R-p).
  *   3. "More in <city>": other live events in the same city that have not ended, soonest first.
- *   4. "N verified in <city>": the billboard's own `candidateExpertIds` count for the market, read
- *      once there; zero ⇒ null and the line is absent.
+ *   4. "N verified in <city>": the billboard's `candidateExpertIds` (a verified neighbourhood in the
+ *      market) INTERSECTED with R343's `routableUserIds` (approved application + Identity verified +
+ *      Connect complete, never a seed account, never the concierge pool) — `candidateExpertIds`
+ *      predates R343 and keys on the neighbourhood alone, so it is never counted bare (ledger
+ *      `2026-10-06-event-page`). Zero ⇒ null and the line is absent.
  *
  * Pure composers below a thin loader, so the shaping is testable without a database.
  */
@@ -31,6 +34,7 @@ import { timezoneForMarket } from "./trend-engine/operating-markets";
 import { toCityEventCard } from "./city-events.service";
 import { loadEventGuideFacts, type EventGuideFacts } from "./blog-event-facts.service";
 import { candidateExpertIds } from "./landing-billboard.service";
+import { routableUserIds } from "./expert-routability";
 
 export const MORE_IN_CITY_MAX = 6;
 
@@ -83,6 +87,19 @@ export function composeEventPage(
   };
 }
 
+/**
+ * "N verified in <city>": verified-neighbourhood candidates that are ALSO routable under R343
+ * (ledger `2026-10-06-event-page`). Both reads are injectable so the intersection is testable.
+ */
+export async function countVerifiedLocals(
+  marketKey: string,
+  deps: { candidates?: (k: string) => Promise<string[]>; routable?: (ids: readonly string[]) => Promise<Set<string>> } = {},
+): Promise<number> {
+  const ids = await (deps.candidates ?? candidateExpertIds)(marketKey);
+  if (ids.length === 0) return 0;
+  return (await (deps.routable ?? routableUserIds)(ids)).size;
+}
+
 export interface EventPageDeps {
   facts?: typeof loadEventGuideFacts;
   verifiedCount?: (marketKey: string) => Promise<number>;
@@ -110,6 +127,6 @@ export async function loadEventPage(sourceId: string, deps: EventPageDeps = {}):
     .where(and(eq(cityEvents.city, row.city), isNull(cityEvents.withdrawnAt)))
     .orderBy(asc(cityEvents.startsAt));
   const marketKey = facts.event.marketKey;
-  const verified = marketKey ? await (deps.verifiedCount ?? (async (k: string) => (await candidateExpertIds(k)).length))(marketKey) : 0;
+  const verified = marketKey ? await (deps.verifiedCount ?? countVerifiedLocals)(marketKey) : 0;
   return composeEventPage(row, facts, composeMoreInCity(others, row.id, now), verified, now);
 }

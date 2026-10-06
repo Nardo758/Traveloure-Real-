@@ -42,7 +42,8 @@ import type { BuyAction } from "@shared/buy-action";
 
 /**
  * Candidates: experts with a VERIFIED neighbourhood whose city resolves to the market. Exported for
- * the event page's "N verified in <city>" (ledger `2026-10-06-event-page`): the same count, read once.
+ * the event page's "N verified in <city>" (ledger `2026-10-06-event-page`), which never counts it
+ * bare: it intersects these ids with R343's `routableUserIds` first (`countVerifiedLocals`).
  */
 export async function candidateExpertIds(marketKey: string): Promise<string[]> {
   const rows = await db.execute(sql`
