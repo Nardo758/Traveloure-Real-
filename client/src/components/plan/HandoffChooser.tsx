@@ -60,6 +60,7 @@ export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: numb
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const submit = async () => {
     if (!stripe || !elements) return;
     setBusy(true);
@@ -70,15 +71,25 @@ export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: numb
       redirect: "if_required",
     });
     setBusy(false);
+    setAttempt((n) => n + 1);
+    // Smoke 13 #8: EVERY declined confirm says why — Stripe's own decline message, whether it comes
+    // back as an error or as the intent's `last_payment_error` — never a silent second press.
     if (err) return setError(err.message || "Your card couldn't be held.");
     // A manual-capture intent stops at `requires_capture`: the hold is in place, nothing is taken.
     if (paymentIntent && (paymentIntent.status === "requires_capture" || paymentIntent.status === "succeeded")) return onHeld();
-    setError(`The hold isn't in place yet (${paymentIntent?.status ?? "unknown"}).`);
+    const declined = (paymentIntent as any)?.last_payment_error?.message as string | undefined;
+    setError(declined || `The hold isn't in place yet (${paymentIntent?.status ?? "unknown"}).`);
   };
   return (
     <div className="space-y-3" data-testid="handoff-hold-form">
-      <PaymentElement onReady={() => setReady(true)} />
-      {error ? <p className="text-sm text-destructive" data-testid="handoff-hold-error">{error}</p> : null}
+      {/* Smoke 13 #8 (decision-maker, Oct 6, 2026): Link draws its OWN confirm inside the Payment
+          Element, a second button beside "Place the hold". On the hold sheets Link is hidden so
+          "Place the hold" is the one action; cards and Apple/Google Pay stay (LD 43(c)). Stripe
+          cannot exclude Link on the PaymentIntent, so this is the Element's own `wallets.link`
+          option — current Stripe.js v3 (loaded unpinned) reads it; the installed type predates it. */}
+      <PaymentElement onReady={() => setReady(true)} options={{ wallets: { link: "never" } } as any} />
+      {/* keyed on the attempt so a repeated decline re-announces even when its words are the same */}
+      {error ? <p key={attempt} role="alert" className="text-sm text-destructive" data-testid="handoff-hold-error">{error}</p> : null}
       <p className="text-xs text-muted-foreground">
         {line ??
           `We place a hold of ${money(amountCents)} now. It is only taken when a local accepts; if nobody does within two days, the hold is released.`}

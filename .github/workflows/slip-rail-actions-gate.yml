@@ -149,6 +149,8 @@ jobs:
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
+          # A13 (smoke 13 #5) seeds one handoff row with psql.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

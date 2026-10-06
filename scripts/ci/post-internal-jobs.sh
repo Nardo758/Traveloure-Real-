@@ -221,6 +221,7 @@ post_route_once() {
   meta="$(curl -sS -X POST \
     --header "x-internal-secret: $INTERNAL_JOB_SECRET" \
     --header "content-type: application/json" \
+    --header "x-jobs-trigger: $( [[ "${GITHUB_ACTIONS:-}" == "true" ]] && echo github-actions || echo "${JOBS_TRIGGER:-replit-scheduled}" )" \
     --data '{}' \
     --output "$body" \
     --write-out '%{http_code} %{content_type}' \
