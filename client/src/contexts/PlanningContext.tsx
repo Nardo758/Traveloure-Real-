@@ -50,6 +50,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Context,
 } from "react";
@@ -71,6 +72,13 @@ import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/component
 import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
 import { doorStartsNewPlan } from "@/lib/plan-steps";
 import { normalizePendingPlanItems, type PendingPlanItem } from "@shared/pending-plan-items";
+import { planLandingPath } from "@/lib/plan-landing";
+import type { DraftAnswers } from "@/lib/plan-resume";
+import {
+  consumePendingPlanRecord,
+  takePendingPlanRecord,
+  writePendingPlanRecord,
+} from "@/lib/pending-plan-record";
 
 export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
 // Which branches need a plan ROW before they run is `BRANCHES_THAT_MINT` in `@/lib/plan-steps` —
@@ -93,6 +101,12 @@ export interface PlanningSource {
   destination?: string;
   /** Force a fresh plan rather than editing the currently bound plan. */
   newPlan?: boolean;
+  /**
+   * Step 8b-2 (D3): set ONLY by the provider when it replays a guest's record after sign-in — the
+   * modal seeds from these answers and finishes on `autoFinish` once. No door sets either.
+   */
+  resumeAnswers?: DraftAnswers;
+  autoFinish?: "myself" | "ai";
   /** An itinerary item to attach only after this door's new plan has been minted. */
   pendingItem?: PendingPlanItem;
   /** Re-plan context: the trip this entry belongs to. */
@@ -411,7 +425,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     }): Promise<PlanMintOutcome> => {
       if (!user) {
         setModalOpen(false);
-        openSignInModal();
+        // Step 8b-2 (D3): sign-in returns to THIS page, where the record is replayed — not /dashboard.
+        openSignInModal({ returnTo: currentPagePath() });
         return { ok: false };
       }
       // The plan row already exists. Never mint another one while its gem is awaiting attachment.
@@ -486,6 +501,65 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
    * behaviour is exactly what it was when it was a chooser row — only the point it is reached
    * from moved.
    */
+  // ── Step 8b-2 (D3): THE GUEST'S PLAN, CARRIED THROUGH SIGN-IN ───────────────────────────────────
+  // `myself` gates at the mint: the record is written now. `ai` gates later, at the AI form's own
+  // sign-in, so its answers wait here (memory only) and the record is written only if that sign-in
+  // is actually pressed — a guest who closes the form leaves no record behind.
+  const guestAiAnswers = useRef<DraftAnswers | null>(null);
+  const recordFor = (branch: "myself" | "ai", answers: DraftAnswers) =>
+    writePendingPlanRecord({
+      branch,
+      door: (source?.door as string | undefined) ?? null,
+      answers,
+      source: {
+        experienceSlug: answers.occasionSlug || source?.experienceSlug || null,
+        city: source?.city ?? null,
+        country: source?.country ?? null,
+        destination: source?.destination ?? null,
+      },
+    });
+  const guestGate = useCallback(
+    (branch: "myself" | "ai", answers: DraftAnswers) => {
+      if (user) return;
+      switch (branch) {
+        case "myself":
+          recordFor("myself", answers);
+          break;
+        default:
+          guestAiAnswers.current = answers;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, source],
+  );
+  const guestSignInFromAiForm = useCallback(() => {
+    if (guestAiAnswers.current) recordFor("ai", guestAiAnswers.current);
+    setAiOpen(false);
+    openSignInModal({ returnTo: currentPagePath() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignInModal, source]);
+  // After sign-in (a full reload), the record is TAKEN — and so cleared — BEFORE the plan is created,
+  // then replayed through the modal's own finish: the ONE mint, the ONE commit, the D4 landing.
+  const replayedForUser = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user?.id || replayedForUser.current === user.id) return;
+    replayedForUser.current = user.id;
+    consumePendingPlanRecord({
+      take: () => takePendingPlanRecord(),
+      replay: (record) =>
+        open({
+          ...(record.door ? { door: record.door as PlanningSource["door"] } : {}),
+          newPlan: true,
+          ...(record.source.experienceSlug ? { experienceSlug: record.source.experienceSlug } : {}),
+          ...(record.source.city ? { city: record.source.city } : {}),
+          ...(record.source.country ? { country: record.source.country } : {}),
+          resumeAnswers: record.answers,
+          autoFinish: record.branch,
+        }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   const runBranch = useCallback(
     (branch: PlanningBranch, plan: CommittedPlan) => {
       // THE DOOR'S OWN FINISH first (see `PlanningSource.onFinish`). A door that handles the
@@ -505,7 +579,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         // only navigated after a successful draft, so closing it, or a draft that did not finish,
         // left the traveler on the door's page with a plan they could not see. No plan (a guest, a
         // refused mint) ⇒ nothing to land on, and the form opens where it always did.
-        if (plan.tripId) setLocation(`/plans/${plan.tripId}`);
+        // Step 8b-2 (D4): branch `ai` lands on the plan's MAP view, from any door.
+        if (plan.tripId) setLocation(planLandingPath(plan.tripId, "ai", source?.door));
         setAiOpen(true);
         return;
       }
@@ -513,7 +588,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       if (branch === "myself") {
         // `mintPlan` already refused (and said so in the modal) if no slip could exist, so a
         // finish that reaches here without an id has nothing to navigate to.
-        if (plan.tripId) setLocation(`/plans/${plan.tripId}`);
+        // Step 8b-2 (D4): `myself` from the /experiences start page lands on the map view.
+        if (plan.tripId) setLocation(planLandingPath(plan.tripId, "myself", source?.door));
         return;
       }
       if (branch === "local") {
@@ -614,6 +690,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         continueLabel={continueLabel}
         onContinue={(href) => setLocation(href)}
         mintPlan={mintPlan}
+        onGuestGate={guestGate}
         pendingGemRetry={pendingGemRecovery ? { title: pendingGemRecovery.item.title } : null}
         retryPendingGem={retryPendingGem}
         onPendingGemRecovered={finishPendingGemRecovery}
@@ -650,8 +727,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
             setAiOpen(false);
             open(source ?? undefined);
           }}
+          // Step 8b-2 (D3, ruling 6): the AI form signs a guest in through the SAME sign-in modal,
+          // carrying their answers in the one record — never a bare /api/login with nothing kept.
+          onGuestSignIn={guestSignInFromAiForm}
         />
       )}
     </PlanningContext.Provider>
   );
+}
+
+/** The page the traveler is on, as a same-origin return path for sign-in (never carries answers). */
+function currentPagePath(): string | undefined {
+  try {
+    return `${window.location.pathname}${window.location.search}`;
+  } catch {
+    return undefined;
+  }
 }

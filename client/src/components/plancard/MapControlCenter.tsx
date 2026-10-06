@@ -38,7 +38,19 @@ import {
   type MapVersion,
 } from "@/lib/map-scene";
 import { MAP_FALLBACK_NOTICE, useMapRenderer } from "@/lib/map-renderer";
-import { browseAddBody, hostRows, listingPlaces, partnerPlaces } from "@/lib/browse-supply";
+import {
+  BROWSE_TABS,
+  addedItemFor,
+  applyBudget,
+  browseAddBody,
+  browseTabForCategory,
+  hostRows,
+  listingPlaces,
+  partnerPlaces,
+  placesInTab,
+  searchPlaces,
+  type BrowseTabKey,
+} from "@/lib/browse-supply";
 import { SceneMapGoogle } from "./map/SceneMapGoogle";
 import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
 import type { SceneLeg } from "./map/scene-legs";
@@ -98,6 +110,14 @@ export interface MapControlCenterProps {
    */
   candidates?: { sourceLabel: string | null; items: ReadonlyArray<{ id: string; title: string; lat: number; lng: number; price?: string | null }> } | null;
   onAddCandidate?: (id: string, dayNumber: number) => void;
+  /**
+   * Step 8b-2 (ledger `2026-10-06-step8b2-map-layout`): the slip's map layout. `split` puts the map on
+   * the left and a rail on the right that FOLLOWS THE SHOWN LAYER — Browse while Browse is on, the
+   * shown day's "Your plan" stops otherwise (item 13). Every other mount keeps `stacked`, unchanged.
+   */
+  layout?: "stacked" | "split";
+  /** The empty "Your plan" line (ruling 2): the slip's own reason text, shown while nothing is located. */
+  planEmptyNote?: string | null;
 }
 
 export function MapControlCenter({
@@ -121,6 +141,8 @@ export function MapControlCenter({
   onVersionChange,
   candidates = null,
   onAddCandidate,
+  layout = "stacked",
+  planEmptyNote = null,
 }: MapControlCenterProps) {
   const { toast } = useToast();
   const [planLayer, setPlanLayer] = useState(true);
@@ -149,12 +171,17 @@ export function MapControlCenter({
   // ── Browse supply (the EXISTING public reads; only while the layer is on) ───────────────────
   const { data: categories } = useQuery<Array<{ id: string; categoryKey?: string | null }>>({
     queryKey: ["/api/service-categories"],
-    enabled: browseOn && !!browseState.categoryKey,
+    enabled: browseOn,
     staleTime: 5 * 60_000,
   });
-  const categoryId = browseState.categoryKey ? categories?.find((c) => c.categoryKey === browseState.categoryKey)?.id ?? null : null;
-  const listingsUrl = `/api/services?location=${encodeURIComponent(city)}${categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : ""}`;
-  const { data: listings } = useQuery<any[]>({ queryKey: [listingsUrl], enabled: browseOn && !!city && (!browseState.categoryKey || !!categories) });
+  // Step 8b-2: the tabs filter listings by their resolved category KEY, so the city's listings are read
+  // once and every tab (and "Find a host"'s one key) narrows them here — never a guessed category.
+  const categoryKeyById = useMemo(
+    () => new Map((categories ?? []).filter((c) => !!c.categoryKey).map((c) => [String(c.id), String(c.categoryKey)])),
+    [categories],
+  );
+  const listingsUrl = `/api/services?location=${encodeURIComponent(city)}`;
+  const { data: listings } = useQuery<any[]>({ queryKey: [listingsUrl], enabled: browseOn && !!city });
   const partnerUrl = `/api/affiliate/products?city=${encodeURIComponent(city)}&limit=100`;
   const { data: partner } = useQuery<{ products?: any[] }>({ queryKey: [partnerUrl], enabled: browseOn && !!city });
   const { data: experts } = useQuery<any[]>({
@@ -174,12 +201,32 @@ export function MapControlCenter({
     [readOnly, onAddCandidate, candidates],
   );
   const candidatesOn = candidatePlaces.length > 0;
-  const browsePlaces: BrowsePlace[] = useMemo(
-    () => [
-      ...candidatePlaces,
-      ...(browseOn ? [...listingPlaces(listings), ...partnerPlaces(partner?.products, browseState.categoryKey)] : []),
-    ],
-    [candidatePlaces, browseOn, listings, partner, browseState.categoryKey],
+  // Step 8b-2: tabs (ruling 8), search and Budget (ruling 10) over the SAME three reads.
+  const [tab, setTab] = useState<BrowseTabKey>(() => browseTabForCategory(browseState.categoryKey));
+  useEffect(() => {
+    if (browseState.categoryKey) setTab(browseTabForCategory(browseState.categoryKey));
+  }, [browseState.categoryKey]);
+  const [search, setSearch] = useState("");
+  const [budgetText, setBudgetText] = useState("");
+  const budgetMax = budgetText.trim() === "" ? null : Number(budgetText);
+  const supply = useMemo(() => {
+    if (!browseOn) return { shown: [] as BrowsePlace[], byQuote: 0, noUsdPrice: 0 };
+    const all = [...listingPlaces(listings, categoryKeyById), ...partnerPlaces(partner?.products)];
+    return applyBudget(searchPlaces(placesInTab(all, tab, browseState.categoryKey), search), budgetMax);
+  }, [browseOn, listings, categoryKeyById, partner, tab, browseState.categoryKey, search, budgetMax]);
+  const browsePlaces: BrowsePlace[] = useMemo(() => [...candidatePlaces, ...supply.shown], [candidatePlaces, supply.shown]);
+  // What this plan already holds, by the listing / partner id each item names ("On day N · Remove").
+  const planItems = useMemo(
+    () =>
+      days.flatMap((d) =>
+        (d.activities ?? []).map((a) => ({
+          id: a.id,
+          providerServiceId: a.providerServiceId ?? null,
+          affiliateProductId: a.affiliateProductId ?? null,
+          dayNum: d.dayNum,
+        })),
+      ),
+    [days],
   );
   const hosts = browseOn ? hostRows(experts).slice(0, 8) : [];
   const selectedBrowse = browsePlaces.find((b) => `${b.kind}:${b.id}` === selectedBrowseId) ?? null;
@@ -192,9 +239,17 @@ export function MapControlCenter({
       // R322: the Workstation reads the trip's item list directly; keep it in step with the add.
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       toast({ title: `Added ${place.name} to day ${dayNumber ?? 1}` });
-      setSelectedBrowseId(null);
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't add that", description: e?.message }),
+  });
+  // "On day N · Remove": the EXISTING item DELETE route — the one remove rail (LD 39).
+  const remove = useMutation({
+    mutationFn: async (itemId: string) => (await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`)).json(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't remove that", description: e?.message }),
   });
 
   // ── The scene ────────────────────────────────────────────────────────────────────────────────
@@ -264,8 +319,18 @@ export function MapControlCenter({
   if (!day) return null;
 
   const canvasHeight = compact ? "h-[360px]" : "h-[420px]";
+  const split = layout === "split";
+  // Item 13: in the split layout the rail FOLLOWS THE SHOWN LAYER — Browse while it is on, the day's
+  // "Your plan" stops otherwise. The stacked layout keeps both, exactly as before.
+  const showPlanRail = !split || !browseOn;
   return (
-    <div data-testid={`map-control-center-${tripId}`} data-map-renderer={renderer}>
+    <div
+      data-testid={`map-control-center-${tripId}`}
+      data-map-renderer={renderer}
+      data-map-layout={layout}
+      className={split ? "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : undefined}
+    >
+      <div className="min-w-0" data-testid={`map-main-${tripId}`}>
       {/* ── Day chips · version toggle · layers ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border" data-testid={`map-toolbar-${tripId}`}>
         <div className="flex flex-wrap gap-1" data-testid={`map-day-selector-${tripId}`}>
@@ -307,7 +372,7 @@ export function MapControlCenter({
             className={`px-2.5 py-0.5 rounded-full text-xs border ${planLayer ? "border-foreground text-foreground" : "border-border text-muted-foreground"}`}
             data-testid={`map-layer-plan-${tripId}`}
           >
-            Plan
+            Your plan
           </button>
           {!readOnly ? (
             <button
@@ -367,8 +432,26 @@ export function MapControlCenter({
         ) : null}
       </div>
 
+      </div>
+
       {/* ── The bottom sheet: the day's stops, selection synced both ways ─────────────────────── */}
-      <div className="border-t border-border px-3 py-2 space-y-2" data-testid={`map-sheet-${tripId}`}>
+      <div
+        className={`border-t border-border px-3 py-2 space-y-2${split ? " lg:border-t-0 lg:border-l" : ""}`}
+        data-testid={`map-sheet-${tripId}`}
+        data-rail-layer={split ? (browseOn ? "browse" : "plan") : undefined}
+      >
+        {showPlanRail ? (
+        <>
+        {split ? (
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="map-your-plan-title">
+            Your plan · Day {dayNumber}
+          </p>
+        ) : null}
+        {split && planEmptyNote ? (
+          <p className="text-xs text-muted-foreground" data-testid="map-your-plan-empty">
+            {planEmptyNote}
+          </p>
+        ) : null}
         <ol className="space-y-1">
           {scene.list.map((s) => (
             <li key={s.id}>
@@ -406,10 +489,68 @@ export function MapControlCenter({
             </ul>
           </div>
         ) : null}
+        </>
+        ) : null}
 
         {/* ── Browse: the selected place's card, the places, and hosts (never pins) ─────────── */}
         {browseOn || candidatesOn ? (
           <div className="space-y-2 border-t border-border pt-2" data-testid="map-browse-panel">
+            {browseOn ? (
+              <div className="space-y-2" data-testid="map-browse-controls">
+                <div className="flex flex-wrap gap-1" role="tablist" aria-label="Browse" data-testid="map-browse-tabs">
+                  {BROWSE_TABS.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === t.key}
+                      onClick={() => {
+                        setTab(t.key);
+                        if (browseState.categoryKey) setBrowse({ open: true, categoryKey: null });
+                      }}
+                      className={`px-2.5 py-0.5 rounded-full text-xs border ${tab === t.key ? "border-teal-600 text-teal-700" : "border-border text-muted-foreground"}`}
+                      data-testid={`map-browse-tab-${t.key}`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search"
+                    aria-label="Search places"
+                    className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
+                    data-testid="map-browse-search"
+                  />
+                  <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                    Budget up to $
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={budgetText}
+                      onChange={(e) => setBudgetText(e.target.value)}
+                      aria-label="Budget, US dollars"
+                      className="w-20 rounded-md border border-border bg-card px-2 py-1 text-xs"
+                      data-testid="map-browse-budget"
+                    />
+                  </label>
+                </div>
+                {budgetMax != null && (supply.byQuote > 0 || supply.noUsdPrice > 0) ? (
+                  <p className="text-[11px] text-muted-foreground" data-testid="map-browse-budget-left-out">
+                    {[
+                      supply.byQuote > 0 ? `+ ${supply.byQuote} by quote` : null,
+                      supply.noUsdPrice > 0 ? `+ ${supply.noUsdPrice} without a shown US-dollar price` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {browseState.categoryKey ? (
               <p className="text-xs text-muted-foreground" data-testid="map-browse-filter">
                 Showing {browseState.categoryKey.replace(/_/g, " ")} ·{" "}
@@ -430,19 +571,40 @@ export function MapControlCenter({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (selectedBrowse.kind === "candidate") {
-                      onAddCandidate?.(selectedBrowse.id, dayNumber ?? 1);
-                      setSelectedBrowseId(null);
-                    } else add.mutate(selectedBrowse);
-                  }}
-                  disabled={add.isPending}
-                  data-testid="map-browse-add"
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Add to day {dayNumber ?? 1}
-                </Button>
+                {(() => {
+                  const added = addedItemFor(selectedBrowse, planItems);
+                  if (added) {
+                    return (
+                      <p className="flex items-center gap-2 text-xs" data-testid="map-browse-added">
+                        <span>On day {added.dayNum}</span>·
+                        <button
+                          type="button"
+                          className="underline"
+                          onClick={() => remove.mutate(added.itemId)}
+                          disabled={remove.isPending}
+                          data-testid="map-browse-remove"
+                        >
+                          Remove
+                        </button>
+                      </p>
+                    );
+                  }
+                  return (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (selectedBrowse.kind === "candidate") {
+                          onAddCandidate?.(selectedBrowse.id, dayNumber ?? 1);
+                          setSelectedBrowseId(null);
+                        } else add.mutate(selectedBrowse);
+                      }}
+                      disabled={add.isPending}
+                      data-testid="map-browse-add"
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" /> Add to day {dayNumber ?? 1}
+                    </Button>
+                  );
+                })()}
               </div>
             ) : null}
             <ul className="max-h-48 space-y-0.5 overflow-y-auto">

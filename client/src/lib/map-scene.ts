@@ -50,6 +50,12 @@ export interface BrowsePlace {
   lng: number | null;
   category?: string | null;
   priceLabel?: string | null;
+  /** Step 8b-2: a listing's resolved `service_categories.category_key` (tabs), or null. */
+  categoryKey?: string | null;
+  /** Step 8b-2: a partner place's lower-cased category text (tabs match it through the word list). */
+  partnerText?: string;
+  /** Step 8b-2: how the row answers the Budget filter (`browse-supply.ts` `BrowseBudget`). */
+  budget?: import("@/lib/browse-supply").BrowseBudget;
 }
 
 export interface PlanDayStop {

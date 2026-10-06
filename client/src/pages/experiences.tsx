@@ -31,7 +31,7 @@ import {
   projectToWorldMap,
 } from "@/lib/experiences-entry";
 
-export default function Experiences() {
+export default function Experiences({ occasionSlug: routeSlug = null }: { occasionSlug?: string | null } = {}) {
   const searchString = useSearch();
   const preselect = useMemo(() => preselectedMarket(new URLSearchParams(searchString)), [searchString]);
   const { open: openPlanning } = usePlanning();
@@ -40,7 +40,10 @@ export default function Experiences() {
     queryKey: ["/api/experience-types"],
   });
 
-  const [occasionSlug, setOccasionSlug] = useState("");
+  // Step 8b-2 (D5): `/experiences/:slug` arrives with that occasion picked. Only a slug the catalog
+  // carries is shown as picked and lets Continue enable (`canContinue`); `photo`, `transport` and the
+  // like pick nothing — never a nearest occasion. A visit writes nothing.
+  const [occasionSlug, setOccasionSlug] = useState(routeSlug ?? "");
   const [marketKey, setMarketKey] = useState<string | null>(() => preselect?.marketKey ?? null);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === marketKey) ?? null;
   const ready = canContinue(occasionSlug, occasions, marketKey);

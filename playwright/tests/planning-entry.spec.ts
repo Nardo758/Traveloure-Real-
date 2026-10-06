@@ -160,6 +160,14 @@ test.describe("Single planning entry — the one modal", () => {
     // gate, unchanged) — the form and its close button only exist when authed.
     await expect(page.getByTestId("button-signin-from-modal")).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId("button-cancel-signin-prompt")).toBeVisible();
+    // Step 8b-2 (D3, ruling 6 — sanctioned edit): its sign-in goes through the ONE sign-in modal and
+    // carries the guest's answers in ONE short-lived browser record — never in the URL.
+    await page.getByTestId("button-signin-from-modal").click();
+    await expect(page.getByTestId("modal-sign-in")).toBeVisible({ timeout: 10_000 });
+    const record = await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan"));
+    expect(record, "the AI form's gate wrote the record").not.toBeNull();
+    expect(JSON.parse(record!).branch).toBe("ai");
+    expect(page.url()).not.toContain("traveloure_pending_plan");
   });
 
   test("local branch navigates to /experts", async ({ page }) => {
@@ -174,6 +182,11 @@ test.describe("Single planning entry — the one modal", () => {
     await gotoFinish(page);
     await page.getByTestId("planning-option-myself").click();
     await expect(page.getByTestId("modal-sign-in")).toBeVisible({ timeout: 10_000 });
+    // Step 8b-2 (D3, ruling 6 — sanctioned edit): the gate keeps the modal's answers in ONE
+    // short-lived browser record (an hour), for the plan to be created after sign-in.
+    const record = JSON.parse((await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan"))) ?? "null");
+    expect(record?.branch, "the modal's gate wrote the record").toBe("myself");
+    expect(record.expiresAt - record.savedAt).toBe(60 * 60 * 1000);
   });
 
   for (const entry of [

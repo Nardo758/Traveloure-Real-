@@ -82,19 +82,18 @@ test.describe('Lane A — header', () => {
 });
 
 test.describe('Lane B — mobile planner', () => {
+  // Step 8b-2 (D5, item 20 — sanctioned edit, ruling 12): `/experiences/<slug>` now renders the START
+  // PAGE with that occasion picked, not the template planner. At 390px the page fits the phone (no
+  // horizontal scroll), the occasion arrives picked, and there is no desktop PanelGroup at all.
   for (const slug of ['wedding', 'travel', 'date-night']) {
-    test(`B1 /experiences/${slug} @390px: desktop PanelGroup is not rendered`, async ({ page }) => {
+    test(`B1 /experiences/${slug} @390px: the start page, occasion picked, no horizontal scroll`, async ({ page }) => {
       await page.setViewportSize(MOBILE);
       await settle(page, `/experiences/${slug}`);
-      const display = await page.evaluate(() => {
-        const g = document.querySelector<HTMLElement>('[data-panel-group]');
-        if (!g) return 'absent';
-        // walk up: hidden anywhere in the chain counts as not rendered
-        for (let e: HTMLElement | null = g; e; e = e.parentElement)
-          if (getComputedStyle(e).display === 'none') return 'none';
-        return getComputedStyle(g).display;
-      });
-      expect(['absent', 'none']).toContain(display);
+      await expect(page.getByRole('heading', { name: /What are you planning\?/i })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId(`option-occasion-${slug}`)).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+      expect(await page.locator('[data-panel-group]').count()).toBe(0);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
     });
   }
 });

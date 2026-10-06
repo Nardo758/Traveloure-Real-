@@ -17,6 +17,8 @@ export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const searchStr = useSearch();
   const highlightItemId = new URLSearchParams(searchStr).get("item");
+  // Step 8b-2 (D4): `?view=map` opens the map layout of the plan.
+  const initialView = new URLSearchParams(searchStr).get("view") === "map" ? "map" : null;
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<SlipData>({
     // The plancard is LIVE by default (ledger `2026-09-26-slip-renders-live`); only the Trip Card asks
@@ -70,7 +72,7 @@ export default function SlipViewPage() {
           AI action it covers, rather than a floating card above the plan. Concierge stays here:
           it is self-gating (null on any trip that is not a ready-made clone the caller owns) and
           is a support statement, not a build action. */}
-      <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} />
+      <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} initialView={initialView} />
     </div>
   );
 }
