@@ -177,7 +177,8 @@ export default function TripDetails() {
   // HireExpertDialog + ExpertSuggestionsPanel own them now (rows 10/11). The advisor query,
   // the advisor card and the duplicate EscalationCTA (rows 8/9) are dropped here; the assigned
   // expert is surfaced by the family's advisor strip on the summary card (A10/A12) and the
-  // full-stage EscalationCTA (B10) — both must-not-regress, both already rendering.
+  // full-stage EscalationCTA (B10). Smoke 12 S12-5: that CTA could never render here (this page
+  // passes `routingReadOnly`) and is retired; the one expert door is the slip's handoff chooser.
 
   // Open destination in maps — L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`):
   // ONE maps handoff (`lib/navigate.ts`), and since this lane it is the CARD's own Maps control

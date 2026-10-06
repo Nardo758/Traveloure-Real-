@@ -41,7 +41,7 @@
  *
  * `POST /api/concierge/quote` is KEPT and unchanged: it is what captures the lead here (row +
  * guest claim token, the C3 admin notification) and it still has other consumers —
- * `plancard/EscalationCTA.tsx` and two Playwright specs — so it is not consumer-less and §18c
+ * two Playwright specs (`plancard/EscalationCTA.tsx` was one until smoke 12 S12-5 retired it) — so it is not consumer-less and §18c
  * does not apply to it.
  *
  * ── THE EXPERT FINISH, AND WHY THE SLIP COMES FIRST (Locked Decision 32) ─────────────────────

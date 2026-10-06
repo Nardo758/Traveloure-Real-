@@ -56,9 +56,9 @@ import {
   buildLegReview,
   getTripTransportLegs,
   legPickupRefusal,
-  SELECTABLE_TRANSPORT_MODES,
   deleteTripTransportLeg,
   legResponseRow,
+  legModeChoices,
   generateTripTransportLegs,
   getTripTransportLeg,
   updateTripTransportLeg,
@@ -216,9 +216,10 @@ router.get("/api/trips/:tripId/transport-legs/:legId/path", isAuthenticated, asy
  */
 const patchLegSchema = z
   .object({
-    // Validated against the engine's OWN mode vocabulary (derived from the destination profiles +
-    // the §18 chauffeured set), so an arbitrary string can never land in the mode column.
-    userSelectedMode: z.enum(SELECTABLE_TRANSPORT_MODES as [string, ...string[]]).optional(),
+    // Shape only here; the VALUE is checked against the leg's own served list (`legModeChoices`)
+    // once the leg is loaded below (S12-1), so an arbitrary string can never land in the mode
+    // column and a mode the picker offered is never refused.
+    userSelectedMode: z.string().min(1).max(40).optional(),
     // Expert-stated arrangement facts (§13). Display strings; null clears.
     pickupPoint: z.string().max(500).nullable().optional(),
     pickupTime: z.string().max(120).nullable().optional(),
@@ -279,6 +280,10 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
     // 404, not a silent cross-trip write).
     const existing = await getTripTransportLeg(tripId, legId);
     if (!existing) return res.status(404).json({ message: "Transport leg not found for this trip" });
+
+    if (parsed.data.userSelectedMode !== undefined && !legModeChoices(existing).includes(parsed.data.userSelectedMode)) {
+      return res.status(400).json({ message: "That mode is not offered for this leg", candidateModes: legModeChoices(existing) });
+    }
 
     const expertSide = await isExpertSideLegWriter(tripId, sessionUserId(req));
     if ((parsed.data.authorTip !== undefined || parsed.data.pickupProviderServiceId !== undefined) && !expertSide) {

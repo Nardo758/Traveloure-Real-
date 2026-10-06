@@ -2,7 +2,7 @@
  * PartnerizeBookingCTA
  *
  * Primary "book with an expert" action for Partnerize-backed offers. Mirrors the
- * expert-request flow used by client/src/components/plancard/EscalationCTA.tsx,
+ * expert-request flow used by client/src/components/plancard/EscalationCTA.tsx (retired, smoke 12 S12-5),
  * but scoped to experts who've opted in to booking affiliate offers on a
  * traveler's behalf (requestType: "partnerize_booking_assist").
  *

@@ -65,7 +65,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { freeFindingsPromptLine, type Finding } from "@shared/optimizer-lead";
+import { freeFindingsPromptLine, unreachableStopLines, type Finding } from "@shared/optimizer-lead";
 import { createPortal } from "react-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -1111,6 +1111,8 @@ function FinishCard({
     retry: false,
   });
   const freeLine = unoptimized ? freeFindingsPromptLine(finishPreview?.findings) : null;
+  // S12-4: the stops behind the reachability count, one per line with its day.
+  const unreachableLines = freeLine ? unreachableStopLines(finishPreview?.findings) : [];
   const checkoutReady = countCheckoutReadyItems(activities);
   // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee for THIS plan's
   // staged lines, shown where the slip's checkout path starts. The amount is the server's
@@ -1221,6 +1223,13 @@ function FinishCard({
           <Link href={`/plans/${trip.id}?optimize=1`} className="underline underline-offset-2">
             {freeLine}
           </Link>
+          {unreachableLines.length > 0 ? (
+            <span className="mt-1 block" data-testid="slip-finalize-unreachable-stops">
+              {unreachableLines.map((l) => (
+                <span key={l} className="block">{l}</span>
+              ))}
+            </span>
+          ) : null}
         </p>
       ) : null}
       <RailRow

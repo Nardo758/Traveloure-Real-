@@ -95,7 +95,7 @@ export function planBudgetTotal(
 /**
  * The plan's display currency. There is NO per-plan currency column on `trips` today, and the
  * slip's existing money lines are plain USD (`SlipView`'s awaiting-checkout cost, PlanCard's
- * totals, `EscalationCTA`'s fee). So this reuses that convention rather than inventing a symbol
+ * totals). So this reuses that convention rather than inventing a symbol
  * of its own — and it is stated HERE, once, so the day a plan carries its own currency there is a
  * single place to read it from instead of a hardcoded "$" scattered across surfaces.
  *

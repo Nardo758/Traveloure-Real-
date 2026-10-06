@@ -13,7 +13,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { legUnreachableFinding, unreachableStops, wallClockMinutes } from "@shared/leg-reachability";
-import { freeFindingsPromptLine, leadFindings } from "@shared/optimizer-lead";
+import { freeFindingsPromptLine, leadFindings, unreachableStopLines } from "@shared/optimizer-lead";
 
 const item = (id: string, startTime: string | null, extra: Record<string, unknown> = {}) => ({ id, title: id.toUpperCase(), dayNumber: 1, startTime, ...extra });
 const leg = (id: string, from: string, to: string, minutes: number | null, dayNumber = 1) => ({ id, dayNumber, fromActivityId: from, toActivityId: to, estimatedDurationMinutes: minutes });
@@ -57,10 +57,21 @@ describe("R4 the finding and the Finish line", () => {
     const items = [item("a", "09:00", { endTime: "10:30" }), item("b", "10:45"), item("c", "10:50")];
     const r = unreachableStops(items, [leg("L1", "a", "b", 42), leg("L2", "a", "b", 50), leg("L3", "b", "c", 30)]);
     const f = legUnreachableFinding(r.unreachable)!;
-    assert.deepEqual(f, { kind: "leg_unreachable", count: 2, days: [1] });
+    assert.deepEqual(f, {
+      kind: "leg_unreachable",
+      count: 2,
+      days: [1],
+      stops: [
+        { itemId: "b", title: "B", day: 1 },
+        { itemId: "c", title: "C", day: 1 },
+      ],
+    });
     const findings = leadFindings([{ kind: "closed_on_arrival", count: 3, days: [2] }, f]);
     assert.equal(findings[0].kind, "leg_unreachable", "a travel-time problem reads first");
     assert.equal(freeFindingsPromptLine(findings), "2 stops may not be reachable in time · Add travel times");
+    // S12-4: the Finish card names them, one line each with its day.
+    assert.deepEqual(unreachableStopLines(findings), ["Day 1 · B", "Day 1 · C"]);
+    assert.deepEqual(unreachableStopLines([{ kind: "closed_on_arrival", count: 1, days: [1] }]), []);
     assert.equal(legUnreachableFinding([]), null);
   });
 });

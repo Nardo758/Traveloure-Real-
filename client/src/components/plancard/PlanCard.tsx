@@ -21,7 +21,6 @@ import { DaySelector } from "./DaySelector";
 import { SectionTabs } from "./SectionTabs";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
-import { EscalationCTA } from "./EscalationCTA";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
@@ -134,8 +133,9 @@ const AVATAR_COLORS = [
   { bg: "#F4C0D1", text: "#72243E" },
 ];
 
-// R323 (step 7b): the Expert Polish Dialog (its own POST /api/expert-requests) is retired; the
-// summary card's "Have an expert polish this" opens the slip's ONE handoff chooser.
+// R323 (step 7b): the Expert Polish Dialog (its own POST /api/expert-requests) is retired. Smoke 12
+// S12-5: the summary card's "Have an expert polish this" is retired too — nothing mounts
+// `stage="summary"`, so it could never render; the one expert door is the slip's handoff chooser.
 
 // ── Summary stage component ────────────────────────────────────────────────
 
@@ -205,7 +205,6 @@ function PlanCardSummary({
   const slipHref = `/plans/${trip.id}`;
 
   const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
-  const hasActivities = totalActivities > 0;
 
   // Summary-specific queries
   const { data: advisorData } = useQuery<{ advisor: SummaryAdvisor | null }>({
@@ -292,12 +291,6 @@ function PlanCardSummary({
     }
     deleteTrip.mutate(trip.id);
   };
-
-  // Show "polish" CTA only when:
-  // - user owns trip and has activities
-  // - no expert already assigned
-  // - no pending request already in flight
-  const showPolishCta = hasActivities && !advisor && !pendingExpertRequest;
 
   return (
     <>
@@ -544,21 +537,6 @@ function PlanCardSummary({
           </Link>
         </div>
 
-        {/* Expert polish CTA */}
-        {showPolishCta && (
-          <div style={{ padding: "0 14px 12px", borderTop: "0.5px solid #E8E8E2", paddingTop: 10 }}>
-            <button
-              // R323 (step 7b): the one expert door is the slip's handoff chooser.
-              onClick={(e) => { e.stopPropagation(); navigate(`/plans/${trip.id}?handoff=open`); }}
-              className="w-full flex items-center justify-center gap-1.5 py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:opacity-90 transition-opacity"
-              style={{ background: "#FAEEDA", color: "#633806", border: "0.5px solid #F5D08A" }}
-              data-testid={`btn-expert-polish-${trip.id}`}
-            >
-              <Sparkles className="w-3 h-3" />
-              Have an expert polish this
-            </button>
-          </div>
-        )}
       </div>
 
     </>
@@ -1138,26 +1116,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            {/* CON-A.P7 / N3: expert-escalation CTA — after content, before bottom bar (mockup v3).
-                Suppressed in the Workstation embed — the expert IS the expert. */}
-            {!isViewer && !embedded && stage === "full" && !cardSurface && (
-              <div className="px-3 sm:px-5 pt-2">
-                <EscalationCTA
-                  tripId={trip.id}
-                  destination={trip.destination}
-                  eventType={(trip as any).eventType}
-                  planSnapshot={{
-                    days: days.map(d => ({
-                      day: d.dayNum,
-                      date: d.date,
-                      activityCount: d.activities?.length ?? 0,
-                    })),
-                    totalActivities,
-                    totalCost: totalCostDisplay,
-                  }}
-                />
-              </div>
-            )}
+            {/* Smoke 12 S12-5: the full-stage EscalationCTA is retired — its only live full-stage
+                owner mount (/trip/:id) passes `routingReadOnly`, which suppressed it, so it could
+                never render. The one expert door is the slip's handoff chooser (R324). */}
 
             {/* Row 11 (Trip Card rebuild Phase 3b): expert-suggestion accept/decline on the
                 finalized Trip Card. Accepting here materializes the item AND — because the trip is

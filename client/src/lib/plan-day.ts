@@ -28,8 +28,26 @@ export function dayBlockHeading(day: { dayNum: number | null; date?: string | nu
  * still names its area.
  */
 export function dayBlockStats(input: { stops: number; hoursOn: number }): string | null {
-  if (input.stops <= 0) return null;
+  // S12-3: an empty day reads "0 stops" like any other day — it IS a day of the plan with no stop yet.
+  if (input.stops < 0) return null;
   const parts = [`${input.stops} ${input.stops === 1 ? "stop" : "stops"}`];
   if (input.hoursOn > 0) parts.push(`hours on ${input.hoursOn}`);
   return parts.join(" · ");
+}
+
+/**
+ * S12-3, pure: the machine day ("YYYY-MM-DD") of day `dayNum`, counted from a sibling day that has
+ * one — the SAME producer's own date, so an empty day reads the same header as a filled one. No
+ * sibling with a date ⇒ null (§13: the plan's own "Day N", never a guessed weekday).
+ */
+export function siblingDayIso(
+  dayNum: number,
+  days: ReadonlyArray<{ dayNum: number | null; dateIso?: string | null }>,
+): string | null {
+  const anchor = days.find((d) => d.dayNum != null && parseTripDate(d.dateIso ?? null));
+  if (!anchor || anchor.dayNum == null) return null;
+  const base = parseTripDate(anchor.dateIso ?? null)!;
+  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + (dayNum - anchor.dayNum));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

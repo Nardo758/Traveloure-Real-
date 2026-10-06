@@ -61,6 +61,9 @@ export const SELECTABLE_TRANSPORT_MODES: readonly string[] = Array.from(
   new Set<string>([
     ...Object.values(TRANSPORT_PROFILES).flatMap((p) => p.availableModes.map((m) => m.mode)),
     ...CHAUFFEURED_MODES,
+    // The engine's own stored modes ("walking", "cycling", "transit", "driving") — what a leg's
+    // `recommended_mode` holds and the picker offers (S12-1), so a re-pick of the default is honoured.
+    ...Object.values(LEG_MODE_STORED),
   ]),
 ).sort();
 
@@ -718,7 +721,7 @@ export function buildLegReview(legs: ReadonlyArray<typeof transportLegs.$inferSe
     to: { lat: l.toLat, lng: l.toLng },
     recommendedMode: l.recommendedMode,
     userSelectedMode: l.userSelectedMode,
-    candidateModes: legModeOptions(l),
+    candidateModes: legModeChoices(l),
     proposalStatus: l.proposalStatus,
     picked: isPickedLeg(l),
     authorTip: l.authorTip,
@@ -737,9 +740,31 @@ export function buildLegReview(legs: ReadonlyArray<typeof transportLegs.$inferSe
  * LD 40: `checked_by` is a `users.id`, which no response carries. Every route that returns a whole
  * leg row passes it through this projection; `checkedAt` stays.
  */
-export function legResponseRow<T extends { checkedBy?: unknown }>(leg: T): Omit<T, "checkedBy"> {
+export function legResponseRow<T extends LegModeSource & { checkedBy?: unknown }>(
+  leg: T,
+): Omit<T, "checkedBy"> & { candidateModes: string[] } {
   const { checkedBy: _checkedBy, ...rest } = leg;
-  return rest;
+  return { ...rest, candidateModes: legModeChoices(leg) };
+}
+
+type LegModeSource = {
+  recommendedMode: string;
+  alternativeModes?: unknown;
+  userSelectedMode?: string | null;
+};
+
+/**
+ * Smoke 12 S12-1 — THE mode list for one leg, owned by the server. It is what every leg read serves
+ * as `candidateModes` (the Workstation rows, the review drawer) AND what the leg PATCH accepts, so a
+ * mode the picker offers is never refused. Before this, the picker offered the engine's own stored
+ * recommendation ("driving") while the PATCH validated against a profile vocabulary that has no
+ * "driving", so a leg switched off its default could not be switched back.
+ */
+export function legModeChoices(leg: LegModeSource): string[] {
+  const alts = Array.isArray(leg.alternativeModes)
+    ? (leg.alternativeModes as unknown[]).filter((a): a is { mode: string } => !!a && typeof (a as any).mode === "string")
+    : null;
+  return legModeOptions({ recommendedMode: leg.recommendedMode, alternativeModes: alts, userSelectedMode: leg.userSelectedMode });
 }
 
 /** Deletes one trip-scoped leg (the expert rejecting a proposal, or removing a confirmed one). */
