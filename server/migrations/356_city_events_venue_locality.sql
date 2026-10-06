@@ -1,0 +1,16 @@
+-- 356 — city_events: the town the venue is really in (ledger `2026-10-05-event-real-city`, R338;
+-- events-page brief, lane 2L). Shape approved by the decision-maker at the 2L Phase 0 review
+-- (Oct 6, 2026): "one nullable venue_locality, no default, no check, no index". APPROVED by the
+-- decision-maker, Oct 6, 2026 (applied twice locally; registered after 355).
+--
+-- ONE ADDITIVE, NULLABLE COLUMN. NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL — the publish-trap
+-- posture; declared in shared/schema.ts (deploy-push durability). A publish prompt offering exactly
+-- this `ADD COLUMN IF NOT EXISTS` is inside §20's born-column carve-out, and declining it is also safe:
+-- boot adds the same column.
+--
+-- venue_locality — the place the venue lies in when it is outside the market city ("Osaka" for a
+--              Kyoto-market show at Kyocera Dome, "Suzuka", "Portimão"). NULL means NOT KNOWN, never
+--              "same as the market": no row is filled here. New rows take it from what the seed states,
+--              at insert; the four existing manual rows are filled by the one narrow, sunset fill
+--              (`fillManualVenueLocalityIfNull`), run by hand, never at boot.
+ALTER TABLE city_events ADD COLUMN IF NOT EXISTS venue_locality varchar(100);
