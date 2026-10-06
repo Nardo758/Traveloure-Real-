@@ -59,6 +59,7 @@ function dispatchDeps(over: {
   gate?: BillboardOverrideDeps["gate"];
   gems?: BillboardDispatchDeps["gems"];
   sliceReadyListings?: BillboardDispatchDeps["sliceReadyListings"];
+  verifiedLocals?: BillboardDispatchDeps["verifiedLocals"];
 }): BillboardDispatchDeps {
   const base = deps({
     eligible: over.eligible,
@@ -70,6 +71,9 @@ function dispatchDeps(over: {
     creditedMarkets: async () => new Set(["kyoto"]),
     gems: over.gems ?? (async () => []),
     sliceReadyListings: over.sliceReadyListings ?? (async () => []),
+    // Every fixture curator and owner is a verified local unless a test says otherwise; the R343
+    // gate itself is proven against a database in billboard-verified-locals.db.test.ts VL4.
+    verifiedLocals: over.verifiedLocals ?? (async () => ["curator", "unqualified-curator", "slice-owner"]),
   };
 }
 
@@ -79,6 +83,7 @@ function sliceCandidate(overrides: Partial<BillboardSliceReadyCandidate> = {}): 
     city: "Kyoto",
     handle: "slice-expert",
     listing: listing("slice", "A Kyoto walk"),
+    ownerUserId: "slice-owner",
     latitude: "35.01",
     longitude: "135.76",
     cancellationPolicyType: "flexible",

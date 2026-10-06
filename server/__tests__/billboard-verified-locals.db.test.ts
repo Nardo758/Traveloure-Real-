@@ -7,6 +7,9 @@
  *   VL2  the event page's count is that set's size
  *   VL3  the billboard's default candidates ARE that set, and a non-routable candidate never reaches
  *        the byline gate, so it never takes a tile
+ *   VL4  slots 2 and 3 read the same set (ledger `2026-10-06-billboard-slots-routable`): a seed,
+ *        pending-application, concierge-pool or unverified gem curator never reaches the gate and never
+ *        takes slot 2, and a listing owned by one never takes slot 3; the routable local takes both
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards; the pool setting is
  * restored to what it was.
@@ -19,6 +22,7 @@ import { db, pool } from "../db";
 import {
   DEFAULT_DEPS,
   billboardVerifiedCandidates,
+  resolveBillboardDispatch,
   resolveBillboardOverrides,
   verifiedLocalIds,
 } from "../services/landing-billboard.service";
@@ -102,4 +106,37 @@ test("VL3 the billboard's candidates are that set; a non-routable local never re
   }
   assert.ok(gated.length > 0 && gated.every((id) => id === ex("ok")));
   assert.ok(overrides.every((o) => o.handle === `h-${ex("ok")}`), "only the routable local takes a tile");
+});
+
+test("VL4 slots 2 and 3 take only a verified local", async () => {
+  const listing = (id: string) => ({ id, title: "Walk", lines: [], price: "40.00", priceType: "fixed", pricingUnit: null, showPrice: true, imageUrl: null });
+  const order = ["seed", "pendingapp", "pool", "unverified", "unpayable", "noform", "ok"];
+  const gated: string[] = [];
+  const result = await resolveBillboardDispatch({
+    candidates: async () => [ex("ok")],
+    gate: async (id) => { gated.push(id); return { eligible: true }; },
+    qualify: async (id) => ({ handle: `h-${id}`, roleLabel: "Local expert", listings: [listing(`${id}-l`)] }),
+    creditedMarkets: async () => new Set(["kyoto"]),
+    now: () => new Date(0),
+    verifiedLocals: (k) => verifiedLocalIds(k, { candidates: fixture }),
+    // Every non-routable curator and owner is offered FIRST, so only the gate can be what skips them.
+    gems: async () => order.map((k, i) => ({ id: `gem-${k}`, city: "Kyoto", name: `Gem ${k}`, score: 90 - i, curatorExpertId: ex(k), curatorHandle: `h-${ex(k)}` })),
+    sliceReadyListings: async () => order.map((k) => ({
+      id: `slice-${k}`, city: "Kyoto", handle: `h-${ex(k)}`, listing: listing(`slice-${k}`), ownerUserId: ex(k),
+      latitude: "35.01", longitude: "135.76", cancellationPolicyType: "flexible",
+      action: { primary: { kind: "book", label: "Book" }, ask: ["slot"], landing: { store: "checkout", timed: true, placeAnchored: true, forksFinal: false } } as any,
+      nextOpenSlot: { date: "2099-01-01", startTime: "09:00" },
+    })),
+  });
+  const slots = result.marketSelection.slots;
+  assert.deepEqual(slots.map((s) => s.slot), [1, 2, 3]);
+  const two = slots.find((s) => s.slot === 2) as any;
+  const three = slots.find((s) => s.slot === 3) as any;
+  assert.equal(two.gem.id, "gem-ok", "slot 2: the routable curator's gem, not a higher-scored non-routable one");
+  assert.equal(two.handle, `h-${ex("ok")}`);
+  assert.equal(three.listing.id, "slice-ok", "slot 3: the routable owner's listing");
+  assert.equal("ownerUserId" in three, false, "no user id in the slot payload (LD 40)");
+  for (const k of order.slice(0, -1)) {
+    assert.equal(gated.includes(ex(k)), false, `${k} never reaches the byline gate`);
+  }
 });
