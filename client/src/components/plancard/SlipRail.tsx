@@ -279,6 +279,82 @@ function RailNote({ children, testId }: { children: React.ReactNode; testId?: st
  * THE BUILD CARD — the four ways a plan gains content, in the order the artboard draws them:
  * browse, the ONE AI action, the expert, and the entitlement that covers AI runs on this trip.
  */
+/**
+ * THE ONE AI ACTION (Locked Decision 41 (b)), as a hook (step 8b-1, ledger
+ * `2026-10-06-step8b1-slip-extraction`) so the map layout reads the same answer the rail does
+ * (§18 rule 1). Moved verbatim from `SlipRail`; `SlipRail` is its first caller.
+ */
+export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]): SlipBuildAiAction {
+  // Smoke 9 S9-1: the ONE AI action reads the SERVER's draft-gate count (non-anchor items — a plan
+  // holding only its stay is still empty to draft), from the plancard the slip already loaded.
+  const { data: planGate } = useQuery<{ draftItemCount?: number }>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: false,
+  });
+  const aiAction = slipBuildAiAction(slipDraftItemCount(planGate?.draftItemCount, activities.length));
+  return aiAction;
+}
+
+/**
+ * The "Draft it with AI" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
+ * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
+ */
+export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
+  const { toast } = useToast();
+  /**
+   * DRAFT IT WITH AI — offered ONLY on a plan with zero rows (Locked Decision 41 (b)); one row of
+   * any status and this card offers Optimize instead. It calls the EXISTING generate rail
+   * (`POST /api/ai/generate-itinerary`) with this trip's own id, so the server re-checks the same
+   * rule it owns and refuses with the 409 the shared `readSlipHasItemsRefusal` reads.
+   *
+   * IT LANDS BACK ON THE SLIP. The free draft is a SKETCH (LD 41 (c)) and the slip is where a
+   * sketch is read — the header's own `aiSketch` line says so. The endpoint also mints a
+   * comparison; this rail deliberately does not navigate there, because sending a traveler who
+   * pressed "draft my plan" to a three-variant board is the review surface Optimize is for.
+   */
+  const draftDisabledReason = slipDraftDisabledReason({
+    destination: trip.destination,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+  });
+  const draft = useMutation<FreeDraftResult, Error, void>({
+    // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1). Smoke 4 item 5:
+    // it always drafts — where to stay is recommended after the draft, never asked before it.
+    mutationFn: () => runFreeDraft(trip as any),
+    onSuccess: (result) => {
+      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
+      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
+      toast({
+        title: "Draft added to your plan",
+        description:
+          result.basisLine ?? "A starting sketch — one version, without live prices. Optimize builds around it.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Couldn't draft this plan", description: err?.message });
+    },
+  });
+
+  return (
+        <>
+          <RailRow
+            label="Draft it with AI"
+            meta="empty plan"
+            icon={<Sparkles className="w-3.5 h-3.5" />}
+            onClick={() => draft.mutate()}
+            busy={draft.isPending}
+            disabled={!!draftDisabledReason}
+            title={draftDisabledReason ?? undefined}
+            testId="slip-action-draft-ai"
+          />
+          <RailNote testId="slip-draft-note">
+            Offered only on an empty plan — one row of any status and this becomes Optimize.
+          </RailNote>
+        </>
+  );
+}
+
 function BuildCard({
   trip,
   tripId,
@@ -434,41 +510,6 @@ function BuildCard({
     }
   }
 
-  /**
-   * DRAFT IT WITH AI — offered ONLY on a plan with zero rows (Locked Decision 41 (b)); one row of
-   * any status and this card offers Optimize instead. It calls the EXISTING generate rail
-   * (`POST /api/ai/generate-itinerary`) with this trip's own id, so the server re-checks the same
-   * rule it owns and refuses with the 409 the shared `readSlipHasItemsRefusal` reads.
-   *
-   * IT LANDS BACK ON THE SLIP. The free draft is a SKETCH (LD 41 (c)) and the slip is where a
-   * sketch is read — the header's own `aiSketch` line says so. The endpoint also mints a
-   * comparison; this rail deliberately does not navigate there, because sending a traveler who
-   * pressed "draft my plan" to a three-variant board is the review surface Optimize is for.
-   */
-  const draftDisabledReason = slipDraftDisabledReason({
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-  const draft = useMutation<FreeDraftResult, Error, void>({
-    // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1). Smoke 4 item 5:
-    // it always drafts — where to stay is recommended after the draft, never asked before it.
-    mutationFn: () => runFreeDraft(trip as any),
-    onSuccess: (result) => {
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
-      toast({
-        title: "Draft added to your plan",
-        description:
-          result.basisLine ?? "A starting sketch — one version, without live prices. Optimize builds around it.",
-      });
-    },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Couldn't draft this plan", description: err?.message });
-    },
-  });
-
   // ── The expert (ONE door, ONE message control) ──────────────────────────────────────────────
 
   const optimizerBlock = (
@@ -521,23 +562,7 @@ function BuildCard({
 
       {/* THE ONE AI ACTION. Owner-only in both branches — the draft rebuilds the owner's plan and
           the optimization fee charges the signed-in traveler. */}
-      {isOwner && aiAction === "draft" && (
-        <>
-          <RailRow
-            label="Draft it with AI"
-            meta="empty plan"
-            icon={<Sparkles className="w-3.5 h-3.5" />}
-            onClick={() => draft.mutate()}
-            busy={draft.isPending}
-            disabled={!!draftDisabledReason}
-            title={draftDisabledReason ?? undefined}
-            testId="slip-action-draft-ai"
-          />
-          <RailNote testId="slip-draft-note">
-            Offered only on an empty plan — one row of any status and this becomes Optimize.
-          </RailNote>
-        </>
-      )}
+      {isOwner && aiAction === "draft" && <SlipDraftAiRow trip={trip} tripId={tripId} />}
 
       {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — rendered directly under the tools tray at
           every width through the slip's slot (a portal: the state stays here, the card moves). On a
@@ -1083,7 +1108,7 @@ function useFinalizeMutation(tripId: string) {
  * The finished state is keyed on the SAME `tripCardIsPrimary` rule the banner above the header
  * reads, passed in as `isPrimary` — one rule, read once by the caller (§18 rule 1).
  */
-function FinishCard({
+export function FinishCard({
   trip,
   isOwner,
   isPrimary,
@@ -1317,13 +1342,7 @@ export function SlipRail({
    * only enabled for the owner: the expert viewing this slip IS the advisor and has no need of a
    * card about themself.
    */
-  // Smoke 9 S9-1: the ONE AI action reads the SERVER's draft-gate count (non-anchor items — a plan
-  // holding only its stay is still empty to draft), from the plancard the slip already loaded.
-  const { data: planGate } = useQuery<{ draftItemCount?: number }>({
-    queryKey: [`/api/trips/${tripId}/plancard`],
-    enabled: false,
-  });
-  const aiAction = slipBuildAiAction(slipDraftItemCount(planGate?.draftItemCount, activities.length));
+  const aiAction = useSlipAiAction(tripId, activities);
   const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null; advisors?: SlipRailAdvisor[] }>({
     queryKey: [`/api/trips/${tripId}/expert-advisor`],
     enabled: isOwner && !!tripId,

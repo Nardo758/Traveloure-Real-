@@ -1008,3 +1008,10 @@ touched in 8a. The conversion should skip (or link) a line that already names it
 (each an exact match of the eight cities, ruling 4), so a multi-city hand-off arrives with nothing
 picked. Ruled to stay ignored in 8a. A multi-city entry would need the modal's ordered stops (LD 34)
 seeded from that list, which is its own decision.
+
+## From step 8b-1 — the slip extraction (ledger `2026-10-06-step8b1-slip-extraction`)
+
+### FU-8B1-1 — about 29 tests match `SlipView.tsx` / `SlipRail.tsx` source as text
+So `useSlipViewModel` (and the rail's exported pieces) cannot leave those files until the assertions are scoped to
+what they mean, rather than to a file path. 19 assertions in 9 tests match lines of the moved calculation block.
+The inventory is in `docs/planning/briefs/step-8b1-phase0.md` §3. Not this lane's job.
