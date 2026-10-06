@@ -220,6 +220,7 @@ const ALLOWED_ADDITIONS = {
   // Step 6 R-ay (ledger `2026-10-04-step6-trip-card`): a plan with no run sees its free findings once
   // more where it is made final — a link to Optimize, never a block on Finalize.
   "slip-finalize-free-prompt": "R-ay — the free plan's findings line on the Finish card (links to Optimize)",
+  "slip-finalize-unreachable-stops": "S12-4 (ledger `2026-10-06-smoke12-expert-fixes`) — the stops behind the reachability count, one line each with its day; a read-out under the findings line, no handler",
   // Step 6 finalize smoke: inside the 48-hour window with no final version, the banner says to make
   // the plan final instead of claiming a card is ready (no handler).
   "slip-trip-card-finalize-now": "Step 6 — 'make your plan final' in place of a false 'ready' (no handler)",
