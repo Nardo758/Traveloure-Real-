@@ -1,7 +1,7 @@
 -- 356 — city_events: the town the venue is really in (ledger `2026-10-05-event-real-city`, R338;
 -- events-page brief, lane 2L). Shape approved by the decision-maker at the 2L Phase 0 review
--- (Oct 6, 2026): "one nullable venue_locality, no default, no check, no index". HELD for the
--- founder's ruling before it is applied anywhere but a local database.
+-- (Oct 6, 2026): "one nullable venue_locality, no default, no check, no index". APPROVED by the
+-- decision-maker, Oct 6, 2026 (applied twice locally; registered after 355).
 --
 -- ONE ADDITIVE, NULLABLE COLUMN. NO DEFAULT, NO CHECK, NO INDEX, NO BACKFILL — the publish-trap
 -- posture; declared in shared/schema.ts (deploy-push durability). A publish prompt offering exactly

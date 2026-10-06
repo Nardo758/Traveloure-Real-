@@ -2128,6 +2128,13 @@ This document captures architectural decisions to maintain consistency across co
     **POOLED, NOT ASSIGNED:** a platform-owned hand-off stamps `expertId: null` (corrects
     `2026-09-18-concierge-handoff`'s stale "no branch needed" note). **RANKS LAST** by the scorer's
     own floor (`specialties: []`, no history) — no new column, no tie-break.
+    **AMENDED — THE POOL ACCOUNT IS NEVER A MATCH (decision-maker, Oct 6, 2026 — smoke-13 addendum,
+    final form; ledger `2026-10-06-smoke13-handoff-money`).** It is excluded from the public
+    `/api/experts` directory and from EVERY first-match selector — lead routing (`routeLead`, hence the
+    handoff match), the expert door's candidates and content matching's recommendations — through the
+    ONE predicate in `server/services/expert-routability.ts`; it is reached ONLY as the fallback path
+    (the handoff's 24 h concierge offer, the pooled hand-off). "Recommended for Kyoto" is never the
+    concierge. This supersedes "surfaces through the SAME two live gates" above.
     **THE CONCIERGE READS THE PLAN IT WORKS (decision-maker ratified Sep 20, 2026 — ledger
     `2026-09-20-concierge-plan-read`).** A `pending` (§12 READ-only) `trip_expert_advisors` row is
     granted at HAND-OFF (the listing owner, never the platform account) and at CLAIM (whoever
@@ -2490,6 +2497,26 @@ This document captures architectural decisions to maintain consistency across co
     expert's own `expert_note` and the author's own build stay direct. The expert is paid on APPROVAL through the
     existing R6 split, never on deliver; approval returns the pen (advisor row back to read-only `pending`). The
     Ready Made included revision is a PREPAID handoff and grants no write.
+    **AMENDED BY SMOKE 13 (decision-maker dispatch Oct 6, 2026 — ledger `2026-10-06-smoke13-handoff-money`;
+    migration 355, HELD FOR RULING).** **(a) R-n: ROUTABLE = VERIFIED + PAYABLE.** An expert is routable only when
+    their application is APPROVED, their Stripe Identity check is `verified` AND their Stripe Connect account is
+    `complete` — never the `travel_expert` role alone — and never a SEED-SOURCED account (`@example.com`,
+    `traveloure.test`, `traveloure-qa.test`, the named beta-seed personas; a belt-and-braces CI test reads every seed file) nor the
+    concierge pool account. ONE predicate, `server/services/expert-routability.ts`, read by EVERY selector:
+    `routeLead` (hence `matchHandoff`), the expert door, content matching, and the public `/api/experts`
+    directory (list and counts — Pending, unverified and unpayable accounts never appear).
+    `SHOW_DEMO_EXPERTS=1` relaxes ONLY the seed-domain clause, for every reader alike — approval, Identity and
+    Connect are never relaxed, and the pool account never passes. CI sets it in `ci-db-setup` for its seeded
+    fixtures (the Kyoto door fixture lives on `traveloure-qa.test` and refuses NODE_ENV=production); production
+    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
+    with `captured: false`; 355 marks the rows it already wrote `voided_uncaptured` (never deleted). **(c)** The
+    expert is NAMED to the traveler only after ACCEPT (`handoffExpertDisclosed`); the banner names the city
+    ("Kyoto"). **(d)** A traveler's withdraw cancels the hold with `requested_by_customer`, only the 48 h timer with
+    `abandoned`; the banner confirms "Request withdrawn — hold released". **(e)** The hold's PaymentIntent names
+    its request (`metadata.handoffRequestId`); the hold sheet's Payment Element hides Link (`wallets.link: 'never'` —
+    Stripe cannot exclude Link on a PaymentIntent) so "Place the hold" is its one action — amending LD 43(c) for
+    this sheet only. **(f)** The Stripe guest
+    customer stays (saved cards later).
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
