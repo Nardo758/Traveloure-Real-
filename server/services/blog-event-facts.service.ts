@@ -61,6 +61,14 @@ export interface EventGuideFacts {
    * omits it): the draft carries no links, the post's source list does.
    */
   venueFactSources: Array<{ url: string; title: string; publisher: string; retrievedAt: Date }>;
+  /**
+   * The event page's "Good to know" (ledger `2026-10-06-event-page`, events-page brief 2b item 22):
+   * ONLY the facts `publicFactAttribution` can credit — an official source marked public_ok, of an
+   * operational type (ruling R-p) — each carrying its own "from <source>" link and "checked <date>".
+   * A fact that is publishable some other way but cannot be attributed is not here. NEVER in the
+   * prompt (`promptFacts` omits it), like `venueFactSources`.
+   */
+  attributedFacts: Array<{ factType: string; text: string; label: string; sourceName: string; sourceUrl: string; checked: string }>;
   /** Closest neighbourhoods first, by the matrix's ORDER only. No minutes, ever. */
   stayNear: Array<{ rank: number; neighbourhood: string }>;
   /** Other live events in the same city that week. */
@@ -120,6 +128,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), isNull(placeFacts.supersededBy)));
   const venueFacts: EventGuideFacts["venueFacts"] = [];
   const venueFactSources: EventGuideFacts["venueFactSources"] = [];
+  const attributedFacts: EventGuideFacts["attributedFacts"] = [];
   for (const r of factRows) {
     const f = r.fact;
     if (asFactOrigin(f.origin) === null) continue;
@@ -139,6 +148,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     if (text === "") continue;
     venueFacts.push({ factType: f.factType, text });
     const credit = publicFactAttribution(view);
+    if (credit) attributedFacts.push({ factType: f.factType, text, ...credit });
     if (credit && !venueFactSources.some((s) => s.url === credit.sourceUrl)) {
       venueFactSources.push({ url: credit.sourceUrl, title: credit.label, publisher: credit.checked, retrievedAt: new Date(f.fetchedAt) });
     }
@@ -195,6 +205,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     },
     venueFacts,
     venueFactSources,
+    attributedFacts,
     stayNear,
     alsoOn,
   };

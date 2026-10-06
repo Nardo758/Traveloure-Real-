@@ -280,4 +280,21 @@ router.get("/api/city-events/calendar", async (_req, res) => {
   }
 });
 
+// An event's own page (ledger `2026-10-06-event-page`, events-page brief 2b, ruling E2): the event
+// `/events/<source_id>` names. Public, read-only. Unknown, withdrawn, non-renderable and ambiguous
+// (two live rows share the id — logged) are ONE 404, never an empty shell. Registered AFTER
+// `upcoming` and `calendar`, which are fixed words and keep their meaning.
+router.get("/api/city-events/:sourceId", async (req, res) => {
+  try {
+    const { loadEventPage } = await import("../services/event-page.service");
+    const page = await loadEventPage(String(req.params.sourceId));
+    if (!page) return res.status(404).json({ message: "This event is not on our calendar." });
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json(page);
+  } catch (e: any) {
+    console.error("[city-events] event page read failed:", e?.message);
+    return res.status(503).json({ message: "This event could not be read right now." });
+  }
+});
+
 export default router;

@@ -133,6 +133,11 @@ or cookie value).
   (`DOORS_THAT_START_A_NEW_PLAN`) and opens the modal at When (D1). Its occasion arrives resolved, so its
   `occasionSource` is `door_prefilled`. The list stays closed and stated once in `shared/slip-funnel-events.ts`.
   The Events lane's `event_detail` (2b) amends this same list; whichever merges second rebases.
+- **Amendment 2026-10-06 (ledger `2026-10-06-event-page`; events-page brief 2b, ruling E3; decision-maker
+  dispatch "2b").** One door joins the list: `event_detail` (an event's own page, `/events/<source_id>`, its "Plan
+  around it"). It sends the same anchor `events_page` sends, built by the same `planAroundSource` from the page's
+  LIVE event row, so the funnel can tell the page from the list. It starts a new plan
+  (`DOORS_THAT_START_A_NEW_PLAN`), as the list does. Rebased onto `experiences` (8a, R346): the list holds 16.
 - **Amendment 2026-09-29 (ledger `2026-09-29-expert-door`; decision-maker dispatch "expert door").** The dispatch
   asked for a door value `modal_expert`. A door names where the traveler ENTERED the modal; "Get a local expert" is a
   way to build chosen at its END, so it is recorded as a separate property rather than a door (a plan that entered by

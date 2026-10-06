@@ -4,14 +4,15 @@
  * "Coming up" block; the landing strip is untouched.
  *
  * Each row: title, city, venue, local dates, the start time only when the organizer published
- * one, and "Plan around it" — the existing `planAroundSource(event, "events_page")` door. There is
- * no "Event details" link until the event page exists (brief item 13: no dead link).
+ * one, and "Plan around it" — the existing `planAroundSource(event, "events_page")` door — and
+ * "Event details", the event's own page (2b, ledger `2026-10-06-event-page`; brief item 25).
  */
 import { Link } from "wouter";
 import { cityEventPhoto, countdownLabel } from "@shared/city-events";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { resolveBillboardCredit, type PhotoAttribution } from "@shared/landing-billboard";
 import {
+  eventDetailPath,
   eventPlace,
   eventTag,
   eventWhen,
@@ -55,6 +56,19 @@ function PlanButton({ event, filled, onPlanAround }: { event: CalendarEvent; fil
     >
       Plan around it
     </button>
+  );
+}
+
+function DetailsLink({ event }: { event: CalendarEvent }) {
+  return (
+    <Link
+      href={eventDetailPath(event.sourceId)}
+      className="inline-flex min-h-[36px] items-center text-[13px] font-semibold underline-offset-2 hover:underline"
+      style={{ color: "var(--earn-coral-ink)" }}
+      data-testid={`events-details-${event.id}`}
+    >
+      Event details
+    </Link>
   );
 }
 
@@ -125,8 +139,9 @@ function EventRow({
         )}
         <div className="flex flex-col gap-[5px] px-4 pb-4 pt-3">
           {body}
-          <div className="mt-1">
+          <div className="mt-1 flex flex-wrap items-center gap-3">
             <PlanButton event={event} filled onPlanAround={onPlanAround} />
+            <DetailsLink event={event} />
           </div>
         </div>
       </article>
@@ -138,8 +153,9 @@ function EventRow({
       <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
         <div className="flex flex-wrap items-center justify-between gap-2">{chipEl}</div>
         {body}
-        <div className="mt-1">
+        <div className="mt-1 flex flex-wrap items-center gap-3">
           <PlanButton event={event} filled={false} onPlanAround={onPlanAround} />
+          <DetailsLink event={event} />
         </div>
       </div>
     </article>

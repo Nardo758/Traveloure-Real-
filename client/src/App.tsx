@@ -128,6 +128,7 @@ const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
 const ExpertsPage = lazy(() => import("@/pages/experts"));
 const DiscoverPage = lazy(() => import("@/pages/discover"));
+const EventDetailPage = lazy(() => import("@/pages/event-detail"));
 const DiscoverLocationPage = lazy(() => import("@/pages/discover-location"));
 const ContactPage = lazy(() => import("@/pages/contact"));
 const FeaturesPage = lazy(() => import("@/pages/features"));
@@ -472,6 +473,10 @@ function Router() {
       </Route>
       <Route path="/ready-made">
         <BrowseShell><DiscoverPage surface="packages" /></BrowseShell>
+      </Route>
+      {/* An event's own page (ledger `2026-10-06-event-page`, events-page brief 2b, ruling E2). */}
+      <Route path="/events/:sourceId">
+        <BrowseShell><EventDetailPage /></BrowseShell>
       </Route>
       <Route path="/events">
         <BrowseShell><DiscoverPage surface="events" /></BrowseShell>

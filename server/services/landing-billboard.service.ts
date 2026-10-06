@@ -40,8 +40,11 @@ import { parseCoord } from "./advisor-fundamentals.service";
 import { buildListingBuyActions, hasPublishedPrice, resolveNextAvailableSlots, type ListingBuyRow } from "./buy-action-payload";
 import type { BuyAction } from "@shared/buy-action";
 
-/** Candidates: experts with a VERIFIED neighbourhood whose city resolves to the market. */
-async function candidateExpertIds(marketKey: string): Promise<string[]> {
+/**
+ * Candidates: experts with a VERIFIED neighbourhood whose city resolves to the market. Exported for
+ * the event page's "N verified in <city>" (ledger `2026-10-06-event-page`): the same count, read once.
+ */
+export async function candidateExpertIds(marketKey: string): Promise<string[]> {
   const rows = await db.execute(sql`
     SELECT DISTINCT en.expert_id AS id, cn.city AS city
       FROM expert_neighborhoods en

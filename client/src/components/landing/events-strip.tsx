@@ -42,7 +42,7 @@ function formatDay(date: string): string {
  * Which surface a "Plan around it" press came from — the funnel door (slip-funnel-events.md §3.1,
  * amended 2026-09-28): the landing strip is `event_strip`, /events "What's on" is `events_page`.
  */
-export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page" | "blog_post">;
+export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page" | "blog_post" | "event_detail">;
 
 /** The PlanningSource "Plan around it" opens — the event row's own facts only, plus the door. */
 export function planAroundSource(
