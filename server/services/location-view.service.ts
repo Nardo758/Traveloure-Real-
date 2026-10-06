@@ -19,6 +19,7 @@
 
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
+import { notConciergePoolListingSql } from "./expert-routability";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
@@ -531,6 +532,8 @@ class LocationViewService {
           // public city page. `status='active'` is the OWNER's on/off switch — it is NOT
           // an approval, and was never a substitute for one.
           eq(providerServices.approvalStatus, "approved"),
+          // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
+          await notConciergePoolListingSql(providerServices.userId),
           // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
           // fallback for rows that predate the server-side derivation (see cityScopePredicate).
           cityScopePredicate(cityName),
