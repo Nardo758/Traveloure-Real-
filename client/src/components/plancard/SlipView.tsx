@@ -325,7 +325,7 @@ function expertFirstName(data: SlipData): string | null {
 
 // ── SlipHeader ─────────────────────────────────────────────────────────────────────────
 
-function SlipHeader({
+export function SlipHeader({
   data,
   hasOptimized,
   eventCount,
@@ -1357,7 +1357,19 @@ function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
 
 // ── SlipView ───────────────────────────────────────────────────────────────────────────
 
-export function SlipView({
+/**
+ * THE SLIP'S VIEW MODEL (step 8b-1, ledger `2026-10-06-step8b1-slip-extraction`; step 8 brief rev 3.1, item 8).
+ *
+ * Every calculation `SlipView` makes before it renders — its queries, its state and its derivations —
+ * moved here VERBATIM, so the list layout below and the map layout 8b-2 adds read ONE model and can
+ * never disagree (§18 rule 1). Nothing in it changed in the move: same queries, same keys, same
+ * `enabled:` conditions (the neighbourhood and versions reads still wait for `slipView === "map"`, so
+ * the list view's network traffic is unchanged), same derivations.
+ *
+ * It lives in THIS file on purpose: about 29 tests read `SlipView.tsx` as text and match lines of this
+ * block, so it cannot leave the file until those assertions are scoped (FOLLOWUPS.md).
+ */
+export function useSlipViewModel({
   tripId,
   data,
   highlightItemId,
@@ -1853,6 +1865,162 @@ export function SlipView({
 
   const stopsLine = slipStopsLine(data.trip?.destination, data.destinations);
   const zoneLine = slipZoneLine(data.trip?.timezone);
+
+  return {
+    days,
+    isOwner,
+    isExpertViewer,
+    viewer,
+    canEditItems,
+    expertName,
+    openPlanModal,
+    hasAdvisor,
+    expertDoorState,
+    setExpertDoorState,
+    expertDoorLive,
+    hasOptimized,
+    isPrimary,
+    cardReady,
+    allActivities,
+    slipView,
+    setSlipView,
+    mapDay,
+    setMapDay,
+    hasBookableRows,
+    locatedActivities,
+    unlocatedActivities,
+    mapBrowse,
+    setMapBrowse,
+    openFindHost,
+    mapDisabledReason,
+    rowRefs,
+    highlighted,
+    sortedDays,
+    optionSets,
+    anchorItemId,
+    anchorSetCategory,
+    canWriteSets,
+    whereToStay,
+    anchorSurface,
+    optimizerSlot,
+    setOptimizerSlot,
+    anchorPanelEmpty,
+    planEvents,
+    groupByEvent,
+    experienceGroup,
+    tripsAnchor,
+    currentStay,
+    renderAnchorPanel,
+    daySlots,
+    dayByNum,
+    dayOpen,
+    setDayOpen,
+    lastDayNum,
+    showTravelAnchors,
+    openTool,
+    setOpenTool,
+    mapAnchor,
+    shading,
+    mapAreas,
+    dayPhotoItemId,
+    dayPhotos,
+    detailsRequests,
+    setDetailsRequests,
+    mapVersions,
+    tripAnchors,
+    renderAirportLeg,
+    budgetLine,
+    partyLabel,
+    askParty,
+    stopsLine,
+    zoneLine,
+    occasion,
+    occasionIsHidden,
+    occasionResolved,
+  };
+}
+
+export function SlipView({
+  tripId,
+  data,
+  highlightItemId,
+}: {
+  tripId: string;
+  data: SlipData;
+  highlightItemId?: string | null;
+}) {
+  const {
+    days,
+    isOwner,
+    isExpertViewer,
+    viewer,
+    canEditItems,
+    expertName,
+    openPlanModal,
+    hasAdvisor,
+    expertDoorState,
+    setExpertDoorState,
+    expertDoorLive,
+    hasOptimized,
+    isPrimary,
+    cardReady,
+    allActivities,
+    slipView,
+    setSlipView,
+    mapDay,
+    setMapDay,
+    hasBookableRows,
+    locatedActivities,
+    unlocatedActivities,
+    mapBrowse,
+    setMapBrowse,
+    openFindHost,
+    mapDisabledReason,
+    rowRefs,
+    highlighted,
+    sortedDays,
+    optionSets,
+    anchorItemId,
+    anchorSetCategory,
+    canWriteSets,
+    whereToStay,
+    anchorSurface,
+    optimizerSlot,
+    setOptimizerSlot,
+    anchorPanelEmpty,
+    planEvents,
+    groupByEvent,
+    experienceGroup,
+    tripsAnchor,
+    currentStay,
+    renderAnchorPanel,
+    daySlots,
+    dayByNum,
+    dayOpen,
+    setDayOpen,
+    lastDayNum,
+    showTravelAnchors,
+    openTool,
+    setOpenTool,
+    mapAnchor,
+    shading,
+    mapAreas,
+    dayPhotoItemId,
+    dayPhotos,
+    detailsRequests,
+    setDetailsRequests,
+    mapVersions,
+    tripAnchors,
+    renderAirportLeg,
+    budgetLine,
+    partyLabel,
+    askParty,
+    stopsLine,
+    zoneLine,
+    occasion,
+    occasionIsHidden,
+    occasionResolved,
+  } = useSlipViewModel({ tripId, data, highlightItemId });
 
   return (
     <div

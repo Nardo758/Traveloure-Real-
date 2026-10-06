@@ -111,6 +111,13 @@ Until 8b-2 a new plan lands on the slip's list view, as today, and the old slug 
 
 ## 8b-2 — The map layout of the plan
 
+> **Two mount counts (recorded by 8b-1, ledger `2026-10-06-step8b1-slip-extraction`; decision-maker go Oct 6).**
+> `SavePaymentMethodPrompt` is mounted in exactly two files (`SlipView.tsx`, `TripPassCard.tsx`;
+> `save-payment-prompt.test.ts` A6, LD 43(d)), and `<TripPassCard` exactly once, in `SlipRail.tsx`
+> (`slip-rail.test.ts` S8). The map layout **reuses** these through the existing components and never mounts them a
+> second time. 8b-1 exposes `useSlipViewModel` and `SlipHeader` (from `SlipView.tsx`), and `useSlipAiAction`,
+> `SlipDraftAiRow` and `FinishCard` (from `SlipRail.tsx`), for this layout to use.
+
 Boards: `ExperienceMap`, `ExperienceMapMobile` (member states; the guest add-gate states are 8d). The
 board file name is unrelated to the old `ExperienceMap` component, which 8c deletes.
 
