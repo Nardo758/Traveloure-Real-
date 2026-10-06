@@ -14,6 +14,11 @@ export function opensOnMap(branch: LandingBranch | string, door: string | null |
   return branch === "ai" || (branch === "myself" && door === "experiences");
 }
 
+/** The landing's query suffix alone — `"?view=map"` or `""` — for a caller that builds the path. */
+export function planLandingQuery(branch: LandingBranch | string, door?: string | null): string {
+  return opensOnMap(branch, door) ? "?view=map" : "";
+}
+
 export function planLandingPath(tripId: string, branch: LandingBranch | string, door?: string | null): string {
-  return opensOnMap(branch, door) ? `/plans/${tripId}?view=map` : `/plans/${tripId}`;
+  return `/plans/${tripId}${planLandingQuery(branch, door)}`;
 }

@@ -42,7 +42,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getQueryFn, queryClient } from '@/lib/queryClient';
 import { readSlipHasItemsRefusal, slipHref, type AiDraftRefusal } from '@/lib/ai-draft-refusal';
 import { refreshPlanLists } from "@/lib/plan-lists";
-import { planLandingPath } from "@/lib/plan-landing";
+import { planLandingQuery } from "@/lib/plan-landing";
 
 /**
  * The five FROZEN coarse occasion keys the generator accepts (ruling `2026-09-01-moment-key`).
@@ -392,7 +392,7 @@ export default function EnhancedPlanningModal({
         }
         onClose();
         // Step 8b-2 (D4): a draft finished on branch `ai` lands on the plan's map view.
-        setLocation(planLandingPath(data.tripId, "ai"));
+        setLocation(`/plans/${data.tripId}${planLandingQuery("ai")}`);
       } else {
         throw new Error('No plan was returned from the server');
       }
