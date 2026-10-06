@@ -17,8 +17,8 @@
  *   T2  DashboardLayout and DashboardSidebar carry NO raw console hex literals in
  *       code — the sidebar and frame READ the tokens (var(--console-*)), so the
  *       palette has one author (`index.css`), not three.
- *   T3  `.console-scope` in index.css still defines the coral primary
- *       (3 76% 62% = #E85D55) — the token the whole grammar hangs on.
+ *   T3  `.console-scope` in index.css still defines the coral primary — the coral FILL
+ *       (3 55.8% 51.2% = #C8443D, R337) — and keeps the #E85D55 accent on its ring.
  *   T4  BrowseShell is the ONE chrome chooser (§18 rule 1): it reads the session
  *       (useAuth) and renders DashboardLayout for a signed-in traveler, the
  *       public Layout for a guest — never per-route improvisation.
@@ -72,7 +72,10 @@ describe("console grammar — one scope, tokens only", () => {
   it("T3 .console-scope still defines the coral primary", () => {
     const css = readClient("index.css");
     const scope = css.slice(css.indexOf(".console-scope {"));
-    assert.match(scope, /--primary:\s*3 76% 62%/, ".console-scope must define --primary as coral (3 76% 62% = #E85D55)");
+    // Ledger `2026-10-05-coral-three-tokens` (R337): the console's fills take the coral FILL #C8443D;
+    // its focus ring stays the #E85D55 accent.
+    assert.match(scope, /--primary:\s*3 55\.8% 51\.2%/, ".console-scope must define --primary as the coral fill (3 55.8% 51.2% = #C8443D)");
+    assert.match(scope, /--ring:\s*3 76% 62%/, "the console focus ring stays the coral accent (#E85D55)");
     assert.match(scope, /--console-brand:\s*#E85D55/, "the raw console-brand token must exist for inline styles");
   });
 

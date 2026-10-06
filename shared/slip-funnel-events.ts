@@ -45,6 +45,9 @@ export const PLAN_DOORS = [
   // Amended 2026-09-30 (slip-funnel-events.md §3.1; ledger `2026-09-30-blog-event-guide`): an event
   // post's "Start this plan" door.
   "blog_post",
+  // Amended 2026-10-06 (slip-funnel-events.md §3.1; ledger `2026-10-06-step8a-experiences-entry`): the
+  // /experiences start page's Continue (step 8 D4).
+  "experiences",
 ] as const;
 export type PlanDoor = (typeof PLAN_DOORS)[number];
 

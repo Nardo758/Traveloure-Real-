@@ -481,6 +481,11 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin
         run: npx tsx --test client/src/lib/__tests__/api-refusal.test.ts
+      # Ledger `2026-10-05-coral-three-tokens` (R337) / `2026-10-05-coral-fill-contrast` (R333): white text
+      # on the coral fill reaches 4.5:1. Reads the TOKENS in index.css; sites painting white on the accent
+      # or a raw hex are Lane 1's retokenization and coral check script, not this pin.
+      - name: Coral fill contrast pin
+        run: npx tsx --test client/src/lib/__tests__/coral-fill-contrast.test.ts
       # R144 (ledger `2026-09-27-service-fee-before-checkout`): the ONE wording/omission rule the
       # cart and the slip read for the pre-checkout traveler service fee — no answer is never "$0",
       # a covered fee is never shown as the fee charged.

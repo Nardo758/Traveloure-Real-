@@ -199,6 +199,7 @@ test.describe("1 · entry and occasion", () => {
     // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b5-dates-days-and-nights`).
     await signedInTraveler(page, "b5");
     await openModalFromHero(page);
+    await testid(page, "occasion-group-trips").click();
     await testid(page, "option-occasion-travel").click();
     const next = testid(page, "button-planning-next");
     await next.click();
@@ -231,6 +232,7 @@ test.describe("1 · entry and occasion", () => {
 
     // 1. The wedding: two events, Nov 24–26, minted through "Plan it myself".
     await openModalFromHero(page);
+    await testid(page, "occasion-group-hosted_events").click();
     await testid(page, "option-occasion-wedding").click();
     await next.click();
     await testid(page, "input-etp-destination").fill(KYOTO);
@@ -246,7 +248,8 @@ test.describe("1 · entry and occasion", () => {
 
     // 2. A new Travel plan from the hero: Nov 11–15, with a name.
     await openModalFromHero(page);
-    await expect(testid(page, "option-occasion-travel"), "a new plan asks its own occasion").toBeVisible();
+    await expect(testid(page, "occasion-group-trips"), "a new plan asks its own occasion").toBeVisible();
+    await testid(page, "occasion-group-trips").click();
     await testid(page, "option-occasion-travel").click();
     await next.click();
     await expect(testid(page, "input-etp-destination"), "nothing is carried from the bound plan").toHaveValue("");
@@ -313,7 +316,7 @@ test.describe("1 · entry and occasion", () => {
     await card.click();
     await testid(page, "button-plan-now-kyoto").last().click();
     expect(await appears(testid(page, "plan-modal"), 10_000), "the one planning modal opens").toBe(true);
-    await expect(testid(page, "option-occasion-travel"), "a new plan asks its own occasion").toBeVisible();
+    await expect(testid(page, "occasion-group-trips"), "a new plan asks its own occasion").toBeVisible();
     const next = testid(page, "button-planning-next");
     const walkTo = async (id: string) => {
       for (let i = 0; i < 8 && !(await appears(testid(page, id), 800)); i++) {
@@ -323,6 +326,7 @@ test.describe("1 · entry and occasion", () => {
       expect(await appears(testid(page, id), 3000), `the modal reaches ${id}`).toBe(true);
     };
     const year = new Date().getFullYear() + 1;
+    await testid(page, "occasion-group-trips").click();
     await testid(page, "option-occasion-travel").click();
     await next.click();
     await expect(testid(page, "input-etp-destination"), "the door's city is pre-filled").toHaveValue(/Kyoto/);

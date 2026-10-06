@@ -539,6 +539,9 @@ This document captures architectural decisions to maintain consistency across co
     nothing could fill. Step 5 is visible only when `showsSchedule(row)` is true (NULL ⇒ not shown,
     the plain-plan shape); steps 2 and 3 are NEVER skipped (`destination`/`start_date`/`end_date`
     are NOT NULL); step 4 is always visible and always skippable — untouched ⇒ NULL, never 2.
+    **AMENDED (step 8 D1, ledger `2026-10-06-step8a-experiences-entry`):** the `experiences` door ONLY
+    may OPEN at When, and only with a resolved occasion and a city, because the `/experiences` page
+    itself asked Where; step 2 stays visible and reachable by Back. Every other door is unchanged.
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
@@ -1834,6 +1837,10 @@ This document captures architectural decisions to maintain consistency across co
     ONE token each — fill `#C8443D`, text `#B8403A`, accent/outline `#E85D55`; `.console-scope` fills
     (`--primary`, `--sidebar-primary`, `--console-brand` as a background) take the fill, focus rings stay the
     accent; a guard-batch check fails on any coral literal outside the three token definitions (Lane 1).
+    **The tokens and the `--primary` move LANDED (ledger `2026-10-06-coral-fill-tokens`):** `--coral-fill`,
+    `--coral-text`, `--coral-accent` in `:root`; `--primary` (public and `.console-scope`) is the fill with a
+    darker hover; `--ring` stays the accent; the 4.5:1 pin is `coral-fill-contrast.test.ts`. Still Lane 1's:
+    `--sidebar-primary`, `--console-brand`, the `--earn-coral-ink` fill sites, the text sites and the check script.
 
 46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
     WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all

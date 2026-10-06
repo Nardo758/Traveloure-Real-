@@ -153,3 +153,80 @@ export function tripsAnchorLine(anchor: TripsAnchor, s: TripsAnchorState): strin
   }
   return lodging ? "Where you'll stay: not chosen yet" : "Built around: nothing fixed yet";
 }
+
+// ── THE OCCASION PICKER'S FIVE GROUPS (step 8a, ledger `2026-10-06-step8a-experiences-entry`) ──────
+/**
+ * The ONE home of the five group labels the occasion picker draws (step 8 brief rev 3.1, 8a item 4).
+ * The `/experiences` start page and the planning modal's occasion step render the SAME picker, so
+ * both read these words from here and nowhere else (§18 rule 1). R127 still holds: the KEY is never
+ * rendered — only its label, and only on the picker. `plain_plan` has NO label and never gets a sixth
+ * group: a row whose switches are not set appears only under "See all occasions" and in search (§13 —
+ * never filed under a nearest-looking group).
+ */
+export type OccasionPickerGroup = Exclude<ExperienceGroup, "plain_plan">;
+
+/** Picker order, left to right. */
+export const OCCASION_GROUP_ORDER: readonly OccasionPickerGroup[] = [
+  "trips",
+  "moments",
+  "celebrations",
+  "hosted_events",
+  "group_travel",
+];
+
+export const OCCASION_GROUP_LABELS: Readonly<Record<OccasionPickerGroup, string>> = {
+  trips: "A trip",
+  moments: "One evening",
+  celebrations: "A celebration",
+  hosted_events: "A hosted event",
+  group_travel: "A group getaway",
+};
+
+export interface GroupedOccasions<T> {
+  /** The five groups in picker order, each with its rows in catalog order. A group with no rows is
+   *  OMITTED — a button that opens onto nothing is a claim the catalog does not back. */
+  groups: Array<{ key: OccasionPickerGroup; label: string; rows: T[] }>;
+  /** Rows whose switches are not set (`plain_plan`). Reachable only through See all and search. */
+  ungrouped: T[];
+}
+
+/** Sort the catalog rows into the picker's groups with `experienceGroupFor` — no hardcoded slug list. */
+export function groupOccasions<T extends ExperienceGroupRow>(rows: readonly T[] | null | undefined): GroupedOccasions<T> {
+  const byKey = new Map<OccasionPickerGroup, T[]>();
+  const ungrouped: T[] = [];
+  for (const row of rows ?? []) {
+    const g = experienceGroupFor(row);
+    if (g === "plain_plan") {
+      ungrouped.push(row);
+      continue;
+    }
+    const list = byKey.get(g) ?? [];
+    list.push(row);
+    byKey.set(g, list);
+  }
+  const groups = OCCASION_GROUP_ORDER.filter((k) => (byKey.get(k) ?? []).length > 0).map((key) => ({
+    key,
+    label: OCCASION_GROUP_LABELS[key],
+    rows: byKey.get(key)!,
+  }));
+  return { groups, ungrouped };
+}
+
+/** The picker's search: a case-insensitive match on the occasion's own name or description, over
+ *  EVERY row (grouped or not), in catalog order. An empty query matches every row. */
+export function searchOccasions<T extends ExperienceGroupRow & { description?: string | null }>(
+  rows: readonly T[] | null | undefined,
+  query: string,
+): T[] {
+  const q = query.trim().toLowerCase();
+  const all = [...(rows ?? [])];
+  if (!q) return all;
+  return all.filter((r) => `${r.name ?? ""} ${r.description ?? ""}`.toLowerCase().includes(q));
+}
+
+/** The group a picked occasion sits in, so a re-opened picker shows it. `null` for an ungrouped row. */
+export function occasionPickerGroupFor(row: ExperienceGroupRow | null | undefined): OccasionPickerGroup | null {
+  if (!row) return null;
+  const g = experienceGroupFor(row);
+  return g === "plain_plan" ? null : g;
+}
