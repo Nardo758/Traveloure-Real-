@@ -1539,6 +1539,66 @@ router.get("/ready-made/:id", async (req, res, next) => {
   }
 });
 
+// Slice B1 (work plan L3-14; ledger `2026-10-05-rmt-public-preview`): server-side OG/Twitter tags for
+// the Ready Made Trip's public preview `/t/<slug>` — the URL a Story link sticker, a bio link or a
+// WhatsApp share carries, so the card must be in the initial HTML. Same gate as the preview read
+// (approved + active, token-authoritative slug); an unknown or non-public slug falls through to the
+// SPA, which renders its own "not found". A stale slug (retitled listing) 301s to the canonical one.
+// og:type is `product`; every tag is a real listing field (§13), og:image the cover or the site card.
+router.get("/t/:slug", async (req, res, next) => {
+  try {
+    const { loadReadyMadePreview } = await import("../services/ready-made-preview.service");
+    const preview = await loadReadyMadePreview(req.params.slug);
+    if (!preview) return next();
+    if (preview.slug !== req.params.slug) return res.redirect(301, preview.path);
+
+    const title = `${preview.title} | Traveloure`;
+    const description = [
+      `A ${preview.durationDays}-day ${preview.planLabel.toLowerCase()} for ${preview.market} by ${preview.expert.name}${preview.expert.localVerified ? ", a verified local" : ""}.`,
+      preview.priceLine,
+      "See a sample day, then get the whole trip.",
+    ].filter(Boolean).join(" ");
+    const shareUrl = `https://traveloure.com${preview.path}`;
+    const ogImage = preview.heroImageUrl ?? "https://traveloure.com/og-cover.png";
+    const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const ogTags = [
+      `<title>${esc(title)}</title>`,
+      `<meta name="description" content="${esc(description)}" />`,
+      `<link rel="canonical" href="${esc(shareUrl)}" />`,
+      `<meta property="og:type" content="product" />`,
+      `<meta property="og:url" content="${esc(shareUrl)}" />`,
+      `<meta property="og:title" content="${esc(title)}" />`,
+      `<meta property="og:description" content="${esc(description)}" />`,
+      `<meta property="og:image" content="${esc(ogImage)}" />`,
+      `<meta property="og:site_name" content="Traveloure" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:title" content="${esc(title)}" />`,
+      `<meta name="twitter:description" content="${esc(description)}" />`,
+      `<meta name="twitter:image" content="${esc(ogImage)}" />`,
+    ].join("\n    ");
+
+    const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
+    const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+    const templatePath =
+      process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+        ? clientTemplateProd
+        : clientTemplateDev;
+    if (!fs.existsSync(templatePath)) return next();
+    let template = fs.readFileSync(templatePath, "utf-8");
+    template = template.replace(/<meta property="og:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<meta name="twitter:[^"]+"[^>]*>\s*/g, "");
+    template = template.replace(/<link rel="canonical"[^>]*>\s*/, "");
+    template = template.replace(/<title>[\s\S]*?<\/title>\s*/, "");
+    template = template.replace(/<meta name="description"[^>]*>\s*/, "");
+    template = injectIntoHead(template, ogTags);
+    template = await transformDevHtml(req.originalUrl, template);
+    return res.status(200).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[storefront] OG injection error (t/:slug):", err);
+    return next();
+  }
+});
+
 // ── Notification email (migration 224) ─────────────────────────────────────
 // GET  /api/me/notification-email  — return current value (null if unset)
 // PATCH /api/me/notification-email — set or clear; earner-only, own record only

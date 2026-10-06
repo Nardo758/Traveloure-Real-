@@ -44,6 +44,28 @@ export function decideBylineEligibility(f: BylineFacts): BylineDecision {
   return { eligible: true };
 }
 
+/**
+ * The markets in which this expert holds a VERIFIED neighbourhood (`expert_neighborhoods.verified_at`,
+ * LD 27) — the byline gate's fact 4, and the Ready Made preview's "local · verified" stamp (Slice B1).
+ * ONE reading of "verified in a market" (§18 rule 1).
+ */
+export async function loadVerifiedMarkets(expertId: string): Promise<string[]> {
+  const n = await db.execute(sql`
+    SELECT DISTINCT cn.city
+      FROM expert_neighborhoods en
+      JOIN city_neighborhoods cn ON cn.id = en.neighborhood_id
+     WHERE en.expert_id = ${expertId}
+       AND en.verified_at IS NOT NULL
+  `);
+  return Array.from(
+    new Set(
+      (n.rows as any[])
+        .map((r) => resolveMarketSlug(String(r.city ?? "")))
+        .filter((m): m is string => typeof m === "string" && m.length > 0),
+    ),
+  );
+}
+
 export async function loadBylineFacts(expertId: string, marketSlug: string | null): Promise<BylineFacts> {
   const approved = await isExpertApproved(expertId);
   const u = await db.execute(sql`SELECT handle FROM users WHERE id = ${expertId} LIMIT 1`);
@@ -54,20 +76,7 @@ export async function loadBylineFacts(expertId: string, marketSlug: string | nul
     const { loadStorefront } = await import("../routes/storefront.routes");
     storefrontLive = (await loadStorefront(handle)) != null;
   }
-  const n = await db.execute(sql`
-    SELECT DISTINCT cn.city
-      FROM expert_neighborhoods en
-      JOIN city_neighborhoods cn ON cn.id = en.neighborhood_id
-     WHERE en.expert_id = ${expertId}
-       AND en.verified_at IS NOT NULL
-  `);
-  const verifiedMarkets = Array.from(
-    new Set(
-      (n.rows as any[])
-        .map((r) => resolveMarketSlug(String(r.city ?? "")))
-        .filter((m): m is string => typeof m === "string" && m.length > 0),
-    ),
-  );
+  const verifiedMarkets = await loadVerifiedMarkets(expertId);
   return { marketSlug, approved, handle, storefrontLive, verifiedMarkets };
 }
 
