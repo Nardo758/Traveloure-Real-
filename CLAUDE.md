@@ -2495,12 +2495,14 @@ This document captures architectural decisions to maintain consistency across co
     migration 355, HELD FOR RULING).** **(a) R-n: ROUTABLE = VERIFIED + PAYABLE.** An expert is routable only when
     their application is APPROVED, their Stripe Identity check is `verified` AND their Stripe Connect account is
     `complete` — never the `travel_expert` role alone — and never a SEED-SOURCED account (`@example.com`,
-    `traveloure.test`, the named beta-seed personas; a belt-and-braces CI test reads every seed file) nor the
+    `traveloure.test`, `traveloure-qa.test`, the named beta-seed personas; a belt-and-braces CI test reads every seed file) nor the
     concierge pool account. ONE predicate, `server/services/expert-routability.ts`, read by EVERY selector:
     `routeLead` (hence `matchHandoff`), the expert door, content matching, and the public `/api/experts`
     directory (list and counts — Pending, unverified and unpayable accounts never appear).
-    `SHOW_DEMO_EXPERTS=1` relaxes the DIRECTORY only (CI sets it in `ci-db-setup` for its seeded fixtures; never
-    production). The routing status word is `proposed`. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
+    `SHOW_DEMO_EXPERTS=1` relaxes ONLY the seed-domain clause, for every reader alike — approval, Identity and
+    Connect are never relaxed, and the pool account never passes. CI sets it in `ci-db-setup` for its seeded
+    fixtures (the Kyoto door fixture lives on `traveloure-qa.test` and refuses NODE_ENV=production); production
+    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
     with `captured: false`; 355 marks the rows it already wrote `voided_uncaptured` (never deleted). **(c)** The
     expert is NAMED to the traveler only after ACCEPT (`handoffExpertDisclosed`); the banner names the city
     ("Kyoto"). **(d)** A traveler's withdraw cancels the hold with `requested_by_customer`, only the 48 h timer with

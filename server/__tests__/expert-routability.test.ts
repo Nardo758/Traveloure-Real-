@@ -4,7 +4,7 @@
  *   R1  routable = application approved AND Identity verified AND Stripe Connect complete AND not seed
  *   R2  EVERY email a seed file under server/ creates is classified seed — so a new seed persona on
  *       the real domain fails CI here instead of becoming routable in production
- *   R3  SHOW_DEMO_EXPERTS=1 is the only switch that relaxes the public directory
+ *   R3  SHOW_DEMO_EXPERTS=1 is the only switch, and it relaxes the seed clause only
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,6 +13,7 @@ import path from "node:path";
 import { isRoutableExpert, isSeedExpertEmail, showDemoExperts } from "../services/expert-routability";
 
 test("R1 routable = approved + verified + payable + not seed", () => {
+  delete process.env.SHOW_DEMO_EXPERTS;
   const ok = { applicationStatus: "approved", identityVerificationStatus: "verified", stripeConnectStatus: "complete", email: "a@real.invalid" };
   assert.equal(isRoutableExpert(ok), true);
   assert.equal(isRoutableExpert({ ...ok, applicationStatus: "pending" }), false, "a Pending application is never routable");
@@ -23,6 +24,7 @@ test("R1 routable = approved + verified + payable + not seed", () => {
   assert.equal(isRoutableExpert({ ...ok, email: "kenji.tanaka@example.com" }), false);
   assert.equal(isRoutableExpert({ ...ok, email: "kyoto-local@traveloure.test" }), false);
   assert.equal(isRoutableExpert({ ...ok, email: "Yuki.Tanaka@Traveloure.com" }), false);
+  assert.equal(isRoutableExpert({ ...ok, email: "fx-expert@traveloure-qa.test" }), false, "the smoke/QA domain is seed-sourced");
   assert.equal(isSeedExpertEmail(null), false);
   assert.equal(isSeedExpertEmail("someone@traveloure.com"), false, "the real domain is not seed by itself");
 });
@@ -68,6 +70,12 @@ test("R3 SHOW_DEMO_EXPERTS=1 is the only switch", () => {
     assert.equal(showDemoExperts(), false);
     process.env.SHOW_DEMO_EXPERTS = "1";
     assert.equal(showDemoExperts(), true);
+    // It relaxes the seed clause ONLY: approval, Identity and Connect still decide.
+    const seeded = { applicationStatus: "approved", identityVerificationStatus: "verified", stripeConnectStatus: "complete", email: "x@traveloure-qa.test" };
+    assert.equal(isRoutableExpert(seeded), true);
+    assert.equal(isRoutableExpert({ ...seeded, applicationStatus: "pending" }), false);
+    assert.equal(isRoutableExpert({ ...seeded, identityVerificationStatus: "pending" }), false);
+    assert.equal(isRoutableExpert({ ...seeded, stripeConnectStatus: "pending" }), false);
   } finally {
     if (prev === undefined) delete process.env.SHOW_DEMO_EXPERTS;
     else process.env.SHOW_DEMO_EXPERTS = prev;

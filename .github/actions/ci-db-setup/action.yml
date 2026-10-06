@@ -25,11 +25,11 @@ runs:
   #   2. The PATTERNS list in the ci-db-setup-lint job.
   # Failure to do so means a renamed/missing script will go undetected in CI.
   steps:
-    - name: Show the seeded demo experts on the public directory
-      # Smoke 13 #3 (ledger `2026-10-06-smoke13-handoff-money`): /api/experts hides seed-sourced
-      # experts unless SHOW_DEMO_EXPERTS=1. Every CI database is a seeded fixture database, so the
-      # jobs that read the directory see the fixtures they seeded. Routing is NOT affected: a
-      # seed-sourced expert is never routable, in CI as in production.
+    - name: Relax the seed-domain clause for CI's seeded fixtures
+      # Smoke 13 #3 (ledger `2026-10-06-smoke13-handoff-money`): SHOW_DEMO_EXPERTS=1 relaxes ONLY
+      # the seed-domain clause of the routability predicate, for every reader (routing, the expert
+      # door, matching, the directory). Approval, Identity and Connect are never relaxed. Every CI
+      # database is a seeded fixture database; production never sets it (/api/health reports it).
       run: echo "SHOW_DEMO_EXPERTS=1" >> "$GITHUB_ENV"
       shell: bash
 

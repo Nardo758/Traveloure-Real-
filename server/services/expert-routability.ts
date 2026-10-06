@@ -20,9 +20,11 @@
  * EVERY reader uses this one predicate: lead routing (`routeLead`, hence `matchHandoff`), the expert
  * door's candidates, content matching's recommendations, and the public `/experts` directory
  * (list + counts — so a Pending, unverified or unpayable account never appears there, and
- * "Recommended for Kyoto" can never be the concierge). `SHOW_DEMO_EXPERTS=1` (CI's seeded fixture
- * databases, a demo instance — never production) relaxes the DIRECTORY only, back to every approved
- * expert; it never makes anyone routable and never shows the pool account.
+ * "Recommended for Kyoto" can never be the concierge).
+ *
+ * `SHOW_DEMO_EXPERTS=1` (CI's seeded fixture databases — never production; `/api/health` reports
+ * it) relaxes ONLY the seed-domain clause, for EVERY reader alike. Approval, Identity and Connect are
+ * never relaxed, and the pool account is never let through.
  *
  * Negative space: there is no seed-marker COLUMN, so "seed-sourced" is read off the account's
  * email. `server/__tests__/expert-routability.test.ts` scans every seed file under `server/` and
@@ -31,7 +33,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 /** Email domains only seed files and fixtures use. */
-export const SEED_EXPERT_EMAIL_DOMAINS: readonly string[] = ["example.com", "example.org", "traveloure.test"];
+export const SEED_EXPERT_EMAIL_DOMAINS: readonly string[] = ["example.com", "example.org", "traveloure.test", "traveloure-qa.test"];
 
 /**
  * Beta-seed personas created on the real `traveloure.com` domain (`server/seeds/beta-*.ts`), which
@@ -68,7 +70,7 @@ export function showDemoExperts(): boolean {
   return process.env.SHOW_DEMO_EXPERTS === "1";
 }
 
-/** Pure. The routable rule over the two `local_expert_forms` facts and the account email. */
+/** Pure. The routable rule over the `local_expert_forms` facts and the account email. */
 export function isRoutableExpert(input: {
   applicationStatus: string | null | undefined;
   identityVerificationStatus: string | null | undefined;
@@ -79,7 +81,7 @@ export function isRoutableExpert(input: {
     input.applicationStatus === "approved" &&
     input.identityVerificationStatus === "verified" &&
     input.stripeConnectStatus === "complete" &&
-    !isSeedExpertEmail(input.email)
+    (showDemoExperts() || !isSeedExpertEmail(input.email))
   );
 }
 
@@ -95,7 +97,8 @@ export function seedEmailSql(emailExpr: SQL): SQL {
  * with the concierge pool account EXCLUDED (the addendum — it is the fallback, never a match).
  */
 export function routableExpertSql(conciergePoolUserId: string | null): SQL {
-  const routable = sql`(lef.status = 'approved' AND lef.identity_verification_status = 'verified' AND lef.stripe_connect_status = 'complete' AND NOT ${seedEmailSql(sql`u.email`)})`;
+  const seedClause = showDemoExperts() ? sql`` : sql` AND NOT ${seedEmailSql(sql`u.email`)}`;
+  const routable = sql`(lef.status = 'approved' AND lef.identity_verification_status = 'verified' AND lef.stripe_connect_status = 'complete'${seedClause})`;
   return conciergePoolUserId ? sql`(u.id <> ${conciergePoolUserId} AND ${routable})` : routable;
 }
 
@@ -121,18 +124,14 @@ export async function routableUserIds(userIds: readonly string[]): Promise<Set<s
 }
 
 /**
- * The public directory's gate (`/api/experts`, `/api/experts/counts`): ROUTABLE experts only, and
- * never the pool account. `SHOW_DEMO_EXPERTS=1` relaxes the routable half for a seeded fixture or
- * demo database — the pool account stays out either way. The rows arrive PROJECTED (no email, no
- * verification columns), so the facts are read here, server-side, and never published.
+ * The public directory's gate (`/api/experts`, `/api/experts/counts`): the SAME routable predicate
+ * every selector reads (so a Pending, unverified or unpayable account, or the pool account, is never
+ * listed). The rows arrive PROJECTED (no email, no verification columns), so the facts are read here,
+ * server-side, and never published.
  */
 export async function directoryExperts<T extends { id?: unknown }>(experts: readonly T[]): Promise<T[]> {
-  const { getPlatformConciergeUserId } = await import("./platform-concierge.service");
-  const pool = await getPlatformConciergeUserId();
-  const withoutPool = experts.filter((e) => !pool || String(e.id ?? "") !== pool);
-  if (showDemoExperts()) return withoutPool;
-  const ok = await routableUserIds(withoutPool.map((e) => String(e.id ?? "")).filter(Boolean));
-  return withoutPool.filter((e) => ok.has(String(e.id ?? "")));
+  const ok = await routableUserIds(experts.map((e) => String(e.id ?? "")).filter(Boolean));
+  return experts.filter((e) => ok.has(String(e.id ?? "")));
 }
 
 /** The routing filter, resolved: `routableExpertSql` over the CURRENT pool-account id. */

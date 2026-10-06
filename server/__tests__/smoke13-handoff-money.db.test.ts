@@ -17,7 +17,7 @@
  *       cancel
  *   S9  the public directory lists ROUTABLE experts only — never a Pending application, an
  *       unverified, unpayable or seed-sourced account, nor the pool; SHOW_DEMO_EXPERTS=1 relaxes the
- *       routable half (fixture/demo databases) and still never shows the pool
+ *       seed-domain clause only, for every reader (S3, S8 show routing and the door do the same)
  *   S8  (addendum) the concierge POOL account is excluded from EVERY routing selector — lead
  *       routing, the handoff match and the expert door's candidates — even when it would otherwise
  *       be routable; it stays visible to the display scorer (it is reached as the fallback only)
@@ -103,6 +103,19 @@ handoff.__setHandoffPaymentsForTest({
   },
 });
 
+/** CI sets SHOW_DEMO_EXPERTS=1 for its seeded fixtures; each case states the value it reads. */
+async function withDemo<T>(on: boolean, fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.SHOW_DEMO_EXPERTS;
+  if (on) process.env.SHOW_DEMO_EXPERTS = "1";
+  else delete process.env.SHOW_DEMO_EXPERTS;
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) delete process.env.SHOW_DEMO_EXPERTS;
+    else process.env.SHOW_DEMO_EXPERTS = prev;
+  }
+}
+
 const createdRequestIds: string[] = [];
 const createdPis: string[] = [];
 
@@ -146,7 +159,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM expert_requests WHERE trip_id = ${ids.trip3}`).catch(() => {});
   await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip3}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip3}`).catch(() => {});
-  await db.execute(sql`DELETE FROM provider_services WHERE id IN (${ids.poolListing}, ${ids.okListing})`).catch(() => {});
+  await db.execute(sql`DELETE FROM provider_services WHERE id IN (${ids.poolListing}, ${ids.okListing}, ${`${ids.seed}-svc`})`).catch(() => {});
   await db.execute(sql`DELETE FROM local_expert_forms WHERE user_id IN (${ids.ok}, ${ids.unverified}, ${ids.unpayable}, ${ids.seed}, ${ids.pool}, ${ids.pendingApp})`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.ok}, ${ids.unverified}, ${ids.unpayable}, ${ids.seed}, ${ids.pool}, ${ids.pendingApp})`).catch(() => {});
   handoff.__setHandoffPaymentsForTest(null);
@@ -210,12 +223,15 @@ test("S2 migration 355 marks only a never-captured hold's refund, deletes nothin
   assert.deepEqual((await refundRows(unrelated)).map((r) => r.status), ["succeeded"]);
 });
 
-test("S3 routing names only a verified, payable, non-seed expert", async () => {
-  const routed = await leadRoutingService.routeLead({ destination: CITY });
+test("S3 routing names only an approved, verified, payable, non-seed expert; the demo switch relaxes the seed clause only", async () => {
+  const routed = await withDemo(false, () => leadRoutingService.routeLead({ destination: CITY }));
   const named = (routed.scores ?? []).map((s) => s.expertId);
   assert.ok(named.includes(ids.ok), JSON.stringify(named));
   for (const no of [ids.unverified, ids.unpayable, ids.seed, ids.pendingApp]) assert.ok(!named.includes(no), `${no} must never be routed`);
-  // A display read (content matching) is unchanged — routability is a ROUTING rule.
+  const demo = (await withDemo(true, () => leadRoutingService.routeLead({ destination: CITY }))).scores.map((x) => x.expertId);
+  assert.ok(demo.includes(ids.seed), "SHOW_DEMO_EXPERTS=1 relaxes the seed clause");
+  for (const no of [ids.unverified, ids.unpayable, ids.pendingApp]) assert.ok(!demo.includes(no), `${no}: approval, Identity and Connect are never relaxed`);
+  // The raw scorer without the flag is unchanged.
   const display = (await leadRoutingService.scoreExperts({ destination: CITY })).map((s) => s.expertId);
   assert.ok(display.includes(ids.unverified));
 });
@@ -285,8 +301,8 @@ test("S8 the concierge pool account is excluded from every routing selector, and
     await setPool(ids.pool);
 
     // (1) lead routing
-    const routed = (await leadRoutingService.routeLead({ destination: CITY })).scores.map((x) => x.expertId);
-    assert.ok(!routed.includes(ids.pool), "lead routing never names the pool account");
+    const routed = (await withDemo(true, () => leadRoutingService.routeLead({ destination: CITY }))).scores.map((x) => x.expertId);
+    assert.ok(!routed.includes(ids.pool), "lead routing never names the pool account, demo switch or not");
     assert.ok(routed.includes(ids.ok));
     const display = (await leadRoutingService.scoreExperts({ destination: CITY })).map((x) => x.expertId);
     assert.ok(display.includes(ids.pool), "the display scorer still sees it (it is not hidden, only never routed)");
@@ -299,7 +315,7 @@ test("S8 the concierge pool account is excluded from every routing selector, and
       VALUES (${ids.owner}, ${ids.trip3}, ${CITY}, 'handoff_polish', 'proposed', 'polish', '[]'::jsonb, 0, 0, 0, NOW()) RETURNING id
     `);
     const requestId = String((r.rows[0] as any).id);
-    await handoff.matchHandoff(requestId);
+    await withDemo(false, () => handoff.matchHandoff(requestId));
     const matched = (await handoff.getHandoff(requestId))!;
     assert.notEqual(matched.assignedExpertId, ids.pool, "the handoff is never proposed to the pool account");
     assert.equal(matched.assignedExpertId, ids.ok);
@@ -310,15 +326,21 @@ test("S8 the concierge pool account is excluded from every routing selector, and
       await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, price, status, approval_status, expert_offering_type_key, city)
         VALUES (${id}, ${owner}, 'S13 help', '40.00', 'active', 'approved', 'ask_me_anything', 'Kyoto')`);
     }
-    const door = (await loadCandidates("kyoto")).map((c) => c.expertId);
+    await db.execute(sql`INSERT INTO provider_services (id, user_id, service_name, price, status, approval_status, expert_offering_type_key, city)
+      VALUES (${`${ids.seed}-svc`}, ${ids.seed}, 'S13 help', '40.00', 'active', 'approved', 'ask_me_anything', 'Kyoto')`);
+    const door = (await withDemo(false, () => loadCandidates("kyoto"))).map((c) => c.expertId);
     assert.ok(!door.includes(ids.pool), "the expert door never offers the pool account");
     assert.ok(door.includes(ids.ok));
+    assert.ok(!door.includes(ids.seed), "a seed-domain expert is not a door choice");
+    // CI's door fixture lives on a seed domain: the door finds it exactly as the directory does.
+    const demoDoor = (await withDemo(true, () => loadCandidates("kyoto"))).map((c) => c.expertId);
+    assert.ok(demoDoor.includes(ids.seed) && !demoDoor.includes(ids.pool));
   } finally {
     await setPool(prev?.setting_value ?? null);
   }
 });
 
-test("S9 the directory lists routable experts only, never the pool; the demo switch relaxes routability only", async () => {
+test("S9 the directory lists routable experts only, never the pool; the demo switch relaxes the seed clause only", async () => {
   const { directoryExperts } = await import("../services/expert-routability");
   const { invalidatePlatformConciergeCache, PLATFORM_CONCIERGE_USER_ID_SETTING_KEY } = await import("../services/platform-concierge.service");
   const prev = (await db.execute(sql`SELECT setting_value FROM platform_settings WHERE setting_key = ${PLATFORM_CONCIERGE_USER_ID_SETTING_KEY}`)).rows[0] as any;
@@ -328,18 +350,11 @@ test("S9 the directory lists routable experts only, never the pool; the demo swi
     invalidatePlatformConciergeCache();
   };
   const all = [ids.ok, ids.unverified, ids.unpayable, ids.seed, ids.pool, ids.pendingApp].map((id) => ({ id }));
-  const prevDemo = process.env.SHOW_DEMO_EXPERTS;
   try {
     await setPool(ids.pool);
-    delete process.env.SHOW_DEMO_EXPERTS;
-    assert.deepEqual((await directoryExperts(all)).map((e) => e.id), [ids.ok]);
-    process.env.SHOW_DEMO_EXPERTS = "1";
-    const demo = (await directoryExperts(all)).map((e) => e.id);
-    assert.ok(!demo.includes(ids.pool), "the pool account is never listed, demo or not");
-    assert.ok(demo.includes(ids.unverified));
+    assert.deepEqual((await withDemo(false, () => directoryExperts(all))).map((e) => e.id), [ids.ok]);
+    assert.deepEqual((await withDemo(true, () => directoryExperts(all))).map((e) => e.id).sort(), [ids.ok, ids.seed].sort());
   } finally {
-    if (prevDemo === undefined) delete process.env.SHOW_DEMO_EXPERTS;
-    else process.env.SHOW_DEMO_EXPERTS = prevDemo;
     await setPool(prev?.setting_value ?? null);
   }
 });

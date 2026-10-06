@@ -8,9 +8,10 @@
  * neighbourhood, and none of that may ever reach production.
  *
  * The gate's four facts, each written the way the platform writes it:
- *   0. (smoke 13 #3) ROUTABLE: Stripe Connect `complete` and an email outside the seed domains
- *      (`expert-routability.ts`) — the door offers only experts routing could name. The admin
- *      helper keeps the fixture domain; it is never an expert.
+ *   0. (smoke 13 #3) ROUTABLE but for its domain: approved, Identity verified and Stripe Connect
+ *      `complete`, on the `traveloure-qa.test` seed domain. The door reads the shared routability
+ *      predicate, so it finds this fixture ONLY where `SHOW_DEMO_EXPERTS=1` relaxes the seed clause
+ *      (CI) — the same way the directory does. Refused outright when NODE_ENV=production.
  *   1. an approved `local_expert_forms` row (plus identity verified — the same smallest write
  *      `e2e/supply-demand/lib/db.ts seedExpertIdentityVerification` makes, since no Stripe Identity
  *      webhook reaches a test database);
@@ -34,6 +35,11 @@ import { db, pool } from "../server/db";
 import { createClaim, markClaimScored, ratifyClaim, submitClaim } from "../server/services/neighborhood-claims.service";
 
 async function main() {
+  // Smoke 13: never on production, whatever else is set.
+  if (process.env.NODE_ENV === "production") {
+    console.error("refused: seed-fixture-kyoto-expert never runs with NODE_ENV=production");
+    process.exit(2);
+  }
   if (process.env.ALLOW_TEST_ACCOUNTS !== "1") {
     console.error("refused: seed-fixture-kyoto-expert writes test supply and runs only with ALLOW_TEST_ACCOUNTS=1");
     process.exit(2);
@@ -51,13 +57,13 @@ async function main() {
 
   await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name, role, handle)
-    VALUES (${expertId}, ${`${expertId}@kyoto-fixture.invalid`}, 'Aiko', 'Fixture', 'local_expert', ${handle}),
+    VALUES (${expertId}, ${`${expertId}@traveloure-qa.test`}, 'Aiko', 'Fixture', 'local_expert', ${handle}),
            (${adminId}, ${`${adminId}@traveloure.test`}, 'Fixture', 'Admin', 'admin', NULL)
   `);
   await db.execute(sql`
     INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, city, country, status,
                                     identity_verification_status, identity_verified_at, stripe_connect_status)
-    VALUES (${crypto.randomUUID()}, ${expertId}, 'Aiko', 'Fixture', ${`${expertId}@kyoto-fixture.invalid`}, 'Kyoto', 'Japan', 'approved', 'verified', now(), 'complete')
+    VALUES (${crypto.randomUUID()}, ${expertId}, 'Aiko', 'Fixture', ${`${expertId}@traveloure-qa.test`}, 'Kyoto', 'Japan', 'approved', 'verified', now(), 'complete')
   `);
   const serviceId = crypto.randomUUID();
   await db.execute(sql`
