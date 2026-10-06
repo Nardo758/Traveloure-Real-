@@ -75,9 +75,12 @@ test.describe("Single planning entry — the one modal", () => {
   test("landing hero opens the modal at STEP 1, on the real occasion catalog", async ({ page }) => {
     await openModalFromHero(page);
     // A door with no occasion opens at step 1 (`resolvePlanSteps`), and its tiles are the
-    // `experience_types` rows — not a hardcoded list. `travel` is a seeded slug.
+    // `experience_types` rows — not a hardcoded list. Step 8a: the ONE picker shows the five groups
+    // first; `travel` is a seeded slug under "A trip".
     await expect(page.getByTestId("plan-step-occasion")).toBeVisible();
-    await expect(page.getByTestId("option-occasion-travel")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("occasion-group-trips")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("occasion-group-trips").click();
+    await expect(page.getByTestId("option-occasion-travel")).toBeVisible();
     // "Next: Where" is disabled until a tile is picked — the artboard's "Pick one to continue."
     await expect(page.getByTestId("button-planning-next")).toBeDisabled();
     // The finish belongs to the LAST step, never the first screen.
@@ -102,6 +105,7 @@ test.describe("Single planning entry — the one modal", () => {
    */
   test("step 2 offers stops for a many-stop occasion and NOT for a one-stop one", async ({ page }) => {
     await openModalFromHero(page);
+    await page.getByTestId("occasion-group-trips").click();
     await page.getByTestId("option-occasion-travel").click();
     await page.getByTestId("plan-step-where").click();
     await expect(page.getByTestId("input-etp-destination")).toBeVisible({ timeout: 10_000 });
@@ -109,6 +113,7 @@ test.describe("Single planning entry — the one modal", () => {
 
     // Back to step 1 through the occasion pill, and onto an occasion whose row says ONE stop.
     await page.getByTestId("plan-modal-occasion-pill").click();
+    await page.getByTestId("occasion-group-hosted_events").click();
     await page.getByTestId("option-occasion-wedding").click();
     await page.getByTestId("plan-step-where").click();
     await expect(page.getByTestId("input-etp-destination")).toBeVisible();
@@ -128,6 +133,7 @@ test.describe("Single planning entry — the one modal", () => {
    */
   test("step 4 asks the accessibility note under wedding and NOT under travel", async ({ page }) => {
     await openModalFromHero(page);
+    await page.getByTestId("occasion-group-hosted_events").click();
     await page.getByTestId("option-occasion-wedding").click();
     await page.getByTestId("plan-step-who").click();
     await expect(page.getByTestId("plan-step-who-body")).toBeVisible({ timeout: 10_000 });
@@ -138,6 +144,7 @@ test.describe("Single planning entry — the one modal", () => {
 
     // Back to step 1 through the occasion pill, and onto an occasion with no guest list.
     await page.getByTestId("plan-modal-occasion-pill").click();
+    await page.getByTestId("occasion-group-trips").click();
     await page.getByTestId("option-occasion-travel").click();
     await page.getByTestId("plan-step-who").click();
     await expect(page.getByTestId("plan-step-who-body")).toBeVisible();
@@ -236,31 +243,45 @@ test.describe("The Event Planner fork's third door (2026-09-04-wedding-entry-doo
   });
 });
 
-test.describe("No route auto-opens the intake (walkthrough F-T1, 2026-08-30)", () => {
-  // Ruling 2026-08-28-single-planning-entry extended: a ROUTE never auto-opens the
-  // planning chooser/intake. /experiences is a browse surface first; the intake panel
-  // opens only from its CTA or an explicit ?plan=1 deep-link, never on bare arrival.
-  test("/experiences loads with NO intake panel open", async ({ page }) => {
+test.describe("/experiences is the start state, and no route auto-opens (walkthrough F-T1; step 8a)", () => {
+  // Ruling 2026-08-28-single-planning-entry extended: a ROUTE never auto-opens the planning modal.
+  // Step 8a (ledger `2026-10-06-step8a-experiences-entry`): /experiences asks the occasion and Where
+  // ON the page; its Continue opens the one modal at When through the `experiences` door. The intake
+  // panel and its `?plan=1` deep-link are gone from this page (ruling 1).
+  test("/experiences loads with nothing open, and Continue waits for both answers", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
-    // The page's own browse content renders...
-    await expect(page.getByRole("heading", { name: /Plan Your Perfect Experience/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /What are you planning\?/i })).toBeVisible({
       timeout: 15_000,
     });
-    // ...and the intake modal is NOT blocking it.
     await expect(page.getByTestId("intake-panel")).toHaveCount(0);
+    await expect(page.getByTestId("plan-step-occasion")).toHaveCount(0);
+    await expect(page.getByTestId("experiences-map-credit")).toHaveText("Map: Natural Earth");
+    const cont = page.getByTestId("button-experiences-continue");
+    await expect(cont).toBeDisabled();
+    await page.getByTestId("occasion-group-trips").click();
+    await page.getByTestId("option-occasion-travel").click();
+    await expect(cont).toBeDisabled();
+    await page.getByTestId("city-card-kyoto").click();
+    await expect(cont).toBeEnabled();
   });
 
-  test("the page CTA opens the intake panel", async ({ page }) => {
+  test("Continue opens the one modal at When, with Where reachable by Back", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
-    const cta = page.getByTestId("button-experiences-start-plan");
-    await cta.waitFor({ state: "visible", timeout: 15_000 });
-    await cta.click();
-    await expect(page.getByTestId("intake-panel")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("occasion-group-hosted_events").click({ timeout: 15_000 });
+    await page.getByTestId("option-occasion-wedding").click();
+    await page.getByTestId("map-pin-kyoto").click();
+    await page.getByTestId("button-experiences-continue").click();
+    await expect(page.getByTestId("plan-step-when-body")).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId("plan-step-where").click();
+    await expect(page.getByTestId("input-etp-destination")).toHaveValue(/Kyoto/);
   });
 
-  test("?plan=1 deep-link opens the intake panel on arrival", async ({ page }) => {
-    await page.goto(`${BASE_URL}/experiences?plan=1`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("intake-panel")).toBeVisible({ timeout: 15_000 });
+  test("?destination= pre-picks only an exact match of the eight", async ({ page }) => {
+    await page.goto(`${BASE_URL}/experiences?destination=Porto`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("city-card-porto")).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+    await page.goto(`${BASE_URL}/experiences?destination=Lisbon`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("city-card-porto")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid^="city-card-"][aria-pressed="true"]')).toHaveCount(0);
   });
 });
 

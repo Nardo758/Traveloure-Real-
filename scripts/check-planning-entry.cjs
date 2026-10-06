@@ -18,10 +18,15 @@
  * ───────────────────────────────────────────────────────
  *   1. `PlanEntryCta` — the shared component (ledger `2026-09-04-entry-unification`), which calls
  *      `usePlanning().open(source)`, the globally-mounted chooser.
- *   2. `IntakePanel` opened from the page's own CTA — the page-local intake `/experiences` carries
- *      by ruling `2026-08-28-single-planning-entry` as extended by walkthrough finding F-T1
- *      (2026-08-30). It is a RULED variant, not a violation, and this guard must not force it to be
- *      rewritten into shape 1.
+ *   2. `IntakePanel` opened from the page's own CTA — a RULED variant (ruling
+ *      `2026-08-28-single-planning-entry` as extended by walkthrough finding F-T1, 2026-08-30) that
+ *      this guard must not force to be rewritten into shape 1. Its mounts collapse into the modal
+ *      under Locked Decision 42 D11.
+ *   3. For `/experiences` ONLY (step 8a, ledger `2026-10-06-step8a-experiences-entry`): the page's own
+ *      Continue calling the one opener (`usePlanning().open`, through the `experiences` door) after the
+ *      traveler answered the occasion and Where on the page. That surface left the IntakePanel, so its
+ *      row is marked `entry: "opener"`, and a SECOND intake mounted there FAILS — the page must not grow
+ *      back the intake it replaced.
  *
  * IMPORTING `planningRouteForTrip` DOES NOT COUNT and the guard says so explicitly. It is a route
  * helper for an EXISTING trip, not an opener. Two commerce pages import it from the very same
@@ -82,7 +87,10 @@ const ENTRY_SURFACES = [
   {
     file: "client/src/pages/experiences.tsx",
     routes: ["/experiences"],
-    why: "the experience browse surface; carries the ruled page-local IntakePanel",
+    // Step 8a (ledger `2026-10-06-step8a-experiences-entry`): the start state. Its entry is its own
+    // Continue calling the one opener; an IntakePanel mounted here is a second intake and FAILS.
+    entry: "opener",
+    why: "the /experiences start state — its Continue opens the one modal through the experiences door",
   },
   {
     file: "client/src/pages/start-events.tsx",
@@ -168,10 +176,10 @@ const REQUIRED_SOURCE_FIELDS = [
   },
   {
     file: "client/src/pages/experiences.tsx",
-    require: ["city"],
-    // The ruled page-local IntakePanel is this surface's entry shape, so the field arrives as a
-    // PROP rather than inside a PlanningSource literal. Same requirement, same key name.
-    why: "?destination= is already parsed here and threaded into every card link",
+    // Step 8a: the page holds the picked occasion and the picked city (one of the eight, which
+    // carries its country), so its door passes all three (D13).
+    require: ["experienceSlug", "city", "country"],
+    why: "the start page holds the occasion and the city the traveler just picked on it",
   },
   {
     file: "client/src/pages/storefront.tsx",
@@ -239,6 +247,10 @@ function entryShapes(src) {
   return {
     planEntryCta: /\bPlanEntryCta\b/.test(src) && /<PlanEntryCta\b/.test(src),
     intakePanel: /<IntakePanel\b/.test(src) && /setIntakeOpen\(\s*true\s*\)/.test(src),
+    // Shape 3 (step 8a): a call to the one opener under any alias this file gives it.
+    openerCall: openerTokens(src).some((t) => !t.startsWith("<") && src.includes(t)),
+    // Any IntakePanel mounted at all — on an `entry: "opener"` surface this is a second intake.
+    intakeMounted: /<IntakePanel\b/.test(src),
     // Not an entry — named so the failure message can call it out.
     routeHelperOnly: /planningRouteForTrip/.test(src),
   };
@@ -301,9 +313,9 @@ function sourceRegions(src) {
 /**
  * Is `key` passed in any opener region? Three spellings, all real in this repo:
  *   `{ city: x }`  object property   ·  `{ destination }` shorthand  ·  `city={x}` JSX prop
- * (the `/experiences` entry shape is the ruled page-local IntakePanel, so its fields arrive as
- * props — same key name, different punctuation, and refusing that spelling would force the ruled
- * variant to be rewritten, which this guard has always been forbidden to do).
+ * (an IntakePanel mount — `my-trips`/`dashboard` until D11 — takes its fields as props: same key
+ * name, different punctuation, and refusing that spelling would force the ruled variant to be
+ * rewritten, which this guard has always been forbidden to do).
  */
 function passesField(regions, key) {
   const re = new RegExp(`\\b${key}\\s*(?::|=|[,}])`);
@@ -351,6 +363,20 @@ function checkEntryShapes(files) {
       continue;
     }
     const s = entryShapes(src);
+    if (surface.entry === "opener") {
+      if (s.intakeMounted) {
+        errors.push(
+          `${surface.file} (${surface.routes.join(", ")}) mounts an IntakePanel — a SECOND intake beside the ` +
+          `one planning modal its Continue opens (step 8a, ledger 2026-10-06-step8a-experiences-entry). Remove it.`,
+        );
+      } else if (!s.openerCall) {
+        errors.push(
+          `${surface.file} (${surface.routes.join(", ")}) offers NO plan entry — ${surface.why}. ` +
+          `Its Continue must call usePlanning().open with the experiences door.`,
+        );
+      }
+      continue;
+    }
     if (s.planEntryCta || s.intakePanel) continue;
     let msg = `${surface.file} (${surface.routes.join(", ")}) offers NO plan entry — ${surface.why}.`;
     if (s.routeHelperOnly) {
@@ -455,6 +481,10 @@ function check(files) {
 function selfTest() {
   const withCta = 'import { PlanEntryCta } from "@/components/planning/plan-entry-cta";\n<PlanEntryCta source={undefined} />';
   const withIntake = 'const [o,setIntakeOpen]=useState(false);\n<Button onClick={() => setIntakeOpen(true)} />\n<IntakePanel open={o} />';
+  // Step 8a: /experiences' Continue calling the one opener through its door.
+  const withOpener =
+    'const { open: openPlanning } = usePlanning();\n' +
+    'openPlanning({ door: "experiences", experienceSlug: occasionSlug, city: market.cityName, country: market.country, newPlan: true, focusStep: "when" });';
   const helperOnly = 'import { planningRouteForTrip } from "@/contexts/PlanningContext";';
   const bare = "export default function Page(){ return <div/>; }";
 
@@ -479,13 +509,18 @@ function selfTest() {
   // D13 half below has its own fixtures, and a fixture that ran both would report a failure of one
   // predicate as a failure of the other — the exact ambiguity §18d fixtures exist to remove.
   const cases = [
-    ["both wired passes", () => checkEntryShapes(files(withCta, withIntake)).length === 0],
-    ["PlanEntryCta alone satisfies a surface", () => checkEntryShapes(files(withCta, withCta)).length === 0],
-    ["a bare surface fails", () => checkEntryShapes(files(bare, withIntake)).some((e) => e.includes("discover.tsx"))],
-    ["planningRouteForTrip alone is NOT an entry", () => checkEntryShapes(files(helperOnly, withIntake)).some((e) => e.includes("ROUTE HELPER"))],
-    ["a missing file fails loudly", () => checkEntryShapes({ "client/src/pages/experiences.tsx": withIntake }).some((e) => e.includes("does not exist"))],
-    ["an IntakePanel with no opener is not an entry", () => checkEntryShapes(files("<IntakePanel open={o} />", withIntake)).some((e) => e.includes("discover.tsx"))],
-    ["the fork page is held to the same bar", () => checkEntryShapes(files(withCta, withIntake, bare)).some((e) => e.includes("start-events.tsx"))],
+    ["both wired passes", () => checkEntryShapes(files(withCta, withOpener)).length === 0],
+    ["PlanEntryCta alone satisfies a surface", () => checkEntryShapes(files(withCta, withOpener)).length === 0],
+    ["the ruled IntakePanel shape still satisfies an ordinary surface", () => checkEntryShapes(files(withIntake, withOpener)).length === 0],
+    ["a bare surface fails", () => checkEntryShapes(files(bare, withOpener)).some((e) => e.includes("discover.tsx"))],
+    ["planningRouteForTrip alone is NOT an entry", () => checkEntryShapes(files(helperOnly, withOpener)).some((e) => e.includes("ROUTE HELPER"))],
+    ["a missing file fails loudly", () => checkEntryShapes({ "client/src/pages/experiences.tsx": withOpener }).some((e) => e.includes("does not exist"))],
+    ["an IntakePanel with no opener is not an entry", () => checkEntryShapes(files("<IntakePanel open={o} />", withOpener)).some((e) => e.includes("discover.tsx"))],
+    ["the fork page is held to the same bar", () => checkEntryShapes(files(withCta, withOpener, bare)).some((e) => e.includes("start-events.tsx"))],
+    // Step 8a: /experiences' entry is its own opener call, and the intake it replaced may not return.
+    ["8a · /experiences with its IntakePanel back (a SECOND intake) FAILS", () => checkEntryShapes(files(withCta, withIntake)).some((e) => e.includes("SECOND intake"))],
+    ["8a · /experiences with the opener AND an IntakePanel still FAILS", () => checkEntryShapes(files(withCta, withOpener + "\n<IntakePanel open={o} />")).some((e) => e.includes("SECOND intake"))],
+    ["8a · /experiences with no opener call FAILS", () => checkEntryShapes(files(withCta, bare)).some((e) => e.includes("experiences.tsx") && e.includes("NO plan entry"))],
   ];
 
   // ── D13 fixtures (ledger `2026-09-05-doors-source-fields`) ─────────────────────────────────
@@ -552,7 +587,9 @@ function selfTest() {
     ["D13 · a door passing its required key passes", () => req(TEMPLATE, doorAlias).length === 0],
     ["D13 · the SAME door passing nothing FAILS", () => req(TEMPLATE, doorBare).some((e) => e.includes("does not pass `experienceSlug`"))],
     ["D13 · shorthand `{ destination }` counts as passing it", () => passesField(sourceRegions(doorShorthand), "destination")],
-    ["D13 · a JSX prop (`city={...}`) counts — the ruled IntakePanel shape", () => req(EXPERIENCES, doorProp).length === 0],
+    ["D13 · a JSX prop (`city={...}`) counts — the ruled IntakePanel shape", () => passesField(sourceRegions(doorProp), "city")],
+    ["8a · the /experiences door passing occasion, city and country passes", () => req(EXPERIENCES, withOpener).length === 0],
+    ["8a · the /experiences door passing no country FAILS", () => req(EXPERIENCES, 'const { open: openPlanning } = usePlanning();\nopenPlanning({ door: "experiences", experienceSlug: s, city: m.cityName });').some((e) => e.includes("does not pass `country`"))],
     ["D13 · a PlanEntryCta source literal counts", () => req(READYMADE, doorCta).length === 0],
     ["D13 · a bare PlanEntryCta where a city IS required FAILS", () => req(READYMADE, doorCtaBare).some((e) => e.includes("does not pass `city`"))],
     ["D13 · a conditional source counts", () => req(CHAT, doorCtaConditional).length === 0],

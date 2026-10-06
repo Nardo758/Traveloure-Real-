@@ -23,8 +23,8 @@
  *   S4  the ticker STILL holds no single city. If that rail ever becomes single-city this pin
  *       fails, which forces the ticker's source, the guard's REQUIRED_SOURCE_FIELDS entry and S3
  *       to be revisited together instead of one of them drifting.
- *   S5  `/experiences` hands the intake panel the params it already parses, and the panel ACCEPTS
- *       them — the two halves of one prop, pinned together so neither can be removed alone.
+ *   S5  `/experiences` passes the city it holds (step 8a: the picked market, through its door), and
+ *       the intake panel still ACCEPTS a city for the mounts that keep it until D11.
  *
  * WHAT THIS FILE DOES NOT CLAIM (its own negative space). These are static source pins: they read
  * the files as TEXT and prove what a door PASSES, never what a page KNOWS, never that the value is
@@ -159,11 +159,15 @@ describe("S3/S4 — the two doors that pass NOTHING, and why", () => {
   });
 });
 
-describe("S5 — /experiences hands the intake panel the params it already parses", () => {
-  it("the page passes both, coercing URLSearchParams' null to an absent prop (§13)", () => {
+describe("S5 — /experiences passes the city it holds; the intake panel still accepts one", () => {
+  // Step 8a (ledger `2026-10-06-step8a-experiences-entry`): the page no longer mounts the intake.
+  // Its door passes the city the traveler PICKED on the page (one of the eight, with its country),
+  // never the raw query string — `?destination=`/`?city=` only pre-pick an exact match.
+  it("the page's door passes the picked market's city and country, never the raw param", () => {
     const src = read(EXPERIENCES);
-    assert.ok(src.includes("city={destinationParam ?? undefined}"));
-    assert.ok(src.includes("country={countryParam ?? undefined}"));
+    assert.ok(src.includes("city: market.cityName"));
+    assert.ok(src.includes("country: market.country"));
+    assert.ok(!src.includes("<IntakePanel"));
   });
 
   it("the panel ACCEPTS them and seeds its destination field from them", () => {

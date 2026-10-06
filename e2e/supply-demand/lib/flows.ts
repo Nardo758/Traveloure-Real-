@@ -848,6 +848,11 @@ export async function fillPlanModalToFinish(
   for (let i = 0; i < 8; i++) {
     if (await appears(page.locator('[data-testid^="planning-option-"]').first())) break;
 
+    // Step 8a: the one occasion picker shows its groups first. "See all occasions" lists every
+    // row without this flow having to know which group a slug sits in.
+    const seeAll = testid(page, 'occasion-see-all');
+    if (await appears(seeAll, 1000)) await seeAll.click().catch(() => {});
+
     const preferredOccasion = testid(page, `option-occasion-${occasionSlug}`);
     if (await appears(preferredOccasion, 1500)) {
       await preferredOccasion.click().catch(() => {});
