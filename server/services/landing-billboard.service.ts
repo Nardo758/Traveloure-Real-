@@ -184,6 +184,8 @@ export interface BillboardSliceReadyCandidate {
   city: string;
   handle: string;
   listing: BillboardListing;
+  /** The listing's owner — read to gate on `verifiedLocals`, never put in a slot payload (LD 40). */
+  ownerUserId: string | null;
   latitude: string | number | null;
   longitude: string | number | null;
   cancellationPolicyType: string | null;
@@ -197,6 +199,11 @@ export interface BillboardDispatchDeps extends BillboardOverrideDeps {
   now?: () => Date;
   gems: (marketKey: string) => Promise<BillboardGemCandidate[]>;
   sliceReadyListings: (marketKey: string) => Promise<BillboardSliceReadyCandidate[]>;
+  /**
+   * The market's verified locals (`verifiedLocalIds` — R343-routable). Slot 2's curator and slot 3's
+   * listing owner must be in it before anything else is asked (ledger `2026-10-06-billboard-slots-routable`).
+   */
+  verifiedLocals: (marketKey: string) => Promise<string[]>;
 }
 
 /** Billboard dispatch never treats reserved test accounts or non-earners as live owners. */
@@ -338,6 +345,7 @@ async function sliceReadyListingCandidates(marketKey: string): Promise<Billboard
         city: row.city ?? "",
         handle: row.handle!,
         listing,
+        ownerUserId: row.ownerUserId ?? null,
         latitude: row.latitude,
         longitude: row.longitude,
         cancellationPolicyType: row.cancellationPolicyType ?? null,
@@ -365,6 +373,7 @@ const DEFAULT_DISPATCH_DEPS: BillboardDispatchDeps = {
   creditedMarkets: creditedTileMarkets,
   gems: gemCandidates,
   sliceReadyListings: sliceReadyListingCandidates,
+  verifiedLocals: billboardVerifiedCandidates,
 };
 
 /**
@@ -413,11 +422,15 @@ export async function resolveBillboardDispatch(
     override: slotOneOverride,
   }];
 
-  // Slots 2 and 3 fail independently: absence leaves each curated tile untouched.
+  // Slots 2 and 3 fail independently: absence leaves each curated tile untouched. Both take only a
+  // verified local — R343-routable — as their curator or owner (ledger `2026-10-06-billboard-slots-routable`).
+  let localsRead: Promise<Set<string>> | null = null;
+  const locals = () => (localsRead ??= deps.verifiedLocals(marketKey).then((ids) => new Set(ids)));
   try {
     for (const gem of await deps.gems(marketKey)) {
       if (!gem.curatorExpertId || !Number.isFinite(gem.score) || gem.score === null) continue;
       if (resolveMarketSlug(gem.city) !== marketKey) continue;
+      if (!(await locals()).has(gem.curatorExpertId)) continue;
       const decision = await deps.gate(gem.curatorExpertId, marketKey);
       if (!decision.eligible) continue;
       if (!gem.curatorHandle) continue;
@@ -442,8 +455,10 @@ export async function resolveBillboardDispatch(
   }
 
   try {
+    const verified = await locals();
     const sliceReady = (await deps.sliceReadyListings(marketKey)).find((candidate) => {
-      return resolveMarketSlug(candidate.city) === marketKey &&
+      return !!candidate.ownerUserId && verified.has(candidate.ownerUserId) &&
+        resolveMarketSlug(candidate.city) === marketKey &&
         !!candidate.handle &&
         parseCoord(candidate.latitude, candidate.longitude) !== null &&
         hasPublishedPrice(candidate.listing.price) &&
