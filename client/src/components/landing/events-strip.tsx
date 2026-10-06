@@ -7,8 +7,8 @@
  * next 180 days. "Plan around it" opens a NEW plan with occasion `show`, the event's market, and
  * the event as the plan's anchor.
  *
- * `CityEventCards` is shared with the /events "Coming up" block so both surfaces render the same
- * query the same way (§18 rule 1).
+ * The /events "Coming up" block that shared these cards is retired (ledger
+ * `2026-10-06-events-calendar`): /events lists "What's on" from its own calendar read.
  */
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -23,7 +23,7 @@ import {
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { resolveBillboardCredit, type PhotoAttribution } from "@shared/landing-billboard";
 import type { PlanDoor } from "@shared/slip-funnel-events";
-import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
+import type { PlanningSource } from "@/contexts/PlanningContext";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { SectionHeader, OpenSection } from "./section-header";
 
@@ -40,7 +40,7 @@ function formatDay(date: string): string {
 
 /**
  * Which surface a "Plan around it" press came from — the funnel door (slip-funnel-events.md §3.1,
- * amended 2026-09-28): the landing strip is `event_strip`, the /events block is `events_page`.
+ * amended 2026-09-28): the landing strip is `event_strip`, /events "What's on" is `events_page`.
  */
 export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page" | "blog_post">;
 
@@ -197,28 +197,3 @@ export function EventsStrip({ onPlanAround }: { onPlanAround: (s: PlanningSource
   return <EventsStripContent payload={data} onPlanAround={onPlanAround} />;
 }
 
-
-/**
- * The /events "Coming up" block — the SAME query and cards as the landing strip, placed above
- * the events surface's existing calendar. Absent when no renderable event is in the window (no
- * empty state); unlike the landing strip it needs no minimum, because /events is the page a
- * traveler opened to see events.
- */
-export function EventsComingUpBlock() {
-  const { open } = usePlanning();
-  const { data } = useQuery<CityEventsPayload>({ queryKey: ["/api/city-events/upcoming"] });
-  if (!data || data.total === 0 || data.events.length === 0) return null;
-  return (
-    <section className="mb-8" data-testid="events-coming-up">
-      <div className="mb-3 flex flex-col gap-1">
-        <span className="text-[10.5px] uppercase tracking-[0.12em]" style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}>
-          Next {data.windowDays} days
-        </span>
-        <h2 className="text-[26px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
-          Coming up
-        </h2>
-      </div>
-      <CityEventCards events={data.events} door="events_page" onPlanAround={(source) => open(source)} />
-    </section>
-  );
-}
