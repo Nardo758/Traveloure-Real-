@@ -1837,6 +1837,10 @@ This document captures architectural decisions to maintain consistency across co
     ONE token each — fill `#C8443D`, text `#B8403A`, accent/outline `#E85D55`; `.console-scope` fills
     (`--primary`, `--sidebar-primary`, `--console-brand` as a background) take the fill, focus rings stay the
     accent; a guard-batch check fails on any coral literal outside the three token definitions (Lane 1).
+    **The tokens and the `--primary` move LANDED (ledger `2026-10-06-coral-fill-tokens`):** `--coral-fill`,
+    `--coral-text`, `--coral-accent` in `:root`; `--primary` (public and `.console-scope`) is the fill with a
+    darker hover; `--ring` stays the accent; the 4.5:1 pin is `coral-fill-contrast.test.ts`. Still Lane 1's:
+    `--sidebar-primary`, `--console-brand`, the `--earn-coral-ink` fill sites, the text sites and the check script.
 
 46. **AN ARTIFACT IS ACCEPTED, NOT TIMED OUT; A REVISION IS A ROW; AND A HYBRID MAY DECLARE ONE ARTIFACT
     WITHOUT MOVING ITS MONEY (decision-maker ratified Sep 15, 2026 — punchlist D-24/D-25/D-26/D-40, all

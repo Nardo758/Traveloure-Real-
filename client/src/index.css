@@ -9,9 +9,17 @@
      Every shadcn semantic below resolves to an --earn-* brand token, so bg-primary,
      text-foreground, border and the rest read coral / ink / cream on every public page.
      #FF385C and #FB3B63 are retired; there is one red. */
-  --primary: 3.3 76.2% 62.2%; /* #E85D55 = --earn-coral-ink */
+  /* Coral is three named colours with ONE token each (ledger `2026-10-05-coral-three-tokens`, R337;
+     `2026-10-05-coral-fill-contrast`, R333): the FILL behind white text, coral TEXT on a light
+     ground, and the ACCENT for outlines and focus rings. The accent is never a background behind
+     white text (3.43:1). The dark theme is not ruled and keeps its own values below. */
+  --coral-fill: #C8443D; /* white on it 4.83:1 */
+  --coral-text: #B8403A; /* 5.48:1 on white */
+  --coral-accent: #E85D55; /* outlines and rings only */
+
+  --primary: 3 55.8% 51.2%; /* #C8443D = --coral-fill (white on it 4.83:1) */
   --primary-foreground: 0 0% 100%;
-  --primary-hover: 3.3 66% 52%; /* darkened coral */
+  --primary-hover: 3 55.8% 45%; /* #B33933 — the fill, darkened; white on it 5.92:1 */
 
   /* Secondary: kept at its pre-ruling value. It is read app-wide (123 files, the consoles and admin
      included) and .console-scope does not override it, so moving it would restyle console buttons
@@ -121,9 +129,9 @@
    there is ONE red everywhere, and the public :root above no longer differs.
    Do not restyle console pages with raw hex — use tokens. */
 .console-scope {
-  --primary: 3 76% 62%; /* #E85D55 */
-  --primary-hover: 3 66% 52%; /* darkened coral */
-  --ring: 3 76% 62%;
+  --primary: 3 55.8% 51.2%; /* #C8443D = --coral-fill (R337: the console's fills take the fill) */
+  --primary-hover: 3 55.8% 45%; /* #B33933 — the fill, darkened */
+  --ring: 3 76% 62%; /* #E85D55, the coral accent — focus rings stay the accent (R337) */
   --sidebar-primary: 3 76% 62%;
   --sidebar-ring: 3 76% 62%;
   --background: 60 17% 98%; /* #FAFAF8 */
