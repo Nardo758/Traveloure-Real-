@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { MAPS_CALLERS, MAPS_CALLER_KEYS, WORKSPACE_TEXT_SEARCH_FIELDS, type MapsCallerKey } from "@shared/maps-billing";
 import { mapsGate, withMapsGate, type MapsCallRecord, type MapsGateDeps } from "../services/maps-billing/maps-billing.core";
 import { mapsCallerCostTenthsOfCent, mapsCallerDailyCap, mapsCallerEnabled } from "../config/maps-billing.config";
-import { DRIVE_FIELD_MASK, MODE_FIELD_MASK, drivingRouteBody, modeRouteBody } from "../services/maps-billing/maps-requests";
+import { DRIVE_FIELD_MASK, MODE_FIELD_MASK, MODE_PATH_FIELD_MASK, drivingRouteBody, modeRouteBody } from "../services/maps-billing/maps-requests";
 import { PlacesAdapter, placesFieldMask } from "../services/content-facts/places-adapter";
 import { workspaceResultFrom, workspaceSearchBody } from "../services/maps-billing/places-text-search";
 
@@ -143,6 +143,9 @@ test("M5: Routes — the drive is Essentials (TRAFFIC_UNAWARE, no departure); a 
     assert.equal(b.travelMode, mode);
   }
   assert.equal(MODE_FIELD_MASK, "routes.duration,routes.distanceMeters");
+  // Slice A1: the leg review's live path asks the SAME Essentials body for the shape only — a
+  // response field, never a request feature, so the SKU is unchanged.
+  assert.equal(MODE_PATH_FIELD_MASK, "routes.polyline.encodedPolyline");
 });
 
 test("M6: Places — Details is Enterprise (+Atmosphere for dining) with photos inside it; the ID lookup asks places.id only", async () => {

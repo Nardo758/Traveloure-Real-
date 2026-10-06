@@ -5,6 +5,11 @@
  */
 export const DRIVE_FIELD_MASK = ["routes.duration", "routes.distanceMeters", "routes.polyline.encodedPolyline"].join(",");
 export const MODE_FIELD_MASK = "routes.duration,routes.distanceMeters";
+/**
+ * Slice A1 (leg review live hop path): the same Essentials request, asking for the route's shape.
+ * A response field, so the SKU is unchanged; the shape is drawn live and never stored.
+ */
+export const MODE_PATH_FIELD_MASK = "routes.polyline.encodedPolyline";
 
 type LatLng = { lat: number; lng: number };
 const point = (p: LatLng) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });

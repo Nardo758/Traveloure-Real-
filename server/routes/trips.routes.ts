@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
 import { setItemLock } from '../services/item-lock.service';
 import { platformCarFits } from '../services/airport-leg.service';
 import { anchorConflicts } from '@shared/optimizer-lead';
@@ -3280,6 +3281,9 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       }
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
+      // Slice A3 (ledger `2026-10-05-stay-reroute-gaps`): an edit to (or into, or out of) a stay item
+      // re-routes a copy's end legs. Best-effort, never fails the edit (§15b).
+      await rerouteIfStayItemChanged(tripId, [existing as any, updated as any]);
       // Smoke 10 S10-5: a time (or day) change re-sorts the item's day by time, so the list reads in
       // the order the day runs. The response is the row as stored, re-read after the re-sort.
       const timeTouched =
@@ -3350,6 +3354,8 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
         actorType: isWriteAdvisor ? "expert" : "traveler",
         actorId: userId,
       });
+      // Slice A3: removing a stay lets the next one (if any) take the end legs. Best-effort (§15b).
+      await rerouteIfStayItemChanged(tripId, [existing as any]);
       res.json({ success: true });
     } catch (err) {
       console.error("[ItineraryItems] DELETE error:", err);
