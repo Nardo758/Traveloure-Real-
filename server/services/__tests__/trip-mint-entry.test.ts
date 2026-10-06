@@ -123,8 +123,10 @@ describe("E1 — trip_created carries the door the traveler came through", () =>
     assert.match(handler, /api\.trips\.create\.input\.parse\(tripBody\)/);
     assert.doesNotMatch(handler, /api\.trips\.create\.input\.parse\(req\.body\)/);
     assert.match(handler, /eventData: tripCreatedEventData\(/);
-    // The closed list is the doc's thirteen doors (ten, plus the 2026-09-28 amendment's three), stated once.
-    assert.equal(PLAN_DOORS.length, 14);
+    // The closed list, stated once: the doc's ten, the 2026-09-28 amendment's three, `blog_post`
+    // (2026-09-30) and `experiences` (2026-10-06, step 8a D4).
+    assert.equal(PLAN_DOORS.length, 15);
+    assert.ok((PLAN_DOORS as readonly string[]).includes("experiences"));
     for (const d of ["billboard", "event_strip", "events_page"]) assert.ok((PLAN_DOORS as readonly string[]).includes(d), d);
   });
 

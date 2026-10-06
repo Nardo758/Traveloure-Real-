@@ -985,3 +985,26 @@ and requires `heroImageMeta.unsplashId` + `photographer` + `profileUrl`; the ear
 no `photographer`, so neither page renders a credit for it. The Pexels cover seen in the B2 samples
 came from a local-only demo row, not from any committed seed or route. If a second photo source is
 ever admitted, switch both pages to `photoSourceName` in the same PR that admits it.
+
+---
+
+## From step 8a — the /experiences start state (ledger `2026-10-06-step8a-experiences-entry`)
+
+### FU-8A-1 — A cart edit or delete can desync a cart row that mirrors a plan item
+The cart is the `ready_for_checkout` projection of `itinerary_items` (LD 39), but the cart's own
+edit and delete rails write `cart_items` directly. A row that mirrors a plan item can therefore be
+changed or removed in the cart while the plan item keeps its old values or status. Not touched in 8a
+(no cart code moved); the fix is to route those writes through the projection, not to add a second
+sync.
+
+### FU-8A-2 — The cart's "convert to itinerary" can duplicate a projected item
+Converting a cart to an itinerary creates plan items from cart lines without checking whether a line
+already IS the projection of an existing item, so a projected line comes back as a second item. Not
+touched in 8a. The conversion should skip (or link) a line that already names its item.
+
+### FU-8A-3 — `/experiences?destinations=…&multiCity=true` is ignored
+`client/src/components/TripQueueIndicator.tsx:34` links to `/experiences` with a comma-separated
+`destinations` list and `multiCity=true`. The new start page reads only `?destination=` and `?city=`
+(each an exact match of the eight cities, ruling 4), so a multi-city hand-off arrives with nothing
+picked. Ruled to stay ignored in 8a. A multi-city entry would need the modal's ordered stops (LD 34)
+seeded from that list, which is its own decision.

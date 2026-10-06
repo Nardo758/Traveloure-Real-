@@ -539,6 +539,9 @@ This document captures architectural decisions to maintain consistency across co
     nothing could fill. Step 5 is visible only when `showsSchedule(row)` is true (NULL ⇒ not shown,
     the plain-plan shape); steps 2 and 3 are NEVER skipped (`destination`/`start_date`/`end_date`
     are NOT NULL); step 4 is always visible and always skippable — untouched ⇒ NULL, never 2.
+    **AMENDED (step 8 D1, ledger `2026-10-06-step8a-experiences-entry`):** the `experiences` door ONLY
+    may OPEN at When, and only with a resolved occasion and a city, because the `/experiences` page
+    itself asked Where; step 2 stays visible and reachable by Back. Every other door is unchanged.
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and

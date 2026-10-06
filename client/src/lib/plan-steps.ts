@@ -34,6 +34,11 @@
  *      the questions that produce them. A `source.city`/`destination` PRE-FILLS step 2; it never
  *      removes it.
  *
+ *      AMENDED (step 8 D1, ledger `2026-10-06-step8a-experiences-entry`), narrowly: the `/experiences`
+ *      start page asks Where ON THE PAGE (an occasion and one of the eight cities, both picked, before
+ *      its Continue enables), so its door (`experiences`) may open the modal at When — nothing is
+ *      skipped, the answer arrives filled, and Where stays reachable by Back. Every other door keeps
+ *      the rule as written.
  *   5. STEP 4 IS ALWAYS VISIBLE AND ALWAYS SKIPPABLE. Party size is de-masked (migration 241): an
  *      untouched field saves as NULL, never a fabricated 2 — so the step costs nothing to show and
  *      answers nothing on the traveler's behalf.
@@ -164,6 +169,9 @@ export const DOORS_THAT_START_A_NEW_PLAN: readonly PlanDoor[] = [
   // A blog event guide's "Start this plan" (ledger `2026-09-30-blog-event-guide`) plans around the
   // post's event from scratch — a reader's bound plan is not the post's.
   "blog_post",
+  // Step 8a (D4, ledger `2026-10-06-step8a-experiences-entry`): the /experiences start page's
+  // Continue — the traveler picked an occasion and a city on the page, for a NEW plan.
+  "experiences",
 ];
 
 export function doorStartsNewPlan(
@@ -218,8 +226,14 @@ export interface PlanStepsSource {
    * that names a plan (`tripId`) — that plan's row already holds its Where and When (both NOT
    * NULL), so opening on Who skips no unanswered question, and every visible step stays reachable
    * from the rail. Any other value, or no plan, falls through to the ordinary door table.
+   *
+   * Step 8 D1 (ledger `2026-10-06-step8a-experiences-entry`): `"when"` opens on step 3, honoured ONLY
+   * for the `experiences` door, and only when the occasion resolved AND a city arrived — the page
+   * asked both. Anything short of that falls through to the ordinary door table (rule 4 as written).
    */
-  focusStep?: "who";
+  focusStep?: "who" | "when";
+  /** The door's id (the closed `PLAN_DOORS` list); read here only by the D1 `"when"` arm. */
+  door?: string;
 }
 
 /** The subset of the held `TripContext` this decision reads. */
@@ -276,6 +290,18 @@ export function resolvePlanSteps(
     visibleSteps.includes("who")
   ) {
     return { startStep: "who", visibleSteps };
+  }
+
+  // Step 8 D1: the /experiences page answered the occasion AND Where on the page itself.
+  if (
+    source?.focusStep === "when" &&
+    source.door === "experiences" &&
+    answered &&
+    typeof source.city === "string" &&
+    source.city.trim().length > 0 &&
+    visibleSteps.includes("when")
+  ) {
+    return { startStep: "when", visibleSteps };
   }
 
   return { startStep: answered ? "where" : "occasion", visibleSteps };

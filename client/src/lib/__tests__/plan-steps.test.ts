@@ -196,6 +196,32 @@ describe("D4/D5 — Where, When and Who are never skipped", () => {
   });
 });
 
+describe("step 8 D1 — ONLY the experiences door, with a resolved occasion and a city, opens at When", () => {
+  const EXP = { door: "experiences", focusStep: "when" as const, experienceSlug: "wedding", city: "Kyoto", country: "Japan" };
+
+  it("the /experiences Continue opens at When, with Where still visible (reachable by Back)", () => {
+    const r = resolvePlanSteps(EXP, WEDDING, null);
+    assert.equal(r.startStep, "when");
+    assert.ok(r.visibleSteps.includes("where"));
+    assert.equal(previousPlanStep(r.visibleSteps, "when"), "where");
+  });
+
+  it("any other door asking for When is ignored — rule 4 as written", () => {
+    for (const door of ["hero", "city_grid", "blog_post", undefined]) {
+      assert.equal(resolvePlanSteps({ ...EXP, door }, WEDDING, null).startStep, "where", String(door));
+    }
+  });
+
+  it("no city ⇒ Where is asked, never skipped", () => {
+    assert.equal(resolvePlanSteps({ ...EXP, city: undefined }, WEDDING, null).startStep, "where");
+    assert.equal(resolvePlanSteps({ ...EXP, city: "  " }, WEDDING, null).startStep, "where");
+  });
+
+  it("an occasion the catalog did not resolve ⇒ Occasion is asked (§13)", () => {
+    assert.equal(resolvePlanSteps(EXP, null, null).startStep, "occasion");
+  });
+});
+
 describe("D6 — a branch deep-open decides the finish, never the steps", () => {
   for (const branch of ["myself", "ai", "local", "occasion"]) {
     it(`branch "${branch}" leaves the step list and start step untouched`, () => {

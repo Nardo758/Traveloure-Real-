@@ -1,4 +1,5 @@
 import { anchorWallClockString } from "@shared/anchor-time";
+import { OccasionPicker } from "@/components/plan/OccasionPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Calendar, Clock, MapPin, Minus, Plus, X } from "lucide-react";
@@ -1902,43 +1903,14 @@ export function PlanModal({
               governs Share/guests on the plan, not whether the occasion can be chosen. */}
           {step === "occasion" && (
             <div className="space-y-3" data-testid="plan-step-occasion-body">
-              {occasionsLoading ? (
-                <p className="text-sm" style={{ color: "var(--earn-muted)" }}>Loading occasions…</p>
-              ) : (occasions ?? []).length === 0 ? (
-                <p className="text-sm" style={{ color: "var(--earn-muted)" }} data-testid="plan-occasions-unavailable">
-                  The occasion catalog is unavailable right now. Try again in a moment — nothing
-                  here is guessed on your behalf.
-                </p>
-              ) : (
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {(occasions ?? []).map((t) => {
-                    const picked = t.slug === occasionSlug;
-                    return (
-                      <button
-                        key={t.slug}
-                        type="button"
-                        onClick={() => setOccasionSlug(t.slug)}
-                        aria-pressed={picked}
-                        className="flex flex-col gap-1 rounded-xl border p-3.5 text-left transition-colors"
-                        style={{
-                          borderColor: picked ? "var(--earn-coral-ink)" : "var(--earn-border)",
-                          background: picked ? "var(--earn-coral-bg)" : "var(--earn-card)",
-                        }}
-                        data-testid={`option-occasion-${t.slug}`}
-                      >
-                        <span className="text-sm font-semibold" style={{ color: "var(--earn-ink)" }}>
-                          {t.name}
-                        </span>
-                        {t.description && (
-                          <span className="text-xs" style={{ color: "var(--earn-muted)" }}>
-                            {t.description}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* Step 8a: the ONE occasion picker, shared with the /experiences start page — groups, then
+                  the occasions in the chosen group, then See all and search. */}
+              <OccasionPicker
+                occasions={occasions}
+                loading={occasionsLoading}
+                value={occasionSlug}
+                onPick={setOccasionSlug}
+              />
               <p className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
                 Or start from a Moment on the home page — the occasion arrives already set.
               </p>

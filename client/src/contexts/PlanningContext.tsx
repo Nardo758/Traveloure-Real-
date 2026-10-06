@@ -97,8 +97,11 @@ export interface PlanningSource {
   pendingItem?: PendingPlanItem;
   /** Re-plan context: the trip this entry belongs to. */
   tripId?: string;
-  /** RC-12: open on step 4 (Who) — honoured only with `tripId`; see `resolvePlanSteps`. */
-  focusStep?: "who";
+  /**
+   * RC-12: open on step 4 (Who) — honoured only with `tripId`. Step 8 D1: `"when"` opens on step 3,
+   * honoured only for the `experiences` door with a resolved occasion and a city. See `resolvePlanSteps`.
+   */
+  focusStep?: "who" | "when";
   /** Deep-open a branch. Since `2026-09-04-one-modal-many-doors` this narrows the FINISH to that
    *  one CTA; it does NOT skip the modal's steps (the pricing ladder rows use it). */
   branch?: PlanningBranch;
