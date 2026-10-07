@@ -1391,7 +1391,7 @@ interface WelcomeEmailParams {
 }
 
 /**
- * Fire-and-forget welcome email sent immediately after a new account is created.
+ * Queue the welcome through the existing outbox; never send without a durable row.
  * Introduces the platform, surfaces the three core actions (plan a trip, browse
  * experts, explore hidden gems), and gives a direct CTA to the dashboard.
  * Safe to call without awaiting — all errors are caught internally.
@@ -1403,17 +1403,14 @@ export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void
     "auth.welcome_email",
     params,
     {},
-    () => sendWelcomeEmailAction(params),
+    async () => {
+      const { enqueueWelcomeForEmail } = await import("./signup-welcome-outbox.service");
+      await enqueueWelcomeForEmail(params.toEmail);
+    },
   );
 }
 
-async function sendWelcomeEmailAction(params: WelcomeEmailParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping welcome email for", params.toEmail);
-    return;
-  }
-
+export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailParams {
   const firstName = params.firstName?.trim() || null;
   const greeting = firstName ? `Hi ${escHtml(firstName)},` : "Hi there,";
   const baseUrl = getAppBaseUrl();
@@ -1503,18 +1500,12 @@ async function sendWelcomeEmailAction(params: WelcomeEmailParams): Promise<void>
     `Questions? Just reply to this email.`,
   ].join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: `Welcome to Traveloure — let's plan your next adventure`,
-      html,
-      text,
-    });
-    console.log(`[email] Welcome email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Welcome email failed (non-fatal):", err);
-  }
+  return {
+    to: params.toEmail,
+    subject: `Welcome to Traveloure — let's plan your next adventure`,
+    html,
+    text,
+  };
 }
 
 // ─── Payment-failed email ─────────────────────────────────────────────────────
