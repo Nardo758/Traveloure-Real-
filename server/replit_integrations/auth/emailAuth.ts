@@ -4,7 +4,9 @@ import crypto from "crypto";
 import { db } from "../../db";
 import { users, passwordResetTokens, emailVerificationTokens } from "@shared/models/auth";
 import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
-import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
+import { sendPasswordResetEmail, sendEmailVerificationEmail, getAppBaseUrl } from "../../services/email.service";
+import { enqueueSignupWelcome } from "../../services/signup-welcome-outbox.service";
+import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
@@ -106,22 +108,26 @@ export function setupEmailAuth(app: Express): void {
       // Hash password
       const hashedPassword = await hashPassword(password);
 
-      // Create user with terms accepted at registration time
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          email: email.toLowerCase(),
-          password: hashedPassword,
-          firstName,
-          lastName,
-          role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
-          authProvider: "email",
-          termsAcceptedAt: new Date(),
-          privacyAcceptedAt: new Date(),
-          termsVersion: CURRENT_TERMS_VERSION,
-          privacyVersion: CURRENT_PRIVACY_VERSION,
-        })
-        .returning();
+      // Commit the account and welcome obligation together; never send before commit.
+      const { newUser, welcomeId } = await db.transaction(async (tx) => {
+        const [newUser] = await tx
+          .insert(users)
+          .values({
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            firstName,
+            lastName,
+            role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
+            authProvider: "email",
+            termsAcceptedAt: new Date(),
+            privacyAcceptedAt: new Date(),
+            termsVersion: CURRENT_TERMS_VERSION,
+            privacyVersion: CURRENT_PRIVACY_VERSION,
+          })
+          .returning();
+        const welcomeId = await enqueueSignupWelcome(tx, newUser.id);
+        return { newUser, welcomeId };
+      });
 
       // Fire-and-forget: T1 funnel event (includes paid-acquisition attribution)
       trackFunnelEvent({
@@ -139,9 +145,8 @@ export function setupEmailAuth(app: Express): void {
         (err) => console.error("[auth/register] verification email issue failed:", err)
       );
 
-      // Fire-and-forget welcome email. Sent after verification so the two emails
-      // don't race into the same inbox second. Failure is non-fatal.
-      sendWelcomeEmail({ toEmail: newUser.email!, firstName: newUser.firstName ?? null }).catch(
+      // Best-effort immediate delivery after commit; the existing drain handles retries.
+      deliverQueuedEmail(welcomeId).catch(
         (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
       );
 
