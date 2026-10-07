@@ -1102,3 +1102,27 @@ DATA migration (no schema), with a duplicate check before any UNIQUE is consider
 - **Split country labels:** `UAE` and `United Arab Emirates`, and `USA` and `United States`, are the
   same country under two labels. One canonical label each, and the rows of the other re-pointed or
   merged, also by rule.
+
+## From step 8d — the guest map (ledger `2026-10-07-step8d-guest-map`)
+
+### FU-8D-1 — `GET /api/services` published each listing owner's `users.id` (LD 40) — **CLOSED by R355 (#1321)**
+Found in the 8d Phase 0 (`docs/planning/briefs/step-8d-phase0.md` §E, F1). The decision-maker routed the removal to the
+Events session, and R355 (#1321, ledger `2026-10-07-public-service-ids`) landed it. 8d keys everything on the listing id
+and reads no owner id.
+
+### FU-8D-2 — `GET /api/services/:id` has no concierge-pool exclusion — **CLOSED by R355 (#1321)**
+Phase 0 F2. The list reads that R353 covered exclude the pool account; the detail read does not, so a pool listing is
+readable by id. Handed to the Events session (R353's lane).
+
+### FU-8D-3 — `GET /api/affiliate/products` accepts an unbounded `limit` — **CLOSED by R355 (#1321)**
+Phase 0 F3. It is a public read with no cap (`affiliate-scraper.service.ts`, `limit || 50`).
+
+### FU-8D-4 — Leaflet draws above dialogs opened over a map
+Leaflet's panes carry z-indexes in the hundreds, so the fallback map's markers and attribution drew over the sign-in
+dialog on the guest map. 8d contains them on the guest page only (`isolate` on its map wrapper). Any other surface that
+opens a dialog over a Leaflet-rendered `MapControlCenter` may show the same thing. A fix belongs in `MapControlCenter`
+itself, which is the member path 8d was ruled not to touch.
+
+### FU-8D-5 — the board's "Draft it with AI · free" on the guest map is not built
+The board draws it for a guest, with its own gate copy. Decision 1 kept `ai`'s existing sign-in gate, so the guest map
+offers Browse, "Add to plan" and "Sign in to start" only.

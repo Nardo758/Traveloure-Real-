@@ -118,6 +118,14 @@ export interface MapControlCenterProps {
   layout?: "stacked" | "split";
   /** The empty "Your plan" line (ruling 2): the slip's own reason text, shown while nothing is located. */
   planEmptyNote?: string | null;
+  /**
+   * Step 8d (ledger `2026-10-07-step8d-guest-map`; brief item 24): the GUEST map — a signed-out visitor
+   * with no plan. Browse only: always open, no day chips, no "Your plan" layer, no versions, no Remove;
+   * the centre comes from the caller (the eight-market list — a centre, never a pin), because
+   * `/api/geocode` stays closed to guests; "Add to plan" hands the place back (`onAdd`) instead of
+   * posting. The member path is untouched when this is absent.
+   */
+  guest?: { center: { lat: number; lng: number } | null; onAdd: (place: BrowsePlace) => void } | null;
 }
 
 export function MapControlCenter({
@@ -143,6 +151,7 @@ export function MapControlCenter({
   onAddCandidate,
   layout = "stacked",
   planEmptyNote = null,
+  guest = null,
 }: MapControlCenterProps) {
   const { toast } = useToast();
   const [planLayer, setPlanLayer] = useState(true);
@@ -152,7 +161,7 @@ export function MapControlCenter({
     setBrowseLocal(next);
     onBrowseChange?.(next);
   };
-  const browseOn = !readOnly && browseState.open;
+  const browseOn = !readOnly && (guest ? true : browseState.open);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedBrowseId, setSelectedBrowseId] = useState<string | null>(null);
   const [versionKeyLocal, setVersionKeyLocal] = useState<string>("draft");
@@ -303,12 +312,16 @@ export function MapControlCenter({
   const { data: geocoded, isLoading: geocoding } = useQuery<{ lat?: number; lng?: number }>({
     queryKey: ["/api/geocode", tripDestination],
     queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(tripDestination)}`).then((r) => r.json()),
-    enabled: !!tripDestination && !firstPoint,
+    // Step 8d: never for a guest — the route is session-gated (a Maps-cost guard); the guest's centre
+    // is handed in.
+    enabled: !guest && !!tripDestination && !firstPoint,
     staleTime: Infinity,
   });
   const center = firstPoint
     ? { lat: firstPoint.lat, lng: firstPoint.lng }
-    : geocoded?.lat != null && geocoded?.lng != null
+    : guest
+      ? guest.center
+      : geocoded?.lat != null && geocoded?.lng != null
       ? { lat: geocoded.lat, lng: geocoded.lng }
       : null;
 
@@ -322,7 +335,7 @@ export function MapControlCenter({
   const split = layout === "split";
   // Item 13: in the split layout the rail FOLLOWS THE SHOWN LAYER — Browse while it is on, the day's
   // "Your plan" stops otherwise. The stacked layout keeps both, exactly as before.
-  const showPlanRail = !split || !browseOn;
+  const showPlanRail = !guest && (!split || !browseOn);
   return (
     <div
       data-testid={`map-control-center-${tripId}`}
@@ -334,7 +347,8 @@ export function MapControlCenter({
       {/* ── Day chips · version toggle · layers ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border" data-testid={`map-toolbar-${tripId}`}>
         <div className="flex flex-wrap gap-1" data-testid={`map-day-selector-${tripId}`}>
-          {days.map((d, i) => (
+          {/* Step 8d: a guest has no plan, so no days (the board's `showDayChips: member`). */}
+          {guest ? null : days.map((d, i) => (
             <button
               key={i}
               type="button"
@@ -363,6 +377,7 @@ export function MapControlCenter({
             ))}
           </div>
         ) : null}
+        {guest ? null : (
         <div className="ml-auto flex items-center gap-1" data-testid={`layer-controls-${tripId}`}>
           <Layers className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
           <button
@@ -386,6 +401,7 @@ export function MapControlCenter({
             </button>
           ) : null}
         </div>
+        )}
       </div>
       {dayDiff?.matchedByName ? (
         <p className="px-3 py-1 text-[11px] text-muted-foreground" data-testid="map-version-matched-by-name">
@@ -572,6 +588,14 @@ export function MapControlCenter({
                     .join(" · ")}
                 </p>
                 {(() => {
+                  if (guest) {
+                    // Step 8d: the guest's one add is handed back — the page carries it through sign-in.
+                    return (
+                      <Button size="sm" onClick={() => guest.onAdd(selectedBrowse)} data-testid="map-browse-add">
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Add to plan
+                      </Button>
+                    );
+                  }
                   const added = addedItemFor(selectedBrowse, planItems);
                   if (added) {
                     return (
@@ -640,7 +664,7 @@ export function MapControlCenter({
           </div>
         ) : null}
 
-        {!compact ? (
+        {!compact && !guest ? (
           <div className="flex flex-wrap gap-2 pt-1">
             <Button size="sm" variant="outline" className="h-7 gap-1.5 text-[11px]" onClick={() => openDayInMaps(day, tripDestination, "google")} data-testid={`map-btn-google-${tripId}`}>
               <SiGoogle className="w-3 h-3" /> Google Maps

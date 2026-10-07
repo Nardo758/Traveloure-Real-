@@ -56,6 +56,7 @@ import {
 } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -72,12 +73,20 @@ import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/component
 import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
 import { doorStartsNewPlan } from "@/lib/plan-steps";
 import { normalizePendingPlanItems, type PendingPlanItem } from "@shared/pending-plan-items";
-import { planLandingPath } from "@/lib/plan-landing";
+import { GUEST_MAP_PATH, opensGuestMap, planLandingPath } from "@/lib/plan-landing";
+import {
+  attachPendingMapAdd,
+  pendingMapAddMessage,
+  readPendingMapAddRetry,
+  writePendingMapAddRetry,
+} from "@/lib/pending-map-add";
 import type { DraftAnswers } from "@/lib/plan-resume";
 import {
   consumePendingPlanRecord,
+  pendingPlanRecordTakenThisLoad,
   takePendingPlanRecord,
   writePendingPlanRecord,
+  type PendingMapAdd,
 } from "@/lib/pending-plan-record";
 
 export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
@@ -109,6 +118,11 @@ export interface PlanningSource {
   autoFinish?: "myself" | "ai";
   /** An itinerary item to attach only after this door's new plan has been minted. */
   pendingItem?: PendingPlanItem;
+  /**
+   * Step 8d: the guest map's ONE pending add, set ONLY by the provider's replay of a guest's v2 sign-in
+   * record. Run once after the mint (`attachPendingMapAdd`); no door sets it.
+   */
+  pendingMapAdd?: PendingMapAdd;
   /** Re-plan context: the trip this entry belongs to. */
   tripId?: string;
   /**
@@ -334,6 +348,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   );
   /** The plan as the modal committed it — what the AI branch is handed instead of asking again. */
   const [committed, setCommitted] = useState<CommittedPlan | null>(null);
+  /** Step 8d: set by the guest gate for `myself` from the Experiences door; read once by `mintPlan`. */
+  const guestMapLanding = useRef(false);
 
   useEffect(() => {
     if (pendingGemRecovery) setModalOpen(true);
@@ -425,6 +441,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     }): Promise<PlanMintOutcome> => {
       if (!user) {
         setModalOpen(false);
+        // Step 8d (decision 1): `myself` from the Experiences door lands a guest on the GUEST MAP — the
+        // record the gate just wrote carries the answers there — instead of the sign-in modal.
+        if (guestMapLanding.current) {
+          guestMapLanding.current = false;
+          setLocation(GUEST_MAP_PATH);
+          return { ok: false };
+        }
         // Step 8b-2 (D3): sign-in returns to THIS page, where the record is replayed — not /dashboard.
         openSignInModal({ returnTo: currentPagePath() });
         return { ok: false };
@@ -438,6 +461,16 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       }
       const outcome = await mintTripSlip(basics);
       if (!outcome.ok) return { ok: false, message: outcome.message };
+      // Step 8d: the guest map's one add, run ONCE onto the plan just created. The retry entry is
+      // written FIRST, so a reload or a failure retries the ADD, never the mint (the record is gone).
+      if (source?.pendingMapAdd) {
+        const add = source.pendingMapAdd;
+        writePendingMapAddRetry(outcome.tripId, add);
+        const added = await attachPendingMapAdd(outcome.tripId, add);
+        const said = pendingMapAddMessage(added);
+        toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+        setSource((current) => (current?.pendingMapAdd ? { ...current, pendingMapAdd: undefined } : current));
+      }
       if (source?.newPlan && source.pendingItem) {
         const pendingItem = source.pendingItem;
         try {
@@ -463,7 +496,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       }
       return { ok: true, tripId: outcome.tripId };
     },
-    [user, openSignInModal, source, pendingGemRecovery],
+    [user, openSignInModal, source, pendingGemRecovery, setLocation, toast],
   );
 
   const retryPendingGem = useCallback(async (): Promise<PendingGemRetryOutcome> => {
@@ -524,6 +557,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       switch (branch) {
         case "myself":
           recordFor("myself", answers);
+          guestMapLanding.current = opensGuestMap("myself", (source?.door as string | undefined) ?? null);
           break;
         default:
           guestAiAnswers.current = answers;
@@ -555,8 +589,23 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           ...(record.source.country ? { country: record.source.country } : {}),
           resumeAnswers: record.answers,
           autoFinish: record.branch,
+          ...(record.pendingAdd ? { pendingMapAdd: record.pendingAdd } : {}),
         }),
     });
+    // Step 8d: a guest-map add whose plan was created but whose add did not land is retried here —
+    // the add only, idempotently (the plan is read first). Never on a load that is replaying a record.
+    if (!pendingPlanRecordTakenThisLoad()) {
+      const retry = readPendingMapAddRetry();
+      if (retry) {
+        void attachPendingMapAdd(retry.tripId, retry.add).then((added) => {
+          const said = pendingMapAddMessage(added);
+          toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+          if (added.status !== "failed") {
+            void queryClient.invalidateQueries({ queryKey: [`/api/trips/${retry.tripId}/plancard`] });
+          }
+        });
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
