@@ -60,6 +60,15 @@
  *       `authorId: string | undefined`) — an interface field or a parameter list NAMES an identity
  *       without publishing one.
  *
+ *   (3) PUBLIC RAW-ROW ROUTES (ledger `2026-10-07-public-service-ids`). Predicate (2) reads object
+ *       literals, so a route that hands STORAGE ROWS straight to `res.json` — `GET /api/services`
+ *       served `getAllActiveServices` rows, each carrying the owner's `userId` — is invisible to it
+ *       (the first bullet of NEGATIVE SPACE below). RAW_ROW_ROUTES names such routes and the projector
+ *       each must call: the route is found by method and path in its file, and its handler must
+ *       contain `<projector>(`. A named route that is missing, or that no longer calls its
+ *       projector, FAILS — a rename is never a silent pass. KNOWN_RAW_ROW_DEBT names public routes
+ *       known to pass rows through that are NOT fixed yet; each prints on every run, like an exemption.
+ *
  * THE ESCAPE HATCH, AND WHY IT IS NOISY ON PURPOSE
  * ───────────────────────────────────────────────
  * A line may carry `public-user-id-ok: <reason>` (the `money-derive-ok` convention). Unlike that
@@ -70,8 +79,9 @@
  *
  * NEGATIVE SPACE — what this guard does NOT cover (§18d: green means green-within-stated-bounds)
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- *   • It is TEXT over object literals. A payload built by spreading a raw row (`res.json({...row})`)
- *     publishes every column and shows this guard nothing — that is precisely the class ledger
+ *   • Predicates (1) and (2) are TEXT over object literals. A payload built by spreading a raw row
+ *     (`res.json({...row})`) publishes every column and shows them nothing. Predicate (3) covers only
+ *     the routes it NAMES; an unnamed raw-row route is still invisible — that is precisely the class ledger
  *     `2026-09-05-experts-public-projection` recorded as having "no grep guard", and the answer
  *     there is the named projector plus its committed test, not a scan. Predicate (1) is the part
  *     of that class a scan CAN see: the allowlist the projector reads.
@@ -606,6 +616,57 @@ function allowlistFiles() {
   return files;
 }
 
+// ---------------------------------------------------------------------------
+// Predicate 3 — public routes that pass storage rows through must call their projector
+// ---------------------------------------------------------------------------
+
+/** A public route that serves rows as read, and the projector that strips `users.id` from them. */
+const RAW_ROW_ROUTES = [
+  { file: "server/routes/content.routes.ts", route: "GET /api/services", projector: "toPublicServiceListing" },
+];
+
+/** Public routes known to pass rows carrying `userId` through, not fixed yet. Printed every run. */
+const KNOWN_RAW_ROW_DEBT = [
+  {
+    file: "server/routes/content.routes.ts",
+    route: "GET /api/discover",
+    reason:
+      "the Services tab's search rows carry `userId`; its card still links a handle-less expert to " +
+      "/experts/:id (LD 40 lane 2: still id-addressed) — moving that card to handle-or-nothing is the fix",
+  },
+];
+
+/** Predicate (3) over one file's text, for the registry entries naming that file. */
+function scanRawRowRoutes(text, relPath, registry = RAW_ROW_ROUTES) {
+  const violations = [];
+  const lines = text.split("\n");
+  const blocks = publicRouteBlocks(text);
+  for (const entry of registry.filter((e) => e.file === relPath)) {
+    const block = blocks.find((b) => b.key === entry.route);
+    if (!block) {
+      violations.push({
+        file: relPath,
+        line: 1,
+        kind: "a named public raw-row route was not found",
+        text: `${entry.route} (expected to call ${entry.projector})`,
+        why: "predicate (3) names this route; a rename or move must update RAW_ROW_ROUTES, never pass silently",
+      });
+      continue;
+    }
+    const body = lines.slice(block.startLine - 1, block.endLine).map(stripComments).join("\n");
+    if (!new RegExp(`\\b${entry.projector}\\s*\\(`).test(body)) {
+      violations.push({
+        file: relPath,
+        line: block.startLine,
+        kind: "public route passes storage rows through without its projector",
+        text: `${entry.route} does not call ${entry.projector}(...)`,
+        why: "a public list row carries the owner's users.id unless the projector removes it (Locked Decision 40)",
+      });
+    }
+  }
+  return { violations };
+}
+
 function main() {
   const violations = [];
   const exemptions = [];
@@ -623,6 +684,15 @@ function main() {
     const r = scanRouteFile(fs.readFileSync(file, "utf-8"), rel);
     violations.push(...r.violations);
     exemptions.push(...r.exemptions);
+  }
+
+  for (const rel of new Set(RAW_ROW_ROUTES.map((e) => e.file))) {
+    const full = path.join(ROOT, rel);
+    const text = fs.existsSync(full) ? fs.readFileSync(full, "utf-8") : "";
+    violations.push(...scanRawRowRoutes(text, rel).violations);
+  }
+  for (const d of KNOWN_RAW_ROW_DEBT) {
+    exemptions.push({ file: d.file, line: 0, what: `${d.route} (raw rows, predicate 3 debt)`, reason: d.reason });
   }
 
   // Exemptions print on EVERY run, pass or fail — filed debt must not become a silent baseline.
@@ -908,11 +978,65 @@ function selfTest() {
     1,
   );
 
+  // ── Predicate 3 ──────────────────────────────────────────────────────────
+  const reg = [{ file: "fixture.ts", route: "GET /api/services", projector: "toPublicServiceListing" }];
+  const expectRaw = (label, source, expectedViolations) => {
+    const r = scanRawRowRoutes(source, "fixture.ts", reg);
+    if (r.violations.length !== expectedViolations) {
+      failures++;
+      console.error(`  SELF-TEST FAIL (${label}): expected ${expectedViolations} violation(s), got ${r.violations.length}`);
+    }
+  };
+  // THE DEFECT: the list handed storage rows (with userId) straight to the client.
+  expectRaw(
+    "pre-fix /api/services passes rows through (the reason predicate 3 exists)",
+    [
+      'router.get("/api/services", async (req, res) => {',
+      "  const services = await storage.getAllActiveServices(categoryId, location);",
+      "  res.json(services.map((s) => applyPropertyLocationPrivacy(s)));",
+      "});",
+    ].join("\n"),
+    1,
+  );
+  expectRaw(
+    "the projector is called",
+    [
+      'router.get("/api/services", async (req, res) => {',
+      "  const services = await storage.getAllActiveServices(categoryId, location);",
+      "  res.json(services.map((s) => toPublicServiceListing(applyPropertyLocationPrivacy(s))));",
+      "});",
+    ].join("\n"),
+    0,
+  );
+  expectRaw(
+    "a projector named only in a comment does not count",
+    [
+      'router.get("/api/services", async (req, res) => {',
+      "  // toPublicServiceListing(row) would go here",
+      "  res.json(rows);",
+      "});",
+    ].join("\n"),
+    1,
+  );
+  expectRaw(
+    "the projector in a NEIGHBOURING route does not cover this one",
+    [
+      'router.get("/api/services", async (req, res) => {',
+      "  res.json(rows);",
+      "});",
+      'router.get("/api/services/:id", async (req, res) => {',
+      "  res.json(toPublicServiceListing(row));",
+      "});",
+    ].join("\n"),
+    1,
+  );
+  expectRaw("a named route that vanished fails, never passes", 'router.get("/api/other", async (req, res) => { res.json(rows); });', 1);
+
   if (failures > 0) {
     console.error(`[check-public-user-id] SELF-TEST FAILED — ${failures} case(s).`);
     process.exit(1);
   }
-  console.log("[check-public-user-id] self-tests OK (16 cases).");
+  console.log("[check-public-user-id] self-tests OK (21 cases).");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
