@@ -6,7 +6,9 @@ import { getUserId, requireDbAdmin } from "../utils/auth";
 import { isCustomVenueOwner, scopeTripFilter } from '../utils/custom-venue-owner';
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { withQueryTimer } from '../utils/queryTimer';
-import { parsePagination } from '../utils/pagination';
+import { affiliateProductsPage, parsePagination } from '../utils/pagination';
+import { toPublicServiceListing } from '../utils/public-service-listing';
+import { isConciergePoolAccount } from '../services/expert-routability';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
 import { aiFailureResponse } from '../services/ai-upstream-errors';
@@ -2390,6 +2392,13 @@ router.get("/api/services/:id", async (req, res) => {
     if (!rawService || rawService.status !== "active" || rawService.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
+    // The concierge pool account's listing is never public, by id either (R353's rule, extended by
+    // ledger `2026-10-07-public-service-ids`): the SAME 404 as absent, so the read cannot be used to
+    // probe for it. Its fallback is offered by notification and bought through the cart and checkout,
+    // which read storage, never this route.
+    if (await isConciergePoolAccount(rawService.userId)) {
+      return res.status(404).json({ message: "Service not found" });
+    }
     // D3 leak-prevention: this is the public service-detail read — serviceFile is the
     // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
     // front, so every branch below (bundle/property/room/default) inherits the strip.
@@ -2876,7 +2885,9 @@ router.get("/api/services", async (req, res) => {
     // carries an exact property/room pin either. Every other product shape is returned untouched
     // (applyPropertyLocationPrivacy is a no-op for them) — routePoints/serviceRadius rendering for
     // non-property shapes is unaffected.
-    res.json(services.map((s) => applyPropertyLocationPrivacy(s)));
+    // LD 40 (ledger `2026-10-07-public-service-ids`): the owner's `users.id` never rides this public
+    // list — `toPublicServiceListing` removes it; `check-public-user-id` predicate (3) requires the call.
+    res.json(services.map((s) => toPublicServiceListing(applyPropertyLocationPrivacy(s))));
   });
 
   // Unified Discovery Search (public - with advanced filtering)
@@ -8794,7 +8805,10 @@ router.get("/api/affiliate/partners/:id/jobs", isAuthenticated, async (req, res)
 
 router.get("/api/affiliate/products", async (req, res) => {
     try {
-      const { partnerId, category, city, country, search, minPrice, maxPrice, minRating, limit, offset } = req.query;
+      const { partnerId, category, city, country, search, minPrice, maxPrice, minRating } = req.query;
+      // Bounded like every other public list (ledger `2026-10-07-public-service-ids`): the shared
+      // `parsePagination` caps `limit` at MAX_PAGE_LIMIT; it was passed through unbounded.
+      const { limit, offset } = affiliateProductsPage(req.query);
       const isAdmin = await isRequestAdmin(req);
       const approvedOnly = !isAdmin; // public sees approved-partner products only
       const result = await affiliateScraperService.getProducts({
@@ -8807,8 +8821,8 @@ router.get("/api/affiliate/products", async (req, res) => {
         maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
         minRating: minRating ? parseFloat(minRating as string) : undefined,
         approvedOnly,
-        limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined,
+        limit,
+        offset,
       });
       // §16: traveler-facing product DTOs never carry partner URLs — these are registry rows, so
       // the booking-agent rail re-resolves the URL from the DB by affiliateProductId, and the
