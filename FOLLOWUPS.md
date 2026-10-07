@@ -1168,7 +1168,7 @@ An edit's legs are recomputed ~2 s after the write (ruling 10), so the slip show
 read (accepted for 9a, ruling 4 on #1325). 9b refetches the plan's legs once after the debounce window so
 the row appears without a reload.
 
-### FU-9B-1 — Track A: pass the routed airport minutes to the slip's airport row (one line)
+### FU-9B-1 — Track A: pass the routed airport minutes to the slip's airport row (one line) — **DONE** (ledger `2026-10-07-fu9b1-airport-minutes`)
 
 Step 9b (ledger `2026-10-07-step9b-optimizer-and-rechecks`) gave `AirportLegRow` an optional
 `routedMinutes` prop and `flightAnchorFor` an `airportLegMinutes` field (from the anchors GET's

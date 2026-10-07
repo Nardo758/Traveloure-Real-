@@ -1793,6 +1793,7 @@ export function useSlipViewModel({
         driversHref={servicesBrowseHref("private_transportation", tripId)}
         busy={legRequest.isPending}
         onRequest={() => legRequest.mutate({ direction, airport: flight?.location ?? null })}
+        routedMinutes={flight?.airportLegMinutes ?? null}
       />
     );
   };
