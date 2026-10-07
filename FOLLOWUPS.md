@@ -1079,15 +1079,16 @@ server lane; 8c is client only.
 
 ## From step 8d — the guest map (ledger `2026-10-07-step8d-guest-map`)
 
-### FU-8D-1 — `GET /api/services` published each listing owner's `users.id` (LD 40)
+### FU-8D-1 — `GET /api/services` published each listing owner's `users.id` (LD 40) — **CLOSED by R355 (#1321)**
 Found in the 8d Phase 0 (`docs/planning/briefs/step-8d-phase0.md` §E, F1). The decision-maker routed the removal to the
-Events session. 8d keys everything on the listing id and reads no owner id. Close this entry when that PR lands.
+Events session, and R355 (#1321, ledger `2026-10-07-public-service-ids`) landed it. 8d keys everything on the listing id
+and reads no owner id.
 
-### FU-8D-2 — `GET /api/services/:id` has no concierge-pool exclusion
+### FU-8D-2 — `GET /api/services/:id` has no concierge-pool exclusion — **CLOSED by R355 (#1321)**
 Phase 0 F2. The list reads that R353 covered exclude the pool account; the detail read does not, so a pool listing is
 readable by id. Handed to the Events session (R353's lane).
 
-### FU-8D-3 — `GET /api/affiliate/products` accepts an unbounded `limit`
+### FU-8D-3 — `GET /api/affiliate/products` accepts an unbounded `limit` — **CLOSED by R355 (#1321)**
 Phase 0 F3. It is a public read with no cap (`affiliate-scraper.service.ts`, `limit || 50`).
 
 ### FU-8D-4 — Leaflet draws above dialogs opened over a map
