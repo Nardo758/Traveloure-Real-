@@ -13,6 +13,7 @@
  * owner, a delegate or a §12 WRITE advisor); a refusal is one 404. Bodies are `.strict()` picks
  * (§19); the actor is the session (§14). No travel minute or distance leaves (R-h).
  */
+import { enqueuePlanLegRecompute, runNow } from "../services/routing/plan-legs-queue";
 import { Router } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -61,7 +62,11 @@ router.post("/api/trips/:tripId/versions/apply-days", isAuthenticated, async (re
   const parsed = applyBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Send the days to adopt" });
   try {
-    res.json(await applyDays({ tripId: req.params.tripId, userId, days: parsed.data.days }));
+    const out = await applyDays({ tripId: req.params.tripId, userId, days: parsed.data.days });
+    // Step 9a ruling 6 (ledger 2026-10-07-step9a-routing-engine): applying versions writes the plan's
+    // own legs for what was adopted — after the commit, best-effort, never failing the apply (§15b).
+    void runNow(req.params.tripId);
+    res.json(out);
   } catch (err) {
     fail(res, err, "apply those days");
   }
@@ -82,7 +87,9 @@ router.post("/api/trips/:tripId/days/:day/retime", isAuthenticated, async (req: 
   const parsed = retimeBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Send the day's order" });
   try {
-    res.json(await retimeDay({ tripId: req.params.tripId, userId, day, order: parsed.data.order, swapIn: parsed.data.swapIn ?? null }));
+    const out = await retimeDay({ tripId: req.params.tripId, userId, day, order: parsed.data.order, swapIn: parsed.data.swapIn ?? null });
+    enqueuePlanLegRecompute(req.params.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
+    res.json(out);
   } catch (err) {
     fail(res, err, "re-time that day");
   }

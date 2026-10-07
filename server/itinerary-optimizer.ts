@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { versionRoutingFor } from "./services/routing/plan-legs-engine.service";
 import { reportAiUpstreamError } from "./services/ai-upstream-errors";
 import { optionPickItem, type OptionSlot } from "./services/version-options.service";
 import { buildInputSnapshot, recordOptimizerRun, type RunRecordContext } from "./services/optimizer-runs.service";
@@ -901,6 +902,12 @@ export async function generateOptimizedItineraries(
     let anchorConstraints: AnchorConstraint[] = [];
     let boundaryConstraints: DayBoundaryConstraint[] = [];
     let anchorPromptSection = '';
+    // Step 9a ruling 6 (ledger `2026-10-07-step9a-routing-engine`): every version's legs go through the
+    // routing engine, cache-first (null = the engine is off ⇒ the legacy drive legs, unchanged).
+    const versionRouting = await versionRoutingFor(comparisonId).catch((err) => {
+      console.warn("[optimizer] routing context unavailable (legacy legs):", (err as Error)?.message ?? err);
+      return null;
+    });
 
     if (tripId) {
       const [anchors, boundaries] = await Promise.all([
@@ -1207,10 +1214,11 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           durationMinutes: item.duration,
           dayNumber: item.dayNumber,
           order: item.sortOrder ?? idx,
+          placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
         }));
 
       if (baselineActivitiesWithCoords.length > 0) {
-        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs);
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs, versionRouting?.ctx ?? null);
       }
     } catch (legErr) {
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
@@ -1898,10 +1906,11 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             durationMinutes: item.duration,
             dayNumber: item.dayNumber,
             order: item.sortOrder ?? idx,
+            placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
           }));
 
         if (activitiesWithCoords.length > 0) {
-          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs);
+          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs, versionRouting?.ctx ?? null);
         }
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);

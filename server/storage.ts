@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
 import { dispatchModerationEvent } from "./automations/moderation/runtime";
 import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
@@ -8032,6 +8033,7 @@ export class DatabaseStorage implements IStorage {
   async createItineraryItem(item: InsertItineraryItem & { tripId: string }): Promise<ItineraryItem> {
     const safeItem = stripItineraryItemRoutingFields(item as Record<string, unknown>);
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
+    enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
   }
 
@@ -8073,6 +8075,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(itineraryItems.id, id))
       .returning();
+    enqueuePlanLegRecompute(updated?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return updated;
   }
 
@@ -8139,6 +8142,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
     });
+    enqueuePlanLegRecompute(item?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
   }
 
   // Expert Workspace Status

@@ -37,6 +37,8 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
+import { routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
+import { tripGetsRoutedLegs } from "./routing/plan-routed-legs.service";
 import { readFinalCardMeta } from "@shared/trip-card-final";
 import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
 import { isAreaOnlyLocation, rowCoordinatesTrusted } from "@shared/ai-place-text";
@@ -331,6 +333,8 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
     ...(leg.pickupPoint || leg.pickupTime
       ? { pickupPoint: leg.pickupPoint ?? null, pickupTime: leg.pickupTime ?? null }
       : {}),
+    // Step 9a (ledger `2026-10-07-step9a-routing-engine`): present only on an engine leg.
+    ...(routedFactsOf(leg) ? { routed: routedFactsOf(leg)! } : {}),
   };
 }
 
@@ -729,12 +733,21 @@ export async function assembleTripPlan(
     }
   }
 
-  // ── §18 L4: trip-scoped legs — CONFIRMED ONLY ─────────────────────────────────────────────
-  // The engine's `proposed` legs are machine output the expert has not approved, so this producer
-  // does not read them AT ALL: a traveler surface can never receive one, whatever it renders (the
-  // D1a born-approved lesson applied to machine transport). The Workstation editor reads proposals
-  // through its own endpoint, never through the plan object.
-  const tripLegs = await getTripTransportLegs(tripId, { includeProposed: false });
+  // ── §18 L4: trip-scoped legs ──────────────────────────────────────────────────────────────
+  // The Workstation's `proposed` legs are machine output the expert has not approved and never reach
+  // a traveler (the D1a born-approved lesson applied to machine transport); the editor reads them
+  // through its own endpoint.
+  // Step 9a rulings 3 and 5 (ledger `2026-10-07-step9a-routing-engine`): ONE read rule, `selectPlanLegs`,
+  // over the plan's `planGetsRoutedLegs` answer. Confirmed legs always (and they win per pair); engine
+  // legs only on a qualifying plan; the Workstation's other proposals never; variant legs hidden on a
+  // free plan (not deleted). The proposal read below feeds that rule and nothing else.
+  const legSelection = selectPlanLegs({
+    qualifies: await tripGetsRoutedLegs(tripId),
+    tripLegs: await getTripTransportLegs(tripId, { includeProposed: true }),
+    variantLegs,
+  });
+  const tripLegs = legSelection.tripLegs;
+  variantLegs = legSelection.variantLegs;
 
   // transportLegId → primary booking option (badge display + the §3 `booked` block). Booking rows
   // hang off `transport_legs.id`, so trip-scoped legs resolve through the same shared helper.

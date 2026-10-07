@@ -38,3 +38,31 @@ export function modeRouteBody(origin: LatLng, destination: LatLng, travelMode: "
     units: "METRIC",
   };
 }
+
+/**
+ * Step 9a routing engine (ledger `2026-10-07-step9a-routing-engine`). The engine asks for the five
+ * facts the route cache may hold and nothing else: duration, distance, the transit line name and the
+ * fare. No polyline and no step instructions are requested, so none can be stored. Masks are response
+ * fields; the SKU is set by the request body, which is the same Essentials body as above (R299).
+ */
+export const ROUTED_BASIC_FIELD_MASK = "routes.duration,routes.distanceMeters";
+export const ROUTED_TRANSIT_FIELD_MASK = [
+  "routes.duration",
+  "routes.distanceMeters",
+  "routes.legs.steps.transitDetails.transitLine.name",
+  "routes.legs.steps.transitDetails.transitLine.nameShort",
+  "routes.travelAdvisory.transitFare",
+].join(",");
+
+/** TRANSIT with a departure when one is known and not in the past — Compute Routes Essentials. */
+export function transitRouteBody(origin: LatLng, destination: LatLng, departAt: Date | null, now: Date = new Date()) {
+  return {
+    origin: point(origin),
+    destination: point(destination),
+    travelMode: "TRANSIT",
+    computeAlternativeRoutes: false,
+    ...(departAt && departAt.getTime() > now.getTime() ? { departureTime: departAt.toISOString() } : {}),
+    languageCode: "en-US",
+    units: "METRIC",
+  };
+}

@@ -1,4 +1,9 @@
 import { Router } from "express";
+import { routingAdapter } from "../services/routing/index";
+import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service";
+import { routingPausedToday } from "../services/maps-billing/maps-billing.service";
+
+import { enqueuePlanLegRecompute, runNow } from "../services/routing/plan-legs-queue";
 import { factsForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
 import { photosFor } from "../services/place-photos.service";
 import { applyGooglePins } from "@shared/ai-place-text";
@@ -42,6 +47,17 @@ import { versionPerOptionEnabled } from "../config/version-options.config";
 import { listRunsForTrip, recordRunOutcome } from "../services/optimizer-runs.service";
 import { optimizerRunRecordsEnabled } from "../config/optimizer-runs.config";
 import { readyMadeProvenanceForTrip } from "../services/ready-made-provenance.service";
+
+/** L5: travel times are paused for this plan only when it is routed, the engine is on, and a Routes caller is capped. */
+async function travelTimesPausedFor(tripId: string): Promise<boolean> {
+  try {
+    const adapter = routingAdapter();
+    if (!adapter || adapter.source !== "google_routes") return false;
+    return (await tripGetsRoutedLegs(tripId)) && (await routingPausedToday());
+  } catch {
+    return false;
+  }
+}
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -342,6 +358,10 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       console.warn("[plancard] gap-fill ledger hook failed (non-fatal):", ledgerErr?.message || ledgerErr);
     }
 
+    // Step 9a ruling 6 (ledger 2026-10-07-step9a-routing-engine): the apply writes the plan's OWN legs
+    // for the chosen version — the version's legs keyed version items, which the apply re-mints. After
+    // the commit, best-effort, through the cache the run already filled; never fails the apply (§15b).
+    void runNow(tripId);
     res.json({ tripId, delta, ...appliedSummary, ...(perOption ? { sets: pickOutcomes } : {}) });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
@@ -504,6 +524,7 @@ async function adoptVariantItemsInTx(
       await recordRunOutcome(tx, { variantId, kind: "adopted_part", actorId: input.userId, variantItemIds });
     }
   }
+  if (added.length) enqueuePlanLegRecompute(input.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
   return { added, alreadyInPlan, sets };
 }
 
@@ -852,6 +873,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Step 5: travel minutes appear on the map only when the travel-time service is on (A8);
       // otherwise connectors are straight sequence lines with no duration (R-h).
       travelTimesShown: travelTimeServiceEnabled(),
+      // Step 9a, L5 (ledger `2026-10-07-step9a-routing-engine`) — PRESENT ONLY WHEN TRUE: a routed plan
+      // whose routing source hit today's cap. Its legs stay as last computed; the slip says so in one
+      // line. Never on a free plan, which has no routed legs to pause.
+      ...((await travelTimesPausedFor(tripId)) ? { travelTimesPaused: true } : {}),
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

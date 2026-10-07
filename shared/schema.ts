@@ -8101,9 +8101,34 @@ export const transportLegs = pgTable("transport_legs", {
   // Writer: the stay re-route. NULL = no Google coordinate recorded on the leg.
   coordSource: varchar("coord_source", { length: 20 }),
   coordFetchedAt: timestamp("coord_fetched_at"),
+  // Migration 357 (ledger `2026-10-07-step9a-routing-engine`, step 9a ruling 3): the routing source that
+  // computed this leg — `google_routes` | `stub`. NULL = not a routing-engine leg. A traveler sees an
+  // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
+  source: varchar("source", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Migration 357 (ledger `2026-10-07-step9a-routing-engine`; surface spec §14.1, brief L2 + ruling 4). The
+// routing engine's cache, shared across plans. New table, PK only (the new-table rule). It holds the five
+// facts allowed (decision-maker, Oct 7, 2026) — duration, distance, line, fare, provenance — and never a
+// polyline or step directions. Freshness = `checked_at` vs ROUTE_CACHE_TTL_DAYS, read at lookup time.
+// Written only by server/services/routing/route-cache.service.ts.
+export const routeCache = pgTable("route_cache", {
+  cacheKey: varchar("cache_key", { length: 300 }).primaryKey(),
+  originKey: varchar("origin_key", { length: 140 }),
+  destinationKey: varchar("destination_key", { length: 140 }),
+  mode: varchar("mode", { length: 20 }),
+  hourBucket: integer("hour_bucket"),
+  durationMin: integer("duration_min"),
+  distanceM: integer("distance_m"),
+  line: text("line"),
+  fareAmount: decimal("fare_amount", { precision: 12, scale: 2 }),
+  fareCurrency: varchar("fare_currency", { length: 3 }),
+  source: varchar("source", { length: 40 }),
+  checkedAt: timestamp("checked_at"),
+});
+export type RouteCacheRow = typeof routeCache.$inferSelect;
 
 export const sharedItineraries = pgTable("shared_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -8207,7 +8232,7 @@ export const transportBookingOptions = pgTable("transport_booking_options", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true, source: true });
 export const insertTransportBookingOptionSchema = createInsertSchema(transportBookingOptions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSharedItinerarySchema = createInsertSchema(sharedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMapsExportCacheSchema = createInsertSchema(mapsExportCache).omit({ id: true });
