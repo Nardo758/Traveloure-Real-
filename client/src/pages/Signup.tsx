@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
   const { t } = useTranslation("auth");
-  const [, setLocation] = useLocation();
 
   const params = new URLSearchParams(window.location.search);
   const refToken = params.get("ref") || "";
@@ -42,7 +40,9 @@ export function SignupPage() {
         setError(data.message || t("signupPage.failed"));
         return;
       }
-      setLocation("/dashboard");
+      // Reload auth state after registration instead of reusing the cached
+      // signed-out /api/auth/user result when the protected route mounts.
+      window.location.replace("/dashboard");
     } catch {
       setError(t("signupPage.genericError"));
     } finally {

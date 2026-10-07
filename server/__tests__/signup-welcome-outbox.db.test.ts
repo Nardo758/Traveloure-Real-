@@ -7,11 +7,12 @@ import { after, afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, emailOutbox } from "../../shared/schema";
 import { _outboxTestHooks, _nextRetryAfter, deliverQueuedEmail } from "../services/email-outbox.service";
 import { enqueueSignupWelcome, deliverSignupWelcome, welcomeSuppressionReason } from "../services/signup-welcome-outbox.service";
+import { resolveSignupQaRecipient } from "../../scripts/verification/signup-qa-recipient";
 
 const enabled = process.env.NODE_ENV === "test" && process.env.RUN_SIGNUP_WELCOME_DB_TESTS === "1";
 const fixtureIds: string[] = [];
@@ -48,6 +49,37 @@ describe("signup welcome pure guards and main wiring", () => {
     assert.match(source, /deliverItineraryFollowup/);
     assert.match(source, /generationNoticeKey/);
     assert.match(source, /itinerary-outbox-\$\{outboxId\}/);
+  });
+  it("production app send path never imports or reads the QA inbox", () => {
+    for (const path of [
+      "server/index.ts",
+      "server/replit_integrations/auth/emailAuth.ts",
+      "server/services/signup-welcome-outbox.service.ts",
+      "server/services/email-outbox.service.ts",
+      "server/services/email.service.ts",
+    ]) {
+      const source = readFileSync(path, "utf8");
+      assert.doesNotMatch(source, /SIGNUP_QA_TEST_INBOX|signup-qa-(recipient|server)/, path);
+    }
+  });
+  it("production recipient resolution returns the account address without reading the inbox", () => {
+    const accountAddress = "guard@traveloure-qa.test";
+    const inaccessible = new Proxy({ NODE_ENV: "production" }, {
+      get(target, property) {
+        if (property === "SIGNUP_QA_TEST_INBOX") throw new Error("Production tried to read the QA inbox");
+        return target[property as keyof typeof target];
+      },
+    });
+    assert.equal(resolveSignupQaRecipient(accountAddress, inaccessible), accountAddress);
+    assert.equal(resolveSignupQaRecipient(accountAddress, {
+      NODE_ENV: "production", SIGNUP_QA_TEST_INBOX: "wrong-recipient@example.org",
+    }), accountAddress);
+    assert.equal(resolveSignupQaRecipient(accountAddress, {
+      NODE_ENV: "development", SIGNUP_QA_TEST_INBOX: "monitored@example.org",
+    }), "monitored@example.org");
+    assert.equal(resolveSignupQaRecipient("other@example.org", {
+      NODE_ENV: "development", SIGNUP_QA_TEST_INBOX: "monitored@example.org",
+    }), "other@example.org");
   });
 });
 
@@ -113,6 +145,27 @@ describe("signup welcome real database", { skip: !enabled }, () => {
     assert.deepEqual(keys, [`signup-welcome-${f.id}`]);
     assert.equal((await row(f.rowId)).status, "sent");
     assert.equal((await row(f.rowId)).resendId, "intercepted-1");
+  });
+  it("production dispatcher sends to the account's own address even with an override configured", async () => {
+    const f = await fixture();
+    const oldEnv = process.env.NODE_ENV;
+    const oldInbox = process.env.SIGNUP_QA_TEST_INBOX;
+    try {
+      process.env.NODE_ENV = "production";
+      process.env.SIGNUP_QA_TEST_INBOX = "wrong-recipient@example.org";
+      _outboxTestHooks.sendEmailFn = async payload => {
+        assert.equal(payload.to, `${f.id}@traveloure-qa.test`);
+        return { ok: true, id: "intercepted-production" };
+      };
+      await deliverQueuedEmail(f.rowId);
+      assert.equal((await row(f.rowId)).status, "sent");
+      assert.equal((await row(f.rowId)).resendId, "intercepted-production");
+    } finally {
+      if (oldEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = oldEnv;
+      if (oldInbox === undefined) delete process.env.SIGNUP_QA_TEST_INBOX;
+      else process.env.SIGNUP_QA_TEST_INBOX = oldInbox;
+    }
   });
   it("the scheduled/admin dispatcher cannot resend an already sent row", async () => {
     const f = await fixture(), keys = intercept();

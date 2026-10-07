@@ -27,3 +27,14 @@ intercepted transport IDs are not real delivered-email proof.
 provider-delivered status, browser post-submit evidence, the established
 TypeScript baseline and clean guards. Do not fill an evidence section with
 unresolved items or substitute synthetic IDs.
+
+The published sender must never inspect the development QA recipient setting;
+it must always address the account's own email, even if a value for that
+setting is accidentally present in its environment.
+
+**Why:** A test-only mailbox substitution must not be able to redirect real
+users' welcome messages or become a second production send path.
+
+**How to apply:** Keep substitution in the separate development harness only.
+Test production behavior with the override present and check that deployment
+Secrets do not contain the setting before shipping.
