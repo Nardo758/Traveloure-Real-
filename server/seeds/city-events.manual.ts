@@ -37,8 +37,6 @@
  *     only for a time the organiser published (migration 337).
  *
  * Run: `tsx server/seeds/city-events.manual.ts` (also runs at boot; a no-op while empty).
- * `--fill-venue-locality` runs ONLY the sunset fill (ledger `2026-10-05-event-real-city`): it inserts
- * nothing and fills `venue_locality` on existing manual rows where it is NULL. Never run at boot.
  */
 import type { CityEventSeedEntry } from "../services/city-events.service";
 
@@ -343,24 +341,7 @@ export async function seedManualCityEvents() {
   return seedCityEvents(MANUAL_CITY_EVENTS);
 }
 
-export async function fillManualCityEventLocalities() {
-  const { fillManualVenueLocalities } = await import("../services/city-events.service");
-  return fillManualVenueLocalities(MANUAL_CITY_EVENTS);
-}
-
-if (import.meta.url === `file://${process.argv[1]}` && process.argv.includes("--fill-venue-locality")) {
-  fillManualCityEventLocalities()
-    .then((r) => {
-      console.log(`[city-events] venue_locality filled on ${r.filled.length}, already set or absent on ${r.unchanged.length}`);
-      for (const f of r.filled) console.log(`  filled    ${f}`);
-      for (const u of r.unchanged) console.log(`  unchanged ${u} (already stated, or no manual row with that id)`);
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error(err);
-      process.exit(1);
-    });
-} else if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   seedManualCityEvents()
     .then((r) => {
       console.log(`[city-events] inserted ${r.inserted}, skipped ${r.skipped}, filled ${r.filled}, refused ${r.refused.length}, located ${r.located.length}, unlocated ${r.unlocated.length}, deferred ${r.deferred.length}`);
