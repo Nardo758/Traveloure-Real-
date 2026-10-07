@@ -13,12 +13,11 @@
  *   C2  no push carries an edit flag at all — the bulk push is never how a plan's occasion changes;
  *       the server ignores occasion keys on it (proven against Postgres in
  *       `server/__tests__/occasion-read-only.db.test.ts`).
- *   C3  the template page's pen write keeps a BOUND plan's occasion and title.
- *   C4  on an UNBOUND draft the template's occasion still rides (a draft is what it describes).
+ *   C3/C4 (the template page's pen write) were retired with the page itself in step 8c.
  *   C5  the plan modal's occasion reaches the plan through the occasion PATCH (`experienceSlug`),
  *       and Clear plan sends a plain empty context.
- *   C6  source pins: the template page has no direct occasion write left; the modal-open door does
- *       not write an occasion onto a bound pen.
+ *   C6  source pins: the modal PATCHes the occasion; the modal-open door does not write an occasion
+ *       onto a bound pen.
  *
  * Run: npx tsx --test client/src/lib/__tests__/occasion-read-only.test.ts
  */
@@ -55,7 +54,6 @@ const puts: { url: string; body: any }[] = [];
 
 import { bindPenPrincipal, getTripContext, updateTripContext, clearTripContext } from "../trip-context";
 import { activateOpenedPlan } from "../trip-selection";
-import { writeTemplatePen } from "../template-pen";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
@@ -94,50 +92,6 @@ describe("G4 — opening a slip does not carry another plan's occasion", () => {
   });
 });
 
-describe("G5 — reading a template page does not relabel the active plan", () => {
-  it("C3: a bound Kyoto vacation plan keeps its occasion and title on /experiences/wedding", async () => {
-    activateOpenedPlan(vacation, "owner", "user-a");
-    updateTripContext({ experienceSlug: "travel" });
-    await settle();
-    puts.length = 0;
-    const before = getTripContext();
-
-    // The page's mount sync, and its "add and go to cart" handler.
-    writeTemplatePen({ slug: "wedding", occasionName: "Wedding", destination: "Kyoto", startDate: "2027-04-10", endDate: "2027-04-14" });
-    writeTemplatePen({ slug: "wedding", title: "Wedding Experience", occasionName: "Wedding", destination: "Kyoto, Japan" });
-
-    const pen = getTripContext();
-    assert.equal(pen.tripId, "trip-vac", "the plan stays bound (same city)");
-    assert.equal(pen.experienceSlug, "travel");
-    assert.equal(pen.experienceType, before.experienceType);
-    assert.equal(pen.title, "Kyoto spring", "the plan's title is not replaced by the template's");
-
-    await settle();
-    for (const p of puts) {
-      assert.notEqual(p.body.context.experienceSlug, "wedding");
-      assert.notEqual(p.body.context.experienceType, "Wedding");
-      assert.equal("occasionEdit" in p.body, false);
-    }
-  });
-
-  it("C4: with no plan behind the pen, the template's occasion rides the draft", async () => {
-    writeTemplatePen({ slug: "wedding", occasionName: "Wedding", destination: "Lisbon" });
-    const pen = getTripContext();
-    assert.equal(pen.tripId, undefined);
-    assert.equal(pen.experienceSlug, "wedding");
-    assert.equal(pen.experienceType, "Wedding");
-  });
-
-  it("C4b: a DIFFERENT city leaves the plan — the new draft carries the template's occasion", async () => {
-    activateOpenedPlan(vacation, "owner", "user-a");
-    writeTemplatePen({ slug: "wedding", occasionName: "Wedding", destination: "Lisbon" });
-    const pen = getTripContext();
-    assert.equal(pen.tripId, undefined);
-    assert.equal(pen.experienceType, "Wedding");
-    assert.equal(pen.experienceSlug, "wedding");
-  });
-});
-
 describe("the occasion endpoint is the one writer", () => {
   it("C5: no pen push carries a flag, and Clear plan sends a plain empty context", async () => {
     activateOpenedPlan(vacation, "owner", "user-a");
@@ -152,15 +106,10 @@ describe("the occasion endpoint is the one writer", () => {
     for (const p of puts) assert.deepEqual(p.body, { context: {} });
   });
 
-  it("C6: source pins — the modal PATCHes experienceSlug; no direct occasion write on the template page; the modal door is gated", () => {
+  it("C6: source pins — the modal PATCHes experienceSlug; the modal door is gated", () => {
     const modal = read("client/src/components/trip/plan-modal.tsx");
     assert.match(modal, /body\.experienceSlug = selectedOccasion\.slug;/);
     assert.equal(/occasionEdit/.test(read("client/src/lib/trip-context.ts")), false, "no flag plumbing left");
-
-    const page = read("client/src/pages/experience-template.tsx");
-    assert.equal(/updateTripContext\(\{\s*experienceSlug/.test(page), false, "no direct slug write");
-    assert.equal(page.includes("switchTripContextPreservingId({"), false, "identity writes go through writeTemplatePen");
-    assert.ok((page.match(/writeTemplatePen\(/g) ?? []).length >= 5);
 
     const planning = read("client/src/contexts/PlanningContext.tsx");
     assert.match(planning, /next\?\.experienceSlug && !getTripContext\(\)\.tripId/);

@@ -145,11 +145,6 @@ const REQUIRED_SOURCE_FIELDS = [
     why: "the launch-market ticker rail holds eight cities and no single one (§13)",
   },
   {
-    file: "client/src/pages/experience-template.tsx",
-    require: ["experienceSlug"],
-    why: "the route param IS a seeded experience_types slug — the occasion this page is about",
-  },
-  {
     file: "client/src/pages/trip-details.tsx",
     require: ["experienceType"],
     why: "the trip row carries trips.experience_type; the door holds the whole row",
@@ -549,7 +544,6 @@ function selfTest() {
   const req = (file, src) => checkSourceFields(one(file, src)).filter((e) => e.startsWith(file));
 
   const TICKER = "client/src/components/CityTickerTape.tsx";
-  const TEMPLATE = "client/src/pages/experience-template.tsx";
   const DETAILS = "client/src/pages/trip-details.tsx";
   const READYMADE = "client/src/pages/ready-made-detail.tsx";
   const CHAT = "client/src/pages/chat.tsx";
@@ -584,8 +578,10 @@ function selfTest() {
     'openPlanModal({ destination: s.destination, experienceSlug: occasion.slug, experienceType: s.eventType });';
 
   cases.push(
-    ["D13 · a door passing its required key passes", () => req(TEMPLATE, doorAlias).length === 0],
-    ["D13 · the SAME door passing nothing FAILS", () => req(TEMPLATE, doorBare).some((e) => e.includes("does not pass `experienceSlug`"))],
+    // Step 8c: these two were keyed on the retired experience-template page; they now ride the
+    // concierge door, the surviving surface that requires `experienceSlug` (and `destination`).
+    ["D13 · a door passing its required key passes", () => req(CONCIERGE, doorAlias).length === 0],
+    ["D13 · the SAME door passing nothing FAILS", () => req(CONCIERGE, doorBare).some((e) => e.includes("does not pass `experienceSlug`"))],
     ["D13 · shorthand `{ destination }` counts as passing it", () => passesField(sourceRegions(doorShorthand), "destination")],
     ["D13 · a JSX prop (`city={...}`) counts — the ruled IntakePanel shape", () => passesField(sourceRegions(doorProp), "city")],
     ["8a · the /experiences door passing occasion, city and country passes", () => req(EXPERIENCES, withOpener).length === 0],

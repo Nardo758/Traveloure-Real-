@@ -11,7 +11,7 @@
  *          that names a plan (`resolvePlanSteps`), every other door unchanged.
  *   F4–F6  loading a plan into the pen replaces the previous plan's party AND occasion, so another
  *          plan's answers can neither seed step 4 nor be saved onto this one.
- *   S1–S8  source pins on the four surfaces and the two server routes: nothing sends or saves a
+ *   S1–S6  source pins on the surfaces and the two server routes: nothing sends or saves a
  *          count the traveler did not state.
  *
  * No DOM, no DB: sessionStorage / window / fetch are in-memory shims installed before the pen
@@ -164,21 +164,5 @@ describe("nothing sends or saves a count nobody stated (RC-12 source pins)", () 
     assert.doesNotMatch(src, /useState\(2\)/);
     assert.doesNotMatch(src, /numberOfTravelers: travelers,/);
     assert.match(src, /partyStated !== undefined \? \{ numberOfTravelers: partyStated \}/);
-  });
-
-  it("S7: the experience page never writes its search assumption as the party", () => {
-    const src = read("client/src/pages/experience-template.tsx");
-    for (const m of src.matchAll(/switchTripContextPreservingId\(\{[\s\S]*?\}\);/g)) {
-      assert.doesNotMatch(m[0], /travelers: adults \+ kids/, "a pen write carries the search default");
-    }
-    const snapshot = src.slice(src.indexOf("const buildPlanSnapshot"), src.indexOf("const buildPlanSnapshot") + 700);
-    assert.doesNotMatch(snapshot, /travelers: adults \+ kids/);
-    assert.match(src, /partyStated=\{statedParty !== undefined\}/);
-    assert.match(src, /text-party-assumption-/);
-  });
-
-  it("S8: the AI builder saves a count only when it was stated", () => {
-    const src = read("client/src/components/ai-itinerary-builder.tsx");
-    assert.match(src, /\.\.\.\(partyStated \? \{ travelers \} : \{\}\)/);
   });
 });

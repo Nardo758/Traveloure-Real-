@@ -195,14 +195,6 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
   });
 
   it("W4 the doors OPEN the review and never call the sender themselves", () => {
-    // R323 (step 7b): the template page's "Get Expert Help" controls share `openExpertChat`, which
-    // resolves the slip and LANDS on it with the one handoff chooser open. The page itself sends no
-    // `/api/expert-requests` and mounts no review sheet any more.
-    const template = stripComments(readClient("pages/experience-template.tsx"));
-    assert.ok(/const openExpertChat = async \(\) => \{/.test(template), "openExpertChat is the template's door");
-    assert.ok(template.includes("?handoff=open"), "the door lands on the slip with the chooser open");
-    assert.ok(!template.includes("/api/expert-requests"), "the template page sends no request of its own");
-    assert.ok(!template.includes("<ExpertRequestReviewSheet"), "and mounts no review sheet");
     // The concierge DOOR moved with ledger `2026-09-07-concierge-door`: the tier cards were
     // retired and the tier choice IS the plan modal's finish, so the control that opens the
     // review is the door's own finish handler. Same invariant, one surface along — the handler

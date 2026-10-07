@@ -1018,10 +1018,12 @@ The inventory is in `docs/planning/briefs/step-8b1-phase0.md` §3. Not this lane
 
 ## From step 8b-2 — the map layout (ledger `2026-10-06-step8b2-map-layout`)
 
-### FU-8B2-1 — `experience-template.tsx` is no longer routed
+### FU-8B2-1 — `experience-template.tsx` is no longer routed — **CLOSED by step 8c**
 `/experiences/:slug` and `/:slug/new` render the start page now (D5). The template page file, its source-text tests
 and `check-planning-entry.cjs`'s `experienceSlug` requirement on it stay until 8c retires it. Nothing imports it from
 `App.tsx` any more.
+**Closed (ledger `2026-10-07-step8c-retirements`):** the page, its 20 helper files, its three test files and the guard
+entry are deleted; `check-tripless-cart-writers.cjs` keeps the page and `experience-map.tsx` deleted.
 
 ### FU-8B2-2 — three "located" predicates
 These three predicates express one rule:
@@ -1035,3 +1037,42 @@ into it is a separate cleanup.
 ### FU-8B2-3 — day chips for a very long window
 `mapDayChips` draws one chip per day of the trip's own window. A months-long plan would draw that many chips. Nothing
 caps it today, because no cap was ruled.
+
+## From step 8c — the retirements (ledger `2026-10-07-step8c-retirements`)
+
+### FU-8C-1 — seven trip-less cart writers remain, frozen, against G2
+LD 39 sanctions the trip-less guest cart only until G2 (guest trips). These seven writers are frozen by
+`scripts/check-tripless-cart-writers.cjs`, which fails on a new one and on a count that falls without the list shrinking:
+- `cart.tsx` — the Discover guest-pending migration (the page's mount effect);
+- `cart.tsx` — `addUpsellMutation`, the cart's own upsell;
+- `visa-help.tsx` — `bookingMutation`;
+- `itinerary-comparison.tsx` — `addUpsellToCartMutation` (`/api/cart/items`);
+- `itinerary-comparison.tsx` — `applyToCartMutation` (flag-off, R131);
+- `service-detail.tsx` — `addToCartMutation`, the service add when no target plan is set;
+- `service-detail.tsx` — `addRoomToCartMutation`, the room add when no target plan is set.
+
+The two `service-detail.tsx` branches look unreachable, because `beginAdd` sends a guest to sign-in and a member with no
+plan to the plan picker. They were left alone by ruling, because removing them changes a booking path. G2, or a ruling
+per writer, retires each one; the allowlist shrinks in the same PR.
+
+### FU-8C-2 — the `experience-template` surface key and analytics name
+`shared/content-surface-map.ts` (`experience-template`, path `/experiences/:slug/new`), the admin content-mapping
+icon, and the analytics literal `searchContext: "experience-template"` (client `lib/analytics.ts`, server `routes.ts`)
+were kept in 8c, because server placement rules may key on them. Retire them after a content-mapping check confirms
+no live placement rule reads them.
+
+### FU-8C-3 — server routes left with no client caller
+With the template's closure deleted, these handlers have no `client/src` caller:
+- `/api/catalog/booking`, `/flights` and `/search`;
+- `/api/amadeus/locations`;
+- `/api/cache/hotels` and `/activities`;
+- `/api/transport-packages/generate`;
+- `/api/ai/generate-optimized-itineraries` and `/api/ai/itineraries/…`;
+- `/api/venues/search` and `/wedding-vendors`.
+
+Two more lose their client caller but are still named by guards:
+- `/api/custom-venues` (`check-query-userid-reads.cjs`);
+- `/api/transport-options` (the mutation-auth extractor test).
+
+The full list with `file:line` is in `docs/planning/briefs/step-8c-phase0.md` §E. An orphan pass is a separate
+server lane; 8c is client only.

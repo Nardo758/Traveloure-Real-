@@ -10,12 +10,9 @@
  * file pins the specific, reviewable facts that make the guard's list correct in the first place:
  *
  *   S1  each named door passes the field it was ruled to pass, and passes the RIGHT source for it
- *       (`slug` and not some other string on the experience template; the trip row's own
- *       `experienceType`; the listing's own `market`; the resolved `selectedTripId`).
- *   S2  the THREE doors on the experience template are one door worn three ways and all three pass
- *       the pair. This is the pin that matters most: fixing two of three is the drift class §18
- *       rule 1 names, it renders identically, and the guard — which asks only "does the key appear
- *       in ANY opener region?" — would go green on two of three.
+ *       (the trip row's own `experienceType`; the listing's own `market`; the resolved
+ *       `selectedTripId`).
+ *   S2  (the experience template's three doors) was retired with the page in step 8c.
  *   S3  the two §13 doors pass NO city. The ticker rail names eight markets and no one of them;
  *       the storefront's `earner.location` is a NEIGHBOURHOOD as often as a city
  *       (`resolveEarnerLocation`). D13's second clause is that a door passes only what is TRUE, so
@@ -44,7 +41,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");
 
 const TICKER = "client/src/components/CityTickerTape.tsx";
-const TEMPLATE = "client/src/pages/experience-template.tsx";
 const DETAILS = "client/src/pages/trip-details.tsx";
 const READYMADE = "client/src/pages/ready-made-detail.tsx";
 const CHAT = "client/src/pages/chat.tsx";
@@ -52,52 +48,6 @@ const EXPERIENCES = "client/src/pages/experiences.tsx";
 const STOREFRONT = "client/src/pages/storefront.tsx";
 const PROVIDERS = "client/src/pages/providers-directory.tsx";
 const INTAKE = "client/src/components/intake-panel.tsx";
-
-/** How many times a literal string occurs — the count is the point in S2. */
-function occurrences(haystack: string, needle: string): number {
-  let n = 0;
-  let i = haystack.indexOf(needle);
-  while (i !== -1) {
-    n++;
-    i = haystack.indexOf(needle, i + needle.length);
-  }
-  return n;
-}
-
-describe("S1/S2 — the experience template's doors are ONE door", () => {
-  const src = read(TEMPLATE);
-  // E1 (ledger `2026-09-28-a0-slice-spec`) added the door name; the shape is still ONE door.
-  const DOOR = 'openPlanModal({ door: "experience_cta", experienceSlug: slug || undefined, destination: destination.trim() || undefined })';
-
-  it("passes the page's own occasion slug and stated destination", () => {
-    assert.ok(src.includes(DOOR), "the ruled door shape is not present at all");
-  });
-
-  it("passes it at EVERY call site — a partial fix renders identically and the guard goes green", () => {
-    // Count the opener's CALL SITES, not a literal number: ledger
-    // 2026-09-05-template-card-and-preview-door turned the "Itinerary Preview" ribbon into a
-    // fourth door with this same shape, and a pinned `3` failed on a correct change. A comment
-    // that mentions `openPlanModal(` and the hook's own destructure are not doors.
-    const callSites = src
-      .split("\n")
-      .filter((l) => /openPlanModal\(/.test(l))
-      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
-      .filter((l) => !/const \{ open: openPlanModal \}/.test(l));
-    assert.ok(callSites.length >= 3, `expected at least the three original doors, found ${callSites.length}`);
-    assert.equal(occurrences(src, DOOR), callSites.length, "every opener call site passes the one door shape");
-    // And no bare opener survives beside them, at a CALL SITE — the file's prose mentions
-    // `openPlanModal()` in a comment, and a comment is not a door.
-    assert.ok(!/=>\s*openPlanModal\(\)/.test(src), "a bare arrow door survives");
-    assert.ok(!/^\s*openPlanModal\(\);/m.test(src), "a bare statement door survives");
-  });
-
-  it("§13 — neither field is passed as an empty string", () => {
-    // `""` is a stated answer that happens to be empty; ABSENT is how PlanningSource says
-    // "not known". Both are coerced, and the coercion is the assertion.
-    assert.ok(DOOR.includes("slug || undefined"));
-    assert.ok(DOOR.includes("destination.trim() || undefined"));
-  });
-});
 
 describe("S1 — trip-details passes the occasion the trip row holds", () => {
   const src = read(DETAILS);
