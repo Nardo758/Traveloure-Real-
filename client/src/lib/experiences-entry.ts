@@ -5,6 +5,7 @@
  * No React, no fetch. The page reads these; the fixture tests pin them.
  */
 import { OPERATING_MARKETS, type OperatingMarket } from "@shared/operating-markets";
+import { OCCASION_GROUP_ORDER, type OccasionPickerGroup } from "@shared/experience-group";
 
 /**
  * Ruling 4 (and the `?city=` addition): a query-string city PRE-PICKS a card only when it is an EXACT
@@ -25,6 +26,16 @@ export function exactOperatingMarket(value: string | null | undefined): Operatin
 /** The page's preselect: `?destination=` first, then `?city=` (discover-location's links), each exact. */
 export function preselectedMarket(params: URLSearchParams): OperatingMarket | null {
   return exactOperatingMarket(params.get("destination")) ?? exactOperatingMarket(params.get("city"));
+}
+
+/**
+ * The nav's `?group=<key>` pre-picks that group's tab, the way `?destination=` pre-picks a city: an
+ * EXACT key of the five only (ledger `2026-10-07-nav-experience-groups`). Anything else picks
+ * nothing — never a nearest group. The key is never shown; the picker shows the group's label.
+ */
+export function preselectedGroup(params: URLSearchParams): OccasionPickerGroup | null {
+  const v = params.get("group");
+  return v && (OCCASION_GROUP_ORDER as readonly string[]).includes(v) ? (v as OccasionPickerGroup) : null;
 }
 
 /**
