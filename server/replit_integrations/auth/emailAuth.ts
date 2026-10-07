@@ -145,7 +145,7 @@ export function setupEmailAuth(app: Express): void {
         (err) => console.error("[auth/register] verification email issue failed:", err)
       );
 
-      // Best-effort immediate delivery after commit; the existing drain owns retries.
+      // Best-effort immediate delivery after commit; the existing drain handles retries.
       deliverQueuedEmail(welcomeId).catch(
         (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
       );

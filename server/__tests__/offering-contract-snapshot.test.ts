@@ -289,6 +289,9 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
       "quote-buy-${String(row.id)}",
       "rm-buy-${listing.id}-${userId}",
       "rm-refund-${ledger.purchase.id}",
+      // NOT a Stripe key (#1327): the Resend idempotency key for one account's signup welcome,
+      // keyed on the account so a retried or concurrent send is one email.
+      "signup-welcome-${accountId}",
       "tp-buy-${trip!.id}-${userId}",
     ],
     "OC-B1 records; it changes no Stripe idempotency key. A key that moved here moved for some other reason and needs its own proof.",
