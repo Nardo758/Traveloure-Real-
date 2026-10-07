@@ -8015,10 +8015,17 @@ export class DatabaseStorage implements IStorage {
   async getItineraryItems(tripId: string): Promise<ItineraryItem[]> {
     return await db.select().from(itineraryItems)
       .where(eq(itineraryItems.tripId, tripId))
-      // `id` is the deterministic tie-break: rows equal on day, sort order and start time otherwise
-      // come back in whatever order Postgres last wrote them, so an UPDATE reordered them (ledger
-      // `2026-10-07-item-order-tiebreak`).
-      .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder), asc(itineraryItems.startTime), asc(itineraryItems.id));
+      // Ties on day, sort order and start time keep the order the items were ADDED (`created_at` —
+      // the product rule), and `id` is only the final total-order guarantee. Without these, tied
+      // rows came back in whatever order Postgres last wrote them, so an UPDATE reordered them
+      // (ledger `2026-10-07-item-order-tiebreak`).
+      .orderBy(
+        asc(itineraryItems.dayNumber),
+        asc(itineraryItems.sortOrder),
+        asc(itineraryItems.startTime),
+        asc(itineraryItems.createdAt),
+        asc(itineraryItems.id),
+      );
   }
 
   // §PS18-completeness-guard layer 2 (2026-08-29-privileged-field-completeness): routingStatus /

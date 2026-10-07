@@ -3,14 +3,18 @@
  *
  * `storage.getItineraryItems` ordered by day, sort order and start time only. Rows equal on all three
  * came back in whatever order Postgres last wrote them, so an UPDATE to one of them (a new tuple at
- * the end of the heap) reordered the day. The Logistics session hit it in e2e. The fix adds `id` as
- * the final tie-break.
+ * the end of the heap) reordered the day. The Logistics session hit it in e2e. The fix: ties keep the
+ * order the items were ADDED (`created_at`, the product rule), with `id` as the final total-order
+ * guarantee.
  *
- *   T1  three items tied on day, sort order and start time read back in `id` order.
+ * The three tied items are created with ids in the REVERSE of their creation order, so an `id`-only
+ * tie-break would read them backwards — the test proves creation order wins.
+ *
+ *   T1  three items tied on day, sort order and start time read back in creation order.
  *   T2  after an UPDATE to the FIRST of them, the order is unchanged.
  *   T3  after a second UPDATE, to the MIDDLE one, the order is still unchanged.
  *
- * RED on the pre-fix reader: after T2's write the updated row moved to the end of the day.
+ * RED on the pre-fix reader (no tie-break), and RED on an `id`-only tie-break.
  *
  * DISPOSABLE DB ONLY. Every row this file writes is created by this file and deleted in after().
  *   npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/item-order-tiebreak.db.test.ts
@@ -62,9 +66,15 @@ before(async () => {
     endDate: "2027-04-12",
   } as any);
   tripId = t.id;
-  // Three items equal on every ordering column but `id`.
+  // Three items equal on day, sort order and start time, created one after another, with ids that
+  // sort in the REVERSE of that order.
+  const base = Date.UTC(2027, 0, 1, 9, 0, 0);
   for (const n of [1, 2, 3]) {
+    const id = `${RUN}-${"zyx"[n - 1]}`;
+    tied.push(id);
     await db.insert(itineraryItems).values({
+      id,
+      createdAt: new Date(base + n * 1000),
       tripId,
       title: `Tied ${n} ${RUN}`,
       itemType: "activity",
@@ -74,9 +84,8 @@ before(async () => {
       origin: "traveler",
     } as any);
   }
-  const rows = await db.execute(sql`SELECT id FROM itinerary_items WHERE trip_id = ${tripId} ORDER BY id`);
-  tied = rows.rows.map((r: any) => String(r.id));
   assert.equal(tied.length, 3);
+  assert.deepEqual([...tied].sort(), [...tied].reverse(), "the ids sort opposite to creation order");
 });
 
 after(async () => {
@@ -89,7 +98,7 @@ after(async () => {
 
 const readOrder = async () => (await storage.getItineraryItems(tripId)).map((r) => r.id);
 
-test("T1 three tied items read back in id order", async () => {
+test("T1 three tied items read back in creation order", async () => {
   assert.deepEqual(await readOrder(), tied);
 });
 
