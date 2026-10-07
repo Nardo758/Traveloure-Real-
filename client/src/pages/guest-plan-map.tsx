@@ -136,9 +136,7 @@ export default function GuestPlanMapPage() {
       </div>
 
       {destination ? (
-        // `isolate`: Leaflet's panes carry z-indexes in the hundreds; a stacking context keeps them
-        // under the sign-in dialog this page opens over the map.
-        <div className="isolate rounded-lg border border-border bg-card" data-testid="guest-map-canvas">
+        <div className="rounded-lg border border-border bg-card" data-testid="guest-map-canvas">
           <MapControlCenter
             tripId="guest"
             tripDestination={destination}

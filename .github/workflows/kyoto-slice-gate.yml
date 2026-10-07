@@ -192,6 +192,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # FU-8D-4 (ledger `2026-10-07-map-dialog-isolation`): a dialog opened over the MEMBER map
+      # receives the click everywhere on its box — Leaflet's panes stay inside the map's own stacking
+      # context (`isolate` on MapControlCenter's root). RED on the pre-fix build.
+      - name: Dialog over the map takes the click (FU-8D-4)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-map-dialog-click.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

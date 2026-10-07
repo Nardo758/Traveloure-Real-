@@ -1117,7 +1117,7 @@ readable by id. Handed to the Events session (R353's lane).
 ### FU-8D-3 — `GET /api/affiliate/products` accepts an unbounded `limit` — **CLOSED by R355 (#1321)**
 Phase 0 F3. It is a public read with no cap (`affiliate-scraper.service.ts`, `limit || 50`).
 
-### FU-8D-4 — Leaflet draws above dialogs opened over a map
+### FU-8D-4 — Leaflet draws above dialogs opened over a map — **CLOSED** (ledger `2026-10-07-map-dialog-isolation`: `isolate` on `MapControlCenter`'s root; the guest-page patch removed)
 Leaflet's panes carry z-indexes in the hundreds, so the fallback map's markers and attribution drew over the sign-in
 dialog on the guest map. 8d contains them on the guest page only (`isolate` on its map wrapper). Any other surface that
 opens a dialog over a Leaflet-rendered `MapControlCenter` may show the same thing. A fix belongs in `MapControlCenter`

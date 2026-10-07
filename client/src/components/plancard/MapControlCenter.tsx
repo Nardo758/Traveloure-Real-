@@ -341,7 +341,10 @@ export function MapControlCenter({
       data-testid={`map-control-center-${tripId}`}
       data-map-renderer={renderer}
       data-map-layout={layout}
-      className={split ? "lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : undefined}
+      // FU-8D-4 (ledger `2026-10-07-map-dialog-isolation`): `isolate` gives the map its own stacking
+      // context. Leaflet's panes and controls carry z-indexes in the hundreds; without it they draw
+      // above any dialog opened over the map and take its clicks. Every mount inherits this.
+      className={split ? "isolate lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : "isolate"}
     >
       <div className="min-w-0" data-testid={`map-main-${tripId}`}>
       {/* ── Day chips · version toggle · layers ─────────────────────────────────────────────── */}
