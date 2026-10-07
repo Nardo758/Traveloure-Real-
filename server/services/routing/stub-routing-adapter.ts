@@ -17,7 +17,7 @@ export function routingStubEnabled(): boolean {
 
 export class StubRoutingAdapter implements RoutingAdapter {
   readonly source = STUB_ROUTES_SOURCE;
-  /** Calls made, for tests (the cache-hit and changed-legs gates count these). */
+  /** Calls made, for tests (the reuse and changed-legs gates count these). */
   calls = 0;
   constructor(private readonly opts: { now?: () => Date; paused?: boolean; noRoute?: boolean } = {}) {}
 

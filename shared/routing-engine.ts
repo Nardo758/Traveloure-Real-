@@ -6,11 +6,16 @@
  * Google Routes is the first implementation (`server/services/routing/google-routing-adapter.ts`); a
  * stub stands in for it in CI. Both pass ONE contract test (`server/__tests__/routing-adapter-contract.test.ts`).
  *
- * WHAT A ROUTE IS — and the whole of what the cache may hold (decision-maker, Oct 7, 2026): duration,
- * distance, line name, fare and provenance. NEVER a polyline and NEVER step-by-step directions —
- * `toRouteCacheEntry` is an allowlist projection, so a field an adapter adds later is dropped rather
- * than stored by default. Google's terms on route geometry are why the geometry is never kept
- * (`routes.service.ts` `getRoutePathForMode`).
+ * WHAT A ROUTE IS (decision-maker, Oct 7, 2026): duration, distance, line name, fare and provenance.
+ * NEVER a polyline and NEVER step-by-step directions — `toRouteFacts` is an allowlist projection, so a
+ * field an adapter adds later is dropped rather than kept by default.
+ *
+ * WHAT MAY BE CACHED (decision-maker, Oct 7, 2026, on #1325 — Google Maps Platform service terms of
+ * June 10, 2026: Routes content may be cached only as place IDs and lat/lng; durations and distances
+ * have no grant): a GOOGLE result is NEVER written to a cache. It lives only on the plan's own
+ * `transport_legs` rows, with its provenance. Within one run, de-duplication is in memory
+ * (`RouteRunMemo`). The ONE boundary a future cache writer must pass is `cacheableRouteEntry`, which
+ * refuses every source not in `CACHEABLE_ROUTE_SOURCES` (the self-hosted OSRM adapter joins it in 9a-ii).
  *
  * Fares (L6): only when the source returns one, in the source's currency — never converted, never
  * estimated. Minutes are in-plan only (R-h): nothing here is read by a public surface.
@@ -62,11 +67,22 @@ export interface RoutingAdapter {
   route(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, departAt: Date | null): Promise<RouteOutcome>;
 }
 
-/** The ONLY fields a cache row carries (decision-maker, Oct 7, 2026). */
-export const ROUTE_CACHE_FIELDS = ["durationMin", "distanceM", "line", "fare", "provenance"] as const;
+/** The ONLY fields a route carries anywhere it is kept (decision-maker, Oct 7, 2026). */
+export const ROUTE_FACT_FIELDS = ["durationMin", "distanceM", "line", "fare", "provenance"] as const;
+
+/**
+ * Sources whose answers MAY be written to a persistent cache. Google is not one and never will be under
+ * the current terms. The stub is (test data, no terms); OSRM (self-hosted, 9a-ii) will be.
+ */
+export const CACHEABLE_ROUTE_SOURCES: ReadonlySet<string> = new Set(["stub"]);
+
+/** THE cache boundary: the projected facts when the source may be cached, else null. */
+export function cacheableRouteEntry(route: RouteAnswer): RouteAnswer | null {
+  return CACHEABLE_ROUTE_SOURCES.has(route.provenance.source) ? toRouteFacts(route) : null;
+}
 
 /** Allowlist projection: whatever an adapter returned, only the five facts survive. */
-export function toRouteCacheEntry(route: RouteAnswer): RouteAnswer {
+export function toRouteFacts(route: RouteAnswer): RouteAnswer {
   const fare =
     route.fare && Number.isFinite(route.fare.amount) && typeof route.fare.currency === "string" && route.fare.currency
       ? { amount: route.fare.amount, currency: route.fare.currency }
@@ -80,7 +96,7 @@ export function toRouteCacheEntry(route: RouteAnswer): RouteAnswer {
   };
 }
 
-// ── The cache key (L2, amended by step 9a ruling 4) ─────────────────────────────────────────────
+// ── The leg key (L2, amended by step 9a ruling 4) — the in-run memo's key and the pair diff's ────
 
 /** A stop's key: its place ID when known, else its coordinate rounded to 4 decimals. Mixed keys are fine. */
 export function routePointKey(p: RoutePoint): string {
@@ -101,7 +117,7 @@ export function routeHourBucket(wallClock: string | null | undefined): number | 
   return h >= 0 && h <= 23 ? h : null;
 }
 
-export function routeCacheKey(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, hourBucket: number | null): string {
+export function routeLegKey(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, hourBucket: number | null): string {
   return `${routePointKey(origin)}|${routePointKey(destination)}|${mode}|${hourBucket == null ? "h-" : `h${hourBucket}`}`;
 }
 

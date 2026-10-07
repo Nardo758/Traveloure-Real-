@@ -7,11 +7,13 @@
  *   · a FINISHED Optimize run — the plan holds an `ai_optimized` variant (written only at the end of an
  *     authorized paid or Trip Pass run; the free activate-transport variant is `source: "ai"`)
  *   · an ACTIVE Trip Pass on the plan
- *   · a handoff the expert has ACCEPTED or DELIVERED — never `proposed` / `unmatched` (no expert holds it)
+ *   · a handoff the expert has ACCEPTED, DELIVERED or that was APPROVED — never `proposed` / `unmatched`
+ *     (no expert holds it) and never `withdrawn`. Legs never vanish on approval (architect ruling 1 on
+ *     #1325, Oct 7, 2026).
  *   · a Ready Made copy (ruled a paid plan under R-e, spec 2026-10-04)
  * Otherwise it is a free plan: thin connectors and airport legs only (R-e). Pure; the server loads the facts.
  */
-export const ROUTED_LEG_HANDOFF_STATUSES = ["accepted", "delivered"] as const;
+export const ROUTED_LEG_HANDOFF_STATUSES = ["accepted", "delivered", "approved"] as const;
 
 export interface PlanRoutingFacts {
   finishedOptimizeRun: boolean;

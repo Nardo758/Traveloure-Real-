@@ -4,18 +4,19 @@
  *
  *   E1  a FREE plan: zero routing calls, nothing written (R-e)
  *   E2  a qualifying plan (active Trip Pass): every consecutive pair routed once, born `proposed` with
- *       `source` set; the row carries line, fare and the cache key — and no geometry or steps
+ *       `source` set; the row carries line, fare and the leg key — and no geometry or steps
  *   E3  a recompute with nothing changed makes no call (the pair diff keeps every leg)
- *   E4  the cache is shared across plans: the same stops on another qualifying plan are all hits
+ *   E4  NO CROSS-PLAN REUSE (Google terms, #1325): the same stops on another plan are asked again
  *   E5  ONE EDIT ⇒ EXACTLY TWO LEGS recomputed (a stop moved); the rest kept
  *   E6  an inserted stop replaces one leg with two
  *   E7  the cap hit: `paused`, no call, the existing legs stay as last computed, the edit stands
- *   E8  a failed call: no leg for that pair (a thin connector), nothing cached
+ *   E8  a failed call: no leg for that pair (a thin connector); the next run asks again
  *   E9  an expert's CONFIRMED leg wins: the engine never computes that pair and drops its own
  *   E10 the read rule: the plan shows engine legs with their routed facts; a free plan's engine and
  *       variant legs are HIDDEN, not deleted (ruling 5)
  *   E11 activate-transport/Finalize write nothing on a free plan (ruling 5)
  *   E12 the edit trigger: a storage edit schedules ONE debounced recompute, which lands within ~2 s
+ *   E14 apply after Optimize: the plan's legs are answered from its OWN run's version legs (no call)
  *   E13 a stop located only by a Google Places fact: its leg is stamped `coord_source='google'` with
  *       the fact's fetch time (LD 57 as extended to legs, R311) — a cache the daily leg job clears
  *
@@ -43,16 +44,15 @@ const { assembleTripPlan } = await import("../services/trip-plan.service");
 const { hasPendingPlanLegRecompute } = await import("../services/routing/plan-legs-queue");
 
 const RUN = crypto.randomUUID().slice(0, 8);
-// Coordinates unique to this run (one of 100,000 longitude offsets at the cache's 4-decimal key), so
-// the shared cache starts empty for these stops; this run's stub rows are removed at the end.
+// Coordinates unique to this run (one of 100,000 longitude offsets at the leg key's 4 decimals).
 const K = crypto.randomInt(0, 100_000) / 1e4;
 const P = (dLat: number, dLng: number) => ({ lat: 35 + dLat, lng: 125 + K + dLng });
-const STARTED = new Date(Date.now() - 1000);
 const id = (s: string) => `ple-${RUN}-${s}`;
 const owner = id("owner");
 const FREE = id("free");
 const PAID = id("paid");
 const TWIN = id("twin");
+const OPT = id("opt");
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 function assertDisposableDb(): void {
@@ -88,7 +88,7 @@ const pairs = (rows: any[]) => rows.map((l) => `${l.day_number}:${String(l.from_
 before(async () => {
   assertDisposableDb();
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'PLE', 'traveler', 'traveler')`);
-  for (const t of [FREE, PAID, TWIN]) {
+  for (const t of [FREE, PAID, TWIN, OPT]) {
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
       VALUES (${t}, ${owner}, 'PLE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
     await stops(t);
@@ -99,8 +99,7 @@ before(async () => {
 });
 
 after(async () => {
-  await db.execute(sql`DELETE FROM route_cache WHERE source = 'stub' AND checked_at >= ${STARTED}`).catch(() => {});
-  await db.execute(sql`DELETE FROM trips WHERE id IN (${FREE}, ${PAID}, ${TWIN})`);
+  await db.execute(sql`DELETE FROM trips WHERE id IN (${FREE}, ${PAID}, ${TWIN}, ${OPT})`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
 });
 
@@ -123,7 +122,7 @@ test("E2: a qualifying plan routes each consecutive pair once — proposed, sour
     assert.equal(l.source, "stub");
     assert.equal(l.proposal_status, "proposed");
     const alt = l.alternative_modes[0];
-    assert.ok(typeof alt.cacheKey === "string" && alt.cacheKey.includes("|"));
+    assert.ok(typeof alt.legKey === "string" && alt.legKey.includes("|"));
     assert.ok(!/polyline|steps|navigationInstruction/.test(JSON.stringify(l)), "no geometry or steps on the row");
   }
   const ab = rows.find((l) => String(l.to_activity_id).endsWith("-b"));
@@ -143,11 +142,11 @@ test("E3: a recompute with nothing changed makes no call", async () => {
   assert.equal(r.written, 0);
 });
 
-test("E4: the cache is shared across plans — the same stops elsewhere are all hits", async () => {
+test("E4: no reuse across plans — the same stops on another plan are asked again", async () => {
   const stub = new StubRoutingAdapter();
   const r: any = await computePlanLegs(TWIN, { adapter: stub });
-  assert.equal(stub.calls, 0, "no call: every pair was cached by the first plan");
-  assert.equal(r.cacheHits, 3);
+  assert.equal(stub.calls, 3, "a Google answer lives only on its own plan's rows");
+  assert.equal(r.reused, 0);
   assert.equal(r.written, 3);
 });
 
@@ -187,13 +186,13 @@ test("E7: the cap hit — paused, no call, legs left as last computed", async ()
   assert.deepEqual((await legs(PAID)).map((l) => [l.id, l.estimated_duration_minutes]), before.map((l) => [l.id, l.estimated_duration_minutes]));
 });
 
-test("E8: a failed call leaves the pair a thin connector and caches nothing", async () => {
+test("E8: a failed call leaves the pair a thin connector; the next run asks again", async () => {
   const stub = new StubRoutingAdapter({ noRoute: true });
   const r: any = await computePlanLegs(PAID, { adapter: stub });
   assert.equal(r.noRoute, 1, "only the moved stop's leg was asked");
   assert.deepEqual(pairs(await legs(PAID)), ["1:a>b", "2:d>x", "2:x>e"], "b→c is gone, never shown stale");
   const healed: any = await computePlanLegs(PAID, { adapter: new StubRoutingAdapter() });
-  assert.equal(healed.written, 1, "the next run routes it — a failure was never cached");
+  assert.equal(healed.written, 1, "the next run routes it — a failure was never remembered");
 });
 
 test("E9: an expert's confirmed leg wins — the engine never computes that pair", async () => {
@@ -264,7 +263,39 @@ test("E13: a leg whose end is a Google Places point is stamped as a Google coord
   assert.equal(fg.coord_source, "google");
   const age = Date.now() - new Date(fg.coord_fetched_at).getTime();
   assert.ok(age > 2.9 * 86_400_000 && age < 3.1 * 86_400_000, "the fact's own fetch time, not now");
-  assert.ok(fg.alternative_modes[0].cacheKey.startsWith(`place:ChIJ-${RUN}|`), "keyed by its place ID");
+  assert.ok(fg.alternative_modes[0].legKey.startsWith(`place:ChIJ-${RUN}|`), "keyed by its place ID");
   const located = (await legs(PAID)).find((l) => l.to_activity_id === `${PAID}-b` && l.source);
   assert.equal(located?.coord_source ?? null, null, "a trusted row point needs no record");
+});
+
+test("E14: after an Optimize run, the plan's legs come from its own version legs — no call", async () => {
+  const { routeLegKey, routeHourBucket, defaultRoutedMode } = await import("@shared/routing-engine");
+  const { departureWallClock } = await import("../services/routing/plan-legs");
+  const cmp = id("cmp");
+  const ver = id("ver");
+  await db.execute(sql`INSERT INTO itinerary_comparisons (id, user_id, trip_id, status) VALUES (${cmp}, ${owner}, ${OPT}, 'generated')`);
+  await db.execute(sql`INSERT INTO itinerary_variants (id, comparison_id, name, source, status) VALUES (${ver}, ${cmp}, 'V1', 'ai_optimized', 'generated')`);
+  const stopsOf = [
+    ["a", P(0, 0), "10:00"], ["b", P(0.03, 0.02), "12:00"], ["c", P(0.032, 0.021), "14:00"],
+    ["d", P(-0.02, 0.01), "10:00"], ["e", P(-0.05, 0.03), "12:00"],
+  ] as const;
+  const pt = (k: string) => stopsOf.find((x) => x[0] === k)!;
+  let n = 0;
+  for (const [from, to, day] of [["a", "b", 1], ["b", "c", 1], ["d", "e", 2]] as const) {
+    const f = pt(from); const t = pt(to);
+    const mode = defaultRoutedMode(f[1], t[1], true);
+    const key = routeLegKey(f[1], t[1], mode, routeHourBucket(departureWallClock({ startTime: null, endTime: f[2], durationMinutes: null })));
+    await db.execute(sql`INSERT INTO transport_legs (id, variant_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
+        to_activity_id, to_name, to_lat, to_lng, distance_meters, distance_display, recommended_mode, estimated_duration_minutes,
+        alternative_modes, source, calculated_at)
+      VALUES (${id(`vleg${n++}`)}, ${ver}, ${day}, ${n}, ${`v-${from}`}, ${from}, ${f[1].lat}, ${f[1].lng}, ${`v-${to}`}, ${to}, ${t[1].lat}, ${t[1].lng},
+        1000, '1 km', ${mode}, 17, ${JSON.stringify([{ mode, durationMinutes: 17, costUsd: null, energyCost: 0, reason: "stub", line: null, fare: null, legKey: key }])}::jsonb,
+        'stub', now() - interval '1 hour')`);
+  }
+  const stub = new StubRoutingAdapter();
+  const r: any = await computePlanLegs(OPT, { adapter: stub });
+  assert.equal(stub.calls, 0, "every leg answered from the plan's own run");
+  assert.equal(r.reused, 3);
+  assert.equal(r.written, 3);
+  for (const l of await legs(OPT)) assert.equal(l.estimated_duration_minutes, 17);
 });

@@ -2,7 +2,8 @@
  * Step 9a ruling 2 (ledger `2026-10-07-step9a-routing-engine`): the ONE routed-legs predicate.
  *   R1 a free plan gets none
  *   R2 each qualifying fact alone is enough
- *   R3 a handoff qualifies only when accepted or delivered — never proposed / unmatched / withdrawn
+ *   R3 a handoff qualifies when accepted, delivered or approved (legs never vanish on approval — ruling 1
+ *      on #1325) — never proposed / unmatched / withdrawn
  *   R4 no second copy: the predicate's name is defined in exactly one file
  */
 import assert from "node:assert/strict";
@@ -24,7 +25,7 @@ test("R2: a finished Optimize run, an active Trip Pass, or a Ready Made copy eac
 });
 
 test("R3: a handoff qualifies only once an expert holds it", () => {
-  for (const s of ["accepted", "delivered"]) assert.equal(planGetsRoutedLegs({ ...FREE, handoffStatus: s }), true, s);
+  for (const s of ["accepted", "delivered", "approved"]) assert.equal(planGetsRoutedLegs({ ...FREE, handoffStatus: s }), true, s);
   for (const s of ["proposed", "unmatched", "authorizing", "withdrawn", "declined"]) {
     assert.equal(planGetsRoutedLegs({ ...FREE, handoffStatus: s }), false, s);
   }

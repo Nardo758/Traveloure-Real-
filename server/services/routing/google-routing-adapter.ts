@@ -3,7 +3,7 @@
  * `2026-10-07-step9a-routing-engine`; brief L1). Every call goes through the R299 gate BY NAME:
  * walk / cycle → `routes_mode`, transit → `routes_transit`, drive → `routes_drive`. A cap refusal is
  * `paused` (ruling 8) and makes no request; a failed request records cost 0 and is `no_route`
- * (ruling 7). The parse keeps only the five facts the cache may hold — no polyline, no steps.
+ * (ruling 7). The parse keeps only the five route facts — no polyline, no steps — and nothing here persists.
  */
 import type { RouteAnswer, RouteOutcome, RoutePoint, RoutingAdapter, RoutingMode } from "@shared/routing-engine";
 import type { MapsCallerKey } from "@shared/maps-billing";

@@ -11,24 +11,30 @@
  *       a transit departure is sent only when it is in the future
  *   C5  Google: a failed request is `no_route` and is reported to the gate as a failure (cost 0, ruling 7)
  *   C6  Google: transit line names and the fare in the source's own currency (L6)
- *   K1  cache-first: a fresh hit makes no call; a miss calls once and writes the allowlisted entry
- *   K2  paused and failed answers are never cached
+ *   B1  THE CACHE BOUNDARY (decision-maker, Oct 7, 2026, on #1325 — Google's June 10, 2026 terms give no
+ *       grant to cache Routes durations or distances): the Google adapter's output NEVER reaches a cache
+ *       writer — `cacheableRouteEntry` refuses it, no persistent route store exists in the app, and the
+ *       in-run memo has no database import
+ *   K1  the in-run memo: the same leg asked twice in a run makes one call; a new memo asks again
+ *   K2  paused and failed answers are not remembered, even for the run
  *   K3  the key: place ID when known, else coordinates rounded to 4 decimals; mixed keys (ruling 4)
- *   K4  freshness is checked_at against the TTL, read at lookup time
+ *   K4  concurrent asks for one key in a run make one call; the memo may be seeded from the plan's own legs
  *   P1  the default mode (L4 / ruling 9) and the transit-coverage test
  *   P2  the one LegRow line
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  ROUTE_CACHE_FIELDS,
+  CACHEABLE_ROUTE_SOURCES,
+  ROUTE_FACT_FIELDS,
+  cacheableRouteEntry,
   defaultRoutedMode,
   marketHasTransitCoverage,
-  routeCacheKey,
+  routeLegKey,
   routeHourBucket,
   routePointKey,
   routedLegLine,
-  toRouteCacheEntry,
+  toRouteFacts,
   type RouteAnswer,
   type RoutingAdapter,
   type RoutingMode,
@@ -36,7 +42,9 @@ import {
 import { GoogleRoutingAdapter, callerForMode, parseRoutesResponse } from "../services/routing/google-routing-adapter";
 import { StubRoutingAdapter } from "../services/routing/stub-routing-adapter";
 import { ROUTED_BASIC_FIELD_MASK, ROUTED_TRANSIT_FIELD_MASK } from "../services/maps-billing/maps-requests";
-import { isRouteFresh, routeLegCached, type RouteCacheStore } from "../services/routing/route-cache.service";
+import { RouteRunMemo } from "../services/routing/route-memo";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 const GION = { lat: 35.0037, lng: 135.7788, placeId: "ChIJgion" };
 const FUSHIMI = { lat: 34.9671, lng: 135.7727 };
@@ -91,7 +99,7 @@ const IMPLEMENTATIONS: Array<[string, () => RoutingAdapter]> = [
 ];
 
 function assertOnlyAllowedFacts(route: RouteAnswer, label: string) {
-  assert.deepEqual(Object.keys(route).sort(), [...ROUTE_CACHE_FIELDS].sort(), `${label}: exactly the five facts`);
+  assert.deepEqual(Object.keys(route).sort(), [...ROUTE_FACT_FIELDS].sort(), `${label}: exactly the five facts`);
   const json = JSON.stringify(route);
   for (const banned of ["polyline", "encodedPolyline", "steps", "navigationInstruction", "instructions", "stopDetails"]) {
     assert.ok(!json.includes(banned), `${label}: no ${banned}`);
@@ -108,14 +116,14 @@ for (const [name, make] of IMPLEMENTATIONS) {
       assert.equal(out.kind, "ok", `${name} ${mode}`);
       if (out.kind !== "ok") continue;
       assertOnlyAllowedFacts(out.route, `${name} ${mode}`);
-      assertOnlyAllowedFacts(toRouteCacheEntry(out.route), `${name} ${mode} cache entry`);
+      assertOnlyAllowedFacts(toRouteFacts(out.route), `${name} ${mode} projected facts`);
       assert.equal(out.route.provenance.source, adapter.source);
       assert.ok(!Number.isNaN(new Date(out.route.provenance.checkedAt).getTime()));
     }
   });
 }
 
-test("C1: the cache projection drops anything outside the allowlist", () => {
+test("C1: the projection drops anything outside the allowlist", () => {
   const dirty = {
     durationMin: 24.4,
     distanceM: 5210.7,
@@ -125,7 +133,7 @@ test("C1: the cache projection drops anything outside the allowlist", () => {
     polyline: "abc",
     steps: [{ instructions: "walk" }],
   } as any;
-  const e = toRouteCacheEntry(dirty);
+  const e = toRouteFacts(dirty);
   assertOnlyAllowedFacts(e, "projection");
   assert.deepEqual(e, { durationMin: 24, distanceM: 5211, line: "Keihan Main Line", fare: { amount: 220, currency: "JPY" }, provenance: { source: "google_routes", checkedAt: NOW.toISOString() } });
 });
@@ -187,61 +195,83 @@ test("C6: Google — transit line names in order and the fare in the source's cu
   assert.equal(walk.fare, null);
 });
 
-function memoryStore(seed: Record<string, RouteAnswer> = {}) {
-  const rows = new Map(Object.entries(seed));
-  const puts: string[] = [];
-  const store: RouteCacheStore = {
-    get: async (k) => rows.get(k) ?? null,
-    put: async (k, _parts, r) => {
-      puts.push(k);
-      rows.set(k, r);
-    },
-  };
-  return { store, rows, puts };
+function files(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules" || name === "__tests__") continue;
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) files(p, out);
+    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+  }
+  return out;
 }
 
-test("K1: a cache hit makes no call; a miss calls once and writes the allowlisted entry", async () => {
-  const stub = new StubRoutingAdapter({ now: () => NOW });
-  const mem = memoryStore();
-  const input = { origin: GION, destination: FUSHIMI, mode: "transit" as RoutingMode, departAt: null, hourBucket: 10 };
-  const first = await routeLegCached(input, stub, mem.store);
-  assert.equal(first.cached, false);
-  assert.equal(stub.calls, 1);
-  assert.deepEqual(mem.puts, [first.cacheKey]);
-  assertOnlyAllowedFacts(mem.rows.get(first.cacheKey)!, "stored");
-  const second = await routeLegCached(input, stub, mem.store);
-  assert.equal(second.cached, true);
-  assert.equal(stub.calls, 1, "the hit made no call");
-  assert.deepEqual(second.outcome, first.outcome, "a hit keeps the original checked date");
+test("B1: the Google adapter's output never reaches a cache writer", async () => {
+  const google = await googleWith().adapter.route(GION, FUSHIMI, "transit", null);
+  assert.equal(google.kind, "ok");
+  if (google.kind !== "ok") return;
+  assert.equal(google.route.provenance.source, "google_routes");
+  assert.equal(cacheableRouteEntry(google.route), null, "the boundary refuses a Google answer");
+  assert.equal(CACHEABLE_ROUTE_SOURCES.has("google_routes"), false);
+  const stub = await new StubRoutingAdapter({ now: () => NOW }).route(GION, FUSHIMI, "walk", null);
+  assert.ok(stub.kind === "ok" && cacheableRouteEntry(stub.route), "a cacheable source passes");
+  // No persistent route store exists: no table, no writer.
+  const all = [...files("server"), ...files("shared")];
+  const offenders = all.filter((f) => /route_cache|routeCache\b|pgTable\("route_/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(offenders, [], "no route cache table or writer until 9a-ii (OSRM)");
+  // The in-run memo cannot write anywhere.
+  const memoSrc = readFileSync("server/services/routing/route-memo.ts", "utf8");
+  assert.ok(!/from\s+["'][^"']*\/db["']|drizzle|insert\(|\.update\(/.test(memoSrc), "the memo has no database access");
 });
 
-test("K2: paused and failed answers are never cached", async () => {
-  const mem = memoryStore();
+test("K1: in a run, the same leg asked twice makes one call; a new run asks again", async () => {
+  const stub = new StubRoutingAdapter({ now: () => NOW });
+  const input = { origin: GION, destination: FUSHIMI, mode: "transit" as RoutingMode, departAt: null, hourBucket: 10 };
+  const memo = new RouteRunMemo();
+  const first = await memo.route(input, stub);
+  assert.equal(first.reused, false);
+  const second = await memo.route(input, stub);
+  assert.equal(second.reused, true);
+  assert.equal(stub.calls, 1);
+  assert.deepEqual(second.outcome, first.outcome);
+  await new RouteRunMemo().route(input, stub);
+  assert.equal(stub.calls, 2, "nothing outlives the run");
+});
+
+test("K2: paused and failed answers are not remembered, even for the run", async () => {
   const input = { origin: GION, destination: FUSHIMI, mode: "walk" as RoutingMode, departAt: null, hourBucket: null };
-  assert.equal((await routeLegCached(input, new StubRoutingAdapter({ paused: true }), mem.store)).outcome.kind, "paused");
-  assert.equal((await routeLegCached(input, new StubRoutingAdapter({ noRoute: true }), mem.store)).outcome.kind, "no_route");
-  assert.equal(mem.puts.length, 0);
+  const memo = new RouteRunMemo();
+  assert.equal((await memo.route(input, new StubRoutingAdapter({ paused: true }))).outcome.kind, "paused");
+  assert.equal((await memo.route(input, new StubRoutingAdapter({ noRoute: true }))).outcome.kind, "no_route");
+  const ok = new StubRoutingAdapter();
+  assert.equal((await memo.route(input, ok)).outcome.kind, "ok");
+  assert.equal(ok.calls, 1, "the earlier failures did not stand in for an answer");
 });
 
 test("K3: the key — place ID when known, else 4-decimal coordinates; mixed keys; the hour bucket", () => {
   assert.equal(routePointKey(GION), "place:ChIJgion");
   assert.equal(routePointKey(FUSHIMI), "pt:34.9671,135.7727");
   assert.equal(routePointKey({ lat: 34.96714999, lng: 135.77271, placeId: "  " }), "pt:34.9671,135.7727");
-  assert.equal(routeCacheKey(GION, FUSHIMI, "transit", 9), "place:ChIJgion|pt:34.9671,135.7727|transit|h9");
-  assert.equal(routeCacheKey(GION, FUSHIMI, "transit", null), "place:ChIJgion|pt:34.9671,135.7727|transit|h-");
+  assert.equal(routeLegKey(GION, FUSHIMI, "transit", 9), "place:ChIJgion|pt:34.9671,135.7727|transit|h9");
+  assert.equal(routeLegKey(GION, FUSHIMI, "transit", null), "place:ChIJgion|pt:34.9671,135.7727|transit|h-");
   assert.equal(routeHourBucket("09:40"), 9);
   assert.equal(routeHourBucket("9:05"), 9);
   assert.equal(routeHourBucket(""), null, "no time is its own bucket, never a guessed hour");
   assert.equal(routeHourBucket("25:00"), null);
 });
 
-test("K4: freshness is checked_at against the TTL, read at lookup time", () => {
-  const day = 86_400_000;
-  assert.equal(isRouteFresh(new Date(NOW.getTime() - 29 * day), 30, NOW), true);
-  assert.equal(isRouteFresh(new Date(NOW.getTime() - 31 * day), 30, NOW), false);
-  assert.equal(isRouteFresh(new Date(NOW.getTime() - 8 * day), 7, NOW), false, "a lowered TTL applies at once");
-  assert.equal(isRouteFresh(NOW, 0, NOW), false, "0 = never reuse");
-  assert.equal(isRouteFresh(null, 30, NOW), false);
+test("K4: concurrent asks in a run make one call; the memo may be seeded from the plan's own legs", async () => {
+  const stub = new StubRoutingAdapter({ now: () => NOW });
+  const input = { origin: GION, destination: FUSHIMI, mode: "drive" as RoutingMode, departAt: null, hourBucket: 8 };
+  const memo = new RouteRunMemo();
+  await Promise.all([memo.route(input, stub), memo.route(input, stub), memo.route(input, stub)]);
+  assert.equal(stub.calls, 1);
+  const seeded = new RouteRunMemo();
+  const own: RouteAnswer = { durationMin: 31, distanceM: 9000, line: null, fare: null, provenance: { source: "google_routes", checkedAt: NOW.toISOString() } };
+  seeded.seed(routeLegKey(GION, FUSHIMI, "drive", 8), own);
+  const r = await seeded.route(input, stub);
+  assert.equal(r.reused, true);
+  assert.equal(stub.calls, 1, "the plan's own leg answered");
+  assert.equal(r.outcome.kind === "ok" && r.outcome.route.durationMin, 31);
 });
 
 test("P1: walk ≤ 1.2 km; else transit where the profile lists rail, bus or transit; else drive", () => {

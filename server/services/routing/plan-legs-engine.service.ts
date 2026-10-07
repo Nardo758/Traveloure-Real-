@@ -2,8 +2,8 @@
  * THE PLAN'S ROUTED LEGS — the one writer (step 9a, ledger `2026-10-07-step9a-routing-engine`; spec
  * §14.1; brief L3; rulings 2, 3, 5, 10). On a plan that passes `planGetsRoutedLegs`, every leg between
  * consecutive stops (and the stay ↔ the day's first and last stop) is routed through the ONE adapter,
- * cache-first, changed legs only. Engine legs are trip-scoped rows born `proposed` with `source` set to
- * the routing source; an expert's CONFIRMED leg for the same pair is never recomputed and wins on read.
+ * changed legs only, de-duplicated in memory for the run (never a persistent cache — Google terms).
+ * Engine legs are trip-scoped rows born `proposed` with `source` set to the routing source; an expert's CONFIRMED leg for the same pair is never recomputed and wins on read.
  *
  * Never runs on a free plan (R-e) and never on page load: its callers are Optimize/apply, Finalize,
  * activate-transport and the debounced edit trigger (`plan-legs-queue.ts`). A paused caller (the daily
@@ -12,7 +12,7 @@
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { transportLegs } from "@shared/schema";
+import { itineraryVariants, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { marketHasTransitCoverage, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED } from "@shared/travel-speeds";
@@ -23,7 +23,8 @@ import { formatDistance } from "../transport-leg-calculator";
 import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-facts/place-facts.service";
 import { stayPointForPlan } from "../stay-reroute.service";
 import { routingAdapter } from "./index";
-import { routeLegCached, type RouteCacheStore } from "./route-cache.service";
+import { RouteRunMemo } from "./route-memo";
+import { routedFactsOf } from "./plan-legs";
 import { tripGetsRoutedLegs } from "./plan-routed-legs.service";
 import { desiredPlanLegs, diffPlanLegs, legPairKey, selectedModeOf, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
@@ -33,7 +34,8 @@ export type PlanLegsResult =
       skipped?: undefined;
       /** Calls the adapter actually made. */
       calls: number;
-      cacheHits: number;
+      /** Legs answered from this run or the plan's own stored legs — no call made. */
+      reused: number;
       written: number;
       kept: number;
       removed: number;
@@ -58,15 +60,32 @@ export function googleCoordStamp(from: Date | undefined, to: Date | undefined): 
   return { coordSource: "google", coordFetchedAt: new Date(Math.min(...times.map((d) => d.getTime()))) };
 }
 
-/** The cache key a stored engine leg was computed under, from its one alternative entry. */
-export function engineLegCacheKey(alternativeModes: unknown): string | null {
+/** The leg key a stored routed leg was computed under, from its one alternative entry. */
+export function engineLegKey(alternativeModes: unknown): string | null {
   const first = Array.isArray(alternativeModes) ? (alternativeModes[0] as any) : null;
-  return typeof first?.cacheKey === "string" ? first.cacheKey : null;
+  return typeof first?.legKey === "string" ? first.legKey : null;
+}
+
+/** The routed legs of the plan's latest Optimize run (its own version legs), for seeding the memo. */
+async function latestRunLegs(tripId: string): Promise<Array<typeof transportLegs.$inferSelect>> {
+  try {
+    const comparison = await storage.getItineraryComparisonByTripId(tripId);
+    if (!comparison) return [];
+    const rows = await db
+      .select({ leg: transportLegs })
+      .from(transportLegs)
+      .innerJoin(itineraryVariants, eq(itineraryVariants.id, transportLegs.variantId))
+      .where(and(eq(itineraryVariants.comparisonId, comparison.id), sql`${transportLegs.source} IS NOT NULL`));
+    return rows.map((r) => r.leg);
+  } catch (err: any) {
+    console.warn("[routing] run legs unreadable (no reuse):", err?.message ?? err);
+    return [];
+  }
 }
 
 export async function computePlanLegs(
   tripId: string,
-  deps: { adapter?: RoutingAdapter | null; store?: RouteCacheStore; qualifies?: boolean } = {},
+  deps: { adapter?: RoutingAdapter | null; qualifies?: boolean } = {},
 ): Promise<PlanLegsResult> {
   const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
   if (!adapter) return { skipped: "engine_off" };
@@ -132,7 +151,7 @@ export async function computePlanLegs(
     legOrder: l.legOrder,
     fromActivityId: l.fromActivityId,
     toActivityId: l.toActivityId,
-    cacheKey: engineLegCacheKey(l.alternativeModes),
+    legKey: engineLegKey(l.alternativeModes),
     userSelectedMode: l.userSelectedMode,
   }));
   const picked = new Map(existing.map((e) => [legPairKey(e.dayNumber, e.fromActivityId, e.toActivityId), selectedModeOf(e)]));
@@ -151,24 +170,34 @@ export async function computePlanLegs(
     return zonedWallClockToInstant(addCalendarDays(tripStart, leg.dayNumber - 1), leg.wallClock, trip.timezone);
   };
 
+  // No persistent route cache (Google terms, decision-maker Oct 7, 2026): the memo lives for THIS call,
+  // seeded only from the plan's OWN legs — its engine legs and its latest run's version legs, by key —
+  // so apply reuses what the run already asked for and an unchanged pair is never re-asked.
+  const memo = new RouteRunMemo();
+  for (const l of [...engineRows, ...(await latestRunLegs(tripId))]) {
+    const facts = routedFactsOf(l);
+    const key = engineLegKey(l.alternativeModes);
+    if (facts && key && Number(l.estimatedDurationMinutes) > 0) {
+      memo.seed(key, { durationMin: Number(l.estimatedDurationMinutes), distanceM: Number(l.distanceMeters ?? 0), line: facts.line, fare: facts.fare, provenance: facts.provenance });
+    }
+  }
   let calls = 0;
-  let cacheHits = 0;
+  let reused = 0;
   let noRoute = 0;
   let paused = false;
   const rows: Array<typeof transportLegs.$inferInsert> = [];
   const replacedIds: string[] = [];
   for (const leg of diff.compute) {
     if (paused) break;
-    const r = await routeLegCached(
+    const r = await memo.route(
       { origin: leg.from.point, destination: leg.to.point, mode: leg.mode, departAt: departAt(leg), hourBucket: leg.hourBucket },
       adapter,
-      deps.store,
     );
     if (r.outcome.kind === "paused") {
       paused = true;
       break;
     }
-    if (r.cached) cacheHits++;
+    if (r.reused) reused++;
     else calls++;
     replacedIds.push(...(diff.replaces.get(leg.pairKey) ?? []));
     if (r.outcome.kind === "no_route") {
@@ -195,7 +224,7 @@ export async function computePlanLegs(
       estimatedDurationMinutes: route.durationMin,
       estimatedCostUsd: null,
       // The ONE alternative entry carries the facts the row has no column for: line, fare (source
-      // currency, never converted — L6) and the cache key the pair diff compares (ruling 10).
+      // currency, never converted — L6) and the leg key the pair diff compares (ruling 10).
       alternativeModes: [
         {
           mode: LEG_MODE_STORED[leg.mode],
@@ -205,7 +234,7 @@ export async function computePlanLegs(
           reason: route.provenance.source,
           line: route.line,
           fare: route.fare,
-          cacheKey: r.cacheKey,
+          legKey: r.legKey,
           hourBucket: leg.hourBucket,
         },
       ] as any,
@@ -253,7 +282,7 @@ export async function computePlanLegs(
   }
   return {
     calls,
-    cacheHits,
+    reused,
     written: rows.length,
     kept: diff.keep.length,
     removed: removeIds.length,
@@ -265,8 +294,9 @@ export async function computePlanLegs(
 
 /**
  * The routing context for an Optimize run's versions (step 9a ruling 6): the adapter, the plan's
- * transit coverage, its first day and zone, and its stops' place IDs (so a version stop keys the cache
- * exactly as the plan stop it came from — the apply then reads the run's answers as hits). Null when
+ * transit coverage, its first day and zone, ONE in-memory memo for the run, and its stops' place IDs (so a
+ * version stop keys a leg exactly as the plan stop it came from — the apply then reuses the run's own
+ * version legs, stored on the plan's rows). Null when
  * the engine is off, or the comparison names no plan.
  */
 export async function versionRoutingFor(comparisonId: string): Promise<{
@@ -286,6 +316,7 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   return {
     ctx: {
       adapter,
+      memo: new RouteRunMemo(),
       hasTransitCoverage: marketHasTransitCoverage(profile?.availableModes),
       tripStart: trip.startDate ? String(trip.startDate).slice(0, 10) : null,
       timezone: trip.timezone ?? null,

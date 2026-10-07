@@ -8,13 +8,13 @@
  *     day's first and last stop when the plan has a located stay (spec §14.1 "anchor ↔ first/last stop")
  *   · a stop with no point is never bridged over (§13): the pair is reported and skipped
  *   · a pair an expert has CONFIRMED is never computed — the confirmed leg wins (ruling 3)
- *   · a leg is unchanged when its pair, mode and cache key (both points and the departure hour) are the
+ *   · a leg is unchanged when its pair, mode and leg key (both points and the departure hour) are the
  *     same; a leg whose only change is its position is re-ordered, never re-asked
  * No I/O.
  */
 import {
   defaultRoutedMode,
-  routeCacheKey,
+  routeLegKey,
   routeHourBucket,
   type RoutePoint,
   type RoutingMode,
@@ -41,7 +41,7 @@ export interface DesiredLeg {
   /** The departure's local wall clock, or null when the plan does not say. */
   wallClock: string | null;
   hourBucket: number | null;
-  cacheKey: string;
+  legKey: string;
 }
 
 export interface ExistingEngineLeg {
@@ -50,8 +50,8 @@ export interface ExistingEngineLeg {
   legOrder: number;
   fromActivityId: string | null;
   toActivityId: string | null;
-  /** The cache key it was computed under (stored on its alternative entry), or null for an older row. */
-  cacheKey: string | null;
+  /** The leg key it was computed under (stored on its alternative entry), or null for an older row. */
+  legKey: string | null;
   userSelectedMode: string | null;
 }
 
@@ -119,7 +119,7 @@ export function desiredPlanLegs(
       mode,
       wallClock,
       hourBucket,
-      cacheKey: routeCacheKey(from.point, to.point, mode, hourBucket),
+      legKey: routeLegKey(from.point, to.point, mode, hourBucket),
     });
   };
   for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
@@ -141,7 +141,7 @@ export function desiredPlanLegs(
 export interface PlanLegsDiff {
   /** Unchanged legs; `legOrder` set only when the position moved (a re-order, no call). */
   keep: Array<{ id: string; legOrder: number | null }>;
-  /** Legs to (re)compute through the cache. */
+  /** Legs to (re)compute (through the run memo). */
   compute: DesiredLeg[];
   /** Engine legs to remove: their pair is gone, or an expert confirmed it, or they are duplicates. */
   remove: string[];
@@ -164,7 +164,7 @@ export function diffPlanLegs(desired: readonly DesiredLeg[], existing: readonly 
     if (confirmedPairs.has(d.pairKey)) continue;
     wanted.add(d.pairKey);
     const have = byPair.get(d.pairKey) ?? [];
-    const same = have.find((e) => e.cacheKey === d.cacheKey);
+    const same = have.find((e) => e.legKey === d.legKey);
     if (same) {
       keep.push({ id: same.id, legOrder: same.legOrder === d.legOrder ? null : d.legOrder });
       remove.push(...have.filter((e) => e.id !== same.id).map((e) => e.id));

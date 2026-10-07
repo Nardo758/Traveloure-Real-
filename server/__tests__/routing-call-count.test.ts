@@ -6,27 +6,23 @@
  * The fixture is a settled 5-day plan, 5 located stops a day (4 stop pairs a day, 20 per version), and
  * the run's four versions: the baseline; a version that shifts every time by 30 minutes (some
  * departure hours move bucket); one that swaps each day's middle two stops; one that reverses each day.
- * Each version's legs go through the SAME pairing rule (`buildSameDayActivityPairs`) and the SAME
- * cache path (`routeLegCached`) the optimizer uses, against a cold cache and the counting stub.
+ * Each version's legs go through the SAME pairing rule (`buildSameDayActivityPairs`) and the SAME in-run
+ * memo (`RouteRunMemo`) the optimizer uses — one per run, nothing persisted (Google terms, #1325) —
+ * against the counting stub.
  *
- *   N1  the cold run makes exactly as many calls as there are DISTINCT cache keys across the versions —
+ *   N1  the cold run makes exactly as many calls as there are DISTINCT leg keys across the versions —
  *       a pair two versions share (same stops, same mode, same hour) is asked once; the number is printed
  *   N2  the four versions run in parallel and still ask each distinct key once (in-flight de-dup)
- *   N3  a second run over the same plan makes no call
+ *   N3  within one run, asking the same versions again makes no call (a NEW run asks again — no cache)
  *   N4  an edit moving one stop asks at most two legs
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildSameDayActivityPairs, type ActivityLocation } from "../services/transport-leg-calculator";
-import { defaultRoutedMode, routeCacheKey, routeHourBucket, type RouteAnswer } from "@shared/routing-engine";
-import { routeLegCached, type RouteCacheStore } from "../services/routing/route-cache.service";
+import { defaultRoutedMode, routeLegKey, routeHourBucket } from "@shared/routing-engine";
+import { RouteRunMemo } from "../services/routing/route-memo";
 import { StubRoutingAdapter } from "../services/routing/stub-routing-adapter";
 import { departureWallClock } from "../services/routing/plan-legs";
-
-function memoryStore(): RouteCacheStore {
-  const rows = new Map<string, RouteAnswer>();
-  return { get: async (k) => rows.get(k) ?? null, put: async (k, _p, r) => void rows.set(k, r) };
-}
 
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 
@@ -59,21 +55,21 @@ function versions(): ActivityLocation[][] {
   return [base, shifted, swapped, reversed];
 }
 
-async function runVersion(acts: ActivityLocation[], stub: StubRoutingAdapter, store: RouteCacheStore, keys: Set<string>) {
+async function runVersion(acts: ActivityLocation[], stub: StubRoutingAdapter, store: RouteRunMemo, keys: Set<string>) {
   for (const pair of buildSameDayActivityPairs(acts)) {
     const o = { lat: pair.from.lat, lng: pair.from.lng, placeId: pair.from.placeId };
     const t = { lat: pair.to.lat, lng: pair.to.lng, placeId: pair.to.placeId };
     const mode = defaultRoutedMode(o, t, true);
     const wall = departureWallClock({ startTime: pair.from.scheduledTime, endTime: null, durationMinutes: pair.from.durationMinutes ?? null });
     const hourBucket = routeHourBucket(wall);
-    keys.add(routeCacheKey(o, t, mode, hourBucket));
-    await routeLegCached({ origin: o, destination: t, mode, departAt: null, hourBucket }, stub, store);
+    keys.add(routeLegKey(o, t, mode, hourBucket));
+    await store.route({ origin: o, destination: t, mode, departAt: null, hourBucket }, stub);
   }
 }
 
 test("N1: a cold Optimize run asks each distinct pair-mode-hour once across the four versions", async () => {
   const stub = new StubRoutingAdapter();
-  const store = memoryStore();
+  const store = new RouteRunMemo();
   const keys = new Set<string>();
   for (const v of versions()) await runVersion(v, stub, store, keys);
   const legsAsked = versions().length * 20;
@@ -84,20 +80,20 @@ test("N1: a cold Optimize run asks each distinct pair-mode-hour once across the 
 
 test("N2: in parallel, as the optimizer runs them, still one call per distinct key", async () => {
   const stub = new StubRoutingAdapter();
-  const store = memoryStore();
+  const store = new RouteRunMemo();
   const keys = new Set<string>();
   await Promise.all(versions().map((v) => runVersion(v, stub, store, keys)));
   assert.equal(stub.calls, keys.size);
 });
 
-test("N3 / N4: a second run makes no call; one moved stop asks at most two legs", async () => {
+test("N3 / N4: within the run a repeat makes no call; one moved stop asks at most two legs", async () => {
   const stub = new StubRoutingAdapter();
-  const store = memoryStore();
+  const store = new RouteRunMemo();
   const keys = new Set<string>();
   for (const v of versions()) await runVersion(v, stub, store, keys);
   const cold = stub.calls;
   for (const v of versions()) await runVersion(v, stub, store, keys);
-  assert.equal(stub.calls, cold, "warm cache: no call");
+  assert.equal(stub.calls, cold, "same run: no call");
   const moved = basePlan().map((a) => (a.id === "d3s2" ? { ...a, lat: a.lat + 0.01, placeId: "ChIJ-moved" } : a));
   await runVersion(moved, stub, store, keys);
   assert.equal(stub.calls - cold, 2);

@@ -14,7 +14,7 @@ import { getTrafficAwareDrivingRoute } from "./routes.service";
 import { defaultRoutedMode, routeHourBucket, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
-import { routeLegCached } from "./routing/route-cache.service";
+import type { RouteRunMemo } from "./routing/route-memo";
 import { departureWallClock } from "./routing/plan-legs";
 
 export interface ActivityLocation {
@@ -27,7 +27,7 @@ export interface ActivityLocation {
   order: number;
   /** RFC 3339 departure computed from the trip date/schedule when available. */
   departureTime?: string;
-  /** Step 9a: the stop's Google place ID when known (the plan item's unexpired fact) — the cache key. */
+  /** Step 9a: the stop's Google place ID when known (the plan item's unexpired fact) — part of the leg key. */
   placeId?: string | null;
   /** Step 9a: minutes at the stop, for the departure hour. */
   durationMinutes?: number | null;
@@ -35,11 +35,13 @@ export interface ActivityLocation {
 
 /**
  * Step 9a (ledger `2026-10-07-step9a-routing-engine`; ruling 6): the routing engine for an Optimize
- * version. Every leg goes through the ONE adapter, cache-first — the four versions share most pairs,
- * so a pair is asked once per hour bucket and the rest are cache hits (in flight, too).
+ * version. Every leg goes through the ONE adapter and the run's in-memory memo — the four versions share
+ * most pairs, so a pair is asked once per hour bucket per run (in flight, too). Never a persistent cache.
  */
 export interface VersionRoutingContext {
   adapter: RoutingAdapter;
+  /** ONE memo for the whole run — the four versions share it; nothing is persisted (Google terms). */
+  memo: RouteRunMemo;
   hasTransitCoverage: boolean;
   /** The plan's first day and zone, for a real departure instant; null ⇒ no departure sent. */
   tripStart: string | null;
@@ -52,10 +54,10 @@ interface TransportAlternative {
   costUsd: number | null;
   energyCost: number;
   reason: string;
-  /** Step 9a, on a routed leg only: the line, the fare (source currency) and the cache key. */
+  /** Step 9a, on a routed leg only: the line, the fare (source currency) and the leg key. */
   line?: string | null;
   fare?: { amount: number; currency: string } | null;
-  cacheKey?: string;
+  legKey?: string;
 }
 
 export interface TransportLegResult {
@@ -302,7 +304,7 @@ async function computeRoutedVersionLeg(
   const wallClock = departureWallClock({ startTime: from.scheduledTime || null, endTime: null, durationMinutes: from.durationMinutes ?? null });
   const departAt =
     routing.tripStart && wallClock ? zonedWallClockToInstant(addCalendarDays(routing.tripStart, dayNumber - 1), wallClock, routing.timezone) : null;
-  const r = await routeLegCached({ origin, destination, mode, departAt, hourBucket: routeHourBucket(wallClock) }, routing.adapter);
+  const r = await routing.memo.route({ origin, destination, mode, departAt, hourBucket: routeHourBucket(wallClock) }, routing.adapter);
   if (r.outcome.kind !== "ok") return null;
   const route = r.outcome.route;
   return {
@@ -322,7 +324,7 @@ async function computeRoutedVersionLeg(
     estimatedDurationMinutes: route.durationMin,
     estimatedCostUsd: null,
     alternativeModes: [
-      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: route.provenance.source, line: route.line, fare: route.fare, cacheKey: r.cacheKey } as TransportAlternative,
+      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: route.provenance.source, line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
     ],
     energyCost: 0,
     routeProvider: route.provenance.source === "stub" ? "stub" : "google_routes",

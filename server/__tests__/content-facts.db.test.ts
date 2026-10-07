@@ -241,7 +241,7 @@ test("C5: no Places fact reaches a public route", async () => {
     // deletes any still past the max age. No public output; nothing leaves it but counts.
     "server/jobs/legGoogleCoordsRefresh.ts",
     // Step 9a (ledger `2026-10-07-step9a-routing-engine`): the routing engine reads each stop's place ID
-    // (the route cache key — Google lets a place ID be stored) and its point (the trusted row point
+    // (part of the leg key — Google lets a place ID be stored) and its point (the trusted row point
     // first, else the unexpired `location` fact, as plan-fit does), only for a plan that passes
     // `planGetsRoutedLegs`. A Places point is never written onto an item row; what leaves is a leg's
     // duration, distance, line, fare and provenance, read only behind the plan's own gate (in-plan, R-h).
