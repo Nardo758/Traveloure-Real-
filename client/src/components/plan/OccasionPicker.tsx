@@ -34,14 +34,16 @@ interface Props<T extends OccasionPickerRow> {
   loading?: boolean;
   value: string;
   onPick: (slug: string) => void;
+  /** A group tab to open on (the nav's `?group=`, already an exact key). Absent ⇒ none, as before. */
+  initialGroup?: OccasionPickerGroup | null;
 }
 
 type View = { kind: "group"; key: OccasionPickerGroup } | { kind: "all" } | { kind: "none" };
 
-export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading, value, onPick }: Props<T>) {
+export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading, value, onPick, initialGroup = null }: Props<T>) {
   const { groups } = useMemo(() => groupOccasions(occasions), [occasions]);
   const pickedRow = useMemo(() => (occasions ?? []).find((o) => o.slug === value) ?? null, [occasions, value]);
-  const [view, setView] = useState<View>({ kind: "none" });
+  const [view, setView] = useState<View>(() => (initialGroup ? { kind: "group", key: initialGroup } : { kind: "none" }));
   const [query, setQuery] = useState("");
 
   // A picker that opens on an answered occasion shows where that answer sits: its group, or See all

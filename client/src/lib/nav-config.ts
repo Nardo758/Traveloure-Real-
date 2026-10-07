@@ -12,6 +12,7 @@
  */
 
 import type { PlanningSource } from "@/contexts/PlanningContext";
+import { OCCASION_GROUP_LABELS, OCCASION_GROUP_ORDER } from "@shared/experience-group";
 
 /**
  * Ruling 60 Phase A (chrome i18n): every label-bearing entry gains an OPTIONAL `i18nKey` into
@@ -158,79 +159,23 @@ export const navGroupsConfig: NavGroupConfig[] = [
     name: "Experiences",
     i18nKey: "groups.experiences",
     sections: [
-      // ── Grouped by WHAT YOU'RE DOING, not by switch (ledger `2026-09-03-occasion-hygiene`) ──
-      // The four sections mirror the decision-maker's tuned-nav frame. The old split had
-      // "Romantic Getaways" and "Date Night" filed beside "Travel Planning" under one
-      // TRAVEL & GETAWAYS heading, a lone "Birthday Party" under CELEBRATIONS, and Boys/Girls Trip
-      // under GROUP EVENTS beside corporate work — three headings that described the platform's
-      // internal classes rather than the thing the traveler is planning. The stress test ruled the
-      // grouping is by ACTIVITY; an occasion's flow shape lives on its own row's switch columns
-      // (migration 276), never in the menu.
-      //
-      // Every href is `/experiences/<slug>` for a slug the seeder writes, and nothing was dropped:
-      // all fifteen previous items survive, joined by Honeymoon and Anniversary Trip — the couple's
-      // getaway, which had a seeded row and a preset set but no way into it from the navbar.
+      // ── THE FIVE GROUPS, FROM THE ONE SOURCE (ledger `2026-10-07-nav-experience-groups`) ──
+      // The menu lists the occasion GROUPS the start page's picker shows, in its order and with its
+      // labels (`OCCASION_GROUP_ORDER` / `OCCASION_GROUP_LABELS`, `shared/experience-group.ts`) —
+      // never a copy here. Each opens `/experiences?group=<key>`, which pre-picks that group's tab
+      // (exact key only). The key is an address and is never rendered (R127); the label is.
+      // This replaces the curated per-occasion lists (and the Wedding row's featured planning door),
+      // which the start page's picker now carries.
       {
-        title: "TRIPS",
-        i18nKey: "sections.trips",
-        items: [
-          { name: "Travel Planning", i18nKey: "links.travelPlanning", href: "/experiences/travel", description: "Plan your perfect trip" },
-          { name: "Retreats", i18nKey: "links.retreats", href: "/experiences/retreats", description: "Relaxation & wellness" },
-          { name: "Honeymoon", i18nKey: "links.honeymoon", href: "/experiences/honeymoon", description: "The trip after the wedding" },
-          { name: "Reunions", i18nKey: "links.reunions", href: "/experiences/reunions", description: "Reconnect & celebrate" },
-        ],
-      },
-      {
-        title: "CELEBRATIONS",
-        i18nKey: "sections.celebrations",
-        items: [
-          // The one FEATURED leaf today (ledger `2026-09-04-wedding-entry-doors`, ratified artboard
-          // `docs/design/wedding-flow/NavTuned.dc.html`). The link is untouched — browsing the
-          // wedding surface is still what the row does — and the hover/focus affordance beside it
-          // starts the plan. `experienceType` is one of the five FROZEN keys
-          // (`2026-09-01-moment-key`); `experienceSlug` is the seeded `experience_types` slug
-          // (`server/seed-experience-types.ts`), so the chooser records a real catalog occasion
-          // rather than nothing. Both are facts this door genuinely answers — the traveler clicked
-          // "Wedding" — which is the whole test for passing a source at all (§13).
-          {
-            name: "Wedding",
-            i18nKey: "links.wedding",
-            href: "/experiences/wedding",
-            description: "Dream wedding planning",
-            featured: { source: { door: "nav_occasion", experienceType: "wedding", experienceSlug: "wedding" } },
-          },
-          { name: "Engagement Party", i18nKey: "links.engagementParty", href: "/experiences/engagement-party", description: "Celebrate your love" },
-          { name: "Wedding Anniversary", i18nKey: "links.anniversary", href: "/experiences/wedding-anniversaries", description: "Celebrate your journey" },
-          { name: "Baby Shower", i18nKey: "links.babyShower", href: "/experiences/baby-shower", description: "Welcome the new arrival" },
-          { name: "Birthday Party", i18nKey: "links.birthdayParty", href: "/experiences/birthday", description: "Unforgettable celebrations" },
-          { name: "Proposal", i18nKey: "links.proposal", href: "/experiences/proposal", description: "Perfect proposal moment" },
-        ],
-      },
-      {
-        title: "NIGHTS OUT & GETAWAYS",
-        i18nKey: "sections.nightsOutAndGetaways",
-        items: [
-          { name: "Date Night", i18nKey: "links.dateNight", href: "/experiences/date-night", description: "Perfect evening plans" },
-          { name: "Romantic Getaways", i18nKey: "links.romanticGetaways", href: "/experiences/romance", description: "Special romantic escapes" },
-          // The COUPLE'S anniversary getaway — a different product from "Wedding Anniversary"
-          // above, which is the party. Both are seeded rows; the labels are what tell them apart.
-          { name: "Anniversary Trip", i18nKey: "links.anniversaryTrip", href: "/experiences/anniversary-trip", description: "A getaway for the two of you" },
-          { name: "Girls Trip", i18nKey: "links.girlsTrip", href: "/experiences/girls-trip", description: "Getaways with friends" },
-          { name: "Boys Trip", i18nKey: "links.boysTrip", href: "/experiences/boys-trip", description: "Epic adventures" },
-        ],
-      },
-      {
-        title: "WORK",
-        i18nKey: "sections.work",
-        items: [
-          { name: "Corporate Events", i18nKey: "links.corporateEvents", href: "/experiences/corporate-events", description: "Team events & meetings" },
-          { name: "Corporate Retreats", i18nKey: "links.corporateRetreats", href: "/experiences/corporate", description: "Team building retreats" },
-        ],
+        title: "WHAT ARE YOU PLANNING?",
+        items: OCCASION_GROUP_ORDER.map((key) => ({
+          name: OCCASION_GROUP_LABELS[key],
+          href: `/experiences?group=${key}`,
+        })),
       },
     ],
-    // The artboard's dropdown footer. The four sections above are a CURATED subset — the seeder
-    // writes more `experience_types` rows than the menu lists — so the menu owes the traveler a
-    // way past its own curation. The target is `/experiences/travel`, the SAME href the landing
+    // The artboard's dropdown footer. The groups above open the start page on a group's tab; this
+    // is the way straight to every occasion. The target is `/experiences/travel`, the SAME href the landing
     // Moments section's "All occasions →" already uses (`moments-section.tsx`), so the two doors
     // to "everything" cannot drift apart (§18 rule 1).
     footer: {
