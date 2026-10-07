@@ -343,6 +343,15 @@ async function attemptDelivery(
   // there is no circular import at module-load time.
   let result: SendEmailResult;
   try {
+    if (outboxId !== null && current.emailType === "signup_welcome") {
+      const { deliverSignupWelcome } = await import("./signup-welcome-outbox.service");
+      await deliverSignupWelcome(outboxId, async (payload) => {
+        if (_outboxTestHooks.sendEmailFn) return _outboxTestHooks.sendEmailFn(payload);
+        const { sendEmail } = await import("./email.service");
+        return sendEmail(payload);
+      }, _nextRetryAfter);
+      return;
+    }
     if (outboxId !== null && current.emailType && isItineraryFollowup(current.emailType)) {
       const { deliverItineraryFollowup } = await import("./itinerary-followup.service");
       await deliverItineraryFollowup(outboxId, async (payload) => {
