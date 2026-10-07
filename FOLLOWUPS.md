@@ -1077,6 +1077,32 @@ Two more lose their client caller but are still named by guards:
 The full list with `file:line` is in `docs/planning/briefs/step-8c-phase0.md` §E. An orphan pass is a separate
 server lane; 8c is client only.
 
+---
+
+## From the Events lanes — close-out (ledger `2026-10-07-venue-locality-fill-sunset`)
+
+### FU-EV-1 — the pool account's storefront `/s/<handle>` is link-only, left open by design
+
+R353 (ledger `2026-10-06-pool-listings-not-public`) removed the concierge pool account's listings from
+every public BROWSE reader: the Services tab, `/api/services`, `/api/provider-services`, Destinations'
+city page, the directory and the billboard. Its own storefront page, `/s/<handle>`, still renders its
+`booking_concierge` listing to anyone who holds the link. It is not a browse surface: nothing lists or
+links to it. It is **left open by design** (decision-maker, Oct 7, 2026). The service-detail read by id
+is gated too since R355 (`2026-10-07-public-service-ids`); cart, checkout and the 24-hour concierge
+offer stay ungated because they are how the fallback is bought. Revisit only if a surface starts
+linking to the pool storefront.
+
+### FU-EV-2 — season-rating data hygiene, for a later data migration
+
+The month-level season ratings in `destination_events` (`season_rating`), which the events calendar's
+"Where to go" and its season bands read. No code works around these; they are data defects to fix in a
+DATA migration (no schema), with a duplicate check before any UNIQUE is considered:
+- **Portugal has 25 rows**, one month duplicated. The
+  duplicate must be identified and one row removed, choosing by rule rather than at random.
+- **Split country labels:** `UAE` and `United Arab Emirates`, and `USA` and `United States`, are the
+  same country under two labels. One canonical label each, and the rows of the other re-pointed or
+  merged, also by rule.
+
 ## From step 8d — the guest map (ledger `2026-10-07-step8d-guest-map`)
 
 ### FU-8D-1 — `GET /api/services` published each listing owner's `users.id` (LD 40) — **CLOSED by R355 (#1321)**
