@@ -392,6 +392,14 @@ export interface PlanCardTransport {
   estimatedDurationMinutes?: number;
   estimatedCostUsd?: number | null;
   mapsUrl?: string | null;
+  /** The leg's two stops, as the server sends them (`TripPlanLeg`). */
+  fromActivityId?: string | null;
+  toActivityId?: string | null;
+  /**
+   * Step 9a (ledger `2026-10-07-step9a-routing-engine`) — present only on a routing-engine leg of a
+   * routed plan: line and fare as the source gave them, and who answered when.
+   */
+  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } };
   /**
    * Mode-aware primary action (CLAUDE.md §18) — a chauffeured leg's real booking detail.
    * KNOWN GAP: `plancard.routes.ts` does not populate these fields today (no such data path

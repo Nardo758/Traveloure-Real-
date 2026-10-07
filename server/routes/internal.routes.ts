@@ -29,6 +29,7 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
+import { runLegsDayofRecheck } from "../jobs/legsDayofRecheck";
 import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
 import { runPaymentSchedule } from "../automations/payments/runtime";
@@ -45,6 +46,7 @@ import { z } from "zod";
 import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import { runModerationSchedule } from "../automations/moderation/runtime";
+import { mapsSpendToday } from "../services/maps-billing/maps-billing.service";
 import {
   recordJobSuccess,
   computeJobHealth,
@@ -190,6 +192,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "score-neighborhood-claims", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // Step 7b (R323): the handoff clocks — 24 h fallback, 48 h hold release (R-q), 7 d auto-approve (R-s).
   { job: "handoff-timers", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // Step 9b D6 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the day-of leg re-check — hourly,
+  // acting only on plans whose local time is 06:00 on a trip day.
+  { job: "legs-dayof-recheck", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // jobs-cron.yml — four-hourly, 0 */4 * * *
   { job: "booking-expiry", expectedIntervalSec: 4 * 60 * 60, bucket: "four-hourly" },
   // jobs-cron.yml — six-hourly, 0 */6 * * *
@@ -415,6 +420,14 @@ router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, 
   res.status(status).json(body);
 });
 
+// Step 9b D6 (ledger `2026-10-07-step9b-optimizer-and-rechecks`; R-aw): the day-of leg re-check. Hourly;
+// a plan is re-checked once, at 06:00 in its own zone on each trip day — idempotent per plan-day. It
+// writes leg check statuses and deduped findings, never a leg. A failed candidate scan never stamps.
+router.post("/internal/jobs/legs-dayof-recheck", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("legs-dayof-recheck", () => runLegsDayofRecheck(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
 // R313 (ledger `2026-10-04-leg-google-coords-refresh`): refresh a leg's Google coordinate from the
 // stay's live point, or delete the leg past the max age. Per-plan failures are counts; only a failed
 // candidate scan is an error, which never stamps a success heartbeat.
@@ -434,6 +447,10 @@ router.get("/internal/jobs/health", requireInternalSecret, async (_req, res) => 
       // in-process timers deliberately do not stamp (job-heartbeats.service.ts).
       measures: "last cron-driven success",
       jobs,
+      // Step 9a ruling 8 (ledger `2026-10-07-step9a-routing-engine`): each Maps caller's calls, failures
+      // and RECORDED spend since 00:00 UTC, beside its cap and switch. Tenths of a cent, as the gate
+      // records them; null = the read failed (never a zero). Not part of `healthy`.
+      maps: { since: "00:00 UTC", unit: "tenths_of_cent", callers: await mapsSpendToday() },
     });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: "failed to read job health" });

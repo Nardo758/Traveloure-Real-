@@ -1,4 +1,6 @@
 import { db } from "./db";
+import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
+import { flightAnchorPoint, isFlightAnchorType } from "./services/airport-coords";
 import { dispatchModerationEvent } from "./automations/moderation/runtime";
 import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
@@ -7598,17 +7600,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTemporalAnchor(anchor: InsertTemporalAnchor): Promise<TemporalAnchor> {
-    const [created] = await db.insert(temporalAnchors).values(anchor).returning();
+    // Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): a FLIGHT anchor's point is
+    // derived from its IATA code here, so every caller is covered — never client-sent, never guessed.
+    const point = flightAnchorPoint((anchor as any).anchorType, (anchor as any).location);
+    const [created] = await db.insert(temporalAnchors).values({ ...anchor, ...(point ?? {}) } as any).returning();
+    if (point?.latitude) enqueuePlanLegRecompute((created as any).tripId);
     return created;
   }
 
   async updateTemporalAnchor(id: string, updates: Partial<InsertTemporalAnchor>): Promise<TemporalAnchor | undefined> {
-    const [updated] = await db.update(temporalAnchors).set({ ...updates, updatedAt: new Date() }).where(eq(temporalAnchors.id, id)).returning();
+    // FU-9A-2: re-derive a flight anchor's point whenever its type, location or point is touched.
+    let point: ReturnType<typeof flightAnchorPoint>;
+    const u = updates as any;
+    if ("anchorType" in u || "location" in u || "latitude" in u || "longitude" in u) {
+      const [cur] = await db.select().from(temporalAnchors).where(eq(temporalAnchors.id, id)).limit(1);
+      if (cur) point = flightAnchorPoint(u.anchorType ?? cur.anchorType, "location" in u ? u.location : cur.location);
+    }
+    const [updated] = await db.update(temporalAnchors).set({ ...updates, ...(point ?? {}), updatedAt: new Date() } as any).where(eq(temporalAnchors.id, id)).returning();
+    if (updated && point !== undefined) enqueuePlanLegRecompute((updated as any).tripId);
     return updated;
   }
 
   async deleteTemporalAnchor(id: string): Promise<void> {
-    await db.delete(temporalAnchors).where(eq(temporalAnchors.id, id));
+    const [gone] = await db.delete(temporalAnchors).where(eq(temporalAnchors.id, id)).returning({ tripId: temporalAnchors.tripId, anchorType: temporalAnchors.anchorType });
+    // FU-9A-2: a removed flight takes its airport leg with it on the next recompute.
+    if (gone && isFlightAnchorType(gone.anchorType)) enqueuePlanLegRecompute(gone.tripId);
   }
 
   // === Logistics: Day Boundaries ===
@@ -8015,7 +8031,17 @@ export class DatabaseStorage implements IStorage {
   async getItineraryItems(tripId: string): Promise<ItineraryItem[]> {
     return await db.select().from(itineraryItems)
       .where(eq(itineraryItems.tripId, tripId))
-      .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder), asc(itineraryItems.startTime));
+      // Ties on day, sort order and start time keep the order the items were ADDED (`created_at` —
+      // the product rule), and `id` is only the final total-order guarantee. Without these, tied
+      // rows came back in whatever order Postgres last wrote them, so an UPDATE reordered them
+      // (ledger `2026-10-07-item-order-tiebreak`).
+      .orderBy(
+        asc(itineraryItems.dayNumber),
+        asc(itineraryItems.sortOrder),
+        asc(itineraryItems.startTime),
+        asc(itineraryItems.createdAt),
+        asc(itineraryItems.id),
+      );
   }
 
   // §PS18-completeness-guard layer 2 (2026-08-29-privileged-field-completeness): routingStatus /
@@ -8032,6 +8058,7 @@ export class DatabaseStorage implements IStorage {
   async createItineraryItem(item: InsertItineraryItem & { tripId: string }): Promise<ItineraryItem> {
     const safeItem = stripItineraryItemRoutingFields(item as Record<string, unknown>);
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
+    enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
   }
 
@@ -8073,6 +8100,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(itineraryItems.id, id))
       .returning();
+    enqueuePlanLegRecompute(updated?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return updated;
   }
 
@@ -8139,6 +8167,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
     });
+    enqueuePlanLegRecompute(item?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
   }
 
   // Expert Workspace Status

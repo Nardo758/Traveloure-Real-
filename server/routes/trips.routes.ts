@@ -1,4 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { tripGetsRoutedLegs, tripLegsShown } from "../services/routing/plan-routed-legs.service";
+import { routedFactsOf } from "../services/routing/plan-legs";
 import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
 import { setItemLock } from '../services/item-lock.service';
 import { platformCarFits } from '../services/airport-leg.service';
@@ -1614,7 +1616,20 @@ router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
-      res.json(anchors);
+      // Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): a flight anchor whose
+      // airport has a point carries the plan's SHOWN airport leg — present only when the plan has one
+      // (the one read rule; a free plan's engine legs are never shown). Additive.
+      const shown = anchors.some((a: any) => a.latitude != null) ? await tripLegsShown(req.params.tripId) : [];
+      res.json(
+        anchors.map((a: any) => {
+          const end = `anchor:${a.id}`;
+          const leg = (shown as any[]).find((l) => l.fromActivityId === end || l.toActivityId === end);
+          const minutes = Number(leg?.estimatedDurationMinutes);
+          return leg && Number.isFinite(minutes) && minutes > 0
+            ? { ...a, routedLeg: { minutes: Math.round(minutes), mode: leg.userSelectedMode ?? leg.recommendedMode ?? null, routed: routedFactsOf(leg) } }
+            : a;
+        }),
+      );
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get temporal anchors", error: error.message });
     }
@@ -2644,6 +2659,11 @@ router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenti
       const comparison = await storage.getItineraryComparison(variant.comparisonId);
       if (!comparison || comparison.userId !== userId) {
         return res.status(403).json({ error: "Not authorized" });
+      }
+      // Step 9a ruling 2 (ledger `2026-10-07-step9a-routing-engine`): routed legs are written only for a
+      // plan that passes `planGetsRoutedLegs` — never for a free plan, and never for a plan-less comparison.
+      if (!comparison.tripId || !(await tripGetsRoutedLegs(comparison.tripId))) {
+        return res.status(409).json({ error: "Travel times come with an optimized plan", code: "routed_legs_not_included" });
       }
 
       const items = await storage.getItineraryVariantItemsByVariantId(variantId);

@@ -7,13 +7,14 @@
  *      never called reachable
  *   R4 the finding counts unique stops and the days they sit on; the Finish line reads only it
  *   R5 the clock parser reads 24h and AM/PM and refuses junk
+ *   R6 step 9b: the finding drops "est." only when every leg it counts is routed
  *
  * Pure. Run: npx tsx --test client/src/lib/__tests__/leg-reachability.test.ts
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { legUnreachableFinding, unreachableStops, wallClockMinutes } from "@shared/leg-reachability";
-import { freeFindingsPromptLine, leadFindings, unreachableStopLines } from "@shared/optimizer-lead";
+import { findingLine, freeFindingsPromptLine, leadFindings, unreachableStopLines } from "@shared/optimizer-lead";
 
 const item = (id: string, startTime: string | null, extra: Record<string, unknown> = {}) => ({ id, title: id.toUpperCase(), dayNumber: 1, startTime, ...extra });
 const leg = (id: string, from: string, to: string, minutes: number | null, dayNumber = 1) => ({ id, dayNumber, fromActivityId: from, toActivityId: to, estimatedDurationMinutes: minutes });
@@ -65,6 +66,10 @@ describe("R4 the finding and the Finish line", () => {
         { itemId: "b", title: "B", day: 1 },
         { itemId: "c", title: "C", day: 1 },
       ],
+      // Step 9b (ledger `2026-10-07-step9b-optimizer-and-rechecks`; D3 amendment): legs that do not say
+      // they are routed are not, so the finding is "est.".
+      routed: false,
+      est: true,
     });
     const findings = leadFindings([{ kind: "closed_on_arrival", count: 3, days: [2] }, f]);
     assert.equal(findings[0].kind, "leg_unreachable", "a travel-time problem reads first");
@@ -83,5 +88,20 @@ describe("R5 wallClockMinutes", () => {
     assert.equal(wallClockMinutes("9:30 PM"), 1290);
     assert.equal(wallClockMinutes("12:15 AM"), 15);
     for (const bad of [null, "", "25:00", "9", "noon", "13:00 PM"]) assert.equal(wallClockMinutes(bad as any), null, String(bad));
+  });
+});
+
+describe("R6 step 9b — the finding drops est. only when every leg it counts is routed", () => {
+  it("all routed ⇒ routed, no est., no (est.) in the words; one unrouted leg ⇒ est.", () => {
+    const items = [item("a", "09:00", { endTime: "10:30" }), item("b", "10:45"), item("c", "10:50")];
+    const routedLeg = (id: string, from: string, to: string, m: number) => ({ ...leg(id, from, to, m), routed: true });
+    const all = legUnreachableFinding(unreachableStops(items, [routedLeg("L1", "a", "b", 42), routedLeg("L3", "b", "c", 30)]).unreachable)!;
+    assert.equal(all.routed, true);
+    assert.equal(all.est, undefined);
+    assert.equal(findingLine(all as any), "2 stops can't be reached in time with the plan's travel times");
+    const mixed = legUnreachableFinding(unreachableStops(items, [routedLeg("L1", "a", "b", 42), leg("L3", "b", "c", 30)]).unreachable)!;
+    assert.equal(mixed.routed, false);
+    assert.equal(mixed.est, true);
+    assert.equal(findingLine(mixed as any), "2 stops can't be reached in time with the plan's travel times (est.)");
   });
 });

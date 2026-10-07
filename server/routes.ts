@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import { tripGetsRoutedLegs } from "./services/routing/plan-routed-legs.service";
+import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
 import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
 import { type RunRecordContext } from "./services/optimizer-runs.service";
 import { optimizerRunRecordsEnabled } from "./config/optimizer-runs.config";
@@ -2062,6 +2064,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       for (const item of groundedItems) {
         await db.insert(itineraryItems).values(item as any);
       }
+      enqueuePlanLegRecompute(trip.id); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
 
       res.status(201).json(itinerary);
     } catch (err: any) {
@@ -13508,9 +13511,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .where(and(eq(trips.id, tripId), eq(trips.userId, userId)));
       if (!trip) return res.status(404).json({ error: "Trip not found" });
 
+      // Step 9a ruling 5 (ledger `2026-10-07-step9a-routing-engine`): a plan that fails
+      // `planGetsRoutedLegs` gets NOTHING written here — it used to get a comparison, an "ai" variant
+      // and routed drive legs on any free plan (the R-e leak). Its airport legs are drawn from its
+      // anchors, never stored; legs already written on such plans are hidden by the same predicate.
+      if (!(await tripGetsRoutedLegs(tripId))) {
+        return res.json({ tripScoped: true, routedLegs: false, created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [], legs: [] });
+      }
+
       // A8 (R228): behind the flag, activate-transport takes its stops from the PLAN'S ITEMS and
-      // resolves every leg through the ONE travel-time service (trip-scoped `proposed` legs, the
-      // same step Finalize runs). With the flag off, the variant path below is unchanged.
+      // resolves every leg through the routing engine (step 9a; the same step Finalize runs). With the
+      // flag off, the variant path below is unchanged — for a qualifying plan only.
       if (travelTimeServiceEnabled()) {
         const result = await activateTripTransport(tripId);
         const legs = await getTripTransportLegs(tripId, { includeProposed: true });

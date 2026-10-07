@@ -22,6 +22,7 @@
  * Every transition is ONE atomic conditional on the from-status (§15/§18b). Money amounts are
  * derived from the row and the bands, never a body (§14); no rate literal lives here (§8).
  */
+import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { db } from "../db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { expertRequests, itineraryItems } from "@shared/schema";
@@ -441,6 +442,8 @@ export async function acceptHandoff(requestId: string, expertId: string): Promis
     await notify(row.userId, row.tripId, "handoff_accepted", "Your local accepted", "Their changes will arrive as suggestions on your plan.", { requestId });
   }
   void track(expertId, row.tripId ?? "", HANDOFF_EVENTS.accepted, { requestId, kind: row.handoffKind });
+  // An accepted handoff unlocks routed legs (step 9a ruling 2, ledger 2026-10-07-step9a-routing-engine).
+  enqueuePlanLegRecompute(row.tripId);
   return { ok: true, request: (await getHandoff(requestId))! };
 }
 

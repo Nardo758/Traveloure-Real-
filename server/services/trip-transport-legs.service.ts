@@ -146,7 +146,14 @@ export function resolvedAlternative(r: ResolvedLeg) {
  * rewritten. Flag-gated by the caller.
  */
 export async function activateTripTransport(tripId: string): Promise<TripLegGenerationResult> {
-  return generateTripTransportLegs(tripId, { via: "travel_time_service", propagateSchedule: false });
+  // Step 9a rulings 2 and 5 (ledger `2026-10-07-step9a-routing-engine`): Finalize and activate-transport
+  // write legs ONLY on a plan that passes `planGetsRoutedLegs`, and then through the routing engine
+  // (cache-first, changed legs only). A free plan gets nothing written here — airport legs are drawn
+  // from its anchors, not stored (R-e).
+  const { computePlanLegs } = await import("./routing/plan-legs-engine.service");
+  const r = await computePlanLegs(tripId);
+  if (r.skipped) return { created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [] };
+  return { created: r.written, keptConfirmed: r.kept, replacedProposed: r.removed, skipped: [], scheduleUnresolved: [] };
 }
 
 /**
@@ -311,6 +318,13 @@ export async function generateTripTransportLegs(
 ): Promise<TripLegGenerationResult> {
   const trip = await storage.getTrip(tripId);
   if (!trip) throw new Error(`Trip ${tripId} not found`);
+  // Step 9a ruling 2 (ledger `2026-10-07-step9a-routing-engine`): on a plan that passes
+  // `planGetsRoutedLegs`, with the engine on, the routing engine is the ONE machine-leg writer.
+  if (opts.via !== "travel_time_service") {
+    const { routingAdapter } = await import("./routing/index");
+    const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
+    if (routingAdapter() && (await tripGetsRoutedLegs(tripId))) return activateTripTransport(tripId);
+  }
   const destination = trip.destination || "";
   const viaService = opts.via === "travel_time_service";
   const resolver = viaService ? await loadLegResolver(trip.marketSlug ?? null, { exact: true }) : null;
@@ -343,8 +357,9 @@ export async function generateTripTransportLegs(
       .filter((l) => l.proposalStatus === "confirmed")
       .map((l) => pairKey(l.dayNumber, l.fromActivityId, l.toActivityId)),
   );
+  // Engine legs (`source` set — step 9a) belong to the routing engine and are never swept here.
   const staleProposedIds = existing
-    .filter((l) => l.proposalStatus === "proposed")
+    .filter((l) => l.proposalStatus === "proposed" && l.source == null)
     .map((l) => l.id);
 
   // Plan order per day — storage.getItineraryItems already orders by

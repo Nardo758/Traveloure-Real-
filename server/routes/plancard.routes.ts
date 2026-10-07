@@ -1,4 +1,9 @@
 import { Router } from "express";
+import { routingAdapter } from "../services/routing/index";
+import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service";
+import { routingPausedToday } from "../services/maps-billing/maps-billing.service";
+
+import { enqueuePlanLegRecompute, runNow } from "../services/routing/plan-legs-queue";
 import { factsForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
 import { photosFor } from "../services/place-photos.service";
 import { applyGooglePins } from "@shared/ai-place-text";
@@ -15,7 +20,8 @@ import {
   notifications,
 } from "@shared/schema";
 import { db } from "../db";
-import { and, count, eq, inArray, notInArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { legRecheckDedupePrefix } from "@shared/leg-recheck";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole } from "../utils/trip-role";
@@ -42,6 +48,29 @@ import { versionPerOptionEnabled } from "../config/version-options.config";
 import { listRunsForTrip, recordRunOutcome } from "../services/optimizer-runs.service";
 import { optimizerRunRecordsEnabled } from "../config/optimizer-runs.config";
 import { readyMadeProvenanceForTrip } from "../services/ready-made-provenance.service";
+
+/**
+ * Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the plan gets routed legs — the engine
+ * is on and the plan passes `planGetsRoutedLegs`. The slip reads it to refetch ONCE after the debounce.
+ */
+async function routedLegsFor(tripId: string): Promise<boolean> {
+  try {
+    return !!routingAdapter() && (await tripGetsRoutedLegs(tripId));
+  } catch {
+    return false;
+  }
+}
+
+/** L5: travel times are paused for this plan only when it is routed, the engine is on, and a Routes caller is capped. */
+async function travelTimesPausedFor(tripId: string, routed: boolean): Promise<boolean> {
+  try {
+    const adapter = routingAdapter();
+    if (!routed || !adapter || adapter.source !== "google_routes") return false;
+    return await routingPausedToday();
+  } catch {
+    return false;
+  }
+}
 
 // OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
 // platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
@@ -342,6 +371,10 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       console.warn("[plancard] gap-fill ledger hook failed (non-fatal):", ledgerErr?.message || ledgerErr);
     }
 
+    // Step 9a ruling 6 (ledger 2026-10-07-step9a-routing-engine): the apply writes the plan's OWN legs
+    // for the chosen version — the version's legs keyed version items, which the apply re-mints. After
+    // the commit, best-effort, through the cache the run already filled; never fails the apply (§15b).
+    void runNow(tripId);
     res.json({ tripId, delta, ...appliedSummary, ...(perOption ? { sets: pickOutcomes } : {}) });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
@@ -504,6 +537,7 @@ async function adoptVariantItemsInTx(
       await recordRunOutcome(tx, { variantId, kind: "adopted_part", actorId: input.userId, variantItemIds });
     }
   }
+  if (added.length) enqueuePlanLegRecompute(input.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
   return { added, alreadyInPlan, sets };
 }
 
@@ -577,11 +611,38 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
       .where(eq(notifications.dedupeKey, `facts-recheck:${tripId}`))
       .limit(1);
     const data = (row?.data ?? null) as { findings?: unknown; checkedAt?: unknown } | null;
+    // Step 9b (D5, ledger `2026-10-07-step9b-optimizer-and-rechecks`): the leg findings the re-checks
+    // recorded — one notice per stop pair per check date; the LATEST per pair is read. Empty = none
+    // found (or none run), never "all legs checked" (§13).
+    const legRows = await db
+      .select({ data: notifications.data, createdAt: notifications.createdAt })
+      .from(notifications)
+      .where(sql`${notifications.dedupeKey} LIKE ${legRecheckDedupePrefix(tripId) + "%"}`)
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
+    const seenPairs = new Set<string>();
+    const legs: Array<Record<string, unknown>> = [];
+    for (const r of legRows) {
+      const d = (r.data ?? {}) as Record<string, any>;
+      const pair = `${d.dayNumber}:${d.fromActivityId}:${d.toActivityId}`;
+      if (seenPairs.has(pair) || (d.status !== "changed" && d.status !== "broken")) continue;
+      seenPairs.add(pair);
+      legs.push({
+        dayNumber: d.dayNumber ?? null,
+        toName: d.toName ?? null,
+        mode: d.mode ?? null,
+        wasMin: d.wasMin ?? null,
+        nowMin: d.nowMin ?? null,
+        status: d.status,
+        checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : r.createdAt ?? null,
+      });
+    }
     res.json({
       conflict:
         data && Array.isArray(data.findings) && data.findings.length
           ? { findings: data.findings, checkedAt: typeof data.checkedAt === "string" ? data.checkedAt : row?.createdAt ?? null }
           : null,
+      legs,
     });
   } catch (error) {
     console.error("Error reading the re-check:", error);
@@ -805,6 +866,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // in the assembler. `null` = not a copy. The slip header and the Trip Card (`?surface=card`)
     // read it from this one payload; the line itself is drawn by Lane 2.
     const readyMadeSource = await readyMadeProvenanceForTrip(tripId);
+    // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): does the engine route this plan?
+    const routedLegs = await routedLegsFor(tripId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
@@ -852,6 +915,12 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Step 5: travel minutes appear on the map only when the travel-time service is on (A8);
       // otherwise connectors are straight sequence lines with no duration (R-h).
       travelTimesShown: travelTimeServiceEnabled(),
+      // Step 9a, L5 (ledger `2026-10-07-step9a-routing-engine`) — PRESENT ONLY WHEN TRUE: a routed plan
+      // whose routing source hit today's cap. Its legs stay as last computed; the slip says so in one
+      // line. Never on a free plan, which has no routed legs to pause.
+      ...((await travelTimesPausedFor(tripId, routedLegs)) ? { travelTimesPaused: true } : {}),
+      // Step 9b D8: PRESENT ONLY WHEN TRUE — the plan's legs are recomputed by the engine after an edit.
+      ...(routedLegs ? { routedLegs: true } : {}),
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

@@ -5,6 +5,7 @@
  *     leg's candidate modes (`legModeOptions`, the same rule the leg-review read uses), the author's
  *     tip (≤ `AUTHOR_TIP_MAX_CHARS`, R-ay), "via host pickup" ONLY from the choices the caller says the
  *     server would accept (R-az), and Confirm (the server stamps `checked_by/checked_at`, R-bf).
+ *   · `kind: "routed"` (step 9a): the routing engine's leg on a routed plan, one read-only line.
  *   · the airport ↔ lodging leg (surface step 3, ruling R-i), below.
  *
  * The airport leg: Sits between the arrival anchor
@@ -17,7 +18,8 @@
  * No travel minutes or distance are shown (A8 off).
  */
 import { useEffect, useState } from "react";
-import { Car, CheckCircle2, Clock, Trash2 } from "lucide-react";
+import { Bike, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
+import { routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
 import { Link } from "wouter";
 import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@shared/airport-leg";
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
@@ -300,25 +302,66 @@ export interface AirportLegRowProps {
   driversHref?: string | null;
   onRequest?: (mode: AirportLegMode) => void;
   busy?: boolean;
+  /**
+   * Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the ROUTED airport leg's
+   * minutes — present only on a plan the engine routes AND whose flight names a real IATA code
+   * (`flightAnchorFor(...).airportLegMinutes`). Absent ⇒ the leg stays minutes-free, as step 3 drew it.
+   * The slip's mount (`SlipView.tsx`, Track A's file) passes it in a one-line follow-up.
+   */
+  routedMinutes?: number | null;
 }
 
-export type LegRowProps = AirportLegRowProps | StopLegRowProps;
+/**
+ * Step 9a (ledger `2026-10-07-step9a-routing-engine`; spec §3 LegRow, §14.1): a ROUTED leg between two
+ * stops on a plan that passes `planGetsRoutedLegs` — the routing engine's answer in ONE line,
+ * "24 min · Keihan Main Line · ¥220 · Google · checked 4 Oct", spelled by the shared `routedLegLine`
+ * (the Trip Card reads the same helper). Fare only when the source gave one, in its own currency;
+ * minutes in-plan only (R-h). Read-only here; per-leg options and booking are 9c.
+ */
+export interface RoutedLegRowProps {
+  kind: "routed";
+  legId: string;
+  mode: RoutingMode;
+  route: RouteAnswer;
+  timeZone: string | null;
+}
 
-/** The ONE leg row (R-c): a between-stops leg when `kind: "stops"`, else the airport leg. */
+export type LegRowProps = AirportLegRowProps | StopLegRowProps | RoutedLegRowProps;
+
+/** The ONE leg row (R-c): a between-stops leg (`stops`, `routed`), else the airport leg. */
 export function LegRow(props: LegRowProps) {
   if ("kind" in props && props.kind === "stops") {
     const { kind: _kind, ...rest } = props;
     return <StopLegRow {...rest} />;
   }
+  if ("kind" in props && props.kind === "routed") return <RoutedLegRow {...props} />;
   return <AirportLegRow {...(props as AirportLegRowProps)} />;
 }
 
-function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false }: AirportLegRowProps) {
+const ROUTED_MODE_ICON: Readonly<Record<RoutingMode, typeof Car>> = { walk: Footprints, cycle: Bike, transit: TrainFront, drive: Car };
+
+function RoutedLegRow({ legId, mode, route, timeZone }: RoutedLegRowProps) {
+  const Icon = ROUTED_MODE_ICON[mode] ?? Car;
+  return (
+    <p
+      className="ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5"
+      data-testid={`slip-leg-routed-${legId}`}
+      data-leg-source={route.provenance.source}
+    >
+      <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+      <span data-testid={`slip-leg-routed-line-${legId}`}>{routedLegLine({ mode, route }, timeZone)}</span>
+    </p>
+  );
+}
+
+function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false, routedMinutes }: AirportLegRowProps) {
+  const minutes = typeof routedMinutes === "number" && routedMinutes > 0 ? Math.round(routedMinutes) : null;
   return (
     <div className="px-3 py-2 border-l-2 border-dashed border-border ml-4 space-y-1" data-testid={`slip-leg-airport-${direction}`}>
       <p className="text-xs text-muted-foreground flex items-center gap-1.5">
         <Car className="w-3.5 h-3.5" aria-hidden="true" />
         <span data-testid={`slip-leg-airport-${direction}-line`}>{airportLegLine(direction, stayName, airport)}</span>
+        {minutes != null ? <span data-testid={`slip-leg-airport-${direction}-minutes`}>· {minutes} min</span> : null}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {modes.map((m) => (

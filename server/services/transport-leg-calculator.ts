@@ -11,6 +11,11 @@ import {
 } from "./maps-url-builder";
 import { eq } from "drizzle-orm";
 import { getTrafficAwareDrivingRoute } from "./routes.service";
+import { defaultRoutedMode, routeHourBucket, type RoutingAdapter } from "@shared/routing-engine";
+import { LEG_MODE_STORED } from "@shared/travel-speeds";
+import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
+import type { RouteRunMemo } from "./routing/route-memo";
+import { departureWallClock } from "./routing/plan-legs";
 
 export interface ActivityLocation {
   id: string;
@@ -22,6 +27,25 @@ export interface ActivityLocation {
   order: number;
   /** RFC 3339 departure computed from the trip date/schedule when available. */
   departureTime?: string;
+  /** Step 9a: the stop's Google place ID when known (the plan item's unexpired fact) — part of the leg key. */
+  placeId?: string | null;
+  /** Step 9a: minutes at the stop, for the departure hour. */
+  durationMinutes?: number | null;
+}
+
+/**
+ * Step 9a (ledger `2026-10-07-step9a-routing-engine`; ruling 6): the routing engine for an Optimize
+ * version. Every leg goes through the ONE adapter and the run's in-memory memo — the four versions share
+ * most pairs, so a pair is asked once per hour bucket per run (in flight, too). Never a persistent cache.
+ */
+export interface VersionRoutingContext {
+  adapter: RoutingAdapter;
+  /** ONE memo for the whole run — the four versions share it; nothing is persisted (Google terms). */
+  memo: RouteRunMemo;
+  hasTransitCoverage: boolean;
+  /** The plan's first day and zone, for a real departure instant; null ⇒ no departure sent. */
+  tripStart: string | null;
+  timezone: string | null;
 }
 
 interface TransportAlternative {
@@ -30,6 +54,10 @@ interface TransportAlternative {
   costUsd: number | null;
   energyCost: number;
   reason: string;
+  /** Step 9a, on a routed leg only: the line, the fare (source currency) and the leg key. */
+  line?: string | null;
+  fare?: { amount: number; currency: string } | null;
+  legKey?: string;
 }
 
 export interface TransportLegResult {
@@ -52,10 +80,12 @@ export interface TransportLegResult {
   energyCost: number;
   linkedProductId?: string;
   linkedProductUrl?: string;
-  /** A8: a leg resolved by the ONE travel-time service names its tier (R228). */
-  routeProvider: "google_routes" | "travel_time_matrix" | "straight_line_est";
+  /** A8: a leg resolved by the ONE travel-time service names its tier (R228); step 9a adds the stub. */
+  routeProvider: "google_routes" | "travel_time_matrix" | "straight_line_est" | "stub";
   routeRetrievedAt: string;
   userSelectedMode?: string | null;
+  /** Step 9a: the routing source that computed the leg (`transport_legs.source`); absent otherwise. */
+  source?: string | null;
 }
 
 export interface UserTransportPrefs {
@@ -145,21 +175,24 @@ export async function calculateTransportLegs(
   variantId: string,
   activities: ActivityLocation[],
   destination: string,
-  userPrefs: Partial<UserTransportPrefs> = {}
+  userPrefs: Partial<UserTransportPrefs> = {},
+  routing?: VersionRoutingContext | null,
 ): Promise<TransportLegResult[]> {
   const prefs = { ...DEFAULT_PREFS, ...userPrefs };
   const profile = getDestinationProfile(destination);
 
   const allLegs: TransportLegResult[] = [];
   for (const pair of buildSameDayActivityPairs(activities)) {
-    const leg = await computeSingleLeg(
-      pair.from,
-      pair.to,
-      pair.dayNumber,
-      pair.legOrder,
-      profile,
-      prefs,
-    );
+    const leg = routing
+      ? await computeRoutedVersionLeg(pair.from, pair.to, pair.dayNumber, pair.legOrder, routing)
+      : await computeSingleLeg(
+          pair.from,
+          pair.to,
+          pair.dayNumber,
+          pair.legOrder,
+          profile,
+          prefs,
+        );
     if (leg) allLegs.push(leg);
   }
 
@@ -255,6 +288,49 @@ export async function computeTransportLeg(
     getDestinationProfile(destination),
     { ...DEFAULT_PREFS, ...userPrefs }
   );
+}
+
+/** One version leg through the routing engine (step 9a ruling 6). Null = paused or no route (never a guess). */
+async function computeRoutedVersionLeg(
+  from: ActivityLocation,
+  to: ActivityLocation,
+  dayNumber: number,
+  legOrder: number,
+  routing: VersionRoutingContext,
+): Promise<TransportLegResult | null> {
+  const origin = { lat: from.lat, lng: from.lng, placeId: from.placeId ?? null };
+  const destination = { lat: to.lat, lng: to.lng, placeId: to.placeId ?? null };
+  const mode = defaultRoutedMode(origin, destination, routing.hasTransitCoverage);
+  const wallClock = departureWallClock({ startTime: from.scheduledTime || null, endTime: null, durationMinutes: from.durationMinutes ?? null });
+  const departAt =
+    routing.tripStart && wallClock ? zonedWallClockToInstant(addCalendarDays(routing.tripStart, dayNumber - 1), wallClock, routing.timezone) : null;
+  const r = await routing.memo.route({ origin, destination, mode, departAt, hourBucket: routeHourBucket(wallClock) }, routing.adapter);
+  if (r.outcome.kind !== "ok") return null;
+  const route = r.outcome.route;
+  return {
+    fromActivityId: from.id,
+    fromName: from.name,
+    fromLat: from.lat,
+    fromLng: from.lng,
+    toActivityId: to.id,
+    toName: to.name,
+    toLat: to.lat,
+    toLng: to.lng,
+    dayNumber,
+    legOrder,
+    distanceMeters: route.distanceM,
+    distanceDisplay: formatDistance(route.distanceM),
+    recommendedMode: LEG_MODE_STORED[mode],
+    estimatedDurationMinutes: route.durationMin,
+    estimatedCostUsd: null,
+    alternativeModes: [
+      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: route.provenance.source, line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
+    ],
+    energyCost: 0,
+    routeProvider: route.provenance.source === "stub" ? "stub" : "google_routes",
+    routeRetrievedAt: route.provenance.checkedAt,
+    source: route.provenance.source,
+  };
 }
 
 async function computeSingleLeg(
@@ -396,6 +472,8 @@ async function persistTransportLegs(
       destinationProfile: destination,
       linkedProductId: leg.linkedProductId ?? null,
       linkedProductUrl: leg.linkedProductUrl ?? null,
+      // Step 9a: a routed version leg names its source and the source's own answer time.
+      ...(leg.source ? { source: leg.source, calculatedAt: new Date(leg.routeRetrievedAt) } : {}),
     }))
   );
 }

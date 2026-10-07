@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
+import { useSlipLegs } from "@/components/plan/useSlipLegs";
 import { ConciergeCard } from "@/components/marketplace/concierge-card";
 import { PLAN_LOAD_RATE_LIMITED, planLoadErrorKind, plancardRefetchInterval } from "@/lib/plancard-refetch";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,8 @@ export default function SlipViewPage() {
     refetchInterval: (query) =>
       plancardRefetchInterval(query.state.data as { coordinatesPending?: boolean; factsPendingItemIds?: string[] } | undefined),
   });
+  // Step 9a (ledger `2026-10-07-step9a-routing-engine`): routed legs between the slip's rows.
+  const renderLegBetween = useSlipLegs(data as any);
 
   if (isLoading) {
     return (
@@ -72,7 +75,7 @@ export default function SlipViewPage() {
           AI action it covers, rather than a floating card above the plan. Concierge stays here:
           it is self-gating (null on any trip that is not a ready-made clone the caller owns) and
           is a support statement, not a build action. */}
-      <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} initialView={initialView} />
+      <SlipView tripId={tripId!} data={data} highlightItemId={highlightItemId} initialView={initialView} renderLegBetween={renderLegBetween} />
     </div>
   );
 }

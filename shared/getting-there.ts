@@ -209,6 +209,25 @@ export function flightCutoffTime(direction: FlightDirection, flightTime: string 
 }
 
 /**
+ * Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the buffer the day is measured
+ * against when the plan holds a ROUTED airport leg — the anchor's own buffer (absent ⇒ the
+ * international figure, as `flightCutoffTime` reads it) PLUS the leg's minutes (out of the airport and
+ * to the stay; or from the stay to the airport). No routed leg (a typed airport name, a free plan) ⇒
+ * the stored buffer exactly as before — never a guessed travel time.
+ */
+export function flightBufferWithLeg(direction: FlightDirection, storedBuffer: number | null | undefined, legMinutes: number | null | undefined): number | null {
+  const leg = Number(legMinutes);
+  if (!Number.isFinite(leg) || leg <= 0) return typeof storedBuffer === "number" ? storedBuffer : null;
+  const base =
+    typeof storedBuffer === "number" && storedBuffer >= 0
+      ? storedBuffer
+      : direction === "arrival"
+        ? FLIGHT_BUFFER_MIN.arrivalAfter.international
+        : FLIGHT_BUFFER_MIN.departureBefore.international;
+  return base + Math.round(leg);
+}
+
+/**
  * Smoke 9 S9-5, corrected by smoke 10 S10-1(a) — the travel row's amber line: how many of the day's
  * stops sit inside the flight's BUFFER — starting before arrival + buffer, or ending (else starting)
  * after the departure cut-off (departure − buffer). Wall-clock "HH:MM" strings in the plan's own zone

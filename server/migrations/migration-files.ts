@@ -1942,4 +1942,8 @@ export const MIGRATION_FILES = [
   // the town the venue is really in. One nullable column, NO DEFAULT/CHECK/index, no backfill.
   // Declared in shared/schema.ts. APPROVED by the decision-maker, Oct 6, 2026.
   "356_city_events_venue_locality.sql",
+  // 357 — step 9a routing engine (ledger 2026-10-07-step9a-routing-engine): transport_legs.source
+  // (nullable, no DEFAULT/CHECK/index/FK). No route cache table (Google terms; returns with OSRM in
+  // 9a-ii). Declared in shared/schema.ts. HELD.
+  "357_transport_legs_source.sql",
 ] as const;
