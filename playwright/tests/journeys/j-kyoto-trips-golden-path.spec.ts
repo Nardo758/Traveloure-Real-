@@ -1631,8 +1631,10 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
       ["Gion", "35.0037", "135.7788"],
       ["Kiyomizu-dera", "34.9949", "135.7850"],
     ];
+    // Distinct sort orders: items that tie on (day, sort order, start time) have no fixed storage order,
+    // so the pairs a leg connects would be the database's choice, not the plan's.
     const ids: string[] = [];
-    for (const [title, latitude, longitude] of pts) ids.push(await createItem(page.request, tripId, title, 1, { latitude, longitude }));
+    for (const [i, [title, latitude, longitude]] of pts.entries()) ids.push(await createItem(page.request, tripId, title, 1, { latitude, longitude, sortOrder: i }));
     const legsNow = () =>
       rows<{ id: string; from_id: string; to_id: string; source: string | null }>(
         `SELECT id, from_activity_id AS from_id, to_activity_id AS to_id, source FROM transport_legs WHERE trip_id = $1 AND variant_id IS NULL ORDER BY leg_order`,
