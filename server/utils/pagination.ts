@@ -18,3 +18,11 @@ export function parsePagination(
   const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
   return { limit, offset };
 }
+
+/**
+ * `GET /api/affiliate/products`: its page, under the same bound as every other public list (ledger
+ * `2026-10-07-public-service-ids`). The default stays the 50 the reader already used.
+ */
+export function affiliateProductsPage(query: Record<string, unknown>): { limit: number; offset: number } {
+  return parsePagination(query, { defaultLimit: 50 });
+}
