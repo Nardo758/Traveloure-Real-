@@ -22,3 +22,15 @@ export function planLandingQuery(branch: LandingBranch | string, door?: string |
 export function planLandingPath(tripId: string, branch: LandingBranch | string, door?: string | null): string {
   return `/plans/${tripId}${planLandingQuery(branch, door)}`;
 }
+
+/**
+ * STEP 8d (ledger `2026-10-07-step8d-guest-map`; brief items 24–26, decision 1): where a SIGNED-OUT
+ * finish lands. Only `myself` from the `experiences` door goes to the guest map — a plan-less map on
+ * Browse, its answers carried by the sign-in record. Every other door and branch keeps today's sign-in
+ * gate. `/plans/:tripId` stays protected; the guest map is its own unprotected path. Pure.
+ */
+export const GUEST_MAP_PATH = "/plans/new?view=map";
+
+export function opensGuestMap(branch: LandingBranch | string, door: string | null | undefined): boolean {
+  return branch === "myself" && door === "experiences";
+}

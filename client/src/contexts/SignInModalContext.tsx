@@ -5,6 +5,8 @@ interface SignInModalOptions {
   title?: string;
   description?: string;
   returnTo?: string;
+  /** Step 8d: an optional "Keep browsing"-style dismiss (see `SignInModal`). */
+  dismissLabel?: string;
 }
 
 interface SignInModalContextType {
@@ -37,6 +39,7 @@ export function SignInModalProvider({ children }: { children: ReactNode }) {
         title={options.title}
         description={options.description}
         returnTo={options.returnTo}
+        dismissLabel={options.dismissLabel}
       />
     </SignInModalContext.Provider>
   );

@@ -184,6 +184,7 @@ const ItineraryComparisonPage = lazy(() => import("@/pages/plan-versions"));
 // Slip dispatch §4 Spec A: the slip's canonical address (/plans/:tripId). Parameterised
 // route — deliberately NOT in role-routes-config.ts (that registry is static-paths-only).
 const SlipViewPage = lazy(() => import("@/pages/slip-view"));
+const GuestPlanMapPage = lazy(() => import("@/pages/guest-plan-map"));
 // Ledger `2026-09-04-guests-per-event`: the plan's guest roster — one row per person, one column
 // per event. Parameterised, so like the slip it is deliberately NOT in role-routes-config.ts.
 const PlanGuestsPage = lazy(() => import("@/pages/plan-guests"));
@@ -717,6 +718,11 @@ function Router() {
             <DashboardLayout><ProtectedRoute component={PlanComparePage} /></DashboardLayout>
           </PageErrorBoundary>
         )}
+      </Route>
+      {/* Step 8d (ledger `2026-10-07-step8d-guest-map`): the GUEST map — unprotected, plan-less, Browse
+          only. Registered BEFORE `/plans/:tripId`, which stays protected and would otherwise match "new". */}
+      <Route path="/plans/new">
+        <Layout><GuestPlanMapPage /></Layout>
       </Route>
       <Route path="/plans/:tripId">
         {() => (

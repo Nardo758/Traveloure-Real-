@@ -23,6 +23,11 @@ interface SignInModalProps {
   title?: string;
   description?: string;
   returnTo?: string;
+  /**
+   * Step 8d: an optional plain way out ("Keep browsing" on the guest map's gate). It only closes the
+   * modal; it signs nothing in and writes nothing. Absent ⇒ the modal is exactly as before.
+   */
+  dismissLabel?: string;
 }
 
 export function SignInModal({
@@ -31,6 +36,7 @@ export function SignInModal({
   title: titleProp,
   description: descriptionProp,
   returnTo,
+  dismissLabel,
 }: SignInModalProps) {
   const { t } = useTranslation("auth");
   // Ruling 60 Phase A: the sign-in title/description are OVERRIDABLE by the caller (a
@@ -431,6 +437,11 @@ export function SignInModal({
             </p>
           </form>
         )}
+        {dismissLabel ? (
+          <Button type="button" variant="ghost" className="w-full" onClick={() => onOpenChange(false)} data-testid="button-signin-dismiss">
+            {dismissLabel}
+          </Button>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

@@ -180,6 +180,18 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # Step 8d (ledger `2026-10-07-step8d-guest-map`): the SIGNED-OUT round trip — start page → modal →
+      # the guest map (no plan) → Add → sign up in the existing modal → exactly one plan, the answers
+      # kept, exactly one Day 1 item; a reload creates nothing. It also closes 8b-2's signed-out gate,
+      # which was never built. Same server and database; one fixture listing behind the same guard.
+      - name: Guest map round trip (step 8d)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-guest-map.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
