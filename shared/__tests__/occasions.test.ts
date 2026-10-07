@@ -198,7 +198,6 @@ describe("occasion vocabulary", () => {
     const slugs = new Set(seededSlugs());
     const files = [
       path.resolve(HERE, "../../server/routes/content.routes.ts"),
-      path.resolve(HERE, "../../client/src/pages/experience-template.tsx"),
     ];
     for (const file of files) {
       const src = readFileSync(file, "utf8");

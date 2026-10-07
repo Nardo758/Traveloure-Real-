@@ -55,7 +55,6 @@ describe("every door that creates or claims a plan refreshes the lists (RC-7, ha
     ["client/src/lib/trip-slip.ts", /refreshPlanLists\(\)/], // the modal, concierge and template doors
     ["client/src/hooks/use-trips.ts", /refreshPlanLists\(queryClient\)/], // IntakePanel's create
     ["client/src/pages/cart.tsx", /refreshPlanLists\(queryClient\)[\s\S]*refreshPlanLists\(queryClient\)/], // convert + resolve-trip
-    ["client/src/components/ai-itinerary-builder.tsx", /refreshPlanLists\(\)/],
     ["client/src/components/EnhancedPlanningModal.tsx", /refreshPlanLists\(\)/],
     ["client/src/components/ea/PlanForClientDialog.tsx", /refreshPlanLists\(queryClient\)/],
     ["client/src/contexts/GuestTripContext.tsx", /refreshPlanLists\(\)/],

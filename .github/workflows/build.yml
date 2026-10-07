@@ -78,6 +78,14 @@ jobs:
           node scripts/check-workstation-retired.cjs --self-test
           node scripts/check-workstation-retired.cjs
           node scripts/check-workstation-retired.cjs --bundle
+      # Step 8c (ledger 2026-10-07-step8c-retirements): the trip-less cart writers are a frozen list
+      # that can only shrink, and the retired experience-template page and its map stay deleted —
+      # source (writers, retired files, imports) and the built bundle (testids only the page drew).
+      - name: Trip-less cart writers + retired template page (step 8c) — self-test, source, bundle
+        run: |
+          node scripts/check-tripless-cart-writers.cjs --self-test
+          node scripts/check-tripless-cart-writers.cjs
+          node scripts/check-tripless-cart-writers.cjs --bundle
 
       # 2026-09-05-well-known-static (CLAUDE.md Locked Decision 43(e)): Stripe verifies an Apple
       # Pay domain by fetching /.well-known/apple-developer-merchantid-domain-association, and the
@@ -989,7 +997,6 @@ jobs:
         run: |
           npx tsx --test server/__tests__/build-info.test.ts
           npx tsx --test server/services/__tests__/migration-state.test.ts
-          npx tsx --test client/src/lib/__tests__/map-no-city-center-fallback.test.ts
 
       # LD 41 lane 2 (ledger 2026-09-05-draft-only-on-empty + 2026-09-05-draft-cost-tracking-and-tier):
       # the free AI draft runs only on an EMPTY slip, its JSON recovery never repairs a truncated
@@ -3378,9 +3385,6 @@ jobs:
       - name: query-userid-reads-guard · Plan comparison ref pin
         if: ${{ !cancelled() }}
         run: npx tsx --test client/src/lib/__tests__/plan-comparison-ref.test.ts
-      - name: query-userid-reads-guard · Experience-template plan door pin
-        if: ${{ !cancelled() }}
-        run: npx tsx --test client/src/lib/__tests__/template-plan-door.test.ts
       - name: query-userid-reads-guard · Slip own-your-plan pin
         if: ${{ !cancelled() }}
         run: npx tsx --test client/src/lib/__tests__/slip-own-your-plan.test.ts
