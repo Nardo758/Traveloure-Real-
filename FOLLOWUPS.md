@@ -1087,9 +1087,10 @@ R353 (ledger `2026-10-06-pool-listings-not-public`) removed the concierge pool a
 every public BROWSE reader: the Services tab, `/api/services`, `/api/provider-services`, Destinations'
 city page, the directory and the billboard. Its own storefront page, `/s/<handle>`, still renders its
 `booking_concierge` listing to anyone who holds the link. It is not a browse surface: nothing lists or
-links to it. It is **left open by design** (decision-maker, Oct 7, 2026). Readers BY ID — detail,
-cart, checkout and the 24-hour concierge offer — stay ungated because they are how the fallback is
-bought. Revisit only if a surface starts linking to the pool storefront.
+links to it. It is **left open by design** (decision-maker, Oct 7, 2026). The service-detail read by id
+is gated too since R355 (`2026-10-07-public-service-ids`); cart, checkout and the 24-hour concierge
+offer stay ungated because they are how the fallback is bought. Revisit only if a surface starts
+linking to the pool storefront.
 
 ### FU-EV-2 — season-rating data hygiene, for a later data migration
 
