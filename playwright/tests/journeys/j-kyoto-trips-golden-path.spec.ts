@@ -1671,6 +1671,13 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
     const changed = after.filter((l) => !before.some((b) => b.id === l.id));
     expect(changed.map((l) => [l.from_id, l.to_id]), "exactly the two legs touching the moved stop").toEqual([[ids[0], ids[1]], [ids[1], ids[2]]]);
     expect(after.find((l) => l.from_id === ids[2])!.id, "the third leg is the same row").toBe(before[2].id);
+
+    // The slip draws each routed leg between its two rows (ruling 1), with its provenance.
+    await page.goto(`/plans/${tripId}`);
+    const third = testid(page, `slip-leg-routed-${before[2].id}`);
+    await expect(third).toBeVisible({ timeout: 20_000 });
+    await expect(third).toContainText("Test routes · checked");
+    await expect(page.locator('[data-testid^="slip-leg-routed-line-"]')).toHaveCount(3);
   });
   test.fixme("§7 today — a staged listing shows the traveler fee on the slip, checks out, books, and cancels to a refund", async () => {
     // Waits on A0 (a3) supply: a live instant-mode Kyoto listing with a price, a future open slot and
