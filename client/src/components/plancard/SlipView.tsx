@@ -1975,12 +1975,18 @@ export function SlipView({
   data,
   highlightItemId,
   initialView = null,
+  renderLegBetween,
 }: {
   tripId: string;
   data: SlipData;
   highlightItemId?: string | null;
   /** Step 8b-2: the layout `?view=map` asks for (D4's landing). */
   initialView?: "list" | "map" | null;
+  /**
+   * Logistics lane (ledger `2026-10-07-slip-leg-render-prop`): called between each pair of consecutive
+   * items in a day, in the day's render order, with the day's index. Absent ⇒ nothing is rendered.
+   */
+  renderLegBetween?: (prevItem: PlanCardActivity, nextItem: PlanCardActivity, dayIndex: number) => ReactNode | null;
 }) {
   const {
     days,
@@ -2474,6 +2480,9 @@ export function SlipView({
                   const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
                     <Fragment key={a.id}>
+                    {renderLegBetween && slotItems.indexOf(a) > 0
+                      ? renderLegBetween(slotItems[slotItems.indexOf(a) - 1], a, slotIdx)
+                      : null}
                     {a.id === departureItemId ? renderAirportLeg("departure") : null}
                     <SlipDayItem
                       key={a.id}
