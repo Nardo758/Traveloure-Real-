@@ -16,6 +16,11 @@
  *      shows no leg rather than a point Google's terms no longer let us hold (§13 — never invented).
  *      A leg with `coord_fetched_at` NULL has no recorded age and is cleared the same way.
  *
+ * Step 9b D10 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): a cleared leg the ROUTING ENGINE
+ * wrote (`source` set) is rebuilt — ONE recompute is queued for a plan that earns routed legs and whose
+ * trip ends today or later; the engine re-reads the plan's facts and computes only the missing pairs. A
+ * past trip loses the legs and nothing recomputes.
+ *
  * Never throws for one plan (a failed plan is counted); only a failed candidate scan is an `error`,
  * which never stamps a success heartbeat. Idempotent: a second run the same day finds nothing due.
  * Registered as `POST /internal/jobs/leg-google-coords` (daily `JOB_CADENCE` + `BUCKET_ROUTES`).
@@ -29,6 +34,8 @@ export interface LegGoogleCoordsResult {
   refreshed: number;
   cleared: number;
   failed: number;
+  /** Step 9b D10: plans whose cleared ENGINE legs were queued for one recompute. */
+  recomputeQueued: number;
   error?: string;
 }
 
@@ -40,7 +47,13 @@ export interface LegGoogleCoordsDeps {
   /** The one re-route; rebuilds the end legs from the stay's current point. */
   reroute: (tripId: string) => Promise<void>;
   /** Delete the plan's Google-sourced legs fetched at or before `expiredBefore` (or with no fetch time). */
-  clearExpired: (tripId: string, expiredBefore: Date) => Promise<number>;
+  clearExpired: (tripId: string, expiredBefore: Date) => Promise<{ cleared: number; engineCleared: number }>;
+  /**
+   * Step 9b D10 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): after ROUTING-ENGINE legs were
+   * cleared, queue ONE recompute — only for a plan that earns routed legs AND whose trip ends today or
+   * later. A past trip loses the legs and nothing recomputes. True when queued.
+   */
+  queueRecompute: (tripId: string, now: Date) => Promise<boolean>;
   /** Count the plan's Google-sourced legs still due after the reroute. */
   stillDue: (tripId: string, dueBefore: Date) => Promise<number>;
 }
@@ -83,8 +96,21 @@ export const defaultLegGoogleCoordsDeps: LegGoogleCoordsDeps = {
       DELETE FROM transport_legs
       WHERE trip_id = ${tripId} AND coord_source = 'google'
         AND (coord_fetched_at IS NULL OR coord_fetched_at <= ${expiredBefore.toISOString()}::timestamptz)
-      RETURNING id`);
-    return ((r as any).rows ?? []).length;
+      RETURNING id, source`);
+    const rows = ((r as any).rows ?? []) as Array<{ source: string | null }>;
+    return { cleared: rows.length, engineCleared: rows.filter((x) => x.source != null).length };
+  },
+  async queueRecompute(tripId, now) {
+    const r = await db.execute(sql`
+      SELECT 1 FROM trips
+      WHERE id = ${tripId} AND end_date IS NOT NULL
+        AND end_date::date >= ((${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')::date)`);
+    if (!((r as any).rows ?? []).length) return false;
+    const { tripGetsRoutedLegs } = await import("../services/routing/plan-routed-legs.service");
+    if (!(await tripGetsRoutedLegs(tripId))) return false;
+    const { enqueuePlanLegRecompute } = await import("../services/routing/plan-legs-queue");
+    enqueuePlanLegRecompute(tripId);
+    return true;
   },
   async stillDue(tripId, dueBefore) {
     const r = await db.execute(sql`
@@ -99,7 +125,7 @@ export async function runLegGoogleCoordsRefresh(
   now: Date = new Date(),
   deps: LegGoogleCoordsDeps = defaultLegGoogleCoordsDeps,
 ): Promise<LegGoogleCoordsResult> {
-  const result: LegGoogleCoordsResult = { checked: 0, refreshed: 0, cleared: 0, failed: 0 };
+  const result: LegGoogleCoordsResult = { checked: 0, refreshed: 0, cleared: 0, failed: 0, recomputeQueued: 0 };
   const maxAge = legGoogleCoordMaxAgeDays();
   const dueBefore = new Date(now.getTime() - Math.max(0, maxAge - LEG_GOOGLE_COORD_REFRESH_LEAD_DAYS) * DAY_MS);
   const expiredBefore = new Date(now.getTime() - maxAge * DAY_MS);
@@ -120,7 +146,9 @@ export async function runLegGoogleCoordsRefresh(
         console.error(`[leg-google-coords] refresh failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
       }
       if ((await deps.stillDue(tripId, dueBefore)) === 0) result.refreshed += 1;
-      result.cleared += await deps.clearExpired(tripId, expiredBefore);
+      const { cleared, engineCleared } = await deps.clearExpired(tripId, expiredBefore);
+      result.cleared += cleared;
+      if (engineCleared > 0 && (await deps.queueRecompute(tripId, now))) result.recomputeQueued += 1;
     } catch (err) {
       result.failed += 1;
       console.error(`[leg-google-coords] plan ${tripId} failed:`, (err as Error)?.message ?? err);

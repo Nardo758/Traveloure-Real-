@@ -9,40 +9,61 @@
  * plan's findings with the ONE findings reader the optimizer preview uses. A conflict (a stop reached
  * while closed, a timed entry that clashes) is recorded ONCE per plan as a `trip_recheck_conflict`
  * notice — idempotent on its dedupe key, so a re-run or a second tick writes nothing — and pushed
- * once (LD 53: the push sender claims each notice exactly once). Legs join under R-aw in step 9.
- * A plan with no conflict writes nothing. Never throws for one plan: a failed plan is counted.
+ * once (LD 53: the push sender claims each notice exactly once). A plan with no conflict writes nothing.
+ * Never throws for one plan: a failed plan is counted.
+ *
+ * Step 9b (L8 / D5 / D9, ledger `2026-10-07-step9b-optimizer-and-rechecks`; R-aw): the same pass then
+ * re-checks the plan's LEGS through the ONE `recheckPlanLegs` — only on a plan that earns routed legs
+ * and whose dates were chosen; it writes the legs' check status and one deduped finding per changed
+ * leg, never a leg. The day-of half is the separate hourly `legs-dayof-recheck` job (D6).
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { FACTS_RECHECK_DAYS_BEFORE, FACTS_RECHECK_NOTICE_TYPE, recheckBannerLine, recheckConflicts } from "@shared/facts-recheck";
 import type { Finding } from "@shared/optimizer-lead";
+import { recheckPlanLegs, type LegRecheckResult } from "../services/routing/leg-recheck.service";
 
 export interface FactsRecheckResult {
   checked: number;
   conflicts: number;
   notified: number;
   failed: number;
+  /** Step 9b: legs re-checked / found changed or broken / findings written, across the plans. */
+  legsChecked: number;
+  legsChanged: number;
+  legsNotified: number;
   error?: string;
 }
 
 export interface FactsRecheckDeps {
-  candidates: (now: Date) => Promise<Array<{ id: string; userId: string; destination: string | null; marketSlug: string | null }>>;
+  candidates: (now: Date) => Promise<Array<{ id: string; userId: string; destination: string | null; marketSlug: string | null; startDate?: string | null; timezone?: string | null; datesConfirmed?: boolean }>>;
   relookup: (trip: { id: string; destination: string | null; marketSlug: string | null }) => Promise<void>;
   findings: (tripId: string) => Promise<Finding[]>;
   notifyOnce: (n: { tripId: string; userId: string; destination: string | null; conflicts: Finding[]; checkedAt: Date }) => Promise<boolean>;
+  /** Step 9b: the plan's leg re-check (the ONE `recheckPlanLegs`). */
+  legRecheck: (trip: { id: string; userId: string; destination: string | null; startDate?: string | null; timezone?: string | null; datesConfirmed?: boolean }, now: Date) => Promise<LegRecheckResult>;
 }
 
 export const defaultFactsRecheckDeps: FactsRecheckDeps = {
   async candidates(now) {
     const r = await db.execute(sql`
-      SELECT t.id, t.user_id, t.destination, t.market_slug
+      SELECT t.id, t.user_id, t.destination, t.market_slug, t.start_date::text AS start_date, t.timezone,
+             (t.dates_confirmed_at IS NOT NULL) AS dates_confirmed
       FROM trips t
       WHERE t.user_id IS NOT NULL
         AND t.start_date IS NOT NULL
         AND (t.start_date::date) = ((${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')::date + ${FACTS_RECHECK_DAYS_BEFORE}::int)
     `);
-    return ((r as any).rows ?? []).map((x: any) => ({ id: x.id, userId: x.user_id, destination: x.destination ?? null, marketSlug: x.market_slug ?? null }));
+    return ((r as any).rows ?? []).map((x: any) => ({
+      id: x.id,
+      userId: x.user_id,
+      destination: x.destination ?? null,
+      marketSlug: x.market_slug ?? null,
+      startDate: x.start_date ?? null,
+      timezone: x.timezone ?? null,
+      datesConfirmed: x.dates_confirmed === true,
+    }));
   },
   async relookup(trip) {
     const { enrichPlanItems } = await import("../services/content-facts/place-facts.service");
@@ -81,10 +102,25 @@ export const defaultFactsRecheckDeps: FactsRecheckDeps = {
     }
     return inserted;
   },
+  async legRecheck(trip, now) {
+    // T-3 runs on the UTC calendar (D6 keeps it there): a leg checked since UTC midnight is not asked again.
+    const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    return recheckPlanLegs({
+      tripId: trip.id,
+      userId: trip.userId,
+      destination: trip.destination,
+      startDate: trip.startDate ?? null,
+      timezone: trip.timezone ?? null,
+      datesConfirmed: trip.datesConfirmed === true,
+      since,
+      checkDate: since.toISOString().slice(0, 10),
+      now,
+    });
+  },
 };
 
 export async function runFactsRecheck(now: Date = new Date(), deps: FactsRecheckDeps = defaultFactsRecheckDeps): Promise<FactsRecheckResult> {
-  const result: FactsRecheckResult = { checked: 0, conflicts: 0, notified: 0, failed: 0 };
+  const result: FactsRecheckResult = { checked: 0, conflicts: 0, notified: 0, failed: 0, legsChecked: 0, legsChanged: 0, legsNotified: 0 };
   let plans: Awaited<ReturnType<FactsRecheckDeps["candidates"]>>;
   try {
     plans = await deps.candidates(now);
@@ -96,9 +132,14 @@ export async function runFactsRecheck(now: Date = new Date(), deps: FactsRecheck
       await deps.relookup(trip);
       const conflicts = recheckConflicts(await deps.findings(trip.id));
       result.checked += 1;
-      if (!conflicts.length) continue;
-      result.conflicts += 1;
-      if (await deps.notifyOnce({ tripId: trip.id, userId: trip.userId, destination: trip.destination, conflicts, checkedAt: now })) result.notified += 1;
+      if (conflicts.length) {
+        result.conflicts += 1;
+        if (await deps.notifyOnce({ tripId: trip.id, userId: trip.userId, destination: trip.destination, conflicts, checkedAt: now })) result.notified += 1;
+      }
+      const legs = await deps.legRecheck(trip, now);
+      result.legsChecked += legs.checked;
+      result.legsChanged += legs.changed + legs.broken;
+      result.legsNotified += legs.notified;
     } catch (err) {
       result.failed += 1;
       console.error(`[facts-recheck] plan ${trip.id} failed:`, (err as Error)?.message ?? err);

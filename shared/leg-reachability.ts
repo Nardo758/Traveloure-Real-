@@ -33,6 +33,11 @@ export interface ReachLeg {
   fromActivityId: string | null;
   toActivityId: string | null;
   estimatedDurationMinutes: number | null;
+  /**
+   * Step 9b (ledger `2026-10-07-step9b-optimizer-and-rechecks`; L9 as amended, D4): the leg's minutes are a
+   * ROUTED duration — `legIsRouted` (server/services/routing/plan-legs.ts) decides it. Absent ⇒ not routed.
+   */
+  routed?: boolean;
 }
 
 export type DepartureBasis = "end_time" | "duration" | "start_only";
@@ -50,6 +55,8 @@ export interface UnreachableStop {
   gapMinutes: number;
   shortByMinutes: number;
   basis: DepartureBasis;
+  /** The leg's own `routed` (absent ⇒ false). */
+  routed: boolean;
 }
 
 /** "09:30", "9:30", "9:30 AM", "21:05:00" → minutes after midnight; null when it does not parse. */
@@ -105,6 +112,7 @@ export function unreachableStops(items: readonly ReachItem[], legs: readonly Rea
         gapMinutes: gap,
         shortByMinutes: minutes - gap,
         basis: leave.basis,
+        routed: leg.routed === true,
       });
     }
   }
@@ -118,10 +126,22 @@ export function unreachableLine(u: UnreachableStop): string {
   return `Day ${u.dayNumber}: ${u.toTitle} can't be reached in time — the leg from ${u.fromTitle} takes ${u.legMinutes} min and the plan leaves ${gap}`;
 }
 
-/** The free preview's finding: how many STOPS (unique) the plan's legs can't reach, and on which days. */
+/**
+ * The free preview's finding: how many STOPS (unique) the plan's legs can't reach, and on which days.
+ * Step 9b (L9 as amended — ledger `2026-10-07-step9b-optimizer-and-rechecks`): this is the finding that
+ * reads leg DURATIONS, so it says whether they were routed. `routed: true` only when EVERY leg it counts
+ * was routed; otherwise `routed: false` and `est: true`, and its words say "(est.)" (§13).
+ */
 export function legUnreachableFinding(
   unreachable: readonly UnreachableStop[],
-): { kind: "leg_unreachable"; count: number; days: number[]; stops: Array<{ itemId: string; title: string; day: number }> } | null {
+): {
+  kind: "leg_unreachable";
+  count: number;
+  days: number[];
+  stops: Array<{ itemId: string; title: string; day: number }>;
+  routed: boolean;
+  est?: true;
+} | null {
   if (!unreachable.length) return null;
   // S12-4: the unique stops themselves (day, then title — `unreachableStops`' own order), so the
   // Finish card can name what it counts.
@@ -133,5 +153,6 @@ export function legUnreachableFinding(
     stops.push({ itemId: u.toItemId, title: u.toTitle, day: u.dayNumber });
   }
   const days = Array.from(new Set(unreachable.map((u) => u.dayNumber))).sort((a, b) => a - b);
-  return { kind: "leg_unreachable", count: stops.length, days, stops };
+  const routed = unreachable.every((u) => u.routed);
+  return { kind: "leg_unreachable", count: stops.length, days, stops, routed, ...(routed ? {} : { est: true as const }) };
 }

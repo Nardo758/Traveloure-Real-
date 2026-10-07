@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import { wallClockMinutes } from "@shared/leg-reachability";
 import type { TraveloureMode } from "@/lib/navigate";
 // Ledger `2026-09-07-trip-card-one-page`, reconciled onto lane L10's `shared/plan-timing.ts`
 // (ledger `2026-09-07-home-time-axis`): ONE zone module, so `isUsableTimeZone` is the ONE answer
@@ -225,6 +226,22 @@ export interface UpNextInfo<TLeg extends InlineTransportLegData = InlineTranspor
   nowLineIndex: number | null;
   /** = nowLineIndex !== null (kept for callers). */
   showNowLine: boolean;
+  /**
+   * Step 9b D7 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): "HH:MM" — the up-next stop's start
+   * minus the minutes of the leg INTO it, on the live day only. Null when either is unknown, or when the
+   * subtraction would cross midnight (§13 — never a guessed time).
+   */
+  leaveBy: string | null;
+}
+
+/** Pure. D7: a stop's start minus the leg's minutes, as "HH:MM"; null when unknown or before midnight. */
+export function leaveByTime(startTime: string | null | undefined, legMinutes: number | null | undefined): string | null {
+  const start = wallClockMinutes(startTime);
+  const m = Number(legMinutes);
+  if (start == null || !Number.isFinite(m) || m <= 0) return null;
+  const t = start - Math.round(m);
+  if (t < 0) return null;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
 
 /**
@@ -282,7 +299,14 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
       : "walk"
   );
 
-  return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, nowLineIndex, showNowLine };
+  // D7: the leg INTO the up-next stop, matched by its pair (the leg's `toActivityId`) where the leg
+  // carries one, else the positional leg above.
+  const intoLeg = upNextActivity
+    ? ((legs as any[]).find((l) => l?.toActivityId === upNextActivity.id) ?? upNextLeg)
+    : null;
+  const leaveBy = isLiveDay && upNextActivity ? leaveByTime((upNextActivity as any).time, intoLeg?.estimatedDurationMinutes) : null;
+
+  return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, nowLineIndex, showNowLine, leaveBy };
 }
 
 /** Pure. R321 (S11-3): the now-line's position on a live day, or null outside the day's window. */

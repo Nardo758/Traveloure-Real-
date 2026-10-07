@@ -5,6 +5,7 @@
  * leg winning per pair). A leg is drawn between rows only when it carries the engine's `routed` facts;
  * anything else draws nothing here (the day-end list keeps it until 9c).
  */
+import { PLAN_LEG_REFETCH_DELAY_MS } from "@shared/plan-routed-legs";
 import type { RouteAnswer, RoutingMode } from "@shared/routing-engine";
 import { normalizeLegMode } from "@shared/travel-speeds";
 
@@ -60,4 +61,14 @@ export function pausedLinePair(days: readonly SlipDay[] | null | undefined): [st
     if (acts.length >= 2) return [acts[0].id, acts[1].id];
   }
   return null;
+}
+
+/**
+ * Step 9b D8 (FU-9A-4, ledger `2026-10-07-step9b-optimizer-and-rechecks`): the server recomputes an
+ * edited plan's legs ~2 s after the write, so the slip re-reads the plan ONCE after that window — only
+ * for a plan whose payload says the engine routes it (`routedLegs`). Pure: the delay, or null for none.
+ * No server "pending" flag is read: it would live in one instance's memory and be wrong on another.
+ */
+export function legRefetchDelayMs(plan: { routedLegs?: boolean } | null | undefined): number | null {
+  return plan?.routedLegs === true ? PLAN_LEG_REFETCH_DELAY_MS : null;
 }

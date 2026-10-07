@@ -28,6 +28,12 @@ export interface Finding {
   caveat?: string;
   /** S12-4: `leg_unreachable` only — the stops it counts, by name and day, so a card can name them. */
   stops?: Array<{ itemId: string; title: string; day: number }>;
+  /**
+   * Step 9b (L9 as amended, ledger `2026-10-07-step9b-optimizer-and-rechecks`): present ONLY on a
+   * finding that reads leg durations (`leg_unreachable`) — true when every leg it counts was routed.
+   * `city_crossing` and `walking_saved_km` never read a duration and never carry it; they stay "est.".
+   */
+  routed?: boolean;
 }
 
 /** Problems first, then gains — the order the card reads them in (spec §8). */
@@ -353,7 +359,7 @@ const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many
 export function findingLine(f: Finding): string {
   switch (f.kind) {
     case "leg_unreachable":
-      return `${n(f.count, "stop", "stops")} can't be reached in time with the plan's travel times`;
+      return `${n(f.count, "stop", "stops")} can't be reached in time with the plan's travel times${f.est ? " (est.)" : ""}`;
     case "closed_on_arrival":
       return `${n(f.count, "stop is", "stops are")} reached when ${f.count === 1 ? "it's" : "they're"} closed`;
     case "timed_entry_conflict":

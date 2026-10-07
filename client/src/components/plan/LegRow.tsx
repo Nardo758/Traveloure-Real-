@@ -302,6 +302,13 @@ export interface AirportLegRowProps {
   driversHref?: string | null;
   onRequest?: (mode: AirportLegMode) => void;
   busy?: boolean;
+  /**
+   * Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the ROUTED airport leg's
+   * minutes — present only on a plan the engine routes AND whose flight names a real IATA code
+   * (`flightAnchorFor(...).airportLegMinutes`). Absent ⇒ the leg stays minutes-free, as step 3 drew it.
+   * The slip's mount (`SlipView.tsx`, Track A's file) passes it in a one-line follow-up.
+   */
+  routedMinutes?: number | null;
 }
 
 /**
@@ -347,12 +354,14 @@ function RoutedLegRow({ legId, mode, route, timeZone }: RoutedLegRowProps) {
   );
 }
 
-function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false }: AirportLegRowProps) {
+function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false, routedMinutes }: AirportLegRowProps) {
+  const minutes = typeof routedMinutes === "number" && routedMinutes > 0 ? Math.round(routedMinutes) : null;
   return (
     <div className="px-3 py-2 border-l-2 border-dashed border-border ml-4 space-y-1" data-testid={`slip-leg-airport-${direction}`}>
       <p className="text-xs text-muted-foreground flex items-center gap-1.5">
         <Car className="w-3.5 h-3.5" aria-hidden="true" />
         <span data-testid={`slip-leg-airport-${direction}-line`}>{airportLegLine(direction, stayName, airport)}</span>
+        {minutes != null ? <span data-testid={`slip-leg-airport-${direction}-minutes`}>· {minutes} min</span> : null}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {modes.map((m) => (

@@ -12,7 +12,7 @@
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { itineraryVariants, transportLegs } from "@shared/schema";
+import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { marketHasTransitCoverage, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED } from "@shared/travel-speeds";
@@ -26,7 +26,7 @@ import { routingAdapter } from "./index";
 import { RouteRunMemo } from "./route-memo";
 import { routedFactsOf } from "./plan-legs";
 import { tripGetsRoutedLegs } from "./plan-routed-legs.service";
-import { desiredPlanLegs, diffPlanLegs, legPairKey, selectedModeOf, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
+import { desiredPlanLegs, diffPlanLegs, legPairKey, selectedModeOf, type AirportStop, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
 export type PlanLegsResult =
   | { skipped: "engine_off" | "free_plan" | "no_trip" }
@@ -81,6 +81,34 @@ async function latestRunLegs(tripId: string): Promise<Array<typeof transportLegs
     console.warn("[routing] run legs unreadable (no reuse):", err?.message ?? err);
     return [];
   }
+}
+
+/**
+ * Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the plan's flight anchors that
+ * carry an airport point — stamped ONLY from an IATA code (`server/services/airport-coords.ts`); a
+ * typed airport name has none and stays the fixed-buffer, minutes-free airport leg. The anchor's
+ * datetime is the plan's wall clock (R316), so its date and time are read as written.
+ */
+async function airportStopsForPlan(tripId: string, tripStart: string | null): Promise<AirportStop[]> {
+  if (!tripStart) return [];
+  const rows = await db
+    .select()
+    .from(temporalAnchors)
+    .where(and(eq(temporalAnchors.tripId, tripId), inArray(temporalAnchors.anchorType, ["flight_arrival", "flight_departure"])));
+  const out: AirportStop[] = [];
+  for (const a of rows) {
+    const p = realPoint(a.latitude, a.longitude);
+    if (!p || !a.anchorDatetime) continue;
+    const iso = new Date(a.anchorDatetime).toISOString();
+    const dayNumber = Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${tripStart}T00:00:00Z`)) / 86_400_000) + 1;
+    if (dayNumber < 1) continue;
+    const arrival = a.anchorType === "flight_arrival";
+    const at = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+    const t = arrival ? at + Number(a.bufferAfter ?? 0) : at - Number(a.bufferBefore ?? 0);
+    const wallClock = t >= 0 && t < 24 * 60 ? `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : null;
+    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction: arrival ? "arrival" : "departure", point: p, wallClock });
+  }
+  return out;
 }
 
 export async function computePlanLegs(
@@ -161,6 +189,7 @@ export async function computePlanLegs(
     stay,
     hasTransitCoverage: marketHasTransitCoverage(profile?.availableModes),
     selectedMode: (k) => picked.get(k) ?? null,
+    airports: await airportStopsForPlan(tripId, trip.startDate ? String(trip.startDate).slice(0, 10) : null),
   });
   const diff = diffPlanLegs(desired, existing, confirmedPairs);
 

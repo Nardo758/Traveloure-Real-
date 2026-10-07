@@ -29,6 +29,7 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
+import { runLegsDayofRecheck } from "../jobs/legsDayofRecheck";
 import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
 import { runPaymentSchedule } from "../automations/payments/runtime";
@@ -191,6 +192,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "score-neighborhood-claims", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // Step 7b (R323): the handoff clocks — 24 h fallback, 48 h hold release (R-q), 7 d auto-approve (R-s).
   { job: "handoff-timers", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // Step 9b D6 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the day-of leg re-check — hourly,
+  // acting only on plans whose local time is 06:00 on a trip day.
+  { job: "legs-dayof-recheck", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // jobs-cron.yml — four-hourly, 0 */4 * * *
   { job: "booking-expiry", expectedIntervalSec: 4 * 60 * 60, bucket: "four-hourly" },
   // jobs-cron.yml — six-hourly, 0 */6 * * *
@@ -413,6 +417,14 @@ router.post("/internal/jobs/handoff-timers", requireInternalSecret, async (req, 
 // stamp a success heartbeat. Per-plan failures remain counts, per the job contract.
 router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("facts-recheck", () => runFactsRecheck(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
+// Step 9b D6 (ledger `2026-10-07-step9b-optimizer-and-rechecks`; R-aw): the day-of leg re-check. Hourly;
+// a plan is re-checked once, at 06:00 in its own zone on each trip day — idempotent per plan-day. It
+// writes leg check statuses and deduped findings, never a leg. A failed candidate scan never stamps.
+router.post("/internal/jobs/legs-dayof-recheck", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("legs-dayof-recheck", () => runLegsDayofRecheck(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 

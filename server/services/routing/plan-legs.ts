@@ -91,9 +91,29 @@ export interface DesiredLegsResult {
  * stay, which is taken out of the day lists and connected to each day's first and last stop.
  * `selectedMode(pairKey)` = a mode the traveler picked for that pair (9c), kept over the default.
  */
+/**
+ * A flight anchor with an airport point (step 9b FU-9A-2): an arrival is connected to the day's stay
+ * (else its first located stop), a departure from the day's stay (else its last located stop). `id` is
+ * the leg-end id the row stores — `anchor:<anchorId>` — so the pair diff and the read rule treat it like
+ * any stop. `wallClock` = when the traveler leaves (arrival + buffer; departure − buffer).
+ */
+export interface AirportStop {
+  id: string;
+  name: string;
+  dayNumber: number;
+  direction: "arrival" | "departure";
+  point: RoutePoint;
+  wallClock: string | null;
+}
+
 export function desiredPlanLegs(
   stops: readonly PlanStop[],
-  opts: { stay: (PlanStop & { point: RoutePoint }) | null; hasTransitCoverage: boolean; selectedMode?: (pairKey: string) => RoutingMode | null },
+  opts: {
+    stay: (PlanStop & { point: RoutePoint }) | null;
+    hasTransitCoverage: boolean;
+    selectedMode?: (pairKey: string) => RoutingMode | null;
+    airports?: readonly AirportStop[];
+  },
 ): DesiredLegsResult {
   const byDay = new Map<number, PlanStop[]>();
   for (const s of stops) {
@@ -133,6 +153,18 @@ export function desiredPlanLegs(
     if (opts.stay && located.length) {
       const last = located[located.length - 1];
       add(dayNumber, day.length, last, { ...opts.stay, dayNumber }, departureWallClock(last));
+    }
+  }
+  // FU-9A-2: airport legs — only for a flight anchor that HAS a point (an IATA code the table holds).
+  for (const a of opts.airports ?? []) {
+    const located = (byDay.get(a.dayNumber) ?? []).filter((s) => s.point);
+    const airport: PlanStop = { id: a.id, name: a.name, dayNumber: a.dayNumber, point: a.point, startTime: null, endTime: null, durationMinutes: null };
+    if (a.direction === "arrival") {
+      const to = opts.stay ? { ...opts.stay, dayNumber: a.dayNumber } : located[0];
+      if (to) add(a.dayNumber, -1, airport, to, a.wallClock);
+    } else {
+      const from = opts.stay ? { ...opts.stay, dayNumber: a.dayNumber } : located[located.length - 1];
+      if (from) add(a.dayNumber, (byDay.get(a.dayNumber) ?? []).length + 1, from, airport, a.wallClock);
     }
   }
   return { legs, skipped };
@@ -226,4 +258,27 @@ export function selectPlanLegs<L extends { dayNumber: number; fromActivityId: st
   const hasEngine = input.tripLegs.some((l) => l.source != null && l.proposalStatus !== "confirmed");
   const tripLegs = [...confirmed, ...engine].sort((a: any, b: any) => a.dayNumber - b.dayNumber || (a.legOrder ?? 0) - (b.legOrder ?? 0));
   return { tripLegs, variantLegs: input.qualifies && !hasEngine ? [...input.variantLegs] : [] };
+}
+
+/**
+ * IS THIS LEG'S DURATION ROUTED? (step 9b, D4 — ledger `2026-10-07-step9b-optimizer-and-rechecks`). The
+ * ONE answer the findings read (§18 rule 1). A shown leg with positive minutes counts when it is an
+ * ENGINE leg (`source` set — the routing adapter's answer), or a leg an expert CONFIRMED whose own
+ * recorded tier is not the straight-line estimate (`alternative_modes[mode].reason !== "est."`, the tier
+ * the travel-time service writes): an expert's own minutes are a human answer, not a guess. A leg with
+ * no positive minutes is never routed (§13).
+ */
+export function legIsRouted(leg: {
+  source?: string | null;
+  proposalStatus?: string | null;
+  estimatedDurationMinutes?: number | string | null;
+  recommendedMode?: string | null;
+  alternativeModes?: Array<{ mode?: string; reason?: string | null }> | null;
+}): boolean {
+  const minutes = Number(leg.estimatedDurationMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return false;
+  if (leg.source != null) return true;
+  if (leg.proposalStatus !== "confirmed") return false;
+  const own = (leg.alternativeModes ?? []).find((a) => a?.mode === leg.recommendedMode);
+  return own?.reason !== "est.";
 }

@@ -15,6 +15,7 @@
  * caller's own plan gate (`GET /api/optimization-preview`, `authorizeTripLogistics`).
  */
 import { tripLegsShown } from "./routing/plan-routed-legs.service";
+import { legIsRouted } from "./routing/plan-legs";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, trips } from "@shared/schema";
@@ -124,7 +125,10 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   const legs = await tripLegsShown(tripId);
   const reach = unreachableStops(
     items.map((r) => ({ id: r.id, title: r.title, dayNumber: r.dayNumber, startTime: r.startTime, endTime: r.endTime, durationMinutes: r.durationMinutes ?? null })),
-    legs.map((l: any) => ({ id: l.id, dayNumber: l.dayNumber, fromActivityId: l.fromActivityId, toActivityId: l.toActivityId, estimatedDurationMinutes: l.estimatedDurationMinutes })),
+    // Step 9b (L9 as amended, D4 — ledger `2026-10-07-step9b-optimizer-and-rechecks`): each leg says
+    // whether its minutes are routed, through the ONE `legIsRouted`; the finding drops "est." only
+    // when every leg it counts is.
+    legs.map((l: any) => ({ id: l.id, dayNumber: l.dayNumber, fromActivityId: l.fromActivityId, toActivityId: l.toActivityId, estimatedDurationMinutes: l.estimatedDurationMinutes, routed: legIsRouted(l) })),
   );
 
   const findings = leadFindings([

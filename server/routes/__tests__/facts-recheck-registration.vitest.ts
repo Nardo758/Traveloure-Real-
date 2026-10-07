@@ -97,7 +97,8 @@ describe("facts-recheck daily registration", () => {
     const response = await post();
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      ok: true, job: "facts-recheck", result: { checked: 0, conflicts: 0, notified: 0, failed: 0 },
+      // Step 9b (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the leg re-check's counts ride along.
+      ok: true, job: "facts-recheck", result: { checked: 0, conflicts: 0, notified: 0, failed: 0, legsChecked: 0, legsChanged: 0, legsNotified: 0 },
     });
     expect(fixture.execute).toHaveBeenCalledOnce();
     expect(fixture.write).toHaveBeenCalledOnce();

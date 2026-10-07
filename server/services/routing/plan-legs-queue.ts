@@ -11,8 +11,9 @@
  * calls it), and loads the engine lazily when a timer fires.
  */
 import { travelTimeServiceEnabled } from "../../config/travel-time.config";
+import { PLAN_LEG_DEBOUNCE_MS } from "@shared/plan-routed-legs";
 
-export const PLAN_LEG_DEBOUNCE_MS = 2000;
+export { PLAN_LEG_DEBOUNCE_MS };
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const running = new Map<string, Promise<unknown>>();

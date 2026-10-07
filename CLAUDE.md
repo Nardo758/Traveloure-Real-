@@ -2554,6 +2554,17 @@ This document captures architectural decisions to maintain consistency across co
     `/internal/jobs/health`. A leg end taken from a Google Places fact is stamped `coord_source='google'` with
     the fact's fetch time (R311). Fares only when the source gives one, in its currency; minutes in-plan only
     (R-h).
+    **AMENDED BY STEP 9b (architect's rulings on the 9b Phase 0, Oct 7, 2026 — ledger
+    `2026-10-07-step9b-optimizer-and-rechecks`; no migration).** A finding that reads leg DURATIONS
+    (`leg_unreachable`) carries `routed` and is "est." unless every leg it counts is routed (`legIsRouted`);
+    `city_crossing` and `walking_saved_km` never read a duration and stay "est." (L9 as amended). Legs are
+    RE-CHECKED — at T-3 inside `facts-recheck` and at 06:00 local on each trip day by the hourly
+    `legs-dayof-recheck` — through ONE `recheckPlanLegs`, only on a routed plan with chosen dates: it claims
+    each leg first, writes `leg_check_status`/`leg_checked_at` and ONE deduped finding per changed leg
+    (moved >10 min or no route), and NEVER writes a leg. A flight anchor's point comes ONLY from an exact IATA
+    code in `server/data/iata-airports.json` (a typed airport name has none and keeps the fixed buffer); the
+    engine routes airport ↔ stay legs, and the buffer check adds the routed leg's minutes. `leg-google-coords`
+    queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
