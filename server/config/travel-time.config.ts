@@ -20,3 +20,4 @@ export function travelTimeServiceEnabled(): boolean {
 export function travelTimeRoutesAvailable(): boolean {
   return travelTimeServiceEnabled() && !!process.env.GOOGLE_MAPS_API_KEY;
 }
+

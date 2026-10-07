@@ -4,11 +4,18 @@
  * One rule for every Google Maps Platform caller in `@shared/maps-billing`: a call happens only when
  * the caller's own switch is on, the key is set and today's count is under the caller's daily cap;
  * every call that happens is recorded, success or failure, so the cap and the spend read ONE source.
+ * Step 9a ruling 7 (ledger `2026-10-07-step9a-routing-engine`): a FAILED call is recorded at cost 0 but
+ * still counts toward the daily cap (the cap bounds retries); a refused call is not a call and records
+ * nothing.
  * DB-free: the counter and the recorder arrive injected, so the rule is proven with no database.
  */
 import { MAPS_CALLERS, type MapsCallerKey } from "@shared/maps-billing";
 
-export type MapsGateRefusal = "disabled" | "no_api_key" | "cap_reached";
+/**
+ * Step 9a ruling 8 (ledger `2026-10-07-step9a-routing-engine`): the daily cap answers `paused` — its
+ * own outcome, so a caller can tell "travel times paused today" from "no route". It was `cap_reached`.
+ */
+export type MapsGateRefusal = "disabled" | "no_api_key" | "paused";
 
 export interface MapsGateDeps {
   enabled: (key: MapsCallerKey) => boolean;
@@ -42,9 +49,9 @@ export async function mapsGate(
   const apiKey = deps.apiKey();
   if (!apiKey) return { ok: false, reason: "no_api_key" };
   const cap = deps.dailyCap(key);
-  if (cap <= 0) return { ok: false, reason: "cap_reached" };
+  if (cap <= 0) return { ok: false, reason: "paused" };
   const used = await deps.countToday(key);
-  if (used === null || used >= cap) return { ok: false, reason: "cap_reached" };
+  if (used === null || used >= cap) return { ok: false, reason: "paused" };
   return { ok: true, apiKey };
 }
 

@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import {
   itineraryItems,
   type ItineraryItem,
@@ -108,6 +109,7 @@ export class ItineraryIntelligenceService {
 
   async createItem(data: InsertItineraryItem): Promise<ItineraryItem> {
     const results = await db.insert(itineraryItems).values(data).returning();
+    enqueuePlanLegRecompute(results[0]?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return results[0];
   }
 
@@ -116,6 +118,7 @@ export class ItineraryIntelligenceService {
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(itineraryItems.id, id))
       .returning();
+    enqueuePlanLegRecompute(results[0]?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return results[0];
   }
 

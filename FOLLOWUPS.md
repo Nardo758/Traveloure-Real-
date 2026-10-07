@@ -1126,3 +1126,36 @@ itself, which is the member path 8d was ruled not to touch.
 ### FU-8D-5 — the board's "Draft it with AI · free" on the guest map is not built
 The board draws it for a guest, with its own gate copy. Decision 1 kept `ai`'s existing sign-in gate, so the guest map
 offers Browse, "Add to plan" and "Sign in to start" only.
+
+---
+
+## From step 9a — the routing engine (ledger `2026-10-07-step9a-routing-engine`)
+
+### FU-9A-1 — 9a-ii: the self-hosted OSRM adapter and the route cache it brings back
+
+Google's service terms (June 10, 2026) allow Routes content to be cached only as place IDs and lat/lng,
+so 9a keeps a Google duration or distance only on the plan's own `transport_legs` row and de-duplicates
+in memory per run (`RouteRunMemo`). The `route_cache` table was dropped from migration 357 by the
+decision-maker on #1325. It returns in 9a-ii with an OSRM adapter (self-hosted walk + drive, cacheable
+without limit), which joins `CACHEABLE_ROUTE_SOURCES` (`shared/routing-engine.ts`) — the one boundary
+any cache writer must pass. 9a-ii starts with its own Phase 0: what it takes to run OSRM for the eight
+markets in Replit's deployment (extracts, memory, build time, updates).
+
+### FU-9A-2 — 9b: airport coordinates on the flight anchor (IATA → coordinates)
+
+No writer puts coordinates on a flight anchor (`temporal_anchors.latitude/longitude`), so the airport has
+no point and airport legs stay as step 3 drew them, with the fixed buffer (accepted for 9a, ruling 2 on
+#1325). 9b adds a static, platform-owned IATA → coordinates table and stamps the anchor from it, so the
+airport leg routes like any other and the `AnchorRow` buffer check can read the routed airport leg.
+
+### FU-9A-3 — Track A: a deterministic item order (`ORDER BY day, sort_order, start_time, id`)
+
+Items that tie on (day, sort order, start time) have no fixed storage order, so the pair a leg connects
+can flip on any write (found by the §9a e2e; its fixture now gives stops distinct sort orders). Ruling 3
+on #1325: a real bug, Track A's small PR in the shared item query.
+
+### FU-9A-4 — 9b: refetch legs once after the debounce window
+
+An edit's legs are recomputed ~2 s after the write (ruling 10), so the slip shows them only on its next
+read (accepted for 9a, ruling 4 on #1325). 9b refetches the plan's legs once after the debounce window so
+the row appears without a reload.

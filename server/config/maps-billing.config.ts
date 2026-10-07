@@ -37,3 +37,13 @@ export function mapsCallerCostTenthsOfCent(key: MapsCallerKey, units: number): n
   const centsPerUnit = c.costUnit === "usd_per_1000" ? (v * 100) / 1000 : v;
   return Math.round(centsPerUnit * 10 * units);
 }
+
+/**
+ * The cost a gate row records (step 9a ruling 7, ledger `2026-10-07-step9a-routing-engine`): a FAILED
+ * call records 0 — it still counts toward the cap through its row's `request_count`; a caller whose cost
+ * lives on another table (`costRecordedOn` ≠ api_usage_logs) records 0 so a reader never sums twice.
+ */
+export function mapsCallRecordedTenths(key: MapsCallerKey, units: number, success: boolean): number {
+  if (!success || MAPS_CALLERS[key].costRecordedOn !== "api_usage_logs") return 0;
+  return mapsCallerCostTenthsOfCent(key, units);
+}

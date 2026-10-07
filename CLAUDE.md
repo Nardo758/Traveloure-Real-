@@ -2528,6 +2528,33 @@ This document captures architectural decisions to maintain consistency across co
     this sheet only. **(f)** The Stripe guest
     customer stays (saved cards later).
 
+63. **ROUTED LEGS ARE THE ROUTING ENGINE'S, ONLY ON A PLAN THAT EARNED THEM, AND A GOOGLE ANSWER IS NEVER
+    CACHED (decision-maker/architect, Oct 7, 2026 — step 9a rulings 1–11 and the four on #1325, ledger
+    `2026-10-07-step9a-routing-engine`; surface spec §14, R-e; migration 357, APPROVED by the founder Oct 7, 2026).** ONE
+    predicate, `planGetsRoutedLegs` (`shared/plan-routed-legs.ts`): a finished Optimize run (an `ai_optimized`
+    variant), an active Trip Pass, a handoff `accepted` | `delivered` | `approved` (never `proposed`,
+    `unmatched` or `withdrawn` — legs never vanish on approval), or a Ready Made copy. Every leg writer and
+    every leg reader goes through it; there is no second copy. ONE `RoutingAdapter` (`shared/routing-engine.ts`;
+    Google Routes through the R299 gate by caller name, a CI stub behind `ROUTING_ADAPTER_STUB`, one contract
+    test for both). A route is five facts — duration, distance, line name, fare, provenance — never a polyline
+    or step directions (`toRouteFacts`). **Google's service terms (June 10, 2026) allow Routes content to be
+    cached only as place IDs and lat/lng, so a Google result is NEVER written to a cache: it lives only on the
+    plan's own `transport_legs` rows, with provenance.** Within a run, de-duplication is in memory
+    (`RouteRunMemo`, seeded only from the plan's own legs); the one boundary a future cache writer must pass
+    is `cacheableRouteEntry`, which refuses every source outside `CACHEABLE_ROUTE_SOURCES` (the self-hosted
+    OSRM adapter and its cache table arrive in 9a-ii). Engine legs are trip-scoped rows born `proposed` with
+    **`transport_legs.source`** set (migration 357, its ONLY object — nullable, no DEFAULT/CHECK/index/FK, no
+    new `proposal_status` value); travelers see them only on a qualifying plan, an expert's CONFIRMED leg for
+    the same pair always wins, and a free plan's routed legs are HIDDEN, not deleted. Writers: Optimize
+    versions (de-duplicated across versions in the run's memo), apply (the plan's own legs, reusing its run's
+    version legs), Finalize/activate-transport (nothing on a free plan), and a 2 s per-plan debounce after any
+    item write that recomputes from a PAIR DIFF (changed legs only; a lost timer heals on the next edit). The
+    R299 gate: a failed call records cost 0 and still counts toward the cap; the cap answers `paused` (its own
+    outcome — legs stay as last computed, edits never blocked); per-caller day spend is on
+    `/internal/jobs/health`. A leg end taken from a Google Places fact is stamped `coord_source='google'` with
+    the fact's fetch time (R311). Fares only when the source gives one, in its currency; minutes in-plan only
+    (R-h).
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

@@ -12,7 +12,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { apiUsageLogs } from "@shared/schema";
 import { MAPS_CALLERS, MAPS_USAGE_PROVIDER, type MapsCallerKey } from "@shared/maps-billing";
-import { mapsApiKey, mapsCallerCostTenthsOfCent, mapsCallerDailyCap, mapsCallerEnabled } from "../../config/maps-billing.config";
+import { mapsApiKey, mapsCallRecordedTenths, mapsCallerDailyCap, mapsCallerEnabled } from "../../config/maps-billing.config";
 import { withMapsGate, type MapsCallRecord, type MapsGateDeps, type MapsGateRefusal } from "./maps-billing.core";
 
 export type { MapsGateRefusal } from "./maps-billing.core";
@@ -39,7 +39,9 @@ export const defaultMapsGateDeps: MapsGateDeps = {
   },
   async record(r: MapsCallRecord) {
     const c = MAPS_CALLERS[r.key];
-    const tenths = c.costRecordedOn === "api_usage_logs" ? mapsCallerCostTenthsOfCent(r.key, r.units) : 0;
+    // Step 9a ruling 7 (ledger `2026-10-07-step9a-routing-engine`): a failed call costs 0; its row still
+    // carries `request_count`, so it counts toward the cap.
+    const tenths = mapsCallRecordedTenths(r.key, r.units, r.success);
     try {
       await db.insert(apiUsageLogs).values({
         provider: MAPS_USAGE_PROVIDER,
@@ -82,4 +84,69 @@ export async function gatedMapsCallOrNull<T>(
     return null;
   }
   return out.value;
+}
+
+/**
+ * Today's Maps spend per caller (step 9a ruling 8, ledger `2026-10-07-step9a-routing-engine`), for
+ * `/internal/jobs/health`. Read from the SAME `api_usage_logs` rows the gate counts and records, so the
+ * cap and the spend cannot disagree. `spendTenthsOfCent` is what was RECORDED (a failed call is 0; a
+ * caller whose cost lives on another table is 0 here and says where). null = the read failed — never 0.
+ */
+export interface MapsCallerSpend {
+  caller: MapsCallerKey;
+  calls: number;
+  failed: number;
+  spendTenthsOfCent: number;
+  dailyCap: number;
+  enabled: boolean;
+  costRecordedOn: string;
+}
+export async function mapsSpendToday(): Promise<MapsCallerSpend[] | null> {
+  try {
+    const rows = await db
+      .select({
+        caller: apiUsageLogs.endpoint,
+        calls: sql<number>`COALESCE(SUM(${apiUsageLogs.requestCount}), 0)::int`,
+        failed: sql<number>`COALESCE(SUM(CASE WHEN ${apiUsageLogs.success} = false THEN ${apiUsageLogs.requestCount} ELSE 0 END), 0)::int`,
+        spend: sql<number>`COALESCE(SUM(${apiUsageLogs.estimatedCostCents}), 0)::int`,
+      })
+      .from(apiUsageLogs)
+      .where(and(eq(apiUsageLogs.provider, MAPS_USAGE_PROVIDER), gte(apiUsageLogs.createdAt, startOfUtcDay())))
+      .groupBy(apiUsageLogs.endpoint);
+    const byCaller = new Map(rows.map((r) => [r.caller, r]));
+    return (Object.keys(MAPS_CALLERS) as MapsCallerKey[]).map((caller) => {
+      const r = byCaller.get(caller);
+      return {
+        caller,
+        calls: Number(r?.calls ?? 0),
+        failed: Number(r?.failed ?? 0),
+        spendTenthsOfCent: Number(r?.spend ?? 0),
+        dailyCap: mapsCallerDailyCap(caller),
+        enabled: mapsCallerEnabled(caller),
+        costRecordedOn: MAPS_CALLERS[caller].costRecordedOn,
+      };
+    });
+  } catch (err: any) {
+    console.error("[maps-billing] spend read failed:", err?.message ?? err);
+    return null;
+  }
+}
+
+/** The routing engine's three Routes callers (step 9a; the R299 rows the adapter calls by name). */
+const ROUTING_CALLERS: readonly MapsCallerKey[] = ["routes_mode", "routes_transit", "routes_drive"];
+
+/**
+ * Is any switched-on routing caller paused today (its daily cap reached)? Step 9a, L5 (ledger
+ * `2026-10-07-step9a-routing-engine`): the plan then says "Travel times paused today — resumes tomorrow"
+ * and keeps its legs as last computed; edits are never blocked. An unreadable counter reads as paused,
+ * the gate's own posture. A caller that is switched off is not "paused" — it is off.
+ */
+export async function routingPausedToday(deps: MapsGateDeps = defaultMapsGateDeps): Promise<boolean> {
+  for (const key of ROUTING_CALLERS) {
+    if (!deps.enabled(key) || !deps.apiKey()) continue;
+    const cap = deps.dailyCap(key);
+    const used = await deps.countToday(key);
+    if (cap <= 0 || used === null || used >= cap) return true;
+  }
+  return false;
 }

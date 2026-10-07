@@ -10,6 +10,7 @@
  * orphan clone, and returns the winner's result. The earning is born HELD on the escrow spine
  * with the ratified 7-day `ready_made_sale` window (D7: refundable only while in escrow).
  */
+import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { db } from "../db";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { storage } from "../storage";
@@ -320,6 +321,8 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     .map((leg) => buildClonedLeg(leg, cloneTrip.id, itemIdMap))
     .filter((leg): leg is NonNullable<typeof leg> => leg !== null);
   if (clonedLegs.length > 0) await db.insert(transportLegs).values(clonedLegs);
+  // A Ready Made copy is a routed plan (R-e): pairs the author's confirmed legs do not cover are routed. // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
+  enqueuePlanLegRecompute(cloneTrip.id);
 
   const sourceAnchors = await db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, listing.sourceTripId));
   if (sourceAnchors.length > 0 && sourceTrip?.startDate) {

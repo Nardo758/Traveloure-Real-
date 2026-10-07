@@ -45,6 +45,7 @@ import { z } from "zod";
 import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import { runModerationSchedule } from "../automations/moderation/runtime";
+import { mapsSpendToday } from "../services/maps-billing/maps-billing.service";
 import {
   recordJobSuccess,
   computeJobHealth,
@@ -434,6 +435,10 @@ router.get("/internal/jobs/health", requireInternalSecret, async (_req, res) => 
       // in-process timers deliberately do not stamp (job-heartbeats.service.ts).
       measures: "last cron-driven success",
       jobs,
+      // Step 9a ruling 8 (ledger `2026-10-07-step9a-routing-engine`): each Maps caller's calls, failures
+      // and RECORDED spend since 00:00 UTC, beside its cap and switch. Tenths of a cent, as the gate
+      // records them; null = the read failed (never a zero). Not part of `healthy`.
+      maps: { since: "00:00 UTC", unit: "tenths_of_cent", callers: await mapsSpendToday() },
     });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: "failed to read job health" });

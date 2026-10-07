@@ -14,6 +14,8 @@
  *   · legs — the plan's routed legs where they exist (optimized plans); none invented (R-e)
  *   · the `post_trip` feedback tap from T+1
  */
+import { routedLegLine } from "@shared/routing-engine";
+import { routedLegBetween } from "@/lib/slip-legs";
 import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -63,10 +65,37 @@ export interface TripCardDaysProps {
 
 type DayTransport = NonNullable<PlanCardDay["transports"]>[number];
 
-function LegLine({ leg, showMinutes }: { leg: DayTransport; showMinutes: boolean }) {
+/**
+ * The leg after stop `idx` on the card. Step 9a (ledger `2026-10-07-step9a-routing-engine`): a routed
+ * plan's legs name their stops, and the engine also writes stay ↔ first/last legs, so a leg is matched
+ * to its PAIR by id. A day whose legs name none of its stops (a version's legs, keyed to version items)
+ * keeps the position pairing it always had.
+ */
+export function cardLegAfter(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): DayTransport | null {
+  const from = acts[idx]?.id;
+  const to = acts[idx + 1]?.id;
+  const ids = new Set(acts.map((a) => a.id));
+  const named = legs.some((l: any) => ids.has(l.fromActivityId ?? l.from) || ids.has(l.toActivityId ?? l.to));
+  if (!named) return legs[idx] ?? null;
+  return legs.find((l: any) => (l.fromActivityId ?? l.from) === from && (l.toActivityId ?? l.to) === to) ?? null;
+}
+
+export function LegLine({ leg, showMinutes, timeZone }: { leg: DayTransport; showMinutes: boolean; timeZone?: string | null }) {
   const mode = String((leg as any).userSelectedMode ?? (leg as any).recommendedMode ?? (leg as any).mode ?? "");
   const label = (TRANSPORT_MODE_LABELS as Record<string, string>)[mode] ?? mode;
   const minutes = Number((leg as any).estimatedDurationMinutes ?? (leg as any).duration);
+  // Step 9a (ledger `2026-10-07-step9a-routing-engine`): a routed leg reads the slip's own line, from
+  // the one helper — duration · line · fare · provenance. The server sends `routed` only on a routed plan.
+  const fromId = (leg as any).fromActivityId ?? (leg as any).from;
+  const toId = (leg as any).toActivityId ?? (leg as any).to;
+  const routed = fromId && toId ? routedLegBetween([{ transports: [leg as any] }], fromId, toId) : null;
+  if (routed) {
+    return (
+      <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`} data-leg-source={routed.route.provenance.source}>
+        {routedLegLine({ mode: routed.mode, route: routed.route }, timeZone ?? null)}
+      </p>
+    );
+  }
   if (!label) return null;
   return (
     <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`}>
@@ -290,7 +319,9 @@ export function TripCardDays(props: TripCardDaysProps) {
                   onOpenDetails={() => setSheetFor(a)}
                   visited={isToday ? { checked: visited.has(a.id), onToggle: () => toggleVisited(a.id) } : null}
                 />
-                {legs[idx] && idx < acts.length - 1 ? <LegLine leg={legs[idx]} showMinutes={props.showTravelMinutes} /> : null}
+                {idx < acts.length - 1 && cardLegAfter(legs, acts, idx) ? (
+                  <LegLine leg={cardLegAfter(legs, acts, idx)!} showMinutes={props.showTravelMinutes} timeZone={timeZone} />
+                ) : null}
               </Fragment>
             ))}
             {isToday && acts.length > 0 && upNext?.nowLineIndex === acts.length ? <NowLine now={now} /> : null}

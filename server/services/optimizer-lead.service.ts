@@ -14,6 +14,7 @@
  * R-f: only KINDS and COUNTS leave this module — never a re-sequenced order. Read behind the
  * caller's own plan gate (`GET /api/optimization-preview`, `authorizeTripLogistics`).
  */
+import { tripLegsShown } from "./routing/plan-routed-legs.service";
 import { asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, trips } from "@shared/schema";
@@ -32,7 +33,6 @@ import {
 import { factPointsForTrip, factsForTrip } from "./content-facts/place-facts.service";
 import { storage } from "../storage";
 import { legUnreachableFinding, unreachableStops } from "@shared/leg-reachability";
-import { getTripTransportLegs } from "./trip-transport-legs.service";
 
 function addDays(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -118,8 +118,10 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   // e. the plan's own energy verdicts.
   const energy = await storage.getEnergyTracking(tripId);
 
-  // f. reachability: the plan's OWN legs (the rows the traveler sees) against its own times.
-  const legs = await getTripTransportLegs(tripId);
+  // f. reachability: the plan's OWN legs (the rows the traveler sees) against its own times. Step 9a
+  // (ledger `2026-10-07-step9a-routing-engine`): the same read rule as the plan — on a routed plan its
+  // engine legs count, so the paid lead says how many legs don't fit.
+  const legs = await tripLegsShown(tripId);
   const reach = unreachableStops(
     items.map((r) => ({ id: r.id, title: r.title, dayNumber: r.dayNumber, startTime: r.startTime, endTime: r.endTime, durationMinutes: r.durationMinutes ?? null })),
     legs.map((l: any) => ({ id: l.id, dayNumber: l.dayNumber, fromActivityId: l.fromActivityId, toActivityId: l.toActivityId, estimatedDurationMinutes: l.estimatedDurationMinutes })),

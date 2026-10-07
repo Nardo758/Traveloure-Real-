@@ -1569,11 +1569,13 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
     await expect(testid(page, "slip-action-finalize-plan")).toBeVisible();
   });
   test("§7 A8 — Finalize computes the plan's legs, and they agree with plan-fit per day within 25%", async ({ page }) => {
-    // R228: Finalize runs activate-transport through the ONE travel-time service, from the plan's
-    // ITEMS. The fixture sits north of every seeded Kyoto neighbourhood, so both sides read the same
-    // straight-line tier (CI has no Routes key; the matrix stand-in covers the centre) — the check is
-    // that the two per-day numbers agree, and a day that does not is NAMED. The stay is placed on a
-    // day with no stops so its own item joins neither side.
+    // R228, amended by step 9a (ledger `2026-10-07-step9a-routing-engine`): Finalize computes legs
+    // ONLY on a plan that passes `planGetsRoutedLegs` (ruling 5) — this plan holds a Trip Pass — and
+    // through the routing engine, whose CI adapter is the stub (ROUTING_ADAPTER_STUB=1; straight line
+    // at the one speeds table, the same tier plan-fit reads here). The check is still that the two
+    // per-day numbers agree, and a day that does not is NAMED. The stay is placed on a day with no
+    // stops so its own item joins neither side; the engine's stay ↔ first/last legs are not part of the
+    // plan-fit comparison (plan-fit measures lodging → each stop), so only stop → stop legs are summed.
     const tripId = await planWithOccasion(page, "a8-legs", "travel");
     const stops: Array<[string, number, string, string]> = [
       ["North walk", 1, "35.0935", "135.7600"],
@@ -1581,7 +1583,8 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
       ["East garden", 2, "35.0800", "135.7765"],
       ["West garden", 2, "35.0800", "135.7435"],
     ];
-    for (const [title, day, latitude, longitude] of stops) await createItem(page.request, tripId, title, day, { latitude, longitude });
+    const stopIds: string[] = [];
+    for (const [title, day, latitude, longitude] of stops) stopIds.push(await createItem(page.request, tripId, title, day, { latitude, longitude }));
     const created = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
       data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true, dayNumber: 3 },
     });
@@ -1599,21 +1602,82 @@ test.describe("7 · choose, finalize, checkout, book, cancel", () => {
 
     const chose = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/choose`, { data: { optionId } });
     expect(ok2xx(chose.status()), await chose.text()).toBe(true);
+    await rows(`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES ($1, $2, 'trip_pass', 'active', 'manual')`, [`${tripId}-pass`, tripId]);
     const fin = await page.request.post(`${BASE_URL}/api/trips/${tripId}/finalize`, { data: {} });
     expect(ok2xx(fin.status()), await fin.text()).toBe(true);
     expect((await fin.json()).transportLegsCreated, "Finalize wrote the plan's legs").toBeGreaterThan(0);
 
-    const legRows = await rows<{ day: number; minutes: number; reason: string | null }>(
-      `SELECT day_number AS day, estimated_duration_minutes AS minutes, alternative_modes->0->>'reason' AS reason
+    const allLegs = await rows<{ day: number; minutes: number; source: string | null; from_id: string; to_id: string }>(
+      `SELECT day_number AS day, estimated_duration_minutes AS minutes, source, from_activity_id AS from_id, to_activity_id AS to_id
          FROM transport_legs WHERE trip_id = $1 AND variant_id IS NULL`,
       [tripId],
     );
+    const legRows = allLegs.filter((l) => stopIds.includes(l.from_id) && stopIds.includes(l.to_id));
     expect(legRows.length).toBe(2);
-    for (const l of legRows) expect(l.reason, "a straight-line leg carries its 'est.' label").toBe("est.");
+    for (const l of allLegs) expect(l.source, "every leg names its routing source").toBe("stub");
     const legsByDay: Record<number, number> = {};
     for (const l of legRows) legsByDay[l.day] = (legsByDay[l.day] ?? 0) + Number(l.minutes);
     const agreement = perDayAgreement(legsByDay, fit.minutesByDay);
     expect(agreement.agrees, `legs vs plan-fit disagree on day(s) ${agreement.disagreeing.join(", ")}: ${JSON.stringify(agreement.days)}`).toBe(true);
+  });
+  test("§9a — routed legs only on a qualifying plan; one edit re-routes exactly two legs", async ({ page }) => {
+    // Step 9a (ledger `2026-10-07-step9a-routing-engine`): a free plan gets no routed legs (R-e,
+    // ruling 5); a Trip Pass plan gets one per consecutive pair with its provenance; moving one stop
+    // re-routes the two legs that touch it — through the 2 s edit trigger — and leaves the third alone.
+    const tripId = await planWithOccasion(page, "9a-legs", "travel");
+    const pts: Array<[string, string, string]> = [
+      ["Ginkaku-ji", "35.0270", "135.7982"],
+      ["Heian Shrine", "35.0160", "135.7823"],
+      ["Gion", "35.0037", "135.7788"],
+      ["Kiyomizu-dera", "34.9949", "135.7850"],
+    ];
+    // Distinct sort orders: items that tie on (day, sort order, start time) have no fixed storage order,
+    // so the pairs a leg connects would be the database's choice, not the plan's.
+    const ids: string[] = [];
+    for (const [i, [title, latitude, longitude]] of pts.entries()) ids.push(await createItem(page.request, tripId, title, 1, { latitude, longitude, sortOrder: i }));
+    const legsNow = () =>
+      rows<{ id: string; from_id: string; to_id: string; source: string | null }>(
+        `SELECT id, from_activity_id AS from_id, to_activity_id AS to_id, source FROM transport_legs WHERE trip_id = $1 AND variant_id IS NULL ORDER BY leg_order`,
+        [tripId],
+      );
+
+    const free = await page.request.post(`${BASE_URL}/api/trips/${tripId}/activate-transport`, { data: {} });
+    expect(ok2xx(free.status()), await free.text()).toBe(true);
+    expect((await free.json()).routedLegs, "a free plan is told it has no routed legs").toBe(false);
+    expect(await legsNow(), "a free plan gets nothing written").toHaveLength(0);
+
+    await rows(`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES ($1, $2, 'trip_pass', 'active', 'manual')`, [`${tripId}-pass`, tripId]);
+    const paid = await page.request.post(`${BASE_URL}/api/trips/${tripId}/activate-transport`, { data: {} });
+    expect(ok2xx(paid.status()), await paid.text()).toBe(true);
+    const before = await legsNow();
+    expect(before.map((l) => [l.from_id, l.to_id])).toEqual([[ids[0], ids[1]], [ids[1], ids[2]], [ids[2], ids[3]]]);
+    for (const l of before) expect(l.source).toBe("stub");
+
+    const card = await page.request.get(`${BASE_URL}/api/trips/${tripId}/plancard`);
+    expect(ok2xx(card.status()), await card.text()).toBe(true);
+    const transports = ((await card.json()).days ?? []).flatMap((d: any) => d.transports ?? []);
+    expect(transports.filter((t: any) => t.routed?.provenance?.source === "stub"), "the plan carries each leg's provenance").toHaveLength(3);
+
+    const moved = await page.request.patch(`${BASE_URL}/api/trips/${tripId}/itinerary-items/${ids[1]}`, {
+      data: { latitude: "35.0110", longitude: "135.7900" },
+    });
+    expect(ok2xx(moved.status()), await moved.text()).toBe(true);
+    let after = before;
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(500);
+      after = await legsNow();
+      if (after.length === 3 && after[0].id !== before[0].id) break;
+    }
+    const changed = after.filter((l) => !before.some((b) => b.id === l.id));
+    expect(changed.map((l) => [l.from_id, l.to_id]), "exactly the two legs touching the moved stop").toEqual([[ids[0], ids[1]], [ids[1], ids[2]]]);
+    expect(after.find((l) => l.from_id === ids[2])!.id, "the third leg is the same row").toBe(before[2].id);
+
+    // The slip draws each routed leg between its two rows (ruling 1), with its provenance.
+    await page.goto(`/plans/${tripId}`);
+    const third = testid(page, `slip-leg-routed-${before[2].id}`);
+    await expect(third).toBeVisible({ timeout: 20_000 });
+    await expect(third).toContainText("Test routes · checked");
+    await expect(page.locator('[data-testid^="slip-leg-routed-line-"]')).toHaveCount(3);
   });
   test.fixme("§7 today — a staged listing shows the traveler fee on the slip, checks out, books, and cancels to a refund", async () => {
     // Waits on A0 (a3) supply: a live instant-mode Kyoto listing with a price, a future open slot and
