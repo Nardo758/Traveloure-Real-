@@ -4,6 +4,7 @@
  * written, and only on rows whose position changed; untimed stops keep their place. Never throws — a
  * failed re-sort leaves the edit standing (§15b: the ordering is ancillary to the edit).
  */
+import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems } from "@shared/schema";
@@ -27,6 +28,9 @@ export async function resortDayByTime(tripId: string, dayNumber: number | null |
         await tx.update(itineraryItems).set({ sortOrder: i }).where(and(eq(itineraryItems.id, row.id), eq(itineraryItems.tripId, tripId)));
         moved++;
       }
+      return moved;
+    }).then((moved) => {
+      if (moved > 0) enqueuePlanLegRecompute(tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
       return moved;
     });
   } catch (err) {

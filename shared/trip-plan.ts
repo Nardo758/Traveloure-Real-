@@ -522,6 +522,19 @@ export interface TripPlanLeg {
   pickupPoint?: string | null;
   /** Display string (no timezone math in v1) — see `pickupPoint`. */
   pickupTime?: string | null;
+  /**
+   * Step 9a (ledger `2026-10-07-step9a-routing-engine`; spec §3 LegRow, L6) — PRESENT ONLY on a leg the
+   * routing engine computed (`transport_legs.source` set), on a plan that passes `planGetsRoutedLegs`.
+   * The line name and the fare exactly as the source gave them (fare in its own currency, never
+   * converted); provenance names the source and when it answered. In-plan only (R-h).
+   */
+  routed?: TripPlanLegRouted;
+}
+
+export interface TripPlanLegRouted {
+  line: string | null;
+  fare: { amount: number; currency: string } | null;
+  provenance: { source: string; checkedAt: string };
 }
 
 export interface TripPlanDay {

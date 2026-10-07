@@ -18,7 +18,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { MAPS_CALLERS, MAPS_CALLER_KEYS, WORKSPACE_TEXT_SEARCH_FIELDS, type MapsCallerKey } from "@shared/maps-billing";
 import { mapsGate, withMapsGate, type MapsCallRecord, type MapsGateDeps } from "../services/maps-billing/maps-billing.core";
-import { mapsCallerCostTenthsOfCent, mapsCallerDailyCap, mapsCallerEnabled } from "../config/maps-billing.config";
+import { mapsCallRecordedTenths, mapsCallerCostTenthsOfCent, mapsCallerDailyCap, mapsCallerEnabled } from "../config/maps-billing.config";
 import { DRIVE_FIELD_MASK, MODE_FIELD_MASK, MODE_PATH_FIELD_MASK, drivingRouteBody, modeRouteBody } from "../services/maps-billing/maps-requests";
 import { PlacesAdapter, placesFieldMask } from "../services/content-facts/places-adapter";
 import { workspaceResultFrom, workspaceSearchBody } from "../services/maps-billing/places-text-search";
@@ -66,13 +66,13 @@ test("M1: every Maps caller names its tier, its own switch, cap and cost", () =>
   assert.equal(new Set(switches).size, switches.length);
 });
 
-test("M2: the gate refuses before any call — off, no key, cap 0, cap reached, unreadable counter", async () => {
+test("M2: the gate refuses before any call — off, no key, cap 0, cap reached (paused), unreadable counter", async () => {
   const cases: Array<[Partial<MapsGateDeps> & { used?: number | null }, string]> = [
     [{ enabled: () => false }, "disabled"],
     [{ apiKey: () => null }, "no_api_key"],
-    [{ dailyCap: () => 0 }, "cap_reached"],
-    [{ used: 10 }, "cap_reached"],
-    [{ used: null }, "cap_reached"],
+    [{ dailyCap: () => 0 }, "paused"],
+    [{ used: 10 }, "paused"],
+    [{ used: null }, "paused"],
   ];
   for (const [over, reason] of cases) {
     const d = deps(over);
@@ -227,4 +227,17 @@ test("M8: no legacy Place Photo or legacy Text Search URL, and no TRAFFIC_AWARE 
     if (/routingPreference:\s*["'`]TRAFFIC_AWARE/.test(src)) offenders.push(`${f} (TRAFFIC_AWARE)`);
   }
   assert.deepEqual(offenders, []);
+});
+
+test("M9 (step 9a ruling 7): a failed call records cost 0 and still counts; a paused call is not a call", async () => {
+  assert.equal(mapsCallRecordedTenths("routes_transit", 1, false), 0, "a failed call costs 0");
+  assert.equal(mapsCallRecordedTenths("routes_transit", 1, true), mapsCallerCostTenthsOfCent("routes_transit", 1));
+  assert.equal(mapsCallRecordedTenths("route_matrix", 100, true), 0, "the matrix's cost lives on its refresh row");
+  const d = deps({ used: 0 });
+  await withMapsGate("routes_transit", d, async () => ({ value: null, success: false }));
+  assert.equal(d.records.length, 1, "the failed call is recorded — its row counts toward the cap");
+  assert.equal(d.records[0].units, 1);
+  const paused = deps({ used: 10 });
+  assert.deepEqual(await withMapsGate("routes_transit", paused, async () => ({ value: 1 })), { refused: "paused" });
+  assert.equal(paused.records.length, 0, "a cap refusal records nothing");
 });

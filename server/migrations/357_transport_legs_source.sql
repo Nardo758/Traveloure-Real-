@@ -1,0 +1,16 @@
+-- 357 — step 9a routing engine (ledger `2026-10-07-step9a-routing-engine`; surface spec §14.1; step 9a
+-- ruling 3). SQL HELD for the founder's ruling before merge. ADDITIVE ONLY. No function, trigger,
+-- CREATE OR REPLACE or DO block. IF NOT EXISTS, so a second run is a no-op. Declared in shared/schema.ts
+-- (deploy-push durability rule).
+--
+-- transport_legs.source — which routing source computed this leg (`google_routes` | `stub`). NULL = not a
+-- routing-engine leg (an expert's, the variant optimizer's, a legacy row). Readers show an engine leg to a
+-- traveler only on a plan that passes `planGetsRoutedLegs` (ruling 3), and an expert's confirmed leg for
+-- the same pair wins. Nullable, no DEFAULT / CHECK / index / FK, no backfill — no new `proposal_status`
+-- value (that column carries migration 154's CHECK).
+--
+-- NO ROUTE CACHE TABLE (decision-maker, Oct 7, 2026, on #1325): Google's service terms (June 10, 2026)
+-- allow Routes content to be cached only as place IDs and lat/lng, so a Google duration or distance lives
+-- only on the plan's own `transport_legs` row. A cache table returns in 9a-ii with the self-hosted OSRM
+-- adapter, whose answers may be cached.
+ALTER TABLE transport_legs ADD COLUMN IF NOT EXISTS source varchar(30);

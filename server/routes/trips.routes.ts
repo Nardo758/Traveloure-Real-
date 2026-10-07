@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service";
 import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
 import { setItemLock } from '../services/item-lock.service';
 import { platformCarFits } from '../services/airport-leg.service';
@@ -2644,6 +2645,11 @@ router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenti
       const comparison = await storage.getItineraryComparison(variant.comparisonId);
       if (!comparison || comparison.userId !== userId) {
         return res.status(403).json({ error: "Not authorized" });
+      }
+      // Step 9a ruling 2 (ledger `2026-10-07-step9a-routing-engine`): routed legs are written only for a
+      // plan that passes `planGetsRoutedLegs` — never for a free plan, and never for a plan-less comparison.
+      if (!comparison.tripId || !(await tripGetsRoutedLegs(comparison.tripId))) {
+        return res.status(409).json({ error: "Travel times come with an optimized plan", code: "routed_legs_not_included" });
       }
 
       const items = await storage.getItineraryVariantItemsByVariantId(variantId);

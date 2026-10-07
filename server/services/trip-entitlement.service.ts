@@ -48,6 +48,7 @@
  * rule) that 'stripe' carries a real, non-empty source_payment_id, and 'manual'/'beta' carry
  * NO source_payment_id (null) — a manual grant must never carry a fabricated payment identity.
  */
+import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { feeLedger, tripEntitlements, type TripEntitlement } from "@shared/schema";
@@ -179,7 +180,11 @@ export async function grantTripPass(input: {
     .onConflictDoNothing()
     .returning();
 
-  if (inserted[0]) return { entitlement: inserted[0], created: true };
+  if (inserted[0]) {
+    // A Trip Pass unlocks routed legs (spec §14.3; step 9a ruling 2, ledger 2026-10-07-step9a-routing-engine).
+    enqueuePlanLegRecompute(input.tripId);
+    return { entitlement: inserted[0], created: true };
+  }
 
   // Conflict path: either this PI raced its own duplicate (stripe), or the trip already
   // has an active pass from a different grant (stripe PI or manual/beta). Return whatever
