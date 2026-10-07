@@ -40,6 +40,7 @@ import {
 } from "./transport-leg-calculator";
 import { haversineMeters } from "@shared/geo";
 import { isPickedLeg } from "@shared/leg-picked";
+import { pickLegOption } from "@shared/leg-options";
 import { defaultLegMode, LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { ResolvedLeg } from "@shared/leg-resolution";
 import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
@@ -638,9 +639,23 @@ export async function updateTripTransportLeg(
 
   const updates: Record<string, any> = { updatedAt: new Date() };
 
+  // Step 9c D3 (ledger `2026-10-07-step9c-leg-options`): on an ENGINE leg whose options were asked, the
+  // pick is one of those answers — moved to entry 0 with its own facts and provenance, no call made.
+  const optionPick = patch.userSelectedMode !== undefined && leg.source != null ? pickLegOption(leg.alternativeModes, patch.userSelectedMode) : null;
   const recomputed =
-    patch.userSelectedMode !== undefined ? await recomputeLegForMode(leg, patch.userSelectedMode) : null;
-  if (recomputed) {
+    patch.userSelectedMode !== undefined && !optionPick ? await recomputeLegForMode(leg, patch.userSelectedMode) : null;
+  if (optionPick) {
+    updates.userSelectedMode = patch.userSelectedMode;
+    updates.alternativeModes = optionPick.entries;
+    updates.recommendedMode = optionPick.row.recommendedMode;
+    updates.estimatedDurationMinutes = optionPick.row.estimatedDurationMinutes;
+    if (optionPick.row.distanceMeters != null) {
+      updates.distanceMeters = optionPick.row.distanceMeters;
+      updates.distanceDisplay = formatDistance(optionPick.row.distanceMeters);
+    }
+    updates.source = optionPick.row.source;
+    updates.calculatedAt = optionPick.row.calculatedAt;
+  } else if (recomputed) {
     updates.userSelectedMode = patch.userSelectedMode;
     Object.assign(updates, recomputed);
   } else if (patch.userSelectedMode !== undefined) {

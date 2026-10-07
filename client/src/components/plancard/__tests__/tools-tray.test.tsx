@@ -40,7 +40,8 @@ const chips = (html: string) => {
   return out;
 };
 
-const NO_COMPONENT = new Set(["getting_around", "getting_home", "budget", "arrivals_split_groups", "split_activities", "who_pays_what", "getting_back_late"]);
+// Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned): Getting around is built; Getting home stays.
+const NO_COMPONENT = new Set(["getting_home", "budget", "arrivals_split_groups", "split_activities", "who_pays_what", "getting_back_late"]);
 
 describe("tools tray", () => {
   it("T1 each group draws its manifest's chips, in order; unknown → Trip", () => {
@@ -63,9 +64,10 @@ describe("tools tray", () => {
     for (const group of ["trips", "moments", "celebrations", "hosted_events", "group_travel"]) {
       for (const [k, available] of chips(render({ group }))) assert.equal(available, !NO_COMPONENT.has(k), `${group}/${k}`);
     }
-    const html = render({ group: "trips" });
-    assert.match(html, /<button[^>]*disabled=""[^>]*data-testid="tool-chip-getting_around"/);
+    const html = render({ group: "moments" });
+    assert.match(html, /<button[^>]*disabled=""[^>]*data-testid="tool-chip-getting_home"/);
     assert.ok(html.includes("coming soon"));
+    assert.doesNotMatch(render({ group: "trips" }), /<button[^>]*disabled=""[^>]*data-testid="tool-chip-getting_around"/);
   });
 
   it("T3 a hidden occasion has no guest or party chip", () => {

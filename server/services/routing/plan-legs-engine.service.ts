@@ -16,6 +16,7 @@ import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schem
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { marketHasTransitCoverage, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED } from "@shared/travel-speeds";
+import type { StoredLegOption } from "@shared/leg-options";
 import { zonedWallClockToInstant, addCalendarDays } from "@shared/plan-timing";
 import { storage } from "../../storage";
 import { TRANSPORT_PROFILES } from "../../data/transport-profiles";
@@ -111,17 +112,12 @@ async function airportStopsForPlan(tripId: string, tripStart: string | null): Pr
   return out;
 }
 
-export async function computePlanLegs(
-  tripId: string,
-  deps: { adapter?: RoutingAdapter | null; qualifies?: boolean } = {},
-): Promise<PlanLegsResult> {
-  const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
-  if (!adapter) return { skipped: "engine_off" };
-  const qualifies = deps.qualifies ?? (await tripGetsRoutedLegs(tripId));
-  if (!qualifies) return { skipped: "free_plan" };
-  const trip = await storage.getTrip(tripId);
-  if (!trip) return { skipped: "no_trip" };
-
+/**
+ * The plan's leg context — its stops, stay and airports as the engine sees them, the legs it should have
+ * and the engine legs it holds. ONE loader for the recompute and for a leg's options ask (step 9c D1,
+ * ledger `2026-10-07-step9c-leg-options`), so an option is keyed exactly as the recompute would key it.
+ */
+export async function loadPlanLegContext(tripId: string, trip: NonNullable<Awaited<ReturnType<typeof storage.getTrip>>>) {
   const items = await storage.getItineraryItems(tripId);
   const [factPoints, factViews, placeRefs, stayPoint, existingRows] = await Promise.all([
     factPointsForTrip(tripId),
@@ -191,13 +187,29 @@ export async function computePlanLegs(
     selectedMode: (k) => picked.get(k) ?? null,
     airports: await airportStopsForPlan(tripId, trip.startDate ? String(trip.startDate).slice(0, 10) : null),
   });
-  const diff = diffPlanLegs(desired, existing, confirmedPairs);
 
   const tripStart = trip.startDate ? String(trip.startDate).slice(0, 10) : null;
   const departAt = (leg: DesiredLeg): Date | null => {
     if (!tripStart || !leg.wallClock) return null;
     return zonedWallClockToInstant(addCalendarDays(tripStart, leg.dayNumber - 1), leg.wallClock, trip.timezone);
   };
+  const hasTransitCoverage = marketHasTransitCoverage(profile?.availableModes);
+  return { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, hasTransitCoverage };
+}
+
+export async function computePlanLegs(
+  tripId: string,
+  deps: { adapter?: RoutingAdapter | null; qualifies?: boolean } = {},
+): Promise<PlanLegsResult> {
+  const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
+  if (!adapter) return { skipped: "engine_off" };
+  const qualifies = deps.qualifies ?? (await tripGetsRoutedLegs(tripId));
+  if (!qualifies) return { skipped: "free_plan" };
+  const trip = await storage.getTrip(tripId);
+  if (!trip) return { skipped: "no_trip" };
+
+  const { desired, skipped, engineRows, confirmedPairs, existing, picked, googleFetchedAt, departAt } = await loadPlanLegContext(tripId, trip);
+  const diff = diffPlanLegs(desired, existing, confirmedPairs);
 
   // No persistent route cache (Google terms, decision-maker Oct 7, 2026): the memo lives for THIS call,
   // seeded only from the plan's OWN legs — its engine legs and its latest run's version legs, by key —
@@ -208,6 +220,20 @@ export async function computePlanLegs(
     const key = engineLegKey(l.alternativeModes);
     if (facts && key && Number(l.estimatedDurationMinutes) > 0) {
       memo.seed(key, { durationMin: Number(l.estimatedDurationMinutes), distanceM: Number(l.distanceMeters ?? 0), line: facts.line, fare: facts.fare, provenance: facts.provenance });
+    }
+  }
+  // Step 9c D1/D3 (ledger `2026-10-07-step9c-leg-options`): a leg's asked options are the plan's own
+  // answers too, so a mode picked from them is never re-asked.
+  for (const l of engineRows) {
+    for (const o of (Array.isArray(l.alternativeModes) ? (l.alternativeModes as StoredLegOption[]) : []).slice(1)) {
+      if (typeof o?.legKey !== "string" || !o.checkedAt || !(Number(o.durationMinutes) > 0)) continue;
+      memo.seed(o.legKey, {
+        durationMin: Number(o.durationMinutes),
+        distanceM: Number(o.distanceMeters ?? 0),
+        line: o.line ?? null,
+        fare: o.fare ?? null,
+        provenance: { source: o.reason, checkedAt: o.checkedAt },
+      });
     }
   }
   let calls = 0;

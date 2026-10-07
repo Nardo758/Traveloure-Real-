@@ -9,6 +9,9 @@
  * non-production environment; neither of those is read or reported here. The list is closed: a name is
  * added here deliberately, and only a boolean ever leaves, never an env value.
  */
+import { MAPS_CALLER_KEYS, type MapsCallerKey } from "@shared/maps-billing";
+import { mapsCallerDailyCap } from "../config/maps-billing.config";
+
 export const HEALTH_FLAG_NAMES = [
   "PLACE_FACTS_PLACES_ENABLED",
   "AFFILIATE_PAGE_EXTRACT_ENABLED",
@@ -19,8 +22,8 @@ export const HEALTH_FLAG_NAMES = [
   "FLIGHT_LOOKUP_ENABLED",
   // R-bo (work plan L1-19): expert scrape jobs, admin-only and OFF in production.
   "EXPERT_SCRAPE_JOBS_ENABLED",
-  // R299 Maps billing switches: report configuration only, never credentials,
-  // caps, prices or a claim that a provider request succeeded.
+  // R299 Maps billing switches and (step 9c D6, `healthMapsCaps`) cap values: configuration only —
+  // never credentials, prices, spend or a claim that a provider request succeeded.
   "MAPS_ROUTES_DRIVE_ENABLED",
   "MAPS_ROUTES_MODE_ENABLED",
   "MAPS_ROUTES_TRANSIT_ENABLED",
@@ -42,6 +45,19 @@ export const healthEgress = { nominatim: "untested" as "ok" | "blocked" | "untes
  *  such lookup answered. Never-checked is `{ false, false }`, never a claim of reachability (§13). */
 export function healthEgressFlags(state: typeof healthEgress = healthEgress): { nominatimChecked: boolean; nominatimReachable: boolean } {
   return { nominatimChecked: state.nominatim !== "untested", nominatimReachable: state.nominatim === "ok" };
+}
+
+/**
+ * Step 9c D6 (ledger `2026-10-07-step9c-leg-options`; architect ruling, Oct 7, 2026): each Maps caller's
+ * EFFECTIVE daily cap — the integer the R299 gate enforces (`mapsCallerDailyCap`, the env value or the
+ * code default) — keyed by caller, beside the switches. Never an env name, never spend or cost (those
+ * stay behind the secret on `/internal/jobs/health`). Changing a cap still means the deployment's
+ * secrets until FU-9C-3 puts caps on the admin fees/switches screen.
+ */
+export function healthMapsCaps(env: Record<string, string | undefined> = process.env): Record<MapsCallerKey, number> {
+  const out = {} as Record<MapsCallerKey, number>;
+  for (const key of MAPS_CALLER_KEYS) out[key] = mapsCallerDailyCap(key, env);
+  return out;
 }
 
 export function healthFlags(env: Record<string, string | undefined> = process.env): HealthFlags {

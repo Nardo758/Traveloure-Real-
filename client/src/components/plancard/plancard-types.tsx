@@ -400,6 +400,10 @@ export interface PlanCardTransport {
    * routed plan: line and fare as the source gave them, and who answered when.
    */
   routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } };
+  /** Step 9c (ledger `2026-10-07-step9c-leg-options`): an engine leg's mode options, current first (≤3). */
+  routedOptions?: import("@shared/leg-options").LegOptionView[];
+  /** Step 9c: the options were already asked — a tap makes no call. */
+  routedOptionsChecked?: true;
   /**
    * Mode-aware primary action (CLAUDE.md §18) — a chauffeured leg's real booking detail.
    * KNOWN GAP: `plancard.routes.ts` does not populate these fields today (no such data path

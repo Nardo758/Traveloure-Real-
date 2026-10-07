@@ -4,13 +4,15 @@
  *   F1  exactly the named switches, each a boolean; "1" is on and anything else is off
  *   F2  no env VALUE ever leaves: a secret-looking value in any variable is never in the output
  *   F3  the route wires it on every branch (source pin: the ok answer and both 503 answers)
+ *   F6  step 9c D6 (ledger `2026-10-07-step9c-leg-options`): `mapsCaps` — each Maps caller's effective
+ *       daily cap as a NUMBER, keyed by caller; never an env name, never a non-numeric env value
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags } from "../runtime-flags";
+import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags, healthMapsCaps } from "../runtime-flags";
 import { MAPS_CALLERS, MAPS_CALLER_KEYS } from "@shared/maps-billing";
 
 const MAPS_HEALTH_NAMES = [
@@ -60,6 +62,14 @@ test("F2: no env value is ever echoed", () => {
   assert.equal(out.includes("FLIGHT_LOOKUP_API_KEY"), false, "the flight switch is reported, never its key");
   assert.equal(out.includes("GOOGLE_MAPS_BROWSER_KEY"), false, "never report the browser credential");
   assert.equal(out.includes("MAPS_ROUTES_DRIVE_DAILY_CAP"), false, "caps are not health switches");
+  // Step 9c D6 (sanctioned amendment, architect Oct 7, 2026): the cap VALUE is reported — as a number
+  // under `mapsCaps`, keyed by caller — while its env NAME and any non-numeric env value never are.
+  const caps = healthMapsCaps({ MAPS_ROUTES_DRIVE_DAILY_CAP: "750", MAPS_ROUTES_MODE_DAILY_CAP: secret });
+  const capsOut = JSON.stringify(caps);
+  assert.equal(caps.routes_drive, 750);
+  assert.equal(caps.routes_mode, MAPS_CALLERS.routes_mode.defaultDailyCap, "a non-numeric cap falls back to the default");
+  assert.equal(capsOut.includes(secret), false);
+  assert.equal(capsOut.includes("MAPS_ROUTES_DRIVE_DAILY_CAP"), false, "never the env name");
   assert.equal(out.includes("MAPS_ROUTES_DRIVE_USD_PER_1000"), false, "prices are not health switches");
 });
 
@@ -175,4 +185,20 @@ test("F5: real seeder reports answers, failures and no-attempt cases without any
     if (oldSwitch === undefined) delete process.env.CITY_EVENTS_VENUE_LOOKUP; else process.env.CITY_EVENTS_VENUE_LOOKUP = oldSwitch;
     await pool.end();
   }
+});
+
+test("F6: mapsCaps is every caller's effective cap as an integer, beside the flags on every branch", () => {
+  const caps = healthMapsCaps({});
+  assert.deepEqual(Object.keys(caps).sort(), [...MAPS_CALLER_KEYS].sort());
+  for (const k of MAPS_CALLER_KEYS) {
+    assert.equal(caps[k], Math.floor(MAPS_CALLERS[k].defaultDailyCap), `${k} reads its code default when unset`);
+    assert.ok(Number.isInteger(caps[k]));
+  }
+  assert.equal(healthMapsCaps({ MAPS_ROUTES_TRANSIT_DAILY_CAP: "0" }).routes_transit, 0, "0 = none, reported as 0");
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const src = fs.readFileSync(path.join(here, "../../routes/content.routes.ts"), "utf8");
+  const start = src.indexOf('router.get("/api/health"');
+  const block = src.slice(start, src.indexOf('router.get("/api/status"', start));
+  assert.equal((block.match(/\bbuild, flags, egress, mapsCaps\b/g) ?? []).length, 3);
+  assert.ok(block.includes("const mapsCaps = healthMapsCaps();"));
 });

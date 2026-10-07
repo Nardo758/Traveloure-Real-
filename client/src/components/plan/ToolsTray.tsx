@@ -15,6 +15,7 @@ import { VendorContractBoard } from "@/components/logistics/vendor-contract-boar
 import { SlipTravelingParty } from "@/components/plancard/SlipTravelingParty";
 import { SlipAnchorsTool, SlipGuestsTool } from "@/components/plancard/SlipLogisticsSection";
 import { GettingThereSheet } from "./GettingThereSheet";
+import { GettingAroundSheet } from "./GettingAroundSheet";
 import { TOOL_LABEL, manifestFor, type ToolKey } from "@shared/group-manifest";
 import type { PlanEvent } from "@/lib/slip-events";
 
@@ -68,8 +69,11 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
     case "vendors":
     case "vendor_contracts":
       return <VendorContractBoard tripId={p.tripId} />;
-    // No existing component — "coming soon", never built here.
+    // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`): the plan's own legs, zero Maps calls.
     case "getting_around":
+      return <GettingAroundSheet tripId={p.tripId} />;
+    // No existing component — "coming soon", never built here. Getting home stays so: a Moment has no
+    // departure point and `users.home_city` is a city, not a point (D7, FU-9C-2).
     case "getting_home":
     case "budget":
     case "arrivals_split_groups":
