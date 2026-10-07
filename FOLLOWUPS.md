@@ -1141,7 +1141,12 @@ without limit), which joins `CACHEABLE_ROUTE_SOURCES` (`shared/routing-engine.ts
 any cache writer must pass. 9a-ii starts with its own Phase 0: what it takes to run OSRM for the eight
 markets in Replit's deployment (extracts, memory, build time, updates).
 
-### FU-9A-2 — 9b: airport coordinates on the flight anchor (IATA → coordinates)
+### FU-9A-2 — 9b: airport coordinates on the flight anchor (IATA → coordinates) — DONE in 9b
+
+**Done (ledger `2026-10-07-step9b-optimizer-and-rechecks`):** the table already existed
+(`server/data/iata-airports.json`); `server/services/airport-coords.ts` stamps a flight anchor's point from
+an exact IATA code in the storage writer, the engine routes airport ↔ stay legs, and the buffer check adds
+the routed leg's minutes. The slip's airport row shows the minutes once Track A passes them (FU-9B-1).
 
 No writer puts coordinates on a flight anchor (`temporal_anchors.latitude/longitude`), so the airport has
 no point and airport legs stay as step 3 drew them, with the fixed buffer (accepted for 9a, ruling 2 on
@@ -1154,8 +1159,31 @@ Items that tie on (day, sort order, start time) have no fixed storage order, so 
 can flip on any write (found by the §9a e2e; its fixture now gives stops distinct sort orders). Ruling 3
 on #1325: a real bug, Track A's small PR in the shared item query.
 
-### FU-9A-4 — 9b: refetch legs once after the debounce window
+### FU-9A-4 — 9b: refetch legs once after the debounce window — DONE in 9b
+
+**Done (ledger `2026-10-07-step9b-optimizer-and-rechecks`, D8):** `invalidatePlan` schedules one more
+plancard read `PLAN_LEG_REFETCH_DELAY_MS` after an item write on a plan whose payload says `routedLegs`.
 
 An edit's legs are recomputed ~2 s after the write (ruling 10), so the slip shows them only on its next
 read (accepted for 9a, ruling 4 on #1325). 9b refetches the plan's legs once after the debounce window so
 the row appears without a reload.
+
+### FU-9B-1 — Track A: pass the routed airport minutes to the slip's airport row (one line)
+
+Step 9b (ledger `2026-10-07-step9b-optimizer-and-rechecks`) gave `AirportLegRow` an optional
+`routedMinutes` prop and `flightAnchorFor` an `airportLegMinutes` field (from the anchors GET's
+`routedLeg`). The mount is `renderAirportLeg` in `client/src/components/plancard/SlipView.tsx` — Track A's
+file (brief L11) — so 9b did not touch it. The change is one prop:
+`routedMinutes={flight?.airportLegMinutes ?? null}`. Until then the buffer check already uses the routed
+minutes; only the row's "· 42 min" is missing.
+
+### FU-9B-2 — a leg's re-check status lives only as long as the leg row
+
+The re-check writes `leg_check_status` / `leg_checked_at` on the leg row (D5). An engine recompute deletes
+and re-inserts the legs it changes, so a changed pair's status goes with the old row — which is honest (the
+new row was just routed), but it means the banner finding (a notice) is the durable record, not the column.
+
+### FU-9B-3 — T-3 still selects on the UTC calendar
+
+D6 keeps the T-3 pass on `facts-recheck` at 09:00 UTC with its UTC "start in 3 days" selection; only the
+leg half reads the plan's chosen dates (D9). Moving the hours half to the plan's zone is a separate change.

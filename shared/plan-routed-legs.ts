@@ -31,3 +31,13 @@ export function planGetsRoutedLegs(plan: PlanRoutingFacts): boolean {
     plan.readyMadeCopy
   );
 }
+
+/**
+ * Step 9a ruling 10: the server recomputes a plan's legs this long after its LAST item write. Shared so
+ * the slip's one delayed refetch (step 9b D8, ledger `2026-10-07-step9b-optimizer-and-rechecks`) and the
+ * server's debounce read one number (§18 rule 1).
+ */
+export const PLAN_LEG_DEBOUNCE_MS = 2000;
+
+/** D8: the slip re-reads the plan once, this long after an item write — the debounce plus the recompute. */
+export const PLAN_LEG_REFETCH_DELAY_MS = PLAN_LEG_DEBOUNCE_MS + 2500;

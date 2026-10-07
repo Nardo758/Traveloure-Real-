@@ -16,7 +16,7 @@
 import type { ReactNode } from "react";
 import { Anchor } from "lucide-react";
 import { ROUTING_TINTS } from "@/components/plancard/slip-tokens";
-import { anchorWallTime } from "@shared/getting-there";
+import { anchorWallTime, flightBufferWithLeg } from "@shared/getting-there";
 
 export interface AnchorRowProps {
   id: string;
@@ -85,25 +85,42 @@ export interface FlightAnchorView {
   time: string | null;
   location: string | null;
   description: string | null;
-  /** S10-1: the anchor's own buffer — after landing (arrival) or before take-off (departure). */
+  /**
+   * S10-1: the buffer the day is measured against — after landing (arrival) or before take-off
+   * (departure). Step 9b FU-9A-2: on a plan with a ROUTED airport leg it includes that leg's minutes
+   * (`flightBufferWithLeg`); otherwise it is the anchor's own stored buffer.
+   */
   bufferMinutes?: number | null;
+  /** FU-9A-2: the routed airport leg's minutes, present only when the server sent one. */
+  airportLegMinutes?: number | null;
 }
 
 /** The plan's flight anchor of one direction, or null (the first one — a plan has one flight in, one out). */
 export function flightAnchorFor(
   anchors:
-    | ReadonlyArray<{ anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null; bufferBefore?: number | null; bufferAfter?: number | null }>
+    | ReadonlyArray<{
+        anchorType: string;
+        anchorDatetime: string;
+        location?: string | null;
+        description?: string | null;
+        bufferBefore?: number | null;
+        bufferAfter?: number | null;
+        routedLeg?: { minutes?: number | null } | null;
+      }>
     | undefined,
   type: "flight_arrival" | "flight_departure",
 ): FlightAnchorView | null {
   const a = (anchors ?? []).find((x) => x.anchorType === type);
   if (!a) return null;
   const buf = type === "flight_arrival" ? a.bufferAfter : a.bufferBefore;
+  const legMinutes = Number(a.routedLeg?.minutes);
+  const airportLegMinutes = Number.isFinite(legMinutes) && legMinutes > 0 ? legMinutes : null;
   return {
     time: anchorWallTime(a.anchorDatetime),
     location: a.location ?? null,
     description: a.description ?? null,
-    bufferMinutes: typeof buf === "number" ? buf : null,
+    bufferMinutes: flightBufferWithLeg(type === "flight_arrival" ? "arrival" : "departure", typeof buf === "number" ? buf : null, airportLegMinutes),
+    ...(airportLegMinutes != null ? { airportLegMinutes } : {}),
   };
 }
 

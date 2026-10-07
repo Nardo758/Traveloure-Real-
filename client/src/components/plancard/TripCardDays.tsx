@@ -34,6 +34,7 @@ import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { apiRequest } from "@/lib/queryClient";
 import { FEEDBACK_CODES } from "@shared/feedback";
 import { recheckAskLabel, recheckBannerLine, RECHECK_BANNER_SWAP } from "@shared/facts-recheck";
+import { legRecheckLine, type LegRecheckFinding } from "@shared/leg-recheck";
 import { freeFindingsPromptLine, type Finding } from "@shared/optimizer-lead";
 import { calendarDayOf } from "@shared/plan-timing";
 import type { FactView } from "@shared/content-facts";
@@ -148,7 +149,12 @@ export function TripCardDays(props: TripCardDaysProps) {
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 
   // T-3 banner (R-ad): the job's recorded finding, read.
-  const { data: recheck } = useQuery<{ conflict: { findings: Finding[]; checkedAt: string | null } | null }>({
+  const { data: recheck } = useQuery<{
+    conflict: { findings: Finding[]; checkedAt: string | null } | null;
+    // Step 9b (D5, ledger `2026-10-07-step9b-optimizer-and-rechecks`): changed or broken legs the
+    // re-checks found — read, never recomputed here; the plan itself was not rewritten.
+    legs?: Array<LegRecheckFinding & { dayNumber: number | null; checkedAt: string | null }>;
+  }>({
     queryKey: [`/api/trips/${tripId}/recheck`],
     retry: false,
   });
@@ -227,6 +233,24 @@ export function TripCardDays(props: TripCardDaysProps) {
                 {recheckAskLabel(props.advisorName ? props.advisorName.split(" ")[0] : null)}
               </Button>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {recheck?.legs?.length ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="card-recheck-legs">
+          {recheck.legs.map((l, i) => (
+            <p key={i} className="flex items-start gap-1.5" data-testid={`card-recheck-leg-${i}`}>
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-700" />
+              <span>{legRecheckLine(l, factCheckedLabel(l.checkedAt, timeZone))}</span>
+            </p>
+          ))}
+          <div className="mt-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/plans/${tripId}`} data-testid="card-recheck-legs-swap">
+                {RECHECK_BANNER_SWAP}
+              </Link>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -319,6 +343,12 @@ export function TripCardDays(props: TripCardDaysProps) {
                   onOpenDetails={() => setSheetFor(a)}
                   visited={isToday ? { checked: visited.has(a.id), onToggle: () => toggleVisited(a.id) } : null}
                 />
+                {/* Step 9b D7: "Leave by" — today's up-next row only, from the leg into it (never stored). */}
+                {isToday && upNext?.leaveBy && upNext.upNextActivity?.id === a.id ? (
+                  <p className="pl-2 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`card-leave-by-${a.id}`}>
+                    Leave by {upNext.leaveBy}
+                  </p>
+                ) : null}
                 {idx < acts.length - 1 && cardLegAfter(legs, acts, idx) ? (
                   <LegLine leg={cardLegAfter(legs, acts, idx)!} showMinutes={props.showTravelMinutes} timeZone={timeZone} />
                 ) : null}

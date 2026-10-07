@@ -20,7 +20,8 @@ import {
   notifications,
 } from "@shared/schema";
 import { db } from "../db";
-import { and, count, eq, inArray, notInArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { legRecheckDedupePrefix } from "@shared/leg-recheck";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole } from "../utils/trip-role";
@@ -48,12 +49,24 @@ import { listRunsForTrip, recordRunOutcome } from "../services/optimizer-runs.se
 import { optimizerRunRecordsEnabled } from "../config/optimizer-runs.config";
 import { readyMadeProvenanceForTrip } from "../services/ready-made-provenance.service";
 
+/**
+ * Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the plan gets routed legs — the engine
+ * is on and the plan passes `planGetsRoutedLegs`. The slip reads it to refetch ONCE after the debounce.
+ */
+async function routedLegsFor(tripId: string): Promise<boolean> {
+  try {
+    return !!routingAdapter() && (await tripGetsRoutedLegs(tripId));
+  } catch {
+    return false;
+  }
+}
+
 /** L5: travel times are paused for this plan only when it is routed, the engine is on, and a Routes caller is capped. */
-async function travelTimesPausedFor(tripId: string): Promise<boolean> {
+async function travelTimesPausedFor(tripId: string, routed: boolean): Promise<boolean> {
   try {
     const adapter = routingAdapter();
-    if (!adapter || adapter.source !== "google_routes") return false;
-    return (await tripGetsRoutedLegs(tripId)) && (await routingPausedToday());
+    if (!routed || !adapter || adapter.source !== "google_routes") return false;
+    return await routingPausedToday();
   } catch {
     return false;
   }
@@ -598,11 +611,38 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
       .where(eq(notifications.dedupeKey, `facts-recheck:${tripId}`))
       .limit(1);
     const data = (row?.data ?? null) as { findings?: unknown; checkedAt?: unknown } | null;
+    // Step 9b (D5, ledger `2026-10-07-step9b-optimizer-and-rechecks`): the leg findings the re-checks
+    // recorded — one notice per stop pair per check date; the LATEST per pair is read. Empty = none
+    // found (or none run), never "all legs checked" (§13).
+    const legRows = await db
+      .select({ data: notifications.data, createdAt: notifications.createdAt })
+      .from(notifications)
+      .where(sql`${notifications.dedupeKey} LIKE ${legRecheckDedupePrefix(tripId) + "%"}`)
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
+    const seenPairs = new Set<string>();
+    const legs: Array<Record<string, unknown>> = [];
+    for (const r of legRows) {
+      const d = (r.data ?? {}) as Record<string, any>;
+      const pair = `${d.dayNumber}:${d.fromActivityId}:${d.toActivityId}`;
+      if (seenPairs.has(pair) || (d.status !== "changed" && d.status !== "broken")) continue;
+      seenPairs.add(pair);
+      legs.push({
+        dayNumber: d.dayNumber ?? null,
+        toName: d.toName ?? null,
+        mode: d.mode ?? null,
+        wasMin: d.wasMin ?? null,
+        nowMin: d.nowMin ?? null,
+        status: d.status,
+        checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : r.createdAt ?? null,
+      });
+    }
     res.json({
       conflict:
         data && Array.isArray(data.findings) && data.findings.length
           ? { findings: data.findings, checkedAt: typeof data.checkedAt === "string" ? data.checkedAt : row?.createdAt ?? null }
           : null,
+      legs,
     });
   } catch (error) {
     console.error("Error reading the re-check:", error);
@@ -826,6 +866,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // in the assembler. `null` = not a copy. The slip header and the Trip Card (`?surface=card`)
     // read it from this one payload; the line itself is drawn by Lane 2.
     const readyMadeSource = await readyMadeProvenanceForTrip(tripId);
+    // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): does the engine route this plan?
+    const routedLegs = await routedLegsFor(tripId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
@@ -876,7 +918,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Step 9a, L5 (ledger `2026-10-07-step9a-routing-engine`) — PRESENT ONLY WHEN TRUE: a routed plan
       // whose routing source hit today's cap. Its legs stay as last computed; the slip says so in one
       // line. Never on a free plan, which has no routed legs to pause.
-      ...((await travelTimesPausedFor(tripId)) ? { travelTimesPaused: true } : {}),
+      ...((await travelTimesPausedFor(tripId, routedLegs)) ? { travelTimesPaused: true } : {}),
+      // Step 9b D8: PRESENT ONLY WHEN TRUE — the plan's legs are recomputed by the engine after an edit.
+      ...(routedLegs ? { routedLegs: true } : {}),
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

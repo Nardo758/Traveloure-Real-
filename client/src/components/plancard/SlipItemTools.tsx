@@ -27,6 +27,7 @@ import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { legRefetchDelayMs } from "@/lib/slip-legs";
 import {
   buildSlipAddItemBody,
   buildSlipEditItemBody,
@@ -43,6 +44,10 @@ import {
 /** The two reads a write here invalidates — the plan surface and the row list the form prefills from. */
 function invalidatePlan(tripId: string) {
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): on a routed plan the server
+  // recomputes the edited legs after its debounce — re-read the plan ONCE after that window.
+  const delay = legRefetchDelayMs(queryClient.getQueryData([`/api/trips/${tripId}/plancard`]) as { routedLegs?: boolean } | undefined);
+  if (delay != null) setTimeout(() => void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] }), delay);
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
   // Smoke 10 S10-5: the Optimize card's findings (clashes, closed-on-arrival…) are read off the
   // items, so any item write refetches them — no stale clash count until reload.

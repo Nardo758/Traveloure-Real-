@@ -1319,7 +1319,9 @@ test.describe("6 · paid run", () => {
     // R-f: the preview carries kinds and counts, never an order.
     const body = (await preview.json()) as { findings?: Array<{ kind: string; count: number; days: number[] }> };
     expect(Array.isArray(body.findings)).toBe(true);
-    for (const f of body.findings ?? []) expect(Object.keys(f).sort().filter((k) => !["caveat", "est"].includes(k))).toEqual(["count", "days", "kind"]);
+    // Step 9b (D3, ledger `2026-10-07-step9b-optimizer-and-rechecks`): a finding that reads leg durations
+    // also says whether they were `routed` — a flag, not an order.
+    for (const f of body.findings ?? []) expect(Object.keys(f).sort().filter((k) => !["caveat", "est", "routed"].includes(k))).toEqual(["count", "days", "kind"]);
   });
   test("§6 smoke 10 S10-2 — /itinerary-comparison/<planId> with no run is a Draft-only versions board, never the old cart screen", async ({ page }) => {
     await signedInTraveler(page, "s10nr");
