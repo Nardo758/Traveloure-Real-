@@ -2530,7 +2530,7 @@ This document captures architectural decisions to maintain consistency across co
 
 63. **ROUTED LEGS ARE THE ROUTING ENGINE'S, ONLY ON A PLAN THAT EARNED THEM, AND A GOOGLE ANSWER IS NEVER
     CACHED (decision-maker/architect, Oct 7, 2026 — step 9a rulings 1–11 and the four on #1325, ledger
-    `2026-10-07-step9a-routing-engine`; surface spec §14, R-e; migration 357, HELD FOR RULING).** ONE
+    `2026-10-07-step9a-routing-engine`; surface spec §14, R-e; migration 357, APPROVED by the founder Oct 7, 2026).** ONE
     predicate, `planGetsRoutedLegs` (`shared/plan-routed-legs.ts`): a finished Optimize run (an `ai_optimized`
     variant), an active Trip Pass, a handoff `accepted` | `delivered` | `approved` (never `proposed`,
     `unmatched` or `withdrawn` — legs never vanish on approval), or a Ready Made copy. Every leg writer and
