@@ -9543,7 +9543,7 @@ export const tripEntitlements = pgTable("trip_entitlements", {
   status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'revoked'
   grantedAt: timestamp("granted_at").notNull().defaultNow(),
   sourcePaymentId: varchar("source_payment_id", { length: 255 }),
-  source: varchar("source", { length: 20 }).notNull().default("stripe"), // 'stripe' | 'manual' | 'beta'
+  source: varchar("source", { length: 20 }).notNull().default("stripe"), // 'stripe' | 'manual' | 'beta' | 'qa' (admin zero-charge QA issue, ledger 2026-10-08-qa-trip-pass-issue)
   allowancesSnapshot: jsonb("allowances_snapshot").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

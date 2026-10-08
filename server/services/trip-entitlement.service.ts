@@ -42,10 +42,10 @@
  * Stripe-verified PaymentIntent id — never from a request body.
  *
  * source (ledger 2026-08-29-trip-pass-provenance, migration 264) records PROVENANCE —
- * 'stripe' | 'manual' | 'beta', mirroring plan_memberships.source. grantTripPass is written
+ * 'stripe' | 'manual' | 'beta' | 'qa' ('qa' = admin zero-charge QA issue), mirroring plan_memberships.source. grantTripPass is written
  * ONLY by the server-side grant path, and the manual/beta path is now a first-class §19a-
  * sanctioned writer alongside Stripe: it is enforced service-side (no DB CHECK — publish-trap
- * rule) that 'stripe' carries a real, non-empty source_payment_id, and 'manual'/'beta' carry
+ * rule) that 'stripe' carries a real, non-empty source_payment_id, and 'manual'/'beta'/'qa' carry
  * NO source_payment_id (null) — a manual grant must never carry a fabricated payment identity.
  */
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
@@ -116,7 +116,7 @@ export async function coversAction(tripId: string, action: TripPassAction): Prom
  *
  * Provenance enforcement (ledger 2026-08-29-trip-pass-provenance, service-layer — no DB
  * CHECK):
- *   - source must be one of 'stripe' | 'manual' | 'beta'.
+ *   - source must be one of 'stripe' | 'manual' | 'beta' | 'qa'.
  *   - source === 'stripe'  → sourcePaymentId MUST be a real, non-empty string.
  *   - source !== 'stripe'  → sourcePaymentId MUST be null/undefined. A manual/beta grant
  *     that arrives carrying a PaymentIntent-shaped string is rejected outright (§19a: a
