@@ -15,6 +15,8 @@
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+// Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
+import "@/styles/slip-tokens.css";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
@@ -163,6 +165,7 @@ import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
   ROUTING_TINTS,
+  SLIP_SURFACE_CLASS,
   SLIP_TITLE_FONT_CLASS,
   tintPillStyle,
 } from "./slip-tokens";
@@ -2042,7 +2045,7 @@ export function SlipView({
 
   return (
     <div
-      className="max-w-6xl mx-auto space-y-5"
+      className={`${SLIP_SURFACE_CLASS} max-w-6xl mx-auto space-y-5`}
       data-testid={`slip-view-${tripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
       data-experience-group={occasionResolved ? experienceGroup : undefined}
