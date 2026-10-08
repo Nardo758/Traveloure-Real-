@@ -52,6 +52,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { aiTaskCheckoutHeading } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import {
   ASK_AI_COPY,
@@ -445,6 +446,7 @@ export function AskAiDrawer({
           </DialogHeader>
           {paySheet && (
             <StripeCheckout
+              heading={aiTaskCheckoutHeading()}
               paymentIntent={{
                 clientSecret: paySheet.clientSecret,
                 paymentIntentId: paySheet.paymentIntentId,
