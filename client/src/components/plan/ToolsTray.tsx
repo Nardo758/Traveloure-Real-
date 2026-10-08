@@ -3,10 +3,13 @@
  * ledger `2026-10-03-surface-step2-tools-tray`).
  *
  * One chip per tool in `manifestFor(group, occasionSlug).tools`; each opens a sheet that mounts the
- * EXISTING component for that tool — this file builds no tool. A tool with no existing component
- * renders as a DISABLED chip saying "coming soon" (§13: never a chip that opens nothing, never a
- * placeholder pretending to be the tool). The registry below is the ONE place a tool key meets a
- * component (§18 rule 1).
+ * EXISTING component for that tool — this file builds no tool. ONLY LIVE TOOLS RENDER (ledger
+ * `2026-10-08-tools-tray-live-only`): whether a tool is live is the manifest's `toolIsLive`
+ * (`TOOL_STATE`, plus the `/api/health` flag a flag-gated tool names) — a coming-soon tool draws
+ * nothing, and a tray with no live tools draws no chips and no wrapper. The SHEET stays mounted either
+ * way, because the day rows' "Add your flight" opens Getting there through it even while its chip is
+ * hidden (lookup off ⇒ the sheet takes a manual time). The registry below is the ONE place a tool key
+ * meets a component (§18 rule 1); a tool with no component is `coming_soon` in the manifest.
  */
 import { useState, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -16,10 +19,8 @@ import { SlipTravelingParty } from "@/components/plancard/SlipTravelingParty";
 import { SlipAnchorsTool, SlipGuestsTool } from "@/components/plancard/SlipLogisticsSection";
 import { GettingThereSheet } from "./GettingThereSheet";
 import { GettingAroundSheet } from "./GettingAroundSheet";
-import { TOOL_LABEL, manifestFor, type ToolKey } from "@shared/group-manifest";
+import { TOOL_LABEL, manifestFor, toolIsLive, type ToolFlags, type ToolKey } from "@shared/group-manifest";
 import type { PlanEvent } from "@/lib/slip-events";
-
-export const TOOL_COMING_SOON = "coming soon";
 
 export interface ToolsTrayProps {
   tripId: string;
@@ -35,9 +36,14 @@ export interface ToolsTrayProps {
   /** Controlled: which tool's sheet is open (the day rows' "Add your flight" opens Getting there). */
   openTool?: ToolKey | null;
   onOpenToolChange?: (key: ToolKey | null) => void;
+  /** The `/api/health` `flags` block (or null while unknown — a flag-gated tool then stays hidden). */
+  flags?: ToolFlags;
+  /** The manifest's tool list for this plan. Defaults to `manifestFor(group, occasionSlug).tools`;
+   *  passed only to prove the tray against a list no group carries today (e.g. none live). */
+  manifestTools?: readonly ToolKey[];
 }
 
-/** The tool → existing component registry. `null` ⇒ no existing component: a disabled chip. */
+/** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
 export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
   switch (key) {
     case "getting_there":
@@ -72,8 +78,8 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
     // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`): the plan's own legs, zero Maps calls.
     case "getting_around":
       return <GettingAroundSheet tripId={p.tripId} />;
-    // No existing component — "coming soon", never built here. Getting home stays so: a Moment has no
-    // departure point and `users.home_city` is a city, not a point (D7, FU-9C-2).
+    // No existing component — `coming_soon` in the manifest, so not drawn. Getting home stays so: a Moment
+    // has no departure point and `users.home_city` is a city, not a point (D7, FU-9C-2).
     case "getting_home":
     case "budget":
     case "arrivals_split_groups":
@@ -87,8 +93,11 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
 /** Tools that do not exist under a hidden occasion (the guest and party surfaces, LD 28). */
 const HIDDEN_OCCASION_ABSENT: ReadonlySet<ToolKey> = new Set<ToolKey>(["guests", "guest_invites", "travel_party", "whos_coming"]);
 
-export function trayTools(p: Pick<ToolsTrayProps, "group" | "occasionSlug" | "isHidden">): ToolKey[] {
-  return manifestFor(p.group, p.occasionSlug).tools.filter((k) => !(p.isHidden && HIDDEN_OCCASION_ABSENT.has(k)));
+/** The chips this plan draws: the manifest's tools, minus a hidden occasion's absent ones, LIVE only. */
+export function trayTools(p: Pick<ToolsTrayProps, "group" | "occasionSlug" | "isHidden" | "flags" | "manifestTools">): ToolKey[] {
+  return (p.manifestTools ?? manifestFor(p.group, p.occasionSlug).tools)
+    .filter((k) => !(p.isHidden && HIDDEN_OCCASION_ABSENT.has(k)))
+    .filter((k) => toolIsLive(k, p.flags));
 }
 
 export function ToolsTray(props: ToolsTrayProps) {
@@ -100,42 +109,37 @@ export function ToolsTray(props: ToolsTrayProps) {
   };
   const tools = trayTools(props);
   const content = open ? toolContent(open, props) : null;
+  const sheet = (
+    <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg" data-testid={open ? `tool-sheet-${open}` : undefined}>
+        {open ? (
+          <>
+            <SheetHeader>
+              <SheetTitle>{TOOL_LABEL[open]}</SheetTitle>
+              <SheetDescription className="sr-only">{TOOL_LABEL[open]}</SheetDescription>
+            </SheetHeader>
+            <div className="mt-4">{content}</div>
+          </>
+        ) : null}
+      </SheetContent>
+    </Sheet>
+  );
+  // An empty tray draws nothing of its own — no chips, no wrapper — only the sheet.
+  if (tools.length === 0) return sheet;
   return (
     <div className="flex flex-wrap gap-2" data-testid="slip-tools-tray">
-      {tools.map((key) => {
-        const available = toolContent(key, props) !== null;
-        return (
-          <button
-            key={key}
-            type="button"
-            disabled={!available}
-            onClick={() => setOpen(key)}
-            className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-sm ${
-              available
-                ? "border-border bg-background text-foreground hover:bg-muted/50"
-                : "border-dashed border-border text-muted-foreground cursor-not-allowed"
-            }`}
-            data-testid={`tool-chip-${key}`}
-            data-available={available ? "true" : "false"}
-          >
-            {TOOL_LABEL[key]}
-            {!available ? <span className="text-[11px]">· {TOOL_COMING_SOON}</span> : null}
-          </button>
-        );
-      })}
-      <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg" data-testid={open ? `tool-sheet-${open}` : undefined}>
-          {open ? (
-            <>
-              <SheetHeader>
-                <SheetTitle>{TOOL_LABEL[open]}</SheetTitle>
-                <SheetDescription className="sr-only">{TOOL_LABEL[open]}</SheetDescription>
-              </SheetHeader>
-              <div className="mt-4">{content}</div>
-            </>
-          ) : null}
-        </SheetContent>
-      </Sheet>
+      {tools.map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => setOpen(key)}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm text-foreground hover:bg-muted/50"
+          data-testid={`tool-chip-${key}`}
+        >
+          {TOOL_LABEL[key]}
+        </button>
+      ))}
+      {sheet}
     </div>
   );
 }

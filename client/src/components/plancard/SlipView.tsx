@@ -81,6 +81,7 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { useHealthFlags } from "@/lib/health-flags";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHostHref } from "@/lib/item-row-menu";
@@ -1989,6 +1990,8 @@ export function SlipView({
    */
   renderLegBetween?: (prevItem: PlanCardActivity, nextItem: PlanCardActivity, dayIndex: number) => ReactNode | null;
 }) {
+  // Flag-gated tools (Getting there) render only while their `/api/health` switch is on.
+  const healthFlags = useHealthFlags();
   const {
     days,
     isOwner,
@@ -2190,6 +2193,7 @@ export function SlipView({
               }}
               openTool={openTool}
               onOpenToolChange={setOpenTool}
+              flags={healthFlags}
             />
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every

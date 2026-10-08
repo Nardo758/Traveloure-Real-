@@ -132,13 +132,13 @@ Read only `isPublishable` content: platform listings and hosts, gems, expert-ver
 
 **`AnchorRow`** — a fixed point in the day (flight, reservation, venue, ticketed show): time · our title · "Anchor · fixed · from <tool>" · flight line ("MM024 · lands KIX 13:10 · from lookup") · amber conflict line counting the day's stops outside the buffered window, no minutes. Immovable in drags and re-times.
 
-**`ToolsTray`** — chips from `shared/group-manifest.ts` (§4); each opens a sheet mounting the existing tool; "coming soon" chips disabled.
+**`ToolsTray`** — chips from `shared/group-manifest.ts` (§4); each opens a sheet mounting the existing tool. Only LIVE tools render (`TOOL_STATE` / `toolIsLive`): a coming-soon tool draws nothing, Getting there renders only while `FLIGHT_LOOKUP_ENABLED` is on (the `/api/health` flags block), and a tray with no live tools renders nothing — no chips, no header. The sheet stays mounted, so "Add your flight" still opens Getting there.
 
 **`AnchorPanel`** — anchor-type aware; ranking computed once per draft and stored (`where_to_stay` jsonb, migration 340); reason line only when it distinguishes; own inventory only, ordered per R-o; one line with zero inventory (R-y); chooser always offers three options — Change where I'm staying · I'm deciding — compare places · I've got lodging sorted; Skip is the sheet's dismiss, not an option. A typed stay gets the same ID-only search + Details lookup as items, storing coordinates and area (S10-3).
 
 **`OptimizerLead`** — §8. **`SupplySlot`** — a venue-less item renders as a slot with "Find a host" (Browse filtered by category and day, expert-endorsed first). **`ExpertNote`** — one implementation, under the item it concerns, author + neighbourhood, "Ask a follow-up". **`ItemSheet`** — R-ap. **`FeedbackTap`** — §9. **`UpsellLine`** — §7.2. **`TonightSlot`** — §7.4. **`HandoffBanner`** — §12.
 
-### 3a. Tools inventory (where each tool lives, state at 97221c1)
+### 3a. Tools inventory (where each tool lives; tray state as rendered, Oct 8, 2026 — ledger `2026-10-08-tools-tray-live-only`)
 
 | Where | Tool | Groups | State | Step |
 |---|---|---|---|---|
@@ -150,16 +150,17 @@ Read only `isPublishable` content: platform listings and hosts, gems, expert-ver
 | Item ⋯ | Details → `ItemSheet` | all | planned | 6 |
 | Item ⋯ | Book this for me | all | planned | 7 |
 | Day | Add to this day · Swap a stop · Collapse/expand | all | live | 1 |
-| Tray | Getting there (flight → anchor, live lookup) | Trip, Group | live | 2 |
+| Tray | Getting there (flight → anchor, live lookup) | Trip, Group | chip renders only while `FLIGHT_LOOKUP_ENABLED` is on; hidden otherwise (the day row's "Add your flight" still opens its sheet) | 2 |
 | Tray | Where to stay (`AnchorPanel`) | Trip | live | 3 |
 | Tray | Travel party | Trip, Group | live (rail) | 2 |
-| Tray | Getting around (mode preferences) | Trip | disabled chip | 9 |
+| Tray | Getting around (the plan's legs by day, 0 Maps calls — 9c D7, ledger `2026-10-07-step9c-leg-options`) | Trip | live | 9c |
 | Tray | Pace (EnergyBudget) | Trip | live | 2 |
-| Tray | The reservation · Timing check | Moment | exists | 2 |
-| Tray | Getting home | Moment | planned | 9 |
-| Tray | The venue · Guests · Vendors · Budget | Celebration, Event | exists | 2 |
-| Tray | Run of show · Arrivals & split groups | Event (Moment kit) | exists | 2 / §13 |
-| Tray | Shared lodging · Who's coming · Split activities · Who pays what | Group travel | exists / disabled chips | 2, 3 |
+| Tray | The reservation · Timing check | Moment | live | 2 |
+| Tray | Getting home | Moment | hidden (coming soon) | 9 |
+| Tray | The venue · Guests · Vendors · Budget | Celebration, Event | live; Budget hidden (coming soon) | 2 |
+| Tray | Run of show · Arrivals & split groups | Event (Moment kit) | Run of show live; Arrivals & split groups hidden (coming soon) | 2 / §13 |
+| Tray | Shared lodging · Who's coming · Split activities · Who pays what | Group travel | Shared lodging, Who's coming live; Split activities, Who pays what hidden (coming soon) | 2, 3 |
+| Tray | The show · Getting back late | Show / Festival overlay | The show live; Getting back late hidden (coming soon) | 2 |
 | Plan | Draft it with AI (free; anchors never block it) | all | live | — |
 | Plan | Optimize → three versions · versions board · apply by day · desktop day drag · 3 free re-times | all | live | 4, 5 |
 | Plan | Compare versions link (once a run exists) | all | S10 PR | — |

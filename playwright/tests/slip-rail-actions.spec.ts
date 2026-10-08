@@ -240,10 +240,11 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   await openSlip(page, tripId);
   const tray = page.getByTestId("slip-tools-tray");
   await expect(tray).toBeVisible();
-  // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned amendment): Getting around is built —
+  // Only live tools render (ledger `2026-10-08-tools-tray-live-only`, sanctioned rewrite): a tool
+  // with no existing component draws nothing, and the tray says "coming soon" nowhere.
+  await expect(tray).not.toContainText("coming soon");
+  // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned amendment): Getting around is live —
   // it reads the plan's own legs, and a plan with none says so rather than drawing an empty sheet.
-  // (Every Trip tool now has a component; the disabled "coming soon" chip is pinned by tools-tray T2.)
-  await expect(page.getByTestId("tool-chip-getting_around")).toBeEnabled();
   await page.getByTestId("tool-chip-getting_around").click();
   await expect(page.getByTestId("tool-sheet-getting_around")).toBeVisible();
   await expect(page.getByTestId("getting-around-empty")).toBeVisible();
