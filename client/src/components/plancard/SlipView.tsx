@@ -44,6 +44,7 @@ import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
 import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
+import { planDatesAreConfirmed } from "@shared/plan-dates";
 import {
   type PlanCardActivity,
   type PlanCardData,
@@ -1361,7 +1362,14 @@ function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
   // Step 6 finalize smoke: "ready" only when a final version exists (`tripCardBannerState`, the one
   // rule the card and the T-48h nudge read); inside the 48-hour window with no final, the slip says
   // to make the plan final instead — the card would only say "Not final yet".
-  const state = tripCardBannerState({ finalizedAt: trip.finalizedAt, startDate: trip.startDate, endDate: trip.endDate, finalVersion: trip.finalVersion });
+  // B1: "starts soon" needs a chosen window and a start still ahead (`tripStartsSoon`, the one rule).
+  const state = tripCardBannerState({
+    finalizedAt: trip.finalizedAt,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    finalVersion: trip.finalVersion,
+    datesConfirmed: planDatesAreConfirmed(trip.datesConfirmed ?? null),
+  });
   if (state === "finalize_now") {
     return (
       <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20" data-testid="slip-trip-card-finalize-now">
