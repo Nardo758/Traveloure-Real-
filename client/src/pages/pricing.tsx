@@ -306,7 +306,7 @@ export default function PricingPage() {
       icon: Palmtree,
       highlighted: true,
       checklist: [
-        "Unlimited AI runs & tasks on that trip",
+        "5 optimizer runs + unlimited AI tasks on that trip",
         // "One revision from a local expert" WAS HERE AND IS DELIBERATELY GONE (ledger
         // `2026-09-21-trip-pass-revision-claim`). Locked Decision 41 (f) records `expert_revision`
         // as an entitlement with NO consumption or charge site, and instructs: "until that lane
@@ -365,7 +365,7 @@ export default function PricingPage() {
     <div className="min-h-screen bg-[var(--earn-ground)] text-[color:var(--earn-ink)]">
       <SEOHead
         title="Pricing | Traveloure"
-        description="Plan it yourself for free, pay per use with AI, get a Trip Pass for unlimited runs, or hand it to a local expert. Transparent pricing, no membership required."
+        description="Plan it yourself for free, pay per use with AI, get a Trip Pass for 5 optimizer runs and unlimited AI tasks, or hand it to a local expert. Transparent pricing, no membership required."
       />
 
       {membershipReturn === "cancelled" && (

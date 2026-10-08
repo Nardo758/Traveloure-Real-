@@ -9542,7 +9542,8 @@ export type PlanMembership = typeof planMemberships.$inferSelect;
 
 // ─── Trip entitlements (the one PER-TRIP entitlement record) ─────────────────
 // Ruling 2026-08-29-trip-pass, migration 262. Trip Pass is per-trip: for its ONE trip it
-// grants unlimited optimizer runs + AI Concierge tasks (charge suppression), one expert
+// grants up to TRIP_PASS_RUNS_PER_TRIP optimizer runs (R-ac, default 5) + unlimited AI Concierge
+// tasks (charge suppression), one expert
 // revision (snapshot-recorded, unenforced until the expert-flow lane), and the traveler
 // service-fee waiver (the rails-waiver mechanism, basis 'trip_pass'). It NEVER discounts
 // commissions and it is deliberately NOT plan_memberships (user-level, Plus/Pro).
