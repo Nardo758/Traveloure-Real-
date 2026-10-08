@@ -73,9 +73,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
+import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { createComparison, type ComparisonPinnedAnchor } from "@/lib/create-comparison";
 import {
+  cancelOptimizationPayment,
   confirmOptimizationPayment,
   requestOptimizationGate,
   type OptimizationPaymentSheet,
@@ -461,6 +463,11 @@ function BuildCard({
         confirmedPinnedAnchor.current = undefined;
         return;
       }
+      if (outcome.kind === "paid") {
+        // The plan's open intent was already paid and never run on — run on it (no second charge).
+        await handleSheetSuccess(outcome.paymentIntentId);
+        return;
+      }
       if (outcome.kind === "payment_sheet") setPaySheet(outcome.payment);
     } catch (err: any) {
       toast({
@@ -472,6 +479,15 @@ function BuildCard({
     } finally {
       setOptimizing(false);
     }
+  }
+
+  // Ledger `2026-10-08-optimize-pay-flow`: Cancel (or closing the sheet) cancels the open intent, so a
+  // later press starts clean rather than leaving an uncaptured PaymentIntent behind.
+  function cancelPaySheet() {
+    const open = paySheet;
+    setPaySheet(null);
+    confirmedPinnedAnchor.current = undefined;
+    if (open?.paymentIntentId) void cancelOptimizationPayment(open.paymentIntentId);
   }
 
   async function handleSheetSuccess(paymentIntentId: string) {
@@ -598,13 +614,15 @@ function BuildCard({
           Purchase is the owner's (LD 52 — a helper never pays), so a delegate does not mount it. */}
       {isOwner ? (
         <div data-testid="slip-rail-trip-pass">
-          <TripPassCard tripId={tripId} />
+          <TripPassCard tripId={tripId} planName={trip.title || trip.destination} />
         </div>
       ) : null}
 
       <BuildAroundDialog
         open={buildAroundOpen}
         tripId={trip.id}
+        planName={trip.title || trip.destination}
+        fee={leadData.fee}
         busy={optimizing || creatingComparison}
         onOpenChange={setBuildAroundOpen}
         onConfirm={(pinnedAnchor) => {
@@ -618,18 +636,17 @@ function BuildCard({
       <Dialog
         open={!!paySheet}
         onOpenChange={(open) => {
-          if (!open) {
-            setPaySheet(null);
-            confirmedPinnedAnchor.current = undefined;
-          }
+          if (!open) cancelPaySheet();
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Pay optimization fee</DialogTitle>
+            {/* The sheet's own heading names the purchase; this title is for assistive tech only. */}
+            <DialogTitle className="sr-only">{optimizeCheckoutHeading(trip.title || trip.destination)}</DialogTitle>
           </DialogHeader>
           {paySheet && (
             <StripeCheckout
+              heading={optimizeCheckoutHeading(trip.title || trip.destination)}
               paymentIntent={{
                 clientSecret: paySheet.clientSecret,
                 paymentIntentId: paySheet.paymentIntentId,
@@ -638,10 +655,7 @@ function BuildCard({
               bookingIds={[]}
               onSuccess={handleSheetSuccess}
               onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
-              onCancel={() => {
-                setPaySheet(null);
-                confirmedPinnedAnchor.current = undefined;
-              }}
+              onCancel={cancelPaySheet}
             />
           )}
         </DialogContent>

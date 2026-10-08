@@ -17,6 +17,8 @@
 import { openSetSlotsForRun } from "../services/version-options.service";
 import { versionPerOptionEnabled } from "../config/version-options.config";
 import { Router } from "express";
+import { z } from "zod";
+import { cancelOwnOptimizationIntent, reuseOrCreateOptimizationIntent } from "../services/optimization-intent.service";
 import { coversAction, tripPassRunsStatus } from "../services/trip-entitlement.service";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
@@ -484,7 +486,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     // Create Stripe PaymentIntent with saved-card support
     // #973: attaching the customer is OPTIONAL (falls back to a customer-less PI), but if the
     // stored id has gone stale, recover once via the shared #973 helper rather than 500ing.
-    const buildOptimizationPaymentIntent = (customerId?: string) =>
+    const buildOptimizationPaymentIntent = (customerId: string | undefined, idempotencyKey: string) =>
       stripe.paymentIntents.create(
         {
           amount: priceCents,
@@ -509,15 +511,42 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
           // immediately after; wallets are not redirect methods and are unaffected.
           automatic_payment_methods: { enabled: true, allow_redirects: "never" as const },
         },
-        // §15 (MONEY_MAP F-3): same deterministic key format as the saved-card path above —
-        // a retried/duplicate Elements-path request can't mint a second uncaptured PI.
-        { idempotencyKey: buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId) },
+        // §15 (MONEY_MAP F-3): a deterministic key — a retried/duplicate press REPLAYS the plan's open
+        // intent instead of minting a second (ledger `2026-10-08-optimize-pay-flow`; the chain below
+        // skips a canceled or already-spent link).
+        { idempotencyKey },
       );
-    const paymentIntent = stripeCustomerId
-      ? await stripePaymentService.runWithCustomerRecovery(userId, stripeCustomerId, (cid) =>
-          buildOptimizationPaymentIntent(cid),
-        )
-      : await buildOptimizationPaymentIntent(undefined);
+    const createOrReplay = (idempotencyKey: string) =>
+      stripeCustomerId
+        ? stripePaymentService.runWithCustomerRecovery(userId, stripeCustomerId, (cid) =>
+            buildOptimizationPaymentIntent(cid, idempotencyKey),
+          )
+        : buildOptimizationPaymentIntent(undefined, idempotencyKey);
+    const paymentIntent = await reuseOrCreateOptimizationIntent(
+      buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId),
+      {
+        create: createOrReplay,
+        consumed: async (piId) =>
+          (await db.select({ id: itineraryComparisons.id }).from(itineraryComparisons)
+            .where(eq(itineraryComparisons.optimizationPaymentId, piId)).limit(1)).length > 0,
+      },
+    );
+    if (!paymentIntent) {
+      return res.status(429).json({ error: "too_many_payment_attempts", message: "Too many payment attempts for this plan today. Try again tomorrow." });
+    }
+    // Paid and not yet run on (a press after a payment whose run never started): run on THIS payment.
+    if (paymentIntent.status === "succeeded") {
+      return res.json({
+        freeRerun: false,
+        reusedPaid: true,
+        status: "succeeded",
+        paymentIntentId: paymentIntent.id,
+        feeCents: priceCents,
+        currency,
+        complexityTier: tier,
+        creditTowardCoordination,
+      });
+    }
 
     return res.json({
       freeRerun: false,
@@ -531,6 +560,31 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("[optimization-payments] error:", err);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/optimization-payments/cancel — Cancel on the Optimize pay sheet (ledger
+ * `2026-10-08-optimize-pay-flow`). Cancels the traveler's OWN open optimize intent so nothing is left
+ * pending; the next press mints a fresh one (the reuse chain skips a canceled link). `.strict()` body
+ * of one id (§19); the intent is READ from Stripe and must be an `optimization_fee` bound to this
+ * session user — anything else is one 404 (LD 40). Never cancels `processing` or `succeeded`.
+ */
+const cancelOptimizationBody = z.object({ paymentIntentId: z.string().trim().min(1).max(255) }).strict();
+router.post("/api/optimization-payments/cancel", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const parsed = cancelOptimizationBody.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: "paymentIntentId required" });
+    const out = await cancelOwnOptimizationIntent(userId, parsed.data.paymentIntentId, {
+      retrieve: (id) => stripe.paymentIntents.retrieve(id).catch(() => null) as any,
+      cancel: (id) => stripePaymentService.cancelPaymentIntent(id, `opt-fee-cancel-${id}`, "requested_by_customer"),
+    });
+    if (out.httpStatus === 404) return res.status(404).json({ error: "not_found" });
+    return res.json({ canceled: out.canceled, status: out.status });
+  } catch (err: any) {
+    console.error("[optimization-payments/cancel] error:", err?.message);
+    return res.status(500).json({ error: "cancel_failed" });
   }
 });
 

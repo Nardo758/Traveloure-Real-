@@ -218,6 +218,11 @@ interface StripeCheckoutProps {
    * intent (ledger `2026-10-02-checkout-display-equals-charge`). A `failed` attempt stays closed.
    */
   singleAttempt?: boolean;
+  /**
+   * What this sheet is paying for, from the CALLER (ledger `2026-10-08-optimize-pay-flow`) — every
+   * heading is spelled in `@/lib/checkout-headings`; "Complete Your Booking" is a booking's only.
+   */
+  heading: string;
 }
 
 export default function StripeCheckout({
@@ -227,6 +232,7 @@ export default function StripeCheckout({
   onError,
   onCancel,
   singleAttempt,
+  heading,
 }: StripeCheckoutProps) {
   const [stripe, setStripe] = useState<Stripe | null>(null);
 
@@ -262,7 +268,7 @@ export default function StripeCheckout({
     <div className="mx-auto flex h-full min-h-0 max-w-md flex-col">
       {/* Header */}
       <div className="mb-6 shrink-0 text-center">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Booking</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2" data-testid="stripe-checkout-heading">{heading}</h2>
         <p className="text-gray-600">
           Total: <span className="text-2xl font-bold text-purple-600">
             ${(paymentIntent.amount / 100).toFixed(2)}

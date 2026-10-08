@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ticket, Loader2, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { tripPassCheckoutHeading } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 // LD 43(d): mount 1 of 2 — the Trip Pass purchase success state. Soft, dismissible, never
 // blocking, and it renders only on a KNOWN-EMPTY vault (the component decides, not this file).
@@ -30,7 +31,7 @@ interface TripPassStatus {
   grantedAt?: string;
 }
 
-export function TripPassCard({ tripId }: { tripId: string }) {
+export function TripPassCard({ tripId, planName }: { tripId: string; /** The plan's name for the pay sheet's heading; absent ⇒ left out. */ planName?: string | null }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const statusKey = [`/api/trips/${tripId}/trip-pass`];
@@ -174,6 +175,7 @@ export function TripPassCard({ tripId }: { tripId: string }) {
           ) : (
             sheet && (
               <StripeCheckout
+                heading={tripPassCheckoutHeading(planName)}
                 paymentIntent={sheet}
                 bookingIds={[]}
                 onSuccess={() => void confirmPurchase(sheet.paymentIntentId)}
