@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "ad32b76854e6bafb96fcd55f613d3af4268cd0914393557eb96dd3137b9534c1",
+  "manifestSha256": "bee6727124f929ef0c18af33e7dd72aacf27ec555b20384af3a5b8fe696e21ba",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 669,
-    "remaining": 669,
+    "total": 670,
+    "remaining": 670,
     "categories": {
       "payments": {
         "tested": 0,
@@ -19,7 +19,7 @@
       },
       "admin": {
         "tested": 0,
-        "total": 169
+        "total": 170
       },
       "user-data": {
         "tested": 0,
@@ -5777,6 +5777,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/trigger-digest",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/trip-pass/issue",
+      "path": "/api/admin/trip-pass/issue",
+      "effectivePath": "/api/admin/trip-pass/issue",
+      "source": "server/routes/admin.routes.ts",
+      "line": 9483,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/admin/trip-pass/issue",
       "tested": false,
       "reason": "Not run: evidence manifest SHA-256 is stale."
     },
