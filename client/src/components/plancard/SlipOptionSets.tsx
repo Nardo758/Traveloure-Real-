@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -165,7 +166,20 @@ export function optionSetGlance(set: Pick<SlipOptionSet, "label" | "categoryKey"
 }
 
 /** Start a lodging comparison from the empty slip's anchor question ("I'm deciding"). */
-export function SlipAnchorCompareButton({ tripId, label = "I'm deciding — compare places" }: { tripId: string; label?: string }) {
+export function SlipAnchorCompareButton({
+  tripId,
+  label = "I'm deciding — compare places",
+  variant = "outline",
+}: {
+  tripId: string;
+  label?: string;
+  /**
+   * `"board"` — the Empty board's full-width wash button with a chevron (slip conformance, ledger
+   * `2026-10-08-conformance-slip-phase0`). It is the SAME control (same mutation, same testid)
+   * in the board's dress.
+   */
+  variant?: "outline" | "board";
+}) {
   const { toast } = useToast();
   const create = useMutation({
     mutationFn: async () =>
@@ -173,6 +187,20 @@ export function SlipAnchorCompareButton({ tripId, label = "I'm deciding — comp
     onSuccess: () => invalidatePlan(tripId),
     onError: (e) => toast({ title: serverMessage(e, "Couldn't start a comparison"), variant: "destructive" }),
   });
+  if (variant === "board") {
+    return (
+      <button
+        type="button"
+        className="flex h-[52px] w-full items-center justify-between rounded-[var(--slip-radius-button)] bg-[color:var(--slip-wash)] px-4 text-left text-[15px] font-semibold text-[color:var(--slip-ink)] hover:brightness-[0.98] disabled:opacity-60"
+        onClick={() => create.mutate()}
+        disabled={create.isPending}
+        data-testid="slip-anchor-compare"
+      >
+        <span>{label}</span>
+        <ChevronRight className="h-[18px] w-[18px] text-[color:var(--slip-navy)]" aria-hidden="true" />
+      </button>
+    );
+  }
   return (
     <Button
       variant="outline"

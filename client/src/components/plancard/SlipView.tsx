@@ -82,6 +82,7 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
 import { useHealthFlags } from "@/lib/health-flags";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
@@ -489,7 +490,10 @@ export function SlipHeader({
           </Link>
         )}
       </div>
-      <h1 className={`${SLIP_TITLE_FONT_CLASS} text-2xl font-bold text-foreground`} data-testid="slip-title">
+      <h1
+        className={`${SLIP_TITLE_FONT_CLASS} text-[30px] font-semibold leading-[1.1] tracking-[-0.01em] text-[color:var(--slip-ink)]`}
+        data-testid="slip-title"
+      >
         {trip?.title || trip?.destination || "Trip plan"}
       </h1>
       {readyMadeSourceLine(data.readyMadeSource) ? (
@@ -507,6 +511,7 @@ export function SlipHeader({
         partyLabel={partyLabel}
         onAskParty={onAskParty}
         eventCount={eventCount}
+        timezone={(trip as any)?.timezone ?? null}
       />
       {anchorLine ? (
         <p className="text-sm text-foreground" data-testid="slip-anchor-state">
@@ -1631,7 +1636,7 @@ export function useSlipViewModel({
       view={whereToStay}
       lodgingSet={lodgingSet}
       canChoose={canEditItems}
-      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} />}
+      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} variant={stage === "empty" ? "board" : "outline"} />}
       addFixedControl={
         <SlipAddItemControl tripId={tripId} dayNumber={1} userExperienceId={null} label={SLIP_ADD_DAY_LABEL} testId="slip-anchor-add-fixed" />
       }
@@ -2042,6 +2047,8 @@ export function SlipView({
   } = useSlipViewModel({ tripId, data, highlightItemId, initialView });
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
+  // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
+  const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
 
   return (
     <div
@@ -2334,7 +2341,21 @@ export function SlipView({
       ) : null}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
-      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty ? renderAnchorPanel("empty") : null}
+      {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
+          `2026-10-08-slip-empty-board`) ────────────────────────────────────────────────────
+          An owner's plan with no items gets the board's start in the place the anchor question
+          always held, under the view bar: the anchor question (a Trip's), the draft card and the
+          two other ways in. Every control is an existing rail, and the anchor question renders here
+          once, never twice. The tray, the optimizer card and the view bar keep their places above
+          it, because the specs that pin them on an empty plan are unchanged. Taking them out of the
+          empty state is the Main-rail PR's ruling, not this one. */}
+      {emptyStartShown && data.trip ? (
+        <div className="space-y-3.5" data-testid="slip-empty-board">
+          {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
+          <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
+        </div>
+      ) : null}
+      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
