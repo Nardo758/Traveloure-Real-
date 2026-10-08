@@ -71,6 +71,7 @@ import { ItemSheet } from "@/components/plan/ItemSheet";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
+import { PlanRowLookProvider } from "@/components/plan/row-look";
 import {
   GETTING_THERE_TOOL,
   TRAVEL_ANCHOR_WORDS,
@@ -85,7 +86,7 @@ import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-th
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
 import { MomentAnchorCard } from "@/components/plan/MomentAnchorCard";
-import { momentLeadIntro, momentLeadTitle, momentSketchLine, momentSpanWord } from "@/lib/slip-moment";
+import { momentEveningHeading, momentTimeSpan, momentLeadIntro, momentLeadTitle, momentSketchLine, momentSpanWord } from "@/lib/slip-moment";
 import { useHealthFlags } from "@/lib/health-flags";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
@@ -669,6 +670,14 @@ function useToggleItemLock(tripId: string, itemId: string, locked: boolean): () 
   return () => {
     if (!m.isPending) m.mutate();
   };
+}
+
+/** The Main board puts a leg in the row grid's stop column (ledger `2026-10-08-slip-main-rows`):
+ *  past the 52px time column and the dot rail, short of the ⋯ column. Nothing is wrapped when the
+ *  caller has no leg to draw. */
+function BoardLegSlot({ children }: { children: ReactNode }) {
+  if (children == null || children === false) return null;
+  return <div className="pl-[102px] pr-4 pb-1">{children}</div>;
 }
 
 function SlipDayItem({
@@ -2078,6 +2087,13 @@ export function SlipView({
   const momentAnchor = isMoment && anchorItemId ? allActivities.find((a) => a.id === anchorItemId) ?? null : null;
   const momentAnchorDayNum = momentAnchor ? days.find((d) => d.activities.some((a) => a.id === momentAnchor.id))?.dayNum ?? null : null;
   const momentAnchorDateIso = momentAnchorDayNum != null ? daySlots.find((sl) => sl.dayNum === momentAnchorDayNum)?.dateIso ?? null : null;
+  // Expand all (Main board): the same open rule each day already reads, applied to every day.
+  const dayIsOpen = (key: string, idx: number, items: readonly { id: string }[]) =>
+    dayOpen[key] ?? (idx === 0 || (!!highlightItemId && items.some((a) => a.id === highlightItemId)));
+  const allDaysOpen =
+    daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
+  const setAllDaysOpen = (open: boolean) =>
+    setDayOpen(Object.fromEntries(daySlots.map((slot) => [slot.key, open])));
   const momentSpan = isMoment ? momentSpanWord(data.trip?.startDate as any, data.trip?.endDate as any, allActivities) : null;
   const leadCopy: SlipLeadCopy | null = isMoment
     ? { title: momentLeadTitle(momentSpan), intro: momentLeadIntro(momentAnchor), noStay: true }
@@ -2094,6 +2110,9 @@ export function SlipView({
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
       data-experience-group={occasionResolved ? experienceGroup : undefined}
     >
+      {/* The Main board's rows (ledger `2026-10-08-slip-main-rows`): the shared day and item rows take
+          the board look under the slip's tokens; the Trip Card and the Workstation keep the plain one. */}
+      <PlanRowLookProvider look="board">
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} />}
@@ -2266,24 +2285,39 @@ export function SlipView({
               )}
             </div>
             <div className="flex items-center gap-3 flex-wrap" data-testid="slip-view-toggle">
-              <div className="inline-flex rounded-md border border-border overflow-hidden">
+              {/* The Main board's switch (ledger `2026-10-08-slip-main-rows`): "Days" and "Map · N of M",
+                  where N is the located stops — a real coordinate, never a ward centroid. */}
+              <div className="inline-flex rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] p-[3px]">
                 <button
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "list" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"}`}
                   onClick={() => setSlipView("list")}
+                  aria-pressed={slipView === "list"}
                   data-testid="button-slip-view-list"
                 >
-                  <ListIcon className="w-3.5 h-3.5" /> List
+                  Days
                 </button>
                 <button
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "map" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"} disabled:opacity-50 disabled:cursor-not-allowed`}
                   onClick={() => setSlipView("map")}
+                  aria-pressed={slipView === "map"}
                   data-testid="button-slip-view-map"
                 >
-                  <MapIcon className="w-3.5 h-3.5" /> Map
+                  {allActivities.length > 0 ? `Map · ${locatedActivities.length} of ${allActivities.length}` : "Map"}
                 </button>
               </div>
+              {slipView === "list" && daySlots.length > 1 ? (
+                <button
+                  type="button"
+                  className="h-9 px-3 text-[13px] font-medium text-[color:var(--slip-navy)] hover:underline"
+                  onClick={() => setAllDaysOpen(!allDaysOpen)}
+                  aria-label={allDaysOpen ? "Collapse all days" : "Expand all days"}
+                  data-testid="slip-days-expand-all"
+                >
+                  {allDaysOpen ? "Collapse all" : "Expand all"}
+                </button>
+              ) : null}
               {slipView === "map" && (
                 <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
                   {/* Ledger `2026-10-03-no-ward-pins` (decision-maker): the line reads "N of M located".
@@ -2419,8 +2453,7 @@ export function SlipView({
           ))}
         </div>
       ) : null}
-      <Card>
-        <CardContent className="p-2 sm:p-3 divide-y divide-border">
+      <div>
           {/* §13 — "No items" is now said ONLY when there is genuinely nothing to show. A plan
               with events and no items has slots (the event cards below), so this line no longer
               contradicts the header's own event count directly above it.
@@ -2434,13 +2467,13 @@ export function SlipView({
               place. The placeholder states nothing; it is not an empty state and never says one. */}
           {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor && anchorPanelEmpty ? null : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
             <p
-              className="text-sm text-muted-foreground p-4 text-center"
+              className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4 text-center text-sm text-[color:var(--slip-muted)]"
               data-testid="slip-empty-items"
             >
               No items on this plan yet.
             </p>
           ) : daySlots.length === 0 ? (
-            <div className="p-4 space-y-2" data-testid="slip-day-list-loading" aria-hidden="true">
+            <div className="space-y-2 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4" data-testid="slip-day-list-loading" aria-hidden="true">
               <div className="h-4 rounded bg-muted animate-pulse w-1/3" />
               <div className="h-4 rounded bg-muted animate-pulse w-2/3" />
               <div className="h-4 rounded bg-muted animate-pulse w-1/2" />
@@ -2492,17 +2525,31 @@ export function SlipView({
               <DayBlock
                 key={slot.key}
                 dayKey={String(slot.dayNum ?? slot.key)}
-                heading={dayBlockHeading({ dayNum: slot.dayNum, date: day?.date ?? null, dateIso: slot.dateIso })}
-                stats={dayBlockStats({
-                  stops: slotItems.length,
-                  hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
-                })}
-                open={dayOpen[slot.key] ?? (slotIdx === 0 || (!!highlightItemId && slotItems.some((a) => a.id === highlightItemId)))}
+                heading={
+                  (momentSpan === "evening" && daySlots.length === 1 ? momentEveningHeading(slot.dateIso) : null) ??
+                  dayBlockHeading({ dayNum: slot.dayNum, date: day?.date ?? null, dateIso: slot.dateIso })
+                }
+                stats={[
+                  momentSpan && daySlots.length === 1 ? momentTimeSpan(slotItems) : null,
+                  dayBlockStats({
+                    stops: slotItems.length,
+                    hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
+                  }),
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || null}
+                open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
+                thumb={
+                  slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
+                    <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} size="thumb" testId={`slip-day-thumb-${slot.dayNum}`} />
+                  ) : null
+                }
                 photo={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
                     <PlacePhoto
                       photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]}
+                      size="band"
                       testId={`slip-day-photo-${slot.dayNum}`}
                       // R321 (S11-4): the day's photo opens its stop's ItemSheet.
                       onClick={() => {
@@ -2525,15 +2572,15 @@ export function SlipView({
                 ) : null}
                 {!arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                 {/* R-i: airport → stay, between the arrival anchor and the first stop. */}
-                {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? renderAirportLeg("arrival") : null}
+                {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? <BoardLegSlot>{renderAirportLeg("arrival")}</BoardLegSlot> : null}
                 {slot.groups.map((group) => {
                   const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
                     <Fragment key={a.id}>
-                    {renderLegBetween && slotItems.indexOf(a) > 0
-                      ? renderLegBetween(slotItems[slotItems.indexOf(a) - 1], a, slotIdx)
-                      : null}
-                    {a.id === departureItemId ? renderAirportLeg("departure") : null}
+                    {renderLegBetween && slotItems.indexOf(a) > 0 ? (
+                      <BoardLegSlot>{renderLegBetween(slotItems[slotItems.indexOf(a) - 1], a, slotIdx)}</BoardLegSlot>
+                    ) : null}
+                    {a.id === departureItemId ? <BoardLegSlot>{renderAirportLeg("departure")}</BoardLegSlot> : null}
                     <SlipDayItem
                       key={a.id}
                       tripId={tripId}
@@ -2598,7 +2645,7 @@ export function SlipView({
                     />
                     {a.id === arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                     {a.id === departureItemId ? <AnchorConflictLine kind="departure" text={departureConflict} /> : null}
-                    {a.id === arrivalItemId ? renderAirportLeg("arrival") : null}
+                    {a.id === arrivalItemId ? <BoardLegSlot>{renderAirportLeg("arrival")}</BoardLegSlot> : null}
                     </Fragment>
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
@@ -2634,7 +2681,7 @@ export function SlipView({
                 {/* R-i: stay → airport, before the departure anchor. Smoke 8 item 5: the departure is
                     the LAST ROW inside the last day — after its stops and legs, above the day's
                     "Add something to this day" control (which adds to the day, not after the flight). */}
-                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? renderAirportLeg("departure") : null}
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? <BoardLegSlot>{renderAirportLeg("departure")}</BoardLegSlot> : null}
                 {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? (
                   <TravelAnchorPlaceholder
                     kind="departure"
@@ -2654,6 +2701,8 @@ export function SlipView({
                     to sit on (§13 — the absence is explained once, not twice). */}
                 {canEditItems && addDayNumber != null && (
                   <div className="px-3 pt-1.5 pb-0.5">
+                    {/* The Main board's day footer: a rule across the card, the dashed add under it. */}
+                    <div className="-mx-3 -mb-0.5 mt-0.5 border-t border-[color:var(--slip-line)] px-4 pt-2 pb-3">
                     <SlipAddItemControl
                       tripId={tripId}
                       dayNumber={addDayNumber}
@@ -2662,12 +2711,12 @@ export function SlipView({
                       testId={`slip-day-add-${slot.key}`}
                     />
                   </div>
+                  </div>
                 )}
               </DayBlock>
             );
           })}
-        </CardContent>
-      </Card>
+      </div>
       </>
       )}
 
@@ -2736,6 +2785,7 @@ export function SlipView({
           </div>
         )}
       </div>
+      </PlanRowLookProvider>
     </div>
   );
 }
