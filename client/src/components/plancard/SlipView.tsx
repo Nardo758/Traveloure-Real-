@@ -2118,9 +2118,7 @@ export function SlipView({
         }
         occasionName={occasion?.name ?? null}
         anchorLine={
-          // The Empty board's anchor card asks the question itself, so the header does not also
-          // say "not chosen yet" above it.
-          tripsAnchor && occasionResolved && !emptyStartShown
+          tripsAnchor && occasionResolved
             ? tripsAnchorLine(tripsAnchor, tripsAnchorState({ anchor: tripsAnchor, items: allActivities, events: planEvents }))
             : null
         }
@@ -2153,20 +2151,6 @@ export function SlipView({
           order of the two regions depends on the breakpoint's direction. */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8" data-testid="slip-columns">
         <div className={`${tripsAnchor ? "order-1 lg:order-1" : "order-2 lg:order-1"} min-w-0 flex-1 space-y-5`}>
-          {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
-              `2026-10-08-conformance-slip-phase0`) ────────────────────────────────────────────
-              An owner's plan with no items opens on the board's start: the anchor question (a
-              Trip's), the draft card and the two other ways in, directly under the header. Every
-              control is an existing rail. The anchor question renders HERE instead of lower down,
-              never twice. The tray, the optimizer card and the view bar keep their places below,
-              because the specs that pin them on an empty plan are unchanged. Removing them from
-              the empty state is the Main-rail PR's ruling, not this one. */}
-          {emptyStartShown && data.trip ? (
-            <div className="space-y-3.5" data-testid="slip-empty-board">
-              {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
-              <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
-            </div>
-          ) : null}
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
               The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
               the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
@@ -2357,6 +2341,20 @@ export function SlipView({
       ) : null}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
+      {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
+          `2026-10-08-slip-empty-board`) ────────────────────────────────────────────────────
+          An owner's plan with no items gets the board's start in the place the anchor question
+          always held, under the view bar: the anchor question (a Trip's), the draft card and the
+          two other ways in. Every control is an existing rail, and the anchor question renders here
+          once, never twice. The tray, the optimizer card and the view bar keep their places above
+          it, because the specs that pin them on an empty plan are unchanged. Taking them out of the
+          empty state is the Main-rail PR's ruling, not this one. */}
+      {emptyStartShown && data.trip ? (
+        <div className="space-y-3.5" data-testid="slip-empty-board">
+          {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
+          <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
+        </div>
+      ) : null}
       {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
