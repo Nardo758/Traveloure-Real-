@@ -1,5 +1,5 @@
 -- 358 — the plan's pets (ledger `2026-10-08-e1-zero-questions`; R340 `2026-10-05-pets-fields-and-service-animal`,
--- R336 `2026-10-05-pets-on-trips`). SQL HELD for the founder's ruling before merge. ADDITIVE ONLY. No function,
+-- R336 `2026-10-05-pets-on-trips`). SQL APPROVED by the founder, Oct 8, 2026 (additive, nullable, R340's shape, no extras). ADDITIVE ONLY. No function,
 -- trigger, CREATE OR REPLACE or DO block. IF NOT EXISTS, so a second run is a no-op. Declared in shared/schema.ts
 -- (deploy-push durability rule).
 --
