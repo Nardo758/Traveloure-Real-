@@ -4,10 +4,15 @@
  * the legs this plan may show (`selectPlanLegs` — engine legs on a routed plan, an expert's confirmed
  * leg winning per pair). A leg is drawn between rows only when it carries the engine's `routed` facts;
  * anything else draws nothing here (the day-end list keeps it until 9c).
+ *
+ * Step 9c D5 (ledger `2026-10-07-step9c-leg-options`): `slipLegBetween` also answers a shown leg that
+ * carries NO routed facts (an expert's confirmed leg on a free plan) as a minutes-only line, so the
+ * day-end `LogisticsRow` list can retire (FU-9C-1, Track A) without any leg losing its render.
  */
 import { PLAN_LEG_REFETCH_DELAY_MS } from "@shared/plan-routed-legs";
 import type { RouteAnswer, RoutingMode } from "@shared/routing-engine";
 import { normalizeLegMode } from "@shared/travel-speeds";
+import type { LegOptionView } from "@shared/leg-options";
 
 export const TRAVEL_TIMES_PAUSED_LINE = "Travel times paused today — resumes tomorrow";
 
@@ -24,6 +29,10 @@ type SlipLeg = {
   durationMin?: number;
   distanceMeters?: number | null;
   routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } };
+  routedOptions?: LegOptionView[];
+  routedOptionsChecked?: true;
+  /** Step 9c D8: set only once a provider-confirmed host pickup exists (no column yet — never today). */
+  hostPickupConfirmed?: boolean;
 };
 type SlipDay = { dayNumber?: number; dayNum?: number; activities?: Array<{ id: string }>; transports?: SlipLeg[] };
 
@@ -31,6 +40,50 @@ export interface RoutedLegView {
   legId: string;
   mode: RoutingMode;
   route: RouteAnswer;
+}
+
+/** Step 9c: what sits between two slip rows — a routed leg (with its options), or a minutes-only one. */
+export type SlipLegView =
+  | (RoutedLegView & {
+      kind: "routed";
+      fromId: string;
+      toId: string;
+      options: LegOptionView[];
+      optionsChecked: boolean;
+      hostPickupConfirmed: boolean;
+    })
+  | { kind: "unrouted"; legId: string; mode: RoutingMode | null; minutes: number };
+
+export function slipLegBetween(days: readonly SlipDay[] | null | undefined, prevId: string, nextId: string): SlipLegView | null {
+  for (const d of days ?? []) {
+    for (const l of d.transports ?? []) {
+      const from = l.fromActivityId ?? l.from;
+      const to = l.toActivityId ?? l.to;
+      if (from !== prevId || to !== nextId) continue;
+      if (l.routed) {
+        const r = routedLegBetween([{ transports: [l] }], prevId, nextId);
+        if (!r) return null;
+        return {
+          ...r,
+          kind: "routed",
+          fromId: prevId,
+          toId: nextId,
+          options: l.routedOptions?.length ? l.routedOptions : [{ mode: r.mode, route: r.route, current: true }],
+          optionsChecked: l.routedOptionsChecked === true,
+          hostPickupConfirmed: l.hostPickupConfirmed === true,
+        };
+      }
+      const minutes = Number(l.estimatedDurationMinutes ?? l.durationMin);
+      if (!Number.isFinite(minutes) || minutes <= 0) return null;
+      return { kind: "unrouted", legId: l.id, mode: normalizeLegMode(l.userSelectedMode ?? l.recommendedMode ?? l.mode ?? null), minutes: Math.round(minutes) };
+    }
+  }
+  return null;
+}
+
+/** "18 min · walk" — a shown leg with no routed facts (an expert's own minutes): no source line, no fare. */
+export function unroutedLegLine(mode: RoutingMode | null, minutes: number): string {
+  return mode ? `${minutes} min · ${mode}` : `${minutes} min`;
 }
 
 /** The routed leg from `prevId` to `nextId`, or null. */

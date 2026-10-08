@@ -45,7 +45,8 @@ const chips = (html: string) => {
   return out;
 };
 
-const NO_COMPONENT = new Set(["getting_around", "getting_home", "budget", "arrivals_split_groups", "split_activities", "who_pays_what", "getting_back_late"]);
+// Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned): Getting around is built; Getting home stays.
+const NO_COMPONENT = new Set(["getting_home", "budget", "arrivals_split_groups", "split_activities", "who_pays_what", "getting_back_late"]);
 const FLAG_ON = { FLIGHT_LOOKUP_ENABLED: true };
 const live = (tools: readonly ToolKey[], flags: any) => tools.filter((k) => toolIsLive(k, flags));
 
@@ -88,6 +89,11 @@ describe("tools tray", () => {
       assert.equal(hasComponent, TOOL_STATE[k].kind !== "coming_soon", `${k}: registry vs TOOL_STATE`);
       assert.equal(hasComponent, !NO_COMPONENT.has(k), k);
     }
+    // Step 9c D7: Getting around is live on a Trip whatever the flags; Getting home (a Moment tool) is not drawn.
+    for (const flags of [null, FLAG_ON]) {
+      assert.ok(chips(render({ group: "trips", flags })).some(([k]) => k === "getting_around"), "getting_around is live");
+      assert.ok(!chips(render({ group: "moments", flags })).some(([k]) => k === "getting_home"), "getting_home stays coming soon");
+    }
   });
 
   it("T3 a hidden occasion has no guest or party chip", () => {
@@ -102,18 +108,19 @@ describe("tools tray", () => {
     assert.ok(!keys.includes("getting_back_late"), "coming soon ⇒ not drawn");
   });
 
+  // Step 9c D7 (sanctioned): Getting around is live, so T7/T8 use Getting home as the coming-soon tool.
   it("T7 a tray with zero live tools renders nothing", () => {
     for (const flags of [null, { FLIGHT_LOOKUP_ENABLED: false }]) {
-      const html = render({ manifestTools: ["getting_there", "getting_around", "budget"], flags });
+      const html = render({ manifestTools: ["getting_there", "getting_home", "budget"], flags });
       assert.equal(html, "", "no chips, no wrapper, no header");
     }
   });
 
   it("T8 a tray with one live tool renders one chip", () => {
-    const html = render({ manifestTools: ["getting_around", "pace", "budget"] });
+    const html = render({ manifestTools: ["getting_home", "pace", "budget"] });
     assert.deepEqual(chips(html).map(([k]) => k), ["pace"]);
     assert.ok(html.includes('data-testid="slip-tools-tray"'));
-    const flight = render({ manifestTools: ["getting_there", "getting_around"], flags: FLAG_ON });
+    const flight = render({ manifestTools: ["getting_there", "getting_home"], flags: FLAG_ON });
     assert.deepEqual(chips(flight).map(([k]) => k), ["getting_there"]);
   });
 

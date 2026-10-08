@@ -84,7 +84,8 @@ export const TOOL_STATE: Readonly<Record<ToolKey, ToolState>> = {
   getting_there: { kind: "flag", flag: "FLIGHT_LOOKUP_ENABLED" },
   where_to_stay: LIVE,
   travel_party: LIVE,
-  getting_around: SOON,
+  // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`): the plan's own legs, zero Maps calls.
+  getting_around: LIVE,
   pace: LIVE,
   the_reservation: LIVE,
   timing_check: LIVE,

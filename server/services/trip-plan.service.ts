@@ -38,6 +38,7 @@
  */
 
 import { routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
+import { legOptionsChecked, routedLegOptions } from "@shared/leg-options";
 import { tripGetsRoutedLegs } from "./routing/plan-routed-legs.service";
 import { readFinalCardMeta } from "@shared/trip-card-final";
 import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
@@ -335,6 +336,9 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
       : {}),
     // Step 9a (ledger `2026-10-07-step9a-routing-engine`): present only on an engine leg.
     ...(routedFactsOf(leg) ? { routed: routedFactsOf(leg)! } : {}),
+    // Step 9c (ledger `2026-10-07-step9c-leg-options`): an engine leg's mode options, current first.
+    ...(routedFactsOf(leg) && routedLegOptions(leg) ? { routedOptions: routedLegOptions(leg)! } : {}),
+    ...(routedFactsOf(leg) && legOptionsChecked(leg.alternativeModes) ? { routedOptionsChecked: true as const } : {}),
   };
 }
 

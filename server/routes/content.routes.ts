@@ -67,7 +67,7 @@ import {
 import { draftBasisInputs } from "../services/plan-option-sets.service";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "../services/content-facts/covering-events";
-import { healthFlags, healthEgressFlags } from "../services/runtime-flags";
+import { healthFlags, healthEgressFlags, healthMapsCaps } from "../services/runtime-flags";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -369,6 +369,8 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
     const build = getBuildInfo();
     // Ledger `2026-09-30-health-flags` (+ `2026-10-04-health-flight-flag`): operator switches as booleans only — never a value.
     const flags = healthFlags();
+    // Step 9c D6 (ledger `2026-10-07-step9c-leg-options`): each Maps caller's effective daily cap, beside the switches.
+    const mapsCaps = healthMapsCaps();
     const egress = healthEgressFlags();
     try {
       const ok = await dbHealthCheck();
@@ -385,12 +387,12 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
           .then((r: any) => (r.rows ?? r)[0]?.newest ?? null)
           .catch(() => null);
         const trendScores = trendScoreAgeReport(newestScore, trendScoreMaxAgeHours());
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, migrations, trendScores });
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, migrations, trendScores });
       } else {
-        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress });
+        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps });
       }
     } catch {
-      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress });
+      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps });
     }
   });
 

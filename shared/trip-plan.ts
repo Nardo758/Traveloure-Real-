@@ -529,6 +529,13 @@ export interface TripPlanLeg {
    * converted); provenance names the source and when it answered. In-plan only (R-h).
    */
   routed?: TripPlanLegRouted;
+  /**
+   * Step 9c (ledger `2026-10-07-step9c-leg-options`) — present only on a routing-engine leg: its mode
+   * options, current first (≤3, D2). `routedOptionsChecked` = they were already asked, so a tap makes no
+   * call (D1). Minutes and fares in-plan only (R-h).
+   */
+  routedOptions?: import("./leg-options").LegOptionView[];
+  routedOptionsChecked?: true;
 }
 
 export interface TripPlanLegRouted {

@@ -25,6 +25,7 @@ import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@sh
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
 import { planLegDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
+import { unroutedLegLine } from "@/lib/slip-legs";
 
 /** The leg between two stops, as `GET /api/trips/:tripId/transport-legs` returns it (no user id). */
 export interface StopLeg {
@@ -316,7 +317,8 @@ export interface AirportLegRowProps {
  * stops on a plan that passes `planGetsRoutedLegs` — the routing engine's answer in ONE line,
  * "24 min · Keihan Main Line · ¥220 · Google · checked 4 Oct", spelled by the shared `routedLegLine`
  * (the Trip Card reads the same helper). Fare only when the source gave one, in its own currency;
- * minutes in-plan only (R-h). Read-only here; per-leg options and booking are 9c.
+ * minutes in-plan only (R-h). Step 9c (ledger `2026-10-07-step9c-leg-options`): with `onOpen`, the row is
+ * a button that opens the leg's `LegSheet` (options and booking); without it, read-only.
  */
 export interface RoutedLegRowProps {
   kind: "routed";
@@ -324,9 +326,22 @@ export interface RoutedLegRowProps {
   mode: RoutingMode;
   route: RouteAnswer;
   timeZone: string | null;
+  onOpen?: (() => void) | null;
 }
 
-export type LegRowProps = AirportLegRowProps | StopLegRowProps | RoutedLegRowProps;
+/**
+ * Step 9c D5 (ledger `2026-10-07-step9c-leg-options`): a shown leg with NO routed facts — an expert's
+ * confirmed leg on a free plan — as one minutes-only line between its stops ("18 min · walk"). No source,
+ * no fare, no tap.
+ */
+export interface UnroutedLegRowProps {
+  kind: "unrouted";
+  legId: string;
+  mode: RoutingMode | null;
+  minutes: number;
+}
+
+export type LegRowProps = AirportLegRowProps | StopLegRowProps | RoutedLegRowProps | UnroutedLegRowProps;
 
 /** The ONE leg row (R-c): a between-stops leg (`stops`, `routed`), else the airport leg. */
 export function LegRow(props: LegRowProps) {
@@ -335,21 +350,48 @@ export function LegRow(props: LegRowProps) {
     return <StopLegRow {...rest} />;
   }
   if ("kind" in props && props.kind === "routed") return <RoutedLegRow {...props} />;
+  if ("kind" in props && props.kind === "unrouted") return <UnroutedLegRow {...props} />;
   return <AirportLegRow {...(props as AirportLegRowProps)} />;
 }
 
 const ROUTED_MODE_ICON: Readonly<Record<RoutingMode, typeof Car>> = { walk: Footprints, cycle: Bike, transit: TrainFront, drive: Car };
 
-function RoutedLegRow({ legId, mode, route, timeZone }: RoutedLegRowProps) {
+function RoutedLegRow({ legId, mode, route, timeZone, onOpen }: RoutedLegRowProps) {
   const Icon = ROUTED_MODE_ICON[mode] ?? Car;
-  return (
-    <p
-      className="ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5"
-      data-testid={`slip-leg-routed-${legId}`}
-      data-leg-source={route.provenance.source}
-    >
+  const body = (
+    <>
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
       <span data-testid={`slip-leg-routed-line-${legId}`}>{routedLegLine({ mode, route }, timeZone)}</span>
+    </>
+  );
+  const cls = "ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5";
+  if (onOpen) {
+    return (
+      <button
+        type="button"
+        className={`${cls} w-[calc(100%-1rem)] text-left hover:text-foreground`}
+        onClick={onOpen}
+        aria-label="Travel options for this leg"
+        data-testid={`slip-leg-routed-${legId}`}
+        data-leg-source={route.provenance.source}
+      >
+        {body}
+      </button>
+    );
+  }
+  return (
+    <p className={cls} data-testid={`slip-leg-routed-${legId}`} data-leg-source={route.provenance.source}>
+      {body}
+    </p>
+  );
+}
+
+function UnroutedLegRow({ legId, mode, minutes }: UnroutedLegRowProps) {
+  const Icon = (mode && ROUTED_MODE_ICON[mode]) || Car;
+  return (
+    <p className="ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`slip-leg-unrouted-${legId}`}>
+      <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+      <span>{unroutedLegLine(mode, minutes)}</span>
     </p>
   );
 }

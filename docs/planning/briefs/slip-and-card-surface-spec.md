@@ -153,7 +153,7 @@ Read only `isPublishable` content: platform listings and hosts, gems, expert-ver
 | Tray | Getting there (flight → anchor, live lookup) | Trip, Group | chip renders only while `FLIGHT_LOOKUP_ENABLED` is on; hidden otherwise (the day row's "Add your flight" still opens its sheet) | 2 |
 | Tray | Where to stay (`AnchorPanel`) | Trip | live | 3 |
 | Tray | Travel party | Trip, Group | live (rail) | 2 |
-| Tray | Getting around (mode preferences) | Trip | hidden (coming soon) | 9 |
+| Tray | Getting around (the plan's legs by day, 0 Maps calls — 9c D7, ledger `2026-10-07-step9c-leg-options`) | Trip | live | 9c |
 | Tray | Pace (EnergyBudget) | Trip | live | 2 |
 | Tray | The reservation · Timing check | Moment | live | 2 |
 | Tray | Getting home | Moment | hidden (coming soon) | 9 |

@@ -9,8 +9,8 @@
  */
 import { MAPS_CALLERS, type MapsCallerKey } from "@shared/maps-billing";
 
-function envNumber(name: string, fallback: number): number {
-  const raw = process.env[name];
+function envNumber(name: string, fallback: number, env: Record<string, string | undefined> = process.env): number {
+  const raw = env[name];
   if (raw == null || raw === "") return fallback;
   const v = Number(raw);
   return Number.isFinite(v) && v >= 0 ? v : fallback;
@@ -25,9 +25,9 @@ export function mapsCallerEnabled(key: MapsCallerKey): boolean {
   return process.env[MAPS_CALLERS[key].enabledEnv] === "1";
 }
 
-export function mapsCallerDailyCap(key: MapsCallerKey): number {
+export function mapsCallerDailyCap(key: MapsCallerKey, env: Record<string, string | undefined> = process.env): number {
   const c = MAPS_CALLERS[key];
-  return Math.floor(envNumber(c.dailyCapEnv, c.defaultDailyCap));
+  return Math.floor(envNumber(c.dailyCapEnv, c.defaultDailyCap, env));
 }
 
 /** The recorded cost of `units` billable events, in TENTHS of a cent (an integer column holds sub-cent calls). */

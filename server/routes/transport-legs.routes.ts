@@ -4,6 +4,7 @@
  *
  *   POST   /api/trips/:tripId/transport-legs/generate    engine proposes (born 'proposed')
  *   PATCH  /api/trips/:tripId/transport-legs/:legId      expert confirms / edits
+ *   POST   /api/trips/:tripId/transport-legs/:legId/options  a routed leg's mode options, on tap (step 9c)
  *   DELETE /api/trips/:tripId/transport-legs/:legId      expert rejects a leg
  *   GET    /api/trips/:tripId/transport-legs/review      the leg-review stepper's read (work plan L1-10)
  *
@@ -351,6 +352,33 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
   } catch (err) {
     console.error("[TransportLegs] patch error:", err);
     res.status(500).json({ message: "Failed to update transport leg" });
+  }
+});
+
+/**
+ * POST /api/trips/:tripId/transport-legs/:legId/options — step 9c D1/D2 (ledger
+ * `2026-10-07-step9c-leg-options`): a routed leg's mode options, asked ON TAP (≤2 Maps calls, through
+ * the R299 gate) and stored on the leg's own row; a re-open costs nothing. The leg PATCH's gate — a plan
+ * WRITE (it writes the leg row and spends the plan's calls), never a `pending` advisor. No body.
+ */
+router.post("/api/trips/:tripId/transport-legs/:legId/options", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId, legId } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId,
+      sessionUserId(req),
+      "POST /api/trips/:tripId/transport-legs/:legId/options",
+      { requireWriteAccess: true },
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+    const { askLegOptions } = await import("../services/routing/leg-options.service");
+    const r = await askLegOptions(tripId, legId);
+    if (r.refused === "not_found") return res.status(404).json({ message: "Transport leg not found for this trip" });
+    if (r.refused) return res.status(409).json({ message: "This leg has no travel options", reason: r.refused });
+    res.json({ options: r.options, ...(r.paused ? { paused: true } : {}) });
+  } catch (err) {
+    console.error("[TransportLegs] options error:", err);
+    res.status(500).json({ message: "Failed to load travel options" });
   }
 });
 

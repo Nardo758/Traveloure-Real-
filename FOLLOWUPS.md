@@ -1187,3 +1187,27 @@ new row was just routed), but it means the banner finding (a notice) is the dura
 
 D6 keeps the T-3 pass on `facts-recheck` at 09:00 UTC with its UTC "start in 3 days" selection; only the
 leg half reads the plan's chosen dates (D9). Moving the hours half to the plan's zone is a separate change.
+
+### FU-9C-1 — Track A: retire the day-end `LogisticsRow` list and re-anchor smoke8 D1
+
+Step 9c D5 (ledger `2026-10-07-step9c-leg-options`) made the between-stops renderer (`useSlipLegs` /
+`slipLegBetween`) draw EVERY shown leg: routed legs with their line, and a shown leg with no routed facts
+(an expert's confirmed leg on a free plan) as a minutes-only line. The day-end list is now a duplicate of
+those rows. It lives in `client/src/components/plancard/SlipView.tsx` — Track A's file (brief L11) — so
+9c did not touch it. The change: delete the `{(day?.transports ?? []).map((leg) => (<LogisticsRow …/>))}`
+map at the end of each slip `DayBlock` and the `LogisticsRow` component, and re-anchor
+`client/src/lib/__tests__/smoke8-fixes.test.ts` D1 (which source-scans that literal) on the last
+`renderLegBetween` call. Until then a shown leg draws twice on the slip (between its stops and at day end).
+
+### FU-9C-2 — "Getting home" needs a home point
+
+Step 9c D7 built "Getting around" and kept "Getting home" as "coming soon": a Moment has no stay or
+departure point, and `users.home_city` is a city, not a point, so routing it would be a guess (§13). It is
+buildable once a plan or a profile carries a located home point.
+
+### FU-9C-3 — Maps caps editable on the admin fees/switches screen
+
+Each Maps caller's daily cap is a deployment secret (`MAPS_*_DAILY_CAP`) with a code default
+(`@shared/maps-billing`); changing one means the secrets panel. Step 9c D6 reports the effective values on
+`/api/health` (`mapsCaps`), read-only. Architect ruling (Oct 7, 2026): caps should be editable on the admin
+fees/switches screen like the fee bands, so a change needs no secrets edit and no deploy.
