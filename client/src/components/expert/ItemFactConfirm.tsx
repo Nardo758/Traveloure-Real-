@@ -16,7 +16,7 @@ const BYLINE_REASON: Record<string, string> = {
   not_approved: "your expert application is not approved yet",
   no_handle: "you have not claimed a public handle",
   storefront_not_live: "your storefront is not live",
-  no_verified_neighborhood_in_market: "you have no verified neighbourhood in this plan's city",
+  no_verified_neighborhood_in_market: "you have no verified neighborhood in this plan's city",
 };
 
 export function ItemFactConfirm({ tripId, itemId }: { tripId: string; itemId: string }) {

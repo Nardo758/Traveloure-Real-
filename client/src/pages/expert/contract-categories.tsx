@@ -27,7 +27,7 @@ const STATUS_MAP: Record<string, { label: string; className: string; Icon: React
   pending:     { label: "Pending",     className: "bg-yellow-100 text-yellow-700", Icon: Clock },
   active:      { label: "Active",      className: "bg-green-100 text-green-700",   Icon: CheckCircle },
   completed:   { label: "Completed",   className: "bg-blue-100 text-blue-700",     Icon: CheckCircle },
-  cancelled:   { label: "Cancelled",   className: "bg-red-100 text-red-700",       Icon: XCircle },
+  cancelled:   { label: "Canceled",   className: "bg-red-100 text-red-700",       Icon: XCircle },
   signed:      { label: "Signed",      className: "bg-green-100 text-green-700",   Icon: CheckCircle },
   draft:       { label: "Draft",       className: "bg-gray-100 text-gray-600",     Icon: FileText },
   sent:        { label: "Sent",        className: "bg-blue-100 text-blue-700",     Icon: Clock },

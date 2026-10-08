@@ -140,7 +140,7 @@ export const ITEM_BOOKING_NOTES: Readonly<Record<ItemBookingState, string | null
   payment_processing: "Payment processing — nothing to do yet",
   payment_failed: "Payment didn't go through",
   refunded: "Refunded — the booking was refunded",
-  cancelled: "Cancelled — the booking was cancelled",
+  cancelled: "Canceled — the booking was canceled",
 };
 
 /**

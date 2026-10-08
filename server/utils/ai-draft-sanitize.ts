@@ -24,6 +24,7 @@ import {
   sanitizeAiProse,
   type CoveringEvent,
 } from "@shared/ai-place-text";
+import { normalizedTravelLineTitle } from "@shared/draft-basis";
 import type { NormalizedGeneratedCanonicalItem } from "./generated-itinerary";
 
 export interface AiDraftSanitizeOptions {
@@ -82,18 +83,48 @@ export function sanitizeCanonicalItems(
   items: readonly NormalizedGeneratedCanonicalItem[],
   o: AiDraftSanitizeOptions,
 ): NormalizedGeneratedCanonicalItem[] {
+  const lastDay = items.reduce((m, it) => Math.max(m, Number(it.dayNumber) || 0), 0);
   return items
     .filter((it) => !dropTitle(it.title, o))
-    .map((it) =>
-      reduceEventItem(
+    .map((it) => {
+      // Ledger `2026-10-08-arrival-title-normalized`: the plan's own travel line stores our wording.
+      const title = normalizedTravelLineTitle(String(it.title ?? ""), o.city, Number(it.dayNumber), lastDay);
+      return reduceEventItem(
         {
           ...it,
+          ...(title !== it.title ? { title, name: title } : {}),
           location: sanitizeAiLocation(it.location, o.city) ?? "",
           description: sanitizeAiProse(it.description, o) ?? "",
         },
         o,
-      ),
-    );
+      );
+    });
+}
+
+/**
+ * Ledger `2026-10-08-arrival-title-normalized`: a day list's travel lines (day 1's arrival, the last
+ * day's departure) store our own wording. Reads and writes `title` and/or `name`, whichever the
+ * activity carries; the day number is the day's `day`/`dayNumber`, else its 1-based position.
+ */
+export function withNormalizedTravelTitles<D extends Record<string, any>>(days: readonly D[], destination: string | null | undefined): D[] {
+  const dayNum = (d: any, i: number) => Number(d?.day ?? d?.dayNumber) || i + 1;
+  const lastDay = days.reduce((m, d, i) => Math.max(m, dayNum(d, i)), 0);
+  return days.map((d, i) => {
+    if (!Array.isArray(d?.activities)) return d;
+    const n = dayNum(d, i);
+    return {
+      ...d,
+      activities: d.activities.map((a: any) => {
+        const before = String(a?.title ?? a?.name ?? "");
+        const title = normalizedTravelLineTitle(before, destination, n, lastDay);
+        if (title === before) return a;
+        const out: any = { ...a };
+        if ("title" in out || !("name" in out)) out.title = title;
+        if ("name" in out) out.name = title;
+        return out;
+      }),
+    };
+  });
 }
 
 function cleanActivity(a: any, o: AiDraftSanitizeOptions): any {
@@ -116,7 +147,7 @@ function legMentions(l: any, o: AiDraftSanitizeOptions): boolean {
 
 /** The stored draft JSON (`generatedPlan`), cleaned by the same rules as the rows. */
 export function sanitizeGeneratedPlan<T extends Record<string, any>>(plan: T, o: AiDraftSanitizeOptions): T {
-  const days = Array.isArray(plan.itineraryData) ? plan.itineraryData : [];
+  const days = withNormalizedTravelTitles(Array.isArray(plan.itineraryData) ? plan.itineraryData : [], o.city);
   const itineraryData = days.map((d: any) => ({
     ...d,
     ...(typeof d?.theme === "string" ? { theme: sanitizeAiProse(d.theme, o) ?? "" } : {}),

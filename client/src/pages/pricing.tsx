@@ -373,7 +373,7 @@ export default function PricingPage() {
           className="border-b border-[color:var(--earn-gold)] bg-[var(--earn-gold-wash)] px-6 py-3 text-center text-sm text-[color:var(--earn-gold-ink)]"
           data-testid="banner-membership-cancelled"
         >
-          Plus checkout was cancelled. No membership change was made.
+          Plus checkout was canceled. No membership change was made.
         </div>
       )}
       {membershipReturn === "success" && (

@@ -163,7 +163,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   in_progress: { label: "In Progress", variant: "default", icon: Loader2 },
   completed: { label: "Completed", variant: "default", icon: CheckCircle2 },
   disputed: { label: "Disputed", variant: "destructive", icon: AlertTriangle },
-  cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
+  cancelled: { label: "Canceled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
   // R165 (G3): two statuses the server writes that rendered as raw words and sat in no tab.
   // `expired` — a checkout that was never paid and was released (R164); `dispute_lost` — the bank

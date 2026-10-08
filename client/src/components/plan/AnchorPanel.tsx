@@ -49,7 +49,7 @@ export const ANCHOR_PANEL_CHANGE = "Change where I'm staying";
 export const ANCHOR_PANEL_DECIDING = "I'm deciding — compare places";
 export const ANCHOR_PANEL_HAND_ADDED = HAND_ADDED_STAY_LINE;
 export const HOTELS_COMING_SOON = "Hotels coming soon";
-export const NO_LOCATED_ITEMS = "Once some of your stops are on the map, we'll rank neighbourhoods by them.";
+export const NO_LOCATED_ITEMS = "Once some of your stops are on the map, we'll rank neighborhoods by them.";
 export const FIXED_ITEM_QUESTION = "What's fixed on these dates?";
 export const FIXED_ITEM_DETAIL = "Add what's already booked — the rounds, the match, the show. Where you stay is chosen around it.";
 
@@ -121,7 +121,7 @@ function OwnForm({
           onChange={(e) => setSlug(e.target.value)}
           data-testid="where-to-stay-own-neighborhood"
         >
-          <option value="">…or just the neighbourhood</option>
+          <option value="">…or just the neighborhood</option>
           {neighborhoods.map((n) => (
             <option key={n.slug} value={n.slug}>
               {n.name}
@@ -405,7 +405,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
           </p>
         ) : (
           <p className="text-sm text-muted-foreground" data-testid="where-to-stay-no-neighborhoods">
-            {view.city ? `We don't have neighbourhoods for ${view.city} yet.` : "We don't have neighbourhoods for this city yet."}
+            {view.city ? `We don't have neighborhoods for ${view.city} yet.` : "We don't have neighborhoods for this city yet."}
           </p>
         )
       ) : (

@@ -42,7 +42,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   pending_signature: { label: "Pending Signature", variant: "outline" },
   active: { label: "Active", variant: "default" },
   completed: { label: "Completed", variant: "default" },
-  cancelled: { label: "Cancelled", variant: "destructive" },
+  cancelled: { label: "Canceled", variant: "destructive" },
   expired: { label: "Expired", variant: "secondary" },
 };
 

@@ -757,7 +757,7 @@ export function ServiceMapAuthoring({
                 </div>
                 {!pin && (
                     <p className="text-[10px] text-muted-foreground mt-1" data-testid="text-layer-radius-gate">
-                    Needs a confirmed pin — a radius has no centre without one.
+                    Needs a confirmed pin — a radius has no center without one.
                   </p>
                 )}
               </div>

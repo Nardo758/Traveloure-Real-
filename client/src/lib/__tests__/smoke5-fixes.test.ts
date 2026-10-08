@@ -20,7 +20,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { coordinatesStillPending } from "../../../../server/services/coordinate-backfill.pure";
 import { CHECKING_HOURS_LABEL, PLANCARD_PENDING_REFETCH_MS, plancardRefetchInterval, showsCheckingHours } from "../plancard-refetch";
-import { isAcceptableArrivalLine } from "@shared/draft-basis";
+import { isAcceptableArrivalLine, normalizedTravelLineTitle } from "@shared/draft-basis";
 
 const read = (rel: string) =>
   readFileSync(new URL(rel, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\/|\{\/\*[\s\S]*?\*\/\}|\/\/.*$/gm, "");
@@ -92,9 +92,13 @@ test("S6 item 8: pending lookups poll the plancard and label their rows until th
 
 test("S7 item 10: arrival/departure copy is ours or station-specific", () => {
   assert.equal(isAcceptableArrivalLine("Arrival in Kyoto", "Kyoto", "arrival"), true);
+  // Ledger `2026-10-08-arrival-title-normalized` (sanctioned): the station line is still ACCEPTED as
+  // input, and what is STORED is our own wording.
   assert.equal(isAcceptableArrivalLine("Arrive at Kyoto Station and drop bags", "Kyoto", "arrival"), true);
+  assert.equal(normalizedTravelLineTitle("Arrive at Kyoto Station and drop bags", "Kyoto, Japan", 1, 4), "Arrival in Kyoto");
   assert.equal(isAcceptableArrivalLine("Departure from Kyoto", "Kyoto", "departure"), true);
   assert.equal(isAcceptableArrivalLine("Depart from Kyoto Station on the Shinkansen", "Kyoto", "departure"), true);
+  assert.equal(normalizedTravelLineTitle("Depart from Kyoto Station on the Shinkansen", "Kyoto, Japan", 4, 4), "Departure from Kyoto");
   assert.equal(isAcceptableArrivalLine("Check-in & Hotel Orientation", "Kyoto", "arrival"), false);
   assert.equal(isAcceptableArrivalLine("Arrive at your hotel near Kyoto Station", "Kyoto", "arrival"), false);
   assert.equal(isAcceptableArrivalLine("Explore Kyoto", "Kyoto", "arrival"), false);

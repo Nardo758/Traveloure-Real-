@@ -77,7 +77,7 @@ export const DEFAULT_STATUS_MAP: Record<string, StatusBadgeEntry> = {
   payment_pending: { label: "Payment pending", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
   confirmed: { label: "Confirmed", className: "bg-green-100 text-green-700 border-green-200" },
   completed: { label: "Completed", className: "bg-green-100 text-green-700 border-green-200" },
-  cancelled: { label: "Cancelled", className: "bg-red-100 text-red-700 border-red-200" },
+  cancelled: { label: "Canceled", className: "bg-red-100 text-red-700 border-red-200" },
   refunded: { label: "Refunded", className: "bg-slate-100 text-slate-700 border-slate-200" },
   held: { label: "Held", className: "bg-amber-100 text-amber-700 border-amber-200" },
   releasable: { label: "Releasable", className: "bg-blue-100 text-blue-700 border-blue-200" },
