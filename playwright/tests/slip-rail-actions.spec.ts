@@ -240,9 +240,10 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   await openSlip(page, tripId);
   const tray = page.getByTestId("slip-tools-tray");
   await expect(tray).toBeVisible();
-  // A tool with no existing component is a disabled chip, never an empty sheet.
-  await expect(page.getByTestId("tool-chip-getting_around")).toBeDisabled();
-  await expect(page.getByTestId("tool-chip-getting_around")).toContainText("coming soon");
+  // Only live tools render (ledger `2026-10-08-tools-tray-live-only`, sanctioned rewrite): a tool
+  // with no existing component draws nothing, and the tray says "coming soon" nowhere.
+  await expect(page.getByTestId("tool-chip-getting_around")).toHaveCount(0);
+  await expect(tray).not.toContainText("coming soon");
   // Pace opens the EXISTING energy budget in a sheet.
   await page.getByTestId("tool-chip-pace").click();
   await expect(page.getByTestId("tool-sheet-pace")).toBeVisible();
