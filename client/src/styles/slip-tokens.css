@@ -28,6 +28,8 @@
   --slip-wash: #E9EEF2;
   /* Body text on a navy card (the Empty board's draft card). */
   --slip-on-navy-muted: #D7E0E8;
+  /* A quiet outline on a navy card (the optimizer lead's "Local expert"). */
+  --slip-on-navy-line: #5B7A94;
 
   /* Accents. */
   --slip-teal: #2E8B8B;
@@ -36,6 +38,7 @@
   --slip-gold: #E8B339;
   --slip-gold-ink: #8A6A1E;
   --slip-gold-wash: #FFF6DF;
+  --slip-green: #5DCAA5;
 
   /* Primary action (ruling 2): the coral fill, white on it. */
   --slip-primary: var(--coral-fill);

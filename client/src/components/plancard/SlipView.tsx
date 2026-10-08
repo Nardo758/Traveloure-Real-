@@ -58,6 +58,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
+import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPanel";
 import { LegRow } from "@/components/plan/LegRow";
@@ -83,6 +84,8 @@ import {
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
+import { MomentAnchorCard } from "@/components/plan/MomentAnchorCard";
+import { momentLeadIntro, momentLeadTitle, momentSketchLine, momentSpanWord } from "@/lib/slip-moment";
 import { useHealthFlags } from "@/lib/health-flags";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
@@ -344,8 +347,17 @@ export function SlipHeader({
   occasionName,
   anchorLine,
   expertControl,
+  daySpan = null,
+  sketchLine = null,
 }: {
   data: SlipData;
+  /** A one-day Moment's span ("evening" / "day"), for the window line (Moment board). */
+  daySpan?: "evening" | "day" | null;
+  /**
+   * The Moment board's line beside the "AI starting sketch" chip ("4 stops · around your
+   * reservation"). Present only for a Moment with an anchor; otherwise the sketch keeps its sentence.
+   */
+  sketchLine?: string | null;
   /** The expert door's small "Add a local expert" control (ledger `2026-09-29-expert-door`), or null. */
   expertControl?: React.ReactNode;
   hasOptimized: boolean;
@@ -512,6 +524,7 @@ export function SlipHeader({
         onAskParty={onAskParty}
         eventCount={eventCount}
         timezone={(trip as any)?.timezone ?? null}
+        daySpan={daySpan}
       />
       {anchorLine ? (
         <p className="text-sm text-foreground" data-testid="slip-anchor-state">
@@ -564,13 +577,21 @@ export function SlipHeader({
           hand-built (§13). It states what the draft IS (one version, no live prices) and what
           Optimize does; it makes no claim about which model wrote it, because the tier is a cost
           decision and never a product claim. */}
-      {data.aiSketch === true && (
+      {data.aiSketch === true && sketchLine ? (
+        // The Moment board: a chip and a line, in place of the sentence.
+        <p className="flex flex-wrap items-center gap-2 text-[13px] text-[color:var(--slip-muted)]" data-testid="slip-ai-sketch-note">
+          <span className="inline-flex items-center rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] px-2.5 py-1 font-medium text-[color:var(--slip-navy)]">
+            AI starting sketch
+          </span>
+          <span>{sketchLine}</span>
+        </p>
+      ) : data.aiSketch === true ? (
         <p className="text-xs text-muted-foreground" data-testid="slip-ai-sketch-note">
           <Sparkles className="w-3 h-3 inline mr-1" />
           This is an AI starting sketch — one version, without live prices. Optimize builds three
           proposals around it, anchored to what you have already booked.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -2049,6 +2070,22 @@ export function SlipView({
   const aiAction = useSlipAiAction(tripId, allActivities);
   // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
   const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
+  // ── THE MOMENT BOARD (slip conformance; ledger `2026-10-08-slip-moment-board`) ─────────────────
+  // A resolved Moment occasion only (the group is an internal key, R127): its primary anchor (the
+  // reservation) gets its own card, the tray marks "The reservation" done once it exists, and the
+  // optimizer card speaks of the evening. Every word comes from `@/lib/slip-moment`.
+  const isMoment = occasionResolved && manifestFor(experienceGroup, occasion?.slug ?? null).group === "moment";
+  const momentAnchor = isMoment && anchorItemId ? allActivities.find((a) => a.id === anchorItemId) ?? null : null;
+  const momentAnchorDayNum = momentAnchor ? days.find((d) => d.activities.some((a) => a.id === momentAnchor.id))?.dayNum ?? null : null;
+  const momentAnchorDateIso = momentAnchorDayNum != null ? daySlots.find((sl) => sl.dayNum === momentAnchorDayNum)?.dateIso ?? null : null;
+  const momentSpan = isMoment ? momentSpanWord(data.trip?.startDate as any, data.trip?.endDate as any, allActivities) : null;
+  const leadCopy: SlipLeadCopy | null = isMoment
+    ? { title: momentLeadTitle(momentSpan), intro: momentLeadIntro(momentAnchor), noStay: true }
+    : null;
+  const doneTools = useMemo(
+    () => new Set<ToolKey>(momentAnchor ? ["the_reservation"] : []),
+    [momentAnchor],
+  );
 
   return (
     <div
@@ -2137,6 +2174,8 @@ export function SlipView({
            modal reads the plan the traveler is already on. */
         onEditStops={() => openPlanModal()}
         onAskParty={askParty}
+        daySpan={momentSpan}
+        sketchLine={momentAnchor ? momentSketchLine(allActivities.length) : null}
       />
 
       {/* ── THE TWO COLUMNS (ledger `2026-09-06-slip-conformance`) ───────────────────────
@@ -2176,10 +2215,20 @@ export function SlipView({
               openTool={openTool}
               onOpenToolChange={setOpenTool}
               flags={healthFlags}
+              doneTools={doneTools}
             />
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
               width. The rail renders its OptimizerLead into this slot (a portal; its state stays there). */}
+          {/* The Moment board's anchor card: the reservation, between the tray and the optimizer. */}
+          {momentAnchor && slipView === "list" ? (
+            <MomentAnchorCard
+              item={momentAnchor}
+              facts={data.placeFacts?.[momentAnchor.id]}
+              dateIso={momentAnchorDateIso}
+              timeZone={(data.trip as any)?.timezone ?? null}
+            />
+          ) : null}
           {isOwner ? <div ref={setOptimizerSlot} data-testid="slip-optimizer-slot" /> : null}
           {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
               These were two stacked rows with the whole rail between them, so the plan's status
@@ -2682,6 +2731,7 @@ export function SlipView({
               stopsLine={stopsLine}
               zoneLine={zoneLine}
               optimizerSlot={optimizerSlot}
+              leadCopy={leadCopy}
             />
           </div>
         )}
