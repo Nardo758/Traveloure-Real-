@@ -9468,4 +9468,71 @@ router.get("/api/admin/travelpayouts-cache/status", isAuthenticated, async (_req
   }
 });
 
+// ── QA FREE OPTIMIZE RUNS (ledger `2026-10-08-qa-trip-pass-issue`) ─────────────────────────────────
+// An admin issues a ZERO-CHARGE Trip Pass on a QA-domain account's own plan: the existing trip_pass run
+// authorization, 5-run cap and per-run fee + waiver pair do the rest. `.strict()` body (§19); refused
+// unless the account's email domain EQUALS `QA_ACCOUNT_EMAIL_DOMAIN` (unset ⇒ every issue refused) and the
+// plan is that account's. No ledger row and no Stripe object at issue; the issue is audit-logged.
+const qaTripPassIssueBody = z
+  .object({
+    userId: z.string().trim().min(1).max(255),
+    tripId: z.string().trim().min(1).max(255),
+    reason: z.string().trim().min(3).max(200),
+  })
+  .strict();
+router.post("/api/admin/trip-pass/issue", isAuthenticated, async (req, res) => {
+  const admin = await getFullAdminUser(getUserId(req)!);
+  if (!admin || admin.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const parsed = qaTripPassIssueBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Send userId, tripId and a reason; nothing else is accepted." });
+  }
+  try {
+    const { issueQaTripPass, qaIssueRefusalStatus } = await import("../services/qa-trip-pass.service");
+    const { grantTripPass } = await import("../services/trip-entitlement.service");
+    const { PLAN_KEYS, requirePlan } = await import("../services/plans.service");
+    const outcome = await issueQaTripPass(
+      { ...parsed.data, issuedBy: admin.id },
+      {
+        qaDomain: () => process.env.QA_ACCOUNT_EMAIL_DOMAIN,
+        getUser: async (id) => {
+          const u = await storage.getUser(id);
+          return u ? { id: u.id, email: u.email ?? null } : null;
+        },
+        getTrip: async (id) => {
+          const t = await storage.getTrip(id);
+          return t ? { id: t.id, userId: t.userId ?? null } : null;
+        },
+        passAllowances: async () => {
+          const plan = await requirePlan(PLAN_KEYS.TRIP_PASS);
+          return { allowances: plan.allowances as Record<string, unknown>, name: plan.name };
+        },
+        grant: async (g) => {
+          const { created } = await grantTripPass(g);
+          return { created };
+        },
+      },
+    );
+    if (!outcome.ok) {
+      return res.status(qaIssueRefusalStatus(outcome.refusal)).json({ refused: outcome.refusal });
+    }
+    const auditWarning = await recordAdminAudit({
+      actorId: admin.id,
+      actorRole: admin.role,
+      action: "qa_trip_pass_issued",
+      resourceType: "trip",
+      resourceId: outcome.tripId,
+      metadata: { userId: parsed.data.userId, reason: parsed.data.reason, created: outcome.created },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ ...outcome, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err: any) {
+    console.error("Admin QA trip pass issue error:", err?.message);
+    res.status(500).json({ message: "Failed to issue the Trip Pass" });
+  }
+});
+
 export default router;
