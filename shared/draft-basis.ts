@@ -22,6 +22,7 @@
  *   · Everything else (other groups, a fixed-item Trip) drafts as before; its basis is not recorded
  *     because this lane does not decide one (§13 — omitted, never guessed).
  */
+import { travelItemKind } from "./getting-there";
 
 export type DraftBasisKind = "chosen_anchor" | "open_anchor_set" | "none_asked";
 
@@ -260,4 +261,35 @@ export function isAcceptableArrivalLine(title: string, city: string | null | und
   if (t === ours) return true;
   const verb = kind === "arrival" ? /\barriv/i : /\b(depart|leav)/i;
   return verb.test(t) && /\b(station|airport|port|terminal)\b/i.test(t);
+}
+
+/** The two travel-row titles, spelled once for storage (the slip's `TRAVEL_ANCHOR_WORDS` say the same). */
+export function travelLineTitle(kind: "arrival" | "departure", city: string): string {
+  return kind === "arrival" ? `Arrival in ${city}` : `Departure from ${city}`;
+}
+
+/**
+ * The stored title of a drafted travel line (decision-maker, Oct 8, 2026 — ledger
+ * `2026-10-08-arrival-title-normalized`). Pure. `isAcceptableArrivalLine` still ACCEPTS a model line
+ * that names a station, airport, port or terminal as an arrival/departure basis (smoke 5 item 10); what
+ * is STORED is our own wording, so the slip, the item sheet, the card and every other reader of the
+ * title agree: "Arrive at Kyoto Station and drop bags" stores as "Arrival in Kyoto".
+ *
+ * Only the plan's OWN travel rows are rewritten — an arrival on day 1 and a departure on the last day
+ * (the rows the slip absorbs as its travel rows). A mid-trip "Arrive at Osaka Station" keeps its own
+ * title: "Arrival in <plan city>" there would name the wrong city (§13). No city ⇒ unchanged.
+ */
+export function normalizedTravelLineTitle(
+  title: string,
+  destination: string | null | undefined,
+  dayNumber: number,
+  lastDay: number,
+): string {
+  const city = (destination ?? "").split(",")[0].trim();
+  if (!city) return title;
+  const kind = travelItemKind({ name: title, origin: "ai" });
+  if (!kind) return title;
+  if (kind === "arrival" ? dayNumber !== 1 : dayNumber !== lastDay) return title;
+  if (!isAcceptableArrivalLine(title, city, kind)) return title;
+  return travelLineTitle(kind, city);
 }

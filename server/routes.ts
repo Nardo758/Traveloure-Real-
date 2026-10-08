@@ -186,7 +186,7 @@ import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
 import { daysWithinFlightWindows } from "./utils/draft-flight-windows";
-import { reduceUncoveredEventActivities } from "./utils/ai-draft-sanitize";
+import { reduceUncoveredEventActivities, withNormalizedTravelTitles } from "./utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "./services/content-facts/covering-events";
 import { seasonPromptLineForTrip } from "./services/content-facts/season-facts";
 import { AI_MEAL_PROMPT_LINE, aiEventPromptLine } from "@shared/ai-place-text";
@@ -1952,10 +1952,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // path — nothing before arrival + buffer or past departure − buffer (the ONE rule,
       // `draft-flight-windows`), and an event-named title not confirmed for these dates reduced.
       if (Array.isArray(itineraryData?.days)) {
-        itineraryData.days = daysWithinFlightWindows(itineraryData.days, tripAnchors as any, tripStartIso).map((d: any) => ({
-          ...d,
-          activities: Array.isArray(d.activities) ? reduceUncoveredEventActivities(d.activities, coveringEvents) : d.activities,
-        }));
+        itineraryData.days = withNormalizedTravelTitles(
+          daysWithinFlightWindows(itineraryData.days, tripAnchors as any, tripStartIso).map((d: any) => ({
+            ...d,
+            activities: Array.isArray(d.activities) ? reduceUncoveredEventActivities(d.activities, coveringEvents) : d.activities,
+          })),
+          trip.destination,
+        );
       }
 
       // Post-generation anchor validation (Lane 2a): warn, never block. Attaches
