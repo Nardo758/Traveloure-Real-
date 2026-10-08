@@ -17,6 +17,8 @@ import type { ReactNode } from "react";
 import { Anchor } from "lucide-react";
 import { ROUTING_TINTS } from "@/components/plancard/slip-tokens";
 import { anchorWallTime, flightBufferWithLeg } from "@shared/getting-there";
+import { usePlanRowLook } from "./row-look";
+import { BoardRowFrame } from "./BoardRowFrame";
 
 export interface AnchorRowProps {
   id: string;
@@ -156,7 +158,41 @@ export function TravelAnchorPlaceholder({
   onAddFlight?: () => void;
 }) {
   const title = travelRowTitle(kind, city);
+  const look = usePlanRowLook();
   if (!title) return null;
+  if (look === "board") {
+    // The Main board's travel row (ledger `2026-10-08-slip-main-rows`): the same words in the row
+    // grid — the flight's own time and a teal fixed dot once a flight is entered, the navy travel
+    // dot and "Add your flight" before one is.
+    const id = `travel-${kind}`;
+    return (
+      <div data-testid={`slip-travel-anchor-${kind}`} data-anchor-real={flight ? "true" : undefined}>
+        <BoardRowFrame time={flight?.time ?? null} dot={flight ? "anchor" : "travel"}>
+          <div data-testid={`slip-anchor-row-${id}`} data-anchor-placeholder={flight ? undefined : "true"} className="flex flex-col gap-1">
+            <span className="text-base font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid={`slip-item-name-${id}`}>{title}</span>
+            {flight ? (
+              <p className="text-[13px] font-medium text-[color:var(--slip-teal-ink)]" data-testid={`slip-anchor-label-${id}`}>
+                {anchorLabel(GETTING_THERE_TOOL)}
+              </p>
+            ) : null}
+            {flight && flightRowText(flight) ? (
+              <p className="text-[13px] text-[color:var(--slip-muted)]" data-testid={`slip-travel-anchor-${kind}-flight`}>{flightRowText(flight)}</p>
+            ) : null}
+            {!flight && onAddFlight ? (
+              <button
+                type="button"
+                className="min-h-[32px] self-start text-[13px] font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+                onClick={onAddFlight}
+                data-testid={`slip-anchor-action-${id}`}
+              >
+                {TRAVEL_ANCHOR_WORDS.addFlight}
+              </button>
+            ) : null}
+          </div>
+        </BoardRowFrame>
+      </div>
+    );
+  }
   if (flight) {
     return (
       <div className="py-3 px-3" data-testid={`slip-travel-anchor-${kind}`} data-anchor-real="true">

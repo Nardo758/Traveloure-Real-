@@ -19,7 +19,7 @@
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
 import type { ReactNode } from "react";
-import { CheckCircle2, Circle, Lock, MoreHorizontal, Navigation } from "lucide-react";
+import { CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
 import {
   DropdownMenu,
@@ -30,13 +30,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { FactView } from "@shared/content-facts";
 import type { PlanCardActivity } from "@/components/plancard/plancard-types";
-import { itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
+import { factsLineParts, itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
 import { CHECKING_HOURS_LABEL } from "@/lib/plancard-refetch";
-import { AnchorRow } from "./AnchorRow";
+import { AnchorRow, anchorLabel } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
 import { PlacePhoto } from "./PlacePhoto";
 import type { PhotoView } from "@shared/place-photos";
 import { planItemDomId } from "@shared/plan-jump-targets";
+import { usePlanRowLook } from "./row-look";
+import { BoardRowFrame, boardDotFor } from "./BoardRowFrame";
 
 export type ItemRowMode = "edit" | "read";
 export type ItemRowRole = "traveler" | "expert";
@@ -127,6 +129,8 @@ export function ItemRow(props: ItemRowProps) {
   const place = itemPlaceLine(facts, a, timeZone);
   const factsLine = itemFactsLine(facts, dateIso, timeZone);
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
+  const look = usePlanRowLook();
+  if (look === "board") return <BoardItemRow {...props} place={place} factsLine={factsLine} showMenu={!!showMenu} />;
 
   const titleLine = (
     <p className={`font-medium flex items-start gap-1.5 ${props.visited?.checked ? "text-muted-foreground line-through" : "text-foreground"}`}>
@@ -298,13 +302,17 @@ export const ITEM_MENU_LABELS = {
 /** R-ah: the row's own word for a locked item. Optimize, Regenerate and Build-around leave it in place. */
 export const ITEM_LOCKED_LABEL = "Kept · Optimize and redrafts leave it in place";
 
-function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: ItemRowMenu; isAnchor: boolean; locked: boolean }) {
+function ItemRowMenuButton({ id, menu, isAnchor, locked, board = false }: { id: string; menu: ItemRowMenu; isAnchor: boolean; locked: boolean; board?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          className={
+            board
+              ? "inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--slip-radius-button)] text-[color:var(--slip-muted)] hover:bg-[color:var(--slip-wash)]"
+              : "inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          }
           aria-label="More actions"
           data-testid={`item-menu-${id}`}
         >
@@ -364,5 +372,159 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked }: { id: string; menu: I
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// ── THE BOARD LOOK (slip conformance, Main board, boards rev 15; ledger `2026-10-08-slip-main-rows`) ──
+// The same row, drawn as the board's timeline: a 52px time column, an 18px dot rail, the stop, and a
+// 44px ⋯. Every line it prints is the line the plain look prints, from the same derivations — only
+// the layout and the type change. Testids are the plain look's, so every pin on a row still finds it.
+
+function BoardItemRow(
+  props: ItemRowProps & {
+    place: ReturnType<typeof itemPlaceLine>;
+    factsLine: ReturnType<typeof itemFactsLine>;
+    showMenu: boolean;
+  },
+) {
+  const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine } = props;
+  const time = anchor ? (anchor.time !== undefined ? anchor.time : a.time || null) : a.time || null;
+  const title = anchor ? anchor.title || a.name : a.name;
+  const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine });
+  const titleClass = `min-w-0 break-words text-left text-base font-semibold leading-tight ${props.visited?.checked ? "text-[color:var(--slip-muted)] line-through" : "text-[color:var(--slip-ink)]"}`;
+  const body = (
+    <div data-testid={anchor ? `slip-anchor-row-${a.id}` : undefined} data-anchor-placeholder={anchor && !anchor.fromTool ? "true" : undefined} className="flex min-w-0 flex-col gap-1">
+      <div className="flex items-start gap-1.5">
+        {props.visited ? (
+          <button
+            type="button"
+            onClick={props.visited.onToggle}
+            className={`-my-1 flex-shrink-0 p-1 ${props.visited.checked ? "text-green-600" : "text-[color:var(--slip-faint)]"}`}
+            title={props.visited.checked ? "Mark as not visited" : "Mark as visited"}
+            aria-pressed={props.visited.checked}
+            data-testid={`button-visited-${a.id}`}
+          >
+            {props.visited.checked ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          </button>
+        ) : null}
+        {props.onOpenDetails ? (
+          <button type="button" onClick={props.onOpenDetails} className={`${titleClass} hover:underline underline-offset-2`} data-testid={`slip-item-name-${a.id}`}>
+            {title}
+          </button>
+        ) : (
+          <span className={titleClass} data-testid={`slip-item-name-${a.id}`}>{title}</span>
+        )}
+      </div>
+      {anchor?.fromTool ? (
+        <p className="text-[13px] font-medium text-[color:var(--slip-teal-ink)]" data-testid={`slip-anchor-label-${a.id}`}>
+          {anchorLabel(anchor.fromTool)}
+        </p>
+      ) : null}
+      {anchor?.action ? (
+        <button
+          type="button"
+          className="min-h-[32px] self-start text-[13px] font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+          onClick={anchor.action.onClick}
+          data-testid={`slip-anchor-action-${a.id}`}
+        >
+          {anchor.action.label}
+        </button>
+      ) : null}
+      {anchor?.detail ? (
+        <p className="text-[13px] text-[color:var(--slip-muted)]" data-testid={`slip-anchor-detail-${a.id}`}>{anchor.detail}</p>
+      ) : null}
+      {a.locked ? (
+        <p className="inline-flex items-center gap-1 text-xs text-[color:var(--slip-muted)]" data-testid={`slip-item-locked-${a.id}`}>
+          <Lock className="h-3 w-3" aria-hidden="true" />
+          {ITEM_LOCKED_LABEL}
+        </p>
+      ) : null}
+      {place ? (
+        <p className="text-[13px] text-[color:var(--slip-muted)]" data-testid={`slip-item-place-${a.id}`}>
+          {place.provenance && place.sourceUrl ? (
+            <a href={place.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+              <span data-testid={`slip-item-address-${a.id}`}>{place.text}</span>
+              {sourcedLineSuffix(place)}
+            </a>
+          ) : (
+            <>
+              <span data-testid={`slip-item-address-${a.id}`}>{place.text}</span>
+              {sourcedLineSuffix(place)}
+            </>
+          )}
+        </p>
+      ) : null}
+      {factsLine ? (
+        <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-medium text-[color:var(--slip-teal)]" data-testid={`slip-item-facts-${a.id}`}>
+          <Clock className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+          {factsLine.sourceUrl ? (
+            <a href={factsLine.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+              <BoardFactsText text={factsLine.text} />
+            </a>
+          ) : (
+            <BoardFactsText text={factsLine.text} />
+          )}
+        </p>
+      ) : props.checkingHours ? (
+        <p className="text-xs italic text-[color:var(--slip-faint)]" data-testid={`slip-item-facts-checking-${a.id}`}>
+          {CHECKING_HOURS_LABEL}
+        </p>
+      ) : null}
+      {props.bookingState ? (
+        <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`slip-item-booking-${a.id}`}>{props.bookingState}</p>
+      ) : null}
+      {props.bookingAction ? <div className="mt-0.5">{props.bookingAction}</div> : null}
+      {mode === "read" && props.navigateHref ? (
+        <a
+          href={props.navigateHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-[color:var(--slip-navy)] hover:underline"
+          data-testid={`slip-item-navigate-${a.id}`}
+        >
+          <Navigation className="h-3 w-3" aria-hidden="true" />
+          Navigate
+        </a>
+      ) : null}
+      {props.expertNote ? (
+        <ExpertNote
+          note={props.expertNote.note}
+          author={props.expertNote.author}
+          neighbourhood={props.expertNote.neighbourhood ?? null}
+          followUp={props.expertNote.followUp}
+        />
+      ) : null}
+      {props.children}
+    </div>
+  );
+  return (
+    <div
+      ref={props.rowRef}
+      id={planItemDomId(a.id)}
+      className={`transition-shadow ${highlighted ? "rounded-lg ring-2 ring-primary/60" : ""}`}
+      data-testid={`slip-item-${a.id}`}
+      data-item-mode={mode}
+    >
+      <BoardRowFrame
+        time={time}
+        timeTestId={`slip-item-time-${a.id}`}
+        dot={dot}
+        menu={props.showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} locked={!!a.locked} board /> : null}
+      >
+        {props.photo ? <PlacePhoto photo={props.photo} size="thumb" testId={`slip-item-photo-${a.id}`} onClick={props.onOpenDetails} /> : null}
+        {body}
+      </BoardRowFrame>
+    </div>
+  );
+}
+
+/** The board's facts line: the day's hours in teal, the provenance after it in the faint grey. */
+function BoardFactsText({ text }: { text: string }) {
+  const { lead, source } = factsLineParts(text);
+  return (
+    <>
+      <span>{lead}</span>
+      {source ? <span className="font-normal text-[color:var(--slip-faint)]"> · {source}</span> : null}
+    </>
   );
 }

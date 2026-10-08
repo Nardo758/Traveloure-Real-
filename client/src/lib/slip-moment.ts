@@ -55,3 +55,35 @@ export function momentSketchLine(stopCount: number): string | null {
   if (!Number.isFinite(stopCount) || stopCount <= 0) return null;
   return `${stopCount} ${stopCount === 1 ? "stop" : "stops"} · around your reservation`;
 }
+
+const WKD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The Moment board's evening card heading — "Fri evening · Nov 13" — for the one day of an evening
+ * plan (ledger `2026-10-08-slip-main-rows`). Null when the day's date does not parse; the day then
+ * keeps its ordinary heading.
+ */
+export function momentEveningHeading(dateIso: string | null | undefined): string | null {
+  const d = parseTripDate(dateIso ?? null);
+  if (!d) return null;
+  return `${WKD_SHORT[d.getDay()]} evening · ${MON_SHORT[d.getMonth()]} ${d.getDate()}`;
+}
+
+/**
+ * "17:00 → 23:00": the first stop's start to the last stop's end (or, with no end, its start). Null
+ * with fewer than two timed points. The board's "all within Gion on foot" is NOT drawn — nothing on
+ * the plan measures that.
+ */
+export function momentTimeSpan(items: ReadonlyArray<{ time?: string | null; endTime?: string | null }>): string | null {
+  const hhmm = (t: string | null | undefined) => {
+    const m = typeof t === "string" ? t.trim().match(/^(\d{1,2}):(\d{2})/) : null;
+    return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
+  };
+  const starts = items.map((a) => hhmm(a.time)).filter((t): t is string => !!t).sort();
+  if (starts.length === 0) return null;
+  const ends = items.map((a) => hhmm(a.endTime) ?? hhmm(a.time)).filter((t): t is string => !!t).sort();
+  const first = starts[0];
+  const last = ends[ends.length - 1];
+  return first !== last ? `${first} → ${last}` : null;
+}

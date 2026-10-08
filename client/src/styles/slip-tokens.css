@@ -39,6 +39,12 @@
   --slip-gold-ink: #8A6A1E;
   --slip-gold-wash: #FFF6DF;
   --slip-green: #5DCAA5;
+  /* The Main board's day rows: a fixed point's row wash and dot halo, the expert note's wash, and
+     the day footer's dashed add. */
+  --slip-anchor-wash: #F3F8F8;
+  --slip-teal-halo: #CDE6E6;
+  --slip-note-wash: #FFF9EA;
+  --slip-dash: #B9C3CC;
 
   /* Primary action (ruling 2): the coral fill, white on it. */
   --slip-primary: var(--coral-fill);
