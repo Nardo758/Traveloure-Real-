@@ -21,7 +21,7 @@ export function optimizePayLine(fee: OptimizationFeeQuote | null | undefined): s
   return fee?.coveredByTripPass ? OPTIMIZE_COVERED_LINE : OPTIMIZE_PAY_LINE;
 }
 
-/** The confirm button: "Continue to pay $5.99" when priced; "Generate 3 versions" when covered; else "Continue". */
+/** The confirm button: "Continue to pay <the band price>" when priced; "Generate 3 versions" when covered; else "Continue". */
 export function optimizeContinueLabel(fee: OptimizationFeeQuote | null | undefined): string {
   if (fee && optimizeRunPriced(fee)) return `Continue to pay ${formatMoneyCents(fee.feeCents, fee.currency)}`;
   if (fee?.coveredByTripPass) return "Generate 3 versions";
