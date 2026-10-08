@@ -59,6 +59,8 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
+import { CoordinationCard } from "./SlipRail";
+import { SlipBottomBar, SlipPlanMenu } from "./SlipRail";
 import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
@@ -348,7 +350,7 @@ export function SlipHeader({
   onEditStops,
   canAskParty,
   occasionName,
-  anchorLine,
+  menu = null,
   expertControl,
   daySpan = null,
   sketchLine = null,
@@ -372,7 +374,9 @@ export function SlipHeader({
    */
   occasionName?: string | null;
   /** A1 — the Trips anchor state line (`tripsAnchorLine`), for a Trips plan only; `null` otherwise. */
-  anchorLine?: string | null;
+
+  /** The ⋯ plan menu (Main board's top bar; ledger `2026-10-08-slip-main-rail`). */
+  menu?: ReactNode;
   /** `countPlanEvents(data.events)` — resolved by the caller, never counted twice (re-audit A16). */
   eventCount: number;
   /**
@@ -427,14 +431,27 @@ export function SlipHeader({
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
-      {expertControl ? <div className="flex justify-end">{expertControl}</div> : null}
-      {occasionName ? (
-        <p
-          className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
-          data-testid="slip-occasion-name"
-        >
-          Your plan · {occasionName}
-        </p>
+      {/* The Main board's top bar: the eyebrow on the left, the expert door and the ⋯ plan menu on
+          the right — one row. */}
+      {expertControl || menu || occasionName ? (
+        <div className="flex items-center justify-between gap-2">
+          {occasionName ? (
+            <p
+              className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
+              data-testid="slip-occasion-name"
+            >
+              Your plan · {occasionName}
+            </p>
+          ) : (
+            <span />
+          )}
+          {expertControl || menu ? (
+            <div className="flex items-center gap-1">
+              {expertControl}
+              {menu}
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <div className="flex items-center gap-2 flex-wrap">
         {/* ── NO SLIP NUMBER AND NO VERSION ON THE WORKING HEADER ─────────────────────────────
@@ -533,6 +550,8 @@ export function SlipHeader({
         timezone={(trip as any)?.timezone ?? null}
         daySpan={daySpan}
       />
+      {/* The header's anchor line ("Where you'll stay: …") is GONE (Main board, ledger
+          `2026-10-08-slip-main-rail`): the board draws no such line — the anchor card IS the ask. */}
       {anchorPanel === "dates" && trip ? (
         <InlineDatesPanel
           tripId={trip.id}
@@ -554,11 +573,6 @@ export function SlipHeader({
           onSaved={() => setAnchorPanel(null)}
           onCancel={() => setAnchorPanel(null)}
         />
-      ) : null}
-      {anchorLine ? (
-        <p className="text-sm text-foreground" data-testid="slip-anchor-state">
-          {anchorLine}
-        </p>
       ) : null}
       {/* ── S6 · THE STOPS LINE, and S7 · THE ZONE LINE — the ratified header's third row ───────
           "Kyoto → Osaka  |  Times shown in Asia/Tokyo  ·  Edit ›". Three independent renders, and
@@ -2114,7 +2128,9 @@ export function SlipView({
 
   return (
     <div
-      className={`${SLIP_SURFACE_CLASS} max-w-6xl mx-auto space-y-5`}
+      /* Ruling 7: one centered column, at most 680px wide, at every width; the map view keeps its
+         wide layout (map view unchanged). */
+      className={`${SLIP_SURFACE_CLASS} ${slipView === "map" ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
       data-testid={`slip-view-${tripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
       data-experience-group={occasionResolved ? experienceGroup : undefined}
@@ -2182,10 +2198,10 @@ export function SlipView({
           ) : null
         }
         occasionName={occasion?.name ?? null}
-        anchorLine={
-          tripsAnchor && occasionResolved
-            ? tripsAnchorLine(tripsAnchor, tripsAnchorState({ anchor: tripsAnchor, items: allActivities, events: planEvents }))
-            : null
+        menu={
+          data.trip ? (
+            <SlipPlanMenu trip={data.trip} tripId={tripId} isOwner={isOwner} canEditItems={canEditItems} />
+          ) : null
         }
         data={data}
         hasOptimized={hasOptimized}
@@ -2216,8 +2232,18 @@ export function SlipView({
           phone: the four cards are what a traveler does next, and the day list is long. `order-*`
           does the flip, so the DOM order is unchanged and nothing about focus order or the reading
           order of the two regions depends on the breakpoint's direction. */}
-      <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8" data-testid="slip-columns">
-        <div className={`${tripsAnchor ? "order-1 lg:order-1" : "order-2 lg:order-1"} min-w-0 flex-1 space-y-5`}>
+      <div data-testid="slip-columns">
+        <div className="min-w-0 space-y-5">
+          {/* ── THE EMPTY BOARD FIRST (Main-rail; ledger `2026-10-08-slip-main-rail`) ──────────────
+              On an owner's empty plan the board's start — the stay question, the draft card and the
+              two other ways in — is the top of the plan column. The tray, the optimizer card and the
+              view bar come after it, never before (decision-maker, Oct 8, 2026). */}
+          {emptyStartShown && data.trip ? (
+            <div className="space-y-3.5" data-testid="slip-empty-board">
+              {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
+              <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
+            </div>
+          ) : null}
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
               The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
               the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
@@ -2244,6 +2270,7 @@ export function SlipView({
               onOpenToolChange={setOpenTool}
               flags={healthFlags}
               doneTools={doneTools}
+              zoneLine={zoneLine}
             />
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
@@ -2418,6 +2445,9 @@ export function SlipView({
       <>
       {/* R323 (§12): the handoff's banner and the ONE chooser host every door opens. */}
       {isOwner || isExpertViewer ? <HandoffBanner tripId={tripId} isOwner={isOwner} /> : null}
+      {/* LD 45 (5), KEPT (decision-maker, Oct 8, 2026): the done-for-you engagement, inline in the
+          Handoff banner's slot above the day cards — owner only, only when one exists. */}
+      <CoordinationCard tripId={tripId} isOwner={isOwner} />
       {expertDoorLive && expertDoorState === "open" && data.trip ? (
         <ExpertDoorCard
           trip={{
@@ -2441,11 +2471,25 @@ export function SlipView({
           once, never twice. The tray, the optimizer card and the view bar keep their places above
           it, because the specs that pin them on an empty plan are unchanged. Taking them out of the
           empty state is the Main-rail PR's ruling, not this one. */}
-      {emptyStartShown && data.trip ? (
-        <div className="space-y-3.5" data-testid="slip-empty-board">
-          {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
-          <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
-        </div>
+      {/* ── THE PLAN PANEL (Main-rail) — what the rail still had to say, inside the column: the
+          expert on the plan with the one message control, an engagement if there is one, and
+          organize-into-events / the budget. Its Build half portals the optimizer card above. */}
+      {data.trip ? (
+        <SlipRail
+          trip={data.trip}
+          tripId={tripId}
+          isOwner={isOwner}
+          canEditItems={canEditItems}
+          isExpertViewer={isExpertViewer}
+          isPrimary={cardReady}
+          activities={allActivities}
+          planEvents={planEvents}
+          budgetLine={budgetLine}
+          stopsLine={stopsLine}
+          zoneLine={zoneLine}
+          optimizerSlot={optimizerSlot}
+          leadCopy={leadCopy}
+        />
       ) : null}
       {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
@@ -2759,39 +2803,17 @@ export function SlipView({
       )}
         </div>
 
-        {/* ── THE ACTION RAIL (ledger `2026-09-05-slip-rail-regroup`; placed by
-            `2026-09-06-slip-conformance`) ───────────────────────────────────────
-            Build · Plan · Share · Finish, in the ratified canvas's FIXED 320px right column
-            (`lg:w-80`) that never shrinks (`lg:shrink-0`) — which is what stops the Trip Pass
-            card's price line wrapping a word at a time. Below `lg` it is full width and stacks
-            ABOVE the day list (`order-1`), which is the artboard's own order.
-
-            The cards themselves are unchanged: every control keeps exactly ONE home, and
-            `budgetLine`, `planEvents`, `stopsLine` and `zoneLine` are HANDED DOWN — the
-            derivations stay this component's and are never recomputed inside the rail
-            (§18 rule 1). */}
+        {/* THE ACTION RAIL IS GONE (ruling 3; ledger `2026-10-08-slip-main-rail`). Its pieces live in
+            the plan column (`SlipRail` above), the ⋯ plan menu in the header, and the bottom bar. */}
         {data.trip && slipView !== "map" && (
-          /* A1 (ledger `2026-09-29-a1-trips-frame`; track-a-rollout A1, "list before rail on phone"):
-             for a Trip the PLAN comes first below `lg`, so the anchor question is the first thing
-             the traveler reads on a phone rather than the last. Every other group keeps the
-             artboard's rail-first order; at `lg` nothing moves. */
-          <div className={`${tripsAnchor ? "order-2 lg:order-2 mt-5 lg:mt-0" : "order-1 lg:order-2 mb-5"} lg:mb-0 lg:w-80 lg:shrink-0`}>
-            <SlipRail
-              trip={data.trip}
-              tripId={tripId}
-              isOwner={isOwner}
-              canEditItems={canEditItems}
-              isExpertViewer={isExpertViewer}
-              isPrimary={cardReady}
-              activities={allActivities}
-              planEvents={planEvents}
-              budgetLine={budgetLine}
-              stopsLine={stopsLine}
-              zoneLine={zoneLine}
-              optimizerSlot={optimizerSlot}
-              leadCopy={leadCopy}
-            />
-          </div>
+          <SlipBottomBar
+            trip={data.trip}
+            tripId={tripId}
+            isOwner={isOwner}
+            isExpertViewer={isExpertViewer}
+            isPrimary={cardReady}
+            activities={allActivities}
+          />
         )}
       </div>
       </PlanRowLookProvider>

@@ -69,36 +69,50 @@ async function addItem(page: Page, tripId: string): Promise<void> {
 
 async function openSlip(page: Page, tripId: string): Promise<void> {
   await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("slip-rail")).toBeVisible({ timeout: 30_000 });
+  // Main-rail (sanctioned placement edit; ledger `2026-10-08-slip-main-rail`): the rail is gone — the
+  // owner's slip is ready when its bottom bar (Ask AI · Finalize) has rendered.
+  await expect(page.getByTestId("slip-bottom-bar")).toBeVisible({ timeout: 30_000 });
+}
+
+/** The ⋯ plan menu (ruling 3): Share, PDF, calendar, Browse services and feedback live here now. */
+async function openPlanMenu(page: Page): Promise<void> {
+  // A menu that is still closing (after a previous entry was pressed) swallows the next trigger
+  // press, so wait for it to be gone, then open and confirm it opened.
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.getByTestId("slip-plan-menu").click();
+  await expect(page.getByRole("menu")).toBeVisible();
 }
 
 // ── 1 · placement ─────────────────────────────────────────────────────────────────────────────
 
-test("A1: the rail is a fixed right column at lg, and stacks above the list below lg", async ({
+test("A1: one centered column at most 680px wide, no rail, and the bottom bar under it (rulings 3 and 7)", async ({
   page,
 }) => {
+  // Main-rail (decision-maker, Oct 8, 2026 — sanctioned rewrite; ledger `2026-10-08-slip-main-rail`).
+  // This was "the rail is a fixed right column at lg"; rulings 3 and 7 replace that layout.
   const tripId = await registerAndCreateTrip(page, "layout");
   await addItem(page, tripId);
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openSlip(page, tripId);
-  const rail = await page.getByTestId("slip-rail").boundingBox();
-  const list = await page.getByTestId("slip-viewbar").boundingBox();
-  expect(rail, "the rail has a box").toBeTruthy();
-  expect(list, "the plan column has a box").toBeTruthy();
-  // BESIDE, not above: the rail starts to the RIGHT of where the plan column ends.
-  expect(rail!.x).toBeGreaterThan(list!.x + list!.width - 1);
-  // The canvas's fixed 320px track (Tailwind `lg:w-80`), which is what stops the Trip Pass
-  // card's price line wrapping a word at a time.
-  expect(Math.round(rail!.width)).toBe(320);
+  await expect(page.getByTestId("slip-rail")).toHaveCount(0);
+  const column = await page.getByTestId(`slip-view-${tripId}`).boundingBox();
+  expect(column, "the slip column has a box").toBeTruthy();
+  expect(Math.round(column!.width)).toBeLessThanOrEqual(680);
+  // The bar's two actions, in the board's order: Ask AI (secondary), Finalize (primary).
+  const bar = page.getByTestId("slip-bottom-bar");
+  await expect(bar.getByTestId("slip-action-ask-ai")).toBeVisible();
+  await expect(bar.getByTestId("slip-action-finalize-plan")).toBeVisible();
+  const ask = await bar.getByTestId("slip-action-ask-ai").boundingBox();
+  const fin = await bar.getByTestId("slip-action-finalize-plan").boundingBox();
+  expect(ask!.x).toBeLessThan(fin!.x);
 
-  // Below lg the rail is FIRST on screen — the artboard's order.
-  await page.setViewportSize({ width: 800, height: 1000 });
+  // At phone width the same single column, with the bar.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("slip-rail")).toBeVisible({ timeout: 30_000 });
-  const railSm = await page.getByTestId("slip-rail").boundingBox();
-  const listSm = await page.getByTestId("slip-viewbar").boundingBox();
-  expect(railSm!.y).toBeLessThan(listSm!.y);
+  await expect(page.getByTestId("slip-bottom-bar")).toBeVisible({ timeout: 30_000 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
 });
 
 test("A2: the view bar is ONE row — the status counts beside the List | Map toggle", async ({
@@ -150,6 +164,7 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
 test("A3: Browse services carries this plan's id AND this plan's own destination", async ({ page }) => {
   const tripId = await registerAndCreateTrip(page, "browse");
   await openSlip(page, tripId);
+  await openPlanMenu(page); // Main-rail: Browse services is a ⋯ menu entry (sanctioned placement edit)
   await page.getByTestId("slip-browse-services").click();
   await expect(page).toHaveURL(new RegExp(`/services\\?tripId=${tripId}`), { timeout: 15_000 });
   // Lane L18, ledger `2026-09-07-client-pen-scope` (brief §11.2 F7). The door passes the PLAN's
@@ -185,7 +200,9 @@ test("A5: the ONE AI action follows the item count, and stops before the externa
   const draft = page.getByTestId("slip-action-draft-ai");
   await expect(draft).toBeVisible();
   await expect(draft).toBeEnabled();
-  await expect(draft).toContainText("empty plan");
+  // Main-rail (sanctioned placement edit): the empty plan's AI action is the Empty board's draft card
+  // button — the board's own words — rather than the rail row whose meta read "empty plan".
+  await expect(draft).toContainText("Draft it with AI");
   // Smoke 9 S9-4: the optimizer card still leads the page, but on an undrafted plan it says "Draft
   // first" and its CTA is disabled — never "this draft already works".
   await expect(page.getByTestId("optimizer-lead-draft-first")).toHaveText("Draft first — Optimize works on a drafted plan");
@@ -201,37 +218,29 @@ test("A5: the ONE AI action follows the item count, and stops before the externa
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10_000 });
 });
 
-test("A6: Trip Pass renders the server's own price and its buy control, unpressed", async ({
+test("A6: no standing Trip Pass card — it is offered under the optimizer card after the first run (ruling 3)", async ({
   page,
 }) => {
+  // Main-rail (decision-maker, Oct 8, 2026 — sanctioned rewrite; ledger `2026-10-08-slip-main-rail`).
+  // A plan that has never been optimized shows no Trip Pass offer at all; the pass's price, buy control
+  // and "N optimizer runs" copy are the SAME `TripPassCard` (trip-pass.spec.ts and trip-pass-copy pin
+  // them). A run cannot be started here (the paid rail; stub Stripe), so the after-a-run half is pinned
+  // by source in slip-conformance §1.
   const tripId = await registerAndCreateTrip(page, "pass");
+  await addItem(page, tripId);
   await openSlip(page, tripId);
-  const pass = page.getByTestId("slip-rail-trip-pass");
-  await expect(pass).toBeVisible();
-  const pricing = await (await page.request.get(`${BASE_URL}/api/pricing`)).json();
-  await expect(page.getByTestId("trip-pass-price")).toHaveText(
-    `$${Math.round(pricing.tripPass.priceCents / 100)}`,
-  );
-  // NOT PRESSED — the first press creates a real PaymentIntent (§14: the amount is the server's,
-  // and this suite must not charge). Enabled-and-correct is the assertion that stops before it.
-  await expect(page.getByTestId("button-buy-trip-pass")).toBeEnabled();
-  // The relayout's own fix: inside the 320px rail the card must not be squeezed to a sliver.
-  const box = await page.getByTestId("trip-pass-card-offer").boundingBox();
-  expect(box!.width).toBeGreaterThan(240);
+  await expect(page.getByTestId("slip-action-optimize")).toBeVisible();
+  await expect(page.getByTestId("slip-trip-pass-offer")).toHaveCount(0);
+  await expect(page.getByTestId("slip-rail-trip-pass")).toHaveCount(0);
+  const status = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/trip-pass`)).json();
+  expect(status.runsPerTrip, "the server states the run allowance the offer prints").toBeGreaterThan(0);
 });
 
 // ── 3 · the Plan card ─────────────────────────────────────────────────────────────────────────
 
-test("A7: Stops & timezone opens the ONE planning modal", async ({ page }) => {
-  const tripId = await registerAndCreateTrip(page, "stops");
-  await openSlip(page, tripId);
-  const row = page.getByTestId("slip-plan-stops");
-  await expect(row).toBeVisible();
-  // It states what the plan actually answers — the header's own stops line, composed (§18 rule 1).
-  await expect(row).toContainText("Kyoto");
-  await row.click();
-  await expect(page.getByTestId("plan-modal")).toBeVisible({ timeout: 15_000 });
-});
+// A7 ("Stops & timezone opens the ONE planning modal") is RETIRED by ruling 3 (sanctioned; ledger
+// `2026-10-08-slip-main-rail`): the rail's row is gone and the header's stops line is the one door —
+// A11 below presses `slip-meta-stops-edit` and asserts the same plan modal opens.
 
 test("A8: the tools tray opens the existing tools (surface step 2)", async ({ page }) => {
   // Ledger `2026-10-03-surface-step2-tools-tray`: the Plan card's logistics collapsibles and the
@@ -268,6 +277,7 @@ test("A9: Share mints a token link; PDF and .ics answer 200", async ({ page }) =
   const tripId = await registerAndCreateTrip(page, "share");
   await addItem(page, tripId);
   await openSlip(page, tripId);
+  await openPlanMenu(page); // Main-rail: Share, PDF and calendar are ⋯ menu entries (sanctioned placement edit)
 
   const sharePost = page.waitForResponse(
     (r) => r.url().includes(`/api/trips/${tripId}/share`) && r.request().method() === "POST",
@@ -281,6 +291,7 @@ test("A9: Share mints a token link; PDF and .ics answer 200", async ({ page }) =
 
   // The two downloads are plain anchors at the routes the ONE builder names; pressing them starts
   // a browser download, so the ROUTES are exercised over the same authenticated session instead.
+  await openPlanMenu(page); // the menu closed when Share was pressed
   await expect(page.getByTestId("slip-action-pdf")).toHaveAttribute(
     "href",
     `/api/trips/${tripId}/pdf`,

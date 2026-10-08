@@ -44,7 +44,7 @@
  * is not rendered at all.
  */
 import { helpArticlePath } from "@shared/help-article-slugs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   CalendarPlus,
@@ -63,6 +63,7 @@ import {
   Ticket,
   Undo2,
   UserPlus,
+  MoreHorizontal,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { freeFindingsPromptLine, unreachableStopLines, type Finding } from "@shared/optimizer-lead";
@@ -71,6 +72,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
@@ -399,7 +401,12 @@ function BuildCard({
       /* no URL to read */
     }
   }, []);
-  const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
+  // Ruling 3: "after the first run" — the plan's own `lastOptimizedAt` on the plancard the slip already read.
+  const { data: runPlan } = useQuery<{ lastOptimizedAt?: string | null }>({
+    queryKey: [`/api/trips/${trip.id}/plancard`],
+    enabled: false,
+  });
+  const hasRun = !!runPlan?.lastOptimizedAt;
   const confirmedPinnedAnchor = useRef<ComparisonPinnedAnchor | undefined>(undefined);
   // Lane E1: the window the Optimize gate handed over — the plan's own, or the one just set inline
   // (the plancard refetch may not have landed when the run starts).
@@ -451,7 +458,6 @@ function BuildCard({
   async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
     if (optimizing || creatingComparison || optimizeDisabledReason) return;
     setOptimizing(true);
-    setLastOptimizeCoveredByPass(false);
     try {
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
@@ -468,7 +474,6 @@ function BuildCard({
         return;
       }
       if (outcome.kind === "free_rerun" || outcome.kind === "covered_by_pass") {
-        if (outcome.kind === "covered_by_pass") setLastOptimizeCoveredByPass(true);
         await runComparison(undefined, pinnedAnchor);
         confirmedPinnedAnchor.current = undefined;
         return;
@@ -552,98 +557,33 @@ function BuildCard({
             intro={leadCopy?.intro ?? null}
             noStay={leadCopy?.noStay === true}
             onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
+            localExpertTestId="slip-action-hire-expert"
           />
           )}
           </DatesGate>
           </span>
-          {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
-              optimizer card, once the plan has a draft; the server says when the moment is open. */}
-          <FeedbackTap tripId={tripId} moment="post_draft" codes={FEEDBACK_CODES.post_draft} />
-          {lastOptimizeCoveredByPass && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--earn-border)] bg-[color:var(--earn-teal-wash)] px-2.5 py-1 text-xs font-medium text-[color:var(--earn-teal-ink)]"
-              data-testid="trip-pass-covered-label"
-            >
-              <Ticket className="w-3.5 h-3.5" />
-              Included in your Trip Pass
-            </span>
-          )}
+          {/* RULING 3 (Main board): the Trip Pass is offered HERE, under the optimizer card, once the
+              plan has had a run — never as a standing card. The SAME card; one purchase rail. Purchase
+              is the owner's (LD 52 — a helper never pays). "Included in your Trip Pass" is no longer a
+              label: it is the CTA's own state ("Optimize · included · N runs left"). Feedback moved to
+              the ⋯ plan menu. */}
+          {isOwner ? (
+            hasRun ? (
+              <div data-testid="slip-trip-pass-offer">
+                <TripPassCard tripId={tripId} trip={trip} planName={trip.title || trip.destination} />
+              </div>
+            ) : null
+          ) : null}
         </>
   );
 
   return (
-    <RailCard card="build" title="Build">
-      {canEditItems && (
-        <RailRow
-          label="Browse services for this trip"
-          meta="/services"
-          icon={<Plus className="w-3.5 h-3.5" />}
-          href={slipBrowseServicesHref(tripId, trip.destination)}
-          testId="slip-browse-services"
-        />
-      )}
-
-      {/* THE ONE AI ACTION. Owner-only in both branches — the draft rebuilds the owner's plan and
-          the optimization fee charges the signed-in traveler. */}
-      {isOwner && aiAction === "draft" && <SlipDraftAiRow trip={trip} tripId={tripId} />}
-
-      {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — rendered directly under the tools tray at
-          every width through the slip's slot (a portal: the state stays here, the card moves). On a
-          plan with no draft it reads "Draft first" with the CTA disabled. */}
+    <>
+      {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — rendered under the tools tray through the
+          slip's slot (a portal: the state stays here, the card moves). Main board (ledger
+          `2026-10-08-slip-main-rail`): the rail is gone, so this component draws nothing of its own
+          — the card, the Trip Pass offer and the two dialogs are all it mounts. */}
       {isOwner ? (optimizerSlot ? createPortal(optimizerBlock, optimizerSlot) : optimizerBlock) : null}
-
-      {/* THE EXPERT — two states since D22 (see `slipExpertRailState`): nobody on the plan, or
-          somebody to message. */}
-      {isOwner && expertState.kind === "hire" && (
-        // R323 (step 7b, §12 step 1): THE one door — the handoff chooser (Polish my plan · Book
-        // these for me · Plan it all), mounted once by the slip's `HandoffChooserHost`. The
-        // pick-an-expert dialog that used to open here is retired.
-        <RailRow
-          label="Hand off to a local expert"
-          meta="choose how much help"
-          icon={<UserPlus className="w-3.5 h-3.5" />}
-          onClick={() => openHandoffChooser({})}
-          testId="slip-action-hire-expert"
-        />
-      )}
-      {isOwner && expertState.kind === "message" && (
-        <RailRow
-          label={`Message ${expertState.name}`}
-          meta={
-            expertState.isConciergeReadGrant
-              ? "reads this plan"
-              : expertState.pending
-                ? "awaiting reply"
-                : "expert"
-          }
-          icon={<MessageCircle className="w-3.5 h-3.5" />}
-          onClick={() =>
-            void askExpert({
-              // D22 (ledger `2026-09-05-slip-decisions-d18-d22`) — THE ADDRESS IS THE PLAN. The
-              // client names `{ tripId }` and the SERVER resolves the counterpart from the trip
-              // plus its `trip_expert_advisors` row in a §12 access status. No user id and no
-              // handle is sent, and none comes back: Locked Decision 40's rule is unweakened, and
-              // this is the amendment that finally makes a handle-less advisor reachable — the
-              // rail used to print a sentence here instead of a control.
-              tripId,
-              subject: trip.title || trip.destination || null,
-              fallbackName: expertState.name,
-              returnTo: `/plans/${tripId}`,
-            })
-          }
-          testId="slip-action-message-expert"
-        />
-      )}
-
-      {/* TRIP PASS — the entitlement that covers AI runs on this trip. The EXISTING card, moved
-          into the card whose actions it covers; one component, never a second purchase rail.
-          Purchase is the owner's (LD 52 — a helper never pays), so a delegate does not mount it. */}
-      {isOwner ? (
-        <div data-testid="slip-rail-trip-pass">
-          <TripPassCard tripId={tripId} trip={trip} planName={trip.title || trip.destination} />
-        </div>
-      ) : null}
-
       <BuildAroundDialog
         open={buildAroundOpen}
         tripId={trip.id}
@@ -686,8 +626,35 @@ function BuildCard({
           )}
         </DialogContent>
       </Dialog>
-    </RailCard>
+    </>
   );
+}
+
+/**
+ * "Message <name>" — the ONE message control (D22: the address is the PLAN). Moved verbatim from the
+ * Build card when the rail dissolved (ledger `2026-10-08-slip-main-rail`); same testid, same body.
+ */
+function ExpertMessageRow({ trip, tripId, expertState }: { trip: SlipTrip; tripId: string; expertState: SlipExpertRailState }) {
+  const askExpert = useAskExpert();
+  if (expertState.kind === "message") return (
+    <RailRow
+      label={`Message ${expertState.name}`}
+      meta={expertState.isConciergeReadGrant ? "reads this plan" : expertState.pending ? "awaiting reply" : "expert"}
+      icon={<MessageCircle className="w-3.5 h-3.5" />}
+      onClick={() =>
+        void askExpert({
+          // D22 (ledger `2026-09-05-slip-decisions-d18-d22`) — the client names `{ tripId }` and the
+          // SERVER resolves the counterpart; no user id or handle is sent (Locked Decision 40).
+          tripId,
+          subject: trip.title || trip.destination || null,
+          fallbackName: expertState.name,
+          returnTo: `/plans/${tripId}`,
+        })
+      }
+      testId="slip-action-message-expert"
+    />
+  );
+  return null;
 }
 
 // ── Expert ────────────────────────────────────────────────────────────────────────────────────
@@ -723,7 +690,10 @@ function ExpertCard({
   advisor,
   expertState,
   otherAdvisorsLine,
+  messageControl = null,
 }: {
+  /** The ONE "Message <name>" control (`ExpertMessageRow`), owner only. */
+  messageControl?: React.ReactNode;
   /**
    * The raw advisor row, for the two DISPLAY facts the rail state deliberately does not carry —
    * the photo and the standing sentence. `slipExpertRailState` answers "which control does the
@@ -790,9 +760,9 @@ function ExpertCard({
             {otherAdvisorsLine}
           </p>
         )}
-        <RailNote testId="slip-rail-expert-message-note">
-          Message them from the Build card — it is the one place that conversation opens.
-        </RailNote>
+        {/* Main board (ledger `2026-10-08-slip-main-rail`): the Build card is gone, so the ONE
+            message control sits with the person it messages (the Handoff board's own placement). */}
+        {messageControl}
       </CardContent>
     </Card>
   );
@@ -824,46 +794,50 @@ function ExpertCard({
  * an advisor viewing this slip would read their OWN engagements and see none of the traveler's —
  * a card that silently answers a different question. The read is simply not enabled for them.
  */
-function CoordinationCard({ tripId, isOwner }: { tripId: string; isOwner: boolean }) {
+/**
+ * THE COORDINATION CARD (LD 45 (5): a done-for-you engagement is a card on its plan's slip — KEPT
+ * by the decision-maker, Oct 8, 2026). Board-style and INLINE, in the Handoff banner's slot above the
+ * day cards, not in a rail. Owner only; nothing renders without an engagement on THIS plan; one row
+ * per engagement — its title, its stage with the fee state, and the link to /my-events. The money
+ * rail is untouched: the card reads the engagement, it moves nothing.
+ */
+export function CoordinationCard({ tripId, isOwner }: { tripId: string; isOwner: boolean }) {
   const { data } = useQuery<CoordinationEngagementRow[]>({
     queryKey: ["/api/coordination-states"],
     enabled: isOwner && !!tripId,
   });
-  const engagements = engagementsForPlan(data, tripId);
+  const engagements = isOwner ? engagementsForPlan(data, tripId) : [];
   if (engagements.length === 0) return null;
   return (
-    <Card data-testid="slip-rail-coordination">
-      <CardContent className="p-3 space-y-2">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Coordination
-        </p>
-        {engagements.map((engagement) => {
-          const status = engagementStatusLabel(engagement.status);
-          const fee = engagementFee(engagement.feePaymentStatus);
-          return (
-            <div key={engagement.id} className="space-y-1.5" data-testid={`slip-rail-coordination-${engagement.id}`}>
-              <div className="flex items-start gap-2 min-w-0">
-                <Crown className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-primary" />
-                <p className="min-w-0 text-sm font-semibold text-foreground">
-                  {engagementTitle(engagement)}
-                </p>
-              </div>
-              <p className="font-mono text-[10px] leading-snug text-muted-foreground">
+    <section
+      className="space-y-2.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4"
+      data-testid="slip-rail-coordination"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]">Coordination</p>
+      {engagements.map((engagement) => {
+        const status = engagementStatusLabel(engagement.status);
+        const fee = engagementFee(engagement.feePaymentStatus);
+        return (
+          <div key={engagement.id} className="flex items-center gap-3" data-testid={`slip-rail-coordination-${engagement.id}`}>
+            <Crown className="h-4 w-4 flex-shrink-0 text-[color:var(--slip-navy)]" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[color:var(--slip-ink)]">{engagementTitle(engagement)}</p>
+              <p className="text-xs text-[color:var(--slip-muted)]">
                 {/* §13 — a row with no recorded stage prints the fee state alone, never "Intake". */}
                 {status ? `${status} · ${fee.label}` : fee.label}
               </p>
-              <RailRow
-                label={fee.tone === "due" || fee.tone === "pending" ? "Coordination fee" : "Engagement details"}
-                meta="my events"
-                icon={<ChevronRight className="w-3.5 h-3.5" />}
-                href="/my-events"
-                testId={`slip-rail-coordination-open-${engagement.id}`}
-              />
             </div>
-          );
-        })}
-      </CardContent>
-    </Card>
+            <Link
+              href="/my-events"
+              className="flex-shrink-0 text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+              data-testid={`slip-rail-coordination-open-${engagement.id}`}
+            >
+              {fee.tone === "due" || fee.tone === "pending" ? "Coordination fee" : "Engagement details"}
+            </Link>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -915,22 +889,12 @@ function PlanCard({
   if (!isOwner && !budgetLine) return null;
 
   return (
-    <RailCard card="plan" title="Plan">
-      {/* ── STOPS & TIMEZONE (S6/S7) — the row the ratified Plan card draws, and the SECOND door
-          to the ONE stop editor rather than a second editor. Locked Decision 34 gives the client
-          exactly one stop writer (`plan-stops-writer.ts`) with exactly one editing surface (the
-          modal's step 2); a list editor mounted here would be a second caller of that
-          replace-list writer with its own read-before-replace, which is how stops nobody saw get
-          silently dropped. Owner-only, like the header's own Edit affordance (D16). */}
-      {isOwner && (
-        <RailRow
-          label="Stops & timezone"
-          meta={slipPlanMetaLine(stopsLine, zoneLine)}
-          icon={<MapPin className="w-3.5 h-3.5" />}
-          onClick={() => openPlanModal()}
-          testId="slip-plan-stops"
-        />
-      )}
+    // No card heading (Main board): what is left here — organize-into-events and the budget — is
+    // drawn bare and draws nothing when it has nothing to say.
+    <div className="space-y-2" data-testid="slip-plan-extras">
+      {/* Ruling 3 (ledger `2026-10-08-slip-main-rail`): "Stops & timezone" left this card — the
+          header's stops line and its owner-only Edit open the SAME planning modal, and the zone is
+          on the header subline and the Travel party sheet. */}
 
       {/* SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the logistics pieces this card
           used to mount (main moment & schedule check, traveling party, guests & invites) and the
@@ -947,113 +911,11 @@ function PlanCard({
           {budgetLine}
         </p>
       )}
-    </RailCard>
+    </div>
   );
 }
 
-// ── Share ─────────────────────────────────────────────────────────────────────────────────────
 
-/**
- * THE SHARE CARD — owner-only, and ABSENT under a hidden-visibility occasion.
- *
- * A HIDDEN OCCASION HAS NO SHARE CARD AT ALL (migration 276 `default_visibility`; Locked
- * Decision 28). Sharing a proposal plan is the failure mode that switch exists to prevent. The
- * PDF and the calendar go with the link here — under a hidden occasion the whole card is hidden,
- * which is the artboard's own ruling ("under a hidden-visibility occasion BOTH the Share card and
- * the Guests row are absent").
- *
- * §13: an unresolved occasion or a NULL column is NOT hidden, i.e. exactly today's behaviour. An
- * undecided plan never loses its Share card.
- */
-function ShareCard({ trip, tripId, isOwner }: { trip: SlipTrip; tripId: string; isOwner: boolean }) {
-  const { toast } = useToast();
-  const { isHidden: occasionHidden } = useOccasionSwitches(tripId);
-
-  /**
-   * THE TOKEN SHARE LINK (S10) — the fix, and it needed no payload change.
-   *
-   * The slip copied `${origin}/itinerary/${trip.id}`, which redirects to `/trip/:id`, a
-   * ProtectedRoute — so every recipient met a login wall and the link never worked for anyone but
-   * the owner. `POST /api/trips/:id/share` is the platform's EXISTING owner-gated share rail
-   * (`isTripOwnerCanonical`, then an idempotent retrieve-or-create over `shared_trips`), and
-   * `/trips/shared/:token` is the public, trip-shaped read that renders it. This is one more
-   * CALLER of that rail — `trip-details.tsx` is the other — and the URL is built by the ONE
-   * `slipShareUrl` so the two can never disagree (§18 rule 1).
-   *
-   * DELIBERATELY NOT `trips.share_token`. That column is the GUEST-ACCESS credential
-   * (`GET`/`PATCH /api/trips/:id?token=` accept it as authorization), so handing it out as a
-   * "share link" would publish a write grant. The plancard payload therefore did NOT need a
-   * `shareToken` field, and none was added: the token is minted on press by the rail that owns it.
-   *
-   * §13 — a rail that cannot answer copies NOTHING. There is no fallback to the id link: that is
-   * the broken link this fix removes, and re-offering it on failure would put it straight back.
-   */
-  const share = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/share`);
-      return (await res.json()) as { success?: boolean; shareToken?: string | null };
-    },
-    onSuccess: (data) => {
-      const token = typeof data?.shareToken === "string" ? data.shareToken : "";
-      if (!token) {
-        toast({
-          variant: "destructive",
-          title: "Couldn't create a share link",
-          description: "Please try again.",
-        });
-        return;
-      }
-      const url = slipShareUrl(window.location.origin, token);
-      navigator.clipboard?.writeText(url).catch(() => {});
-      toast({ title: "Link copied!", description: "Anyone with this link can view your plan." });
-      if (navigator.share) {
-        navigator
-          .share({ title: `${trip.title || trip.destination || "Trip"} - Traveloure`, url })
-          .catch(() => {});
-      }
-    },
-    onError: () => {
-      toast({ variant: "destructive", title: "Couldn't create a share link" });
-    },
-  });
-
-  if (!isOwner || occasionHidden) return null;
-
-  return (
-    <RailCard card="share" title="Share">
-      <RailRow
-        label="Share link"
-        meta="token"
-        icon={<Share2 className="w-3.5 h-3.5" />}
-        onClick={() => share.mutate()}
-        busy={share.isPending}
-        testId="slip-action-share"
-      />
-      {/* The printable copy — the SAME canonical `itinerary_items` this slip renders, so paper
-          and screen can never disagree. A plain anchor: the endpoint is session-authenticated
-          and answers with a Content-Disposition attachment. */}
-      <RailRow
-        label="Download PDF"
-        icon={<FileDown className="w-3.5 h-3.5" />}
-        href={slipPdfPath(tripId)}
-        external
-        testId="slip-action-pdf"
-      />
-      {/* ADD TO CALENDAR (S11) — the trip-keyed `.ics`. `generateIcsContent` had exactly one
-          route before this lane, keyed on a COMPARISON id, so a plan that was never optimized had
-          no calendar at all. Same generator, second caller; the plan's `trips.timezone` pins the
-          instants and its absence keeps the honest floating output (Locked Decision 30). */}
-      <RailRow
-        label="Add to calendar"
-        meta=".ics"
-        icon={<CalendarPlus className="w-3.5 h-3.5" />}
-        href={slipCalendarPath(tripId)}
-        external
-        testId="slip-action-calendar"
-      />
-    </RailCard>
-  );
-}
 
 // ── Finish ────────────────────────────────────────────────────────────────────────────────────
 
@@ -1134,12 +996,15 @@ export function FinishCard({
   isOwner,
   isPrimary,
   activities,
+  layout = "card",
 }: {
   trip: SlipTrip;
   isOwner: boolean;
   /** `tripCardIsPrimary(...)` — resolved ONCE by the caller and never recomputed here. */
   isPrimary: boolean;
   activities: PlanCardActivity[];
+  /** `bar`: the slip's sticky bottom bar (ledger `2026-10-08-slip-main-rail`). The map band keeps the card. */
+  layout?: "card" | "bar";
 }) {
   const finalizeMutation = useFinalizeMutation(trip.id);
   const reopenMutation = useReopenMutation(trip.id);
@@ -1216,6 +1081,78 @@ export function FinishCard({
       activities={activities}
     />
   );
+
+  if (layout === "bar") {
+    // THE BOTTOM BAR (Main board): the same mutations, testids and lines as the card below — the
+    // finished plan's three controls, or Finalize with the checkout and fee lines above it.
+    const primaryBtn =
+      "inline-flex h-[50px] min-w-0 flex-1 items-center justify-center gap-1.5 rounded-[14px] bg-[color:var(--slip-primary)] px-4 text-[15px] font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60";
+    const quietBtn =
+      "inline-flex h-[50px] flex-shrink-0 items-center justify-center rounded-[14px] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60";
+    if (isPrimary) {
+      return (
+        <div className="flex min-w-0 flex-1 gap-2.5" data-testid="slip-bar-finish" data-finish-state="finished">
+          {offerRefinal ? (
+            <button type="button" className={primaryBtn} onClick={refinalize} disabled={finalizeMutation.isPending} data-testid="slip-action-refinalize">
+              Make it final again
+            </button>
+          ) : null}
+          <Link href={`/trip/${trip.id}`} className={offerRefinal ? quietBtn : primaryBtn} data-testid="slip-action-view-trip-card">
+            View as Trip card
+          </Link>
+          {showReopen ? (
+            <button type="button" className={quietBtn} onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending} data-testid="slip-action-reopen">
+              Back to planning
+            </button>
+          ) : null}
+          {chooser}
+        </div>
+      );
+    }
+    return (
+      <div className="flex min-w-0 flex-1 flex-col gap-2" data-testid="slip-bar-finish" data-finish-state="working">
+        {freeLine ? (
+          <p className="text-xs text-[color:var(--slip-gold-ink)]" data-testid="slip-finalize-free-prompt">
+            <Link href={`/plans/${trip.id}?optimize=1`} className="underline underline-offset-2">
+              {freeLine}
+            </Link>
+            {unreachableLines.length > 0 ? (
+              <span className="mt-1 block" data-testid="slip-finalize-unreachable-stops">
+                {unreachableLines.map((l) => (
+                  <span key={l} className="block">{l}</span>
+                ))}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+        {checkoutReady > 0 ? (
+          <p className="text-xs text-[color:var(--slip-muted)]">
+            <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
+              Go to checkout ({checkoutReady})
+            </Link>
+            {slipFeeDisplay ? (
+              <span className="mt-0.5 block" data-testid="slip-traveler-fee-preview">
+                {slipFeeDisplay.label}:{" "}
+                {slipFeeDisplay.kind === "charged" ? (
+                  <span className="font-medium text-[color:var(--slip-ink)]">${slipFeeDisplay.amount.toFixed(2)}</span>
+                ) : (
+                  <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
+                )}{" "}
+                {slipFeeDisplay.note}{" "}
+                <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid="link-slip-fee-help">
+                  About this fee
+                </Link>
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+        <button type="button" className={`${primaryBtn} w-full flex-none`} onClick={refinalize} disabled={finalizeMutation.isPending} data-testid="slip-action-finalize-plan">
+          {hasFinal ? "Make it final again" : "Finalize plan"}
+        </button>
+        {chooser}
+      </div>
+    );
+  }
 
   if (isPrimary) {
     return (
@@ -1378,36 +1315,36 @@ export function SlipRail({
    * card about themself.
    */
   const aiAction = useSlipAiAction(tripId, activities);
-  const { data: advisorData } = useQuery<{ advisor: SlipRailAdvisor | null; advisors?: SlipRailAdvisor[] }>({
-    queryKey: [`/api/trips/${tripId}/expert-advisor`],
-    enabled: isOwner && !!tripId,
-  });
-  const advisor = advisorData?.advisor ?? null;
-  // D7 (ledger `2026-09-07-all-advisors-reader`): the reader returns ALL of them. The card
-  // portrays the first — the most recently assigned, which is the server's own named pick — and
-  // `slipOtherAdvisorsLine` names the rest, so a plan with two advisors shows two. An older
-  // server that answers without `advisors` degrades to exactly today's behaviour (§13: an absent
-  // list is "not told", not "there is only one").
-  const expertState = slipExpertRailState(advisor);
-  const otherAdvisorsLine = slipOtherAdvisorsLine(advisorData?.advisors);
+  const { advisor, expertState, otherAdvisorsLine } = useSlipAdvisor(tripId, isOwner);
 
   return (
     /**
-     * ONE COLUMN AT `lg`, which is where the rail sits in its own 320px track (the caller owns the
-     * width — see `SlipView`). Below that it is full width, so two-up keeps the four cards from
-     * becoming four screens of scrolling before the plan.
-     *
-     * DOM ORDER IS THE RULING'S ORDER — Expert · Build · Plan · Share · Finish — and it is the
-     * order in every layout, so nothing about it depends on the breakpoint. It was
-     * Build · Finish · Plan · Share, which only ever read correctly as a two-column grid and put
-     * "Finalize plan" above the plan's own facts.
+     * THE RAIL IS GONE (slip conformance, Main board; ruling 3, ledger `2026-10-08-slip-main-rail`).
+     * What this component still mounts sits INSIDE the plan column, and every control kept one home:
+     *   · Expert — the person on the plan, with the ONE message control (the Handoff board's place);
+     *   · the done-for-you engagement, only when there is one (kept pending a ruling — LD 45 (5));
+     *   · organize-into-events and the budget, drawn bare;
+     *   · Build — no card of its own: the optimizer card (portaled under the tray), the Trip Pass
+     *     offer after the first run, and the two dialogs.
+     * Ask AI and Finalize are the bottom bar (`SlipBottomBar`); Share, PDF, calendar, Browse and
+     * feedback are the ⋯ plan menu (`SlipPlanMenu`); the hire door is the optimizer card's "Local
+     * expert"; Stops & timezone is the header's own stops line.
      */
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="slip-rail">
-      <ExpertCard advisor={advisor} expertState={expertState} otherAdvisorsLine={otherAdvisorsLine} />
-      {/* Ledger `2026-09-07-my-events-fold` — renders ONLY when this plan has an engagement, so
-          the ruling's order (Expert · Build · Plan · Share · Finish) is unchanged for every plan
-          that has none. It sits beside Expert because both answer "who is working on this". */}
-      <CoordinationCard tripId={tripId} isOwner={isOwner} />
+    <div className="space-y-3" data-testid="slip-plan-panel">
+      <ExpertCard
+        advisor={advisor}
+        expertState={expertState}
+        otherAdvisorsLine={otherAdvisorsLine}
+        messageControl={isOwner ? <ExpertMessageRow trip={trip} tripId={tripId} expertState={expertState} /> : null}
+      />
+      <PlanCard
+        tripId={tripId}
+        isOwner={isOwner}
+        planEvents={planEvents}
+        budgetLine={budgetLine}
+        stopsLine={stopsLine}
+        zoneLine={zoneLine}
+      />
       <BuildCard
         trip={trip}
         tripId={tripId}
@@ -1419,25 +1356,212 @@ export function SlipRail({
         optimizerSlot={optimizerSlot}
         leadCopy={leadCopy}
       />
-      {/* ASK AI — its OWN card, beneath Build (L16 lanes 2/3). It renders NOTHING for a viewer the
-          proposal-log route would refuse: the routes are the policy and this mirrors them, never
-          widens them (Locked Decision 42 D16's own wording, the §14 posture). */}
-      <AskAiDrawer
-        tripId={tripId}
-        isOwner={isOwner}
-        isExpertViewer={isExpertViewer}
-        aiAction={aiAction}
-      />
-      <PlanCard
-        tripId={tripId}
-        isOwner={isOwner}
-        planEvents={planEvents}
-        budgetLine={budgetLine}
-        stopsLine={stopsLine}
-        zoneLine={zoneLine}
-      />
-      <ShareCard trip={trip} tripId={tripId} isOwner={isOwner} />
-      <FinishCard trip={trip} isOwner={isOwner} isPrimary={isPrimary} activities={activities} />
     </div>
   );
+}
+
+/**
+ * THE ONE ADVISOR READ (ledger `2026-09-06-slip-conformance`), now a hook: the plan panel and the ⋯
+ * menu both need the row, and one query key plus one derivation is one answer (§18 rule 1).
+ * Owner-gated at the route, so only enabled for the owner.
+ */
+export function useSlipAdvisor(tripId: string, isOwner: boolean) {
+  const { data } = useQuery<{ advisor: SlipRailAdvisor | null; advisors?: SlipRailAdvisor[] }>({
+    queryKey: [`/api/trips/${tripId}/expert-advisor`],
+    enabled: isOwner && !!tripId,
+  });
+  const advisor = data?.advisor ?? null;
+  return { advisor, expertState: slipExpertRailState(advisor), otherAdvisorsLine: slipOtherAdvisorsLine(data?.advisors) };
+}
+
+/**
+ * THE ⋯ PLAN MENU (ruling 3, Main board's top bar). Share link, the PDF, the calendar, Browse services
+ * and Send feedback — the same rails, testids and gates the Share card and Build card had. An entry
+ * whose gate is closed is absent, never greyed (§13), and the menu itself is absent when it would be
+ * empty.
+ */
+export function SlipPlanMenu({
+  trip,
+  tripId,
+  isOwner,
+  canEditItems,
+}: {
+  trip: SlipTrip;
+  tripId: string;
+  isOwner: boolean;
+  canEditItems: boolean;
+}) {
+  const { toast } = useToast();
+  const { isHidden: occasionHidden } = useOccasionSwitches(tripId);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { data: feedback } = useQuery<{ open?: string[] }>({
+    queryKey: [`/api/plans/${tripId}/feedback`],
+    enabled: isOwner && !!tripId,
+  });
+  const share = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/share`);
+      return (await res.json()) as { success?: boolean; shareToken?: string | null };
+    },
+    onSuccess: (data) => {
+      const token = typeof data?.shareToken === "string" ? data.shareToken : "";
+      if (!token) {
+        toast({ variant: "destructive", title: "Couldn't create a share link", description: "Please try again." });
+        return;
+      }
+      const url = slipShareUrl(window.location.origin, token);
+      navigator.clipboard?.writeText(url).catch(() => {});
+      toast({ title: "Link copied!", description: "Anyone with this link can view your plan." });
+      if (navigator.share) {
+        navigator.share({ title: `${trip.title || trip.destination || "Trip"} - Traveloure`, url }).catch(() => {});
+      }
+    },
+    onError: () => toast({ variant: "destructive", title: "Couldn't create a share link" }),
+  });
+
+  // Under a hidden-visibility occasion the share entries are absent (LD 28), as the Share card was.
+  const showShare = isOwner && !occasionHidden;
+  const showFeedback = isOwner && Array.isArray(feedback?.open) && feedback!.open!.includes("post_draft");
+  if (!showShare && !canEditItems && !showFeedback) return null;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Plan menu"
+            className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--slip-radius-button)] text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+            data-testid="slip-plan-menu"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          {showShare ? (
+            <>
+              <DropdownMenuItem onClick={() => share.mutate()} disabled={share.isPending} data-testid="slip-action-share">
+                <Share2 className="mr-2 h-4 w-4" /> Share link
+              </DropdownMenuItem>
+              {/* The printable copy — the SAME canonical items this slip renders; a plain anchor to the
+                  session-authenticated attachment route. */}
+              <DropdownMenuItem asChild>
+                <a href={slipPdfPath(tripId)} target="_blank" rel="noopener noreferrer" data-testid="slip-action-pdf">
+                  <FileDown className="mr-2 h-4 w-4" /> Download PDF
+                </a>
+              </DropdownMenuItem>
+              {/* The trip-keyed `.ics` (S11); the plan's `trips.timezone` pins the instants (LD 30). */}
+              <DropdownMenuItem asChild>
+                <a href={slipCalendarPath(tripId)} target="_blank" rel="noopener noreferrer" data-testid="slip-action-calendar">
+                  <CalendarPlus className="mr-2 h-4 w-4" /> Add to calendar
+                </a>
+              </DropdownMenuItem>
+            </>
+          ) : null}
+          {canEditItems ? (
+            <DropdownMenuItem asChild>
+              <Link href={slipBrowseServicesHref(tripId, trip.destination)} data-testid="slip-browse-services">
+                <Plus className="mr-2 h-4 w-4" /> Browse services for this trip
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {showFeedback ? (
+            <DropdownMenuItem onClick={() => setFeedbackOpen(true)} data-testid="slip-action-feedback">
+              <MessageCircle className="mr-2 h-4 w-4" /> Send feedback
+            </DropdownMenuItem>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {/* Feedback phase A ("Does this draft fit?") — the SAME tap, opened from the menu while the
+          server says the moment is open. */}
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send feedback</DialogTitle>
+          </DialogHeader>
+          <FeedbackTap tripId={tripId} moment="post_draft" codes={FEEDBACK_CODES.post_draft} />
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/**
+ * THE STICKY BOTTOM BAR (ruling 3, Main board): Ask AI is the secondary action, Finalize the primary.
+ * Both are the existing components in their `bar` layout — same rails, same testids, same gates —
+ * so a viewer either one refuses sees nothing of it. List view only; the map band keeps its own
+ * Finish card (ruling 7: map view unchanged).
+ */
+export function SlipBottomBar({
+  trip,
+  tripId,
+  isOwner,
+  isExpertViewer,
+  isPrimary,
+  activities,
+}: {
+  trip: SlipTrip;
+  tripId: string;
+  isOwner: boolean;
+  isExpertViewer: boolean;
+  isPrimary: boolean;
+  activities: PlanCardActivity[];
+}) {
+  const aiAction = useSlipAiAction(tripId, activities);
+  const box = useFixedBarBox();
+  if (!isOwner && !isExpertViewer) return null;
+  return (
+    /* FIXED, NOT STICKY. The console's `<main>` is `overflow-auto` and grows with its content, so it
+       is a scroll container that never scrolls and a sticky bar inside it never sticks. The bar is
+       fixed to the window instead, measured onto the plan column (the sidebar may be open or
+       collapsed), and this spacer holds its height so the last day is never hidden under it. */
+    <div ref={box.spacerRef} style={{ height: box.height }} data-testid="slip-bottom-bar-space">
+      <div
+        ref={box.barRef}
+        className="fixed bottom-0 z-30 border-t border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 pt-3 pb-5 shadow-[0_-4px_12px_rgba(13,33,55,0.06)] sm:rounded-t-[var(--slip-radius-card)]"
+        style={box.rect ? { left: box.rect.left, width: box.rect.width } : { left: 0, right: 0 }}
+        data-testid="slip-bottom-bar"
+      >
+        <div className="flex items-end gap-2.5">
+          <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="bar" />
+          <FinishCard trip={trip} isOwner={isOwner} isPrimary={isPrimary} activities={activities} layout="bar" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The bottom bar's box: the spacer's column (left + width) and the bar's own height. */
+function useFixedBarBox() {
+  const spacerRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [rect, setRect] = useState<{ left: number; width: number } | null>(null);
+  const [height, setHeight] = useState(96);
+  useLayoutEffect(() => {
+    const spacer = spacerRef.current;
+    if (!spacer) return;
+    const update = () => {
+      const r = spacer.getBoundingClientRect();
+      setRect((prev) => (prev && prev.left === r.left && prev.width === r.width ? prev : { left: r.left, width: r.width }));
+      const h = barRef.current?.offsetHeight;
+      if (h) setHeight((prev) => (prev === h ? prev : h));
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(spacer);
+    if (barRef.current) ro.observe(barRef.current);
+    // The column moves without resizing when the sidebar opens or collapses; <main> resizes then.
+    const main = spacer.closest("main");
+    if (main) ro.observe(main);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return { spacerRef, barRef, rect, height };
 }

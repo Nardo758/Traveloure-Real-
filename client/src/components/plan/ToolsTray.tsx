@@ -47,6 +47,9 @@ export interface ToolsTrayProps {
    * decides from the plan's own facts. A key the plan has not answered is never marked done (§13).
    */
   doneTools?: ReadonlySet<ToolKey>;
+  /** The header's own zone line (`slipZoneLine`), shown again in the Travel party sheet (ruling 3,
+   *  ledger `2026-10-08-slip-main-rail`). Null ⇒ the plan states no zone and nothing is printed (LD 30). */
+  zoneLine?: string | null;
 }
 
 /** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
@@ -59,7 +62,16 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
       return p.whereToStay;
     case "travel_party":
     case "whos_coming":
-      return <SlipTravelingParty tripId={p.tripId} />;
+      return (
+        <>
+          {p.zoneLine ? (
+            <p className="mb-3 text-xs text-muted-foreground" data-testid="tool-travel-party-zone">
+              {p.zoneLine}
+            </p>
+          ) : null}
+          <SlipTravelingParty tripId={p.tripId} />
+        </>
+      );
     case "pace":
       return <EnergyBudgetDisplay tripId={p.tripId} />;
     case "the_reservation":

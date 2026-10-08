@@ -86,11 +86,14 @@ export function SlipEmptyStart({
           onClick={() => draft.mutate()}
           disabled={!!draft.disabledReason || draft.isPending}
           title={draft.disabledReason ?? undefined}
-          data-testid="slip-empty-draft"
+          // Main-rail (ledger `2026-10-08-slip-main-rail`): with the rail gone this IS the slip's one
+          // AI action on an empty plan, so it carries that action's testid; the map band's
+          // `SlipDraftAiRow` is the other placement, and exactly one renders per view.
+          data-testid="slip-action-draft-ai"
         >
           {draft.isPending ? "Drafting…" : "Draft it with AI · free"}
         </button>
-        {draft.datesDialog}
+        {draft.datesPanel}
       </section>
 
       <div className="space-y-2">

@@ -15,7 +15,7 @@
  *
  * A caller that has ALREADY gated on the dates (the rail row, wrapped in `<DatesGate>`) passes the
  * window it got to `mutate(dates)`, and the draft runs with it at once — one ask, never two.
- * `datesDialog` keeps its name so the Empty board's card mounts it unchanged; it now holds the
+ * `datesPanel` (renamed from `datesDialog`, Oct 8, 2026) is what the Empty board's card mounts; it holds the
  * inline panel.
  */
 import { useState, type ReactNode } from "react";
@@ -49,7 +49,7 @@ export interface SlipFreeDraft {
   /** True when a press will ask for dates before drafting. */
   asksDatesFirst: boolean;
   /** The inline dates panel (when asking), mounted wherever the caller renders its control. */
-  datesDialog: ReactNode;
+  datesPanel: ReactNode;
 }
 
 export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): SlipFreeDraft {
@@ -79,7 +79,7 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
     },
   });
 
-  const datesDialog = asksDatesFirst && asking ? (
+  const datesPanel = asksDatesFirst && asking ? (
     <InlineDatesPanel
       tripId={tripId}
       startDate={trip.startDate as any}
@@ -104,6 +104,6 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
     isPending: draft.isPending,
     disabledReason,
     asksDatesFirst,
-    datesDialog,
+    datesPanel,
   };
 }
