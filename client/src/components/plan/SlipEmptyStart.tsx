@@ -127,7 +127,7 @@ export function SlipEmptyStart({
         </button>
       </div>
 
-      <p className="px-1 text-xs leading-normal text-[color:var(--slip-faint)]" data-testid="slip-empty-footnote">
+      <p className="px-1 text-xs leading-normal text-[color:var(--slip-muted)]" data-testid="slip-empty-footnote">
         {EMPTY_FOOTNOTE_NOTHING_CHARGED}
         {placesFactsOn ? ` ${EMPTY_FOOTNOTE_PLACES}` : ""}
       </p>

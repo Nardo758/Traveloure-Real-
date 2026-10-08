@@ -347,7 +347,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         data-anchor-kind={anchorKind}
         data-anchor-panel="empty"
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink)]">
           {fixed ? (
             ANCHOR_PANEL_START_HERE
           ) : (
