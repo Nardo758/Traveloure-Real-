@@ -1,0 +1,84 @@
+{
+  "runId": "9519814b-5740-4d3c-bf30-c03c82cdf5e5",
+  "loop": "1",
+  "checkedAt": "2026-10-08T17:06:13.363Z",
+  "isolated": true,
+  "results": [
+    {
+      "stage": "Fresh development mailer sanities (not browser or real-clock certification)",
+      "startedAt": "2026-10-08T17:05:14.964Z",
+      "exitCode": 0,
+      "durationMs": 58396.048705,
+      "tests": [
+        {
+          "name": "itinerary_ready provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 40198,
+          "reason": null
+        },
+        {
+          "name": "itinerary_failed provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 38312,
+          "reason": null
+        },
+        {
+          "name": "itinerary_nudge_2h provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 36776,
+          "reason": null
+        },
+        {
+          "name": "itinerary_followup_24h provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 35178,
+          "reason": null
+        },
+        {
+          "name": "itinerary_reengagement_5d provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 33613,
+          "reason": null
+        },
+        {
+          "name": "signup_welcome provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 31988,
+          "reason": null
+        },
+        {
+          "name": "booking_canonical_payload provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 30463,
+          "reason": null
+        },
+        {
+          "name": "booking_legacy_payload provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 28974,
+          "reason": null
+        },
+        {
+          "name": "activity provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 27340,
+          "reason": null
+        },
+        {
+          "name": "verification provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 25839,
+          "reason": null
+        },
+        {
+          "name": "password_reset provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 24360,
+          "reason": null
+        }
+      ]
+    }
+  ],
+  "passing": 11,
+  "failing": 0
+}

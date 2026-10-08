@@ -275,6 +275,7 @@ async function liveMailerSanities() {
   const loop = process.env.AUTOMATION_BASELINE_LIVE_LOOP ?? "1";
   const proofPath = `${evidence}/mail-sanities-${loop}-${randomUUID()}.json`;
   const proofs: Record<string, unknown>[] = [];
+  const awaitingReceipts: { proof: Record<string, unknown>; index: number; kind: string; startedAt: number }[] = [];
   const kinds = ["itinerary_ready", "itinerary_failed", ...ITINERARY_FOLLOWUPS.map(entry => entry.kind),
     "signup_welcome", "booking_canonical_payload", "booking_legacy_payload", "activity", "verification", "password_reset"];
   try {
@@ -306,6 +307,7 @@ async function liveMailerSanities() {
       try {
         await db.insert(schema.users).values({ id: userId, email: recipient, firstName: "QA automation baseline",
           role: kind === "activity" ? "service_provider" : "traveler", emailVerified: new Date(),
+          ...(kind === "signup_welcome" ? { termsAcceptedAt: new Date(), privacyAcceptedAt: new Date() } : {}),
           preferences: { itineraryMarketing: { enabled: true, timeZone: "UTC", quietStart: "20:00", quietEnd: "09:00" } } });
         if (kind.startsWith("itinerary_")) {
           const followup = ITINERARY_FOLLOWUPS.find(entry => entry.kind === kind);
@@ -357,6 +359,14 @@ async function liveMailerSanities() {
           await sendPasswordResetEmail({ toEmail: recipient, firstName: "QA ONLY",
             resetUrl: `https://${process.env.REPLIT_DEV_DOMAIN}/reset-password?token=${randomUUID()}`, expiresInMinutes: 15 });
         }
+        if (kind.startsWith("booking_")) {
+          const [row] = await db.select().from(schema.emailOutbox)
+            .where(sql`${schema.emailOutbox.toEmail} = ${recipient}
+              AND ${schema.emailOutbox.emailType} = 'booking_confirmation'`).limit(1);
+          if (!row) throw new Error("Shared booking helper did not create an outbox row");
+          outboxId = row.id;
+          if (row.status !== "sent") await deliverQueuedEmail(row.id);
+        }
         const rows = await db.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.toEmail, recipient));
         const sent = outboxId ? rows.find(row => row.id === outboxId) : rows.find(row => row.resendId === acceptedId);
         if (outboxId && (!sent || sent.status !== "sent")) throw new Error(
@@ -364,23 +374,19 @@ async function liveMailerSanities() {
         outboxId = sent?.id ?? null;
         const providerId = sent?.resendId ?? acceptedId;
         if (!providerId) throw new Error("No genuine provider message identifier");
-        let event = "unknown";
-        for (let attempt = 0; attempt < 30; attempt++) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          const response = await provider.emails.get(providerId);
-          if (response.error) throw new Error(`Provider lookup ${response.error.name}`);
-          event = response.data!.last_event;
-          if (["delivered", "opened", "clicked", "bounced", "failed", "suppressed", "complained", "canceled"].includes(event)) break;
-        }
-        proofs.push({ loop, kind, namespace, fixtureId: userId, outboxId, providerId, providerEvent: event,
-          checkedAt: new Date().toISOString(), durationMs: Date.now() - caseStartedAt, mode: "FAST_MAILER_SANITY",
+        const proof: Record<string, unknown> = { loop, kind, namespace, fixtureId: userId, outboxId, providerId,
+          providerEvent: "receipt_not_confirmed", checkedAt: new Date().toISOString(),
+          durationMs: Date.now() - caseStartedAt, mode: "FAST_MAILER_SANITY",
           scope: kind.startsWith("booking_") ? "Shared helper payload, NOT payment-writer or browser proof" :
             ["verification", "password_reset"].includes(kind) ? "Direct sender; NO authoritative outbox row or valid reset journey claimed" :
-            "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification" });
+            "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification" };
+        proofs.push(proof);
+        awaitingReceipts.push({ proof, index, kind, startedAt: caseStartedAt });
         writeFileSync(proofPath, JSON.stringify(proofs, null, 2));
-        if (!["delivered", "opened", "clicked"].includes(event)) throw new Error("Provider delivery not confirmed");
-        console.log(`ok ${index + 1} - ${kind} provider-delivered mailer sanity`);
-        console.log(`  ---\n  duration_ms: ${Date.now() - caseStartedAt}\n  ...`);
+        // Acceptance is never a PASS. Check the provider's delivered event
+        // only after all allowed sends; otherwise waiting per message can
+        // exhaust the retained three-minute fixture owner's deadline.
+        await new Promise(resolve => setTimeout(resolve, 1200));
       } catch (error) {
         console.log(`not ok ${index + 1} - ${kind} mailer sanity`);
         console.log(`  ---\n  duration_ms: ${Date.now() - caseStartedAt}\n  ...`);
@@ -393,6 +399,40 @@ async function liveMailerSanities() {
         if (providerFixtureId) await db.delete(schema.users).where(eq(schema.users.id, providerFixtureId));
       }
     }
+    const deadline = Date.now() + 105_000;
+    const delivered = ["delivered", "opened", "clicked"];
+    const terminal = [...delivered, "bounced", "failed", "suppressed", "complained", "canceled"];
+    while (Date.now() < deadline && awaitingReceipts.some(({ proof }) => !terminal.includes(String(proof.providerEvent)))) {
+      for (const { proof } of awaitingReceipts) {
+        if (Date.now() >= deadline) break;
+        if (terminal.includes(String(proof.providerEvent))) continue;
+        try {
+          const response = await provider.emails.get(String(proof.providerId));
+          if (response.error) proof.providerLookupError = response.error.name;
+          else {
+            proof.providerEvent = response.data!.last_event;
+            delete proof.providerLookupError;
+            proof.checkedAt = new Date().toISOString();
+          }
+        } catch (error) {
+          proof.providerLookupError = error instanceof Error ? error.name : "Unknown lookup error";
+        }
+        writeFileSync(proofPath, JSON.stringify(proofs, null, 2));
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+    for (const { proof, index, kind, startedAt } of awaitingReceipts) {
+      proof.durationMs = Date.now() - startedAt;
+      if (delivered.includes(String(proof.providerEvent))) {
+        console.log(`ok ${index + 1} - ${kind} provider-delivered mailer sanity`);
+      } else {
+        console.log(`not ok ${index + 1} - ${kind} provider delivery not confirmed`);
+        console.log(`# Provider event: ${reporter.redact(String(proof.providerEvent))}`);
+        process.exitCode = 1;
+      }
+      console.log(`  ---\n  duration_ms: ${proof.durationMs}\n  ...`);
+    }
+    writeFileSync(proofPath, JSON.stringify(proofs, null, 2));
     if (proofs.length !== kinds.length) process.exitCode = 1;
     console.log(`# Genuine receipt evidence: ${proofPath}`);
   } finally {

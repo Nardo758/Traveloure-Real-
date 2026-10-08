@@ -22,15 +22,18 @@
 |---|---|---|
 | Provider-free isolated golden baseline, loop 1 | 143 PASS, zero FAIL | `automation-part1-evidence/golden-1-b63ce214-0f9b-4a73-baa6-3c68b0d3fdcd/results.json` |
 | Provider-free isolated golden baseline, loop 2 | 143 PASS, zero FAIL | `automation-part1-evidence/golden-2-a6cb87be-8448-48a5-84d6-3114c6373027/results.json` |
-| Retained CI guard commands | 76 PASS, zero FAIL | `automation-part1-evidence/golden-2-8875bc34-5e5d-48a4-b8e6-ac6fa2c190fe/results.json` |
+| Retained CI guard commands | 76 PASS, zero FAIL after the live-harness changes | `automation-part1-evidence/golden-2-73d5aa93-78f5-411f-909d-e16337ea4309/results.json` |
 | TypeScript diagnostics | 117; existing CI ceiling 117 | Direct compiler exited 2; diagnostic count is at the ratchet, not a clean typecheck |
 | New-tooling diagnostics | Zero in project diagnostic output | The report/test helpers are outside the project's normal type scope; this is not a claim of independent semantic typechecking of every helper |
 | Harness safety cases | 7 PASS in each full golden loop | Includes cleanup-suffix parsing and rejection of non-isolated HTTP targets |
 | Protected registry | 89 unique nodes | `protected-automations.md`, frozen source hashes in `protected-registry.json` |
 | Production core job heartbeat read | 17 job names with recorded successful runs | Read-only; `production-heartbeats.csv`, no result bodies or customer data |
-| Real delivered emails this run | Five distinct itinerary mailer scenarios provider-delivered in the latest attempt; no complete mailer loop | `automation-part1-evidence/mail-sanities-1-07c37dff-18cb-4c25-86dc-9ab6608e67cf.json`; IDs below |
+| Fresh mailer sanity loop 1 | 11 PASS, zero FAIL; all 11 provider-delivered | `automation-part1-evidence/golden-1-9519814b-5740-4d3c-bf30-c03c82cdf5e5/results.json`; receipts below |
+| Fresh mailer sanity loop 2 | 11 PASS, zero FAIL; all 11 provider-delivered | `automation-part1-evidence/golden-2-792d7db9-e226-4dac-be35-a5adda8b4efa/results.json`; receipts below |
+| Final delivery evidence checks | 22 unique delivered provider IDs; 18 real outbox rows; 4 direct-sender proofs without rows | Both fresh receipt files validated against this report; no address or credential field in either file |
+| Final fixture cleanup | Zero matching disposable fixture namespaces | Read-only development `pg_namespace` count after both clean loops; no production query or write |
 | Browser verification this run | Not performed | No fresh post-submit or received-email link proof claimed |
-| Completed clean certification loops | Zero | Two clean golden loops are NOT two complete G1–G10/S1–S12 certification loops |
+| Completed clean certification loops | Zero | Two clean golden loops and two clean FAST mailer loops are NOT two complete G1–G10/S1–S12 certification loops |
 
 The initial `npx tsc` attempt timed out. The direct compiler completed with 117 diagnostics using:
 
@@ -41,19 +44,47 @@ node --max-old-space-size=6144 node_modules/typescript/bin/tsc \
 
 The main type ceiling remains **117**. It has not been raised. Runtime source did not change after that measurement.
 
-### Fresh mail receipt evidence (latest stopped attempt)
+### Fresh mail receipt evidence — two clean FAST sanity loops
 
-All five rows below were real development-namespace outbox rows whose provider `last_event` was **delivered**. They were sent only to the approved monitored QA inbox. The disposable namespace and rows were removed afterwards; the receipt evidence persists without an address, token or key.
+All 22 provider messages below have actual provider `last_event` **delivered**. Nine kinds per loop had real disposable development-namespace outbox rows. Verification and reset remain direct senders with **no authoritative outbox row**; `none` is intentional and is not replaced with an invented ID. The disposable namespaces and their rows were removed afterwards; the receipt evidence persists without an address, token or key.
 
-| Behavior | Actual outbox row ID | Provider message ID | Provider event |
-|---|---:|---|---|
-| itinerary_ready | 1219264204 | `01a11c70-948d-782d-8d68-b51066ad75c0` | delivered |
-| itinerary_failed | 1219264208 | `01a11c70-ab12-7952-a9a2-8ec68d153290` | delivered |
-| itinerary_nudge_2h | 1219264210 | `01a11c70-c67b-7b6d-90a6-f582fca9be07` | delivered |
-| itinerary_followup_24h | 1219264215 | `01a11c70-d6b9-7efc-93f5-296fe6a1e6da` | delivered |
-| itinerary_reengagement_5d | 1219264220 | `01a11c70-e6ad-726c-b8ec-edac697fad39` | delivered |
+The welcome account used the QA domain. Only the development verification transport substituted the approved monitored inbox for delivery; the production sender and its recipient behavior were not changed. The fixture now records terms and privacy acceptance, matching the existing welcome consent checks.
 
-The sixth sanity was **not sent**: the signup welcome row was cancelled with `Signup consent absent` because the temporary QA account fixture did not supply signup consent. This is evidence that the existing send-time consent protection acted, **not** evidence that real signup delivery or the signup browser flow works. No booking, activity, verification or password-reset provider receipt was obtained in this run. Six mailer attempts did not produce a complete loop; testing stopped under the brief's failure limit. The five mail receipts do not count as a clean Part 1 loop or genuine 2h/24h/5d elapsed-time proof. A provider-delivered event alone does not establish inbox placement or that a link was opened successfully.
+**Loop 1 receipts:** `automation-part1-evidence/mail-sanities-1-4f6ecbc9-5f82-477c-8564-9edf5a693560.json`
+
+| Behavior | Actual outbox row ID | Provider message ID |
+|---|---:|---|
+| itinerary_ready | 1213603537 | `01a11c7a-328c-7aff-b5f9-be63b6449ca6` |
+| itinerary_failed | 1213603541 | `01a11c7a-38b6-7c0b-9b22-c0a9e694f9eb` |
+| itinerary_nudge_2h | 1213603543 | `01a11c7a-3ef7-7754-b0e9-a7984750d098` |
+| itinerary_followup_24h | 1213603548 | `01a11c7a-4511-7afc-b4e3-fc4b05387892` |
+| itinerary_reengagement_5d | 1213603553 | `01a11c7a-4b61-7408-b7ca-80da62defd51` |
+| signup_welcome | 1213603554 | `01a11c7a-5171-7309-8795-fc27487acd77` |
+| booking_canonical_payload | 1213603555 | `01a11c7a-5745-7b65-b08b-e6d354ce5f04` |
+| booking_legacy_payload | 1213603556 | `01a11c7a-5d19-79e6-80c9-79600bf17208` |
+| activity | 1213603557 | `01a11c7a-637e-7003-b837-077a7e36ad83` |
+| verification | none | `01a11c7a-6954-7e59-b51f-5fa73179d917` |
+| password_reset | none | `01a11c7a-6f16-70c2-9bad-c38e867a54d1` |
+
+**Loop 2 receipts:** `automation-part1-evidence/mail-sanities-2-7b09cf4e-8a23-4a03-a960-b1be06a52bab.json`
+
+| Behavior | Actual outbox row ID | Provider message ID |
+|---|---:|---|
+| itinerary_ready | 1501870379 | `01a11c7a-ecb0-775a-95d3-e837488d16f0` |
+| itinerary_failed | 1501870383 | `01a11c7a-f2c7-72d7-b682-ce09395c01db` |
+| itinerary_nudge_2h | 1501870385 | `01a11c7a-f8dc-7bcf-a9e9-ce268c0dacb0` |
+| itinerary_followup_24h | 1501870390 | `01a11c7a-ff3b-7553-ab60-995f7441630f` |
+| itinerary_reengagement_5d | 1501870395 | `01a11c7b-056f-7e37-9dce-89553a87df6a` |
+| signup_welcome | 1501870396 | `01a11c7b-0b73-7db2-a2aa-9430faee5ce2` |
+| booking_canonical_payload | 1501870397 | `01a11c7b-114f-71e1-bfe0-e9c2159c43c4` |
+| booking_legacy_payload | 1501870398 | `01a11c7b-1727-7c7c-9d8a-00e85c6fd702` |
+| activity | 1501870399 | `01a11c7b-1d05-75bd-828a-7b10d3a30a6d` |
+| verification | none | `01a11c7b-22cf-76bb-a8a0-9bb8582e103e` |
+| password_reset | none | `01a11c7b-2893-704c-98f8-548d86df420c` |
+
+The prior consent-cancelled attempt and the six-failure stop remain historical evidence, not successes. The user explicitly approved resuming with the test-only consent correction. One renewed serial-receipt attempt then hit the retained three-minute fixture deadline after four delivered itinerary notices. The successful test-only design submits allowed sends first and performs bounded, rate-limited provider receipt verification afterwards; accepted/submitted/unknown events never count as PASS. No protected runner deadline or application writer was changed.
+
+These two clean **FAST mailer sanity** loops do not prove actual 2h/24h/5d elapsed time, browser post-submit behavior or received-email link functionality. The booking labels exercise the same shared confirmation helper with canonical/legacy-shaped payload labels; they do not exercise either payment writer. Verification/reset used test URLs, not issued functional account tokens. Provider-delivered events do not establish inbox placement or successful link opening.
 
 ## Golden command and ordered coverage
 
@@ -149,17 +180,17 @@ All G1–G10 gates remain **Open for fresh full certification** for the built be
 
 | Behavior | Supporting fresh evidence | G1–G10 closed |
 |---|---|---|
-| itinerary_ready | Outcome/producer DB cases and one genuine delivered receipt; real-clock/browser proof open | 0/10 |
-| itinerary_failed | Outcome/producer DB cases and one genuine delivered receipt; browser proof open | 0/10 |
-| nudge2h | Follow-up DB cases and one genuine FAST delivered receipt; 2h real clock open | 0/10 |
-| followup24h | Follow-up DB cases and one genuine FAST delivered receipt; 24h real clock open | 0/10 |
-| reengagement5d | Follow-up DB cases and one genuine FAST delivered receipt; 5d real clock open | 0/10 |
-| welcome | 22 retained DB results per loop, including production recipient-path protection; QA fixture lacked consent, so live proof stopped | 0/10 |
-| verification | Producer-boundary cases; no authoritative outbox row | 0/10 |
-| reset | Producer-boundary cases; no authoritative outbox row | 0/10 |
-| canonical booking confirmation | Retained writer/idempotency and delivery DB suites pass; browser/full lane proof open | 0/10 |
-| legacy booking confirmation | Retained shared rail protected; browser/full legacy writer proof open | 0/10 |
-| activity | Existing outbox source retained; fresh delivery pending | 0/10 |
+| itinerary_ready | Outcome/producer DB cases and two genuine delivered FAST receipts; real-clock/browser proof open | 0/10 |
+| itinerary_failed | Outcome/producer DB cases and two genuine delivered FAST receipts; browser proof open | 0/10 |
+| nudge2h | Follow-up DB cases and two genuine FAST delivered receipts; 2h real clock open | 0/10 |
+| followup24h | Follow-up DB cases and two genuine FAST delivered receipts; 24h real clock open | 0/10 |
+| reengagement5d | Follow-up DB cases and two genuine FAST delivered receipts; 5d real clock open | 0/10 |
+| welcome | 22 retained DB results per loop and two genuine delivered receipts; signup browser journey open | 0/10 |
+| verification | Two direct-helper delivered receipts; no authoritative outbox row or issued valid-link journey | 0/10 |
+| reset | Two direct-helper delivered receipts; no authoritative outbox row or issued valid-link journey | 0/10 |
+| canonical booking confirmation | Retained DB suites plus two shared-helper delivered receipts; payment writer/browser proof open | 0/10 |
+| legacy booking confirmation | Two shared-helper delivered receipts; no independent legacy writer proof | 0/10 |
+| activity | Two genuine delivered helper receipts; browser and complete policy/attack coverage open | 0/10 |
 
 S1–S12 remain open for the fresh scenario matrix. No real-clock ledger entry is fabricated and no historical receipt is reused as a fresh result.
 
@@ -200,4 +231,4 @@ The separate user-requested private development configuration change is not part
 
 ## Required before completion
 
-Test isolation and CI relocation are approved and complete. Before certification: repair the *test-only signup consent fixture* under the existing approved touch list; after the six-failure stop, resume real-delivery tests only on a new explicit go. Then obtain delivered receipts and actual outbox IDs for the remaining built paths; inspect received links and signup post-submit behavior in a browser; establish viable, surviving real-clock rows under a confirmed D7 decision; verify scheduler correlation and shared policy/attack cases; complete two clean full G1–G10 and S1–S12 loops. Direct verification/reset still lack authoritative outbox rows in the current runtime. Any runtime fix requires a separately approved scope, not a silent change in Part 1.
+Test isolation, CI relocation, the approved QA signup consent correction and two clean FAST delivery sanity loops are complete. Before certification: verify signup post-submit and issued verification/reset links in a browser; exercise actual writer paths rather than only shared mail helpers; establish viable, surviving real-clock rows under a confirmed D7 decision; verify scheduler correlation and shared policy/attack cases; complete two clean full G1–G10 and S1–S12 loops. Direct verification/reset still lack authoritative outbox rows in the current runtime. Any runtime fix requires a separately approved scope, not a silent change in Part 1.

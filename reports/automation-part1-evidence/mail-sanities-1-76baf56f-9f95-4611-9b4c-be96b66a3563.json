@@ -1,0 +1,54 @@
+[
+  {
+    "loop": "1",
+    "kind": "itinerary_ready",
+    "namespace": "automation_msg_5eb776cbf6072782",
+    "fixtureId": "9d15abf1-564b-489f-bf3f-3be0534134e8",
+    "outboxId": 1912140409,
+    "providerId": "01a11c75-5966-7a54-878b-4c109d6a62d9",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T17:00:37.211Z",
+    "durationMs": 22617,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_failed",
+    "namespace": "automation_msg_5eb776cbf6072782",
+    "fixtureId": "a9ec09d8-5c13-4b4d-83f8-1c66302ddb2f",
+    "outboxId": 1912140413,
+    "providerId": "01a11c75-b0da-7c04-9755-2f032ad16e04",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T17:01:13.786Z",
+    "durationMs": 36497,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_nudge_2h",
+    "namespace": "automation_msg_5eb776cbf6072782",
+    "fixtureId": "efae19ab-1c99-4077-9c98-6dbef7835f48",
+    "outboxId": 1912140415,
+    "providerId": "01a11c76-3ffd-7d0c-856f-d09694616b04",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T17:02:13.365Z",
+    "durationMs": 59516,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_followup_24h",
+    "namespace": "automation_msg_5eb776cbf6072782",
+    "fixtureId": "c18dcab7-fcaf-4998-b7d7-62df778ab8a8",
+    "outboxId": 1912140420,
+    "providerId": "01a11c77-28be-7202-9417-278055fbff6f",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T17:03:07.073Z",
+    "durationMs": 53630,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  }
+]

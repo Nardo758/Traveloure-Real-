@@ -1,0 +1,48 @@
+{
+  "runId": "b1a48afb-23c3-4cc7-aaa1-2c67bce48b2d",
+  "loop": "1",
+  "checkedAt": "2026-10-08T17:03:14.487Z",
+  "isolated": true,
+  "results": [
+    {
+      "stage": "Fresh development mailer sanities (not browser or real-clock certification)",
+      "startedAt": "2026-10-08T17:00:05.830Z",
+      "exitCode": 143,
+      "durationMs": 188649.30345099999,
+      "tests": [
+        {
+          "name": "itinerary_ready provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 22618,
+          "reason": null
+        },
+        {
+          "name": "itinerary_failed provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 36498,
+          "reason": null
+        },
+        {
+          "name": "itinerary_nudge_2h provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 59518,
+          "reason": null
+        },
+        {
+          "name": "itinerary_followup_24h provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 53631,
+          "reason": null
+        },
+        {
+          "name": "Fresh development mailer sanities (not browser or real-clock certification)",
+          "status": "FAIL",
+          "durationMs": 188649.287633,
+          "reason": "NO_TESTS_OR_FRAMEWORK_FAILURE"
+        }
+      ]
+    }
+  ],
+  "passing": 4,
+  "failing": 1
+}
