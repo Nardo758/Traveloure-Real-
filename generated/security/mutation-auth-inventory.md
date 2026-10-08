@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **678** raw mounted mutation registrations and **669** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **679** raw mounted mutation registrations and **670** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+123** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+124** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 169; user-data 234; other 235.
-Boundary totals: admin-role 169; session-self 352; resource-owner 99; signature 6; public-or-system 43; unknown 0.
+Category totals: payments 31; admin 170; user-data 234; other 235.
+Boundary totals: admin-role 170; session-self 352; resource-owner 99; signature 6; public-or-system 43; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -144,6 +144,7 @@ Boundary totals: admin-role 169; session-self 352; resource-owner 99; signature 
 | POST | `/api/admin/system/test-email` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:6651` | unknown | unknown |
 | PUT | `/api/admin/testimonials/featured` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:7501` | unknown | unknown |
 | POST | `/api/admin/trigger-digest` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9060` | unknown | unknown |
+| POST | `/api/admin/trip-pass/issue` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9483` | unknown | unknown |
 | DELETE | `/api/admin/users/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5985` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/commission-override` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3139` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/suspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9100` | unknown | unknown |
