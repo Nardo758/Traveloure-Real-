@@ -7899,7 +7899,7 @@
       "path": "/api/optimization-payments/confirm",
       "effectivePath": "/api/optimization-payments/confirm",
       "source": "server/routes/optimization.routes.ts",
-      "line": 598,
+      "line": 595,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
