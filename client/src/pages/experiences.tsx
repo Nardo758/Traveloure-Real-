@@ -27,6 +27,7 @@ import {
   WORLD_MAP,
   canContinue,
   cityPhotoFor,
+  preselectedGroup,
   preselectedMarket,
   projectToWorldMap,
 } from "@/lib/experiences-entry";
@@ -34,6 +35,8 @@ import {
 export default function Experiences({ occasionSlug: routeSlug = null }: { occasionSlug?: string | null } = {}) {
   const searchString = useSearch();
   const preselect = useMemo(() => preselectedMarket(new URLSearchParams(searchString)), [searchString]);
+  // The nav's `?group=` opens that group's tab — an exact key only (ledger `2026-10-07-nav-experience-groups`).
+  const preselectGroup = useMemo(() => preselectedGroup(new URLSearchParams(searchString)), [searchString]);
   const { open: openPlanning } = usePlanning();
 
   const { data: occasions, isLoading } = useQuery<ExperienceType[]>({
@@ -76,7 +79,14 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
             <h2 id="exp-occasion" className="mb-4 text-[22px] font-semibold" style={HEADING_STYLE}>
               The occasion
             </h2>
-            <OccasionPicker occasions={occasions} loading={isLoading} value={occasionSlug} onPick={setOccasionSlug} />
+            <OccasionPicker
+              key={preselectGroup ?? "none"}
+              occasions={occasions}
+              loading={isLoading}
+              value={occasionSlug}
+              onPick={setOccasionSlug}
+              initialGroup={preselectGroup}
+            />
           </section>
 
           {/* ── Right · Where ───────────────────────────────────────────────────────────────── */}
