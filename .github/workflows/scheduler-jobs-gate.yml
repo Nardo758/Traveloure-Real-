@@ -131,6 +131,8 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/content-facts.db.test.ts
       - name: R313 leg Google coords — refresh a live point, clear past the max age, expired fact never a pin
         run: npx tsx --test --test-force-exit server/__tests__/leg-google-coords-refresh.db.test.ts
+      - name: T-48h nudge — "starts soon" only for chosen dates and a start ahead (ledger 2026-10-08-nudge-needs-real-dates)
+        run: npx tsx --test --test-force-exit server/__tests__/trip-card-handover-nudge.db.test.ts
       - name: A6 Tavily extract — free path cannot call it, caps, 300-char quotes, own host only
         run: npx tsx --test --test-force-exit server/__tests__/tavily-extract.db.test.ts
       - name: A6 expert confirm — crawled fact to verified nugget, once, never a Places fact
