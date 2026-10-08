@@ -53,6 +53,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { apiRefusalMessage } from "@/lib/api-refusal";
+import { BOOKING_CHECKOUT_HEADING } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { bookingDisplayStatus } from "@/lib/booking-display-status";
 import { refundedBadgeLabel, refundSummaryLine, type RefundSummary } from "@shared/booking-refund-record";
@@ -1446,6 +1447,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
           )}
           {resumePi && (
             <StripeCheckout
+              heading={BOOKING_CHECKOUT_HEADING}
               paymentIntent={resumePi}
               bookingIds={resumePi.bookingIds}
               onSuccess={async (paymentIntentId) => {

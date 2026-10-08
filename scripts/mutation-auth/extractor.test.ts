@@ -225,6 +225,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * session-self by the text heuristic (like flight-lookup); the handler runs authorizeTripLogistics with
  * requireWriteAccess before any call or write: user-data 233 → 234, session-self 350 → 351.
  *
+ * POST /api/optimization-payments/cancel — traveler cancels own open Optimize intent; session-self
+ * (ledger `2026-10-08-optimize-pay-flow`, sanctioned by the decision-maker Oct 8, 2026):
+ * 677/668 → 678/669, other 234 → 235, session-self 351 → 352.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -232,8 +236,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 677);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 668);
+  assert.equal(result.mutations.length, 678);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 669);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -243,9 +247,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 668);
-  assert.equal(manifest.rawRegistrationCount, 677);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 668);
+  assert.equal(endpointRows.length, 669);
+  assert.equal(manifest.rawRegistrationCount, 678);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 669);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -258,7 +262,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /internal/jobs/leg-google-coords (R313): other, public-or-system — the internal-secret trigger.
   // + POST /internal/jobs/legs-dayof-recheck (step 9b D6): other, public-or-system — the internal-secret trigger.
   // + POST /api/trips/:tripId/transport-legs/:legId/options (step 9c D1): user-data, session-self.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 169, "user-data": 234, other: 234 });
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 169, "user-data": 234, other: 235 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -275,7 +279,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // from the session; + POST /email-preferences/unsubscribe/:token (other, resource-owner) — the token
   // resolves the traveler from their own email_outbox row, one 404 otherwise. 658/649 → 661/652.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 169, "session-self": 351, "resource-owner": 99,
+    "admin-role": 169, "session-self": 352, "resource-owner": 99,
     signature: 6, "public-or-system": 43, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
