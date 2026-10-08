@@ -400,9 +400,18 @@ describe("1 — one centered column; the rail's pieces each have one home", () =
     for (const id of ["slip-action-share", "slip-action-pdf", "slip-action-calendar", "slip-browse-services", "slip-action-feedback"]) {
       assert.match(menu, new RegExp(`data-testid="${id}"`), `${id} lives in the menu`);
     }
-    // Ruling 3: the Coordination card is RULED removed, but Locked Decision 45 (5) puts a done-for-you
-    // engagement on its plan's slip — it is KEPT, rendered only with an engagement, pending that ruling.
-    assert.match(railCode, /<CoordinationCard\b/);
+    // LD 45 (5): the Coordination card is KEPT (decision-maker, Oct 8, 2026) — inline, in the Handoff
+    // banner's slot above the day cards, owner only, rendered only with an engagement; not in a rail.
+    const plan = functionBody(railCode, "export function SlipRail(");
+    assert.doesNotMatch(plan, /<CoordinationCard\b/, "not in the plan panel");
+    const banner = viewCode.indexOf("<HandoffBanner");
+    const coord = viewCode.indexOf("<CoordinationCard");
+    assert.ok(banner > 0 && coord > banner, "directly after the Handoff banner");
+    assert.ok(coord < viewCode.indexOf("<DayBlock"), "above the day cards");
+    const card = functionBody(railCode, "export function CoordinationCard(");
+    assert.match(card, /isOwner \? engagementsForPlan\(data, tripId\) : \[\]/, "owner only");
+    assert.match(card, /if \(engagements\.length === 0\) return null;/, "nothing without an engagement");
+    assert.match(card, /href="\/my-events"/);
   });
 
   it("the Trip Pass is offered under the optimizer card after the first run, never as a standing card", () => {

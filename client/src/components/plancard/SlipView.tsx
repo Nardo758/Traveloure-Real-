@@ -58,6 +58,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
+import { CoordinationCard } from "./SlipRail";
 import { SlipBottomBar, SlipPlanMenu } from "./SlipRail";
 import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
@@ -2435,6 +2436,9 @@ export function SlipView({
       <>
       {/* R323 (§12): the handoff's banner and the ONE chooser host every door opens. */}
       {isOwner || isExpertViewer ? <HandoffBanner tripId={tripId} isOwner={isOwner} /> : null}
+      {/* LD 45 (5), KEPT (decision-maker, Oct 8, 2026): the done-for-you engagement, inline in the
+          Handoff banner's slot above the day cards — owner only, only when one exists. */}
+      <CoordinationCard tripId={tripId} isOwner={isOwner} />
       {expertDoorLive && expertDoorState === "open" && data.trip ? (
         <ExpertDoorCard
           trip={{

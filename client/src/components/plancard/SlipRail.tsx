@@ -777,46 +777,50 @@ function ExpertCard({
  * an advisor viewing this slip would read their OWN engagements and see none of the traveler's —
  * a card that silently answers a different question. The read is simply not enabled for them.
  */
-function CoordinationCard({ tripId, isOwner }: { tripId: string; isOwner: boolean }) {
+/**
+ * THE COORDINATION CARD (LD 45 (5): a done-for-you engagement is a card on its plan's slip — KEPT
+ * by the decision-maker, Oct 8, 2026). Board-style and INLINE, in the Handoff banner's slot above the
+ * day cards, not in a rail. Owner only; nothing renders without an engagement on THIS plan; one row
+ * per engagement — its title, its stage with the fee state, and the link to /my-events. The money
+ * rail is untouched: the card reads the engagement, it moves nothing.
+ */
+export function CoordinationCard({ tripId, isOwner }: { tripId: string; isOwner: boolean }) {
   const { data } = useQuery<CoordinationEngagementRow[]>({
     queryKey: ["/api/coordination-states"],
     enabled: isOwner && !!tripId,
   });
-  const engagements = engagementsForPlan(data, tripId);
+  const engagements = isOwner ? engagementsForPlan(data, tripId) : [];
   if (engagements.length === 0) return null;
   return (
-    <Card data-testid="slip-rail-coordination">
-      <CardContent className="p-3 space-y-2">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Coordination
-        </p>
-        {engagements.map((engagement) => {
-          const status = engagementStatusLabel(engagement.status);
-          const fee = engagementFee(engagement.feePaymentStatus);
-          return (
-            <div key={engagement.id} className="space-y-1.5" data-testid={`slip-rail-coordination-${engagement.id}`}>
-              <div className="flex items-start gap-2 min-w-0">
-                <Crown className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-primary" />
-                <p className="min-w-0 text-sm font-semibold text-foreground">
-                  {engagementTitle(engagement)}
-                </p>
-              </div>
-              <p className="font-mono text-[10px] leading-snug text-muted-foreground">
+    <section
+      className="space-y-2.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4"
+      data-testid="slip-rail-coordination"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]">Coordination</p>
+      {engagements.map((engagement) => {
+        const status = engagementStatusLabel(engagement.status);
+        const fee = engagementFee(engagement.feePaymentStatus);
+        return (
+          <div key={engagement.id} className="flex items-center gap-3" data-testid={`slip-rail-coordination-${engagement.id}`}>
+            <Crown className="h-4 w-4 flex-shrink-0 text-[color:var(--slip-navy)]" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[color:var(--slip-ink)]">{engagementTitle(engagement)}</p>
+              <p className="text-xs text-[color:var(--slip-muted)]">
                 {/* §13 — a row with no recorded stage prints the fee state alone, never "Intake". */}
                 {status ? `${status} · ${fee.label}` : fee.label}
               </p>
-              <RailRow
-                label={fee.tone === "due" || fee.tone === "pending" ? "Coordination fee" : "Engagement details"}
-                meta="my events"
-                icon={<ChevronRight className="w-3.5 h-3.5" />}
-                href="/my-events"
-                testId={`slip-rail-coordination-open-${engagement.id}`}
-              />
             </div>
-          );
-        })}
-      </CardContent>
-    </Card>
+            <Link
+              href="/my-events"
+              className="flex-shrink-0 text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+              data-testid={`slip-rail-coordination-open-${engagement.id}`}
+            >
+              {fee.tone === "due" || fee.tone === "pending" ? "Coordination fee" : "Engagement details"}
+            </Link>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -1316,7 +1320,6 @@ export function SlipRail({
         otherAdvisorsLine={otherAdvisorsLine}
         messageControl={isOwner ? <ExpertMessageRow trip={trip} tripId={tripId} expertState={expertState} /> : null}
       />
-      <CoordinationCard tripId={tripId} isOwner={isOwner} />
       <PlanCard
         tripId={tripId}
         isOwner={isOwner}
