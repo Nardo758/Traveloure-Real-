@@ -342,6 +342,17 @@ export function askAiPriceLine(aiTask: AskAiTaskBlock | null | undefined): AskAi
   return { kind: "priced", amount, label: `${amount} ${ASK_AI_COPY.priceSuffix}` };
 }
 
+/**
+ * The bottom bar's button (slip conformance, Main board; ledger `2026-10-08-slip-main-rail`):
+ * "Ask AI · $2.99" when the server priced it, "Ask AI · included" when the plan's Trip Pass covers it,
+ * and just "Ask AI" when we have no answer (§13 — no number we were not told).
+ */
+export function askAiBarLabel(line: AskAiPriceLine): string {
+  if (line.kind === "priced") return `Ask AI · ${line.amount}`;
+  if (line.kind === "covered") return "Ask AI · included";
+  return "Ask AI";
+}
+
 // ── Reading a proposal row (§5.4 rules 1, 3, 7, 8, 9, 10) ────────────────────────────────────
 
 export interface AskAiChangeSetView {

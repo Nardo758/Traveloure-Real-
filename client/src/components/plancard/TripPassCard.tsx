@@ -29,6 +29,15 @@ interface TripPassStatus {
   priceCents: number;
   planName: string;
   grantedAt?: string;
+  /** The runs the pass covers on this trip (R-ac), from the server's own config. */
+  runsPerTrip?: number;
+}
+
+/** "5 optimizer runs" from the server's count; "optimizer runs" when no count arrived (§13). */
+export function tripPassRunsPhrase(runs: number | null | undefined): string {
+  return typeof runs === "number" && Number.isFinite(runs) && runs > 0
+    ? `${runs} optimizer ${runs === 1 ? "run" : "runs"}`
+    : "optimizer runs";
 }
 
 export function TripPassCard({ tripId, planName }: { tripId: string; /** The plan's name for the pay sheet's heading; absent ⇒ left out. */ planName?: string | null }) {
@@ -152,7 +161,9 @@ export function TripPassCard({ tripId, planName }: { tripId: string; /** The pla
               server actually enforces (optimizer_run, ai_task, traveler_service_fee). The pass
               still RECORDS the revision allowance in allowances_snapshot; it simply no longer
               promises it. trip-pass-copy.test.ts fails if this is re-added. */}
-          {" "}· unlimited optimizer runs + AI tasks · service fee waived
+          {/* Ruling 3 (ledger `2026-10-08-slip-main-rail`): the run allowance is the server's number
+              (R-ac). With no number the phrase names no count — never "unlimited", which it is not. */}
+          {" "}· {tripPassRunsPhrase(status.runsPerTrip)} + AI tasks · service fee waived
         </p>
         <button
           type="button"

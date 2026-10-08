@@ -71,6 +71,7 @@ import {
   type AskAiProposalRow,
   type AskAiProposalsResponse,
   type AskAiSurface,
+  askAiBarLabel,
 } from "@/lib/ask-ai-drawer";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -98,6 +99,9 @@ export interface AskAiDrawerProps {
    * Defaults to the slip, which is where the drawer was born (lane 3).
    */
   surface?: AskAiSurface;
+  /** `bar`: the slip's bottom bar draws the trigger as its secondary button (ledger
+   *  `2026-10-08-slip-main-rail`). Layout only — visibility, price and every rule are the card's. */
+  layout?: "card" | "bar";
   /**
    * THE PLAN'S FINAL STANDING, off the plancard DTO (`trip.finalizedAt` / `trip.finalVersion`).
    *
@@ -121,6 +125,7 @@ export function AskAiDrawer({
   aiAction,
   surface = "slip",
   planFinal = null,
+  layout = "card",
 }: AskAiDrawerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -289,44 +294,9 @@ export function AskAiDrawer({
   // and again beside the apply control on every staged row that has one. `null` ⇒ nothing is said.
   const applyConsequence = askAiApplyConsequence(planFinal);
 
-  return (
-    <div
-      data-testid={surface === "trip-card" ? "trip-card-rail-ask-ai" : "slip-rail-ask-ai"}
-      className="rounded-lg border bg-card p-3 space-y-2"
-    >
-      <p
-        className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-        style={{ fontFamily: EARN_MONO }}
-      >
-        Ask AI
-      </p>
-
-      <Button
-        variant="outline"
-        className="w-full justify-start gap-2"
-        onClick={() => setOpen(true)}
-        data-testid={surface === "trip-card" ? "trip-card-action-ask-ai" : "slip-action-ask-ai"}
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        <span className="flex-1 text-left">{ASK_AI_COPY.title}</span>
-        <span className="font-mono text-[10px] text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
-          {ASK_AI_COPY.railMeta}
-        </span>
-      </Button>
-
-      {/* LANE 2 — THE COVERAGE / PRICE LINE. Three server-decided states and no fourth; an
-          `unknown` renders the "we have no answer" sentence and never a number (§13). */}
-      <p className="px-1 text-[11px] leading-relaxed text-muted-foreground" data-testid="ask-ai-price-line">
-        {priceLine.kind === "covered" ? (
-          <span className="inline-flex items-center gap-1">
-            <Ticket className="w-3.5 h-3.5" />
-            {priceLine.label}
-          </span>
-        ) : (
-          priceLine.label
-        )}
-      </p>
-
+  // Both dialogs, shared by the two layouts below.
+  const dialogs = (
+    <>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto" data-testid="ask-ai-drawer">
           <DialogHeader>
@@ -466,6 +436,67 @@ export function AskAiDrawer({
           )}
         </DialogContent>
       </Dialog>
+    </>
+  );
+
+  // THE BOTTOM BAR (slip conformance, Main board; ledger `2026-10-08-slip-main-rail`): the same
+  // drawer, opened from the bar's secondary button. The button carries the price line's own words
+  // (§13: an unknown price prints none) and keeps the rail button's testid.
+  if (layout === "bar") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="h-[50px] flex-shrink-0 rounded-[14px] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-[18px] text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+          data-testid="slip-action-ask-ai"
+        >
+          {askAiBarLabel(priceLine)}
+        </button>
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <div
+      data-testid={surface === "trip-card" ? "trip-card-rail-ask-ai" : "slip-rail-ask-ai"}
+      className="rounded-lg border bg-card p-3 space-y-2"
+    >
+      <p
+        className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+        style={{ fontFamily: EARN_MONO }}
+      >
+        Ask AI
+      </p>
+
+      <Button
+        variant="outline"
+        className="w-full justify-start gap-2"
+        onClick={() => setOpen(true)}
+        data-testid={surface === "trip-card" ? "trip-card-action-ask-ai" : "slip-action-ask-ai"}
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        <span className="flex-1 text-left">{ASK_AI_COPY.title}</span>
+        <span className="font-mono text-[10px] text-muted-foreground" style={{ fontFamily: EARN_MONO }}>
+          {ASK_AI_COPY.railMeta}
+        </span>
+      </Button>
+
+      {/* LANE 2 — THE COVERAGE / PRICE LINE. Three server-decided states and no fourth; an
+          `unknown` renders the "we have no answer" sentence and never a number (§13). */}
+      <p className="px-1 text-[11px] leading-relaxed text-muted-foreground" data-testid="ask-ai-price-line">
+        {priceLine.kind === "covered" ? (
+          <span className="inline-flex items-center gap-1">
+            <Ticket className="w-3.5 h-3.5" />
+            {priceLine.label}
+          </span>
+        ) : (
+          priceLine.label
+        )}
+      </p>
+
+      {dialogs}
     </div>
   );
 }
