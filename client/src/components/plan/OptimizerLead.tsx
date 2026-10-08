@@ -53,6 +53,9 @@ export interface OptimizerLeadProps {
   noStay?: boolean;
   /** The board's secondary "Local expert" button (the ONE handoff chooser). Board tone only; absent ⇒ none. */
   onLocalExpert?: (() => void) | null;
+  /** The "Local expert" button's testid. The slip passes `slip-action-hire-expert`: the board puts the
+   *  slip's one handoff door here once the rail is gone (ledger `2026-10-08-slip-main-rail`). */
+  localExpertTestId?: string;
 }
 
 /** A Moment's zero line: LEAD_ZERO without "around where you stay" (§13). */
@@ -83,6 +86,21 @@ export function optimizeCtaLabel(fee: OptimizationFeeQuote | null | undefined): 
   if (fee.coveredByTripPass) return `Optimize · ${TRIP_PASS_COVERED_LABEL}`;
   if (!Number.isFinite(fee.feeCents) || fee.feeCents <= 0) return "Optimize";
   return `Optimize · ${formatMoneyCents(fee.feeCents, fee.currency)}`;
+}
+
+/**
+ * The board card's CTA (ruling 3, ledger `2026-10-08-slip-main-rail`): the Trip Pass covered label
+ * is a BUTTON STATE — "Optimize · included · 4 runs left", the count the server sent with the fee
+ * (`tripPassRuns`). Without a count it says "Optimize · included" and no number (§13). Every other
+ * state is `optimizeCtaLabel`'s, which the plain card (the versions page) keeps unchanged.
+ */
+export function optimizeBoardCtaLabel(fee: OptimizationFeeQuote | null | undefined): string {
+  if (!fee || fee.aiDisabled || !fee.coveredByTripPass) return optimizeCtaLabel(fee);
+  const left = fee.tripPassRuns?.left;
+  if (typeof left === "number" && Number.isFinite(left) && left > 0) {
+    return `Optimize · included · ${left} ${left === 1 ? "run" : "runs"} left`;
+  }
+  return "Optimize · included";
 }
 
 export function OptimizerLead(props: OptimizerLeadProps) {
@@ -192,6 +210,7 @@ function BoardOptimizerLead({
   intro = null,
   noStay = false,
   onLocalExpert = null,
+  localExpertTestId = "optimizer-lead-local-expert",
 }: OptimizerLeadProps) {
   const cta = "flex h-12 flex-1 items-center justify-center gap-1.5 rounded-[var(--slip-radius-button)] bg-[color:var(--slip-primary)] px-4 text-[15px] font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60";
   const quiet = "text-xs leading-normal text-[color:var(--slip-on-navy-muted)]";
@@ -200,7 +219,7 @@ function BoardOptimizerLead({
       type="button"
       onClick={onLocalExpert}
       className="h-12 flex-shrink-0 rounded-[var(--slip-radius-button)] border border-[color:var(--slip-on-navy-line)] bg-transparent px-4 text-sm font-medium text-white hover:bg-white/10"
-      data-testid="optimizer-lead-local-expert"
+      data-testid={localExpertTestId}
     >
       Local expert
     </button>
@@ -218,7 +237,7 @@ function BoardOptimizerLead({
           <span title={LEAD_DRAFT_FIRST} className="flex flex-1">
             <button type="button" className={cta} disabled data-testid={testId}>
               <Sparkles className="h-4 w-4" />
-              {optimizeCtaLabel(fee)}
+              {optimizeBoardCtaLabel(fee)}
             </button>
           </span>
           {secondary}
@@ -286,7 +305,7 @@ function BoardOptimizerLead({
         <span title={disabledReason ?? undefined} className="flex flex-1">
           <button type="button" className={cta} onClick={onClick} disabled={!!disabledReason || busy} data-testid={testId}>
             <Sparkles className="h-4 w-4" />
-            {ctaLabelOverride ?? optimizeCtaLabel(fee)}
+            {ctaLabelOverride ?? optimizeBoardCtaLabel(fee)}
           </button>
         </span>
         {secondary}

@@ -17,6 +17,7 @@
  *  T3  /pricing's "Get a Trip Pass" routes an authed user to My Plans (no stub)
  */
 import { test, expect, type Page } from "@playwright/test";
+import { execSync } from "child_process";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -33,8 +34,24 @@ async function registerAndCreateTrip(page: Page): Promise<string> {
   return (await tripRes.json()).id as string;
 }
 
+/**
+ * Main-rail (ruling 3; ledger `2026-10-08-slip-main-rail` — sanctioned placement edit): the slip offers
+ * the Trip Pass under the optimizer card only once the plan has had a run, never as a standing card.
+ * A run cannot be started here (the paid rail; stub Stripe), so the plan is given the one fact the
+ * offer reads — an optimized comparison — straight in the CI database. Every assertion below is
+ * unchanged.
+ */
+function seedOptimizedComparison(tripId: string, userId: string): void {
+  const db = process.env.DATABASE_URL;
+  if (!db) throw new Error("DATABASE_URL is not set — cannot seed the plan's optimized comparison");
+  const q = `INSERT INTO itinerary_comparisons (id, user_id, trip_id, optimized_at) VALUES (gen_random_uuid(), '${userId.replace(/'/g, "''")}', '${tripId.replace(/'/g, "''")}', NOW())`;
+  execSync(`psql '${db}' -t -A -c "${q}"`, { encoding: "utf8" });
+}
+
 test("T1: slip shows the offer card with the server-derived price", async ({ page }) => {
   const tripId = await registerAndCreateTrip(page);
+  const me = await (await page.request.get(`${BASE_URL}/api/auth/user`)).json();
+  seedOptimizedComparison(tripId, String(me.id));
   const pricing = await (await page.request.get(`${BASE_URL}/api/pricing`)).json();
   const expected = `$${Math.round(pricing.tripPass.priceCents / 100)}`;
 

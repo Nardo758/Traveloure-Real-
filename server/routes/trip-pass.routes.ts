@@ -23,6 +23,7 @@ import { getUserId } from "../utils/auth";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { PLAN_KEYS, requirePlan } from "../services/plans.service";
 import { getActiveTripPass, grantTripPass } from "../services/trip-entitlement.service";
+import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
 
 const router = Router();
 
@@ -57,6 +58,9 @@ router.get("/api/trips/:tripId/trip-pass", isAuthenticated, async (req, res) => 
       active: pass !== null,
       priceCents: plan.priceCents,
       planName: plan.name,
+      // Ruling 3 (ledger `2026-10-08-slip-main-rail`): the offer states the run allowance the
+      // entitlement actually enforces (R-ac, `TRIP_PASS_RUNS_PER_TRIP`) — never "unlimited".
+      runsPerTrip: tripPassRunsPerTrip(),
       ...(pass ? { grantedAt: pass.grantedAt, allowancesSnapshot: pass.allowancesSnapshot } : {}),
     });
   } catch (err: any) {

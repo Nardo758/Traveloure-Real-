@@ -85,7 +85,11 @@ test("T3: the three benefits that ARE enforced are still named on both surfaces"
   // (optimizer_run, ai_task, traveler_service_fee) must still be sold.
   assert.match(PRICING, /Unlimited AI runs & tasks on that trip/);
   assert.match(PRICING, /No service fee on that trip's bookings/);
-  assert.match(CARD, /unlimited optimizer runs \+ AI tasks · service fee waived/);
+  // Ruling 3 (decision-maker, Oct 8, 2026; ledger `2026-10-08-slip-main-rail`): the card states the
+  // run allowance the entitlement enforces (R-ac) — "5 optimizer runs", from the server — and never
+  // "unlimited". Sanctioned copy edit, listed in the PR.
+  assert.match(CARD, /tripPassRunsPhrase\(status\.runsPerTrip\)\} \+ AI tasks · service fee waived/);
+  assert.doesNotMatch(CARD, /unlimited optimizer runs/);
 });
 
 test("T4: the entitlement itself is RETIRED — not merely unwired", () => {
