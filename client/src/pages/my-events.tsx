@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { COORDINATION_FEE_CHECKOUT_HEADING } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { Crown, Calendar, MapPin, CheckCircle2, Loader2, Sparkles, RefreshCcw } from "lucide-react";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
@@ -281,6 +282,7 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
           </DialogHeader>
           {pi && (
             <StripeCheckout
+              heading={COORDINATION_FEE_CHECKOUT_HEADING}
               paymentIntent={pi}
               bookingIds={[]}
               onSuccess={confirmPayment}

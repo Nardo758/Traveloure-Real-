@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **678** raw mounted mutation registrations and **669** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **679** raw mounted mutation registrations and **670** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+123** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+124** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 170; user-data 234; other 234.
-Boundary totals: admin-role 170; session-self 351; resource-owner 99; signature 6; public-or-system 43; unknown 0.
+Category totals: payments 31; admin 170; user-data 234; other 235.
+Boundary totals: admin-role 170; session-self 352; resource-owner 99; signature 6; public-or-system 43; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -438,9 +438,10 @@ Boundary totals: admin-role 170; session-self 351; resource-owner 99; signature 
 | POST | `/api/occasions` | other | session-self | no | unknown | `server/routes/occasions.routes.ts:85` | unknown | unknown |
 | DELETE | `/api/occasions/:id` | other | session-self | no | unknown | `server/routes/occasions.routes.ts:163` | unknown | unknown |
 | PATCH | `/api/occasions/:id` | other | session-self | no | unknown | `server/routes/occasions.routes.ts:123` | unknown | unknown |
-| POST | `/api/optimization-payments` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:372` | unknown | unknown |
-| POST | `/api/optimization-payments/confirm` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:541` | unknown | unknown |
-| POST | `/api/optimization-preview` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:67` | unknown | unknown |
+| POST | `/api/optimization-payments` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:374` | unknown | unknown |
+| POST | `/api/optimization-payments/cancel` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:574` | unknown | unknown |
+| POST | `/api/optimization-payments/confirm` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:595` | unknown | unknown |
+| POST | `/api/optimization-preview` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:69` | unknown | unknown |
 | DELETE | `/api/participants/:id` | user-data | session-self | yes | unknown | `server/routes/content.routes.ts:7203` | unknown | unknown |
 | PATCH | `/api/participants/:id` | user-data | resource-owner | yes | verified | `server/routes/content.routes.ts:7139` | unknown | unknown |
 | POST | `/api/participants/:id/payment` | payments | resource-owner | yes | verified | `server/routes/content.routes.ts:7184` | unknown | unknown |

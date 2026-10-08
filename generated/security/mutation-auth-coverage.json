@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "48853d9a59166af141273756407195e8f166e934b2a868b2cd8f6cf96dedb438",
+  "manifestSha256": "e9a6c9401bfdb0234888f5036da3a8f9bcb2f5517860303074f6503616761300",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 669,
-    "remaining": 669,
+    "total": 670,
+    "remaining": 670,
     "categories": {
       "payments": {
         "tested": 0,
@@ -27,7 +27,7 @@
       },
       "other": {
         "tested": 0,
-        "total": 234
+        "total": 235
       }
     }
   },
@@ -9730,7 +9730,7 @@
       "path": "/api/optimization-payments",
       "effectivePath": "/api/optimization-payments",
       "source": "server/routes/optimization.routes.ts",
-      "line": 372,
+      "line": 374,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9746,11 +9746,31 @@
     },
     {
       "method": "POST",
+      "rawPath": "/api/optimization-payments/cancel",
+      "path": "/api/optimization-payments/cancel",
+      "effectivePath": "/api/optimization-payments/cancel",
+      "source": "server/routes/optimization.routes.ts",
+      "line": 574,
+      "risk": "other",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/optimization-payments/cancel",
+      "tested": false,
+      "reason": "Other-category endpoint is intentionally outside the strict tested set."
+    },
+    {
+      "method": "POST",
       "rawPath": "/api/optimization-payments/confirm",
       "path": "/api/optimization-payments/confirm",
       "effectivePath": "/api/optimization-payments/confirm",
       "source": "server/routes/optimization.routes.ts",
-      "line": 541,
+      "line": 595,
       "risk": "payments",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -9770,7 +9790,7 @@
       "path": "/api/optimization-preview",
       "effectivePath": "/api/optimization-preview",
       "source": "server/routes/optimization.routes.ts",
-      "line": 67,
+      "line": 69,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],

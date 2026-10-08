@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
+import { optimizeContinueLabel, optimizePayLine } from "@/lib/optimize-pay-copy";
+import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
 import type {
   ComparisonPinnedAnchor,
   ComparisonPinnedAnchorType,
@@ -70,12 +72,18 @@ export function formatAnchorCandidateMedian(candidate: AnchorCandidate): string 
 export function BuildAroundDialog({
   open,
   tripId,
+  planName,
+  fee,
   busy = false,
   onOpenChange,
   onConfirm,
 }: {
   open: boolean;
   tripId: string;
+  /** The plan being optimized, named in the dialog (ledger `2026-10-08-optimize-pay-flow`). */
+  planName?: string | null;
+  /** The server's band-resolved quote — the price on the confirm button. Never a literal (§8). */
+  fee?: OptimizationFeeQuote | null;
   busy?: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (pinnedAnchor?: ComparisonPinnedAnchor) => void;
@@ -171,6 +179,11 @@ export function BuildAroundDialog({
             Build around a location
           </DialogTitle>
           <DialogDescription className="text-[15px] leading-6 text-[color:var(--earn-muted)]">
+            {planName?.trim() ? (
+              <>
+                Optimize <span className="font-semibold text-[color:var(--earn-ink)]" data-testid="build-around-plan">{planName.trim()}</span>:{" "}
+              </>
+            ) : null}
             Choose how the optimizer should anchor the three versions of your plan.
           </DialogDescription>
         </DialogHeader>
@@ -347,8 +360,13 @@ export function BuildAroundDialog({
         </div>
 
         <div className="border-t border-[color:var(--earn-border)] px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
-          <p className="mb-4 font-mono text-[11px] leading-5 text-[color:var(--earn-muted)]">
-            Optimization is a paid step — you confirm here before anything runs or is charged.
+          {selectedName ? (
+            <p className="mb-2 text-sm text-[color:var(--earn-ink)]" data-testid="build-around-selected">
+              Three versions built around {selectedName}.
+            </p>
+          ) : null}
+          <p className="mb-4 font-mono text-[11px] leading-5 text-[color:var(--earn-muted)]" data-testid="build-around-pay-line">
+            {optimizePayLine(fee)}
           </p>
           <DialogFooter className="gap-2 sm:space-x-0">
             <Button
@@ -368,9 +386,7 @@ export function BuildAroundDialog({
               data-testid="build-around-confirm"
             >
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {selectedName
-                ? `Generate 3 versions around ${selectedName}`
-                : "Generate 3 versions"}
+              {optimizeContinueLabel(fee)}
             </Button>
           </DialogFooter>
         </div>

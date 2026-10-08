@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/669**; remaining: **669**.
-- Admin: **0/170**; payments: **0/31**; user-data: **0/234**; other: **0/234**.
+- **Tested: 0/670**; remaining: **670**.
+- Admin: **0/170**; payments: **0/31**; user-data: **0/234**; other: **0/235**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `48853d9a59166af141273756407195e8f166e934b2a868b2cd8f6cf96dedb438`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `e9a6c9401bfdb0234888f5036da3a8f9bcb2f5517860303074f6503616761300`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -499,9 +499,10 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/messages/typing/:conversationId | user-data | session-self | server/routes/messages.ts:297 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/notifications/mark-all-read | user-data | session-self | server/routes/content.routes.ts:3239 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/occasions | other | session-self | server/routes/occasions.routes.ts:85 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/optimization-payments | payments | resource-owner | server/routes/optimization.routes.ts:372 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/optimization-payments/confirm | payments | resource-owner | server/routes/optimization.routes.ts:541 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/optimization-preview | other | session-self | server/routes/optimization.routes.ts:67 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/optimization-payments | payments | resource-owner | server/routes/optimization.routes.ts:374 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/optimization-payments/cancel | other | session-self | server/routes/optimization.routes.ts:574 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/optimization-payments/confirm | payments | resource-owner | server/routes/optimization.routes.ts:595 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/optimization-preview | other | session-self | server/routes/optimization.routes.ts:69 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/participants/:id/payment | payments | resource-owner | server/routes/content.routes.ts:7184 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/payouts/request | payments | session-self | server/routes/payments.routes.ts:3172 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/plans/:id/feedback | other | session-self | server/routes/feedback.routes.ts:53 | Other-category endpoint is intentionally outside the strict tested set. |
