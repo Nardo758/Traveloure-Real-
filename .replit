@@ -101,8 +101,8 @@ VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxx
 # reached the PR-498 branch on Aug 17; rotate that key).
 RATE_LIMIT_LOOPBACK_SKIP = "1"
 DMO_INGEST_ENABLED = "0"
-ITINERARY_OUTCOME_TEST_EMAIL = "bhawanitest1@proton.me"
-SIGNUP_QA_TEST_INBOX = "bhawanitest1@proton.me"
+ITINERARY_OUTCOME_TEST_EMAIL = "ldixon7584403@aol.com"
+SIGNUP_QA_TEST_INBOX = "ldixon7584403@aol.com"
 
 [userenv.production]
 ENVIRONMENT = "PROD"
@@ -115,8 +115,6 @@ timeoutMs = 30000
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-
 
 [[ports]]
 localPort = 8080
