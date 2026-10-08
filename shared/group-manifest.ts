@@ -12,8 +12,8 @@
  * question and appends two tools.
  *
  * Every tool is a KEY. Which component a key mounts is the client's business
- * (`client/src/components/plan/ToolsTray.tsx`); a key with no existing component renders disabled
- * with "coming soon" — no tool is built here.
+ * (`client/src/components/plan/ToolsTray.tsx`); whether a key RENDERS is `TOOL_STATE` below — a
+ * coming-soon tool is not drawn at all — and no tool is built here.
  */
 import type { ExperienceGroup } from "./experience-group";
 
@@ -66,6 +66,55 @@ export const TOOL_LABEL: Readonly<Record<ToolKey, string>> = {
   the_show: "The show",
   getting_back_late: "Getting back late",
 };
+
+/**
+ * Whether a tool RENDERS (decision-maker, Oct 8, 2026 — ledger `2026-10-08-tools-tray-live-only`).
+ * `live` — an existing component backs it; `coming_soon` — none does, and the tray draws nothing for
+ * it (no disabled chip); `flag` — live only while the named operator switch is on, read from the
+ * `/api/health` `flags` block. A switch whose answer is unknown reads OFF (§13: never a chip whose
+ * backing service nobody has confirmed). The client's component registry must agree with this
+ * table (pinned by the tray test); this table is the ONE place a tool's state is said.
+ */
+export type ToolState = { kind: "live" } | { kind: "coming_soon" } | { kind: "flag"; flag: "FLIGHT_LOOKUP_ENABLED" };
+
+const LIVE: ToolState = { kind: "live" };
+const SOON: ToolState = { kind: "coming_soon" };
+
+export const TOOL_STATE: Readonly<Record<ToolKey, ToolState>> = {
+  getting_there: { kind: "flag", flag: "FLIGHT_LOOKUP_ENABLED" },
+  where_to_stay: LIVE,
+  travel_party: LIVE,
+  getting_around: SOON,
+  pace: LIVE,
+  the_reservation: LIVE,
+  timing_check: LIVE,
+  getting_home: SOON,
+  the_venue: LIVE,
+  guests: LIVE,
+  vendors: LIVE,
+  budget: SOON,
+  run_of_show: LIVE,
+  guest_invites: LIVE,
+  vendor_contracts: LIVE,
+  arrivals_split_groups: SOON,
+  shared_lodging: LIVE,
+  whos_coming: LIVE,
+  split_activities: SOON,
+  who_pays_what: SOON,
+  the_show: LIVE,
+  getting_back_late: SOON,
+};
+
+/** The operator switches a tool may depend on, as `/api/health` reports them. Absent ⇒ off. */
+export type ToolFlags = Partial<Record<"FLIGHT_LOOKUP_ENABLED", boolean>> | null | undefined;
+
+/** Does this tool render right now? The ONE reading of `TOOL_STATE`. */
+export function toolIsLive(key: ToolKey, flags: ToolFlags): boolean {
+  const s = TOOL_STATE[key];
+  if (s.kind === "live") return true;
+  if (s.kind === "coming_soon") return false;
+  return flags?.[s.flag] === true;
+}
 
 /** When the anchor panel (step 3) shows. Declared here; not read until step 3. */
 export type AnchorPanelThreshold = { kind: "min_days"; days: number } | { kind: "always" };
