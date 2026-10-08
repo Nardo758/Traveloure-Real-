@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { apiRefusalMessage, parseApiRefusal } from "@/lib/api-refusal";
 import { useToast } from "@/hooks/use-toast";
+import { BOOKING_CHECKOUT_HEADING } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import {
   QUOTE_CHECKOUT_UNAVAILABLE_NOTE,
@@ -291,6 +292,7 @@ export function TravelerQuotesPanel({ bookingsById }: TravelerQuotesPanelProps) 
                         </p>
                       )}
                       <StripeCheckout
+                        heading={BOOKING_CHECKOUT_HEADING}
                         paymentIntent={{
                           clientSecret: paying.clientSecret,
                           paymentIntentId: paying.paymentIntentId,

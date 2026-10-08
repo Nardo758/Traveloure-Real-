@@ -109,6 +109,11 @@ export async function requestOptimizationGate(
 
   if (data.coveredByTripPass) return { kind: "covered_by_pass" };
   if (data.freeRerun) return { kind: "free_rerun" };
+  // Ledger `2026-10-08-optimize-pay-flow`: the plan's open intent was already PAID and no run used it
+  // (a press after a payment whose run never started) — the run goes ahead on that payment, no second charge.
+  if (data.reusedPaid && data.status === "succeeded" && data.paymentIntentId) {
+    return { kind: "paid", paymentIntentId: String(data.paymentIntentId) };
+  }
 
   if (useSavedCard) {
     if (data.oneClick && data.status === "succeeded") {
@@ -155,5 +160,25 @@ export async function confirmOptimizationPayment(
     });
   } catch {
     /* non-critical */
+  }
+}
+
+/**
+ * Cancel on the Optimize pay sheet (ledger `2026-10-08-optimize-pay-flow`): cancels the plan's open
+ * intent server-side so nothing is left pending; the next press mints a fresh one. Best-effort — a
+ * failure leaves the intent open, and the next press replays it rather than minting another.
+ */
+export async function cancelOptimizationPayment(paymentIntentId: string, fetchImpl?: typeof fetch): Promise<boolean> {
+  try {
+    const res = await (fetchImpl ?? fetch)("/api/optimization-payments/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ paymentIntentId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    return res.ok && body?.canceled === true;
+  } catch {
+    return false;
   }
 }

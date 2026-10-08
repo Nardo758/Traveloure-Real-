@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { UserCheck, Bookmark, Share2, Clock, Eye, CheckCircle, Star, MoreVertical, ArrowLeft } from 'lucide-react';
+import { EXPERT_HELP_CHECKOUT_HEADING } from "@/lib/checkout-headings";
 import StripeCheckout from './StripeCheckout';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -381,6 +382,7 @@ export default function VariantActionButtons({
               </DialogHeader>
 
               <StripeCheckout
+                heading={EXPERT_HELP_CHECKOUT_HEADING}
                 paymentIntent={expertPaymentIntent}
                 bookingIds={[`expert-${variant.id}`]}
                 onSuccess={handleExpertPaymentSuccess}

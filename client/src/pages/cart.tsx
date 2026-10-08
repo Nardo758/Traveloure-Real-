@@ -78,6 +78,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { parseTripDate } from "@/lib/calendar-date";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { BOOKING_CHECKOUT_HEADING, optimizeCheckoutHeading } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 import { getAcquisitionRef } from "@/lib/acquisition";
@@ -2659,6 +2660,7 @@ export default function CartPage() {
                       </CardHeader>
                       <CardContent>
                         <StripeCheckout
+                          heading={optimizeCheckoutHeading()}
                           paymentIntent={{
                             clientSecret: optimizationPayment.clientSecret,
                             paymentIntentId: optimizationPayment.paymentIntentId,
@@ -2985,6 +2987,7 @@ export default function CartPage() {
                       </CardHeader>
                       <CardContent>
                         <StripeCheckout
+                          heading={BOOKING_CHECKOUT_HEADING}
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
                           onSuccess={async (paymentIntentId) => {
