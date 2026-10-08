@@ -273,3 +273,26 @@ export function optimizedHeadline(versions: number, days: number): string {
   const ways = w(versions);
   return `${ways.charAt(0).toUpperCase()}${ways.slice(1)} ${versions === 1 ? "way" : "ways"} to spend ${days === 1 ? "this day" : `these ${w(days)} days`}`;
 }
+
+// ── THE VERSIONS BOARDS (slip conformance, boards rev 15; ledger `2026-10-08-slip-versions-board`) ──
+
+/** The phone By-day headline: "One day, three ways". */
+export function byDayHeadline(versions: number): string {
+  const w = COUNT_WORDS[versions] ?? String(versions);
+  return `One day, ${w} ${versions === 1 ? "way" : "ways"}`;
+}
+
+/** "Wed 11" — the weekday and the day of the month from the plan's machine date, else "Day N" (§13). */
+export function boardDayDateLabel(dayNumber: number, dateIso: string | null | undefined): string {
+  if (dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    const d = new Date(`${dateIso}T12:00:00Z`);
+    if (Number.isFinite(d.getTime())) return `${d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })} ${d.getUTCDate()}`;
+  }
+  return `Day ${dayNumber}`;
+}
+
+/** The desktop "Your plan" header: "2 days picked · 3 from draft". */
+export function yourPlanSummary(picked: number, totalDays: number): string {
+  const fromDraft = Math.max(0, totalDays - picked);
+  return `${picked} ${picked === 1 ? "day" : "days"} picked · ${fromDraft} from draft`;
+}

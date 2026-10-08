@@ -17,6 +17,7 @@ import { Link, useLocation, useParams } from "wouter";
 import { Loader2 } from "lucide-react";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
+import { TripPassCard } from "@/components/plancard/TripPassCard";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { planVersionsTarget, versionsRunState } from "@/lib/plan-versions";
@@ -115,6 +116,16 @@ export default function PlanVersionsPage() {
         destination={plan.data.trip?.destination ?? ""}
         days={plan.data.days ?? []}
         onPaidRun={() => setLocation(optimizeHref)}
+        headerOffer={
+          // Ruling 3 (slip conformance, Versions board): the Trip Pass is offered in the Versions
+          // header — the board draws it only once a run exists — to the plan's OWNER (LD 52), with
+          // the run allowance the entitlement enforces (R-ac), never "unlimited".
+          plan.data.tripRole === "owner" ? (
+            <div data-testid="versions-trip-pass-offer">
+              <TripPassCard tripId={tripId} planName={plan.data.trip?.title || plan.data.trip?.destination} />
+            </div>
+          ) : null
+        }
         noRunCta={
           <OptimizerLead
             drafted={(plan.data.days ?? []).some((d) => (d.activities ?? []).length > 0)}
