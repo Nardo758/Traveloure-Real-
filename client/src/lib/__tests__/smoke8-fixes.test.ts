@@ -49,7 +49,9 @@ test("Z3 the slip map frames through the rule", () => {
 
 test("D1 the departure row is the last row of the last day, above its add control", () => {
   const slip = src("components/plancard/SlipView.tsx");
-  const legs = slip.indexOf("{(day?.transports ?? []).map((leg) => (");
+  // FU-9C-1 (sanctioned re-anchor): the day-end leg list is retired; the day's legs render between
+  // its stops, so "after the stops and legs" is after the LAST `renderLegBetween(` call.
+  const legs = slip.lastIndexOf("renderLegBetween(");
   const dep = slip.search(/<TravelAnchorPlaceholder\s+kind="departure"/);
   const add = slip.indexOf("testId={`slip-day-add-${slot.key}`}");
   const dayEnd = slip.indexOf("</DayBlock>", dep);
