@@ -307,6 +307,8 @@ describe("slip rail — four cards, and every rail kept a home", () => {
       "slip-action-go-to-checkout",
       // R321 S11-1: "Make it final again" on a finalized plan whose working copy changed.
       "slip-action-refinalize",
+      // Main-rail (ruling 3): "Send feedback" in the ⋯ plan menu — the SAME post-draft tap.
+      "slip-action-feedback",
     ]);
     for (const testid of shipped) {
       assert.ok(
@@ -316,60 +318,58 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     }
   });
 
-  it("S2 the four cards exist, each carrying the rows the ruling names", () => {
+  it("S2 the rail dissolved, and every row it carried has ONE home (Main-rail, ruling 3)", () => {
+    // SANCTIONED REWRITE (decision-maker, Oct 8, 2026; ledger `2026-10-08-slip-main-rail`). This pin
+    // held the four cards Build · Plan · Share · Finish. Rulings 3 and 7 dissolve the rail: each row
+    // now has exactly one home, and this asserts each home rather than the old cards.
     const rail = readClient(RAIL);
-    assert.deepEqual([...SLIP_RAIL_CARDS], ["build", "plan", "share", "finish"]);
-    for (const card of SLIP_RAIL_CARDS) {
-      assert.ok(
-        rail.includes(`card="${card}"`),
-        `the ${card} card must be rendered by the rail`,
-      );
-      for (const row of CARD_ROWS[card]) {
-        assert.ok(
-          rail.includes(`"${row}"`),
-          `the ${card} card is missing its ${row} row`,
-        );
-      }
+    const view = readClient(VIEW);
+    const homeOf = (fn: string) => {
+      const start = rail.indexOf(fn);
+      assert.ok(start >= 0, `expected ${fn}`);
+      const next = rail.slice(start + fn.length).search(/\n(?:export )?function /);
+      return rail.slice(start, next >= 0 ? start + fn.length + next : undefined);
+    };
+    const menu = homeOf("export function SlipPlanMenu(");
+    const bar = homeOf("export function SlipBottomBar(");
+    // Share card → the ⋯ plan menu; Build's Browse → the menu; feedback → the menu.
+    for (const id of ["slip-action-share", "slip-action-pdf", "slip-action-calendar", "slip-browse-services"]) {
+      assert.ok(menu.includes(`"${id}"`), `${id} lives in the ⋯ plan menu`);
     }
-    // The rail is a card grid, not the flat button row it replaces.
-    assert.ok(rail.includes('data-testid="slip-rail"'), "the rail itself is addressable");
-    // SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the rail stops mounting the
-    // logistics pieces and the contract board — they are TOOLS on the slip's tray now, each the
-    // SAME existing component in a sheet. Organize-into-events stays on the Plan card.
+    // Finish card → the bottom bar's primary; Ask AI → its secondary.
+    assert.ok(bar.includes('layout="bar"'), "the bar uses the existing components' bar layout");
+    assert.ok(rail.includes('data-testid="slip-action-finalize-plan"'), "Finalize keeps its testid in the bar layout");
+    // Build's optimizer card stays portaled under the tray; the hire door is its "Local expert".
+    assert.ok(rail.includes('testId="slip-action-optimize"'));
+    assert.ok(rail.includes('localExpertTestId="slip-action-hire-expert"'), "the hire door is the card's Local expert");
+    // The ONE message control sits with the expert it messages.
+    assert.ok(homeOf("function ExpertMessageRow(").includes('testId="slip-action-message-expert"'));
+    // The plan's own extras keep a home.
+    assert.ok(rail.includes('data-testid="slip-plan-budget"'));
+    assert.ok(rail.includes("<SlipOrganizeEventsRow"), "organize-into-events stays with the plan");
+    // No rail container, no card grid, at any width (ruling 7).
+    assert.ok(!rail.includes('data-testid="slip-rail"'), "the rail container is gone");
+    assert.ok(view.includes("<SlipPlanMenu") && view.includes("<SlipBottomBar"), "the view mounts both homes");
+    // SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the logistics pieces and the
+    // contract board are TOOLS on the slip's tray, each the SAME existing component in a sheet.
     assert.ok(!rail.includes("<SlipLogisticsSection"), "the logistics section left the rail");
     assert.ok(!rail.includes("<VendorContractBoard"), "the contract board left the rail");
-    assert.ok(rail.includes("<SlipOrganizeEventsRow"), "organize-into-events stays on the Plan card");
     const tray = readClient("components/plan/ToolsTray.tsx");
     for (const c of ["<VendorContractBoard", "<SlipAnchorsTool", "<SlipGuestsTool", "<SlipTravelingParty", "<EnergyBudgetDisplay", "<ScheduleValidator"]) {
       assert.ok(tray.includes(c), `the tray mounts ${c}`);
     }
     assert.ok(rail.includes("<TripPassCard"), "Trip Pass is the existing card, moved");
-    // STOPS & TIMEZONE — REPAIRED, NOT DELETED (ledger `2026-09-06-slip-conformance`).
-    //
-    // This pin used to assert the row's ABSENCE, with the reason "S6/S7 are a later lane — no
-    // placeholder row promises them" (§13). That lane landed: the row now states what the plan
-    // actually answers and opens the ONE planning modal. The assertion is turned around to hold
-    // what the ruling ACTUALLY protects rather than deleted, because the thing worth guarding was
-    // never the absence — it was that this row must not become a SECOND stop editor. Locked
-    // Decision 34 gives the client exactly one stop writer (`plan-stops-writer.ts`) with exactly
-    // one editing surface (the modal's step 2), and a replace-list caller that sends a list it did
-    // not first read silently drops stops it never saw.
+    // STOPS & TIMEZONE (ruling 3): the header's stops line and its Edit are the one door; the rail
+    // writes no stops and derives neither line (LD 34; §18 rule 1).
     const railCode = stripComments(rail);
-    assert.ok(
-      railCode.includes("Stops & timezone"),
-      "the Plan card carries the ratified Stops & timezone row",
-    );
-    assert.ok(railCode.includes("openPlanModal()"), "and it opens the ONE planning modal");
+    assert.ok(!railCode.includes("Stops & timezone"), "the plan panel draws no second stops door");
     assert.ok(
       !railCode.includes("savePlanStops") && !railCode.includes("/destinations"),
       "the rail never writes stops itself — one client writer, one editing surface (LD 34)",
     );
-    // And its meta COMPOSES the header's own two lines rather than deriving them a second time
-    // (§18 rule 1): the rail takes them as props and calls only the composer.
-    assert.ok(railCode.includes("slipPlanMetaLine("), "the row meta is the composed header lines");
     assert.ok(
       !railCode.includes("slipStopsLine(") && !railCode.includes("slipZoneLine("),
-      "the rail derives neither line — SlipView resolves both once and hands them down",
+      "the rail derives neither line — SlipView resolves both once",
     );
   });
 

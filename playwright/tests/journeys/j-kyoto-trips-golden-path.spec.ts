@@ -192,7 +192,9 @@ test.describe("1 · entry and occasion", () => {
     await expect(testid(page, `slip-view-${tripId}`)).toHaveAttribute("data-experience-group", "trips");
     // The group is a key, never display text (R127).
     await expect(page.getByText("Trips", { exact: true })).toHaveCount(0);
-    await expect(testid(page, "slip-anchor-state")).toHaveText("Where you'll stay: not chosen yet");
+    // Main-rail (decision-maker, Oct 8, 2026 — sanctioned edit; ledger `2026-10-08-slip-main-rail`): the
+    // header's "Where you'll stay: not chosen yet" line is gone — the board has no header line; the
+    // anchor card is the ask.
   });
 
   test("§1 B5 — the Travel date step speaks plainly and a four-night window reads '5 days · 4 nights'", async ({ page }) => {
@@ -491,7 +493,7 @@ test.describe("2 · where are you staying", () => {
     await expect(card).toBeVisible({ timeout: 20_000 });
     await expect(card).toHaveAttribute("data-anchor-kind", "fixed_item");
     await expect(card).toContainText("What's fixed on these dates?");
-    await expect(testid(page, "slip-anchor-state")).toHaveText("Built around: nothing fixed yet");
+    // Main-rail (sanctioned edit): no "Built around: nothing fixed yet" header line — the card is the ask.
     await expect(testid(page, `slip-view-${tripId}`)).toHaveAttribute("data-experience-group", "trips");
   });
 
@@ -502,12 +504,16 @@ test.describe("2 · where are you staying", () => {
     await expect(testid(page, "slip-anchor-question")).toBeVisible({ timeout: 20_000 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
-    // List before rail on a phone (track-a-rollout A1): the question is above the rail's first card.
+    // Main-rail (decision-maker, Oct 8, 2026 — sanctioned edit; ledger `2026-10-08-slip-main-rail`): on an
+    // empty plan the stay question is the TOP of the plan column — above the List/Map bar, and the tools
+    // tray and the Optimize card no longer precede it.
     const q = await testid(page, "slip-anchor-question").boundingBox();
-    const rail = await testid(page, "slip-view-toggle").boundingBox();
-    expect(q && rail && q.y > rail.y, "the question follows the view bar, inside the plan column").toBeTruthy();
-    const firstRailCard = await page.getByText("Browse services for this trip").first().boundingBox();
-    expect(q && firstRailCard && q.y < firstRailCard.y, "the anchor question is above the rail on a phone").toBeTruthy();
+    const bar = await testid(page, "slip-view-toggle").boundingBox();
+    const tray = await testid(page, "slip-tools-tray").boundingBox();
+    const lead = await testid(page, "slip-action-optimize").boundingBox();
+    expect(q && bar && q.y < bar.y, "the question is above the List/Map bar").toBeTruthy();
+    expect(q && tray && q.y < tray.y, "the tools tray no longer precedes it").toBeTruthy();
+    expect(q && lead && q.y < lead.y, "the Optimize card no longer precedes it").toBeTruthy();
   });
 
   test("§2 — at 390 px an item's whole name is readable beside its chips (ledger `2026-09-29-slip-item-name-390`)", async ({ page }) => {
