@@ -244,10 +244,12 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   // with no existing component draws nothing, and the tray says "coming soon" nowhere.
   await expect(tray).not.toContainText("coming soon");
   // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned amendment): Getting around is live —
-  // it reads the plan's own legs, and a plan with none says so rather than drawing an empty sheet.
+  // it reads the plan's own days and every gap between their stops.
   await page.getByTestId("tool-chip-getting_around").click();
   await expect(page.getByTestId("tool-sheet-getting_around")).toBeVisible();
-  await expect(page.getByTestId("getting-around-empty")).toBeVisible();
+  // Production smoke F1 (ledger `2026-10-08-getting-around-every-gap`; sanctioned): a free plan says where
+  // travel times come from, and its days are listed rather than replaced by an empty line.
+  await expect(page.getByTestId("getting-around-header")).toHaveText("Travel times come with Optimize");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tool-sheet-getting_around")).toHaveCount(0);
   // Pace opens the EXISTING energy budget in a sheet.
