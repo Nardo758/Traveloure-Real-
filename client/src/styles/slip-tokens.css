@@ -1,0 +1,51 @@
+/*
+ * SLIP TOKENS — the Trip Slip redesign's palette, type and radii, scoped under ONE root class
+ * (ledger `2026-10-08-conformance-slip-phase0`, ruling 5; brief
+ * `docs/planning/briefs/conformance-slip-phase0.md` §2).
+ *
+ * Imported from `SlipView` only; `index.css` is untouched. Every value lives under `.slip-surface`,
+ * so nothing here reaches a page that does not mount the slip. The shared primitives (`Card`,
+ * `Button`) are NOT restyled here — a board PR opts a slip element into these tokens explicitly.
+ *
+ * Ruling 2: the primary action is the coral FILL with white text (LD 45 (7) as amended), read from
+ * the one coral token rather than restated; navy is structural (headings, links, outlines); gold is
+ * an accent and never a button fill.
+ */
+.slip-surface {
+  /* Type — Fraunces display, Inter body (both loaded by index.css's font import). */
+  --slip-font-display: "Fraunces", Georgia, serif;
+  --slip-font-body: "Inter", system-ui, sans-serif;
+
+  /* Ground, ink and structure. */
+  --slip-ground: #F6F4EF;
+  --slip-card: #FFFFFF;
+  --slip-ink: #0D2137;
+  --slip-navy: #1E3A5F;
+  --slip-muted: #5B6B7A;
+  --slip-faint: #8A97A3;
+  --slip-line: #E3E6E8;
+  --slip-line-strong: #C9D1D8;
+  --slip-wash: #E9EEF2;
+
+  /* Accents. */
+  --slip-teal: #2E8B8B;
+  --slip-teal-ink: #1F6F6F;
+  --slip-teal-wash: #E6F2F2;
+  --slip-gold: #E8B339;
+  --slip-gold-ink: #8A6A1E;
+  --slip-gold-wash: #FFF6DF;
+
+  /* Primary action (ruling 2): the coral fill, white on it. */
+  --slip-primary: var(--coral-fill);
+  --slip-primary-ink: #FFFFFF;
+
+  /* Radii. */
+  --slip-radius-card: 18px;
+  --slip-radius-button: 12px;
+  --slip-radius-chip: 999px;
+}
+
+/* The slip's display face — the plan title and, as the board PRs land, day and card titles. */
+.slip-surface .slip-display {
+  font-family: var(--slip-font-display);
+}
