@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { legRefetchDelayMs } from "@/lib/slip-legs";
+import { usePlanRowLook } from "@/components/plan/row-look";
 import {
   buildSlipAddItemBody,
   buildSlipEditItemBody,
@@ -154,6 +155,7 @@ export function SlipAddItemControl({
   testId: string;
 }) {
   const { toast } = useToast();
+  const look = usePlanRowLook();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<SlipItemFormValues>(EMPTY_SLIP_ITEM_FORM);
 
@@ -188,7 +190,12 @@ export function SlipAddItemControl({
     return (
       <button
         type="button"
-        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+        className={
+          // The Main board's day footer (ledger `2026-10-08-slip-main-rows`): a dashed 40px button.
+          look === "board"
+            ? "inline-flex h-10 items-center gap-1 rounded-[10px] border border-dashed border-[color:var(--slip-dash)] px-3.5 text-sm font-medium text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+            : "inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
+        }
         onClick={() => setOpen(true)}
         data-testid={testId}
       >

@@ -17,8 +17,12 @@ import { format } from "date-fns";
 import { Users } from "lucide-react";
 import { parseTripDate } from "@/lib/calendar-date";
 import { eventCountLabel } from "@/lib/plan-vocabulary";
-import { planDayCountLabel, type PlanDatesConfirmedAt } from "@shared/plan-dates";
+import { planDatesAreConfirmed, planDayCountLabel, type PlanDatesConfirmedAt } from "@shared/plan-dates";
+import { slipZoneAbbrev } from "@/lib/slip-zone-label";
 import { SetPlanDates } from "./SetPlanDates";
+
+/** The Empty board's subline when nobody has chosen the plan's dates (canvas note s12). */
+export const SLIP_DATES_NOT_SET = "Dates not set yet";
 
 export interface SlipHeaderMetaProps {
   tripId: string;
@@ -33,6 +37,17 @@ export interface SlipHeaderMetaProps {
   /** Lane E1 (ledger `2026-10-08-e1-zero-questions`): "Set your dates" opens the slip's INLINE panel. */
   onSetDates?: () => void;
   eventCount: number;
+  /**
+   * `trips.timezone`, read only by the placeholder-dates subline ("Dates not set yet · JST", slip
+   * conformance ruling 3). NULL means not captured: no zone is printed (LD 30).
+   */
+  timezone?: string | null;
+  /**
+   * A one-day Moment's span ("evening" / "day", `momentSpanWord`), passed only for a Moment. With it,
+   * the window reads "Fri Nov 13, 2026 · one evening" (the Moment board) in place of
+   * "Nov 13 – Nov 13, 2026 · 1 day". Absent ⇒ the window line is unchanged.
+   */
+  daySpan?: "evening" | "day" | null;
 }
 
 export function SlipHeaderMeta({
@@ -45,11 +60,15 @@ export function SlipHeaderMeta({
   onAskParty,
   onSetDates,
   eventCount,
+  timezone = null,
+  daySpan = null,
 }: SlipHeaderMetaProps) {
   const start = parseTripDate(startDate);
   const end = parseTripDate(endDate);
   const hasRange = Boolean(start && end);
-  const dayCount = hasRange ? planDayCountLabel(startDate, endDate) : null;
+  // The Moment board's one-day window: the weekday and date, then the span in words.
+  const oneDay = hasRange && daySpan && start!.getTime() === end!.getTime();
+  const dayCount = oneDay ? `one ${daySpan}` : hasRange ? planDayCountLabel(startDate, endDate) : null;
   // Whether anything has been printed yet — the next segment takes a " · " only after one.
   let printed = hasRange;
   const sep = () => {
@@ -58,10 +77,79 @@ export function SlipHeaderMeta({
     return s;
   };
 
+  /**
+   * PLACEHOLDER DATES — the Empty board (slip conformance, ledger
+   * `2026-10-08-conformance-slip-phase0`; canvas note s12). A plan whose window nobody chose says
+   * so in words, "Dates not set yet", and does not print the filled-in range, which would read as
+   * a choice (LD 30, as amended). The owner gets the two chips under it. Both are the existing
+   * doors: the ONE dates dialog and the ONE plan modal's party step. A non-owner gets the sentence
+   * only (D16).
+   */
+  const datesUnset = !planDatesAreConfirmed(datesConfirmed);
+  const askParty = onAskParty ? (
+    <button
+      type="button"
+      className={
+        datesUnset
+          ? "inline-flex h-[34px] items-center rounded-[var(--slip-radius-chip)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-3 text-[13px] font-medium text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-ground)]"
+          : "inline-flex items-center gap-1 text-primary hover:underline"
+      }
+      onClick={onAskParty}
+      data-testid="slip-meta-ask-party"
+    >
+      {datesUnset ? null : <Users className="w-3.5 h-3.5 inline" />}
+      Who's coming?
+    </button>
+  ) : null;
+
+  if (datesUnset) {
+    const zone = slipZoneAbbrev(timezone);
+    return (
+      <div className="space-y-2">
+        <p className="text-[15px] font-medium text-[color:var(--slip-navy)]" data-testid="slip-meta">
+          <span data-testid="slip-meta-dates-unset">{SLIP_DATES_NOT_SET}</span>
+          {partyLabel ? (
+            <>
+              {" · "}
+              <span data-testid="slip-meta-party">{partyLabel}</span>
+            </>
+          ) : null}
+          {eventCount > 0 ? (
+            <span data-testid="slip-meta-events">
+              {" · "}
+              {eventCountLabel(eventCount)}
+            </span>
+          ) : null}
+          {zone ? (
+            <>
+              {" · "}
+              <span data-testid="slip-meta-zone">{zone}</span>
+            </>
+          ) : null}
+        </p>
+        {isOwner ? (
+          <div className="flex flex-wrap gap-2" data-testid="slip-meta-chips">
+            <SetPlanDates
+              tripId={tripId}
+              startDate={startDate}
+              endDate={endDate}
+              datesConfirmedAt={datesConfirmed}
+              isOwner={isOwner}
+              onSetDates={onSetDates}
+            />
+            {askParty}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <p className="text-sm text-muted-foreground" data-testid="slip-meta">
       {hasRange ? (
-        <span data-testid="slip-meta-dates">{`${format(start!, "MMM d")} – ${format(end!, "MMM d, yyyy")}`}</span>
+        <span data-testid="slip-meta-dates">
+          {oneDay ? format(start!, "EEE MMM d, yyyy") : `${format(start!, "MMM d")} – ${format(end!, "MMM d, yyyy")}`}
+        </span>
       ) : null}
       {dayCount ? (
         <>
@@ -69,18 +157,6 @@ export function SlipHeaderMeta({
           <span data-testid="slip-meta-days">{dayCount}</span>
         </>
       ) : null}
-      {/* ── DID ANYBODY CHOOSE THIS WINDOW? (punchlist D-22 + R-4, migration 302, ledger
-          `2026-09-15-d22-dates-confirmed`.) Renders NOTHING for a confirmed plan (§13: the
-          unmarked case stays quiet), and its CTA is the OWNER's alone (Locked Decision 42 D16). */}
-      <SetPlanDates
-        tripId={tripId}
-        startDate={startDate}
-        endDate={endDate}
-        datesConfirmedAt={datesConfirmed}
-        isOwner={isOwner}
-        leadingSpace={hasRange}
-        onSetDates={onSetDates}
-      />
       {partyLabel ? (
         <>
           {sep()}
@@ -92,18 +168,10 @@ export function SlipHeaderMeta({
       ) : null}
       {/* RC-12: nobody has said who is going, so the owner is ASKED rather than shown an invented
           "1 traveler" (§13). */}
-      {onAskParty ? (
+      {askParty ? (
         <>
           {sep()}
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-primary hover:underline"
-            onClick={onAskParty}
-            data-testid="slip-meta-ask-party"
-          >
-            <Users className="w-3.5 h-3.5 inline" />
-            Who's coming?
-          </button>
+          {askParty}
         </>
       ) : null}
       {/* THE EVENT COUNT (re-audit A16) — `eventCountLabel`, hidden at zero (§13). */}

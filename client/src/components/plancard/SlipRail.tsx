@@ -82,7 +82,7 @@ import {
   requestOptimizationGate,
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
-import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
+import { useSlipFreeDraft } from "@/components/plan/useSlipFreeDraft";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
@@ -98,7 +98,6 @@ import {
   slipDraftItemCount,
   type SlipBuildAiAction,
   slipCalendarPath,
-  slipDraftDisabledReason,
   slipExpertRailState,
   slipPdfPath,
   slipShareUrl,
@@ -303,7 +302,6 @@ export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]):
  * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
  */
 export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
-  const { toast } = useToast();
   /**
    * DRAFT IT WITH AI — offered ONLY on a plan with zero rows (Locked Decision 41 (b)); one row of
    * any status and this card offers Optimize instead. It calls the EXISTING generate rail
@@ -315,35 +313,15 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
    * comparison; this rail deliberately does not navigate there, because sending a traveler who
    * pressed "draft my plan" to a three-variant board is the review surface Optimize is for.
    */
-  const draftDisabledReason = slipDraftDisabledReason({
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-  const draft = useMutation<FreeDraftResult, Error, PlanWindow>({
-    // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1). Smoke 4 item 5:
-    // it always drafts — where to stay is recommended after the draft, never asked before it.
-    // Lane E1: the window is the GATE's — the plan's own, or the one just set in the inline panel.
-    mutationFn: (dates) => runFreeDraft({ ...(trip as any), startDate: dates.startDate, endDate: dates.endDate }),
-    onSuccess: (result) => {
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
-      toast({
-        title: "Draft added to your plan",
-        description:
-          result.basisLine ?? "A starting sketch — one version, without live prices. Optimize builds around it.",
-      });
-    },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Couldn't draft this plan", description: err?.message });
-    },
-  });
+  // Slip conformance (ledger `2026-10-08-conformance-slip-phase0`): the ONE free-draft action,
+  // shared with the Empty board's draft card. Lane E1 (ledger `2026-10-08-e1-zero-questions`,
+  // ruling 7; option 1): on a plan whose dates nobody chose, the row's `<DatesGate>` opens the
+  // inline dates panel right here and hands the saved window to the draft — one ask, never two.
+  const draft = useSlipFreeDraft(trip as any, tripId);
+  const draftDisabledReason = draft.disabledReason;
 
   return (
         <>
-          {/* Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 7): no confirmed dates ⇒ the dates
-              panel opens right here, and the draft continues once they are saved. */}
           <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
             {(guard) => (
               <RailRow
@@ -374,10 +352,12 @@ function BuildCard({
   expertState,
   aiAction,
   optimizerSlot,
+  leadCopy = null,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  leadCopy?: SlipLeadCopy | null;
   /** LD 52 (C): the owner, or the delegate who builds the plan for them (browse + add only). */
   canEditItems: boolean;
   activities: PlanCardActivity[];
@@ -539,6 +519,8 @@ function BuildCard({
 
   // ── The expert (ONE door, ONE message control) ──────────────────────────────────────────────
 
+  // The board's "Local expert" beside Optimize: the SAME handoff chooser the hire row opens.
+  const openLocalExpert = () => openHandoffChooser({});
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -565,6 +547,11 @@ function BuildCard({
             busy={optimizing || creatingComparison}
             disabledReason={optimizeDisabledReason}
             ctaLabelOverride={creatingComparison ? "Building…" : null}
+            tone="board"
+            title={leadCopy?.title ?? null}
+            intro={leadCopy?.intro ?? null}
+            noStay={leadCopy?.noStay === true}
+            onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
           />
           )}
           </DatesGate>
@@ -1330,6 +1317,14 @@ export function FinishCard({
 
 // ── the rail ──────────────────────────────────────────────────────────────────────────────────
 
+/** The optimizer card's group-specific words (slip conformance, Moment board). */
+export interface SlipLeadCopy {
+  title: string | null;
+  intro: string | null;
+  /** The plan is not built around a place to stay — drop "where you stay" wording. */
+  noStay: boolean;
+}
+
 export function SlipRail({
   trip,
   tripId,
@@ -1343,10 +1338,16 @@ export function SlipRail({
   stopsLine,
   zoneLine,
   optimizerSlot = null,
+  leadCopy = null,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /**
+   * The optimizer card's group-specific words (a Moment's title and intro), resolved by `SlipView`
+   * from the plan's own facts. Null ⇒ the board's Trip wording.
+   */
+  leadCopy?: SlipLeadCopy | null;
   /** LD 52 (C): item-building for the owner or the delegate (`canEditPlanItems`); defaults to owner. */
   canEditItems?: boolean;
   /**
@@ -1416,6 +1417,7 @@ export function SlipRail({
         expertState={expertState}
         aiAction={aiAction}
         optimizerSlot={optimizerSlot}
+        leadCopy={leadCopy}
       />
       {/* ASK AI — its OWN card, beneath Build (L16 lanes 2/3). It renders NOTHING for a viewer the
           proposal-log route would refuse: the routes are the policy and this mirrors them, never

@@ -34,33 +34,18 @@
  *     because the window is visible beside them: it is a SHOWN DEFAULT the traveler can overwrite,
  *     and nothing is written until they press Save (the one confirmation point Locked Decision 38
  *     draws for the home-city default).
- *   * An inverted range is REFUSED in the dialog rather than repaired. The server refuses it too;
+ *   * An inverted range is REFUSED in the panel rather than repaired. The server refuses it too;
  *     saying so here means the traveler learns which end was wrong instead of watching a request
  *     fail.
+ *
+ * LANE E1 (ledger `2026-10-08-e1-zero-questions`, ruling 6; decision-maker, Oct 8, 2026 — option 1):
+ * the chip keeps the Empty board's subline placement and opens the slip's INLINE dates panel
+ * (`InlineDatesPanel`, `@/components/plan/SlipAnchorPanels`) through `onSetDates` — nothing leaves the
+ * slip. The dates dialog this file used to hold is DELETED (§18c): the chip and the free draft were
+ * its only callers, and both now ask through the one inline panel, which writes the same single
+ * re-date rail (`PATCH /api/trips/:id`, `startDate` + `endDate` and nothing else).
  */
-import { useEffect, useState } from "react";
-import { CalendarDays } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useUpdateTrip } from "@/hooks/use-trips";
 import { planDatesLabel, type PlanDatesConfirmedAt } from "@shared/plan-dates";
-
-/** `YYYY-MM-DD` for an `<input type="date">`, or "" for anything that is not a real day. */
-function toDateInputValue(value: string | Date | null | undefined): string {
-  if (!value) return "";
-  const raw = value instanceof Date ? value.toISOString() : String(value);
-  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : "";
-}
 
 export interface SetPlanDatesProps {
   tripId: string;
@@ -71,126 +56,29 @@ export interface SetPlanDatesProps {
   datesConfirmedAt: PlanDatesConfirmedAt;
   /** Locked Decision 42 D16 — the CTA is the owner's and nobody else's. */
   isOwner: boolean;
-  /** Print a leading space before the chip (the slip header's meta line). Nothing when confirmed. */
-  leadingSpace?: boolean;
-  /**
-   * Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 6): when given, the CTA opens the slip's
-   * INLINE dates panel through this and no dialog is drawn — nothing leaves the slip.
-   */
+  /** Lane E1 (ruling 6): opens the slip's INLINE dates panel (the slip header passes it). */
   onSetDates?: () => void;
 }
 
-export function SetPlanDates({
-  tripId,
-  startDate,
-  endDate,
-  datesConfirmedAt,
-  isOwner,
-  leadingSpace = false,
-  onSetDates,
-}: SetPlanDatesProps) {
+/**
+ * THE OWNER'S "Set your dates" CHIP — the Empty board's header chip (slip conformance, ledger
+ * `2026-10-08-conformance-slip-phase0`). It sits under the subline that already says "Dates not set
+ * yet", so it draws ONLY the coral-outline pill. A confirmed plan, or a viewer who is not the owner,
+ * gets nothing (D16).
+ */
+export function SetPlanDates({ datesConfirmedAt, isOwner, onSetDates }: SetPlanDatesProps) {
   const label = planDatesLabel(datesConfirmedAt, isOwner);
-  const [open, setOpen] = useState(false);
-  const [start, setStart] = useState(() => toDateInputValue(startDate));
-  const [end, setEnd] = useState(() => toDateInputValue(endDate));
-  const updateTrip = useUpdateTrip();
 
-  // Re-seed the shown defaults whenever the plan's own window changes underneath (a refetch after
-  // a save, or another surface moving it). Only while CLOSED, so a half-typed answer is never
-  // overwritten mid-edit.
-  useEffect(() => {
-    if (open) return;
-    setStart(toDateInputValue(startDate));
-    setEnd(toDateInputValue(endDate));
-  }, [open, startDate, endDate]);
-
-  // A confirmed plan says nothing at all here.
-  if (label.confirmed) return null;
-
-  const inverted = Boolean(start && end && end < start);
-  const canSave = Boolean(start && end) && !inverted && !updateTrip.isPending;
-
-  const save = () => {
-    if (!canSave) return;
-    // ONLY the two dates. The stamp is the server's (§19), and `market_slug`/`timezone` are
-    // re-derived by `storage.updateTrip` — nothing about them is sent from here.
-    updateTrip.mutate(
-      { id: tripId, startDate: start, endDate: end },
-      { onSuccess: () => setOpen(false) },
-    );
-  };
+  if (label.confirmed || !label.cta) return null;
 
   return (
-    <>
-    {leadingSpace ? " " : null}
-    <span className="inline-flex items-center gap-1.5" data-testid="slip-dates-placeholder">
-      <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border border-border text-muted-foreground"
-        title={label.note ?? undefined}
-        data-testid="slip-dates-placeholder-chip"
-      >
-        <CalendarDays className="w-3 h-3" />
-        {label.chip}
-      </span>
-      {label.cta && (
-        <button
-          type="button"
-          onClick={() => (onSetDates ? onSetDates() : setOpen(true))}
-          className="text-[11px] font-semibold underline underline-offset-2 hover:text-foreground"
-          data-testid="slip-dates-set-cta"
-        >
-          {label.cta}
-        </button>
-      )}
-
-      {label.cta && !onSetDates && (
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-md" data-testid="slip-dates-dialog">
-            <DialogHeader>
-              <DialogTitle>{label.cta}</DialogTitle>
-              <DialogDescription>{label.note}</DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="slip-dates-start">Start</Label>
-                <Input
-                  id="slip-dates-start"
-                  type="date"
-                  value={start}
-                  onChange={(e) => setStart(e.target.value)}
-                  data-testid="input-slip-dates-start"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="slip-dates-end">End</Label>
-                <Input
-                  id="slip-dates-end"
-                  type="date"
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
-                  data-testid="input-slip-dates-end"
-                />
-              </div>
-            </div>
-            {inverted && (
-              <p className="text-xs text-destructive" data-testid="slip-dates-inverted">
-                The end date can't be before the start date.
-              </p>
-            )}
-            <DialogFooter>
-              <Button
-                type="button"
-                onClick={save}
-                disabled={!canSave}
-                data-testid="button-slip-dates-save"
-              >
-                {updateTrip.isPending ? "Saving…" : "Save dates"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-    </span>
-    </>
+    <button
+      type="button"
+      onClick={() => onSetDates?.()}
+      className="inline-flex h-[34px] items-center rounded-[var(--slip-radius-chip)] border border-[color:var(--slip-primary)] bg-[color:var(--slip-card)] px-3 text-[13px] font-semibold text-[color:var(--slip-primary)] hover:bg-[color:var(--slip-ground)]"
+      data-testid="slip-dates-set-cta"
+    >
+      {label.cta}
+    </button>
   );
 }
