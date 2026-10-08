@@ -10,8 +10,9 @@
  *  - move/change annotations: the applied variant's per-item move metadata does NOT
  *    survive apply into `itinerary_items` (no source on this DTO), so no move annotation
  *    renders — honest nothing, never an invented rationale.
- *  - optimizer-attributed logistics rows: a leg whose `suggestedBy === "ai"` (the
- *    assembler's real unsettled-machine-leg marker) carries "added by optimizer".
+ *  - the day-end logistics list (`LogisticsRow`, with its "added by optimizer" line) is retired
+ *    (FU-9C-1): every shown leg renders between its two stops through `renderLegBetween`
+ *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
@@ -45,11 +46,9 @@ import {
   type PlanCardActivity,
   type PlanCardData,
   type PlanCardDay,
-  type PlanCardTransport,
   type RoutingStatus,
 } from "./plancard-types";
 import { ItemBookingActionLink } from "./ActivitiesSection";
-import { ModeIcon } from "./plancard-types";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import { SlipSavedPlaces } from "./SlipSavedPlaces";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
@@ -1263,33 +1262,6 @@ function SlipEventGroupBlock({
       )}
       <div className="pb-1">{children}</div>
     </section>
-  );
-}
-
-function LogisticsRow({ leg }: { leg: PlanCardTransport }) {
-  const fromOptimizer = leg.suggestedBy === "ai";
-  return (
-    <div
-      className="py-2 px-3 flex items-center justify-between gap-3 text-muted-foreground"
-      data-testid={`slip-logistics-${leg.id}`}
-    >
-      <div className="min-w-0 flex-1 flex items-center gap-2">
-        <ModeIcon mode={leg.mode} className="w-3.5 h-3.5 flex-shrink-0" />
-        <div className="min-w-0">
-          <p className="text-xs truncate">
-            {leg.fromName || leg.from} → {leg.toName || leg.to}
-            {leg.duration ? ` · ${leg.duration} min` : ""}
-            {leg.cost ? ` · $${leg.cost}` : ""}
-          </p>
-          {/* Spec B: attributable from real data only (the assembler's machine-leg marker). */}
-          {fromOptimizer && <p className="text-[11px] italic">added by optimizer</p>}
-        </div>
-      </div>
-      {/* Muted outline pill labeled "logistics" — never a routing pill, never actions. */}
-      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border border-border text-muted-foreground flex-shrink-0">
-        logistics
-      </span>
-    </div>
   );
 }
 
@@ -2586,11 +2558,6 @@ export function SlipView({
                     <Fragment key={group.key}>{rows}</Fragment>
                   );
                 })}
-                {/* Logistics stay at DAY level: a leg connects two stops and carries no event link
-                    of its own, so it is never filed under one (§13). */}
-                {(day?.transports ?? []).map((leg) => (
-                  <LogisticsRow key={leg.id} leg={leg} />
-                ))}
                 {/* R-i: stay → airport, before the departure anchor. Smoke 8 item 5: the departure is
                     the LAST ROW inside the last day — after its stops and legs, above the day's
                     "Add something to this day" control (which adds to the day, not after the flight). */}

@@ -7,7 +7,7 @@
  *
  * Step 9c D5 (ledger `2026-10-07-step9c-leg-options`): `slipLegBetween` also answers a shown leg that
  * carries NO routed facts (an expert's confirmed leg on a free plan) as a minutes-only line, so the
- * day-end `LogisticsRow` list can retire (FU-9C-1, Track A) without any leg losing its render.
+ * day-end `LogisticsRow` list is retired (FU-9C-1) without any leg losing its render.
  */
 import { PLAN_LEG_REFETCH_DELAY_MS } from "@shared/plan-routed-legs";
 import type { RouteAnswer, RoutingMode } from "@shared/routing-engine";
