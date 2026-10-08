@@ -138,6 +138,10 @@ function functionBody(src: string, declaration: string): string {
  * pin is about the control existing and pointing where it did, never about which file holds it.
  */
 const ALLOWED_ADDITIONS = {
+  // Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 7; sanctioned edit, decision-maker Oct 8, 2026):
+  // the inline dates panels the two gated actions open when the plan's dates are not confirmed.
+  "slip-draft-dates-gate": "E1 ruling 7 — Draft it with AI's inline dates panel (no modal detour)",
+  "slip-optimize-dates-gate": "E1 ruling 7 — Optimize's inline dates panel (no modal detour)",
   // R321 S11-1 (ledger `2026-10-05-smoke11-fixes`): on a finalized plan whose working copy changed
   // (or that was reopened), the Finished card offers the SAME finalize mutation again.
   "slip-action-refinalize": "R321 S11-1 — Make it final again; appends the next trip_finals version",
@@ -234,6 +238,21 @@ const ALLOWED_ADDITIONS = {
  * addition or a removal is, rather than the pin being loosened for every control at once.
  */
 const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
+  // Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 7; sanctioned edit, decision-maker Oct 8, 2026).
+  "slip-action-draft-ai": {
+    to: ["onClick:() => guard((dates) => draft.mutate(dates))"],
+    reason:
+      "E1 ruling 7 — Draft it with AI goes through the dates gate: a plan with no confirmed dates opens " +
+      "the inline dates panel and the draft continues with the saved window. Same mutation, gated.",
+  },
+  "slip-action-optimize": {
+    to: [
+      "onClick:() => { if (optimizing || creatingComparison || optimizeDisabledReason) return; guard((dates) => { gatedWindow.current = dates; setBuildAroundOpen(true); }); }",
+    ],
+    reason:
+      "E1 ruling 7 — Optimize goes through the dates gate before the build-around step; the in-flight " +
+      "early return is unchanged and the run reads the window the gate handed over.",
+  },
   "slip-action-hire-expert": {
     to: ["onClick:() => openHandoffChooser({})"],
     reason:

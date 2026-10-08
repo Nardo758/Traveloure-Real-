@@ -527,7 +527,8 @@ This document captures architectural decisions to maintain consistency across co
     save is the drift class §18 rule 1 names. Its three former importers — the Trip Strip, the cart
     header, the experience-template page — now open it through the opener, so the modal has ONE
     mount.
-    **DOORS DIFFER IN TWO THINGS ONLY: what arrives pre-filled, and which step opens first.** That
+    **DOORS DIFFER IN TWO THINGS ONLY: what arrives pre-filled, and which step opens first** — EXCEPT
+    the start page, which opens no modal at all (amended below, Lane E1). That
     decision is ONE pure function, `resolvePlanSteps` (`client/src/lib/plan-steps.ts`, unit-tested):
     hero / `/start/events` / marketplace → **step 1**; a Moment, the nav Wedding row or an
     experience CTA carrying an occasion → **step 2** with an "<Occasion> · change" pill; a
@@ -542,12 +543,26 @@ This document captures architectural decisions to maintain consistency across co
     **AMENDED (step 8 D1, ledger `2026-10-06-step8a-experiences-entry`):** the `experiences` door ONLY
     may OPEN at When, and only with a resolved occasion and a city, because the `/experiences` page
     itself asked Where; step 2 stays visible and reachable by Back. Every other door is unchanged.
+    **AMENDED AGAIN — THE START PAGE IS THE ONE DOOR WITH NO WHEN/WHO (Lane E1, founder-ruled Oct 7,
+    2026 — ledger `2026-10-08-e1-zero-questions`; supersedes step 8 D1, whose `focusStep: "when"` arm
+    is deleted).** Occasion + city on `/experiences` → Continue opens the TRIP SLIP immediately:
+    signed in, `POST /api/trips` with the city only (dates OPTIONAL on that body — absent ⇒ the
+    server stores a one-day placeholder, the mint day in the plan's zone, and `dates_confirmed_at`
+    stays NULL, so no date is invented as a fact, LD 42 D12) then the EXISTING occasion PATCH, landing
+    on `/plans/:id?view=map`; signed out, the page writes the sign-in record itself and opens the 8d
+    guest map, and the record replays through that same start-page mint, never the modal. The slip
+    then asks, INLINE: "Set your dates" and "Who's coming?" (adults, children, and R340's pet kind +
+    count — migration 358, held). Draft it with AI, Optimize, the Trip Pass and a leg's travel options
+    show the inline dates panel when the dates are unconfirmed and continue once they are set; leg
+    compute skips such a plan. Steps 2 and 3 are still never skipped INSIDE the modal. **Every other
+    door keeps the modal unchanged** (they move in a later lane, PP-1/PP-2).
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
     shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
     included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
-    while `PLUS_SALES_ENABLED` is off.
+    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — Lane E1 above: its
+    Continue is the `myself` landing on the map, through the zero-question mint.)
     **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the Step2Where "add another
     stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
     that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate

@@ -253,6 +253,12 @@ export const trips = pgTable("trips", {
   // rather than a checklist because no accessibility standard is claimed on anyone's behalf (the
   // posture Locked Decision 24 states for `provider_services.access_notes`).
   accessibilityNote: text("accessibility_note"),
+  // Ledger `2026-10-08-e1-zero-questions` (R340's held shape, migration 358): the plan's PETS — a
+  // kind and a count, both optional. NULL = never answered, never "no pet" (§13, R336). Service
+  // animals are not pets and are never counted here (R340). Additive nullable, no DEFAULT, no CHECK
+  // (the value set is app-enforced); written ONLY through `tripOccasionBody` (§19).
+  petKind: varchar("pet_kind", { length: 60 }),
+  petCount: integer("pet_count"),
   // ── DID ANYBODY CHOOSE THESE DATES? (migration 302, ledger `2026-09-15-d22-dates-confirmed`,
   // punchlist D-22 = yes.) Additive nullable timestamp, NO DEFAULT and NO DB CHECK (the
   // publish-trap posture — migrations 181/195/273/275/276/277/279/280/281/282/284/287/295/297/301),
@@ -2752,6 +2758,10 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // traveler's, which is exactly the §13 lie the column exists to close. No pick anywhere
   // re-admits it; `storage.createTrip` and `storage.updateTrip` are its only writers.
   datesConfirmedAt: true,
+  // Ledger `2026-10-08-e1-zero-questions`: the pets pair has ONE admission rail, the pick-based
+  // `tripOccasionBody`; under this denylist a new column would otherwise be body-settable (§19).
+  petKind: true,
+  petCount: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
@@ -2795,6 +2805,21 @@ export const tripClientBodySchema = insertTripSchema.pick({
   specialRequests: true,
   originMarket: true,
 });
+
+/**
+ * Ledger `2026-10-08-e1-zero-questions` (decision-maker, Oct 8, 2026): the MINT body. The same
+ * allowlist, with the dates OPTIONAL — a plan started from the Experiences page asks no When. A body
+ * that states neither date gets the server's placeholder window (the mint day) and NO
+ * `dates_confirmed_at` stamp; a body that states one date and not the other is refused, never
+ * completed (§13).
+ */
+export const tripMintBodySchema = tripClientBodySchema
+  .partial({ startDate: true, endDate: true })
+  .refine((b) => !!b.startDate === !!b.endDate, { message: "Give both a start date and an end date, or neither", path: ["endDate"] });
+
+/** The pets pair as `PATCH /api/trips/:tripId/occasion` admits it — stated once (§18 rule 1). */
+export const tripPetKindSchema = z.string().trim().min(1).max(60).nullable().optional();
+export const tripPetCountSchema = z.coerce.number().int().min(0).max(20).nullable().optional();
 
 /**
  * ALLOWLIST (§19) for `POST /api/cart/convert-to-itinerary` — the rail that MOVES cart lines onto

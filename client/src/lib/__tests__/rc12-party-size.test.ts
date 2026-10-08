@@ -7,8 +7,7 @@
  *   (d) the experience page wrote its search default (2) to the pen, the Trip Strip and requests.
  *
  * What these hold:
- *   F1–F3  the slip's "Who's coming?" door opens the ONE modal on step 4 — and only for a door
- *          that names a plan (`resolvePlanSteps`), every other door unchanged.
+ *   (F1–F3 — the modal's Who door — are deleted with the arm: Lane E1 made the ask an inline panel.)
  *   F4–F6  loading a plan into the pen replaces the previous plan's party AND occasion, so another
  *          plan's answers can neither seed step 4 nor be saved onto this one.
  *   S1–S6  source pins on the surfaces and the two server routes: nothing sends or saves a
@@ -49,7 +48,6 @@ const store = new Map<string, string>();
 (globalThis as any).fetch = async () =>
   ({ ok: false, json: async () => null }) as unknown as Response;
 
-const { resolvePlanSteps } = await import("../plan-steps");
 const { getTripContext, updateTripContext, replaceTripContextPlanAnswers } = await import(
   "../trip-context"
 );
@@ -58,23 +56,9 @@ const { syncActiveTripToContext } = await import("../trip-selection");
 const ROOT = resolve(import.meta.dirname, "../../../..");
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 
-describe("the slip's Who door (RC-12a)", () => {
-  it("F1: a door naming a plan with focusStep 'who' opens on step 4", () => {
-    const steps = resolvePlanSteps({ tripId: "t-1", focusStep: "who" }, null, null);
-    assert.equal(steps.startStep, "who");
-    assert.ok(steps.visibleSteps.includes("where") && steps.visibleSteps.includes("when"));
-  });
-
-  it("F2: without a plan the focus is ignored — the ordinary door table answers", () => {
-    assert.equal(resolvePlanSteps({ focusStep: "who" }, null, null).startStep, "occasion");
-    assert.equal(resolvePlanSteps({ tripId: "   ", focusStep: "who" }, null, null).startStep, "occasion");
-  });
-
-  it("F3: every other door is unchanged", () => {
-    assert.equal(resolvePlanSteps({ tripId: "t-1" }, null, null).startStep, "occasion");
-    assert.equal(resolvePlanSteps(null, null, null).startStep, "occasion");
-  });
-});
+// RC-12a F1–F3 are DELETED with the `focusStep: "who"` arm they tested (Lane E1, ledger
+// `2026-10-08-e1-zero-questions`, ruling 6; sanctioned edit, decision-maker Oct 8, 2026): the slip's
+// "Who's coming?" is an inline panel now, so the arm had no caller (§18c).
 
 describe("loading a plan into the pen carries that plan's own answers (RC-12a)", () => {
   beforeEach(() => store.clear());
@@ -129,7 +113,10 @@ describe("nothing sends or saves a count nobody stated (RC-12 source pins)", () 
     // Smoke 4 B5: the meta line (and its ask) moved into SlipHeaderMeta; SlipView still wires it.
     const meta = read("client/src/components/plancard/SlipHeaderMeta.tsx");
     assert.match(meta, /data-testid="slip-meta-ask-party"/);
-    assert.match(view, /focusStep: "who"/);
+    // Lane E1 (ruling 6; sanctioned edit): S2 point 2 now reads the inline panel — the ask opens
+    // `InlineWhoPanel` in the header, never the modal.
+    assert.match(view, /canAskParty=\{askParty\}/);
+    assert.match(view, /<InlineWhoPanel/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     assert.doesNotMatch(rail, /trip\.travelers \|\| 1/);
     const finalize = read("client/src/components/plancard/FinalizeBookingModal.tsx");

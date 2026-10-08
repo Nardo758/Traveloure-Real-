@@ -46,6 +46,7 @@ import { aiAskBodySchema } from "@shared/ai-ask-request";
 // The APPLY and its CHARGE (punchlist D-20/D-21, ledger `2026-09-15-d20-d21-proposal-charge`).
 // The route holds the gate and the sequence; every money decision lives in the two modules below —
 // the PURE authorization predicate and the one charge/apply service (§18 rule 1).
+import { placeholderMintDay } from "../services/trip-placeholder-dates";
 import {
   logProposalApplyBasis,
   resolveProposalApplyAuthorization,
@@ -133,6 +134,8 @@ import {
   tripBudgetApproverNameSchema,
   tripBudgetApproverEmailSchema,
   tripAccessibilityNoteSchema,
+  tripPetKindSchema,
+  tripPetCountSchema,
   type InsertContentPlacementRule,
 } from "@shared/schema";
 import {
@@ -554,7 +557,14 @@ router.post(api.trips.create.path, async (req, res) => {
       // one mint door refuses rather than defaulting them. Kept in step with the live copy
       // deliberately — a resurrected twin that silently stopped stamping would re-open the exact
       // §13 gap this column closes.
-      const trip = await storage.createTrip({ ...sanitizedInput, userId }, { datesChosenByTraveler: true });
+      // Ledger `2026-10-08-e1-zero-questions`: in step with the live copy — dates optional, a dateless
+      // body takes the placeholder mint day and NO stamp.
+      const datesChosenByTraveler = !!(sanitizedInput.startDate && sanitizedInput.endDate);
+      const placeholderDay = datesChosenByTraveler ? null : placeholderMintDay(sanitizedInput.destination);
+      const trip = await storage.createTrip(
+        { ...sanitizedInput, ...(placeholderDay ? { startDate: placeholderDay, endDate: placeholderDay } : {}), userId } as any,
+        { datesChosenByTraveler },
+      );
 
       // If guest, ensure they have a shareToken for access
       if (!userId && !trip.shareToken) {
@@ -3482,6 +3492,8 @@ const tripOccasionBody = createInsertSchema(trips)
     budgetApproverName: true,
     budgetApproverEmail: true,
     accessibilityNote: true,
+    petKind: true,
+    petCount: true,
   })
   .extend({
     eventType: z.enum(eventTypeEnum).optional(),
@@ -3490,6 +3502,9 @@ const tripOccasionBody = createInsertSchema(trips)
     budgetApproverName: tripBudgetApproverNameSchema,
     budgetApproverEmail: tripBudgetApproverEmailSchema,
     accessibilityNote: tripAccessibilityNoteSchema,
+    // Ledger `2026-10-08-e1-zero-questions` (R340): the pets pair, one rail, the shared field schemas.
+    petKind: tripPetKindSchema,
+    petCount: tripPetCountSchema,
     // Ledger `2026-09-26-occasion-read-only`: the plan's FINE occasion (an `experience_types` slug).
     // Not a `trips` column — it is resolved server-side against the catalog (an unknown slug is a
     // 400) and written into the plan's pen by the ONE pen-occasion writer, because the bulk pen push
@@ -3510,6 +3525,8 @@ const TRIP_OCCASION_NULLABLE_KEYS = [
   "budgetApproverName",
   "budgetApproverEmail",
   "accessibilityNote",
+  "petKind",
+  "petCount",
 ] as const;
 
 router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) => {
@@ -3526,7 +3543,7 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
         message:
           "eventType must be one of: " +
           eventTypeEnum.join(", ") +
-          "; adults/kids must be whole numbers or null; budgetApproverEmail must be an email address or null",
+          "; adults/kids must be whole numbers or null; petCount must be a whole number from 0 to 20 or null; budgetApproverEmail must be an email address or null",
       });
     }
 

@@ -30,7 +30,7 @@ import { tripGetsRoutedLegs } from "./plan-routed-legs.service";
 import { desiredPlanLegs, diffPlanLegs, legPairKey, selectedModeOf, type AirportStop, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
 export type PlanLegsResult =
-  | { skipped: "engine_off" | "free_plan" | "no_trip" }
+  | { skipped: "engine_off" | "free_plan" | "no_trip" | "dates_not_confirmed" }
   | {
       skipped?: undefined;
       /** Calls the adapter actually made. */
@@ -207,6 +207,10 @@ export async function computePlanLegs(
   if (!qualifies) return { skipped: "free_plan" };
   const trip = await storage.getTrip(tripId);
   if (!trip) return { skipped: "no_trip" };
+  // Ledger `2026-10-08-e1-zero-questions` (E1 ruling 7): a plan whose dates nobody chose has no real
+  // departure instants, so nothing is routed against its placeholder window — the same skip the
+  // day-of re-check takes (`leg-recheck.service.ts`). Setting dates re-runs the compute.
+  if (!trip.datesConfirmedAt) return { skipped: "dates_not_confirmed" };
 
   const { desired, skipped, engineRows, confirmedPairs, existing, picked, googleFetchedAt, departAt } = await loadPlanLegContext(tripId, trip);
   const diff = diffPlanLegs(desired, existing, confirmedPairs);

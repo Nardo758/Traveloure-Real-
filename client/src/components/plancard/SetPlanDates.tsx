@@ -73,6 +73,11 @@ export interface SetPlanDatesProps {
   isOwner: boolean;
   /** Print a leading space before the chip (the slip header's meta line). Nothing when confirmed. */
   leadingSpace?: boolean;
+  /**
+   * Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 6): when given, the CTA opens the slip's
+   * INLINE dates panel through this and no dialog is drawn — nothing leaves the slip.
+   */
+  onSetDates?: () => void;
 }
 
 export function SetPlanDates({
@@ -82,6 +87,7 @@ export function SetPlanDates({
   datesConfirmedAt,
   isOwner,
   leadingSpace = false,
+  onSetDates,
 }: SetPlanDatesProps) {
   const label = planDatesLabel(datesConfirmedAt, isOwner);
   const [open, setOpen] = useState(false);
@@ -129,7 +135,7 @@ export function SetPlanDates({
       {label.cta && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => (onSetDates ? onSetDates() : setOpen(true))}
           className="text-[11px] font-semibold underline underline-offset-2 hover:text-foreground"
           data-testid="slip-dates-set-cta"
         >
@@ -137,7 +143,7 @@ export function SetPlanDates({
         </button>
       )}
 
-      {label.cta && (
+      {label.cta && !onSetDates && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-md" data-testid="slip-dates-dialog">
             <DialogHeader>

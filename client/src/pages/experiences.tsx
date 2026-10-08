@@ -6,23 +6,29 @@
  *   · left  — the ONE occasion picker (`OccasionPicker`, shared with the planning modal's step 1);
  *   · right — Where: the eight operating cities as cards, plus a static Natural Earth map with eight pins
  *     placed from `OPERATING_MARKETS` lat/lng. No Google map on an entry page; nothing billed on load.
- * Continue enables only with both answers and opens the ONE planning modal through the `experiences` door
- * at When (step 8 D1 — Where stays reachable by Back). The route never auto-opens anything (F-T1), so
- * the old `?plan=1` deep-link is gone with the intake panel this page no longer mounts (ruling 1).
+ * Continue enables only with both answers and opens the TRIP SLIP straight away — no When, no Who (Lane E1,
+ * ledger `2026-10-08-e1-zero-questions`; Locked Decision 33 amended for this one door): signed in, the
+ * plan is minted with the occasion and the city only and opens on its map (Browse); signed out, the
+ * sign-in record is written here and the 8d guest map opens. Both through `start-page-plan.ts`. The
+ * route never auto-opens anything (F-T1), so the old `?plan=1` deep-link is gone with the intake panel
+ * this page no longer mounts (ruling 1).
  *
  * `?destination=` / `?city=` pre-pick a card only on an EXACT match of the eight (ruling 4).
  * `?destinations=&multiCity=true` (TripQueueIndicator) is ignored; recorded in FOLLOWUPS.md.
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { ArrowRight } from "lucide-react";
 import type { ExperienceType } from "@shared/schema";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { PageLayout, PAGE_ACTION, HEADING_STYLE, EYEBROW_CLASS, EYEBROW_STYLE } from "@/components/company/company-page";
 import { SEOHead } from "@/components/seo-head";
 import { OccasionPicker } from "@/components/plan/OccasionPicker";
-import { usePlanning } from "@/contexts/PlanningContext";
+import { useAuth } from "@/hooks/use-auth";
+import { GUEST_MAP_PATH, planLandingPath } from "@/lib/plan-landing";
+import { writePendingPlanRecord } from "@/lib/pending-plan-record";
+import { START_PAGE_DOOR, mintStartPagePlan, startPageGuestRecord } from "@/lib/start-page-plan";
 import {
   WORLD_MAP,
   canContinue,
@@ -37,7 +43,10 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
   const preselect = useMemo(() => preselectedMarket(new URLSearchParams(searchString)), [searchString]);
   // The nav's `?group=` opens that group's tab — an exact key only (ledger `2026-10-07-nav-experience-groups`).
   const preselectGroup = useMemo(() => preselectedGroup(new URLSearchParams(searchString)), [searchString]);
-  const { open: openPlanning } = usePlanning();
+  const { user, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const { data: occasions, isLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
@@ -51,16 +60,25 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
   const market = OPERATING_MARKETS.find((m) => m.marketKey === marketKey) ?? null;
   const ready = canContinue(occasionSlug, occasions, marketKey);
 
-  const onContinue = () => {
-    if (!ready || !market) return;
-    openPlanning({
-      door: "experiences",
-      experienceSlug: occasionSlug,
-      city: market.cityName,
-      country: market.country,
-      newPlan: true,
-      focusStep: "when",
-    });
+  // Lane E1: the zero-question start. Occasion and city are the whole answer; the slip asks the rest.
+  const onContinue = async () => {
+    // Who is asking decides the path, so nothing happens until the session has answered.
+    if (!ready || !market || starting || authLoading) return;
+    const answers = { experienceSlug: occasionSlug, city: market.cityName, country: market.country };
+    setStartError(null);
+    if (!user) {
+      writePendingPlanRecord(startPageGuestRecord(answers));
+      setLocation(GUEST_MAP_PATH);
+      return;
+    }
+    setStarting(true);
+    const outcome = await mintStartPagePlan(answers);
+    setStarting(false);
+    if (!outcome.ok) {
+      setStartError(outcome.message);
+      return;
+    }
+    setLocation(planLandingPath(outcome.tripId, "myself", START_PAGE_DOOR));
   };
 
   return (
@@ -175,8 +193,8 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
         <div className="flex flex-wrap items-center gap-4">
           <button
             type="button"
-            onClick={onContinue}
-            disabled={!ready}
+            onClick={() => void onContinue()}
+            disabled={!ready || starting || authLoading}
             className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-experiences-continue"
           >
@@ -186,6 +204,11 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
           {!ready && (
             <span className="text-sm text-muted-foreground" data-testid="experiences-continue-hint">
               Pick an occasion and a city to continue.
+            </span>
+          )}
+          {startError && (
+            <span role="alert" className="text-sm text-destructive" data-testid="experiences-start-error">
+              {startError}
             </span>
           )}
         </div>

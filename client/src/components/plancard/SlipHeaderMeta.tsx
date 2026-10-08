@@ -30,6 +30,8 @@ export interface SlipHeaderMetaProps {
   partyLabel: string;
   /** RC-12: set only for the OWNER of a plan with no stated party. */
   onAskParty?: () => void;
+  /** Lane E1 (ledger `2026-10-08-e1-zero-questions`): "Set your dates" opens the slip's INLINE panel. */
+  onSetDates?: () => void;
   eventCount: number;
 }
 
@@ -41,6 +43,7 @@ export function SlipHeaderMeta({
   isOwner,
   partyLabel,
   onAskParty,
+  onSetDates,
   eventCount,
 }: SlipHeaderMetaProps) {
   const start = parseTripDate(startDate);
@@ -76,6 +79,7 @@ export function SlipHeaderMeta({
         datesConfirmedAt={datesConfirmed}
         isOwner={isOwner}
         leadingSpace={hasRange}
+        onSetDates={onSetDates}
       />
       {partyLabel ? (
         <>

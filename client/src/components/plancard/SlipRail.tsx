@@ -132,6 +132,7 @@ import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import type { PlanCardActivity } from "./plancard-types";
 import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
+import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { useReopenMutation } from "./use-reopen-mutation";
@@ -317,10 +318,11 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
     startDate: trip.startDate,
     endDate: trip.endDate,
   });
-  const draft = useMutation<FreeDraftResult, Error, void>({
+  const draft = useMutation<FreeDraftResult, Error, PlanWindow>({
     // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1). Smoke 4 item 5:
     // it always drafts — where to stay is recommended after the draft, never asked before it.
-    mutationFn: () => runFreeDraft(trip as any),
+    // Lane E1: the window is the GATE's — the plan's own, or the one just set in the inline panel.
+    mutationFn: (dates) => runFreeDraft({ ...(trip as any), startDate: dates.startDate, endDate: dates.endDate }),
     onSuccess: (result) => {
       sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
@@ -338,16 +340,22 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
 
   return (
         <>
-          <RailRow
-            label="Draft it with AI"
-            meta="empty plan"
-            icon={<Sparkles className="w-3.5 h-3.5" />}
-            onClick={() => draft.mutate()}
-            busy={draft.isPending}
-            disabled={!!draftDisabledReason}
-            title={draftDisabledReason ?? undefined}
-            testId="slip-action-draft-ai"
-          />
+          {/* Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 7): no confirmed dates ⇒ the dates
+              panel opens right here, and the draft continues once they are saved. */}
+          <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
+            {(guard) => (
+              <RailRow
+                label="Draft it with AI"
+                meta="empty plan"
+                icon={<Sparkles className="w-3.5 h-3.5" />}
+                onClick={() => guard((dates) => draft.mutate(dates))}
+                busy={draft.isPending}
+                disabled={!!draftDisabledReason}
+                title={draftDisabledReason ?? undefined}
+                testId="slip-action-draft-ai"
+              />
+            )}
+          </DatesGate>
           <RailNote testId="slip-draft-note">
             Offered only on an empty plan — one row of any status and this becomes Optimize.
           </RailNote>
@@ -411,6 +419,9 @@ function BuildCard({
   }, []);
   const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
   const confirmedPinnedAnchor = useRef<ComparisonPinnedAnchor | undefined>(undefined);
+  // Lane E1: the window the Optimize gate handed over — the plan's own, or the one just set inline
+  // (the plancard refetch may not have landed when the run starts).
+  const gatedWindow = useRef<PlanWindow | null>(null);
 
   const optimizableCount = countOptimizableItems(activities);
   const optimizeDisabledReason = slipOptimizeDisabledReason({
@@ -440,8 +451,8 @@ function BuildCard({
       const comparison = await createComparison({
         title: trip.title || undefined,
         destination: trip.destination!,
-        startDate: String(trip.startDate).slice(0, 10),
-        endDate: String(trip.endDate).slice(0, 10),
+        startDate: gatedWindow.current?.startDate ?? String(trip.startDate).slice(0, 10),
+        endDate: gatedWindow.current?.endDate ?? String(trip.endDate).slice(0, 10),
         ...(trip.travelers ? { travelers: trip.travelers } : {}),
         tripId: trip.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
@@ -517,6 +528,10 @@ function BuildCard({
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
               run, and the fee on the CTA. Same handler the old row had (the build-around step first). */}
           <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
+          {/* Lane E1 (ruling 7): no confirmed dates ⇒ the dates panel opens under the card, then the
+              build-around step continues with the saved window. */}
+          <DatesGate trip={trip} action="Optimize" testId="slip-optimize-dates-gate">
+          {(guard) => (
           <OptimizerLead
             drafted={aiAction === "optimize"}
             findings={leadData.findings}
@@ -526,12 +541,17 @@ function BuildCard({
             testId="slip-action-optimize"
             onClick={() => {
               if (optimizing || creatingComparison || optimizeDisabledReason) return;
-              setBuildAroundOpen(true);
+              guard((dates) => {
+                gatedWindow.current = dates;
+                setBuildAroundOpen(true);
+              });
             }}
             busy={optimizing || creatingComparison}
             disabledReason={optimizeDisabledReason}
             ctaLabelOverride={creatingComparison ? "Building…" : null}
           />
+          )}
+          </DatesGate>
           </span>
           {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
               optimizer card, once the plan has a draft; the server says when the moment is open. */}
@@ -617,7 +637,7 @@ function BuildCard({
           Purchase is the owner's (LD 52 — a helper never pays), so a delegate does not mount it. */}
       {isOwner ? (
         <div data-testid="slip-rail-trip-pass">
-          <TripPassCard tripId={tripId} />
+          <TripPassCard tripId={tripId} trip={trip} />
         </div>
       ) : null}
 

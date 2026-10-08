@@ -17,7 +17,7 @@ import { canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
 
 type SlipLegsData = {
   days?: any[];
-  trip?: { timezone?: string | null } | null;
+  trip?: { timezone?: string | null; startDate?: string | null; endDate?: string | null; datesConfirmed?: boolean } | null;
   travelTimesPaused?: boolean;
   tripRole?: string | null;
 };
@@ -82,6 +82,7 @@ export function useSlipLegs(data: SlipLegsData | null | undefined, tripId?: stri
         canEditItems={canEditItems}
         isOwner={viewer === "owner"}
         hostPickupConfirmed={sheetLeg.hostPickupConfirmed}
+        planWindow={data?.trip ?? null}
       />
     ) : null;
   return Object.assign(render, { sheet });
