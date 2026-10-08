@@ -76,7 +76,11 @@ async function openSlip(page: Page, tripId: string): Promise<void> {
 
 /** The ⋯ plan menu (ruling 3): Share, PDF, calendar, Browse services and feedback live here now. */
 async function openPlanMenu(page: Page): Promise<void> {
+  // A menu that is still closing (after a previous entry was pressed) swallows the next trigger
+  // press, so wait for it to be gone, then open and confirm it opened.
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await page.getByTestId("slip-plan-menu").click();
+  await expect(page.getByRole("menu")).toBeVisible();
 }
 
 // ── 1 · placement ─────────────────────────────────────────────────────────────────────────────

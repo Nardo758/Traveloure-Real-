@@ -44,7 +44,7 @@
  * is not rendered at all.
  */
 import { helpArticlePath } from "@shared/help-article-slugs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   CalendarPlus,
@@ -1123,7 +1123,7 @@ export function FinishCard({
             ) : null}
           </p>
         ) : null}
-        <button type="button" className={primaryBtn} onClick={refinalize} disabled={finalizeMutation.isPending} data-testid="slip-action-finalize-plan">
+        <button type="button" className={`${primaryBtn} w-full flex-none`} onClick={refinalize} disabled={finalizeMutation.isPending} data-testid="slip-action-finalize-plan">
           {hasFinal ? "Make it final again" : "Finalize plan"}
         </button>
         {chooser}
@@ -1486,16 +1486,60 @@ export function SlipBottomBar({
   activities: PlanCardActivity[];
 }) {
   const aiAction = useSlipAiAction(tripId, activities);
+  const box = useFixedBarBox();
   if (!isOwner && !isExpertViewer) return null;
   return (
-    <div
-      className="sticky bottom-0 z-20 border-t border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 pt-3 pb-5 shadow-[0_-4px_12px_rgba(13,33,55,0.06)] sm:rounded-t-[var(--slip-radius-card)]"
-      data-testid="slip-bottom-bar"
-    >
-      <div className="flex items-end gap-2.5">
-        <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="bar" />
-        <FinishCard trip={trip} isOwner={isOwner} isPrimary={isPrimary} activities={activities} layout="bar" />
+    /* FIXED, NOT STICKY. The console's `<main>` is `overflow-auto` and grows with its content, so it
+       is a scroll container that never scrolls and a sticky bar inside it never sticks. The bar is
+       fixed to the window instead, measured onto the plan column (the sidebar may be open or
+       collapsed), and this spacer holds its height so the last day is never hidden under it. */
+    <div ref={box.spacerRef} style={{ height: box.height }} data-testid="slip-bottom-bar-space">
+      <div
+        ref={box.barRef}
+        className="fixed bottom-0 z-30 border-t border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 pt-3 pb-5 shadow-[0_-4px_12px_rgba(13,33,55,0.06)] sm:rounded-t-[var(--slip-radius-card)]"
+        style={box.rect ? { left: box.rect.left, width: box.rect.width } : { left: 0, right: 0 }}
+        data-testid="slip-bottom-bar"
+      >
+        <div className="flex items-end gap-2.5">
+          <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="bar" />
+          <FinishCard trip={trip} isOwner={isOwner} isPrimary={isPrimary} activities={activities} layout="bar" />
+        </div>
       </div>
     </div>
   );
+}
+
+/** The bottom bar's box: the spacer's column (left + width) and the bar's own height. */
+function useFixedBarBox() {
+  const spacerRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const [rect, setRect] = useState<{ left: number; width: number } | null>(null);
+  const [height, setHeight] = useState(96);
+  useLayoutEffect(() => {
+    const spacer = spacerRef.current;
+    if (!spacer) return;
+    const update = () => {
+      const r = spacer.getBoundingClientRect();
+      setRect((prev) => (prev && prev.left === r.left && prev.width === r.width ? prev : { left: r.left, width: r.width }));
+      const h = barRef.current?.offsetHeight;
+      if (h) setHeight((prev) => (prev === h ? prev : h));
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(spacer);
+    if (barRef.current) ro.observe(barRef.current);
+    // The column moves without resizing when the sidebar opens or collapses; <main> resizes then.
+    const main = spacer.closest("main");
+    if (main) ro.observe(main);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  return { spacerRef, barRef, rect, height };
 }
