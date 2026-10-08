@@ -158,6 +158,8 @@ export function anchorWallTime(anchorDatetime: string | Date | null | undefined)
  */
 const TRAVEL_HUB = /\b(airport|station|terminal|shinkansen|train|flight|ferry|port)\b/i;
 const ARRIVAL_WORD = /\b(arriv\w*|land(s|ing|ed)?|touch\s*down)\b/i;
+const OUR_ARRIVAL_TITLE = /^Arrival in \S.*$/;
+const OUR_DEPARTURE_TITLE = /^Departure from \S.*$/;
 const DEPARTURE_WORD = /\b(depart\w*|leav(e|es|ing)|fly\s+(home|out)|flight\s+home|head(ing)?\s+home)\b/i;
 
 export function travelItemKind(item: {
@@ -166,6 +168,11 @@ export function travelItemKind(item: {
   origin?: string | null;
 }): FlightDirection | null {
   if (item.origin !== "ai") return null;
+  // Ledger `2026-10-08-arrival-title-normalized`: the draft STORES our own wording for its travel
+  // lines ("Arrival in Kyoto" / "Departure from Kyoto", `normalizedTravelLineTitle`), which names no
+  // hub — so that exact shape is read as the travel row it is, and the slip still draws one row.
+  if (OUR_ARRIVAL_TITLE.test(item.name ?? "")) return "arrival";
+  if (OUR_DEPARTURE_TITLE.test(item.name ?? "")) return "departure";
   const text = `${item.name ?? ""} ${item.location ?? ""}`;
   if (!TRAVEL_HUB.test(text)) return null;
   const arriving = ARRIVAL_WORD.test(item.name ?? "");
