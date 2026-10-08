@@ -68,9 +68,12 @@ export function tintPillStyle(tint: StatusTint): CSSProperties | undefined {
 }
 
 /**
- * Slip title typography (dispatch: "Fraunces for the slip title"). Fraunces is NOT in the
- * app's loaded Google-Fonts set (client/index.html), and the dispatch build rule says use
- * the app's existing display font rather than adding a font dependency — so the slip title
- * rides the existing `--font-display` token (Tailwind `font-display`).
+ * Slip title typography — Fraunces (ledger `2026-10-08-conformance-slip-phase0`, ruling 5). The
+ * class is defined in `client/src/styles/slip-tokens.css` under the `.slip-surface` root, which
+ * `SlipView` carries; Fraunces is loaded by `index.css`'s font import. It replaced `font-display`,
+ * whose token resolves to Inter — the title never rendered in Fraunces under that class.
  */
-export const SLIP_TITLE_FONT_CLASS = "font-display";
+export const SLIP_TITLE_FONT_CLASS = "slip-display";
+
+/** The slip's one token root class (`client/src/styles/slip-tokens.css`). */
+export const SLIP_SURFACE_CLASS = "slip-surface";
