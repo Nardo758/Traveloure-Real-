@@ -27,7 +27,7 @@ import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { BedDouble, MapPin } from "lucide-react";
+import { BedDouble, ChevronRight, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -40,6 +40,15 @@ import {
 } from "@shared/where-to-stay";
 
 export const ANCHOR_PANEL_OPTIONAL = "Optional";
+/** The Empty board's eyebrow over the anchor question ("Start here · optional"). */
+export const ANCHOR_PANEL_START_HERE = "Start here";
+/**
+ * The Empty board's sentence under "Where are you staying?". Both halves are what the code does:
+ * the free draft is built around an open lodging set (LD 57 §M5), and with no stay the draft
+ * still runs and where-to-stay is ranked afterwards (smoke 4 item 5).
+ */
+export const ANCHOR_PANEL_EMPTY_DETAIL =
+  "Add one to three places you're considering and every day gets built around them. Not sure yet? Draft first — we'll suggest a neighborhood once your days exist.";
 export const ANCHOR_PANEL_DRAFTED_TITLE = "Where to stay";
 export const ANCHOR_PANEL_DRAFTED_SUBTITLE = "Optional — ranked by where your days are.";
 export const ANCHOR_PANEL_ADD_PLACES = "Add places I'm considering";
@@ -325,24 +334,36 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
     );
   }
 
-  // ── EMPTY — before the draft ────────────────────────────────────────────────────────────────
+  // ── EMPTY — before the draft: the Empty board's anchor card (slip conformance, ledger
+  // `2026-10-08-conformance-slip-phase0`). Same three answers, same testids; the board's dress.
+  // "Skip for now" stays as a quiet link under the two answers: the board omits it, and removing
+  // it is a behaviour change waiting on a ruling (the golden-path journey presses it).
   if (stage === "empty") {
     const fixed = anchorKind === "fixed_item";
     return (
       <section
-        className="rounded-lg border border-border p-4 space-y-3"
+        className="space-y-3.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-[18px] py-5"
         data-testid="slip-anchor-question"
         data-anchor-kind={anchorKind}
         data-anchor-panel="empty"
       >
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">{fixed ? FIXED_ITEM_QUESTION : question}</h2>
-          <p className="text-xs text-muted-foreground" data-testid="anchor-panel-optional">
-            {fixed ? FIXED_ITEM_DETAIL : ANCHOR_PANEL_OPTIONAL}
-          </p>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal)]">
+          {fixed ? (
+            ANCHOR_PANEL_START_HERE
+          ) : (
+            <>
+              {ANCHOR_PANEL_START_HERE} · <span data-testid="anchor-panel-optional">{ANCHOR_PANEL_OPTIONAL}</span>
+            </>
+          )}
+        </p>
+        <h2 className="slip-display text-2xl font-semibold leading-[1.15] text-[color:var(--slip-ink)]">
+          {fixed ? FIXED_ITEM_QUESTION : question}
+        </h2>
+        <p className="text-sm leading-normal text-[color:var(--slip-muted)]" data-testid={fixed ? "anchor-panel-optional" : "anchor-panel-detail"}>
+          {fixed ? FIXED_ITEM_DETAIL : ANCHOR_PANEL_EMPTY_DETAIL}
+        </p>
         {props.fromFallback ? (
-          <p className="text-xs text-muted-foreground" data-testid="slip-anchor-fallback">
+          <p className="text-xs text-[color:var(--slip-muted)]" data-testid="slip-anchor-fallback">
             This occasion doesn't say whether it has a fixed schedule, so the plan starts from where you stay.
           </p>
         ) : null}
@@ -350,17 +371,23 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
           fixed ? (
             props.addFixedControl ?? null
           ) : (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-3">
-                {props.addPlacesControl ?? null}
-                {!ownOpen ? (
-                  <button type="button" className={link} onClick={() => setOwnOpen(true)} disabled={busy} data-testid="where-to-stay-own">
-                    {ANCHOR_PANEL_SORTED}
-                  </button>
-                ) : null}
-                {skip()}
-              </div>
-              {ownOpen ? <OwnForm neighborhoods={[]} busy={busy} onSave={(a) => props.onOwn?.(a)} /> : null}
+            <div className="space-y-2.5">
+              {props.addPlacesControl ?? null}
+              {!ownOpen ? (
+                <button
+                  type="button"
+                  className="flex h-[52px] w-full items-center justify-between rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-4 text-left text-[15px] font-medium text-[color:var(--slip-ink)] hover:bg-[color:var(--slip-ground)] disabled:opacity-60"
+                  onClick={() => setOwnOpen(true)}
+                  disabled={busy}
+                  data-testid="where-to-stay-own"
+                >
+                  <span>{ANCHOR_PANEL_SORTED}</span>
+                  <ChevronRight className="h-[18px] w-[18px] text-[color:var(--slip-navy)]" aria-hidden="true" />
+                </button>
+              ) : (
+                <OwnForm neighborhoods={[]} busy={busy} onSave={(a) => props.onOwn?.(a)} />
+              )}
+              <div>{skip()}</div>
             </div>
           )
         ) : null}
