@@ -41,6 +41,12 @@ export interface ToolsTrayProps {
   /** The manifest's tool list for this plan. Defaults to `manifestFor(group, occasionSlug).tools`;
    *  passed only to prove the tray against a list no group carries today (e.g. none live). */
   manifestTools?: readonly ToolKey[];
+  /**
+   * Tools whose question the plan already answers, drawn filled with a "✓" (the Moment board's
+   * "The reservation ✓", slip conformance; ledger `2026-10-08-slip-moment-board`). The caller
+   * decides from the plan's own facts. A key the plan has not answered is never marked done (§13).
+   */
+  doneTools?: ReadonlySet<ToolKey>;
 }
 
 /** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
@@ -127,18 +133,29 @@ export function ToolsTray(props: ToolsTrayProps) {
   // An empty tray draws nothing of its own — no chips, no wrapper — only the sheet.
   if (tools.length === 0) return sheet;
   return (
-    <div className="flex flex-wrap gap-2" data-testid="slip-tools-tray">
-      {tools.map((key) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => setOpen(key)}
-          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm text-foreground hover:bg-muted/50"
-          data-testid={`tool-chip-${key}`}
-        >
-          {TOOL_LABEL[key]}
-        </button>
-      ))}
+    // The boards' tray: one horizontal row of pills that scrolls rather than wraps (ruling 7, "the tray
+    // stays a row"), navy outline, filled navy with a ✓ once the plan answers that tool.
+    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5" data-testid="slip-tools-tray">
+      {tools.map((key) => {
+        const done = props.doneTools?.has(key) === true;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setOpen(key)}
+            className={
+              done
+                ? "inline-flex h-[38px] flex-shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-navy)] px-3.5 text-[13px] font-semibold text-white hover:brightness-110"
+                : "inline-flex h-[38px] flex-shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-chip)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-3.5 text-[13px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-ground)]"
+            }
+            data-testid={`tool-chip-${key}`}
+            data-tool-done={done ? "true" : undefined}
+          >
+            {TOOL_LABEL[key]}
+            {done ? " ✓" : null}
+          </button>
+        );
+      })}
       {sheet}
     </div>
   );

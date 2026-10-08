@@ -347,10 +347,12 @@ function BuildCard({
   expertState,
   aiAction,
   optimizerSlot,
+  leadCopy = null,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  leadCopy?: SlipLeadCopy | null;
   /** LD 52 (C): the owner, or the delegate who builds the plan for them (browse + add only). */
   canEditItems: boolean;
   activities: PlanCardActivity[];
@@ -509,6 +511,8 @@ function BuildCard({
 
   // ── The expert (ONE door, ONE message control) ──────────────────────────────────────────────
 
+  // The board's "Local expert" beside Optimize: the SAME handoff chooser the hire row opens.
+  const openLocalExpert = () => openHandoffChooser({});
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -528,6 +532,11 @@ function BuildCard({
             busy={optimizing || creatingComparison}
             disabledReason={optimizeDisabledReason}
             ctaLabelOverride={creatingComparison ? "Building…" : null}
+            tone="board"
+            title={leadCopy?.title ?? null}
+            intro={leadCopy?.intro ?? null}
+            noStay={leadCopy?.noStay === true}
+            onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
           />
           </span>
           {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
@@ -1291,6 +1300,14 @@ export function FinishCard({
 
 // ── the rail ──────────────────────────────────────────────────────────────────────────────────
 
+/** The optimizer card's group-specific words (slip conformance, Moment board). */
+export interface SlipLeadCopy {
+  title: string | null;
+  intro: string | null;
+  /** The plan is not built around a place to stay — drop "where you stay" wording. */
+  noStay: boolean;
+}
+
 export function SlipRail({
   trip,
   tripId,
@@ -1304,10 +1321,16 @@ export function SlipRail({
   stopsLine,
   zoneLine,
   optimizerSlot = null,
+  leadCopy = null,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /**
+   * The optimizer card's group-specific words (a Moment's title and intro), resolved by `SlipView`
+   * from the plan's own facts. Null ⇒ the board's Trip wording.
+   */
+  leadCopy?: SlipLeadCopy | null;
   /** LD 52 (C): item-building for the owner or the delegate (`canEditPlanItems`); defaults to owner. */
   canEditItems?: boolean;
   /**
@@ -1377,6 +1400,7 @@ export function SlipRail({
         expertState={expertState}
         aiAction={aiAction}
         optimizerSlot={optimizerSlot}
+        leadCopy={leadCopy}
       />
       {/* ASK AI — its OWN card, beneath Build (L16 lanes 2/3). It renders NOTHING for a viewer the
           proposal-log route would refuse: the routes are the policy and this mirrors them, never

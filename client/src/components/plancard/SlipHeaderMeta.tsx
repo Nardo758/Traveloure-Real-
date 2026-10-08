@@ -40,6 +40,12 @@ export interface SlipHeaderMetaProps {
    * conformance ruling 3). NULL means not captured: no zone is printed (LD 30).
    */
   timezone?: string | null;
+  /**
+   * A one-day Moment's span ("evening" / "day", `momentSpanWord`), passed only for a Moment. With it,
+   * the window reads "Fri Nov 13, 2026 · one evening" (the Moment board) in place of
+   * "Nov 13 – Nov 13, 2026 · 1 day". Absent ⇒ the window line is unchanged.
+   */
+  daySpan?: "evening" | "day" | null;
 }
 
 export function SlipHeaderMeta({
@@ -52,11 +58,14 @@ export function SlipHeaderMeta({
   onAskParty,
   eventCount,
   timezone = null,
+  daySpan = null,
 }: SlipHeaderMetaProps) {
   const start = parseTripDate(startDate);
   const end = parseTripDate(endDate);
   const hasRange = Boolean(start && end);
-  const dayCount = hasRange ? planDayCountLabel(startDate, endDate) : null;
+  // The Moment board's one-day window: the weekday and date, then the span in words.
+  const oneDay = hasRange && daySpan && start!.getTime() === end!.getTime();
+  const dayCount = oneDay ? `one ${daySpan}` : hasRange ? planDayCountLabel(startDate, endDate) : null;
   // Whether anything has been printed yet — the next segment takes a " · " only after one.
   let printed = hasRange;
   const sep = () => {
@@ -134,7 +143,9 @@ export function SlipHeaderMeta({
   return (
     <p className="text-sm text-muted-foreground" data-testid="slip-meta">
       {hasRange ? (
-        <span data-testid="slip-meta-dates">{`${format(start!, "MMM d")} – ${format(end!, "MMM d, yyyy")}`}</span>
+        <span data-testid="slip-meta-dates">
+          {oneDay ? format(start!, "EEE MMM d, yyyy") : `${format(start!, "MMM d")} – ${format(end!, "MMM d, yyyy")}`}
+        </span>
       ) : null}
       {dayCount ? (
         <>
