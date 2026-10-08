@@ -227,3 +227,49 @@ export function dropOnPlanDay(
   }
   return { action: "retime", order, swapIn: { variantItemId: drag.variantItemId } };
 }
+
+// ── THE OPTIMIZED BOARD (slip conformance, boards rev 15; ledger `2026-10-08-slip-optimized-board`) ──
+
+/** A version's totals for its card, read off the shared diffs (never re-derived): a zero is shown as
+ *  the board shows it, because each count is a real answer from the diff. */
+export function versionTotals(days: readonly DayDiff[]): { unchanged: number; moved: number; dropped: number; added: number } {
+  let unchanged = 0;
+  let moved = 0;
+  let dropped = 0;
+  let added = 0;
+  for (const d of days) {
+    if (d.identical) unchanged++;
+    moved += d.moved.length;
+    dropped += d.dropped.length;
+    added += d.added.length;
+  }
+  return { unchanged, moved, dropped, added };
+}
+
+/** The card's chips: "4 days unchanged · 2 stops moved · 0 dropped" (+ "N added" only when any). */
+export function versionTotalChips(t: ReturnType<typeof versionTotals>): { key: string; text: string; warn?: boolean }[] {
+  const out: { key: string; text: string; warn?: boolean }[] = [
+    { key: "unchanged", text: `${t.unchanged} ${t.unchanged === 1 ? "day" : "days"} unchanged` },
+    { key: "moved", text: `${t.moved} ${t.moved === 1 ? "stop" : "stops"} moved` },
+    { key: "dropped", text: `${t.dropped} dropped`, warn: t.dropped > 0 },
+  ];
+  if (t.added > 0) out.push({ key: "added", text: `${t.added} added` });
+  return out;
+}
+
+/** A day's short label: the weekday when the plan's machine date is known, else "Day N" (§13). */
+export function boardDayLabel(dayNumber: number, dateIso: string | null | undefined): string {
+  if (dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    const d = new Date(`${dateIso}T12:00:00Z`);
+    if (Number.isFinite(d.getTime())) return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+  }
+  return `Day ${dayNumber}`;
+}
+
+const COUNT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+/** The board's headline: "Three ways to spend these five days" — numbers past ten stay digits. */
+export function optimizedHeadline(versions: number, days: number): string {
+  const w = (n: number) => COUNT_WORDS[n] ?? String(n);
+  const ways = w(versions);
+  return `${ways.charAt(0).toUpperCase()}${ways.slice(1)} ${versions === 1 ? "way" : "ways"} to spend ${days === 1 ? "this day" : `these ${w(days)} days`}`;
+}
