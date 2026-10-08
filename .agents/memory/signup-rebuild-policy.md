@@ -49,3 +49,13 @@ tracked configuration safe to commit.
 **How to apply:** Check storage category and changed-file names without
 displaying values. Never stage or publish a configuration diff containing QA
 recipient addresses; keep them out of reports, logs and PR bodies.
+
+Automatic workspace checkpoints can capture that private configuration even
+when the agent never stages it manually.
+
+**Why:** Secure-form saves are ordinary workspace configuration writes, and
+checkpointing is independent of a selective manual commit.
+
+**How to apply:** Never push checkpoint history that contains private QA
+configuration. For a public PR, start from clean reviewed main and transfer
+only approved code/report changes, excluding the configuration and its history.

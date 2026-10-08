@@ -1,0 +1,24 @@
+{
+  "runId": "ad0caa84-f849-4ce2-9e20-a867bf993f55",
+  "loop": "1",
+  "checkedAt": "2026-10-08T16:43:59.988Z",
+  "isolated": true,
+  "results": [
+    {
+      "stage": "Fresh development mailer sanities (not browser or real-clock certification)",
+      "startedAt": "2026-10-08T16:43:46.161Z",
+      "exitCode": 1,
+      "durationMs": 13779.027977999998,
+      "tests": [
+        {
+          "name": "Fresh development mailer sanities (not browser or real-clock certification)",
+          "status": "FAIL",
+          "durationMs": 13779.008041,
+          "reason": "NO_TESTS_OR_FRAMEWORK_FAILURE"
+        }
+      ]
+    }
+  ],
+  "passing": 0,
+  "failing": 1
+}

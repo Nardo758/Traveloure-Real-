@@ -1,0 +1,54 @@
+{
+  "runId": "5d0a8b45-935a-4770-8ee8-7a5d0b2df95b",
+  "loop": "1",
+  "checkedAt": "2026-10-08T16:55:30.291Z",
+  "isolated": true,
+  "results": [
+    {
+      "stage": "Fresh development mailer sanities (not browser or real-clock certification)",
+      "startedAt": "2026-10-08T16:54:12.070Z",
+      "exitCode": 1,
+      "durationMs": 78173.87338100001,
+      "tests": [
+        {
+          "name": "itinerary_ready provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 6157,
+          "reason": null
+        },
+        {
+          "name": "itinerary_failed provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 6358,
+          "reason": null
+        },
+        {
+          "name": "itinerary_nudge_2h provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 4666,
+          "reason": null
+        },
+        {
+          "name": "itinerary_followup_24h provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 4148,
+          "reason": null
+        },
+        {
+          "name": "itinerary_reengagement_5d provider-delivered mailer sanity",
+          "status": "PASS",
+          "durationMs": 6098,
+          "reason": null
+        },
+        {
+          "name": "signup_welcome mailer sanity",
+          "status": "FAIL",
+          "durationMs": 69,
+          "reason": "TEST_FAILURE"
+        }
+      ]
+    }
+  ],
+  "passing": 5,
+  "failing": 1
+}

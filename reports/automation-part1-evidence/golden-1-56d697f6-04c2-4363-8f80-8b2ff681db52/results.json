@@ -1,0 +1,24 @@
+{
+  "runId": "56d697f6-04c2-4363-8f80-8b2ff681db52",
+  "loop": "1",
+  "checkedAt": "2026-10-08T16:47:54.902Z",
+  "isolated": true,
+  "results": [
+    {
+      "stage": "Fresh development mailer sanities (not browser or real-clock certification)",
+      "startedAt": "2026-10-08T16:47:44.159Z",
+      "exitCode": 1,
+      "durationMs": 10739.180537,
+      "tests": [
+        {
+          "name": "itinerary_ready mailer sanity",
+          "status": "FAIL",
+          "durationMs": 336,
+          "reason": "TEST_FAILURE"
+        }
+      ]
+    }
+  ],
+  "passing": 0,
+  "failing": 1
+}

@@ -18,7 +18,7 @@ function stages() {
     { name: "Itinerary outcome payload", files: ["server/services/__tests__/itinerary-outcome-email.test.ts"] },
     { name: "Itinerary follow-up payload", files: ["server/services/__tests__/itinerary-followup-email.test.ts"] },
     { name: "Generation authoritative-writer tests", db: true, config: "vitest.itinerary-outcomes.config.ts" },
-    { name: "Three itinerary follow-up tests", db: true, config: "vitest.itinerary-followups.config.ts" },
+    { name: "Three itinerary follow-up tests", db: true, http: true, config: "vitest.itinerary-followups.config.ts" },
     { name: "Signup welcome", db: true, files: ["server/__tests__/signup-welcome-outbox.db.test.ts"] },
     { name: "Verification and password-reset boundaries",
       files: ["server/automations/messaging/__tests__/producer-boundaries.test.ts"] },
@@ -29,12 +29,13 @@ function stages() {
     { name: "Outbox retry / leases / dedupe / cancellation",
       files: ["server/__tests__/email-outbox.test.ts"] },
     { name: "Retained registry contract suites",
-      files: walk("server/automations").filter(file => /\/__tests__\/.*\.test\.ts$/.test(file)) },
+       files: walk("server/automations").filter(file => /\/__tests__\/.*\.test\.ts$/.test(file) &&
+         !file.endsWith("/automation-baseline-harness.test.ts")) },
     { name: "Registry IDs", command: ["node_modules/tsx/dist/cli.mjs", "scripts/check-automation-registry.ts"] },
     { name: "Cron roster", command: ["scripts/check-jobs-cron-roster.cjs"] },
     { name: "New harness safety tests",
       command: ["node_modules/tsx/dist/cli.mjs", "--test", "--test-force-exit",
-        "scripts/verification/__tests__/automation-baseline-harness.test.ts"], tests: true },
+         "server/automations/messaging/__tests__/automation-baseline-harness.test.ts"], tests: true },
   ];
 }
 
@@ -87,7 +88,10 @@ async function main() {
   fs.mkdirSync(directory, { recursive: true });
   const results = [];
   const selected = process.argv.includes("--guards-only")
-    ? guardCommands().map(command => ({ name: command.join(" "), command })) : stages();
+    ? guardCommands().map(command => ({ name: command.join(" "), command }))
+    : process.argv.includes("--live-proof")
+      ? [{ name: "Fresh development mailer sanities (not browser or real-clock certification)", db: true, live: true }]
+      : stages();
   if (!selected.length) throw new Error("No baseline commands found");
   for (const [index, stage] of selected.entries()) {
     const startedAt = new Date().toISOString(), start = performance.now();
@@ -100,14 +104,20 @@ async function main() {
         args = stage.command; env = providerFreeEnvironment();
       } else {
         const placeholders = stage.files ?? ["server/services/__tests__/itinerary-outcome-email.test.ts"];
-        args = ["scripts/verification/run-messaging-gate.mjs", ...(stage.db ? ["--isolated-db"] : []), ...placeholders];
+        args = ["scripts/verification/run-messaging-gate.mjs", ...(stage.db ? ["--isolated-db"] : []),
+          ...(stage.http ? ["--http-harness"] : []), ...placeholders];
         env = stage.db ? { ...process.env, AUTOMATION_BASELINE_ADAPTER: "1",
           AUTOMATION_BASELINE_VITEST_CONFIG: stage.config ?? "" } : providerFreeEnvironment();
+        if (stage.live) {
+          env.AUTOMATION_BASELINE_LIVE_CONFIG = "/tmp/automation-part1-private-qa.json";
+          env.AUTOMATION_BASELINE_LIVE_LOOP = loop;
+        }
         if (stage.db) args.unshift("--import", path.resolve("scripts/verification/automation-baseline-reporter.mjs"));
       }
       // The retained DB owner enforces its child deadline and finally-cleanup.
       // An outer SIGKILL would prevent that owner's DROP SCHEMA cleanup.
       child = await runChild(args, env, stage.db ? 0 : 240_000);
+      if (stage.live) child.output = "EXPLICIT_APPROVED_QA_MAIL_PROVIDER_EXCEPTION=true (retained allowlist banner describes the base environment only)\n" + child.output;
     }
     const clean = reporter.redact(child.output);
     fs.writeFileSync(`${directory}/${String(index + 1).padStart(2, "0")}.log`, clean);
@@ -120,6 +130,9 @@ async function main() {
         reason: stage.db && !isolated ? "ISOLATED_TEST_DATABASE_AUTHORIZATION_REQUIRED" : "NO_TESTS_OR_FRAMEWORK_FAILURE" });
     }
     results.push({ stage: stage.name, startedAt, exitCode: child.code, durationMs: performance.now() - start, tests: details });
+    console.log(JSON.stringify({ stageComplete: stage.name, exitCode: child.code,
+      passed: details.filter(row => row.status === "PASS").length,
+      failed: details.filter(row => row.status === "FAIL").length }));
   }
   const flat = results.flatMap(stage => stage.tests);
   const document = { runId, loop, checkedAt: new Date().toISOString(), isolated, results,

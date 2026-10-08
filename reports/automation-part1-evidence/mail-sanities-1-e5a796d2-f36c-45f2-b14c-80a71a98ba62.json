@@ -1,0 +1,28 @@
+[
+  {
+    "loop": "1",
+    "kind": "itinerary_ready",
+    "namespace": "automation_msg_6e1cea745abbcd53",
+    "fixtureId": "36dc836f-c87a-4207-9fc9-af995a17567e",
+    "outboxId": 1656321480,
+    "providerId": "01a11c6e-a143-73a7-a038-8038c6223227",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:52:58.159Z",
+    "durationMs": 3685,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_failed",
+    "namespace": "automation_msg_6e1cea745abbcd53",
+    "fixtureId": "44b97115-faba-4661-886c-7b15e8eb9bad",
+    "outboxId": 1656321484,
+    "providerId": "01a11c6e-af29-7449-9058-9d1cab35e08c",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:53:01.662Z",
+    "durationMs": 3463,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  }
+]

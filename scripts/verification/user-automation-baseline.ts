@@ -1,6 +1,7 @@
 /**
- * Part 1 READ-ONLY inspection tool. Not imported by the application.
- * Writes only the approved new report paths; never fires jobs or writers.
+ * Part 1 test/report tool. Never imported by the application.
+ * Default mode is read-only inspection. Explicit --live-proof mode uses only
+ * the approved disposable development namespace and monitored QA inboxes.
  */
 import { readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, relative } from "node:path";
@@ -201,6 +202,7 @@ function previewIsolation() {
 }
 
 async function main() {
+  if (process.argv.includes("--live-proof")) return liveMailerSanities();
   mkdirSync(evidence, { recursive: true });
   await inventory();
   await audit();
@@ -215,7 +217,186 @@ async function main() {
     artifacts: artifacts.map(file => relative(root, resolve(file))), runtimeWrites: 0, schemaWrites: 0 })));
 }
 
-main().catch(() => {
-  console.error("Read-only inventory failed; no raw exception or recipient values printed.");
+main().catch(async error => {
+  const reporter = await import(pathToFileURL(resolve("scripts/verification/automation-baseline-reporter.mjs")).href);
+  console.error(reporter.redact(`Baseline test/report tool failed: ${String(error)}`));
   process.exitCode = 1;
 });
+
+async function liveMailerSanities() {
+  const namespace = process.env.MESSAGING_VERIFICATION_SCHEMA ?? "";
+  if (process.env.NODE_ENV !== "test" || !/^automation_msg_[a-f0-9]{16}$/.test(namespace) ||
+      !process.env.AUTOMATION_BASELINE_LIVE_CONFIG) throw new Error("Guarded development fixture owner required");
+  const { statSync } = await import("node:fs");
+  const privatePath = process.env.AUTOMATION_BASELINE_LIVE_CONFIG;
+  if ((statSync(privatePath).mode & 0o077) !== 0) throw new Error("QA config must be private");
+  const settings = JSON.parse(readFileSync(privatePath, "utf8"));
+  const monitored = settings.ITINERARY_OUTCOME_TEST_EMAIL;
+  const welcomeInbox = settings.SIGNUP_QA_TEST_INBOX;
+  if (![monitored, welcomeInbox].every(value => typeof value === "string" &&
+      /^[^\s@<>\[\]]+@[^\s@<>\[\]]+\.[^\s@<>\[\]]+$/.test(value))) throw new Error("Approved inbox settings required");
+  const reporter = await import(pathToFileURL(resolve("scripts/verification/automation-baseline-reporter.mjs")).href);
+  for (const method of ["log", "info", "warn", "error", "debug"] as const) {
+    const original = console[method].bind(console);
+    console[method] = (...values: unknown[]) => original(...values.map(value => reporter.redact(
+      typeof value === "string" ? value : JSON.stringify(value))));
+  }
+  process.env.ITINERARY_OUTCOME_TEST_EMAIL = monitored;
+  process.env.SIGNUP_QA_TEST_INBOX = welcomeInbox;
+  // No production path receives this harness or its substitution.
+  let recipient = "", destination = monitored, acceptedId: string | null = null;
+  const actualFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    if (url.hostname === "api.resend.com" && init?.method?.toUpperCase() === "POST" && url.pathname === "/emails") {
+      const payload = JSON.parse(String(init.body));
+      const targets = Array.isArray(payload.to) ? payload.to : [payload.to];
+      if (!recipient || !targets.every((value: string) => value === recipient)) throw new Error("Non-fixture mail recipient refused");
+      payload.to = [destination];
+      const response = await actualFetch(input, { ...init, body: JSON.stringify(payload) });
+      const body = await response.clone().json();
+      if (response.ok && typeof body.id === "string") acceptedId = body.id;
+      return response;
+    }
+    return actualFetch(input, init);
+  };
+  const { randomUUID, randomInt } = await import("node:crypto");
+  const { db, pool } = await import("../../server/db");
+  const { sql, eq } = await import("drizzle-orm");
+  const schema = await import("../../shared/schema");
+  const { persistGenerationOutcome } = await import("../../server/services/itinerary-generation-outcome.service");
+  const { enqueueSignupWelcome } = await import("../../server/services/signup-welcome-outbox.service");
+  const { deliverQueuedEmail, enqueueBookingConfirmationEmail } = await import("../../server/services/email-outbox.service");
+  const { sendActivityEmail } = await import("../../server/services/activity-email.service");
+  const { sendPasswordResetEmail, sendEmailVerificationEmail } = await import("../../server/services/email.service");
+  const { ITINERARY_FOLLOWUPS } = await import("../../server/services/itinerary-followup-email");
+  const { Resend } = await import("resend");
+  const provider = new Resend(); // Existing provider SDK; reads its configured credential itself.
+  const loop = process.env.AUTOMATION_BASELINE_LIVE_LOOP ?? "1";
+  const proofPath = `${evidence}/mail-sanities-${loop}-${randomUUID()}.json`;
+  const proofs: Record<string, unknown>[] = [];
+  const kinds = ["itinerary_ready", "itinerary_failed", ...ITINERARY_FOLLOWUPS.map(entry => entry.kind),
+    "signup_welcome", "booking_canonical_payload", "booking_legacy_payload", "activity", "verification", "password_reset"];
+  try {
+    const scoped = await db.execute(sql`SELECT current_schema() AS namespace`);
+    if (scoped.rows[0]?.namespace !== namespace) throw new Error("Fixture namespace mismatch");
+    // Real-provider idempotency is account-wide, not schema-local. Do not let
+    // fresh cloned counters reuse a previously delivered row's provider key.
+    const ownership = await db.execute(sql`SELECT s.oid AS sequence_oid
+      FROM pg_class s
+      JOIN pg_namespace n ON n.oid=s.relnamespace
+      JOIN pg_depend d ON d.objid=s.oid AND d.classid='pg_class'::regclass
+      JOIN pg_class t ON t.oid=d.refobjid AND t.relnamespace=n.oid
+      JOIN pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid
+      WHERE n.nspname=${namespace} AND t.relname='email_outbox'
+        AND a.attname='id' AND s.relkind='S' AND d.deptype IN ('a','i')`);
+    const sequenceOid = Number(ownership.rows[0]?.sequence_oid);
+    if (ownership.rows.length !== 1 || !Number.isSafeInteger(sequenceOid) ||
+        sequenceOid <= 0 || sequenceOid > 0xffff_ffff) throw new Error("Only owned fixture sequences may be initialized");
+    await db.execute(sql`SELECT setval(${sequenceOid}::oid::regclass, ${randomInt(1_000_000_000, 2_000_000_000)}, false)`);
+    console.log("TAP version 13");
+    for (const [index, kind] of kinds.entries()) {
+      const caseStartedAt = Date.now();
+      acceptedId = null;
+      const userId = randomUUID(), comparisonId = randomUUID();
+      recipient = kind === "signup_welcome" ? `${randomUUID()}@traveloure-qa.test` : monitored;
+      destination = kind === "signup_welcome" ? welcomeInbox : monitored;
+      let outboxId: number | null = null;
+      let providerFixtureId: string | null = null;
+      try {
+        await db.insert(schema.users).values({ id: userId, email: recipient, firstName: "QA automation baseline",
+          role: kind === "activity" ? "service_provider" : "traveler", emailVerified: new Date(),
+          preferences: { itineraryMarketing: { enabled: true, timeZone: "UTC", quietStart: "20:00", quietEnd: "09:00" } } });
+        if (kind.startsWith("itinerary_")) {
+          const followup = ITINERARY_FOLLOWUPS.find(entry => entry.kind === kind);
+          if (followup && (new Date().getUTCHours() < 9 || new Date().getUTCHours() >= 20)) {
+            throw new Error("Marketing sanity must wait for the actual 09–20 UTC fixture window");
+          }
+          const readyAt = new Date(Date.now() - (followup?.hours ?? 0) * 3_600_000 - 30000);
+          const startedAt = new Date(readyAt.getTime() - 1000);
+          await db.insert(schema.itineraryComparisons).values({ id: comparisonId, userId,
+            destination: `QA ONLY ${randomUUID()}`, status: "generating", updatedAt: startedAt, createdAt: startedAt });
+          await db.transaction(tx => persistGenerationOutcome(tx, { comparisonId, startedAt,
+            outcome: kind === "itinerary_failed" ? "failed" : "ready", now: readyAt, deliverImmediately: false }));
+          const variantId = randomUUID();
+          let bookableServiceId: string | null = null;
+          if (followup) {
+            providerFixtureId = randomUUID();
+            bookableServiceId = randomUUID();
+            await db.insert(schema.users).values({ id: providerFixtureId,
+              email: `${providerFixtureId}@traveloure-qa.test`, firstName: "QA ONLY provider", role: "service_provider" });
+            await db.insert(schema.providerServices).values({ id: bookableServiceId, userId: providerFixtureId,
+              serviceName: "QA ONLY bookable mail fixture", status: "active", approvalStatus: "approved",
+              deliveryMethod: "video", price: "99.00" });
+          }
+          await db.insert(schema.itineraryVariants).values({ id: variantId, comparisonId, name: "QA ONLY variant" });
+          await db.insert(schema.itineraryVariantItems).values({ id: randomUUID(), variantId, dayNumber: 1,
+            name: "QA ONLY stop", providerServiceId: bookableServiceId });
+          const notices = await db.select().from(schema.emailOutbox).where(sql`
+            ${schema.emailOutbox.metadata}->>'comparisonId' = ${comparisonId}
+            OR ${schema.emailOutbox.metadata}->>'itineraryId' = ${comparisonId}`);
+          const row = notices.find(row => row.emailType === kind);
+          if (!row) throw new Error("Authoritative writer did not create requested outbox category");
+          outboxId = row.id;
+          // FAST sanity, not a claim of surviving a real 2h/24h/5d interval.
+          await db.update(schema.emailOutbox).set({ retryAfter: new Date(Date.now() - 1000) }).where(eq(schema.emailOutbox.id, row.id));
+          await deliverQueuedEmail(row.id);
+        } else if (kind === "signup_welcome") {
+          outboxId = await db.transaction(tx => enqueueSignupWelcome(tx, userId));
+          await deliverQueuedEmail(outboxId);
+        } else if (kind.startsWith("booking_")) {
+          await enqueueBookingConfirmationEmail({ toEmail: recipient, userName: "QA automation baseline",
+            bookingId: randomUUID(), bookingTitle: `QA ONLY ${kind}`, confirmationCode: `QA-${randomUUID()}` });
+        } else if (kind === "activity") {
+          await sendActivityEmail({ recipientId: userId, kind: "new_message", actorName: "QA ONLY",
+            destination: "messages", throttleKey: randomUUID() });
+        } else if (kind === "verification") {
+          await sendEmailVerificationEmail({ toEmail: recipient, firstName: "QA ONLY",
+            verifyUrl: `https://${process.env.REPLIT_DEV_DOMAIN}/verify-email?token=${randomUUID()}`, expiresInHours: 24 });
+        } else {
+          await sendPasswordResetEmail({ toEmail: recipient, firstName: "QA ONLY",
+            resetUrl: `https://${process.env.REPLIT_DEV_DOMAIN}/reset-password?token=${randomUUID()}`, expiresInMinutes: 15 });
+        }
+        const rows = await db.select().from(schema.emailOutbox).where(eq(schema.emailOutbox.toEmail, recipient));
+        const sent = outboxId ? rows.find(row => row.id === outboxId) : rows.find(row => row.resendId === acceptedId);
+        if (outboxId && (!sent || sent.status !== "sent")) throw new Error(
+          `Authoritative outbox did not report sent: ${sent?.status ?? "missing"}; ${sent?.lastError ?? "no reason recorded"}`);
+        outboxId = sent?.id ?? null;
+        const providerId = sent?.resendId ?? acceptedId;
+        if (!providerId) throw new Error("No genuine provider message identifier");
+        let event = "unknown";
+        for (let attempt = 0; attempt < 30; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          const response = await provider.emails.get(providerId);
+          if (response.error) throw new Error(`Provider lookup ${response.error.name}`);
+          event = response.data!.last_event;
+          if (["delivered", "opened", "clicked", "bounced", "failed", "suppressed", "complained", "canceled"].includes(event)) break;
+        }
+        proofs.push({ loop, kind, namespace, fixtureId: userId, outboxId, providerId, providerEvent: event,
+          checkedAt: new Date().toISOString(), durationMs: Date.now() - caseStartedAt, mode: "FAST_MAILER_SANITY",
+          scope: kind.startsWith("booking_") ? "Shared helper payload, NOT payment-writer or browser proof" :
+            ["verification", "password_reset"].includes(kind) ? "Direct sender; NO authoritative outbox row or valid reset journey claimed" :
+            "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification" });
+        writeFileSync(proofPath, JSON.stringify(proofs, null, 2));
+        if (!["delivered", "opened", "clicked"].includes(event)) throw new Error("Provider delivery not confirmed");
+        console.log(`ok ${index + 1} - ${kind} provider-delivered mailer sanity`);
+        console.log(`  ---\n  duration_ms: ${Date.now() - caseStartedAt}\n  ...`);
+      } catch (error) {
+        console.log(`not ok ${index + 1} - ${kind} mailer sanity`);
+        console.log(`  ---\n  duration_ms: ${Date.now() - caseStartedAt}\n  ...`);
+        console.log(`# ${reporter.redact(String(error))}`);
+        process.exitCode = 1;
+        break; // Never repeatedly send a failing scenario.
+      } finally {
+        await db.delete(schema.emailOutbox).where(eq(schema.emailOutbox.toEmail, recipient));
+        await db.delete(schema.users).where(eq(schema.users.id, userId));
+        if (providerFixtureId) await db.delete(schema.users).where(eq(schema.users.id, providerFixtureId));
+      }
+    }
+    if (proofs.length !== kinds.length) process.exitCode = 1;
+    console.log(`# Genuine receipt evidence: ${proofPath}`);
+  } finally {
+    globalThis.fetch = actualFetch;
+    await pool.end();
+  }
+}

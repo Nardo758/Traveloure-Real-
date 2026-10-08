@@ -1,0 +1,67 @@
+[
+  {
+    "loop": "1",
+    "kind": "itinerary_ready",
+    "namespace": "automation_msg_6416c6952d4e1a73",
+    "fixtureId": "0377612d-a31a-496a-b6f8-b96ea84484fa",
+    "outboxId": 1219264204,
+    "providerId": "01a11c70-948d-782d-8d68-b51066ad75c0",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:55:07.546Z",
+    "durationMs": 6156,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_failed",
+    "namespace": "automation_msg_6416c6952d4e1a73",
+    "fixtureId": "3aca5c51-15e2-4b6b-87a7-cb9801c8ec3f",
+    "outboxId": 1219264208,
+    "providerId": "01a11c70-ab12-7952-a9a2-8ec68d153290",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:55:14.105Z",
+    "durationMs": 6358,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_nudge_2h",
+    "namespace": "automation_msg_6416c6952d4e1a73",
+    "fixtureId": "5fe5ff27-ff6f-4485-aa8a-e8ec7d9e621c",
+    "outboxId": 1219264210,
+    "providerId": "01a11c70-c67b-7b6d-90a6-f582fca9be07",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:55:19.064Z",
+    "durationMs": 4664,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_followup_24h",
+    "namespace": "automation_msg_6416c6952d4e1a73",
+    "fixtureId": "5248f0f0-c5c0-4978-9a73-198809e27440",
+    "outboxId": 1219264215,
+    "providerId": "01a11c70-d6b9-7efc-93f5-296fe6a1e6da",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:55:23.278Z",
+    "durationMs": 4148,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  },
+  {
+    "loop": "1",
+    "kind": "itinerary_reengagement_5d",
+    "namespace": "automation_msg_6416c6952d4e1a73",
+    "fixtureId": "bb3e65d3-c405-4cfe-9196-310d0da29e6c",
+    "outboxId": 1219264220,
+    "providerId": "01a11c70-e6ad-726c-b8ec-edac697fad39",
+    "providerEvent": "delivered",
+    "checkedAt": "2026-10-08T16:55:29.421Z",
+    "durationMs": 6098,
+    "mode": "FAST_MAILER_SANITY",
+    "scope": "Existing dispatcher/mailer; NOT browser, inbox placement or real-clock certification"
+  }
+]

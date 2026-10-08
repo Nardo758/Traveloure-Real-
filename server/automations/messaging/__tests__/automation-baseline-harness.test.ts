@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 const require = createRequire(import.meta.url);
-const runner = require("../../check-automation-golden-baseline.cjs");
+const runner = require(resolve("scripts/check-automation-golden-baseline.cjs"));
 const reporterUrl = pathToFileURL(resolve("scripts/verification/automation-baseline-reporter.mjs")).href;
 
 test("provider-free environment drops all live transports and production URLs", () => {
@@ -66,4 +66,15 @@ test("Vitest report survives retained cleanup output without certifying skipped 
   assert.equal(runner.guardCommands().length, 76);
   assert.ok(runner.guardCommands().some((args: string[]) => args[0] === "scripts/check-coverage-matrix.cjs"));
   assert.ok(runner.guardCommands().every((args: string[]) => args.every(arg => !arg.includes("&&"))));
+});
+
+test("HTTP transport bridge refuses preview, production, credentials and unisolated fixtures", async () => {
+  const { isolatedHttpTarget } = await import(reporterUrl);
+  const schema = "automation_msg_0123456789abcdef";
+  assert.equal(isolatedHttpTarget("http://127.0.0.1:43123", schema).origin, "http://127.0.0.1:43123");
+  for (const target of ["https://www.traveloure.com", "http://localhost:43123",
+    "http://user:private@127.0.0.1:43123", "http://127.0.0.1:80", "http://127.0.0.1:43123/path"]) {
+    assert.throws(() => isolatedHttpTarget(target, schema));
+  }
+  assert.throws(() => isolatedHttpTarget("http://127.0.0.1:43123", "public"));
 });

@@ -1,5 +1,34 @@
 import cp from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
+import { fileURLToPath } from "node:url";
+
+export function isolatedHttpTarget(target, schema) {
+  if (!/^automation_msg_[a-f0-9]{16}$/.test(schema ?? "")) throw new Error("HTTP bridge requires an isolated fixture schema");
+  const url = new URL(target);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
+      Number(url.port) < 1024 || url.username || url.password || url.pathname !== "/" || url.search) {
+    throw new Error("Only the retained private HTTP harness is allowed");
+  }
+  return url;
+}
+
+// Transport-only bridge for retained tests that hardcode https://REPLIT_DEV_DOMAIN.
+// Requests still hit the existing real handlers and isolated database, never preview.
+if (process.env.AUTOMATION_BASELINE_HTTP_TARGET) {
+  if (process.env.NODE_ENV === "production") throw new Error("Fixture HTTP bridge is forbidden in production");
+  const target = isolatedHttpTarget(process.env.AUTOMATION_BASELINE_HTTP_TARGET,
+    process.env.MESSAGING_VERIFICATION_SCHEMA);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input, init) => {
+    if (input instanceof Request) throw new Error("Unexpected fixture request representation");
+    const url = new URL(input);
+    if (url.origin === "https://automation-part1.invalid") {
+      return originalFetch(new URL(url.pathname + url.search + url.hash, target), init);
+    }
+    if (url.origin !== target.origin) throw new Error("Fixture HTTP request must stay in its isolated harness");
+    return originalFetch(input, init);
+  };
+}
 
 /** Never persist raw child output: even existing test writers can log recipients. */
 export function redact(value) {
@@ -71,17 +100,54 @@ if (process.env.AUTOMATION_BASELINE_ADAPTER === "1") {
         RUN_GENERATION_OUTCOME_DB_TESTS: "1", RUN_ITINERARY_FOLLOWUP_DB_TESTS: "1",
       };
       const config = process.env.AUTOMATION_BASELINE_VITEST_CONFIG;
+      if (process.env.AUTOMATION_BASELINE_LIVE_CONFIG) {
+        // Retained schema preload mandates test mode. This is still the
+        // independently fingerprinted development DB, never production.
+        env.NODE_ENV = "test";
+        env.AUTOMATION_BASELINE_LIVE_CONFIG = process.env.AUTOMATION_BASELINE_LIVE_CONFIG;
+        env.AUTOMATION_BASELINE_LIVE_LOOP = process.env.AUTOMATION_BASELINE_LIVE_LOOP;
+        // Existing SDK consumes these; never inspect, display or persist their values.
+        for (const key of ["RESEND_API_KEY", "EMAIL_FROM", "EMAIL_FROM_NOREPLY", "EMAIL_REPLY_TO", "REPLIT_DEV_DOMAIN"]) {
+          if (process.env[key]) env[key] = process.env[key];
+        }
+        const cli = args.indexOf("node_modules/tsx/dist/cli.mjs");
+        args = [...args.slice(0, cli + 1), "scripts/verification/user-automation-baseline.ts", "--live-proof"];
+      }
       if (config) {
         if (!["vitest.itinerary-outcomes.config.ts", "vitest.itinerary-followups.config.ts"].includes(config)) {
           throw new Error("Unapproved Vitest configuration");
         }
         const cli = args.findIndex(arg => /node_modules\/tsx\/dist\/cli\.mjs$/.test(arg));
         if (cli < 0) throw new Error("Retained test child layout changed");
-        args = [...args.slice(0, cli), "node_modules/vitest/vitest.mjs", "run", "--config", config, "--reporter=json"];
+        const prefix = args.slice(0, cli);
+        if (config === "vitest.itinerary-followups.config.ts") {
+          isolatedHttpTarget(env.JOURNEY_BASE_URL, env.MESSAGING_VERIFICATION_SCHEMA);
+          env.AUTOMATION_BASELINE_HTTP_TARGET = env.JOURNEY_BASE_URL;
+          env.REPLIT_DEV_DOMAIN = "automation-part1.invalid";
+          env.AUTOMATION_BASELINE_RUN_VITEST = config;
+          args = [...prefix, fileURLToPath(import.meta.url)];
+        } else {
+          args = [...prefix, "node_modules/vitest/vitest.mjs", "run", "--config", config, "--reporter=json"];
+        }
       }
       options = { ...options, env };
     }
     return originalSpawn.call(this, command, args, options);
   };
   syncBuiltinESMExports();
+}
+
+// Vitest workers create their own globals: a Node --import preload alone is
+// insufficient. Merge a setup file through Vitest's installed, typed public API,
+// retaining the original config and assertions (no second config/CI file).
+if (process.env.AUTOMATION_BASELINE_RUN_VITEST &&
+    !process.env.VITEST_WORKER_ID && !process.env.VITEST_POOL_ID &&
+    process.argv[1] === fileURLToPath(import.meta.url)) {
+  const config = process.env.AUTOMATION_BASELINE_RUN_VITEST;
+  if (config !== "vitest.itinerary-followups.config.ts") throw new Error("Unapproved worker setup configuration");
+  isolatedHttpTarget(process.env.AUTOMATION_BASELINE_HTTP_TARGET, process.env.MESSAGING_VERIFICATION_SCHEMA);
+  const { startVitest } = await import("vitest/node");
+  const context = await startVitest("test", [], { config, watch: false, reporters: ["json"] },
+    { test: { setupFiles: [fileURLToPath(import.meta.url)] } });
+  await context.close();
 }
