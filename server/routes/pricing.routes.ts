@@ -10,6 +10,7 @@
  * approved contract and docs/design/PRICING_AND_FEATURE_MAP.md for the ledger.
  */
 import { Router } from "express";
+import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
 import { requirePlan, PLAN_KEYS } from "../services/plans.service";
 import {
   requireBand,
@@ -104,6 +105,9 @@ export const getPricingHandler = async (_req: any, res: any) => {
         name: tripPass.name,
         priceCents: tripPass.priceCents,
         interval: "trip" as const,
+        // R-ac (ledger `2026-10-08-trip-pass-five-runs`): the runs one pass covers, from the SAME
+        // config the entitlement enforces — /pricing interpolates it, never a literal.
+        runsPerTrip: tripPassRunsPerTrip(),
       },
       plusAnnual: {
         key: "plus_annual" as const,

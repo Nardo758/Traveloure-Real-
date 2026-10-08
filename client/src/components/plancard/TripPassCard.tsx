@@ -22,6 +22,10 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 // LD 43(d): mount 1 of 2 — the Trip Pass purchase success state. Soft, dismissible, never
 // blocking, and it renders only on a KNOWN-EMPTY vault (the component decides, not this file).
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
+// The run phrase lives in `@/lib/trip-pass-runs-copy` so /pricing reads the same words without
+// importing this card (ledger `2026-10-08-trip-pass-five-runs`); re-exported for existing importers.
+import { tripPassRunsPhrase } from "@/lib/trip-pass-runs-copy";
+export { tripPassRunsPhrase };
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -34,12 +38,6 @@ interface TripPassStatus {
   runsPerTrip?: number;
 }
 
-/** "5 optimizer runs" from the server's count; "optimizer runs" when no count arrived (§13). */
-export function tripPassRunsPhrase(runs: number | null | undefined): string {
-  return typeof runs === "number" && Number.isFinite(runs) && runs > 0
-    ? `${runs} optimizer ${runs === 1 ? "run" : "runs"}`
-    : "optimizer runs";
-}
 
 export function TripPassCard({
   tripId,
