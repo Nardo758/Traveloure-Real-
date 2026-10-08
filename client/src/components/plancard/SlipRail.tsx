@@ -550,10 +550,12 @@ function BuildCard({
               is the owner's (LD 52 — a helper never pays). "Included in your Trip Pass" is no longer a
               label: it is the CTA's own state ("Optimize · included · N runs left"). Feedback moved to
               the ⋯ plan menu. */}
-          {hasRun ? (
-            <div data-testid="slip-trip-pass-offer">
-              <TripPassCard tripId={tripId} planName={trip.title || trip.destination} />
-            </div>
+          {isOwner ? (
+            hasRun ? (
+              <div data-testid="slip-trip-pass-offer">
+                <TripPassCard tripId={tripId} planName={trip.title || trip.destination} />
+              </div>
+            ) : null
           ) : null}
         </>
   );
@@ -617,8 +619,7 @@ function BuildCard({
  */
 function ExpertMessageRow({ trip, tripId, expertState }: { trip: SlipTrip; tripId: string; expertState: SlipExpertRailState }) {
   const askExpert = useAskExpert();
-  if (expertState.kind !== "message") return null;
-  return (
+  if (expertState.kind === "message") return (
     <RailRow
       label={`Message ${expertState.name}`}
       meta={expertState.isConciergeReadGrant ? "reads this plan" : expertState.pending ? "awaiting reply" : "expert"}
@@ -636,6 +637,7 @@ function ExpertMessageRow({ trip, tripId, expertState }: { trip: SlipTrip; tripI
       testId="slip-action-message-expert"
     />
   );
+  return null;
 }
 
 // ── Expert ────────────────────────────────────────────────────────────────────────────────────
