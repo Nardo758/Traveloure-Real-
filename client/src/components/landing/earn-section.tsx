@@ -31,7 +31,7 @@ const ROLES = [
   },
   {
     icon: Lamp,
-    title: "Guide your neighbourhood",
+    title: "Guide your neighborhood",
     note: "Local expert · the streets you actually know",
     href: "/earn?role=local_expert",
     testId: "earn-role-local-expert",

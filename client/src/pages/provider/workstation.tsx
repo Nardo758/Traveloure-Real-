@@ -1781,7 +1781,7 @@ export default function ProviderWorkstation() {
                       id="edit-property-cancellation-detail"
                       value={editPropCancellationPolicy}
                       onChange={(e) => setEditPropCancellationPolicy(e.target.value)}
-                      placeholder="Full refund if cancelled 48h before"
+                      placeholder="Full refund if canceled 48h before"
                       data-testid="input-edit-property-cancellation-detail"
                     />
                   </div>

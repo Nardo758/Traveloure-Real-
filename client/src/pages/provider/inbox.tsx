@@ -861,7 +861,7 @@ function HistorySection({
                 onClick={() => setStatusFilter("cancelled")}
                 data-testid="button-filter-cancelled"
               >
-                Cancelled
+                Canceled
               </Button>
               <Button
                 variant={statusFilter === "refunded" ? "default" : "outline"}

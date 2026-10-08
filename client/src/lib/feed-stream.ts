@@ -82,7 +82,7 @@ export function matchedServiceSuggestion(placeType: string | null | undefined): 
     case "stay":
       return {
         icon: "🚗",
-        matchText: "private car from city centre · ¥9,000",
+        matchText: "private car from city center · ¥9,000",
         actionLabel: "Book both",
         actionVariant: "platform",
         href: "/experiences/transport",

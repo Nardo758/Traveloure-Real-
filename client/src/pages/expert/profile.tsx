@@ -292,10 +292,10 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
       apiRequest("PATCH", "/api/expert/neighborhoods", { neighborhoods, localityProof }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/neighborhoods"] });
-      toast({ title: "Neighbourhood coverage saved" });
+      toast({ title: "Neighborhood coverage saved" });
     },
     onError: () => {
-      toast({ title: "Failed to save neighbourhood coverage", variant: "destructive" });
+      toast({ title: "Failed to save neighborhood coverage", variant: "destructive" });
     },
   });
 
@@ -712,12 +712,12 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Home className="w-5 h-5 text-console-mid" />
-              My Neighbourhoods
+              My Neighborhoods
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-console-mid">
-              List the neighbourhoods you know well. These appear on your public profile and help travellers find the right local expert for their area.
+              List the neighborhoods you know well. These appear on your public profile and help travelers find the right local expert for their area.
             </p>
 
             {/* Locality proof */}
@@ -774,7 +774,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                     </Badge>
                   ))
                 ) : (
-                  <p className="text-sm text-console-mid">No neighbourhoods added yet</p>
+                  <p className="text-sm text-console-mid">No neighborhoods added yet</p>
                 )}
               </div>
             )}
@@ -806,7 +806,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
                 data-testid="button-save-neighbourhoods"
               >
                 <Save className="w-3.5 h-3.5 mr-1.5" />
-                {saveNeighborhoodsMutation.isPending ? "Saving…" : "Save Neighbourhoods"}
+                {saveNeighborhoodsMutation.isPending ? "Saving…" : "Save Neighborhoods"}
               </Button>
             </div>
           </CardContent>
