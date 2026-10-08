@@ -232,6 +232,7 @@ const ALLOWED_ADDITIONS = {
   "slip-plan-menu": "Main-rail — the ⋯ plan menu: Share, PDF, calendar, Browse services, Send feedback (no handler of its own)",
   "slip-action-feedback": "Main-rail — 'Send feedback' (ruling 3: Feedback → ⋯ menu) opens the SAME post-draft FeedbackTap",
   "slip-bottom-bar": "Main-rail — the sticky bottom bar: Ask AI (secondary) · Finalize (primary) (no handler of its own)",
+  "slip-bottom-bar-space": "Main-rail — the spacer that holds the fixed bar's height at the end of the column (no handler)",
   "slip-bar-finish": "Main-rail — the Finish controls in the bar layout (same testids, same mutations; no handler of its own)",
   "slip-plan-panel": "Main-rail — what the rail still says, inside the column: Expert, engagement, plan extras (no handler)",
   "slip-plan-extras": "Main-rail — organize-into-events and the budget, drawn bare (no handler of its own)",
