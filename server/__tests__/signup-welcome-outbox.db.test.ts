@@ -13,6 +13,7 @@ import { users, emailOutbox } from "../../shared/schema";
 import { _outboxTestHooks, _nextRetryAfter, deliverQueuedEmail } from "../services/email-outbox.service";
 import { enqueueSignupWelcome, deliverSignupWelcome, welcomeSuppressionReason } from "../services/signup-welcome-outbox.service";
 import { resolveSignupQaRecipient } from "../../scripts/verification/signup-qa-recipient";
+import { buildWelcomeEmailPayload } from "../services/email.service";
 
 const enabled = process.env.NODE_ENV === "test" && process.env.RUN_SIGNUP_WELCOME_DB_TESTS === "1";
 const fixtureIds: string[] = [];
@@ -23,6 +24,22 @@ const guardAccount = {
 };
 
 describe("signup welcome pure guards and main wiring", () => {
+  it("links Browse experts to the public directory rather than the application redirect", () => {
+    const payload = buildWelcomeEmailPayload({
+      toEmail: "guard@traveloure-qa.test", firstName: "Signup QA",
+    });
+    const browseHref = payload.html.match(/<a href="([^"]+)"[^>]*>Browse experts<\/a>/)?.[1];
+    assert.ok(browseHref, "Welcome email must include the Browse experts link");
+    const dashboardHref = payload.html.match(/<a href="([^"]+)"[\s\S]*?>\s*Start Planning\s*<\/a>/)?.[1];
+    assert.ok(dashboardHref, "Welcome email must retain the Start Planning link");
+    assert.equal(browseHref, new URL("/experts", dashboardHref).href);
+
+    const app = readFileSync("client/src/App.tsx", "utf8");
+    const directoryRoute = app.match(/<Route path="\/experts">([\s\S]*?)<\/Route>/)?.[1];
+    assert.ok(directoryRoute, "The expert directory must remain a public route");
+    assert.match(directoryRoute, /<BrowseShell><ExpertsPage \/><\/BrowseShell>/);
+    assert.doesNotMatch(directoryRoute, /<Redirect|<ProtectedRoute/);
+  });
   it("permits recorded consent and unchanged recipient", () => {
     assert.equal(welcomeSuppressionReason(guardAccount, guardAccount.email, false), null);
   });

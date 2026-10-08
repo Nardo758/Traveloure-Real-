@@ -1416,7 +1416,7 @@ export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailP
   const baseUrl = getAppBaseUrl();
   const dashboardUrl = `${baseUrl}/dashboard`;
   const exploreUrl  = `${baseUrl}/explore`;
-  const expertsUrl  = `${baseUrl}/travel-experts`;
+  const expertsUrl  = `${baseUrl}/experts`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff;">
