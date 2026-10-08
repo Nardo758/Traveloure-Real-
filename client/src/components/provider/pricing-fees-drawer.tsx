@@ -362,7 +362,7 @@ export function PricingFeesDrawer({
                 id="pfCancellationPolicy"
                 value={state.cancellationPolicy}
                 onChange={(e) => set("cancellationPolicy", e.target.value)}
-                placeholder="e.g., Full refund if cancelled 48 hours before. 50% refund if cancelled 24 hours before. No refund within 12 hours."
+                placeholder="e.g., Full refund if canceled 48 hours before. 50% refund if canceled 24 hours before. No refund within 12 hours."
                 rows={3} className="mt-2" data-testid="textarea-pf-cancellation-policy"
               />
             </div>

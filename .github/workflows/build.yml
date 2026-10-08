@@ -86,6 +86,13 @@ jobs:
           node scripts/check-tripless-cart-writers.cjs --self-test
           node scripts/check-tripless-cart-writers.cjs
           node scripts/check-tripless-cart-writers.cjs --bundle
+      # Ledger 2026-10-08-us-spelling-guard: client copy and locale values are US English — no
+      # neighbourhood/travelling/licence/colour/organis*/favourite/centre/cancelled/catalogue in a
+      # client string (code values and comments excluded; proper nouns allowlisted by exact string).
+      - name: US-spelling copy guard — self-test, source
+        run: |
+          node scripts/check-us-spelling.cjs --self-test
+          node scripts/check-us-spelling.cjs
 
       # 2026-09-05-well-known-static (CLAUDE.md Locked Decision 43(e)): Stripe verifies an Apple
       # Pay domain by fetching /.well-known/apple-developer-merchantid-domain-association, and the

@@ -137,14 +137,14 @@ export function BundleComponentsPanel({ bookingId, audience, sellerRail = "provi
       setCancelTarget(null);
       setReason("");
       toast({
-        title: "Part cancelled",
+        title: "Part canceled",
         description: "What comes back is shown on this part once it is recorded — this page does not estimate it.",
       });
     },
     onError: (err: unknown) =>
       toast({
-        title: "Not cancelled",
-        description: apiRefusalMessage(err, "This part could not be cancelled."),
+        title: "Not canceled",
+        description: apiRefusalMessage(err, "This part could not be canceled."),
         variant: "destructive",
       }),
   });

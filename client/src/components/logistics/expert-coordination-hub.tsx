@@ -47,7 +47,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
   contacted: { label: "Contacted", color: "bg-blue-100 text-blue-800", icon: Send },
   confirmed: { label: "Confirmed", color: "bg-green-100 text-green-800", icon: CheckCircle },
   contract_signed: { label: "Contract Signed", color: "bg-emerald-100 text-emerald-800", icon: FileText },
-  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-800", icon: AlertTriangle },
+  cancelled: { label: "Canceled", color: "bg-red-100 text-red-800", icon: AlertTriangle },
 };
 
 const VENDOR_CATEGORIES = [

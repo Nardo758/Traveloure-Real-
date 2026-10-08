@@ -584,7 +584,7 @@ export default function ContentStudio() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search by city, POI, neighbourhood, or insight…"
+                placeholder="Search by city, POI, neighborhood, or insight…"
                 value={nuggetSearch}
                 onChange={(e) => setNuggetSearch(e.target.value)}
                 className="pl-10"
@@ -709,7 +709,7 @@ export default function ContentStudio() {
               <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingNugget ? "Edit Knowledge Nugget" : "Add Knowledge Nugget"}</DialogTitle>
-                  <DialogDescription>Share a local insight tied to a specific place or neighbourhood</DialogDescription>
+                  <DialogDescription>Share a local insight tied to a specific place or neighborhood</DialogDescription>
                 </DialogHeader>
                 <Form {...nuggetForm}>
                   <form onSubmit={nuggetForm.handleSubmit(onNuggetSubmit)} className="space-y-4">
@@ -749,7 +749,7 @@ export default function ContentStudio() {
                       )} />
                       <FormField control={nuggetForm.control} name="linkedNeighbourhood" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Neighbourhood <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                          <FormLabel>Neighborhood <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                           <FormControl><Input placeholder="e.g., Asakusa" {...field} data-testid="input-nugget-neighbourhood" /></FormControl>
                           <FormMessage />
                         </FormItem>

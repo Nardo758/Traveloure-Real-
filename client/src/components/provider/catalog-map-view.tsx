@@ -1170,7 +1170,7 @@ export function CatalogMapView({
                   <>{displayName(selected ?? { serviceName: "" })} has no confirmed pin, so this state is not drawn for it.</>
                 )}
                 <span className="block mt-1.5" style={{ color: WARN_INK }}>
-                  Whether the traveler sees the exact pin or a fuzzed neighbourhood point is a{" "}
+                  Whether the traveler sees the exact pin or a fuzzed neighborhood point is a{" "}
                   <b>spec decision, not a shipped behaviour</b> (spec gap #13). This canvas draws the
                   authored point as-is — no precision rule is implied.
                 </span>

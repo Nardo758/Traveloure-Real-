@@ -98,10 +98,10 @@ const COMPONENT_STATE_COPY: Record<string, ComponentStateCopy> = {
     seller: "You recorded that this part will not be delivered. Its allocated amount goes back to the traveler.",
   },
   cancelled: {
-    label: "Cancelled by traveler",
+    label: "Canceled by traveler",
     tone: "bad",
-    traveler: "You cancelled this part. What comes back follows the cancellation policy this booking was bought under.",
-    seller: "The traveler cancelled this part under the policy your listing carried at purchase.",
+    traveler: "You canceled this part. What comes back follows the cancellation policy this booking was bought under.",
+    seller: "The traveler canceled this part under the policy your listing carried at purchase.",
   },
   refunded: {
     label: "Refunded",
@@ -252,7 +252,7 @@ export function settlementReadout(row: BundleSettlementRow | null | undefined): 
  */
 export function componentSourceNote(source: string | null | undefined): string | null {
   if (source === "legacy_jsonb") {
-    return "This bundle was bought before per-part records existed, so only what was included can be shown — a single part cannot be settled or cancelled here.";
+    return "This bundle was bought before per-part records existed, so only what was included can be shown — a single part cannot be settled or canceled here.";
   }
   return null;
 }
