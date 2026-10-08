@@ -2,6 +2,8 @@
 
 **Part 1 not complete.** This is a partial, fresh baseline report, not production certification.
 
+**Latest open-item run:** [automation-part1-open-items.md](automation-part1-open-items.md) supersedes earlier unstarted-clock/link notes. Fresh golden loops are 146/146, guards 76/76, typecheck stays at 117. Runtime defects and incomplete browser/writer proof keep Part 1 OPEN.
+
 ## Source and scope
 
 - Frozen source: `f413edab1bbde376ba55b2139c952683c520e4fc`.

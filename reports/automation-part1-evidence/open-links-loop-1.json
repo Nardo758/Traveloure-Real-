@@ -1,0 +1,302 @@
+{
+  "loop": 1,
+  "schema": "automation_msg_6e4c4ee8c1ad1bc0",
+  "checkedAt": "2026-10-08T18:03:51.222Z",
+  "cases": [
+    {
+      "kind": "itinerary_ready",
+      "fixtureId": "842f5cda-28f5-4fd9-b67c-ad107f3cc1b6",
+      "comparisonId": "acaa6666-e8dc-419c-ab10-2ac46db5bccf",
+      "outboxId": 1650791521,
+      "status": "sent",
+      "providerId": "01a11cae-fe1c-7dbf-989e-02e1e2fe27f6",
+      "rightPersonApiStatus": 200,
+      "mode": "FAST_ISSUED_BROWSER_LINK",
+      "wrongPersonApiStatus": 401,
+      "wrongPersonRejected": true,
+      "randomizedScenarioId": "6f1cef38-a251-407c-be46-ab995dbcb96a"
+    },
+    {
+      "kind": "itinerary_failed",
+      "fixtureId": "251d794e-7243-4eb2-9cab-f78e8ee97e30",
+      "comparisonId": "89e0c0de-d9e2-4f77-95ca-93c6153b6fcf",
+      "outboxId": 1650791526,
+      "status": "sent",
+      "providerId": "01a11caf-08ec-736c-bcb8-e5a391f9edce",
+      "rightPersonApiStatus": 200,
+      "mode": "FAST_ISSUED_BROWSER_LINK",
+      "wrongPersonApiStatus": 401,
+      "wrongPersonRejected": true,
+      "randomizedScenarioId": "d4b9acb4-5f11-42e5-9c05-ac404d844027"
+    },
+    {
+      "kind": "itinerary_nudge_2h",
+      "fixtureId": "6fc0e803-21f0-4a31-8727-66d4bd016729",
+      "comparisonId": "e64a2864-f71f-40cd-8dd4-f4c574f6324e",
+      "outboxId": 1650791529,
+      "status": "sent",
+      "providerId": "01a11caf-143b-7a96-9705-2f3f2cbfed71",
+      "rightPersonApiStatus": 200,
+      "mode": "FAST_ISSUED_BROWSER_LINK",
+      "wrongPersonApiStatus": 401,
+      "wrongPersonRejected": true,
+      "randomizedScenarioId": "e7145754-575c-47fb-833f-abfa801e85fd"
+    },
+    {
+      "kind": "itinerary_followup_24h",
+      "fixtureId": "24063fda-c2ed-4b5c-a412-dbf153927478",
+      "comparisonId": "909d0ed2-78d4-4823-b6e1-a08acfae66af",
+      "outboxId": 1650791535,
+      "status": "sent",
+      "providerId": "01a11caf-1e70-7f1e-b42b-188736a43609",
+      "rightPersonApiStatus": 200,
+      "mode": "FAST_ISSUED_BROWSER_LINK",
+      "wrongPersonApiStatus": 401,
+      "wrongPersonRejected": true,
+      "randomizedScenarioId": "ed9f4596-17eb-4f11-8640-c387edd92707"
+    },
+    {
+      "kind": "itinerary_reengagement_5d",
+      "fixtureId": "093d08a1-f56d-419c-a5a8-074eed99ee92",
+      "comparisonId": "63a5bad7-f3ec-4fb9-ad30-0ec33c4e7db1",
+      "outboxId": 1650791541,
+      "status": "sent",
+      "providerId": "01a11caf-2943-718b-84c8-0a76ffbe5571",
+      "rightPersonApiStatus": 200,
+      "mode": "FAST_ISSUED_BROWSER_LINK",
+      "wrongPersonApiStatus": 401,
+      "wrongPersonRejected": true,
+      "randomizedScenarioId": "8d138beb-66fe-4420-a73a-c8c65f3ee1c9"
+    },
+    {
+      "kind": "verification",
+      "fixtureId": "729bb503-c100-41d1-b841-de3384ba0c15",
+      "issuedByNativeRoute": true,
+      "outboxId": null
+    },
+    {
+      "kind": "password_reset",
+      "fixtureId": "007253d6-8bf0-406b-9e14-c47eb2e54c03",
+      "issuedByNativeRoute": true,
+      "outboxId": null
+    }
+  ],
+  "receipts": [
+    {
+      "providerId": "01a11cae-f6f8-77f8-9d27-8a8d2685dd5a",
+      "accountKind": "itinerary_ready",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:29.254Z"
+    },
+    {
+      "providerId": "01a11cae-fa21-770b-84ab-0bf97dca728b",
+      "accountKind": "itinerary_ready",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:30.148Z"
+    },
+    {
+      "providerId": "01a11cae-fe1c-7dbf-989e-02e1e2fe27f6",
+      "accountKind": "itinerary_ready",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:31.047Z"
+    },
+    {
+      "providerId": "01a11caf-020d-7b21-a11d-4b4ed8d6a4fd",
+      "accountKind": "itinerary_failed",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:31.948Z"
+    },
+    {
+      "providerId": "01a11caf-0543-7871-b4c9-cbefcd55de2d",
+      "accountKind": "itinerary_failed",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:32.850Z"
+    },
+    {
+      "providerId": "01a11caf-08ec-736c-bcb8-e5a391f9edce",
+      "accountKind": "itinerary_failed",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:33.724Z"
+    },
+    {
+      "providerId": "01a11caf-0cd4-71e2-9165-7487b1c5f94d",
+      "accountKind": "itinerary_nudge_2h",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:34.590Z"
+    },
+    {
+      "providerId": "01a11caf-0ff8-73b8-9deb-90428126fb36",
+      "accountKind": "itinerary_nudge_2h",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:35.482Z"
+    },
+    {
+      "providerId": "01a11caf-143b-7a96-9705-2f3f2cbfed71",
+      "accountKind": "itinerary_nudge_2h",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:36.357Z"
+    },
+    {
+      "providerId": "01a11caf-17d2-7b16-8d73-eb4b312dce6b",
+      "accountKind": "itinerary_followup_24h",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:37.899Z"
+    },
+    {
+      "providerId": "01a11caf-1b00-7b7f-beca-1d7df628952b",
+      "accountKind": "itinerary_followup_24h",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:39.832Z"
+    },
+    {
+      "providerId": "01a11caf-1e70-7f1e-b42b-188736a43609",
+      "accountKind": "itinerary_followup_24h",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:40.738Z"
+    },
+    {
+      "providerId": "01a11caf-21eb-72a5-8a9b-9424736844c0",
+      "accountKind": "itinerary_reengagement_5d",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:41.912Z"
+    },
+    {
+      "providerId": "01a11caf-2515-73bd-8e1e-d9d41e93af1c",
+      "accountKind": "itinerary_reengagement_5d",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:42.801Z"
+    },
+    {
+      "providerId": "01a11caf-2943-718b-84c8-0a76ffbe5571",
+      "accountKind": "itinerary_reengagement_5d",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:43.687Z"
+    },
+    {
+      "providerId": "01a11caf-2cc5-7acc-aacd-c600d126e71a",
+      "accountKind": "verification",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:44.581Z"
+    },
+    {
+      "providerId": "01a11caf-2ff6-7d94-a6f6-f8ae8b73a16b",
+      "accountKind": "verification",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:45.455Z"
+    },
+    {
+      "providerId": "01a11caf-3321-7eea-b09e-5381ba39e950",
+      "accountKind": "password_reset",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:46.343Z"
+    },
+    {
+      "providerId": "01a11caf-3646-78c7-988e-00637905ec6c",
+      "accountKind": "password_reset",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:47.359Z"
+    },
+    {
+      "providerId": "01a11caf-39a2-7a4a-940e-678914596243",
+      "accountKind": "password_reset",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:48.276Z"
+    },
+    {
+      "providerId": "01a11caf-3d25-78be-82ef-e1a1497314cd",
+      "accountKind": "wrong",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:50.340Z"
+    },
+    {
+      "providerId": "01a11caf-406a-779e-af25-0af8bdcb8e74",
+      "accountKind": "wrong",
+      "providerEvent": "delivered",
+      "checkedAt": "2026-10-08T18:03:51.220Z"
+    }
+  ],
+  "deliveredRows": [
+    {
+      "id": 1650791520,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11cae-fa21-770b-84ab-0bf97dca728b"
+    },
+    {
+      "id": 1650791521,
+      "emailType": "itinerary_ready",
+      "status": "sent",
+      "providerId": "01a11cae-fe1c-7dbf-989e-02e1e2fe27f6"
+    },
+    {
+      "id": 1650791525,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-0543-7871-b4c9-cbefcd55de2d"
+    },
+    {
+      "id": 1650791544,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-406a-779e-af25-0af8bdcb8e74"
+    },
+    {
+      "id": 1650791526,
+      "emailType": "itinerary_failed",
+      "status": "sent",
+      "providerId": "01a11caf-08ec-736c-bcb8-e5a391f9edce"
+    },
+    {
+      "id": 1650791527,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-0ff8-73b8-9deb-90428126fb36"
+    },
+    {
+      "id": 1650791529,
+      "emailType": "itinerary_nudge_2h",
+      "status": "sent",
+      "providerId": "01a11caf-143b-7a96-9705-2f3f2cbfed71"
+    },
+    {
+      "id": 1650791532,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-1b00-7b7f-beca-1d7df628952b"
+    },
+    {
+      "id": 1650791535,
+      "emailType": "itinerary_followup_24h",
+      "status": "sent",
+      "providerId": "01a11caf-1e70-7f1e-b42b-188736a43609"
+    },
+    {
+      "id": 1650791537,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-2515-73bd-8e1e-d9d41e93af1c"
+    },
+    {
+      "id": 1650791543,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-3646-78c7-988e-00637905ec6c"
+    },
+    {
+      "id": 1650791541,
+      "emailType": "itinerary_reengagement_5d",
+      "status": "sent",
+      "providerId": "01a11caf-2943-718b-84c8-0a76ffbe5571"
+    },
+    {
+      "id": 1650791542,
+      "emailType": "signup_welcome",
+      "status": "sent",
+      "providerId": "01a11caf-2ff6-7d94-a6f6-f8ae8b73a16b"
+    }
+  ],
+  "noProductionChanges": true,
+  "noPaymentsExecuted": true,
+  "browserStillRequired": true,
+  "authOutboxDefect": "Verification/reset are native direct sends: no outbox row; G10 cannot close under current requirement"
+}

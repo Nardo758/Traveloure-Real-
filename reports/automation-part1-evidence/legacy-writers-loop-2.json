@@ -1,0 +1,87 @@
+[
+  {
+    "scenarioId": "94c5e8a2-59fb-4e75-af91-e499f78fcf5d",
+    "loop": 2,
+    "ordering": "webhook_then_page",
+    "bookingId": "61e11a5b-9988-4b23-a0f6-c75db10e1222",
+    "pageStatus": 200,
+    "finalStatus": "confirmed",
+    "confirmationRows": 1,
+    "simulatedTravelerSendCount": 1,
+    "allSimulatedSends": 1,
+    "outboxIds": [
+      1650791578
+    ],
+    "onceOnlyPassed": true,
+    "confirmationCodeMatchesEmail": true,
+    "mode": "NATIVE_LEGACY_WRITERS_WITH_SIMULATED_PROVIDER",
+    "webhookSignatureBoundaryTested": false,
+    "stripeWrites": 0,
+    "realDeliveryClaimed": false,
+    "checkedAt": "2026-10-08T18:27:58.192Z"
+  },
+  {
+    "scenarioId": "c1468299-d526-4c1c-8d8a-a9dd950768aa",
+    "loop": 2,
+    "ordering": "page_then_webhook",
+    "bookingId": "cb84f2d6-7147-4df6-9275-33623b4c1045",
+    "pageStatus": 200,
+    "finalStatus": "confirmed",
+    "confirmationRows": 1,
+    "simulatedTravelerSendCount": 1,
+    "allSimulatedSends": 2,
+    "outboxIds": [
+      1650791579
+    ],
+    "onceOnlyPassed": true,
+    "confirmationCodeMatchesEmail": true,
+    "mode": "NATIVE_LEGACY_WRITERS_WITH_SIMULATED_PROVIDER",
+    "webhookSignatureBoundaryTested": false,
+    "stripeWrites": 0,
+    "realDeliveryClaimed": false,
+    "checkedAt": "2026-10-08T18:27:58.475Z"
+  },
+  {
+    "scenarioId": "b09d8e94-b790-4f50-81e3-aa988e7394a7",
+    "loop": 2,
+    "ordering": "two_webhooks_at_once",
+    "bookingId": "579614c8-dbb9-49d8-9d39-8a453adf5b05",
+    "pageStatus": null,
+    "finalStatus": "confirmed",
+    "confirmationRows": 2,
+    "simulatedTravelerSendCount": 2,
+    "allSimulatedSends": 2,
+    "outboxIds": [
+      1650791581,
+      1650791582
+    ],
+    "onceOnlyPassed": false,
+    "confirmationCodeMatchesEmail": false,
+    "mode": "NATIVE_LEGACY_WRITERS_WITH_SIMULATED_PROVIDER",
+    "webhookSignatureBoundaryTested": false,
+    "stripeWrites": 0,
+    "realDeliveryClaimed": false,
+    "checkedAt": "2026-10-08T18:27:58.750Z"
+  },
+  {
+    "scenarioId": "824aa29f-905c-4b88-b12a-892f94134a50",
+    "loop": 2,
+    "ordering": "three_sequential_webhooks",
+    "bookingId": "2fb824e9-2871-43d8-ae9b-23f2c74c30a8",
+    "pageStatus": null,
+    "finalStatus": "confirmed",
+    "confirmationRows": 1,
+    "simulatedTravelerSendCount": 1,
+    "allSimulatedSends": 1,
+    "outboxIds": [
+      1650791583
+    ],
+    "onceOnlyPassed": true,
+    "confirmationCodeMatchesEmail": true,
+    "mode": "NATIVE_LEGACY_WRITERS_WITH_SIMULATED_PROVIDER",
+    "webhookSignatureBoundaryTested": false,
+    "stripeWrites": 0,
+    "realDeliveryClaimed": false,
+    "checkedAt": "2026-10-08T18:27:59.027Z"
+  }
+]

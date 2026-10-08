@@ -1,0 +1,2427 @@
+{
+  "checkedAt": "2026-10-08T18:55:27.558Z",
+  "certifiedAutomations": 0,
+  "builtTypes": 11,
+  "rows": [
+    {
+      "type": "itinerary_ready",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Actual delivered issued messages and outbox rows exist; genuine comparison navigation timed out in browser worker. Wrong-person UI and unsubscribe are unchecked."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_ready",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Actual delivered issued messages and outbox rows exist; genuine comparison navigation timed out in browser worker. Wrong-person UI and unsubscribe are unchecked."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_failed",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Actual delivered issued messages and outbox rows exist; genuine comparison navigation timed out in browser worker. Wrong-person UI and unsubscribe are unchecked."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_nudge_2h",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Actual delivered issued messages and outbox rows exist; genuine comparison navigation timed out in browser worker. Wrong-person UI and unsubscribe are unchecked."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_followup_24h",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Actual delivered issued messages and outbox rows exist; genuine comparison navigation timed out in browser worker. Wrong-person UI and unsubscribe are unchecked."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "itinerary_reengagement_5d",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G3",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Both browser loops: Browse experts opens /become-expert instead of the directory; browser-account-links.json."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "G10",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Both browser loops: Browse experts opens /become-expert instead of the directory; browser-account-links.json."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S9",
+      "loop1": "OPEN",
+      "loop2": "OPEN",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "No type-specific clock scenario started; eight global starts are not this type's proof."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S11",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Both browser loops: Browse experts opens /become-expert instead of the directory; browser-account-links.json."
+    },
+    {
+      "type": "signup_welcome",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "verification",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G2",
+      "loop1": "OPEN_POLICY",
+      "loop2": "OPEN_POLICY",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Owner/replay/tamper checked twice; a valid token is accepted in another signed-in account. Bearer semantics observed, not inferred malicious intent."
+    },
+    {
+      "type": "verification",
+      "rule": "G3",
+      "loop1": "OPEN_POLICY",
+      "loop2": "OPEN_POLICY",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Owner/replay/tamper checked twice; a valid token is accepted in another signed-in account. Bearer semantics observed, not inferred malicious intent."
+    },
+    {
+      "type": "verification",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "G10",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Real issued email and browser proof exist, but native direct send has no actual outbox row."
+    },
+    {
+      "type": "verification",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "verification",
+      "rule": "S10",
+      "loop1": "OPEN_POLICY",
+      "loop2": "OPEN_POLICY",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Owner/replay/tamper checked twice; a valid token is accepted in another signed-in account. Bearer semantics observed, not inferred malicious intent."
+    },
+    {
+      "type": "verification",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "verification",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G2",
+      "loop1": "OPEN_POLICY",
+      "loop2": "OPEN_POLICY",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Owner/replay/tamper checked twice; a valid token is accepted in another signed-in account. Bearer semantics observed, not inferred malicious intent."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G3",
+      "loop1": "OPEN_POLICY",
+      "loop2": "OPEN_POLICY",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Owner/replay/tamper checked twice; a valid token is accepted in another signed-in account. Bearer semantics observed, not inferred malicious intent."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "G10",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Real issued email and browser proof exist, but native direct send has no actual outbox row."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S10",
+      "loop1": "OPEN_POLICY",
+      "loop2": "OPEN_POLICY",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Owner/replay/tamper checked twice; a valid token is accepted in another signed-in account. Bearer semantics observed, not inferred malicious intent."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "password_reset",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S9",
+      "loop1": "OPEN",
+      "loop2": "OPEN",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "No type-specific clock scenario started; eight global starts are not this type's proof."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "canonical_booking_confirmation",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G3",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Concurrent native legacy handlers produced two traveler outbox rows/simulated sends and mismatched final confirmation code in each loop."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G4",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Concurrent native legacy handlers produced two traveler outbox rows/simulated sends and mismatched final confirmation code in each loop."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G8",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Concurrent native legacy handlers produced two traveler outbox rows/simulated sends and mismatched final confirmation code in each loop."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S3",
+      "loop1": "FAIL",
+      "loop2": "FAIL",
+      "completeCleanLoops": 0,
+      "failedLoops": 2,
+      "attackComplete": false,
+      "reason": "Concurrent native legacy handlers produced two traveler outbox rows/simulated sends and mismatched final confirmation code in each loop."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S9",
+      "loop1": "WAITING_PARTIAL",
+      "loop2": "WAITING_PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Eight actual-clock scenarios started; two manual native/provider passes. A genuinely stopped scheduled-job recovery is NOT STARTED."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "legacy_booking_confirmation",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    },
+    {
+      "type": "activity",
+      "rule": "G1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G9",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "G10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S1",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S2",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S3",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S4",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S5",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S6",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S7",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S8",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S9",
+      "loop1": "OPEN",
+      "loop2": "OPEN",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "No type-specific clock scenario started; eight global starts are not this type's proof."
+    },
+    {
+      "type": "activity",
+      "rule": "S10",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S11",
+      "loop1": "PARTIAL",
+      "loop2": "PARTIAL",
+      "completeCleanLoops": 0,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected regression/subproof exists; complete current writer and attack coverage is not established."
+    },
+    {
+      "type": "activity",
+      "rule": "S12",
+      "loop1": "PASS",
+      "loop2": "PASS",
+      "completeCleanLoops": 2,
+      "failedLoops": 0,
+      "attackComplete": false,
+      "reason": "Protected golden regression assertions all passed in both fresh loops."
+    }
+  ]
+}

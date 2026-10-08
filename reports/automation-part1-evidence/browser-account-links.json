@@ -1,0 +1,369 @@
+{
+  "schemaVersion": 1,
+  "environment": "isolated QA server at 127.0.0.1:5001",
+  "sanitized": true,
+  "privateValuesIncluded": false,
+  "mainApplicationTouched": false,
+  "productionOrPaymentActions": false,
+  "clockAccountsOrExpiryTokensTouched": false,
+  "preparedLoops": [1, 2],
+  "summary": {
+    "nativeSignup": "success for both loops in fresh browser contexts",
+    "welcomeEmailLinks": "actual captured welcome-mail anchors opened for both loops",
+    "verification": "right-owner link succeeded; replay and tamper were rejected for both loops",
+    "crossAccountVerification": "untouched wrong-owner link was accepted while signed in as a different account for both loops",
+    "passwordReset": "issued reset link was accepted from a different signed-in account for both loops; fresh right-owner reset succeeded and fresh-link replay/tamper were rejected",
+    "importantBehavior": "Verification and password-reset bearer links were accepted regardless of the currently signed-in account."
+  },
+  "loops": {
+    "1": {
+      "signup": {
+        "route": "/signup",
+        "status": "success",
+        "postSubmitRoute": "/dashboard",
+        "authenticatedIdentityObserved": "QA 1 browser_signup",
+        "screenshotRefs": [
+          {
+            "id": "oj02my",
+            "description": "Authenticated dashboard after native loop-1 signup."
+          }
+        ]
+      },
+      "welcomeMail": {
+        "providerId": "01a11cb2-f64e-7c2a-9a33-5fd73a625390",
+        "renderRoute": "/qa-mail-render/01a11cb2-f64e-7c2a-9a33-5fd73a625390",
+        "textPayloadLength": 338,
+        "placeholderDetected": false,
+        "linksOpened": [
+          {
+            "label": "Start Planning",
+            "outcome": "dashboard in the loop-1 signed-in context",
+            "screenshotRef": "79neo3"
+          },
+          {
+            "label": "Explore destinations",
+            "outcome": "/explore settled at /destinations; empty state: no cities available",
+            "screenshotRef": "jsoo9n"
+          },
+          {
+            "label": "Browse experts",
+            "outcome": "/travel-experts settled at /become-expert; prefilled identity matched the loop-1 signup account",
+            "screenshotRef": "5v6axp"
+          }
+        ],
+        "renderChecks": {
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "primaryCtaVisible": true,
+          "secondaryLinksVisible": true,
+          "horizontalClippingObserved": false
+        },
+        "screenshotRefs": [
+          {
+            "id": "xhz5el",
+            "description": "Desktop render of the actual captured welcome email."
+          },
+          {
+            "id": "7zmig6",
+            "description": "Mobile render of the actual captured welcome email."
+          }
+        ]
+      },
+      "verification": {
+        "providerId": "01a11caf-2cc5-7acc-aacd-c600d126e71a",
+        "ownerAuthenticatedThrough": "native sign-in UI",
+        "rightOwner": "accepted; native page displayed Email verified",
+        "reuse": "rejected; native page displayed Verification link expired",
+        "tampered": "rejected; native page displayed Verification link expired",
+        "emailRender": {
+          "textPayloadLength": 330,
+          "placeholderDetected": false,
+          "confirmCtaVisible": true,
+          "24HourExpiryCopyPresent": true,
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "plaintextUrlRedactedBeforeScreenshots": true,
+          "screenshotRefs": [
+            {
+              "id": "9mb56a",
+              "description": "Desktop render of the actual loop-1 verification email with token text redacted."
+            },
+            {
+              "id": "d3qfkm",
+              "description": "Mobile render of the actual loop-1 verification email with token text redacted."
+            }
+          ]
+        },
+        "screenshotRefs": [
+          {
+            "id": "8s7n38",
+            "description": "Post-verification view after the signed URL was scrubbed; owner identity remains visible."
+          },
+          {
+            "id": "st55cs",
+            "description": "Post-replay view after URL scrubbing; rejection text was recorded before scrubbing."
+          }
+        ]
+      },
+      "crossAccountVerification": {
+        "providerId": "01a11caf-3d25-78be-82ef-e1a1497314cd",
+        "messageUntouchedBeforeTest": true,
+        "signedInIdentity": "QA 1 verification",
+        "targetWasDifferentAccount": true,
+        "outcome": "accepted; native page displayed Email verified",
+        "bearerTokenAcceptedRegardlessOfSession": true,
+        "screenshotRefs": [
+          {
+            "id": "0sahd5",
+            "description": "Mobile render of the wrong-account verification email with its plaintext URL redacted."
+          },
+          {
+            "id": "xx6aj2",
+            "description": "Post-action view after the captured signed URL was scrubbed."
+          }
+        ]
+      },
+      "passwordReset": {
+        "initialProviderId": "01a11caf-39a2-7a4a-940e-678914596243",
+        "differentSessionReset": {
+          "signedInIdentity": "QA 1 verification",
+          "targetWasDifferentAccount": true,
+          "newPasswordWasTargetOriginalPassword": true,
+          "outcome": "accepted; native page displayed Password reset"
+        },
+        "forgotPasswordApi": {
+          "route": "/api/auth/forgot-password",
+          "status": 200,
+          "freshProviderId": "01a11cb9-a4a3-7d34-abc4-a87533cc0b3b"
+        },
+        "freshEmail": {
+          "textPayloadLength": 345,
+          "placeholderDetected": false,
+          "resetCtaVisible": true,
+          "expiryAndOneUseCopyPresent": true,
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "plaintextUrlRedactedBeforeScreenshots": true
+        },
+        "rightOwnerReset": "accepted; signed in through native UI as QA 1 password_reset; original password submitted",
+        "reuse": "rejected; native page displayed Reset link expired",
+        "tampered": "rejected; native page displayed Reset link expired",
+        "screenshotRefs": [
+          {
+            "id": "ewbd6d",
+            "description": "Different-session password reset success with the token masked in the URL."
+          },
+          {
+            "id": "w6oq5r",
+            "description": "Desktop render of the actual fresh password-reset email with token text redacted."
+          },
+          {
+            "id": "zwd6k7",
+            "description": "Mobile render of the actual fresh password-reset email with token text redacted."
+          },
+          {
+            "id": "f5rpo3",
+            "description": "Right-owner fresh reset success with the URL token masked."
+          },
+          {
+            "id": "bfnqrw",
+            "description": "Fresh reset-link replay rejection."
+          },
+          {
+            "id": "c8l8vi",
+            "description": "Fresh reset-link tamper rejection."
+          }
+        ]
+      }
+    },
+    "2": {
+      "signup": {
+        "route": "/signup",
+        "status": "success",
+        "postSubmitRoute": "/dashboard",
+        "authenticatedIdentityObserved": "QA 2 browser_signup",
+        "screenshotRefs": [
+          {
+            "id": "tcsbw1",
+            "description": "Authenticated dashboard after native loop-2 signup with email visually masked."
+          }
+        ]
+      },
+      "welcomeMail": {
+        "providerId": "01a11cbb-e3f5-77cc-ab9b-e37aa4050ac0",
+        "renderRoute": "/qa-mail-render/01a11cbb-e3f5-77cc-ab9b-e37aa4050ac0",
+        "textPayloadLength": 338,
+        "placeholderDetected": false,
+        "linksOpened": [
+          {
+            "label": "Start Planning",
+            "outcome": "dashboard in the loop-2 signed-in context",
+            "screenshotRef": "frv07y"
+          },
+          {
+            "label": "Explore destinations",
+            "outcome": "/explore settled at /destinations; empty state: no cities available",
+            "screenshotRef": "oz6aem"
+          },
+          {
+            "label": "Browse experts",
+            "outcome": "/travel-experts settled at /become-expert; prefilled identity matched the loop-2 signup account",
+            "screenshotRef": "9n9kfr"
+          }
+        ],
+        "renderChecks": {
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "primaryCtaVisible": true,
+          "secondaryLinksVisible": true,
+          "horizontalClippingObserved": false
+        },
+        "screenshotRefs": [
+          {
+            "id": "73tjjc",
+            "description": "Desktop render of the actual captured loop-2 welcome email."
+          },
+          {
+            "id": "7xik03",
+            "description": "Mobile render of the actual captured loop-2 welcome email."
+          }
+        ]
+      },
+      "verification": {
+        "providerId": "01a11cb2-6248-7515-805c-1205835c9e59",
+        "ownerAuthenticatedThrough": "native sign-in UI",
+        "rightOwner": "accepted; native page displayed Email verified",
+        "reuse": "rejected; native page displayed Verification link expired",
+        "tampered": "rejected; native page displayed Verification link expired",
+        "emailRender": {
+          "textPayloadLength": 330,
+          "placeholderDetected": false,
+          "confirmCtaVisible": true,
+          "24HourExpiryCopyPresent": true,
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "plaintextUrlRedactedBeforeScreenshots": true,
+          "screenshotRefs": [
+            {
+              "id": "son5wq",
+              "description": "Desktop render of the actual loop-2 verification email with token text redacted."
+            },
+            {
+              "id": "gkl8rf",
+              "description": "Mobile render of the actual loop-2 verification email with token text redacted."
+            }
+          ]
+        },
+        "screenshotRefs": [
+          {
+            "id": "ft4mjs",
+            "description": "Post-verification view after the signed URL was scrubbed; QA 2 verification identity remains visible."
+          },
+          {
+            "id": "d9g7z9",
+            "description": "Post-replay view after URL scrubbing; rejection text was recorded before scrubbing."
+          }
+        ]
+      },
+      "crossAccountVerification": {
+        "providerId": "01a11cb2-7b34-7c0c-bdb7-4b2af4e3efc0",
+        "messageUntouchedBeforeTest": true,
+        "signedInIdentity": "QA 2 verification",
+        "targetWasDifferentAccount": true,
+        "outcome": "accepted; native page displayed Email verified",
+        "bearerTokenAcceptedRegardlessOfSession": true,
+        "emailRender": {
+          "textPayloadLength": 323,
+          "placeholderDetected": false,
+          "confirmCtaVisible": true,
+          "24HourExpiryCopyPresent": true,
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "plaintextUrlRedactedBeforeScreenshots": true,
+          "screenshotRefs": [
+            {
+              "id": "rwfrmy",
+              "description": "Desktop render of the actual loop-2 wrong-account verification email with token text redacted."
+            },
+            {
+              "id": "75q5i4",
+              "description": "Mobile render of the actual loop-2 wrong-account verification email with token text redacted."
+            }
+          ]
+        },
+        "screenshotRefs": [
+          {
+            "id": "50aq51",
+            "description": "Post-action view after the captured signed URL was scrubbed."
+          }
+        ]
+      },
+      "passwordReset": {
+        "initialProviderId": "01a11cb2-7580-7337-b959-2ba0dc78c6ac",
+        "differentSessionReset": {
+          "signedInIdentity": "QA 2 verification",
+          "targetWasDifferentAccount": true,
+          "newPasswordWasTargetOriginalPassword": true,
+          "outcome": "accepted; native page displayed Password reset"
+        },
+        "forgotPasswordApi": {
+          "route": "/api/auth/forgot-password",
+          "status": 200,
+          "freshProviderId": "01a11cbe-f539-74b3-a8b0-cbd7b3e9069b"
+        },
+        "freshEmail": {
+          "textPayloadLength": 345,
+          "placeholderDetected": false,
+          "resetCtaVisible": true,
+          "expiryAndOneUseCopyPresent": true,
+          "desktopWidth": 1280,
+          "mobileWidth": 390,
+          "plaintextUrlRedactedBeforeScreenshots": true
+        },
+        "rightOwnerReset": "accepted; signed in through native UI as QA 2 password_reset; original password submitted",
+        "reuse": "rejected; native page displayed Reset link expired",
+        "tampered": "rejected; native page displayed Reset link expired",
+        "screenshotRefs": [
+          {
+            "id": "y9cage",
+            "description": "Different-session reset success with the token masked."
+          },
+          {
+            "id": "xhbmzo",
+            "description": "Desktop render of the fresh reset email with token text redacted."
+          },
+          {
+            "id": "zfaz8d",
+            "description": "Mobile render of the fresh reset email with token text redacted."
+          },
+          {
+            "id": "b18nz3",
+            "description": "Right-owner fresh reset success with the URL token masked."
+          },
+          {
+            "id": "s4uizv",
+            "description": "Fresh reset-link replay rejection."
+          },
+          {
+            "id": "1g0seo",
+            "description": "Fresh reset-link tamper rejection."
+          }
+        ]
+      }
+    }
+  },
+  "nonBlockingObservations": [
+    "The app emitted HTTP 401 and HTTP 500 resource errors in browser logs on several rendered QA routes; requested signup, login, mail rendering, verification, and reset behaviors still completed.",
+    "Welcome-email Explore destinations anchors went to /explore and settled at /destinations with a no-cities empty state.",
+    "Welcome-email Browse experts anchors went to /travel-experts and settled at /become-expert, where the current signup account identity was prefilled.",
+    "Verification/reset result copy was read from the native page before the query was scrubbed; screenshots were taken after scrubbing to avoid exposing signed URLs."
+  ],
+  "filesChanged": [
+    "reports/automation-part1-evidence/browser-account-links.json",
+    "scripts/verification/browser-account-links.mjs"
+  ],
+  "privacyHandling": {
+    "reportAndScriptContainPrivateValues": false,
+    "note": "One immediate loop-1 expert-form observation occurred before the email field was masked. That screenshot is excluded from the evidence references; all later expert-form screenshots were masked."
+  }
+}

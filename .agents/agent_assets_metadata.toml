@@ -314,3 +314,59 @@ mtime_ms = 1791479542715
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/5051895c-bf83-4c8e-86f1-5e07acefca48/217bcefe-f242-4a0e-923b-90f0ffc3f87d"
 storage_version_token = "1791479548349206"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "tq2t-qSVVZiL82w7hlp75"
+uri = "file://reports/automation-part1-open-items.md"
+type = "text"
+title = "Part 1 — open-item results"
+description = "Fresh checks, reproduced defects, evidence and remaining blockers. Part 1 is not certified."
+logical_id = "e991740e-6585-4d93-aeba-3f07e1377461"
+content_hash = "sha256:d6db6d22d2403fe32067598b2280e3bd6499e68df734b1acf4a5ca5ddb8ef0b8"
+size = 6915
+mtime_ms = 1791485800695
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/e991740e-6585-4d93-aeba-3f07e1377461/3c28157a-fe64-493f-9907-e5e3dae40914"
+storage_version_token = "1791485894517990"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "UTOObueaXeUrnWbmBQwhd"
+uri = "file://reports/automation-part1-gate-scorecard.md"
+type = "text"
+title = "Part 1 — per-type gate scorecard"
+description = "G1–G10 and S1–S12 for the eleven built automation types, with loop states and coverage gaps."
+logical_id = "8afaec3b-e8c5-4b44-a766-2039cb52f8e3"
+content_hash = "sha256:f41a85c5bcf4b0fe6b4b6e9cfa67566525eef85bcfef487a5aa818177f496b66"
+size = 49639
+mtime_ms = 1791485727556
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/8afaec3b-e8c5-4b44-a766-2039cb52f8e3/e094962d-cd3c-403b-bf6a-e0c446921935"
+storage_version_token = "1791485895173311"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "PaPxo4M_E2f0ENPLGt2NN"
+uri = "file://reports/payment-writer-coverage.md"
+type = "text"
+title = "Payment writer coverage audit"
+description = "Source-and-line inventory, retained test coverage, new native writer evidence and unresolved rails."
+logical_id = "c4b1cb67-1549-4d8b-b36e-d628c106279d"
+content_hash = "sha256:464e4d0cdd99d3387123f5afc3feee213c8660b94319d29833bb7dc1391a1c5b"
+size = 53889
+mtime_ms = 1791485727668
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/c4b1cb67-1549-4d8b-b36e-d628c106279d/c1cf834e-b74a-4a9b-8eed-b0d5393bbcb2"
+storage_version_token = "1791485895923947"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "QFPJxSDgZ8CMLC7jupkJP"
+uri = "file://reports/real-clock-ledger.md"
+type = "text"
+title = "Actual-clock proof ledger"
+description = "Eight genuine scenarios with actual starts, deadlines, checks, row identifiers and receipt identifiers."
+logical_id = "ceaa9aa6-6672-4ac3-8572-d84105df07bf"
+content_hash = "sha256:9e54a05c74bde5261802dec46430c63eac2295261ecd3bad4c416b1e2aaf04ae"
+size = 3055
+mtime_ms = 1791485801643
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/ceaa9aa6-6672-4ac3-8572-d84105df07bf/15c625f8-7ab1-43dc-b258-e2bc0a70fa79"
+storage_version_token = "1791485896571077"
+content_type = "text/markdown"

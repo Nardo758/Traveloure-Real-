@@ -1,0 +1,4109 @@
+{
+  "checkedAt": "2026-10-08T18:02:39.687Z",
+  "filesScanned": 767,
+  "sourceDigest": "d4c01ed157871a557100bb5e6f7dfe8b1d1e98973aad8fce4f64643600412043",
+  "completeness": "OPEN: indirect/dynamic SQL, aliases outside named imports and caller-only emails require manual resolution",
+  "retainedSuites": {
+    "ledger": "server/__tests__/booking-confirm-payment-idempotency.test.ts",
+    "alerts": "server/__tests__/booking-alert-outbox.db.test.ts",
+    "note": "Alert suite invokes enqueueBookingAlertEmail, not a payment-state writer or traveler confirmation"
+  },
+  "rows": [
+    {
+      "file": "server/jobs/bookingAutoCompletion.ts",
+      "line": 194,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "passesPaymentGate",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_metadata"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/replit_integrations/auth/routes.ts",
+      "line": 235,
+      "kind": "database update",
+      "model": "expertRequests",
+      "writer": "DELETE /api/auth/account",
+      "route": "DELETE /api/auth/account",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 1513,
+      "kind": "provider create",
+      "model": "stripeClient.refunds",
+      "writer": "POST /api/admin/ready-made/disputes/:purchaseId/refund",
+      "route": "POST /api/admin/ready-made/disputes/:purchaseId/refund",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 1540,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "POST /api/admin/ready-made/disputes/:purchaseId/refund",
+      "route": "POST /api/admin/ready-made/disputes/:purchaseId/refund",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 1601,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "POST /api/admin/ready-made/disputes/:purchaseId/dismiss",
+      "route": "POST /api/admin/ready-made/disputes/:purchaseId/dismiss",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 6027,
+      "kind": "database update",
+      "model": "expertRequests",
+      "writer": "DELETE /api/admin/users/:id",
+      "route": "DELETE /api/admin/users/:id",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 8112,
+      "kind": "database update",
+      "model": "expertRequests",
+      "writer": "POST /api/admin/leads/:expertRequestId/assign",
+      "route": "POST /api/admin/leads/:expertRequestId/assign",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 8165,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "confirmLeadAssignmentHandler",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "assigned_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/admin.routes.ts",
+      "line": 8228,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "POST /api/admin/routing-queue/:requestId/reassign",
+      "route": "POST /api/admin/routing-queue/:requestId/reassign",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "assigned_expert_id",
+        "assigned_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/bookings.ts",
+      "line": 926,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "POST /:id/dispute",
+      "route": "POST /:id/dispute",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/optimization.routes.ts",
+      "line": 488,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "POST /api/optimization-payments",
+      "route": "POST /api/optimization-payments",
+      "rails": [
+        "Stripe",
+        "Trip Pass"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/payments.routes.ts",
+      "line": 2149,
+      "kind": "writer wrapper",
+      "model": "createServiceBooking",
+      "writer": "POST /api/checkout",
+      "route": "POST /api/checkout",
+      "rails": [
+        "Stripe",
+        "Trip Pass"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/payments.routes.ts",
+      "line": 3301,
+      "kind": "database update",
+      "model": "providerPayouts",
+      "writer": "POST /api/payouts/request",
+      "route": "POST /api/payouts/request",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/payments.routes.ts",
+      "line": 3306,
+      "kind": "database update",
+      "model": "expertPayouts",
+      "writer": "POST /api/payouts/request",
+      "route": "POST /api/payouts/request",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/payments.routes.ts",
+      "line": 3325,
+      "kind": "database insert",
+      "model": "providerPayouts",
+      "writer": "POST /api/payouts/request",
+      "route": "POST /api/payouts/request",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/payments.routes.ts",
+      "line": 3331,
+      "kind": "database insert",
+      "model": "expertPayouts",
+      "writer": "POST /api/payouts/request",
+      "route": "POST /api/payouts/request",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/provider.routes.ts",
+      "line": 281,
+      "kind": "database insert",
+      "model": "bundleComponents",
+      "writer": "POST /api/provider/bundles",
+      "route": "POST /api/provider/bundles",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/provider.routes.ts",
+      "line": 405,
+      "kind": "database delete",
+      "model": "bundleComponents",
+      "writer": "PATCH /api/provider/bundles/:id",
+      "route": "PATCH /api/provider/bundles/:id",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/provider.routes.ts",
+      "line": 406,
+      "kind": "database insert",
+      "model": "bundleComponents",
+      "writer": "PATCH /api/provider/bundles/:id",
+      "route": "PATCH /api/provider/bundles/:id",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/ready-made.routes.ts",
+      "line": 1432,
+      "kind": "provider create",
+      "model": "stripeClient.paymentIntents",
+      "writer": "POST /api/ready-made/:id/purchase",
+      "route": "POST /api/ready-made/:id/purchase",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/ready-made.routes.ts",
+      "line": 1573,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "POST /api/ready-made/purchases/:id/concern",
+      "route": "POST /api/ready-made/purchases/:id/concern",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/ready-made.routes.ts",
+      "line": 1741,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "POST /api/ready-made/purchases/:id/request-revision",
+      "route": "POST /api/ready-made/purchases/:id/request-revision",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/ready-made.routes.ts",
+      "line": 1783,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "POST /api/ready-made/purchases/:id/request-revision",
+      "route": "POST /api/ready-made/purchases/:id/request-revision",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes/trip-pass.routes.ts",
+      "line": 89,
+      "kind": "provider create",
+      "model": "stripeClient.paymentIntents",
+      "writer": "POST /api/trips/:tripId/trip-pass/purchase",
+      "route": "POST /api/trips/:tripId/trip-pass/purchase",
+      "rails": [
+        "Stripe",
+        "Trip Pass"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 2219,
+      "kind": "writer wrapper",
+      "model": "createServiceBooking",
+      "writer": "POST /api/expert-booking-requests",
+      "route": "POST /api/expert-booking-requests",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "enqueueBookingAlertEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 7722,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "registerRoutes",
+      "route": null,
+      "rails": [
+        "Stripe",
+        "Trip Pass"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "cancelled_at",
+        "cancellation_reason",
+        "updated_at"
+      ],
+      "emailBehavior": "enqueueBookingAlertEmail, sendBookingCancellationWithRefundEmail, sendBookingDeclineEmail, sendActivityEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 8501,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "POST /api/bookings/:id/cancel",
+      "route": "POST /api/bookings/:id/cancel",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "cancelled_at",
+        "cancellation_reason",
+        "updated_at"
+      ],
+      "emailBehavior": "sendActivityEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11213,
+      "kind": "writer wrapper",
+      "model": "createCoordinationBooking",
+      "writer": "POST /api/coordination-states/:coordinationId/bookings",
+      "route": "POST /api/coordination-states/:coordinationId/bookings",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11242,
+      "kind": "writer wrapper",
+      "model": "updateCoordinationBooking",
+      "writer": "PATCH /api/coordination-bookings/:id",
+      "route": "PATCH /api/coordination-bookings/:id",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11261,
+      "kind": "writer wrapper",
+      "model": "confirmCoordinationBooking",
+      "writer": "POST /api/coordination-bookings/:id/confirm",
+      "route": "POST /api/coordination-bookings/:id/confirm",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11276,
+      "kind": "writer wrapper",
+      "model": "deleteCoordinationBooking",
+      "writer": "DELETE /api/coordination-bookings/:id",
+      "route": "DELETE /api/coordination-bookings/:id",
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11465,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "POST /api/coordination-states/:id/pay",
+      "route": "POST /api/coordination-states/:id/pay",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11687,
+      "kind": "provider create",
+      "model": "stripe.refunds",
+      "writer": "POST /api/coordination-states/:id/refund",
+      "route": "POST /api/coordination-states/:id/refund",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11714,
+      "kind": "database update",
+      "model": "platformRevenue",
+      "writer": "POST /api/coordination-states/:id/refund",
+      "route": "POST /api/coordination-states/:id/refund",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/routes.ts",
+      "line": 11727,
+      "kind": "database insert",
+      "model": "platformRevenue",
+      "writer": "POST /api/coordination-states/:id/refund",
+      "route": "POST /api/coordination-states/:id/refund",
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/admin-query.service.ts",
+      "line": 1046,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "confirmLeadAssignmentTx",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "assigned_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/admin-query.service.ts",
+      "line": 1055,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "reassignExpertRequest",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "assigned_expert_id",
+        "assigned_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/affiliate-booking-confirmation.service.ts",
+      "line": 147,
+      "kind": "raw SQL UPDATE",
+      "model": "affiliate_booking_requests",
+      "writer": "confirmFromPartnerReport",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "expert_notes",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/affiliate-reconciliation.service.ts",
+      "line": 415,
+      "kind": "raw SQL UPDATE",
+      "model": "affiliate_earnings",
+      "writer": "adoptExactTokenMatches",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "reconciliation_status",
+        "partner_reference_id",
+        "total_commission",
+        "platform_share",
+        "expert_share",
+        "reconciled_at",
+        "external_report_data",
+        "content_tracking_number",
+        "booking_request_id",
+        "trip_id"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/affiliate-reconciliation.service.ts",
+      "line": 448,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_earnings",
+      "writer": "adoptExactTokenMatches",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "amount"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/affiliate-reconciliation.service.ts",
+      "line": 455,
+      "kind": "raw SQL UPDATE",
+      "model": "affiliate_earnings",
+      "writer": "adoptExactTokenMatches",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "reconciliation_notes"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/affiliate-reconciliation.service.ts",
+      "line": 601,
+      "kind": "raw SQL UPDATE",
+      "model": "affiliate_earnings",
+      "writer": "matchRecords",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "reconciliation_status",
+        "partner_reference_id",
+        "reconciled_at",
+        "external_report_data",
+        "content_tracking_number"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/affiliate-reconciliation.service.ts",
+      "line": 711,
+      "kind": "raw SQL UPDATE",
+      "model": "affiliate_earnings",
+      "writer": "updateReconciliationStatus",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "reconciliation_status",
+        "reconciliation_notes",
+        "partner_reference_id",
+        "reconciled_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/artifact-acceptance-timer.service.ts",
+      "line": 185,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "stampProvenance",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/artifact-acceptance-timer.service.ts",
+      "line": 241,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "advanceArtifactAcceptance",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/artifact-acceptance-timer.service.ts",
+      "line": 291,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "advanceArtifactAcceptance",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_metadata"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/artifact-rejection-refund.service.ts",
+      "line": 228,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "refundRejectedArtifact",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/artifact-rejection-refund.service.ts",
+      "line": 275,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "refundRejectedArtifact",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-acceptance.service.ts",
+      "line": 349,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "acceptDeliverable",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-acceptance.service.ts",
+      "line": 473,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "requestRevision",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-acceptance.service.ts",
+      "line": 569,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "deliverArtifact",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "delivered_at",
+        "deliverable_file",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-acceptance.service.ts",
+      "line": 597,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "deliverArtifact",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-actions.service.ts",
+      "line": 60,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "completeExpertRequest",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "completed_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-actions.service.ts",
+      "line": 110,
+      "kind": "raw SQL UPDATE",
+      "model": "platform_revenue",
+      "writer": "creditExpertReviewSplit",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "expert_id",
+        "expert_earnings",
+        "platform_fee",
+        "net_amount"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-actions.service.ts",
+      "line": 657,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "assignExpertAdvisorToRequest",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "assigned_expert_id",
+        "status",
+        "assigned_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-actions.service.ts",
+      "line": 827,
+      "kind": "raw SQL INSERT INTO",
+      "model": "expert_requests",
+      "writer": "assignExpertAdvisor",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-auto-complete.service.ts",
+      "line": 147,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "runPass",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_metadata"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-completion.service.ts",
+      "line": 890,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "completeBookingAction",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-completion.service.ts",
+      "line": 1037,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "declareBookingCompletionAction",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-completion.service.ts",
+      "line": 1282,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "recordBundleComponentCompletion",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-completion.service.ts",
+      "line": 1972,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "writeAllUndeliveredRecord",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-completion.service.ts",
+      "line": 2103,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "settleBundlePartialCompletion",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-expiry-scheduler.service.ts",
+      "line": 157,
+      "kind": "raw SQL UPDATE",
+      "model": "bookings",
+      "writer": "runCancellationAction",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "payment_status",
+        "cancelled_at",
+        "cancellation_reason",
+        "cancelled_by"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking-fee-bootstrap.ts",
+      "line": 25,
+      "kind": "raw SQL INSERT INTO",
+      "model": "booking_fee_configs",
+      "writer": "ensureDefaultBookingFeeConfig",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 226,
+      "kind": "writer wrapper",
+      "model": "createTripForBooking",
+      "writer": "ensureValidTripIds",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 537,
+      "kind": "raw SQL INSERT INTO",
+      "model": "bookings",
+      "writer": "processInstantBookings",
+      "route": null,
+      "rails": [
+        "Stripe",
+        "Trip Pass"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 624,
+      "kind": "raw SQL INSERT INTO",
+      "model": "booking_requests",
+      "writer": "submitBookingRequests",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "enqueueBookingAlertEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 854,
+      "kind": "raw SQL UPDATE",
+      "model": "bookings",
+      "writer": "confirmBookingPayment",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "payment_status",
+        "confirmed_at",
+        "confirmation_code",
+        "deposit_paid",
+        "stripe_payment_intent_id"
+      ],
+      "emailBehavior": "enqueueBookingAlertEmail, enqueueBookingConfirmationEmail",
+      "retainedLedgerCoverage": "COVERED: retained sequential/concurrent legacy ledger tests",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": "server/__tests__/booking-confirm-payment-idempotency.test.ts",
+      "coverageLimit": "Ledger idempotency only; does not prove traveler confirmation mail"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 897,
+      "kind": "raw SQL INSERT INTO",
+      "model": "provider_earnings",
+      "writer": "confirmBookingPayment",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "enqueueBookingAlertEmail, enqueueBookingConfirmationEmail",
+      "retainedLedgerCoverage": "COVERED: retained sequential/concurrent legacy ledger tests",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": "server/__tests__/booking-confirm-payment-idempotency.test.ts",
+      "coverageLimit": "Ledger idempotency only; does not prove traveler confirmation mail"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 929,
+      "kind": "raw SQL INSERT INTO",
+      "model": "platform_revenue",
+      "writer": "confirmBookingPayment",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "enqueueBookingAlertEmail, enqueueBookingConfirmationEmail",
+      "retainedLedgerCoverage": "COVERED: retained sequential/concurrent legacy ledger tests",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": "server/__tests__/booking-confirm-payment-idempotency.test.ts",
+      "coverageLimit": "Ledger idempotency only; does not prove traveler confirmation mail"
+    },
+    {
+      "file": "server/services/booking.service.ts",
+      "line": 1113,
+      "kind": "raw SQL INSERT INTO",
+      "model": "expert_requests",
+      "writer": "submitExpertRequest",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 239,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "markStripeAttempt",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 282,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "stampAuthorization",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 388,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "stampTransportPaymentIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 756,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "voidClaim",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "cancelled_at",
+        "cancellation_reason",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 1282,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "promoteOneBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "confirmed_at",
+        "deposit_paid",
+        "stripe_deposit_intent_id",
+        "deposit_amount",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 1376,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "recordReconciliationException",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 1467,
+      "kind": "raw SQL UPDATE",
+      "model": "payment_intents",
+      "writer": "markCheckoutPaymentFailed",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "sendEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 1475,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "markCheckoutPaymentFailed",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "updated_at"
+      ],
+      "emailBehavior": "sendEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 1667,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "notifyExpiredStampedClaim",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details"
+      ],
+      "emailBehavior": "sendExpiredClaimEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 2001,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "performLateSuccessRefund",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 2045,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "performLateSuccessRefund",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 2114,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "settleLateSuccessAftermath",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details"
+      ],
+      "emailBehavior": "sendLateSuccessRefundEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 2359,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "claimBalancePayer",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 2414,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "stampBalanceAuthorization",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "stripe_balance_intent_id",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/checkout-claim.service.ts",
+      "line": 2467,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "performBalancePaymentPromotion",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "status",
+        "balance_paid",
+        "confirmed_at",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 242,
+      "kind": "raw SQL INSERT INTO",
+      "model": "expert_requests",
+      "writer": "askHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 266,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "askHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "authorized_at",
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 287,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "askHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "payment_intent_id"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 291,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "askHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "released_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 311,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "confirmHandoffAuthorization",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "authorized_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 349,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "matchHandoff",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 357,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "proposeTo",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "assigned_expert_id",
+        "assigned_at",
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 415,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "acceptHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "accepted_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 432,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "acceptHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "accepted_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 435,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "acceptHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "captured_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 478,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "declineHandoff",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "assigned_expert_id"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 518,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "deliverHandoff",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "delivered_at",
+        "on_trip_support_offered_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 533,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "approveHandoff",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "approved_at",
+        "approved_by",
+        "completed_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 579,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "requestHandoffChanges",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "delivered_at",
+        "change_rounds"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 614,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "withdrawHandoff",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "withdrawn_at",
+        "withdrawal_fee_cents"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 628,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "withdrawHandoff",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "withdrawn_at",
+        "withdrawal_fee_cents"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 661,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "driveWithdrawalRefund",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "refund_id"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 663,
+      "kind": "raw SQL UPDATE",
+      "model": "platform_revenue",
+      "writer": "driveWithdrawalRefund",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "gross_amount",
+        "platform_fee",
+        "net_amount"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 721,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "startOnTripSupport",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "on_trip_support_payment_intent_id"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 734,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "confirmOnTripSupport",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "on_trip_support_accepted_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 739,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "confirmOnTripSupport",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "on_trip_support_accepted_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 786,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "runHandoffTimers",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "released_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 800,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "runHandoffTimers",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "fallback_offered_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/handoff.service.ts",
+      "line": 811,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "runHandoffTimers",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "released_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/lead-routing.service.ts",
+      "line": 316,
+      "kind": "database update",
+      "model": "expertRequests",
+      "writer": "notifyNullAssign",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/lead-routing.service.ts",
+      "line": 321,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_requests",
+      "writer": "notifyNullAssign",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "fallback_message"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/lost-chargeback-guard.service.ts",
+      "line": 278,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "reconcileLostChargeback",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/out-of-band-refund.service.ts",
+      "line": 95,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "recordOutOfBandRefund",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/out-of-band-refund.service.ts",
+      "line": 182,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "clearOutOfBandRefund",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/payment-on-record.ts",
+      "line": 54,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "stampPaidCharge",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/proposal-charge.service.ts",
+      "line": 200,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "createProposalChargeIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/qa-session.service.ts",
+      "line": 156,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "startQaSession",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/quote-charge.service.ts",
+      "line": 389,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "claimQuoteBornBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/ready-made-purchase.service.ts",
+      "line": 335,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "fulfillReadyMadePurchase",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/ready-made-purchase.service.ts",
+      "line": 624,
+      "kind": "database insert",
+      "model": "readyMadePurchases",
+      "writer": "performRecordAndFulfilReadyMadePurchase",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/ready-made-purchase.service.ts",
+      "line": 758,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "refundReadyMadePurchaseLedger",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/ready-made-purchase.service.ts",
+      "line": 785,
+      "kind": "database update",
+      "model": "platformRevenue",
+      "writer": "refundReadyMadePurchaseLedger",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 509,
+      "kind": "database insert",
+      "model": "serviceQuotes",
+      "writer": "requestQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 595,
+      "kind": "database update",
+      "model": "serviceQuotes",
+      "writer": "issueQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 617,
+      "kind": "database insert",
+      "model": "serviceQuotes",
+      "writer": "issueQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 637,
+      "kind": "database update",
+      "model": "serviceQuotes",
+      "writer": "issueQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 682,
+      "kind": "database update",
+      "model": "serviceQuotes",
+      "writer": "withdrawQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 706,
+      "kind": "database update",
+      "model": "serviceQuotes",
+      "writer": "declineQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 809,
+      "kind": "database update",
+      "model": "serviceQuotes",
+      "writer": "acceptQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 918,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "acceptQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/service-quotes.service.ts",
+      "line": 953,
+      "kind": "database update",
+      "model": "serviceQuotes",
+      "writer": "acceptQuote",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-connect.service.ts",
+      "line": 120,
+      "kind": "provider create",
+      "model": "stripe.transfers",
+      "writer": "createTransfer",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 70,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 74,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 103,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 120,
+      "kind": "raw SQL UPDATE",
+      "model": "provider_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "dispute_state",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 124,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "dispute_state"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 131,
+      "kind": "raw SQL UPDATE",
+      "model": "provider_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 136,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 141,
+      "kind": "raw SQL UPDATE",
+      "model": "provider_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "dispute_state",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 145,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "dispute_state"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 163,
+      "kind": "raw SQL UPDATE",
+      "model": "provider_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "dispute_state",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 168,
+      "kind": "raw SQL UPDATE",
+      "model": "expert_earnings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "dispute_state"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-dispute.service.ts",
+      "line": 230,
+      "kind": "database update",
+      "model": "bookings",
+      "writer": "handleStripeDispute",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 520,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "chargeSavedMethod",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 694,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "createPaymentIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 696,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "createPaymentIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 700,
+      "kind": "raw SQL INSERT INTO",
+      "model": "payment_intents",
+      "writer": "createPaymentIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 922,
+      "kind": "raw SQL UPDATE",
+      "model": "payment_intents",
+      "writer": "handlePaymentSucceeded",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "enqueueBookingConfirmationEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1050,
+      "kind": "raw SQL UPDATE",
+      "model": "bookings",
+      "writer": "handlePaymentSucceeded",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "payment_status",
+        "confirmed_at",
+        "confirmation_code",
+        "deposit_paid"
+      ],
+      "emailBehavior": "enqueueBookingConfirmationEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1060,
+      "kind": "raw SQL UPDATE",
+      "model": "bookings",
+      "writer": "handlePaymentSucceeded",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "payment_status",
+        "confirmed_at",
+        "confirmation_code",
+        "deposit_paid",
+        "balance_paid"
+      ],
+      "emailBehavior": "enqueueBookingConfirmationEmail",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1151,
+      "kind": "raw SQL UPDATE",
+      "model": "bookings",
+      "writer": "handlePaymentFailed",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "payment_status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1170,
+      "kind": "raw SQL UPDATE",
+      "model": "payment_intents",
+      "writer": "handlePaymentCanceled",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1188,
+      "kind": "raw SQL UPDATE",
+      "model": "bookings",
+      "writer": "handlePaymentCanceled",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "payment_status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1217,
+      "kind": "raw SQL UPDATE",
+      "model": "payment_intents",
+      "writer": "handleRequiresAction",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1508,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "refundServiceBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1549,
+      "kind": "writer wrapper",
+      "model": "createStripeRefundForBooking",
+      "writer": "refundServiceBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1566,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "refundServiceBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1579,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "refundServiceBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1603,
+      "kind": "raw SQL UPDATE",
+      "model": "service_bookings",
+      "writer": "refundServiceBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [
+        "status",
+        "booking_details",
+        "updated_at"
+      ],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1720,
+      "kind": "provider create",
+      "model": "stripe.refunds",
+      "writer": "createStripeRefundForBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1822,
+      "kind": "writer wrapper",
+      "model": "createStripeRefundForBooking",
+      "writer": "refundBundlePartialSettlement",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1865,
+      "kind": "writer wrapper",
+      "model": "createStripeRefundForBooking",
+      "writer": "refundRejectedArtifact",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1910,
+      "kind": "writer wrapper",
+      "model": "createStripeRefundForBooking",
+      "writer": "refundAiTaskProposalFee",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 1956,
+      "kind": "writer wrapper",
+      "model": "createStripeRefundForBooking",
+      "writer": "refundLateSuccessOnFailedBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 2014,
+      "kind": "provider cancel",
+      "model": "stripe.paymentIntents",
+      "writer": "cancelPaymentIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 2041,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "createHandoffAuthorization",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 2090,
+      "kind": "provider capture",
+      "model": "stripe.paymentIntents",
+      "writer": "captureHandoffPayment",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 2108,
+      "kind": "writer wrapper",
+      "model": "createStripeRefundForBooking",
+      "writer": "refundHandoffFee",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 2192,
+      "kind": "provider create",
+      "model": "stripe.paymentIntents",
+      "writer": "createExpertServicePaymentIntent",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe-payment.service.ts",
+      "line": 2331,
+      "kind": "raw SQL INSERT INTO",
+      "model": "expert_requests",
+      "writer": "handleExpertServicePayment",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/services/stripe.service.ts",
+      "line": 155,
+      "kind": "database insert",
+      "model": "serviceBookings",
+      "writer": "createTransportBookingCheckout",
+      "route": null,
+      "rails": [
+        "Stripe",
+        "Trip Pass"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3101,
+      "kind": "database insert",
+      "model": "creditTransactions",
+      "writer": "addCredits",
+      "route": null,
+      "rails": [
+        "credits"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3123,
+      "kind": "database insert",
+      "model": "creditTransactions",
+      "writer": "deductCredits",
+      "route": null,
+      "rails": [
+        "credits"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3292,
+      "kind": "database insert",
+      "model": "bundleComponents",
+      "writer": "duplicateService",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3411,
+      "kind": "database insert",
+      "model": "serviceBookings",
+      "writer": "createServiceBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3533,
+      "kind": "database insert",
+      "model": "serviceBookings",
+      "writer": "createServiceBookingAtomic",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3568,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "updateServiceBookingMetadata",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3671,
+      "kind": "database update",
+      "model": "serviceBookings",
+      "writer": "updateServiceBookingStatusAction",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3916,
+      "kind": "database insert",
+      "model": "platformRevenue",
+      "writer": "mintCompletionEarningsForBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 3961,
+      "kind": "database insert",
+      "model": "providerEarnings",
+      "writer": "mintCompletionEarningsForBooking",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 4669,
+      "kind": "database update",
+      "model": "readyMadePurchases",
+      "writer": "markReadyMadePurchaseNotified",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 5227,
+      "kind": "database insert",
+      "model": "coordinationBookings",
+      "writer": "createCoordinationBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 5232,
+      "kind": "database update",
+      "model": "coordinationBookings",
+      "writer": "updateCoordinationBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 5240,
+      "kind": "database update",
+      "model": "coordinationBookings",
+      "writer": "confirmCoordinationBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 5254,
+      "kind": "database delete",
+      "model": "coordinationBookings",
+      "writer": "deleteCoordinationBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6205,
+      "kind": "database insert",
+      "model": "expertPayouts",
+      "writer": "createExpertPayout",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6413,
+      "kind": "database insert",
+      "model": "providerEarnings",
+      "writer": "createProviderEarning",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6432,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "releaseMaturedEarnings",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6449,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "releaseEarningsForBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6480,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "setBookingEarningsDispute",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6490,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "setBookingEarningsDispute",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6514,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "reverseEarningsForBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6548,
+      "kind": "database update",
+      "model": "platformRevenue",
+      "writer": "reversePlatformRevenueForBooking",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6581,
+      "kind": "database insert",
+      "model": "providerPayouts",
+      "writer": "createProviderPayout",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6661,
+      "kind": "database update",
+      "model": "expertPayouts",
+      "writer": "updateExpertPayoutStatus",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6676,
+      "kind": "database update",
+      "model": "expertPayouts",
+      "writer": "updateExpertPayoutStatus",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6681,
+      "kind": "database update",
+      "model": "expertPayouts",
+      "writer": "updateExpertPayoutStatus",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6777,
+      "kind": "database update",
+      "model": "providerPayouts",
+      "writer": "updateProviderPayoutStatus",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6781,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "updateProviderPayoutStatus",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6790,
+      "kind": "database update",
+      "model": "providerPayouts",
+      "writer": "updateProviderPayoutStatus",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6795,
+      "kind": "database update",
+      "model": "providerPayouts",
+      "writer": "updateProviderPayoutStatus",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": true,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6889,
+      "kind": "database update",
+      "model": "providerEarnings",
+      "writer": "markEarningsPaidOutForPayoutTx",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 6957,
+      "kind": "database insert",
+      "model": "platformRevenue",
+      "writer": "insertPlatformRevenueOnce",
+      "route": null,
+      "rails": [
+        "Stripe"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 8322,
+      "kind": "database insert",
+      "model": "affiliateBookingRequests",
+      "writer": "createAffiliateBookingRequest",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 8332,
+      "kind": "database insert",
+      "model": "affiliateBookingRequests",
+      "writer": "createAffiliateBookingRequestIdempotent",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 8400,
+      "kind": "database update",
+      "model": "affiliateBookingRequests",
+      "writer": "claimAffiliateBookingRequest",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 8416,
+      "kind": "database update",
+      "model": "affiliateBookingRequests",
+      "writer": "updateAffiliateBookingRequest",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 8452,
+      "kind": "database update",
+      "model": "affiliateBookingRequests",
+      "writer": "recordAffiliateBookingPurchase",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    },
+    {
+      "file": "server/storage.ts",
+      "line": 8470,
+      "kind": "database update",
+      "model": "affiliateBookingRequests",
+      "writer": "setAffiliateBookingRequestVerification",
+      "route": null,
+      "rails": [
+        "UNKNOWN: trace callers"
+      ],
+      "transactionLexicallyPresent": false,
+      "stateFieldsFromRawSql": [],
+      "emailBehavior": "No mail call in enclosing writer; downstream/caller trace required",
+      "retainedLedgerCoverage": "NOT COVERED by the two retained suites",
+      "retainedConfirmationEmailCoverage": "NOT COVERED",
+      "retainedTest": null,
+      "coverageLimit": "Static inventory is not execution proof"
+    }
+  ]
+}

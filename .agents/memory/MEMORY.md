@@ -81,3 +81,4 @@
 - [Traveler automation policy](traveler-automation-policy.md) — Part 1 is generation outcomes only; pay-per-use/Trip Pass stay unchanged; credit alerts need a future approved policy.
 - [Signup rebuild policy](signup-rebuild-policy.md) — use small main-based changes, not the retired snapshot; QA mailbox rerouting is development-harness-only and must be disclosed.
 - [Isolated mail idempotency](isolated-mail-idempotency.md) — provider keys span fixture schemas; restarted row counters can collide with genuine prior deliveries.
+- [Automation baseline proof policy](automation-baseline-proof-policy.md) — test-only scope; actual WAITING may coexist with closure, but missing starts and unproved writer/browser rules cannot.

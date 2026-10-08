@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "environment": "isolated QA app at 127.0.0.1:5001",
+  "sanitized": true,
+  "privateValuesIncluded": false,
+  "preparedLoops": [1, 2],
+  "operationsNotPerformed": [
+    "No mail was sent or regenerated.",
+    "No accounts.clock value was read or changed.",
+    "No booking, payment, production, migration, schema, runtime, or configuration action was performed."
+  ],
+  "fixtures": {
+    "selectionRule": "For each loop and requested type, selected the actual delivered capture containing an /itinerary-comparison/ anchor; incidental verification and welcome messages were excluded.",
+    "allTenComparisonBearingCapturesFound": true,
+    "loops": {
+      "1": {
+        "itinerary_ready": {
+          "providerId": "01a11cae-fe1c-7dbf-989e-02e1e2fe27f6",
+          "comparisonCtaLabel": "View your itinerary",
+          "textPayloadLength": 195
+        },
+        "itinerary_failed": {
+          "providerId": "01a11caf-08ec-736c-bcb8-e5a391f9edce",
+          "comparisonCtaLabel": "Open your itinerary",
+          "textPayloadLength": 253
+        },
+        "itinerary_nudge_2h": {
+          "providerId": "01a11caf-143b-7a96-9705-2f3f2cbfed71",
+          "comparisonCtaLabel": "Revisit your itinerary",
+          "unsubscribeLinkLabel": "Unsubscribe from itinerary follow-up emails",
+          "textPayloadLength": 342
+        },
+        "itinerary_followup_24h": {
+          "providerId": "01a11caf-1e70-7f1e-b42b-188736a43609",
+          "comparisonCtaLabel": "Revisit your itinerary",
+          "unsubscribeLinkLabel": "Unsubscribe from itinerary follow-up emails",
+          "textPayloadLength": 331
+        },
+        "itinerary_reengagement_5d": {
+          "providerId": "01a11caf-2943-718b-84c8-0a76ffbe5571",
+          "comparisonCtaLabel": "Revisit your itinerary",
+          "unsubscribeLinkLabel": "Unsubscribe from itinerary follow-up emails",
+          "textPayloadLength": 423
+        }
+      },
+      "2": {
+        "itinerary_ready": {
+          "providerId": "01a11cb1-fc66-704d-b873-18af4639020c",
+          "comparisonCtaLabel": "View your itinerary",
+          "textPayloadLength": 195
+        },
+        "itinerary_failed": {
+          "providerId": "01a11cb2-09f6-7199-8df9-97aa2793aa16",
+          "comparisonCtaLabel": "Open your itinerary",
+          "textPayloadLength": 253
+        },
+        "itinerary_nudge_2h": {
+          "providerId": "01a11cb2-18de-7c05-859f-dac9d5ab80c1",
+          "comparisonCtaLabel": "Revisit your itinerary",
+          "unsubscribeLinkLabel": "Unsubscribe from itinerary follow-up emails",
+          "textPayloadLength": 342
+        },
+        "itinerary_followup_24h": {
+          "providerId": "01a11cb2-26bc-78c0-bd2e-99d7190ea73d",
+          "comparisonCtaLabel": "Revisit your itinerary",
+          "unsubscribeLinkLabel": "Unsubscribe from itinerary follow-up emails",
+          "textPayloadLength": 331
+        },
+        "itinerary_reengagement_5d": {
+          "providerId": "01a11cb2-3dd4-735c-8a4c-b7b849006bef",
+          "comparisonCtaLabel": "Revisit your itinerary",
+          "unsubscribeLinkLabel": "Unsubscribe from itinerary follow-up emails",
+          "textPayloadLength": 423
+        }
+      }
+    }
+  },
+  "completedChecks": {
+    "loop1": {
+      "itinerary_readyEmail": {
+        "providerId": "01a11cae-fe1c-7dbf-989e-02e1e2fe27f6",
+        "renderedAtWidths": [1280, 390],
+        "desktopAndMobileCtaVisible": true,
+        "textPayloadChecked": true,
+        "placeholderDetected": false,
+        "actualLinkHrefAndIdRedactedBeforeScreenshots": true,
+        "screenshotRefs": [
+          {
+            "id": "w33q9f",
+            "description": "Desktop render of the actual loop-1 ready email; href/ID redacted."
+          },
+          {
+            "id": "jdbwhq",
+            "description": "Mobile render of the actual loop-1 ready email; href/ID redacted and CTA unclipped."
+          }
+        ]
+      },
+      "nativeOwnerLogin": {
+        "accountSlot": "itinerary_ready",
+        "result": "native sign-in reached /dashboard",
+        "maskedScreenshotRef": "vkgx8c"
+      },
+      "comparisonCta": {
+        "status": "unverified",
+        "note": "The genuine captured CTA was attempted. A first trial replaced the route ID before the SPA resolved, so its not-found view is invalid test evidence. A retry using the genuine href timed out twice in the browser worker before a settled result could be observed. No comparison content or denial result is claimed."
+      }
+    }
+  },
+  "unchecked": {
+    "comparisonOwnerContexts": [
+      "Loop 1 itinerary_ready result",
+      "Loop 1 itinerary_failed",
+      "Loop 1 itinerary_nudge_2h",
+      "Loop 1 itinerary_followup_24h",
+      "Loop 1 itinerary_reengagement_5d",
+      "Loop 2 itinerary_ready",
+      "Loop 2 itinerary_failed",
+      "Loop 2 itinerary_nudge_2h",
+      "Loop 2 itinerary_followup_24h",
+      "Loop 2 itinerary_reengagement_5d"
+    ],
+    "wrongPersonDenialAndDataLeakChecks": "Unverified for all ten comparisons.",
+    "unsubscribeOwnerWrongAccountReuseAndTamper": "Unverified for all six marketing messages.",
+    "otherAuthoredOrPublicLinks": "Unverified; no public legal/footer links were opened."
+  },
+  "blocker": {
+    "classification": "runtime/browser-navigation blocker; fixture insufficiency was not observed",
+    "observed": "Two attempts to navigate the authenticated owner page with the genuine ready-email comparison href did not return a settled observation; the Playwright action timed out after 45 seconds and reset the persistent browser worker.",
+    "conclusion": "The actual comparison route outcome remains unknown. Do not interpret the test-induced placeholder-route 404 as an application result."
+  },
+  "privacyHandling": {
+    "noPrivateAddressesPasswordsTokensOrSignedUrlsInThisReport": true,
+    "note": "An early private inventory output included raw comparison/unsubscribe path segments, and an initial owner-dashboard observation exposed account identifiers before masking. These values are intentionally omitted from this report, and the unmasked captures are not referenced."
+  },
+  "filesChanged": [
+    "reports/automation-part1-evidence/browser-itinerary-links.json"
+  ]
+}

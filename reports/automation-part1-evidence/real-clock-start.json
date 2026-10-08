@@ -1,0 +1,90 @@
+{
+  "schema": "automation_msg_6e4c4ee8c1ad1bc0",
+  "retainedUntil": "2026-10-15T17:44:58.411Z",
+  "rows": [
+    {
+      "scenarioId": "2102c442-98aa-430c-8d67-9fe12a4f81a4",
+      "kind": "booking_confirmation_retry",
+      "outboxId": 1650791515,
+      "startedAt": "2026-10-08T17:53:34.680Z",
+      "dueAt": "2026-10-08T17:58:34.686Z",
+      "checkedAt": "2026-10-08T17:53:34.692Z",
+      "status": "WAITING",
+      "rowStatus": "failed",
+      "injectedFailure": true,
+      "invocation": "Manual existing dispatcher recovery; no real payment writer executed"
+    },
+    {
+      "scenarioId": "a5953e7e-3848-49cc-8f64-3d2b90908ad5",
+      "kind": "verification_expiry",
+      "tokenRowId": "69f62603-14d3-4ced-803c-57dbce3de758",
+      "startedAt": "2026-10-08T17:53:32.863Z",
+      "dueAt": "2026-10-09T17:53:32.861Z",
+      "checkedAt": "2026-10-08T17:53:35.529Z",
+      "status": "WAITING",
+      "consumed": false,
+      "invocation": "Native issued token; test expired link only after actual expires_at"
+    },
+    {
+      "scenarioId": "c78f5b69-5810-4de5-8336-1886a9a7ff2d",
+      "kind": "reset_expiry",
+      "tokenRowId": "dd2801c5-05f3-4e47-a0f9-2de4c957c4c3",
+      "startedAt": "2026-10-08T17:53:34.696Z",
+      "dueAt": "2026-10-08T18:53:34.696Z",
+      "checkedAt": "2026-10-08T17:53:35.529Z",
+      "status": "WAITING",
+      "consumed": false,
+      "invocation": "Native issued token; test expired link only after actual expires_at"
+    },
+    {
+      "scenarioId": "0c8e0294-3caa-4a96-b60f-31804c8b7d14",
+      "kind": "generation_timeout_sweep",
+      "comparisonId": "7fcdf19b-cfad-46cf-a4dc-adafaf21dbcb",
+      "startedAt": "2026-10-08T17:53:35.529Z",
+      "dueAt": "2026-10-08T17:58:35.529Z",
+      "checkedAt": "2026-10-08T17:53:35.533Z",
+      "status": "WAITING",
+      "invocation": "Native sweeper after actual five-minute staleness; no LLM call or production timer claim"
+    },
+    {
+      "scenarioId": "c436c4f6-3b24-4d8b-90a3-38a62153c7da",
+      "kind": "itinerary_nudge_2h",
+      "comparisonId": "d1b023f6-4908-4805-b649-e251896ebdbe",
+      "outboxId": 1650791517,
+      "startedAt": "2026-10-08T18:03:09.669Z",
+      "dueAt": "2026-10-08T20:03:09.669Z",
+      "checkedAt": "2026-10-08T18:03:09.924Z",
+      "status": "WAITING",
+      "rowStatus": "pending",
+      "timeZone": "America/New_York",
+      "invocation": "Manual existing-job check due later; no scheduled-execution proof"
+    },
+    {
+      "scenarioId": "4daa0914-fdcd-4847-9f77-3569d0156868",
+      "kind": "itinerary_followup_24h",
+      "comparisonId": "d1b023f6-4908-4805-b649-e251896ebdbe",
+      "outboxId": 1650791518,
+      "startedAt": "2026-10-08T18:03:09.669Z",
+      "dueAt": "2026-10-09T18:03:09.669Z",
+      "checkedAt": "2026-10-08T18:03:09.924Z",
+      "status": "WAITING",
+      "rowStatus": "pending",
+      "timeZone": "America/New_York",
+      "invocation": "Manual existing-job check due later; no scheduled-execution proof"
+    },
+    {
+      "scenarioId": "79e4b8cc-f321-4fba-905e-6d13abd6719e",
+      "kind": "itinerary_reengagement_5d",
+      "comparisonId": "d1b023f6-4908-4805-b649-e251896ebdbe",
+      "outboxId": 1650791519,
+      "startedAt": "2026-10-08T18:03:09.669Z",
+      "dueAt": "2026-10-13T18:03:09.669Z",
+      "checkedAt": "2026-10-08T18:03:09.924Z",
+      "status": "WAITING",
+      "rowStatus": "pending",
+      "timeZone": "America/New_York",
+      "invocation": "Manual existing-job check due later; no scheduled-execution proof"
+    }
+  ],
+  "fixtureCorrection": "Initial alias was correctly refused by native development allowlist; only fresh approved-alias rows count as started marketing clocks"
+}
