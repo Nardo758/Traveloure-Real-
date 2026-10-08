@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/669**; remaining: **669**.
-- Admin: **0/169**; payments: **0/31**; user-data: **0/234**; other: **0/235**.
+- **Tested: 0/670**; remaining: **670**.
+- Admin: **0/170**; payments: **0/31**; user-data: **0/234**; other: **0/235**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `d3cf5e091a79e22c9cd28de1726f3168d062ab84a6306f5ffbe3a0ae171d7745`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `e9a6c9401bfdb0234888f5036da3a8f9bcb2f5517860303074f6503616761300`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -303,6 +303,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/admin/service-templates | admin | admin-role | server/routes/admin.routes.ts:3425 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/system/test-email | admin | admin-role | server/routes/admin.routes.ts:6651 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/trigger-digest | admin | admin-role | server/routes/admin.routes.ts:9060 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/trip-pass/issue | admin | admin-role | server/routes/admin.routes.ts:9483 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/affiliate-booking-requests | other | resource-owner | server/routes/content.routes.ts:7544 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/affiliate-booking-requests/:id/claim | other | session-self | server/routes/content.routes.ts:7923 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/affiliate-booking-requests/:id/verify | other | session-self | server/routes/content.routes.ts:8276 | Other-category endpoint is intentionally outside the strict tested set. |
