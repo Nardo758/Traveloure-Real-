@@ -1133,7 +1133,7 @@ function FeedRenderer({
     <nav
       className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]"
       style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
-      aria-label="Jump to neighbourhood"
+      aria-label="Jump to neighborhood"
       data-testid="neighbourhood-jump-list"
       data-nb-filter={neighbourhoodFilter ?? ""}
     >
@@ -1150,7 +1150,7 @@ function FeedRenderer({
             className="font-semibold hover:underline hover:text-[color:var(--earn-ink)]"
             data-testid="jump-all-neighbourhoods"
           >
-            All neighbourhoods
+            All neighborhoods
           </a>
           <span aria-hidden>·</span>
         </span>
@@ -1203,7 +1203,7 @@ function FeedRenderer({
         {jumpNav}
         <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty-filtered">
           {nbFilterActive
-            ? `No ${activeFilter === "all" ? "" : activeFilter.replace("_", " ") + " "}matches in this neighbourhood.`
+            ? `No ${activeFilter === "all" ? "" : activeFilter.replace("_", " ") + " "}matches in this neighborhood.`
             : `No ${activeFilter.replace("_", " ")} found in ${toTitleCase(city)}.`}
         </p>
       </div>
@@ -1504,7 +1504,7 @@ function buildContentAddOn(highlight: string | null | undefined, city: string): 
     return {
       icon: "🍂",
       label: "Foliage photography tour",
-      badge: "↑ peak autumn colour",
+      badge: "↑ peak autumn color",
       href: `/experiences?city=${cityParam}&q=foliage+photography+tour`,
       variant: "platform",
       partner: "platform-foliage",

@@ -100,14 +100,14 @@ export function CancelBookingDialog({
 
   const cancelMutation = useMutation({
     mutationFn: () =>
-      apiRequest("POST", `/api/bookings/${bookingId}/cancel`, { reason: "Cancelled by traveler" }),
+      apiRequest("POST", `/api/bookings/${bookingId}/cancel`, { reason: "Canceled by traveler" }),
     onSuccess: async (res: any) => {
       const data: CancelBookingResult =
         typeof res?.json === "function" ? await res.json() : res;
       onOpenChange(false);
       const refund = data?.refund;
       toast({
-        title: "Booking cancelled",
+        title: "Booking canceled",
         description: refund?.issued
           ? `A refund of $${Number(refund.refundAmount).toFixed(2)} has been issued to your original payment method.`
           : "No automatic refund was issued for this cancellation.",

@@ -407,7 +407,7 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
       )}
 
       {showNeighbourhoods && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1" data-testid="neighbourhood-chips" title="Neighbourhoods covered by this expert">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1" data-testid="neighbourhood-chips" title="Neighborhoods covered by this expert">
           <Home className="h-3 w-3 shrink-0" style={{ color: "var(--earn-teal-ink)" }} />
           {neighbourhoods.slice(0, 3).map((n, idx) => (
             <Badge

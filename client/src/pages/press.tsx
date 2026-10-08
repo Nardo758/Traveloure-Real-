@@ -23,7 +23,7 @@ const PRESS_COVERAGE: ReadonlyArray<{ outlet: string; title: string; url: string
 const LOGO_ASSETS = [
   { label: "Logo (SVG)", href: "/traveloure-logo.svg" },
   { label: "Logo (PNG)", href: "/traveloure-logo.png" },
-  { label: "Logo, one colour (SVG)", href: "/traveloure-logo-mono.svg" },
+  { label: "Logo, one color (SVG)", href: "/traveloure-logo-mono.svg" },
 ];
 
 export default function PressPage() {

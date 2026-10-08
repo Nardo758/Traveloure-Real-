@@ -130,7 +130,7 @@ describe("AnchorPanel", () => {
     const t1 = text(render({ view: view([], { unranked: "no_located_items" }) }));
     assert.match(t1, /Once some of your stops are on the map/);
     const t2 = text(render({ view: view([], { unranked: "no_neighborhoods" }) }));
-    assert.match(t2, /We don't have neighbourhoods for Kyoto yet/);
+    assert.match(t2, /We don't have neighborhoods for Kyoto yet/);
     const all = text(render({ view: view([nb("gion", { hotels: [{ kind: "platform", id: "p", name: "P", starRating: null }] })]) }));
     assert.doesNotMatch(all, /\b\d+\s*(km|m|min|minutes|mi)\b/);
     assert.equal(render({ view: { ...view([]), eligible: false, reason: "decided" } }), "");

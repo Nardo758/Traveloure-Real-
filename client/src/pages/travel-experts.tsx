@@ -99,7 +99,7 @@ const localExpertSteps = [
 const KNOWLEDGE_PROOF_QUESTIONS = [
   "Name your top pick for a local meal near a popular tourist area in your city. Where do you send the traveler — and where do you steer them away from, and why?",
   "What's one mistake almost every first-time visitor to your city makes? What's the local move instead?",
-  "Describe a neighbourhood or experience in your city that guidebooks consistently miss. Who is it best for, and what makes it worth knowing?",
+  "Describe a neighborhood or experience in your city that guidebooks consistently miss. Who is it best for, and what makes it worth knowing?",
 ];
 
 const localityProofOptions = [
@@ -1136,7 +1136,7 @@ export default function TravelExpertsPage() {
               <CardHeader>
                 <CardTitle className="text-2xl text-foreground">Your Local Knowledge</CardTitle>
                 <p className="text-muted-foreground text-sm mt-1">
-                  Tell us exactly where your expertise lives — not just the city, but the neighbourhoods you know block by block.
+                  Tell us exactly where your expertise lives — not just the city, but the neighborhoods you know block by block.
                 </p>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1155,17 +1155,17 @@ export default function TravelExpertsPage() {
                 {/* Neighborhoods — picked from the catalog (ruling 2026-08-29-neighborhood-claims) */}
                 <div>
                   <Label className="text-[#374151] mb-1 block">
-                    Neighbourhoods You Know Deeply {neighborhoodOptions.length > 0 && <span className="text-red-500">*</span>}
+                    Neighborhoods You Know Deeply {neighborhoodOptions.length > 0 && <span className="text-red-500">*</span>}
                   </Label>
                   {!formData.city.trim() ? (
-                    <p className="text-xs text-muted-foreground">Tell us your city first and we'll show you its neighbourhoods.</p>
+                    <p className="text-xs text-muted-foreground">Tell us your city first and we'll show you its neighborhoods.</p>
                   ) : neighborhoodOptions.length === 0 ? (
                     <div className="mt-2 p-3 rounded-lg border border-border bg-gray-50 text-sm text-[#374151]" data-testid="neighborhoods-unavailable">
-                      We don't have {formData.city.trim()}'s neighbourhoods mapped yet. You can continue — we'll ask you to claim yours once they're in.
+                      We don't have {formData.city.trim()}'s neighborhoods mapped yet. You can continue — we'll ask you to claim yours once they're in.
                     </div>
                   ) : (
                     <>
-                      <p className="text-xs text-muted-foreground mb-2">Pick every one you know block by block. Others can claim the same neighbourhood — this is a join, not a territory.</p>
+                      <p className="text-xs text-muted-foreground mb-2">Pick every one you know block by block. Others can claim the same neighborhood — this is a join, not a territory.</p>
                       <div className="flex flex-wrap gap-2">
                         {neighborhoodOptions.map((opt) => {
                           const picked = formData.neighborhoodClaims.some((c) => c.neighborhoodId === opt.id);
@@ -1193,7 +1193,7 @@ export default function TravelExpertsPage() {
                       <h3 className="text-lg font-semibold text-foreground">{CLAIM_PROMPTS.heading(firstClaim.name)}</h3>
                       <p className="text-sm text-muted-foreground mt-1">
                         Three short things about {firstClaim.name}. You can finish this later in your console — leaving it blank keeps {firstClaim.name} claimed.
-                        {formData.neighborhoodClaims.length > 1 && " We'll ask about your other neighbourhoods there too."}
+                        {formData.neighborhoodClaims.length > 1 && " We'll ask about your other neighborhoods there too."}
                       </p>
                     </div>
                     <ClaimCaptureForm
@@ -1788,7 +1788,7 @@ export default function TravelExpertsPage() {
                 {isLocalExpert ? (
                   <>
                     <div>
-                      <span className="text-muted-foreground text-sm">Neighbourhoods:</span>
+                      <span className="text-muted-foreground text-sm">Neighborhoods:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {formData.neighborhoods.map((n) => (
                           <Badge key={n} variant="secondary" className="text-xs">{n}</Badge>

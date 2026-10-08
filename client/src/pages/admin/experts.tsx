@@ -479,7 +479,7 @@ export default function AdminExperts() {
 
                     {app.expertType === "local_expert" && (app.neighborhoods ?? []).length > 0 && (
                       <div className="text-sm">
-                        <span className="text-gray-500 font-medium">Neighbourhoods: </span>
+                        <span className="text-gray-500 font-medium">Neighborhoods: </span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {(app.neighborhoods ?? []).map((n, i) => (
                             <Badge key={i} variant="outline" className="text-xs">{n}</Badge>
