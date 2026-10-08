@@ -1,0 +1,530 @@
+{
+  "checkedAt": "2026-10-08T16:03:21.898Z",
+  "sha": "f413edab1bbde376ba55b2139c952683c520e4fc",
+  "rows": [
+    {
+      "mechanism": "Eligibility / cancel",
+      "scope": "Shared dispatcher, distinct generation/follow-up/welcome business checks; not universal",
+      "locations": [
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 46
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 258
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 287
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 355
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 364
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 366
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 370
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 373
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 384
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 7
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 9
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 30
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 32
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 40
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 56
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 72
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 73
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 85
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 91
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 96
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 102
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 16
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 78
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 101
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 104
+        }
+      ]
+    },
+    {
+      "mechanism": "Recipient lock",
+      "scope": "Inspect separately: traveler advisory lock and welcome/account locks are not one universal lock",
+      "locations": [
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 26
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 27
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 52
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 141
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 142
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 34
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 86
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 91
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 19
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 110
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 176
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 231
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 384
+        }
+      ]
+    },
+    {
+      "mechanism": "Marketing consent / unsubscribe",
+      "scope": "Itinerary lane has its own preference/token checks; activity preference handling is separate",
+      "locations": [
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 10
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 20
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 65
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 148
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 155
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 167
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 174
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 183
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 12
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 13
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 19
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 20
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 21
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 22
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 26
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 29
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 31
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 37
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 43
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 46
+        },
+        {
+          "file": "server/services/activity-email.service.ts",
+          "line": 6
+        },
+        {
+          "file": "server/services/activity-email.service.ts",
+          "line": 7
+        },
+        {
+          "file": "server/services/activity-email.service.ts",
+          "line": 21
+        },
+        {
+          "file": "server/services/activity-email.service.ts",
+          "line": 24
+        },
+        {
+          "file": "server/services/activity-email.service.ts",
+          "line": 29
+        },
+        {
+          "file": "server/services/activity-email.service.ts",
+          "line": 78
+        }
+      ]
+    },
+    {
+      "mechanism": "Quiet hours / time zone",
+      "scope": "Itinerary marketing clock, not proven shared across all marketing families",
+      "locations": [
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 10
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 167
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 171
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 172
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 174
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 175
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 187
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 14
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 15
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 16
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 19
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 22
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 23
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 24
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 25
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 31
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 37
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 38
+        },
+        {
+          "file": "server/services/itinerary-followup-email.ts",
+          "line": 39
+        }
+      ]
+    },
+    {
+      "mechanism": "Daily cap",
+      "scope": "Follow-up query checks sent/processing marketing metadata and local delivery day; priority arbitration across families is unproven",
+      "locations": [
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 21
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 168
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 170
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 171
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 172
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 174
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 175
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 187
+        }
+      ]
+    },
+    {
+      "mechanism": "Unique-key dedupe",
+      "scope": "Category-specific keys; generic enqueue does not populate the same key for every email",
+      "locations": [
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 370
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 373
+        },
+        {
+          "file": "server/services/itinerary-generation-outcome.service.ts",
+          "line": 6
+        },
+        {
+          "file": "server/services/itinerary-generation-outcome.service.ts",
+          "line": 52
+        },
+        {
+          "file": "server/services/itinerary-generation-outcome.service.ts",
+          "line": 56
+        },
+        {
+          "file": "server/services/itinerary-generation-outcome.service.ts",
+          "line": 75
+        },
+        {
+          "file": "shared/schema.ts",
+          "line": 3988
+        },
+        {
+          "file": "shared/schema.ts",
+          "line": 3995
+        },
+        {
+          "file": "shared/schema.ts",
+          "line": 9322
+        }
+      ]
+    },
+    {
+      "mechanism": "Cancel / skip reasons",
+      "scope": "Free-text lastError and per-lane returns; no universal typed reason taxonomy proven",
+      "locations": [
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 384
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 492
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 538
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 73
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 143
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 150
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 155
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 156
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 175
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 185
+        },
+        {
+          "file": "server/services/itinerary-followup.service.ts",
+          "line": 203
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 104
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 127
+        },
+        {
+          "file": "server/services/signup-welcome-outbox.service.ts",
+          "line": 130
+        }
+      ]
+    },
+    {
+      "mechanism": "Dead-row digest",
+      "scope": "Shared outbox summary; mail accepted/delivered and digest scheduler require fresh proof",
+      "locations": [
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 514
+        },
+        {
+          "file": "server/services/email-outbox.service.ts",
+          "line": 573
+        },
+        {
+          "file": "server/services/email.service.ts",
+          "line": 1197
+        },
+        {
+          "file": "server/services/email.service.ts",
+          "line": 1229
+        },
+        {
+          "file": "server/services/email.service.ts",
+          "line": 1366
+        }
+      ]
+    }
+  ]
+}

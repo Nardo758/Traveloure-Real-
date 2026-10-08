@@ -1,0 +1,42 @@
+{
+  "checkedAt": "2026-10-08T16:14:44.670Z",
+  "exit": 0,
+  "tests": [
+    {
+      "name": "provider-free environment drops all live transports and production URLs",
+      "status": "PASS",
+      "durationMs": 1.60713,
+      "reason": null
+    },
+    {
+      "name": "retained suites precede registry / roster; no live verification suites run implicitly",
+      "status": "PASS",
+      "durationMs": 2.15296,
+      "reason": null
+    },
+    {
+      "name": "randomized TAP parsing: skipped and TODO cases fail rather than certify",
+      "status": "PASS",
+      "durationMs": 69.531797,
+      "reason": null
+    },
+    {
+      "name": "five hostile reporter cases: empty, malformed, keys, recipients, token URLs",
+      "status": "PASS",
+      "durationMs": 16.943145,
+      "reason": null
+    },
+    {
+      "name": "provider receipt UUIDs remain reportable without exposing credentials",
+      "status": "PASS",
+      "durationMs": 5.712641,
+      "reason": null
+    },
+    {
+      "name": "Vitest report survives retained cleanup output without certifying skipped assertions",
+      "status": "PASS",
+      "durationMs": 203.739115,
+      "reason": null
+    }
+  ]
+}

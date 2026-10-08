@@ -38,3 +38,14 @@ users' welcome messages or become a second production send path.
 **How to apply:** Keep substitution in the separate development harness only.
 Test production behavior with the override present and check that deployment
 Secrets do not contain the setting before shipping.
+
+QA inbox settings may be saved as ordinary development configuration rather
+than encrypted Secrets. Do not assume a secure entry form makes the resulting
+tracked configuration safe to commit.
+
+**Why:** Development inbox setup can leave private recipient values in a local
+`.replit` change, even when no address was printed in chat.
+
+**How to apply:** Check storage category and changed-file names without
+displaying values. Never stage or publish a configuration diff containing QA
+recipient addresses; keep them out of reports, logs and PR bodies.

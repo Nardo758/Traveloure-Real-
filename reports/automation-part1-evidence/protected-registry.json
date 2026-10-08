@@ -1,0 +1,1626 @@
+{
+  "sha": "f413edab1bbde376ba55b2139c952683c520e4fc",
+  "checkedAt": "2026-10-08T16:03:21.898Z",
+  "count": 89,
+  "nodes": [
+    {
+      "id": "payments.stripe-reconciliation",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "0 9 * * * (UTC; with in-process daily defense timer)",
+        "scheduleId": "stripe-reconciliation",
+        "source": "POST /internal/jobs/stripe-reconciliation and warm-instance timer"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/stripe-reconciliation.ts",
+        "line": 4,
+        "hash": "f72cbe978d66399b400b425168ab78fe56a91257c1587fb51e189dd90f103756"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.stripe-reconciliation-manual",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "admin.stripe-reconciliation.run_now"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/stripe-reconciliation-manual.ts",
+        "line": 4,
+        "hash": "dbf92da50f38d4511fc459aaecc1f802e8e242df2e3d2a00748f64c8da651b37"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.checkout-claim-sweep",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes in-process; */15 * * * * cold-instance backstop",
+        "scheduleId": "checkout-sweep",
+        "source": "checkoutClaimSweepScheduler and POST /internal/jobs/checkout-sweep"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/checkout-claim-sweep.ts",
+        "line": 4,
+        "hash": "442abb89d9ab4a5a7a767dcdb20599b117ca5a6c7267520492c9e72889a74a7f"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.checkout-paid-promotion",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "checkout.paid-promotion.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/checkout-paid-promotion.ts",
+        "line": 10,
+        "hash": "4740505b7df788dc71206b04c6af393ede88eb7e55a0e89b03c017bbc826d1d0"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.balance-paid-promotion",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "checkout.balance-promotion.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/balance-paid-promotion.ts",
+        "line": 10,
+        "hash": "0490f806dd1528170ab088163b7bc92406115be8f50e8dda00e50df0283da781"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-late-success-refund",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded.late-failed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/late-success-refund.ts",
+        "line": 10,
+        "hash": "fcc8cb4996c4999c52d6fcb4fd2ef10a8c2664a77b70e20fd1ce513cb1d3a409"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.earnings-release",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly, with first warm-instance pass after startup delay",
+        "scheduleId": "earnings-release",
+        "source": "earningsReleaseScheduler and POST /internal/jobs/earnings-release"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/earnings-release.ts",
+        "line": 4,
+        "hash": "fda0136276430c51b1f0a4b3f9031c0a5ecb4c4835811c3a902c0d96ee53a1fa"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.travelpayouts-report-poll",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 6 hours, plus warm-instance defense timer",
+        "scheduleId": "travelpayouts-report-poll",
+        "source": "cacheSchedulerService and POST /internal/jobs/travelpayouts-report-poll"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/travelpayouts-report-poll.ts",
+        "line": 4,
+        "hash": "b3d74f9708e11649759ba7f5136f83caa1c9696ba788197535a71f72a6cc653d"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.bundle-partial-settlement",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily warm-instance timer after existing ~90m startup delay",
+        "scheduleId": "bundle-partial-settlement-sweep",
+        "source": "server/index.ts warm-instance timer only; no internal endpoint or cron route found"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/bundle-partial-settlement.ts",
+        "line": 4,
+        "hash": "c166b1b9252841c9c9e02aab5ae6d034498878b53310709bb6f64b8257b8b33b"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.partnerize-campaign-sync",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 12 hours only after the existing credential gate",
+        "scheduleId": "partnerize-campaign-sync",
+        "source": "cacheSchedulerService credential-conditional warm timer; no external runner route"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/partnerize-campaign-sync.ts",
+        "line": 4,
+        "hash": "e1fb9d5f1bcac0c359fb248198e3de614fe75c051c6457f5552a28e7c0796316"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.partnerize-report-poll",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 6 hours only after the existing credential gate",
+        "scheduleId": "partnerize-report-poll",
+        "source": "cacheSchedulerService credential-conditional warm timer; no external runner route"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/partnerize-report-poll.ts",
+        "line": 4,
+        "hash": "74a245d1601e2192042fb044be90bb72562e62d03b76e7a0a39128d266f6d64f"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.stripe-connect-reminder",
+      "domain": "payments",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 72 hours with existing restart-aware first-run calculation",
+        "scheduleId": "stripe-connect-reminder",
+        "source": "stripeConnectReminderScheduler warm-instance timer only"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/stripe-connect-reminder.ts",
+        "line": 4,
+        "hash": "965e76547ded00740b2990c4bf1503ad08a1613e361b366f3dc9e7fe74387d95"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-payment-intent-succeeded",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-payment-intent-succeeded.ts",
+        "line": 4,
+        "hash": "da3cf4c5f6f8310edf9d3e1c5ed09dc3e969bbe7cc60264cb8ded9c8d087a16d"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.ready-made-purchase-fulfilment",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "ready_made.purchase-fulfilment.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/ready-made-purchase-fulfilment.ts",
+        "line": 10,
+        "hash": "59ab251073fb4e41a912ab67556ce63ad4f701410dec520f0721a998067c9ff8"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-legacy-booking-success",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-legacy-booking-success.ts",
+        "line": 13,
+        "hash": "93991f17adc521f992cd93305db2719c230f28a07720430bef41dcc9cfa93680"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-payment-intent-failed",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.payment_failed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-payment-intent-failed.ts",
+        "line": 4,
+        "hash": "4eca6ff7738de156081ebdd3ca46b51bdf7c831cdce930bfc8d6465364029a44"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-payment-intent-canceled",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.canceled"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-payment-intent-canceled.ts",
+        "line": 4,
+        "hash": "d6e900d060d24bb01d47cca3bd946fcb5bec552b1091e34a7622467684800a49"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-payment-intent-requires-action",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.requires_action"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-payment-intent-requires-action.ts",
+        "line": 4,
+        "hash": "0cea5219207c7b80c201636097057da18903dab575ed81321cf5d886f509555a"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-charge-refunded",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "charge.refunded"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-charge-refunded.ts",
+        "line": 4,
+        "hash": "313c9edb247a12b482534a633d1d47685057c13afaa0aceac3cc7a585069e467"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-checkout-session-completed",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "checkout.session.completed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-checkout-session-completed.ts",
+        "line": 13,
+        "hash": "de55f3fcac6bd1a4ba96fd2821e6e3b9822dda83f08e4db1ca2571ebb2921d6d"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-subscription-membership",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "customer.subscription.created",
+          "customer.subscription.updated",
+          "customer.subscription.deleted"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-subscription-membership.ts",
+        "line": 4,
+        "hash": "18e84e74956722defbb1adc01d9c3a84786f5c5448464b9770fde3967689a08c"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.connect-payment-intent-succeeded",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/connect-payment-intent-succeeded.ts",
+        "line": 4,
+        "hash": "a1c945ecb7006499ecd06e218fee2b883e5800e63beb4d317c6a596ab72ece60"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.connect-payment-intent-failed",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.payment_failed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/connect-payment-intent-failed.ts",
+        "line": 4,
+        "hash": "d94af39a1839102090c428878f04a8c67ff5bd844e497a04bc306d363471c249"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.connect-dispute-lifecycle",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "charge.dispute.created",
+          "charge.dispute.closed",
+          "charge.dispute.updated",
+          "charge.dispute.funds_withdrawn",
+          "charge.dispute.funds_reinstated"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/connect-dispute-lifecycle.ts",
+        "line": 4,
+        "hash": "bab1d29c1b23418233221ab2c354ee59f240cfcb7f3e42390378cd417d9ba6ec"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.connect-transfer-status",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "transfer.created",
+          "transfer.paid"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/connect-transfer-status.ts",
+        "line": 13,
+        "hash": "2e7d824fc7cc7ba94ef23bf7b6e09834b80b284c1168ce869ca185034a3587d9"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-stripe-dispute-lifecycle",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "charge.dispute.created",
+          "charge.dispute.updated",
+          "charge.dispute.closed",
+          "charge.dispute.funds_withdrawn",
+          "charge.dispute.funds_reinstated"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-stripe-dispute-lifecycle.ts",
+        "line": 4,
+        "hash": "49aa537a86576ee247582d96136d66679c764d356f06376fc356faf24e1fe058"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.platform-stripe-bank-payout-alert",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payout.paid",
+          "payout.failed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/platform-stripe-bank-payout-alert.ts",
+        "line": 4,
+        "hash": "69c007ea4c12ab00cc0a17c51460392c98a0d684887b1362de55c1dae6f23cac"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.affiliate-booking-purchase-ledger",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "affiliate.booking_request.purchase_recorded"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/affiliate-booking-purchase-ledger.ts",
+        "line": 4,
+        "hash": "473ea4efaf8c290e22232603df0c4e08c4ca2666829b29bc7d016a563e13e287"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.affiliate-admin-reconciliation-view",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "admin.affiliate.reconciliation_view.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/affiliate-admin-reconciliation-view.ts",
+        "line": 4,
+        "hash": "90968d08b02a5f2e15d7ac317d4685e03acfac51687a2e8c75f293ab6891d232"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "payments.affiliate-exact-report-adoption",
+      "domain": "payments",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "affiliate.report.exact_token_adoption.check"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/payments/affiliate-exact-report-adoption.ts",
+        "line": 4,
+        "hash": "05cb1877ecbe68b175fde842f90ce9c00fe583790ee52c46f60619bc963e9169"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.auto-completion",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly, with the existing jittered startup pass",
+        "scheduleId": "booking-auto-completion",
+        "source": "warm scheduler and POST /internal/jobs/booking-auto-completion"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/auto-completion.ts",
+        "line": 4,
+        "hash": "1d90c87a98de39914000ff8cabecb9a348233bc9b235a2a2fac6d5486350feab"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.declared-window-close",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 1b"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/declared-window-close.ts",
+        "line": 4,
+        "hash": "179de0025bc3916f39aaddc6b5d5044bf8e42926a8bc674c7ed9bb9cc80e2184"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.artifact-acceptance",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 3"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/artifact-acceptance.ts",
+        "line": 4,
+        "hash": "378a7ae9340baacd80cc14b68a39b6202a9d208f2306b36a09c7427ca01db8fa"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.coordination-window-close",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 1c"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/coordination-window-close.ts",
+        "line": 4,
+        "hash": "bf13a387a1d4ef2e16e546ebdace6e63bbce03c89b4c12c99d65d001d02fd3c7"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.completion-ledger-reconciliation",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as pass 2 of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "bookingAutoCompleteScheduler.reconcileMissingLedgerRows"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/completion-ledger-reconciliation.ts",
+        "line": 4,
+        "hash": "1cc0e8160b2b34a7043dcdf54c64ac983548a8c167ee1c131e55cb9946f5942e"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.legacy-payment-expiry",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every four hours with the existing jittered startup pass",
+        "scheduleId": "booking-expiry",
+        "source": "BookingExpirySchedulerService and POST /internal/jobs/booking-expiry"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/legacy-payment-expiry.ts",
+        "line": 4,
+        "hash": "f5c5a1045b96a314afb17f0d7d21f46dcc61e02ba5afeca7669ad4790686181c"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.earner-no-response-notice",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a separate notice-only arm of the existing four-hour booking-expiry pass",
+        "scheduleId": "booking-expiry",
+        "source": "BookingExpirySchedulerService.runCancellation"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/earner-no-response-notice.ts",
+        "line": 4,
+        "hash": "a81af67c846ec798ac4881b488e4b8a87d21952f6c01f215671b3cf2b7dd5b0e"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.trip-card-handover-nudge",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly with the existing jittered startup pass",
+        "scheduleId": "trip-card-handover",
+        "source": "tripCardHandoverScheduler"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/trip-card-handover.ts",
+        "line": 4,
+        "hash": "6ffb948ba8fdd3b0ad4549a270e7b4f38a6ff42aac7603d72b50b3a1cda159f8"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.occasion-drafts",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily external internal-job trigger; warm-instance timer remains defense-in-depth",
+        "scheduleId": "run-occasion-drafts",
+        "source": "POST /internal/run-occasion-drafts and occasionDraftsScheduler"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/occasion-drafts.ts",
+        "line": 4,
+        "hash": "6f3d3d62f3babca5b1f0b9fc204380d4063b30549f45ff522e1e0e1e0804d1a1"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.availability-horizon-materialization",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily after the existing delayed startup pass",
+        "scheduleId": "availability-materialization",
+        "source": "availabilityMaterializationSweep and POST /internal/jobs/availability-materialization"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/availability-horizon.ts",
+        "line": 4,
+        "hash": "fb2b391c41d644e825917e681b4a554ae46371d9df08828e2efea48e3fff5242"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.availability-pattern-authoring",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.availability.patterns.saved"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/availability-pattern-authoring.ts",
+        "line": 4,
+        "hash": "85b92a4db164a25857de79c4e4e56b6d7706f1cd1f711716892bca42e8e10e1b"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.availability-date-range-authoring",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.availability.date-ranges.saved"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/availability-date-range-authoring.ts",
+        "line": 4,
+        "hash": "4b2a98a309d2c50fbb3e282ad01364d69f75bb0fc78ed2856a059fd70747c2a2"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.availability-blackout-authoring",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.availability.blackouts.saved"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/availability-blackout-authoring.ts",
+        "line": 4,
+        "hash": "2ab014b029038d3c2d491b56c311177a8fdcbb7692b478856906a27491cd8cbf"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.completion-writer",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.completion.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/completion-writer.ts",
+        "line": 4,
+        "hash": "24dc7c6a08e0e7722a65319dfd9526c22cbf3e58bf46a89f6b539daf52faea13"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.completion-declaration-writer",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.completion_declaration.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/completion-declaration-writer.ts",
+        "line": 4,
+        "hash": "1f33320c0d1d3b0478e8bf987e058e0c094e0a64386aa1efb20f5289d277c394"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.provider-acceptance-follow-on",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.provider_accepted"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/provider-acceptance-follow-on.ts",
+        "line": 4,
+        "hash": "86ed7de06abe8e8f64f6dfcdc109e628933b2d88c37cbd6a88b1382b2942f43c"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "bookings.cancellation-follow-ons",
+      "domain": "bookings",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.cancelled",
+          "service_booking.refunded"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/bookings/cancellation-follow-ons.ts",
+        "line": 4,
+        "hash": "5bf7e754e41450dce2e64752dc59f6599929c133a512c1f3e0ee3777680f8bcf"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.claim-submit-score",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "neighborhood_claim.submitted",
+          "neighborhood_claim.rescore_requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/claim-submit-score.ts",
+        "line": 4,
+        "hash": "836d4b867ead5cb27fcb8d2272d3bc7de1a05a772f25e8d9016538cc76bab21b"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.claim-score-hourly",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly external jobs-cron due bucket",
+        "scheduleId": "score-neighborhood-claims",
+        "source": "POST /internal/jobs/score-neighborhood-claims"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/claim-score-hourly.ts",
+        "line": 4,
+        "hash": "057c421e62cf5b1e2ca97bd3c3e7591e12cb2c5005637bd162d90f0c479c2913"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.claim-score-warm",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 15 minutes after the existing 7-minute jittered first pass",
+        "scheduleId": "evidence-scorer-warm",
+        "source": "evidenceScorerScheduler warm-process timer"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/claim-score-warm.ts",
+        "line": 4,
+        "hash": "61746fe57c832e82221999e0b916eafed4f9c52ff40e8eff51f2222cb7416d64"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.verification-held-listing-activation",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "identity.verification_session.verified",
+          "account.updated.business_verification_verified"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/verification-held-listing-activation.ts",
+        "line": 4,
+        "hash": "4492d2eaf6f83fca651811e7e2ad3316bc29469e7d0467e60b1a44b1df3c7f38"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.pending-report-admin-notification",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "message_report.pending",
+          "user_report.pending"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/pending-report-notification.ts",
+        "line": 4,
+        "hash": "0673bb779b92b8eb300d1a6ceabfce22a40dca00bce434a91860e10cebbd5018"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.content-flag-created",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "content_flag.created"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/content-flag-created.ts",
+        "line": 4,
+        "hash": "d70e02118d0541362d8e01512c31e2cee8b1b8687e16abd8d5eca01a1d1a5897"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.suspension-session-cleanup",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "admin.user_suspension.persisted"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/suspension-session-cleanup.ts",
+        "line": 4,
+        "hash": "49ab4d2d6c360ea6422c0e8a19e6de31eeafbfbeee82714fc8da76acaaedee9a"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.password-reset-session-purge",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "password_reset.password_persisted"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/password-reset-session-purge.ts",
+        "line": 4,
+        "hash": "d03f22a18a5bf7a9e481438a628c233bac45a8abc5735b7e3be5532d1559dbc8"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.rate-limiter-cleanup",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "rate-limiter-cleanup",
+        "source": "server/infrastructure/rate-limiter.ts local interval"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/rate-limiter-cleanup.ts",
+        "line": 4,
+        "hash": "ad13c0cb9a2e97db03069728bd66d5530e8eeb2e74fc8a5c07fbdfd1b6900f97"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.internal-jobs-limiter-cleanup",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "internal-jobs-limiter-cleanup",
+        "source": "server/middleware/internal-jobs-limiter.ts local interval"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/internal-limiter-cleanup.ts",
+        "line": 4,
+        "hash": "46bd6fcce7c64093449a8497a41c4dda41f24d6bc2407f48dd8e3584790bca38"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "moderation.message-rate-limiter-cleanup",
+      "domain": "moderation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "message-rate-limiter-cleanup",
+        "source": "server/infrastructure/message-rate-limiter.ts local interval"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/moderation/message-limiter-cleanup.ts",
+        "line": 4,
+        "hash": "8389dfb9737e62f4488de016331316da36d0791b329de0e4d91e9780146a0f08"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.email-outbox-enqueue",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "email.enqueue"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/email-outbox-enqueue.ts",
+        "line": 4,
+        "hash": "e8ef114de04c89854780ac355bc1821d5a6d75d5c85e8ea69629940484cc1c73"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.email-outbox-drain",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes",
+        "scheduleId": "email-outbox-drain",
+        "source": "server/services/email-outbox.service.ts existing scheduler"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/email-outbox-drain.ts",
+        "line": 4,
+        "hash": "816c78ddf9d577e00887edb009a0872d60752444cf70ecb9781e95cc4a2fc2f9"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.email-outbox-admin-retry",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "email_outbox.admin_retry"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/email-outbox-admin-retry.ts",
+        "line": 4,
+        "hash": "af223b8054ad65375cf9231410de02b1a2a3b5e6db11058986035d20919906d7"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.push-notification-dispatch",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "notification.push_requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/push-notification-dispatch.ts",
+        "line": 4,
+        "hash": "e31be6e62ab905f2de413193fb37eb4e890f6dc6b3224302fd611187ac4deeba"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.push-notification-sweep",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes",
+        "scheduleId": "push-notification-sweep",
+        "source": "server/services/email-outbox.service.ts existing composite outbox scheduler"
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/push-notification-sweep.ts",
+        "line": 4,
+        "hash": "4df5fdbd9a9cb7fd568d08096747edf649da920c4de4e9ce607e161ea4fccc96"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.auth-password-reset-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "auth.password_reset_email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/auth-password-reset-email.ts",
+        "line": 4,
+        "hash": "2efd50dcdb43cc2230228ab56c8ead74ec802d828a6bf65be92c09320d1fc496"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.auth-verification-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "auth.verification_email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/auth-verification-email.ts",
+        "line": 4,
+        "hash": "e54f1e6050573d74c335be2c39ed6fe2e950dcfa147ecb14c3297d53ecaa59c7"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.auth-welcome-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "auth.welcome_email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/auth-welcome-email.ts",
+        "line": 4,
+        "hash": "4a9c0e985b78a912391726c9b173cd0e9984c58120ef11286a3b664f77af26be"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Historically verified; NOT freshly certified"
+    },
+    {
+      "id": "messaging.plan-delivered-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.delivered_email",
+          "itinerary.ready"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/plan-delivered-email.ts",
+        "line": 4,
+        "hash": "f3905c7a222420ac6fa4a08733586beea4a09b02af9fad3637e4824749d7a45b"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Historically verified; NOT freshly certified"
+    },
+    {
+      "id": "messaging.itinerary-failed-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.failed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/itinerary-failed-email.ts",
+        "line": 4,
+        "hash": "7def6a9f35b1cc2730d4c184bb7afd94804973d3af74044d98d682667bf6c8d5"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Historically verified; NOT freshly certified"
+    },
+    {
+      "id": "messaging.plan-approved-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.approved_email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/plan-approved-email.ts",
+        "line": 4,
+        "hash": "08dc1b77175fba8302a71e0885b4e932eb5079ec509144f715b68713865a6904"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.plan-changes-requested-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.changes_requested_email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/plan-changes-requested-email.ts",
+        "line": 4,
+        "hash": "b5bc789f33478b07b10c37b896597a7da12ff334b20050b5e1b98ecafde6073d"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.plan-suggestion-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.suggestion_email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/plan-suggestion-email.ts",
+        "line": 4,
+        "hash": "2ce59b3180b82072752e6da3a880ad3c75eceab5117eba22bff668c055d841cf"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.activity-email",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "activity.email"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/activity-email.ts",
+        "line": 4,
+        "hash": "091f372ea016aa0bd6af3389fc61f74c7c3b1f95b1121324a51824ac359dc8aa"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.guest-invite-send",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "guest_invite.send"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/guest-invite-send.ts",
+        "line": 4,
+        "hash": "eb172d9a1435dfe05de63472452ef96764a8bad92d2b0144901bfbf0b6fc765a"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.email-provider-transport",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "email.provider_send"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/email-provider-transport.ts",
+        "line": 4,
+        "hash": "89cf1f7ef6c38efd21f1b0aaf7542ed3b57c41dc8aa69586597bb56ebb37beb6"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.chat-follow-ons",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "chat.created"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/chat-follow-ons.ts",
+        "line": 4,
+        "hash": "05470999b90799305b2cb9aa7abb8fda44c06c055247bfeacafba0e0d04bef31"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.message-follow-ons",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "message.created"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/message-follow-ons.ts",
+        "line": 4,
+        "hash": "18baf1d83b66e7a377bb096da8f93170efa372e91227f540f23a4d8bc8b49a7d"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.notification-create",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "notification.created"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/notification-create.ts",
+        "line": 4,
+        "hash": "962675f44b2845477f95f8fab099635c4c655b8b7da2a5d878bbfef1cc102b0e"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.chat-realtime-fanout",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "chat.realtime.requested"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/chat-realtime-fanout.ts",
+        "line": 4,
+        "hash": "a43866dd277f0f91e1ccbba280deae23e21cff83cc56d05b40ba9666867c980a"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "messaging.itinerary-nudge-2h",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.followup_due"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/itinerary-nudge-2h.ts",
+        "line": 2,
+        "hash": "6e788d2f4831c0de4d1b3049a3842f0feb26fbcf49150a50c4e0a15b1d601195"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Historically verified; NOT freshly certified"
+    },
+    {
+      "id": "messaging.itinerary-followup-24h",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.followup_due"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/itinerary-followup-24h.ts",
+        "line": 2,
+        "hash": "a16e9298dfa2c40df908d5a3b5c490a6094baaa25badb65e5b506922c2cac1d5"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Historically verified; NOT freshly certified"
+    },
+    {
+      "id": "messaging.itinerary-reengagement-5d",
+      "domain": "messaging",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.followup_due"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/messaging/itinerary-reengagement-5d.ts",
+        "line": 2,
+        "hash": "4ea7c9690b8b5941d094b5cdd0b14d5542de2caffa4b7f87285d8d9b789d3deb"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Historically verified; NOT freshly certified"
+    },
+    {
+      "id": "provider.application-bio-mirror",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "application.bio_mirror"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/application-bio-mirror.ts",
+        "line": 4,
+        "hash": "e3f818340fe9e4f43beec5e152212ffa56835f80f1a956e4c4c38e828c48b78d"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.expert-application-neighborhood-stamp",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "expert_application.neighborhood_stamp"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/expert-application-neighborhood-stamp.ts",
+        "line": 4,
+        "hash": "d7b489bd771974bff809e35c1215a58debfd14d28af78a368aa3c23506e9271f"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.expert-application-decision-follow-ons",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "expert.application.decision"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/expert-application-decision-follow-ons.ts",
+        "line": 4,
+        "hash": "69a99fec33a6bdfc4d5df37a7a7b5a9799a4ee988f68fb8d4b128acda7907420"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.provider-application-decision-follow-ons",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.application.decision"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/provider-application-decision-follow-ons.ts",
+        "line": 4,
+        "hash": "e39362ce30a13f3018f6c1f93965b8d1bd74498d9d1d7107d26b473fd7413407"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.expert-rejection-feedback-notification",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "expert.application.rejection-feedback-updated"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/expert-rejection-feedback-notification.ts",
+        "line": 4,
+        "hash": "1e8f921e3bc3a5f1a0cce22f89526fba1c15044f2a0973243c72eb56a07b72b7"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.provider-rejection-feedback-follow-ons",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.application.rejection-feedback-updated"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/provider-rejection-feedback-follow-ons.ts",
+        "line": 4,
+        "hash": "cb903b0477ced9ffd679da36d43b9235b53cb0dfb58d071bff68e52befb254a3"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.verification-decision-email",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.verification.decision-changed"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/verification-decision-email.ts",
+        "line": 4,
+        "hash": "7f41db6dae5e9ef38c758a80acda48f32cb665ca1518247a0cd4a055df71bf67"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    },
+    {
+      "id": "provider.listing-review-decision-notification",
+      "domain": "provider",
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.listing-review.decision-notification"
+        ]
+      },
+      "enabled": true,
+      "owner": {
+        "file": "server/automations/provider/listing-review-decision-notification.ts",
+        "line": 4,
+        "hash": "09663ae78c521564b65c64adf3ec35dcd5750d04672c53db42890a01be203a85"
+      },
+      "extension": "Part 1: freeze only. Later Part assignment requires its prompt and approved touch list.",
+      "evidenceStatus": "Unverified under this brief"
+    }
+  ]
+}

@@ -1,0 +1,485 @@
+{
+  "checkedAt": "2026-10-08T16:03:21.898Z",
+  "sha": "f413edab1bbde376ba55b2139c952683c520e4fc",
+  "jobs": [
+    {
+      "job": "checkout-sweep",
+      "expectedIntervalSec": 900,
+      "bucket": "backstops",
+      "source": "server/routes/internal.routes.ts:185"
+    },
+    {
+      "job": "itinerary-generation-sweep",
+      "expectedIntervalSec": 900,
+      "bucket": "backstops",
+      "source": "server/routes/internal.routes.ts:186"
+    },
+    {
+      "job": "email-outbox",
+      "expectedIntervalSec": 900,
+      "bucket": "backstops",
+      "source": "server/routes/internal.routes.ts:187"
+    },
+    {
+      "job": "earnings-release",
+      "expectedIntervalSec": 3600,
+      "bucket": "hourly",
+      "source": "server/routes/internal.routes.ts:189"
+    },
+    {
+      "job": "booking-auto-completion",
+      "expectedIntervalSec": 3600,
+      "bucket": "hourly",
+      "source": "server/routes/internal.routes.ts:190"
+    },
+    {
+      "job": "score-neighborhood-claims",
+      "expectedIntervalSec": 3600,
+      "bucket": "hourly",
+      "source": "server/routes/internal.routes.ts:192"
+    },
+    {
+      "job": "handoff-timers",
+      "expectedIntervalSec": 3600,
+      "bucket": "hourly",
+      "source": "server/routes/internal.routes.ts:194"
+    },
+    {
+      "job": "legs-dayof-recheck",
+      "expectedIntervalSec": 3600,
+      "bucket": "hourly",
+      "source": "server/routes/internal.routes.ts:197"
+    },
+    {
+      "job": "booking-expiry",
+      "expectedIntervalSec": 14400,
+      "bucket": "four-hourly",
+      "source": "server/routes/internal.routes.ts:199"
+    },
+    {
+      "job": "travelpayouts-report-poll",
+      "expectedIntervalSec": 21600,
+      "bucket": "six-hourly",
+      "source": "server/routes/internal.routes.ts:201"
+    },
+    {
+      "job": "stripe-reconciliation",
+      "expectedIntervalSec": 86400,
+      "bucket": "daily",
+      "source": "server/routes/internal.routes.ts:203"
+    },
+    {
+      "job": "availability-materialization",
+      "expectedIntervalSec": 86400,
+      "bucket": "daily",
+      "source": "server/routes/internal.routes.ts:204"
+    },
+    {
+      "job": "travel-matrix-refresh",
+      "expectedIntervalSec": 86400,
+      "bucket": "daily",
+      "source": "server/routes/internal.routes.ts:207"
+    },
+    {
+      "job": "travelpulse-weekly",
+      "expectedIntervalSec": 86400,
+      "bucket": "daily",
+      "source": "server/routes/internal.routes.ts:210"
+    },
+    {
+      "job": "facts-recheck",
+      "expectedIntervalSec": 86400,
+      "bucket": "daily",
+      "source": "server/routes/internal.routes.ts:211"
+    },
+    {
+      "job": "leg-google-coords",
+      "expectedIntervalSec": 86400,
+      "bucket": "daily",
+      "source": "server/routes/internal.routes.ts:213"
+    },
+    {
+      "job": "run-occasion-drafts",
+      "expectedIntervalSec": 86400,
+      "bucket": "occasion-drafts-daily",
+      "source": "server/routes/internal.routes.ts:215"
+    }
+  ],
+  "registeredCron": [
+    {
+      "id": "payments.stripe-reconciliation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "0 9 * * * (UTC; with in-process daily defense timer)",
+        "scheduleId": "stripe-reconciliation",
+        "source": "POST /internal/jobs/stripe-reconciliation and warm-instance timer"
+      },
+      "owner": {
+        "file": "server/automations/payments/stripe-reconciliation.ts",
+        "line": 4,
+        "hash": "f72cbe978d66399b400b425168ab78fe56a91257c1587fb51e189dd90f103756"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.checkout-claim-sweep",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes in-process; */15 * * * * cold-instance backstop",
+        "scheduleId": "checkout-sweep",
+        "source": "checkoutClaimSweepScheduler and POST /internal/jobs/checkout-sweep"
+      },
+      "owner": {
+        "file": "server/automations/payments/checkout-claim-sweep.ts",
+        "line": 4,
+        "hash": "442abb89d9ab4a5a7a767dcdb20599b117ca5a6c7267520492c9e72889a74a7f"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.earnings-release",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly, with first warm-instance pass after startup delay",
+        "scheduleId": "earnings-release",
+        "source": "earningsReleaseScheduler and POST /internal/jobs/earnings-release"
+      },
+      "owner": {
+        "file": "server/automations/payments/earnings-release.ts",
+        "line": 4,
+        "hash": "fda0136276430c51b1f0a4b3f9031c0a5ecb4c4835811c3a902c0d96ee53a1fa"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.travelpayouts-report-poll",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 6 hours, plus warm-instance defense timer",
+        "scheduleId": "travelpayouts-report-poll",
+        "source": "cacheSchedulerService and POST /internal/jobs/travelpayouts-report-poll"
+      },
+      "owner": {
+        "file": "server/automations/payments/travelpayouts-report-poll.ts",
+        "line": 4,
+        "hash": "b3d74f9708e11649759ba7f5136f83caa1c9696ba788197535a71f72a6cc653d"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.bundle-partial-settlement",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily warm-instance timer after existing ~90m startup delay",
+        "scheduleId": "bundle-partial-settlement-sweep",
+        "source": "server/index.ts warm-instance timer only; no internal endpoint or cron route found"
+      },
+      "owner": {
+        "file": "server/automations/payments/bundle-partial-settlement.ts",
+        "line": 4,
+        "hash": "c166b1b9252841c9c9e02aab5ae6d034498878b53310709bb6f64b8257b8b33b"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.partnerize-campaign-sync",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 12 hours only after the existing credential gate",
+        "scheduleId": "partnerize-campaign-sync",
+        "source": "cacheSchedulerService credential-conditional warm timer; no external runner route"
+      },
+      "owner": {
+        "file": "server/automations/payments/partnerize-campaign-sync.ts",
+        "line": 4,
+        "hash": "e1fb9d5f1bcac0c359fb248198e3de614fe75c051c6457f5552a28e7c0796316"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.partnerize-report-poll",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 6 hours only after the existing credential gate",
+        "scheduleId": "partnerize-report-poll",
+        "source": "cacheSchedulerService credential-conditional warm timer; no external runner route"
+      },
+      "owner": {
+        "file": "server/automations/payments/partnerize-report-poll.ts",
+        "line": 4,
+        "hash": "74a245d1601e2192042fb044be90bb72562e62d03b76e7a0a39128d266f6d64f"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "payments.stripe-connect-reminder",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 72 hours with existing restart-aware first-run calculation",
+        "scheduleId": "stripe-connect-reminder",
+        "source": "stripeConnectReminderScheduler warm-instance timer only"
+      },
+      "owner": {
+        "file": "server/automations/payments/stripe-connect-reminder.ts",
+        "line": 4,
+        "hash": "965e76547ded00740b2990c4bf1503ad08a1613e361b366f3dc9e7fe74387d95"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.auto-completion",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly, with the existing jittered startup pass",
+        "scheduleId": "booking-auto-completion",
+        "source": "warm scheduler and POST /internal/jobs/booking-auto-completion"
+      },
+      "owner": {
+        "file": "server/automations/bookings/auto-completion.ts",
+        "line": 4,
+        "hash": "1d90c87a98de39914000ff8cabecb9a348233bc9b235a2a2fac6d5486350feab"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.declared-window-close",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 1b"
+      },
+      "owner": {
+        "file": "server/automations/bookings/declared-window-close.ts",
+        "line": 4,
+        "hash": "179de0025bc3916f39aaddc6b5d5044bf8e42926a8bc674c7ed9bb9cc80e2184"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.artifact-acceptance",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 3"
+      },
+      "owner": {
+        "file": "server/automations/bookings/artifact-acceptance.ts",
+        "line": 4,
+        "hash": "378a7ae9340baacd80cc14b68a39b6202a9d208f2306b36a09c7427ca01db8fa"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.coordination-window-close",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 1c"
+      },
+      "owner": {
+        "file": "server/automations/bookings/coordination-window-close.ts",
+        "line": 4,
+        "hash": "bf13a387a1d4ef2e16e546ebdace6e63bbce03c89b4c12c99d65d001d02fd3c7"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.completion-ledger-reconciliation",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as pass 2 of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "bookingAutoCompleteScheduler.reconcileMissingLedgerRows"
+      },
+      "owner": {
+        "file": "server/automations/bookings/completion-ledger-reconciliation.ts",
+        "line": 4,
+        "hash": "1cc0e8160b2b34a7043dcdf54c64ac983548a8c167ee1c131e55cb9946f5942e"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.legacy-payment-expiry",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every four hours with the existing jittered startup pass",
+        "scheduleId": "booking-expiry",
+        "source": "BookingExpirySchedulerService and POST /internal/jobs/booking-expiry"
+      },
+      "owner": {
+        "file": "server/automations/bookings/legacy-payment-expiry.ts",
+        "line": 4,
+        "hash": "f5c5a1045b96a314afb17f0d7d21f46dcc61e02ba5afeca7669ad4790686181c"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.earner-no-response-notice",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a separate notice-only arm of the existing four-hour booking-expiry pass",
+        "scheduleId": "booking-expiry",
+        "source": "BookingExpirySchedulerService.runCancellation"
+      },
+      "owner": {
+        "file": "server/automations/bookings/earner-no-response-notice.ts",
+        "line": 4,
+        "hash": "a81af67c846ec798ac4881b488e4b8a87d21952f6c01f215671b3cf2b7dd5b0e"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.trip-card-handover-nudge",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly with the existing jittered startup pass",
+        "scheduleId": "trip-card-handover",
+        "source": "tripCardHandoverScheduler"
+      },
+      "owner": {
+        "file": "server/automations/bookings/trip-card-handover.ts",
+        "line": 4,
+        "hash": "6ffb948ba8fdd3b0ad4549a270e7b4f38a6ff42aac7603d72b50b3a1cda159f8"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.occasion-drafts",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily external internal-job trigger; warm-instance timer remains defense-in-depth",
+        "scheduleId": "run-occasion-drafts",
+        "source": "POST /internal/run-occasion-drafts and occasionDraftsScheduler"
+      },
+      "owner": {
+        "file": "server/automations/bookings/occasion-drafts.ts",
+        "line": 4,
+        "hash": "6f3d3d62f3babca5b1f0b9fc204380d4063b30549f45ff522e1e0e1e0804d1a1"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "bookings.availability-horizon-materialization",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily after the existing delayed startup pass",
+        "scheduleId": "availability-materialization",
+        "source": "availabilityMaterializationSweep and POST /internal/jobs/availability-materialization"
+      },
+      "owner": {
+        "file": "server/automations/bookings/availability-horizon.ts",
+        "line": 4,
+        "hash": "fb2b391c41d644e825917e681b4a554ae46371d9df08828e2efea48e3fff5242"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "moderation.claim-score-hourly",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly external jobs-cron due bucket",
+        "scheduleId": "score-neighborhood-claims",
+        "source": "POST /internal/jobs/score-neighborhood-claims"
+      },
+      "owner": {
+        "file": "server/automations/moderation/claim-score-hourly.ts",
+        "line": 4,
+        "hash": "057c421e62cf5b1e2ca97bd3c3e7591e12cb2c5005637bd162d90f0c479c2913"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "moderation.claim-score-warm",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 15 minutes after the existing 7-minute jittered first pass",
+        "scheduleId": "evidence-scorer-warm",
+        "source": "evidenceScorerScheduler warm-process timer"
+      },
+      "owner": {
+        "file": "server/automations/moderation/claim-score-warm.ts",
+        "line": 4,
+        "hash": "61746fe57c832e82221999e0b916eafed4f9c52ff40e8eff51f2222cb7416d64"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "moderation.rate-limiter-cleanup",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "rate-limiter-cleanup",
+        "source": "server/infrastructure/rate-limiter.ts local interval"
+      },
+      "owner": {
+        "file": "server/automations/moderation/rate-limiter-cleanup.ts",
+        "line": 4,
+        "hash": "ad13c0cb9a2e97db03069728bd66d5530e8eeb2e74fc8a5c07fbdfd1b6900f97"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "moderation.internal-jobs-limiter-cleanup",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "internal-jobs-limiter-cleanup",
+        "source": "server/middleware/internal-jobs-limiter.ts local interval"
+      },
+      "owner": {
+        "file": "server/automations/moderation/internal-limiter-cleanup.ts",
+        "line": 4,
+        "hash": "46bd6fcce7c64093449a8497a41c4dda41f24d6bc2407f48dd8e3584790bca38"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "moderation.message-rate-limiter-cleanup",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "message-rate-limiter-cleanup",
+        "source": "server/infrastructure/message-rate-limiter.ts local interval"
+      },
+      "owner": {
+        "file": "server/automations/moderation/message-limiter-cleanup.ts",
+        "line": 4,
+        "hash": "8389dfb9737e62f4488de016331316da36d0791b329de0e4d91e9780146a0f08"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "messaging.email-outbox-drain",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes",
+        "scheduleId": "email-outbox-drain",
+        "source": "server/services/email-outbox.service.ts existing scheduler"
+      },
+      "owner": {
+        "file": "server/automations/messaging/email-outbox-drain.ts",
+        "line": 4,
+        "hash": "816c78ddf9d577e00887edb009a0872d60752444cf70ecb9781e95cc4a2fc2f9"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    },
+    {
+      "id": "messaging.push-notification-sweep",
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes",
+        "scheduleId": "push-notification-sweep",
+        "source": "server/services/email-outbox.service.ts existing composite outbox scheduler"
+      },
+      "owner": {
+        "file": "server/automations/messaging/push-notification-sweep.ts",
+        "line": 4,
+        "hash": "4df5fdbd9a9cb7fd568d08096747edf649da920c4de4e9ce607e161ea4fccc96"
+      },
+      "evidenceStatus": "Requires source/heartbeat/Actions correlation; definition alone is UNKNOWN"
+    }
+  ]
+}
