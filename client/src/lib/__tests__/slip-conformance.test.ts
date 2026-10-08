@@ -230,6 +230,7 @@ const ALLOWED_ADDITIONS = {
   "slip-meta-zone": "Empty board — the plan's zone in the subline, e.g. 'JST' (ruling 3; no handler)",
   "slip-meta-chips": "Empty board — the owner's 'Set your dates' / 'Who's coming?' chips row (no handler of its own)",
   "slip-empty-board": "Empty board — the owner's empty-plan start: anchor question, draft card, other ways in (no handler of its own)",
+  "slip-days-expand-all": "Main board (rows) — Expand all / Collapse all: opens or closes every day through the same day-open state each day's own toggle writes",
 } as const;
 
 /**
