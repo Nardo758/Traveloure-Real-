@@ -186,6 +186,7 @@ import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
 import { daysWithinFlightWindows } from "./utils/draft-flight-windows";
+import { placeholderMintDay } from "./services/trip-placeholder-dates";
 import { reduceUncoveredEventActivities, withNormalizedTravelTitles } from "./utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "./services/content-facts/covering-events";
 import { seasonPromptLineForTrip } from "./services/content-facts/season-facts";
@@ -1590,15 +1591,22 @@ export async function registerRoutes(
       }
 
       // MINT SITE 1 of 10 — THE TRAVELER'S OWN DOOR (migration 302, ledger
-      // `2026-09-15-d22-dates-confirmed`, punchlist D-22). `insertTripSchema` REQUIRES
-      // `startDate`/`endDate`, and the client's ONE mint door (`mintTripSlip` /
-      // `checkSlipPrecondition`, `client/src/lib/trip-slip.ts`) REFUSES rather than defaulting
-      // them — Locked Decision 42 D12: a mint may not invent a date. So a body that reaches here
-      // carries dates the traveler stated, and this mint says so. Nothing else on this rail may:
-      // `datesConfirmedAt` is `.omit()`ed from the body schema (§19).
-      const datesChosenByTraveler = true;
+      // `2026-09-15-d22-dates-confirmed`, punchlist D-22). A body that STATES dates carries dates the
+      // traveler chose, and this mint says so. AMENDED (ledger `2026-10-08-e1-zero-questions`, E1
+      // ruling 2): the dates are OPTIONAL on this body (`tripMintBodySchema` — both or neither). A body
+      // with NEITHER is the Experiences page's zero-question start: the row takes the placeholder
+      // window (the mint day, `placeholderMintDay`) because the columns are NOT NULL, and NOTHING is
+      // stamped — `dates_confirmed_at` stays NULL, so every reader calls the window a placeholder and
+      // the slip asks for dates (LD 42 D12: the fact, not the schema, says no date was invented).
+      // `datesConfirmedAt` is still `.omit()`ed from the body schema (§19).
+      const datesChosenByTraveler = !!(sanitizedInput.startDate && sanitizedInput.endDate);
+      const placeholderDay = datesChosenByTraveler ? null : placeholderMintDay(sanitizedInput.destination);
       const trip = await storage.createTrip(
-        { ...sanitizedInput, userId: actorUserId },
+        {
+          ...sanitizedInput,
+          ...(placeholderDay ? { startDate: placeholderDay, endDate: placeholderDay } : {}),
+          userId: actorUserId,
+        } as any,
         { datesChosenByTraveler },
       );
 
@@ -1695,6 +1703,10 @@ export async function registerRoutes(
       }
 
       const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
+      // Ledger `2026-10-08-e1-zero-questions`: leg compute skips a plan whose dates are unconfirmed, so a
+      // re-date (the ONE rail that stamps `dates_confirmed_at`) runs it again. Idempotent and gated by the
+      // engine's own qualifier, so a free plan still computes nothing.
+      if (sanitizedInput.startDate || sanitizedInput.endDate) enqueuePlanLegRecompute(req.params.id);
       res.json(updatedTrip);
     } catch (err) {
       if (err instanceof z.ZodError) {

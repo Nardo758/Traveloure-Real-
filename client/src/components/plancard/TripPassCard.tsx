@@ -11,6 +11,7 @@
  * POST /purchase/confirm). A 409 from /purchase means the trip already holds an
  * active pass — surfaced, never retried into a second charge.
  */
+import { DatesGate } from "@/components/plan/SlipAnchorPanels";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ticket, Loader2, Check } from "lucide-react";
@@ -40,7 +41,18 @@ export function tripPassRunsPhrase(runs: number | null | undefined): string {
     : "optimizer runs";
 }
 
-export function TripPassCard({ tripId, planName }: { tripId: string; /** The plan's name for the pay sheet's heading; absent ⇒ left out. */ planName?: string | null }) {
+export function TripPassCard({
+  tripId,
+  trip,
+  planName,
+}: {
+  tripId: string;
+  /** Lane E1 (ruling 7): the plan's window and whether anybody chose it — a placeholder window asks for
+   *  dates inline before the purchase continues. Absent ⇒ no gate (a caller with no plan DTO). */
+  trip?: { id: string; startDate?: string | Date | null; endDate?: string | Date | null; datesConfirmed?: boolean };
+  /** The plan's name for the pay sheet's heading; absent ⇒ left out. */
+  planName?: string | null;
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const statusKey = [`/api/trips/${tripId}/trip-pass`];
@@ -165,15 +177,19 @@ export function TripPassCard({ tripId, planName }: { tripId: string; /** The pla
               (R-ac). With no number the phrase names no count — never "unlimited", which it is not. */}
           {" "}· {tripPassRunsPhrase(status.runsPerTrip)} + AI tasks · service fee waived
         </p>
-        <button
-          type="button"
-          disabled={starting}
-          onClick={() => void startPurchase()}
-          className="w-full rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors bg-[color:var(--earn-teal)] hover:bg-[color:var(--earn-teal-ink)] disabled:opacity-60"
-          data-testid="button-buy-trip-pass"
-        >
-          {starting ? "Starting…" : "Get the Trip Pass"}
-        </button>
+        <DatesGate trip={trip ?? { id: tripId }} action="The Trip Pass" testId="trip-pass-dates-gate">
+          {(guard) => (
+            <button
+              type="button"
+              disabled={starting}
+              onClick={() => guard(() => void startPurchase())}
+              className="w-full rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors bg-[color:var(--earn-teal)] hover:bg-[color:var(--earn-teal-ink)] disabled:opacity-60"
+              data-testid="button-buy-trip-pass"
+            >
+              {starting ? "Starting…" : "Get the Trip Pass"}
+            </button>
+          )}
+        </DatesGate>
       </section>
 
       <Dialog open={!!sheet} onOpenChange={(v) => !v && !confirming && setSheet(null)}>

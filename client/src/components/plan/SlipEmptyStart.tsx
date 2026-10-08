@@ -93,7 +93,7 @@ export function SlipEmptyStart({
         >
           {draft.isPending ? "Drafting…" : "Draft it with AI · free"}
         </button>
-        {draft.datesDialog}
+        {draft.datesPanel}
       </section>
 
       <div className="space-y-2">

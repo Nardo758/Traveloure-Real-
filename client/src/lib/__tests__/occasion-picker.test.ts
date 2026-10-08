@@ -148,12 +148,13 @@ describe("P5 — Continue needs both answers", () => {
     assert.equal(canContinue("wedding", CATALOG, "kyoto"), true);
   });
 
-  it("the page's Continue passes the experiences door, opens at When, for a new plan", () => {
+  it("the page's Continue opens the Trip Slip with the occasion and the city — no modal (Lane E1, sanctioned)", () => {
     const src = read("client/src/pages/experiences.tsx");
-    assert.match(src, /door:\s*"experiences"/);
-    assert.match(src, /focusStep:\s*"when"/);
-    assert.match(src, /newPlan:\s*true/);
-    assert.match(src, /disabled=\{!ready\}/);
+    assert.match(src, /experienceSlug:\s*occasionSlug,\s*city:\s*market\.cityName,\s*country:\s*market\.country/);
+    assert.match(src, /mintStartPagePlan\(answers\)/);
+    assert.match(src, /writePendingPlanRecord\(startPageGuestRecord\(answers\)\)/);
+    assert.doesNotMatch(src, /usePlanning|focusStep/, "the start page opens no planning modal");
+    assert.match(src, /disabled=\{!ready \|\| starting \|\| authLoading\}/);
     assert.doesNotMatch(src, /IntakePanel|plan"\) === "1"/, "the intake and ?plan=1 are gone");
     assert.doesNotMatch(src, /curated experience templates/, "the template count copy is gone");
   });

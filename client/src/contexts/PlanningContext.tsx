@@ -62,6 +62,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { getTripContext, updateTripContext, useTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
+import { START_PAGE_DOOR, isStartPageRecord, mintStartPagePlan } from "@/lib/start-page-plan";
 import type { PlanDoor, TripMintEntry } from "@shared/slip-funnel-events";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
@@ -87,6 +88,7 @@ import {
   takePendingPlanRecord,
   writePendingPlanRecord,
   type PendingMapAdd,
+  type PendingPlanRecord,
 } from "@/lib/pending-plan-record";
 
 export type PlanningBranch = "myself" | "ai" | "local" | "occasion";
@@ -125,11 +127,6 @@ export interface PlanningSource {
   pendingMapAdd?: PendingMapAdd;
   /** Re-plan context: the trip this entry belongs to. */
   tripId?: string;
-  /**
-   * RC-12: open on step 4 (Who) — honoured only with `tripId`. Step 8 D1: `"when"` opens on step 3,
-   * honoured only for the `experiences` door with a resolved occasion and a city. See `resolvePlanSteps`.
-   */
-  focusStep?: "who" | "when";
   /** Deep-open a branch. Since `2026-09-04-one-modal-many-doors` this narrows the FINISH to that
    *  one CTA; it does NOT skip the modal's steps (the pricing ladder rows use it). */
   branch?: PlanningBranch;
@@ -574,13 +571,38 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   }, [openSignInModal, source]);
   // After sign-in (a full reload), the record is TAKEN — and so cleared — BEFORE the plan is created,
   // then replayed through the modal's own finish: the ONE mint, the ONE commit, the D4 landing.
+  const replayStartPageRecord = async (record: PendingPlanRecord) => {
+    const experienceSlug = record.source.experienceSlug ?? record.answers.occasionSlug ?? "";
+    const city = record.source.city ?? "";
+    const country = record.source.country ?? "";
+    const outcome = await mintStartPagePlan({ experienceSlug, city, country });
+    if (!outcome.ok) {
+      toast({ variant: "destructive", title: "Your plan was not created", description: outcome.message });
+      return;
+    }
+    if (record.pendingAdd) {
+      writePendingMapAddRetry(outcome.tripId, record.pendingAdd);
+      const added = await attachPendingMapAdd(outcome.tripId, record.pendingAdd);
+      const said = pendingMapAddMessage(added);
+      toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+    }
+    setLocation(planLandingPath(outcome.tripId, "myself", START_PAGE_DOOR));
+  };
   const replayedForUser = useRef<string | null>(null);
   useEffect(() => {
     if (!user?.id || replayedForUser.current === user.id) return;
     replayedForUser.current = user.id;
     consumePendingPlanRecord({
       take: () => takePendingPlanRecord(),
-      replay: (record) =>
+      replay: (record) => {
+        // Lane E1 (ledger `2026-10-08-e1-zero-questions`): a zero-question start replays through ITS
+        // mint — the occasion and the city, no dates — never the modal's auto-finish, which would refuse
+        // for want of the dates the start page deliberately did not ask. The guest map's one add then
+        // runs once onto the plan, exactly as the modal's mint runs it (retry entry written first).
+        if (isStartPageRecord(record)) {
+          void replayStartPageRecord(record);
+          return;
+        }
         open({
           ...(record.door ? { door: record.door as PlanningSource["door"] } : {}),
           newPlan: true,
@@ -590,7 +612,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           resumeAnswers: record.answers,
           autoFinish: record.branch,
           ...(record.pendingAdd ? { pendingMapAdd: record.pendingAdd } : {}),
-        }),
+        });
+      },
     });
     // Step 8d: a guest-map add whose plan was created but whose add did not land is retried here —
     // the add only, idempotently (the plan is read first). Never on a load that is replaying a record.

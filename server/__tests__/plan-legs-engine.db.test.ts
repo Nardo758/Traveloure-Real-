@@ -19,6 +19,9 @@
  *   E14 apply after Optimize: the plan's legs are answered from its OWN run's version legs (no call)
  *   E13 a stop located only by a Google Places fact: its leg is stamped `coord_source='google'` with
  *       the fact's fetch time (LD 57 as extended to legs, R311) — a cache the daily leg job clears
+ *   E15 a qualifying plan whose dates nobody confirmed (`dates_confirmed_at` NULL): zero routing
+ *       calls, zero legs, and the skip says why — `dates_not_confirmed` (E1 ruling 7, ledger
+ *       `2026-10-08-e1-zero-questions`)
  *
  * NEGATIVE SPACE (§18d): the adapter is the CI stub (no Google call — the Google adapter's half is the
  * contract test's). Hours buckets are exercised through item end times only.
@@ -89,8 +92,8 @@ before(async () => {
   assertDisposableDb();
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'PLE', 'traveler', 'traveler')`);
   for (const t of [FREE, PAID, TWIN, OPT]) {
-    await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
-      VALUES (${t}, ${owner}, 'PLE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
+    await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
+      VALUES (${t}, ${owner}, 'PLE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
     await stops(t);
   }
   for (const t of [PAID, TWIN]) {
@@ -298,4 +301,20 @@ test("E14: after an Optimize run, the plan's legs come from its own version legs
   assert.equal(r.reused, 3);
   assert.equal(r.written, 3);
   for (const l of await legs(OPT)) assert.equal(l.estimated_duration_minutes, 17);
+});
+
+test("E15: a plan whose dates nobody confirmed builds no legs and says why (E1 ruling 7)", async () => {
+  const UNDATED = id("undated");
+  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
+    VALUES (${UNDATED}, ${owner}, 'PLE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
+  try {
+    await stops(UNDATED);
+    await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${UNDATED}-pass`}, ${UNDATED}, 'trip_pass', 'active', 'manual')`);
+    const stub = new StubRoutingAdapter();
+    assert.deepEqual(await computePlanLegs(UNDATED, { adapter: stub }), { skipped: "dates_not_confirmed" });
+    assert.equal(stub.calls, 0, "no routing call against a placeholder window");
+    assert.equal((await legs(UNDATED)).length, 0, "no leg is written");
+  } finally {
+    await db.execute(sql`DELETE FROM trips WHERE id = ${UNDATED}`);
+  }
 });

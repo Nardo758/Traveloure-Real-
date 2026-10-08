@@ -50,40 +50,21 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   );
   expect(listing?.id, "the fixture listing was written").toBeTruthy();
 
-  // ── Signed out: the start page and the one modal ───────────────────────────────────────────────
+  // ── Signed out: the start page — Continue opens the guest map straight away (Lane E1, ledger
+  //    `2026-10-08-e1-zero-questions`; sanctioned rewrite of :58-80): no modal, no When, no Who. ──────
   await page.goto("/experiences");
   await testid(page, "occasion-group-trips").click({ timeout: 20_000 });
   await testid(page, "option-occasion-travel").click();
   await testid(page, "city-card-kyoto").click();
   await testid(page, "button-experiences-continue").click();
-  const modal = testid(page, "plan-modal");
-  await expect(modal.getByTestId("plan-step-when-body")).toBeVisible({ timeout: 15_000 });
-  const start = new Date();
-  start.setDate(start.getDate() + 45);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 3);
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  await modal.getByTestId("input-etp-start-date").fill(fmt(start));
-  await modal.getByTestId("input-etp-end-date").fill(fmt(end));
-  // Walk the steps: state the party on Who (two adults), and stop once the finish is offered.
-  let partySet = false;
-  for (let i = 0; i < 6; i++) {
-    if (!partySet && (await appears(modal.getByTestId("button-etp-adults-plus"), 1000))) {
-      await modal.getByTestId("button-etp-adults-plus").click();
-      await modal.getByTestId("button-etp-adults-plus").click();
-      partySet = true;
-    }
-    if (partySet && (await appears(modal.getByTestId("planning-option-myself"), 1000))) break;
-    await modal.getByTestId("button-planning-next").click();
-  }
-  expect(partySet, "the Who step was reached and the party stated").toBe(true);
-  await modal.getByTestId("planning-option-myself").click();
+  await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
 
   // ── The guest map: no plan, the answers, Browse ─────────────────────────────────────────────────
   await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });
   await expect(testid(page, "guest-map-banner")).toContainText("Your plan is created when you sign in");
   await expect(testid(page, "guest-map-answers")).toContainText("Kyoto");
-  await expect(testid(page, "guest-map-answers")).toContainText("2 travelers");
+  // Lane E1: the start page asked no party, so the answers line names none (§13).
+  await expect(testid(page, "guest-map-answers")).not.toContainText("travelers");
 
   // "Sign in to start" opens the gate; "Keep browsing" closes it and nothing happens.
   await testid(page, "button-guest-map-start").click();
@@ -124,17 +105,20 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
 
   const [user] = await rows<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
   expect(user?.id, "the account exists").toBeTruthy();
-  const trips = await rows<{ id: string; destination: string; start_date: string; end_date: string; adults: number | null }>(
-    `SELECT id, destination, to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date, adults
+  const trips = await rows<{ id: string; destination: string; start_date: string; end_date: string; adults: number | null; dates_confirmed: boolean }>(
+    `SELECT id, destination, to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date, adults,
+            dates_confirmed_at IS NOT NULL AS dates_confirmed
        FROM trips WHERE user_id = $1`,
     [user.id],
   );
   expect(trips.length, "exactly one plan").toBe(1);
   expect(trips[0].id).toBe(tripId);
   expect(trips[0].destination).toContain("Kyoto");
-  expect(trips[0].start_date, "the dates are the guest's own answers").toBe(fmt(start));
-  expect(trips[0].end_date).toBe(fmt(end));
-  expect(trips[0].adults, "the party is the guest's own answer").toBe(2);
+  // Lane E1 (sanctioned rewrite of ~:123-125): no dates and no party were asked — the row holds the
+  // one-day placeholder (the mint day) with NOTHING certified, and no party (§13).
+  expect(trips[0].dates_confirmed, "no date was chosen, so none is certified").toBe(false);
+  expect(trips[0].start_date, "the placeholder is one day").toBe(trips[0].end_date);
+  expect(trips[0].adults, "no party was asked").toBeNull();
 
   // The one add, Day 1, naming the listing — polled, because it lands right after the mint.
   await expect

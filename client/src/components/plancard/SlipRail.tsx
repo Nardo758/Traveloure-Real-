@@ -135,6 +135,7 @@ import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import type { PlanCardActivity } from "./plancard-types";
 import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
+import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { useReopenMutation } from "./use-reopen-mutation";
@@ -315,24 +316,28 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
    * pressed "draft my plan" to a three-variant board is the review surface Optimize is for.
    */
   // Slip conformance (ledger `2026-10-08-conformance-slip-phase0`): the ONE free-draft action,
-  // shared with the Empty board's draft card. On a plan whose dates nobody chose it asks for them
-  // first (canvas note s12); otherwise it drafts exactly as before.
+  // shared with the Empty board's draft card. Lane E1 (ledger `2026-10-08-e1-zero-questions`,
+  // ruling 7; option 1): on a plan whose dates nobody chose, the row's `<DatesGate>` opens the
+  // inline dates panel right here and hands the saved window to the draft — one ask, never two.
   const draft = useSlipFreeDraft(trip as any, tripId);
   const draftDisabledReason = draft.disabledReason;
 
   return (
         <>
-          <RailRow
-            label="Draft it with AI"
-            meta="empty plan"
-            icon={<Sparkles className="w-3.5 h-3.5" />}
-            onClick={() => draft.mutate()}
-            busy={draft.isPending}
-            disabled={!!draftDisabledReason}
-            title={draftDisabledReason ?? undefined}
-            testId="slip-action-draft-ai"
-          />
-          {draft.datesDialog}
+          <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
+            {(guard) => (
+              <RailRow
+                label="Draft it with AI"
+                meta="empty plan"
+                icon={<Sparkles className="w-3.5 h-3.5" />}
+                onClick={() => guard((dates) => draft.mutate(dates))}
+                busy={draft.isPending}
+                disabled={!!draftDisabledReason}
+                title={draftDisabledReason ?? undefined}
+                testId="slip-action-draft-ai"
+              />
+            )}
+          </DatesGate>
           <RailNote testId="slip-draft-note">
             Offered only on an empty plan — one row of any status and this becomes Optimize.
           </RailNote>
@@ -403,6 +408,9 @@ function BuildCard({
   });
   const hasRun = !!runPlan?.lastOptimizedAt;
   const confirmedPinnedAnchor = useRef<ComparisonPinnedAnchor | undefined>(undefined);
+  // Lane E1: the window the Optimize gate handed over — the plan's own, or the one just set inline
+  // (the plancard refetch may not have landed when the run starts).
+  const gatedWindow = useRef<PlanWindow | null>(null);
 
   const optimizableCount = countOptimizableItems(activities);
   const optimizeDisabledReason = slipOptimizeDisabledReason({
@@ -432,8 +440,8 @@ function BuildCard({
       const comparison = await createComparison({
         title: trip.title || undefined,
         destination: trip.destination!,
-        startDate: String(trip.startDate).slice(0, 10),
-        endDate: String(trip.endDate).slice(0, 10),
+        startDate: gatedWindow.current?.startDate ?? String(trip.startDate).slice(0, 10),
+        endDate: gatedWindow.current?.endDate ?? String(trip.endDate).slice(0, 10),
         ...(trip.travelers ? { travelers: trip.travelers } : {}),
         tripId: trip.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
@@ -523,6 +531,10 @@ function BuildCard({
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
               run, and the fee on the CTA. Same handler the old row had (the build-around step first). */}
           <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
+          {/* Lane E1 (ruling 7): no confirmed dates ⇒ the dates panel opens under the card, then the
+              build-around step continues with the saved window. */}
+          <DatesGate trip={trip} action="Optimize" testId="slip-optimize-dates-gate">
+          {(guard) => (
           <OptimizerLead
             drafted={aiAction === "optimize"}
             findings={leadData.findings}
@@ -532,7 +544,10 @@ function BuildCard({
             testId="slip-action-optimize"
             onClick={() => {
               if (optimizing || creatingComparison || optimizeDisabledReason) return;
-              setBuildAroundOpen(true);
+              guard((dates) => {
+                gatedWindow.current = dates;
+                setBuildAroundOpen(true);
+              });
             }}
             busy={optimizing || creatingComparison}
             disabledReason={optimizeDisabledReason}
@@ -544,6 +559,8 @@ function BuildCard({
             onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
             localExpertTestId="slip-action-hire-expert"
           />
+          )}
+          </DatesGate>
           </span>
           {/* RULING 3 (Main board): the Trip Pass is offered HERE, under the optimizer card, once the
               plan has had a run — never as a standing card. The SAME card; one purchase rail. Purchase
@@ -553,7 +570,7 @@ function BuildCard({
           {isOwner ? (
             hasRun ? (
               <div data-testid="slip-trip-pass-offer">
-                <TripPassCard tripId={tripId} planName={trip.title || trip.destination} />
+                <TripPassCard tripId={tripId} trip={trip} planName={trip.title || trip.destination} />
               </div>
             ) : null
           ) : null}

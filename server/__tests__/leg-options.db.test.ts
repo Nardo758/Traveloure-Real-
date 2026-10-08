@@ -67,8 +67,8 @@ before(async () => {
   assertDisposableDb();
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'LO', 'traveler', 'traveler')`);
   for (const t of [FREE, PAID]) {
-    await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
-      VALUES (${t}, ${owner}, 'LO', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-11', 'draft')`);
+    await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
+      VALUES (${t}, ${owner}, 'LO', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-11', 'draft', now())`);
     await item(t, "a", 0, P(0, 0), "09:00", "10:00");
     await item(t, "b", 1, P(0.03, 0.02), "11:00", "12:00"); // ~3.6 km — transit
     await item(t, "c", 2, P(0.032, 0.021), "13:00", "14:00"); // ~250 m — walk

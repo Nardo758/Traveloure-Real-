@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { 
   tripClientBodySchema, 
+  tripMintBodySchema,
   trips, 
   generatedItineraries, 
   insertGeneratedItinerarySchema,
@@ -68,8 +69,9 @@ export const api = {
     create: {
       method: 'POST' as const,
       path: '/api/trips',
-      // §19 allowlist (ledger 2026-09-24-trip-body-allowlist): planning answers only.
-      input: tripClientBodySchema,
+      // §19 allowlist (ledger 2026-09-24-trip-body-allowlist): planning answers only. Dates optional
+      // (ledger 2026-10-08-e1-zero-questions): absent ⇒ the server's placeholder, never a claim.
+      input: tripMintBodySchema,
       responses: {
         201: z.custom<typeof trips.$inferSelect>(),
         400: errorSchemas.validation,
