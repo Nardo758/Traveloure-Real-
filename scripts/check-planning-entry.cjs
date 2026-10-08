@@ -22,11 +22,12 @@
  *      `2026-08-28-single-planning-entry` as extended by walkthrough finding F-T1, 2026-08-30) that
  *      this guard must not force to be rewritten into shape 1. Its mounts collapse into the modal
  *      under Locked Decision 42 D11.
- *   3. For `/experiences` ONLY (step 8a, ledger `2026-10-06-step8a-experiences-entry`): the page's own
- *      Continue calling the one opener (`usePlanning().open`, through the `experiences` door) after the
- *      traveler answered the occasion and Where on the page. That surface left the IntakePanel, so its
- *      row is marked `entry: "opener"`, and a SECOND intake mounted there FAILS — the page must not grow
- *      back the intake it replaced.
+ *   3. For `/experiences` ONLY: the ZERO-QUESTION START (Lane E1, ledger `2026-10-08-e1-zero-questions`,
+ *      amending step 8a's opener shape — ruled by the decision-maker, Oct 8, 2026). The page's Continue
+ *      mints the plan itself through `mintStartPagePlan` and, signed out, writes the sign-in record through
+ *      `startPageGuestRecord` — both with an answers object carrying the occasion (`experienceSlug`) and
+ *      the city. Its row is marked `entry: "startMint"`: the modal opener on that page FAILS (it is the
+ *      one door with no When/Who), and so does a SECOND intake mounted there.
  *
  * IMPORTING `planningRouteForTrip` DOES NOT COUNT and the guard says so explicitly. It is a route
  * helper for an EXISTING trip, not an opener. Two commerce pages import it from the very same
@@ -87,10 +88,12 @@ const ENTRY_SURFACES = [
   {
     file: "client/src/pages/experiences.tsx",
     routes: ["/experiences"],
-    // Step 8a (ledger `2026-10-06-step8a-experiences-entry`): the start state. Its entry is its own
-    // Continue calling the one opener; an IntakePanel mounted here is a second intake and FAILS.
-    entry: "opener",
-    why: "the /experiences start state — its Continue opens the one modal through the experiences door",
+    // Lane E1 (ledger `2026-10-08-e1-zero-questions`): the zero-question start. Its entry is its own
+    // Continue minting the plan (`mintStartPagePlan`) and writing the guest record
+    // (`startPageGuestRecord`) from an answers object with the occasion and the city; the modal opener
+    // here FAILS, and an IntakePanel mounted here is a second intake and FAILS.
+    entry: "startMint",
+    why: "the /experiences start state — its Continue opens the Trip Slip with the occasion and the city",
   },
   {
     file: "client/src/pages/start-events.tsx",
@@ -169,13 +172,8 @@ const REQUIRED_SOURCE_FIELDS = [
     require: ["tripId"],
     why: "selectedTripId is the trip the open thread is about — the same value the header badge renders",
   },
-  {
-    file: "client/src/pages/experiences.tsx",
-    // Step 8a: the page holds the picked occasion and the picked city (one of the eight, which
-    // carries its country), so its door passes all three (D13).
-    require: ["experienceSlug", "city", "country"],
-    why: "the start page holds the occasion and the city the traveler just picked on it",
-  },
+  // `client/src/pages/experiences.tsx` left this list with Lane E1 (ledger `2026-10-08-e1-zero-questions`):
+  // it calls no opener, so its occasion + city requirement is checked by its `entry: "startMint"` shape.
   {
     file: "client/src/pages/storefront.tsx",
     // D15 (lane L22, ledger `2026-09-07-doors-pass-tripid`): the page IS an earner, so a plan
@@ -244,7 +242,12 @@ function entryShapes(src) {
     intakePanel: /<IntakePanel\b/.test(src) && /setIntakeOpen\(\s*true\s*\)/.test(src),
     // Shape 3 (step 8a): a call to the one opener under any alias this file gives it.
     openerCall: openerTokens(src).some((t) => !t.startsWith("<") && src.includes(t)),
-    // Any IntakePanel mounted at all — on an `entry: "opener"` surface this is a second intake.
+    // Lane E1: the zero-question start's two calls, and the answers object both are given — it must
+    // carry the occasion and the city (a `{ … }` literal naming both keys).
+    startMintCall: /\bmintStartPagePlan\(/.test(src),
+    startGuestRecord: /\bstartPageGuestRecord\(/.test(src),
+    startAnswers: /\{[^{}]*\bexperienceSlug\s*:[^{}]*\bcity\s*:[^{}]*\}/.test(src),
+    // Any IntakePanel mounted at all — on an `entry: "startMint"` surface this is a second intake.
     intakeMounted: /<IntakePanel\b/.test(src),
     // Not an entry — named so the failure message can call it out.
     routeHelperOnly: /planningRouteForTrip/.test(src),
@@ -358,16 +361,26 @@ function checkEntryShapes(files) {
       continue;
     }
     const s = entryShapes(src);
-    if (surface.entry === "opener") {
+    if (surface.entry === "startMint") {
       if (s.intakeMounted) {
         errors.push(
           `${surface.file} (${surface.routes.join(", ")}) mounts an IntakePanel — a SECOND intake beside the ` +
-          `one planning modal its Continue opens (step 8a, ledger 2026-10-06-step8a-experiences-entry). Remove it.`,
+          `zero-question start (ledger 2026-10-08-e1-zero-questions). Remove it.`,
         );
-      } else if (!s.openerCall) {
+      } else if (s.openerCall) {
+        errors.push(
+          `${surface.file} (${surface.routes.join(", ")}) calls the planning modal's opener — the start page is the ` +
+          `one door with no When/Who (Lane E1, ledger 2026-10-08-e1-zero-questions); its Continue mints through mintStartPagePlan.`,
+        );
+      } else if (!s.startMintCall || !s.startGuestRecord) {
         errors.push(
           `${surface.file} (${surface.routes.join(", ")}) offers NO plan entry — ${surface.why}. ` +
-          `Its Continue must call usePlanning().open with the experiences door.`,
+          `Its Continue must call mintStartPagePlan (signed in) and startPageGuestRecord (signed out).`,
+        );
+      } else if (!s.startAnswers) {
+        errors.push(
+          `${surface.file} (${surface.routes.join(", ")}) starts a plan without passing the occasion and the city — ` +
+          `the answers object must carry \`experienceSlug\` and \`city\` (Lane E1; D13: a door passes what it holds).`,
         );
       }
       continue;
@@ -476,7 +489,12 @@ function check(files) {
 function selfTest() {
   const withCta = 'import { PlanEntryCta } from "@/components/planning/plan-entry-cta";\n<PlanEntryCta source={undefined} />';
   const withIntake = 'const [o,setIntakeOpen]=useState(false);\n<Button onClick={() => setIntakeOpen(true)} />\n<IntakePanel open={o} />';
-  // Step 8a: /experiences' Continue calling the one opener through its door.
+  // Lane E1: /experiences' Continue minting the plan itself (signed in) or writing the guest record.
+  const withStartMint =
+    'const answers = { experienceSlug: occasionSlug, city: market.cityName, country: market.country };\n' +
+    'if (!user) { writePendingPlanRecord(startPageGuestRecord(answers)); setLocation(GUEST_MAP_PATH); return; }\n' +
+    'const outcome = await mintStartPagePlan(answers);';
+  // The step-8a shape it replaced: the modal opener on this page now FAILS.
   const withOpener =
     'const { open: openPlanning } = usePlanning();\n' +
     'openPlanning({ door: "experiences", experienceSlug: occasionSlug, city: market.cityName, country: market.country, newPlan: true, focusStep: "when" });';
@@ -504,18 +522,22 @@ function selfTest() {
   // D13 half below has its own fixtures, and a fixture that ran both would report a failure of one
   // predicate as a failure of the other — the exact ambiguity §18d fixtures exist to remove.
   const cases = [
-    ["both wired passes", () => checkEntryShapes(files(withCta, withOpener)).length === 0],
-    ["PlanEntryCta alone satisfies a surface", () => checkEntryShapes(files(withCta, withOpener)).length === 0],
-    ["the ruled IntakePanel shape still satisfies an ordinary surface", () => checkEntryShapes(files(withIntake, withOpener)).length === 0],
-    ["a bare surface fails", () => checkEntryShapes(files(bare, withOpener)).some((e) => e.includes("discover.tsx"))],
-    ["planningRouteForTrip alone is NOT an entry", () => checkEntryShapes(files(helperOnly, withOpener)).some((e) => e.includes("ROUTE HELPER"))],
-    ["a missing file fails loudly", () => checkEntryShapes({ "client/src/pages/experiences.tsx": withOpener }).some((e) => e.includes("does not exist"))],
-    ["an IntakePanel with no opener is not an entry", () => checkEntryShapes(files("<IntakePanel open={o} />", withOpener)).some((e) => e.includes("discover.tsx"))],
-    ["the fork page is held to the same bar", () => checkEntryShapes(files(withCta, withOpener, bare)).some((e) => e.includes("start-events.tsx"))],
-    // Step 8a: /experiences' entry is its own opener call, and the intake it replaced may not return.
-    ["8a · /experiences with its IntakePanel back (a SECOND intake) FAILS", () => checkEntryShapes(files(withCta, withIntake)).some((e) => e.includes("SECOND intake"))],
-    ["8a · /experiences with the opener AND an IntakePanel still FAILS", () => checkEntryShapes(files(withCta, withOpener + "\n<IntakePanel open={o} />")).some((e) => e.includes("SECOND intake"))],
-    ["8a · /experiences with no opener call FAILS", () => checkEntryShapes(files(withCta, bare)).some((e) => e.includes("experiences.tsx") && e.includes("NO plan entry"))],
+    ["both wired passes", () => checkEntryShapes(files(withCta, withStartMint)).length === 0],
+    ["PlanEntryCta alone satisfies a surface", () => checkEntryShapes(files(withCta, withStartMint)).length === 0],
+    ["the ruled IntakePanel shape still satisfies an ordinary surface", () => checkEntryShapes(files(withIntake, withStartMint)).length === 0],
+    ["a bare surface fails", () => checkEntryShapes(files(bare, withStartMint)).some((e) => e.includes("discover.tsx"))],
+    ["planningRouteForTrip alone is NOT an entry", () => checkEntryShapes(files(helperOnly, withStartMint)).some((e) => e.includes("ROUTE HELPER"))],
+    ["a missing file fails loudly", () => checkEntryShapes({ "client/src/pages/experiences.tsx": withStartMint }).some((e) => e.includes("does not exist"))],
+    ["an IntakePanel with no opener is not an entry", () => checkEntryShapes(files("<IntakePanel open={o} />", withStartMint)).some((e) => e.includes("discover.tsx"))],
+    ["the fork page is held to the same bar", () => checkEntryShapes(files(withCta, withStartMint, bare)).some((e) => e.includes("start-events.tsx"))],
+    // Lane E1: /experiences' entry is its own zero-question mint; the intake it replaced and the modal
+    // opener it replaced may not return.
+    ["E1 · /experiences with its IntakePanel back (a SECOND intake) FAILS", () => checkEntryShapes(files(withCta, withIntake)).some((e) => e.includes("SECOND intake"))],
+    ["E1 · /experiences with the mint AND an IntakePanel still FAILS", () => checkEntryShapes(files(withCta, withStartMint + "\n<IntakePanel open={o} />")).some((e) => e.includes("SECOND intake"))],
+    ["E1 · /experiences calling the modal opener (the step-8a shape) FAILS", () => checkEntryShapes(files(withCta, withOpener)).some((e) => e.includes("no When/Who"))],
+    ["E1 · /experiences with no mint call FAILS", () => checkEntryShapes(files(withCta, bare)).some((e) => e.includes("experiences.tsx") && e.includes("NO plan entry"))],
+    ["E1 · /experiences minting without the guest record FAILS", () => checkEntryShapes(files(withCta, 'const outcome = await mintStartPagePlan({ experienceSlug: s, city: c });')).some((e) => e.includes("startPageGuestRecord"))],
+    ["E1 · /experiences starting with no city FAILS", () => checkEntryShapes(files(withCta, 'const a = { experienceSlug: s };\nwritePendingPlanRecord(startPageGuestRecord(a));\nawait mintStartPagePlan(a);')).some((e) => e.includes("occasion and the city"))],
   ];
 
   // ── D13 fixtures (ledger `2026-09-05-doors-source-fields`) ─────────────────────────────────
@@ -584,8 +606,8 @@ function selfTest() {
     ["D13 · the SAME door passing nothing FAILS", () => req(CONCIERGE, doorBare).some((e) => e.includes("does not pass `experienceSlug`"))],
     ["D13 · shorthand `{ destination }` counts as passing it", () => passesField(sourceRegions(doorShorthand), "destination")],
     ["D13 · a JSX prop (`city={...}`) counts — the ruled IntakePanel shape", () => passesField(sourceRegions(doorProp), "city")],
-    ["8a · the /experiences door passing occasion, city and country passes", () => req(EXPERIENCES, withOpener).length === 0],
-    ["8a · the /experiences door passing no country FAILS", () => req(EXPERIENCES, 'const { open: openPlanning } = usePlanning();\nopenPlanning({ door: "experiences", experienceSlug: s, city: m.cityName });').some((e) => e.includes("does not pass `country`"))],
+    // Lane E1: /experiences left the D13 list (it calls no opener); its fields are its entry shape's.
+    ["E1 · /experiences is not held to the opener-field list", () => req(EXPERIENCES, withStartMint).length === 0],
     ["D13 · a PlanEntryCta source literal counts", () => req(READYMADE, doorCta).length === 0],
     ["D13 · a bare PlanEntryCta where a city IS required FAILS", () => req(READYMADE, doorCtaBare).some((e) => e.includes("does not pass `city`"))],
     ["D13 · a conditional source counts", () => req(CHAT, doorCtaConditional).length === 0],

@@ -96,10 +96,17 @@ export interface SlipRefusal {
 export interface TripMintBody {
   title: string;
   destination: string;
-  startDate: string;
-  endDate: string;
+  /** Absent only on the zero-question start (ledger `2026-10-08-e1-zero-questions`): the server then
+   *  stores its placeholder window and certifies nothing. */
+  startDate?: string;
+  endDate?: string;
   /** Present only when the caller named at least one door fact (§13 — absent is omitted). */
   entry?: TripMintEntry;
+}
+
+/** Ledger `2026-10-08-e1-zero-questions`: ONLY the Experiences start sets `datesOptional`. */
+export interface SlipMintOptions {
+  datesOptional?: boolean;
 }
 
 export type SlipMintOutcome = { ok: true; tripId: string } | SlipRefusal;
@@ -118,12 +125,17 @@ export function hasBoundSlip(tripId?: string | null): tripId is string {
  * Are the basics enough to mint, WITHOUT inventing anything? Pure; no side effects.
  * Returns `null` when they are, and the refusal to show the traveler when they are not.
  */
-export function checkSlipPrecondition(basics: SlipBasics): SlipRefusal | null {
+export function checkSlipPrecondition(basics: SlipBasics, opts: SlipMintOptions = {}): SlipRefusal | null {
   const destination = (basics.destination ?? "").trim();
   if (!destination) return refuse("destination_missing");
 
   const startDate = (basics.startDate ?? "").trim();
   const endDate = (basics.endDate ?? "").trim();
+  // Ledger `2026-10-08-e1-zero-questions` (E1): the Experiences page's start asks no When. With the
+  // caller's explicit opt-in and NEITHER date, nothing is refused and nothing is invented here — the
+  // server stores its placeholder window and leaves `dates_confirmed_at` NULL. One date without the
+  // other is still a missing answer.
+  if (opts.datesOptional && !startDate && !endDate) return null;
   // trips.startDate/endDate are NOT NULL — the schema demands REAL dates, so an absent one is
   // asked for, never defaulted (§13). A guessed date renders identically to a stated one.
   if (!startDate || !endDate) return refuse("dates_missing");
@@ -144,11 +156,13 @@ export function checkSlipPrecondition(basics: SlipBasics): SlipRefusal | null {
 export function buildTripMintBody(basics: SlipBasics): TripMintBody {
   const destination = (basics.destination ?? "").trim();
   const stated = (basics.title ?? "").trim();
+  const startDate = (basics.startDate ?? "").trim();
+  const endDate = (basics.endDate ?? "").trim();
   const body: TripMintBody = {
     title: stated || `${destination.split(",")[0].trim()} trip`,
     destination,
-    startDate: (basics.startDate ?? "").trim(),
-    endDate: (basics.endDate ?? "").trim(),
+    // Both or neither (`checkSlipPrecondition`); neither ⇒ the keys are OMITTED, never "".
+    ...(startDate && endDate ? { startDate, endDate } : {}),
   };
   const entry: TripMintEntry = {};
   if (basics.entry?.door) entry.door = basics.entry.door;
@@ -184,8 +198,9 @@ async function defaultTripMintPoster(body: TripMintBody): Promise<{ id?: string 
 export async function mintTripSlip(
   basics: SlipBasics,
   post: TripMintPoster = defaultTripMintPoster,
+  opts: SlipMintOptions = {},
 ): Promise<SlipMintOutcome> {
-  const refusal = checkSlipPrecondition(basics);
+  const refusal = checkSlipPrecondition(basics, opts);
   if (refusal) return refusal;
 
   let trip: { id?: string } | null | undefined;

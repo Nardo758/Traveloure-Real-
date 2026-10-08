@@ -60,6 +60,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
 import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
+import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
 import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPanel";
 import { LegRow } from "@/components/plan/LegRow";
 import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
@@ -344,7 +345,7 @@ export function SlipHeader({
   stopsLine,
   zoneLine,
   onEditStops,
-  onAskParty,
+  canAskParty,
   occasionName,
   anchorLine,
   expertControl,
@@ -409,13 +410,16 @@ export function SlipHeader({
    */
   onEditStops: () => void;
   /**
-   * RC-12 (ledger `2026-09-25-rc12-party-size`): set only when the plan states NO party and the
-   * viewer is the OWNER. Renders "Who's coming?" where the count would be, opening the one plan
-   * modal on step 4 of THIS plan. Absent ⇒ nothing renders (a non-owner is never asked, D16).
+   * RC-12 (ledger `2026-09-25-rc12-party-size`): true only when the plan states NO party and the
+   * viewer is the OWNER. Renders "Who's coming?" where the count would be. Lane E1 (ledger
+   * `2026-10-08-e1-zero-questions`, ruling 6): it opens an INLINE panel under the header — nothing
+   * leaves the slip. False ⇒ nothing renders (a non-owner is never asked, D16).
    */
-  onAskParty?: () => void;
+  canAskParty?: boolean;
 }) {
   const trip = data.trip;
+  // Lane E1: the header's two anchor panels, inline ("Set your dates" / "Who's coming?").
+  const [anchorPanel, setAnchorPanel] = useState<"dates" | "who" | null>(null);
   const start = safeDate(trip?.startDate);
   const end = safeDate(trip?.endDate);
   const phase = derivePhase(start, end);
@@ -522,11 +526,34 @@ export function SlipHeader({
         datesConfirmed={(trip as any)?.datesConfirmed}
         isOwner={isOwner}
         partyLabel={partyLabel}
-        onAskParty={onAskParty}
+        onAskParty={canAskParty ? () => setAnchorPanel("who") : undefined}
+        onSetDates={() => setAnchorPanel("dates")}
         eventCount={eventCount}
         timezone={(trip as any)?.timezone ?? null}
         daySpan={daySpan}
       />
+      {anchorPanel === "dates" && trip ? (
+        <InlineDatesPanel
+          tripId={trip.id}
+          startDate={trip.startDate}
+          endDate={trip.endDate}
+          onSaved={() => setAnchorPanel(null)}
+          onCancel={() => setAnchorPanel(null)}
+        />
+      ) : null}
+      {anchorPanel === "who" && trip ? (
+        <InlineWhoPanel
+          tripId={trip.id}
+          current={{
+            adults: (trip as any).adults ?? null,
+            kids: (trip as any).kids ?? null,
+            petKind: (trip as any).petKind ?? null,
+            petCount: (trip as any).petCount ?? null,
+          }}
+          onSaved={() => setAnchorPanel(null)}
+          onCancel={() => setAnchorPanel(null)}
+        />
+      ) : null}
       {anchorLine ? (
         <p className="text-sm text-foreground" data-testid="slip-anchor-state">
           {anchorLine}
@@ -1870,39 +1897,13 @@ export function useSlipViewModel({
    * ── RC-12 · "WHO'S COMING?" (ledger `2026-09-25-rc12-party-size`) ─────────────────────────
    * A plan whose party nobody stated (`travelers === null` — the pair and the stored total are all
    * unset) used to read "1 traveler". The owner is asked instead; everyone else sees no count.
-   * Waits for the occasion lookup to SETTLE, because the door hands the modal this plan's own
-   * occasion and must not hand it an unresolved one (§13).
-   *
-   * The door first loads THIS plan into the pen (`syncActiveTripToContext`) — the slip does not
-   * bind the pen, and the modal edits whichever plan the pen holds — including its own party and
-   * occasion, so another plan's answers can neither seed step 4 nor be saved onto this one. It
-   * then opens the ONE modal on step 4 (`focusStep`, honoured by `resolvePlanSteps` only for a
-   * door that names a plan).
+   * Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 6): the ask opens the INLINE "Who's
+   * coming?" panel in the header (`InlineWhoPanel`, the occasion PATCH) — it no longer opens the
+   * modal on step 4, so it needs neither the pen sync nor a settled occasion.
    */
   const partyUnstated = !!data.trip && data.trip.travelers == null;
-  const askParty =
-    isOwner && partyUnstated && occasionResolved && data.trip
-      ? () => {
-          const t = data.trip!;
-          syncActiveTripToContext({
-            id: t.id,
-            destination: t.destination,
-            startDate: t.startDate,
-            endDate: t.endDate,
-            title: t.title,
-            travelers: null,
-            adults: null,
-            kids: null,
-            experienceSlug: occasion?.slug ?? null,
-            eventType: t.eventType ?? null,
-          });
-          openPlanModal({
-            tripId: t.id,
-            focusStep: "who",
-            ...(occasion?.slug ? { experienceSlug: occasion.slug } : {}),
-          });
-        }
-      : undefined;
+  // Lane E1 (ruling 6): the ask is an INLINE panel in the header now — no modal, no pen sync.
+  const askParty = isOwner && partyUnstated && !!data.trip;
 
   const stopsLine = slipStopsLine(data.trip?.destination, data.destinations);
   const zoneLine = slipZoneLine(data.trip?.timezone);
@@ -2192,7 +2193,7 @@ export function SlipView({
            34's one-writer rule). The SAME opener the Trip Strip's Edit uses, with no source: the
            modal reads the plan the traveler is already on. */
         onEditStops={() => openPlanModal()}
-        onAskParty={askParty}
+        canAskParty={askParty}
         daySpan={momentSpan}
         sketchLine={momentAnchor ? momentSketchLine(allActivities.length) : null}
       />

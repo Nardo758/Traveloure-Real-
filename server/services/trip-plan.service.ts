@@ -1248,6 +1248,13 @@ export async function assembleTripPlan(
          * party of one nobody stated (§13).
          */
         travelers: plancardPartyCount(trip.adults, trip.kids, trip.numberOfTravelers),
+        // Ledger `2026-10-08-e1-zero-questions`: the slip's inline "Who's coming?" panel shows the plan's
+        // own answers — the party pair and the pets pair (R340). PRESENT ONLY WHEN SET (§13): an unanswered
+        // question rides as an absent key, never as 0 or "no pet".
+        ...(trip.adults != null ? { adults: trip.adults } : {}),
+        ...(trip.kids != null ? { kids: trip.kids } : {}),
+        ...((trip as any).petKind != null ? { petKind: String((trip as any).petKind) } : {}),
+        ...((trip as any).petCount != null ? { petCount: Number((trip as any).petCount) } : {}),
         budget: trip.budget ? `$${parseFloat(trip.budget.toString()).toLocaleString()}` : null,
         // Lane S §3: slip identity (existing TRV- scheme, ruling 10) + version (= diary row
         // count). Additive — existing consumers ignore unknown keys.

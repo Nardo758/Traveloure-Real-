@@ -7,6 +7,8 @@
  * existing band) and "Book this for me" = the ONE handoff chooser scoped to the leg's two end items.
  * No price anywhere but the source's own fare beside an option (L6, R-h). `ItemSheet` stays the stop sheet.
  */
+import { InlineDatesPanel, datesGateBlocks } from "./SlipAnchorPanels";
+import { planDatesGateLine } from "@shared/plan-dates";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
@@ -41,6 +43,9 @@ export interface LegSheetProps {
   canEditItems: boolean;
   isOwner: boolean;
   hostPickupConfirmed?: boolean;
+  /** Lane E1 (ruling 7): the plan's window and whether anybody chose it. A placeholder window asks for
+   *  dates INLINE before the options are asked; once saved, they are asked. Absent ⇒ no gate. */
+  planWindow?: { startDate?: string | null; endDate?: string | null; datesConfirmed?: boolean } | null;
 }
 
 export function LegSheet(props: LegSheetProps) {
@@ -57,10 +62,14 @@ export function LegSheet(props: LegSheetProps) {
     },
     onError: () => setUnavailable(true),
   });
+  // Lane E1: no confirmed dates ⇒ the options wait for the inline dates panel (no departure instant to ask
+  // against); setting the dates lifts the gate and the options are asked as on any first open.
+  const [datesSet, setDatesSet] = useState(false);
+  const needsDates = datesGateBlocks(props.planWindow?.datesConfirmed) && !datesSet;
   // D1: asked on the FIRST open only, and only by someone who may change the leg.
   useEffect(() => {
-    if (props.open && !props.optionsChecked && actions.canPick && !asked && !ask.isPending && !unavailable) ask.mutate();
-  }, [props.open, props.optionsChecked, actions.canPick, asked, ask, unavailable]);
+    if (props.open && !needsDates && !props.optionsChecked && actions.canPick && !asked && !ask.isPending && !unavailable) ask.mutate();
+  }, [props.open, needsDates, props.optionsChecked, actions.canPick, asked, ask, unavailable]);
 
   const pick = useMutation({
     mutationFn: async (mode: LegOptionView["mode"]) =>
@@ -79,6 +88,16 @@ export function LegSheet(props: LegSheetProps) {
           <SheetTitle>{props.title}</SheetTitle>
           <SheetDescription>How to get there</SheetDescription>
         </SheetHeader>
+        {needsDates && actions.canPick ? (
+          <InlineDatesPanel
+            tripId={tripId}
+            startDate={props.planWindow?.startDate ?? null}
+            endDate={props.planWindow?.endDate ?? null}
+            intro={planDatesGateLine("Travel options")}
+            testId="leg-sheet-dates-gate"
+            onSaved={() => setDatesSet(true)}
+          />
+        ) : null}
         <LegSheetBody
           legId={legId}
           options={options}

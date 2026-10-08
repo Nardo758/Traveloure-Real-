@@ -209,8 +209,8 @@ const isoDay = (offsetDays: number) => new Date(Date.now() + offsetDays * DAY).t
 
 /** A Trip Pass plan (it earns routed legs) with two located stops and ONE expired Google engine leg. */
 async function engineFixture(tripId: string, startOffset: number, endOffset: number): Promise<void> {
-  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status)
-    VALUES (${tripId}, ${ids.owner}, 'LGC engine', 'Kyoto, Japan', ${isoDay(startOffset)}, ${isoDay(endOffset)}, 'draft')`);
+  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, dates_confirmed_at)
+    VALUES (${tripId}, ${ids.owner}, 'LGC engine', 'Kyoto, Japan', ${isoDay(startOffset)}, ${isoDay(endOffset)}, 'draft', now())`);
   await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${tripId}-pass`}, ${tripId}, 'trip_pass', 'active', 'manual')`);
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, start_time, origin) VALUES
     (${`${tripId}-a`}, ${tripId}, 'Kiyomizu-dera', 'activity', 1, 0, 34.9949, 135.7850, '09:00', 'traveler'),

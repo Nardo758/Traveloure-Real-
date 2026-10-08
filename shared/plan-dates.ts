@@ -174,3 +174,15 @@ export function planDayCountLabel(startDate: string | null | undefined, endDate:
   const days = nights + 1;
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
+
+/**
+ * Lane E1 (ledger `2026-10-08-e1-zero-questions`): the line an action that needs real dates says when
+ * the plan has none — Draft it with AI, Optimize, Trip Pass and a leg's travel options. The dates panel
+ * opens INLINE beside the action; once the dates are saved the action continues (never a modal detour).
+ */
+export function planDatesGateLine(action: string): string {
+  return `${action} needs your dates. Set them here and we'll carry on.`;
+}
+
+/** The question the slip asks about the party until it is answered (Lane E1; RC-12's ask, inline). */
+export const PLAN_PARTY_ASK = "Who's coming?";
