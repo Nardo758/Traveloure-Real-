@@ -18,7 +18,7 @@ import { Users } from "lucide-react";
 import { parseTripDate } from "@/lib/calendar-date";
 import { eventCountLabel } from "@/lib/plan-vocabulary";
 import { planDatesAreConfirmed, planDayCountLabel, type PlanDatesConfirmedAt } from "@shared/plan-dates";
-import { slipZoneAbbrev } from "@/lib/slip-meta";
+import { slipZoneAbbrev } from "@/lib/slip-zone-label";
 import { SetPlanDates } from "./SetPlanDates";
 
 /** The Empty board's subline when nobody has chosen the plan's dates (canvas note s12). */

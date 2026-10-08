@@ -16,7 +16,7 @@ import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { SlipHeaderMeta, SLIP_DATES_NOT_SET, type SlipHeaderMetaProps } from "../SlipHeaderMeta";
-import { slipZoneAbbrev } from "@/lib/slip-meta";
+import { slipZoneAbbrev } from "@/lib/slip-zone-label";
 import { emptyDraftDetail, planCityName } from "@/components/plan/SlipEmptyStart";
 
 (globalThis as any).React = React;
