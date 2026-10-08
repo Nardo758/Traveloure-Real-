@@ -15,6 +15,8 @@
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+// Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
+import "@/styles/slip-tokens.css";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
@@ -56,7 +58,9 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // `slip-action-*` control this file used to render inline, plus the browse link, the logistics
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
+import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
+import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
 import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPanel";
 import { LegRow } from "@/components/plan/LegRow";
 import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
@@ -68,6 +72,7 @@ import { ItemSheet } from "@/components/plan/ItemSheet";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
+import { PlanRowLookProvider } from "@/components/plan/row-look";
 import {
   GETTING_THERE_TOOL,
   TRAVEL_ANCHOR_WORDS,
@@ -80,6 +85,9 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
+import { MomentAnchorCard } from "@/components/plan/MomentAnchorCard";
+import { momentEveningHeading, momentTimeSpan, momentLeadIntro, momentLeadTitle, momentSketchLine, momentSpanWord } from "@/lib/slip-moment";
 import { useHealthFlags } from "@/lib/health-flags";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
@@ -163,6 +171,7 @@ import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
   ROUTING_TINTS,
+  SLIP_SURFACE_CLASS,
   SLIP_TITLE_FONT_CLASS,
   tintPillStyle,
 } from "./slip-tokens";
@@ -336,12 +345,21 @@ export function SlipHeader({
   stopsLine,
   zoneLine,
   onEditStops,
-  onAskParty,
+  canAskParty,
   occasionName,
   anchorLine,
   expertControl,
+  daySpan = null,
+  sketchLine = null,
 }: {
   data: SlipData;
+  /** A one-day Moment's span ("evening" / "day"), for the window line (Moment board). */
+  daySpan?: "evening" | "day" | null;
+  /**
+   * The Moment board's line beside the "AI starting sketch" chip ("4 stops · around your
+   * reservation"). Present only for a Moment with an anchor; otherwise the sketch keeps its sentence.
+   */
+  sketchLine?: string | null;
   /** The expert door's small "Add a local expert" control (ledger `2026-09-29-expert-door`), or null. */
   expertControl?: React.ReactNode;
   hasOptimized: boolean;
@@ -392,13 +410,16 @@ export function SlipHeader({
    */
   onEditStops: () => void;
   /**
-   * RC-12 (ledger `2026-09-25-rc12-party-size`): set only when the plan states NO party and the
-   * viewer is the OWNER. Renders "Who's coming?" where the count would be, opening the one plan
-   * modal on step 4 of THIS plan. Absent ⇒ nothing renders (a non-owner is never asked, D16).
+   * RC-12 (ledger `2026-09-25-rc12-party-size`): true only when the plan states NO party and the
+   * viewer is the OWNER. Renders "Who's coming?" where the count would be. Lane E1 (ledger
+   * `2026-10-08-e1-zero-questions`, ruling 6): it opens an INLINE panel under the header — nothing
+   * leaves the slip. False ⇒ nothing renders (a non-owner is never asked, D16).
    */
-  onAskParty?: () => void;
+  canAskParty?: boolean;
 }) {
   const trip = data.trip;
+  // Lane E1: the header's two anchor panels, inline ("Set your dates" / "Who's coming?").
+  const [anchorPanel, setAnchorPanel] = useState<"dates" | "who" | null>(null);
   const start = safeDate(trip?.startDate);
   const end = safeDate(trip?.endDate);
   const phase = derivePhase(start, end);
@@ -486,7 +507,10 @@ export function SlipHeader({
           </Link>
         )}
       </div>
-      <h1 className={`${SLIP_TITLE_FONT_CLASS} text-2xl font-bold text-foreground`} data-testid="slip-title">
+      <h1
+        className={`${SLIP_TITLE_FONT_CLASS} text-[30px] font-semibold leading-[1.1] tracking-[-0.01em] text-[color:var(--slip-ink)]`}
+        data-testid="slip-title"
+      >
         {trip?.title || trip?.destination || "Trip plan"}
       </h1>
       {readyMadeSourceLine(data.readyMadeSource) ? (
@@ -502,9 +526,34 @@ export function SlipHeader({
         datesConfirmed={(trip as any)?.datesConfirmed}
         isOwner={isOwner}
         partyLabel={partyLabel}
-        onAskParty={onAskParty}
+        onAskParty={canAskParty ? () => setAnchorPanel("who") : undefined}
+        onSetDates={() => setAnchorPanel("dates")}
         eventCount={eventCount}
+        timezone={(trip as any)?.timezone ?? null}
+        daySpan={daySpan}
       />
+      {anchorPanel === "dates" && trip ? (
+        <InlineDatesPanel
+          tripId={trip.id}
+          startDate={trip.startDate}
+          endDate={trip.endDate}
+          onSaved={() => setAnchorPanel(null)}
+          onCancel={() => setAnchorPanel(null)}
+        />
+      ) : null}
+      {anchorPanel === "who" && trip ? (
+        <InlineWhoPanel
+          tripId={trip.id}
+          current={{
+            adults: (trip as any).adults ?? null,
+            kids: (trip as any).kids ?? null,
+            petKind: (trip as any).petKind ?? null,
+            petCount: (trip as any).petCount ?? null,
+          }}
+          onSaved={() => setAnchorPanel(null)}
+          onCancel={() => setAnchorPanel(null)}
+        />
+      ) : null}
       {anchorLine ? (
         <p className="text-sm text-foreground" data-testid="slip-anchor-state">
           {anchorLine}
@@ -556,13 +605,21 @@ export function SlipHeader({
           hand-built (§13). It states what the draft IS (one version, no live prices) and what
           Optimize does; it makes no claim about which model wrote it, because the tier is a cost
           decision and never a product claim. */}
-      {data.aiSketch === true && (
+      {data.aiSketch === true && sketchLine ? (
+        // The Moment board: a chip and a line, in place of the sentence.
+        <p className="flex flex-wrap items-center gap-2 text-[13px] text-[color:var(--slip-muted)]" data-testid="slip-ai-sketch-note">
+          <span className="inline-flex items-center rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] px-2.5 py-1 font-medium text-[color:var(--slip-navy)]">
+            AI starting sketch
+          </span>
+          <span>{sketchLine}</span>
+        </p>
+      ) : data.aiSketch === true ? (
         <p className="text-xs text-muted-foreground" data-testid="slip-ai-sketch-note">
           <Sparkles className="w-3 h-3 inline mr-1" />
           This is an AI starting sketch — one version, without live prices. Optimize builds three
           proposals around it, anchored to what you have already booked.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -640,6 +697,14 @@ function useToggleItemLock(tripId: string, itemId: string, locked: boolean): () 
   return () => {
     if (!m.isPending) m.mutate();
   };
+}
+
+/** The Main board puts a leg in the row grid's stop column (ledger `2026-10-08-slip-main-rows`):
+ *  past the 52px time column and the dot rail, short of the ⋯ column. Nothing is wrapped when the
+ *  caller has no leg to draw. */
+function BoardLegSlot({ children }: { children: ReactNode }) {
+  if (children == null || children === false) return null;
+  return <div className="pl-[102px] pr-4 pb-1">{children}</div>;
 }
 
 function SlipDayItem({
@@ -1628,7 +1693,7 @@ export function useSlipViewModel({
       view={whereToStay}
       lodgingSet={lodgingSet}
       canChoose={canEditItems}
-      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} />}
+      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} variant={stage === "empty" ? "board" : "outline"} />}
       addFixedControl={
         <SlipAddItemControl tripId={tripId} dayNumber={1} userExperienceId={null} label={SLIP_ADD_DAY_LABEL} testId="slip-anchor-add-fixed" />
       }
@@ -1832,39 +1897,13 @@ export function useSlipViewModel({
    * ── RC-12 · "WHO'S COMING?" (ledger `2026-09-25-rc12-party-size`) ─────────────────────────
    * A plan whose party nobody stated (`travelers === null` — the pair and the stored total are all
    * unset) used to read "1 traveler". The owner is asked instead; everyone else sees no count.
-   * Waits for the occasion lookup to SETTLE, because the door hands the modal this plan's own
-   * occasion and must not hand it an unresolved one (§13).
-   *
-   * The door first loads THIS plan into the pen (`syncActiveTripToContext`) — the slip does not
-   * bind the pen, and the modal edits whichever plan the pen holds — including its own party and
-   * occasion, so another plan's answers can neither seed step 4 nor be saved onto this one. It
-   * then opens the ONE modal on step 4 (`focusStep`, honoured by `resolvePlanSteps` only for a
-   * door that names a plan).
+   * Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 6): the ask opens the INLINE "Who's
+   * coming?" panel in the header (`InlineWhoPanel`, the occasion PATCH) — it no longer opens the
+   * modal on step 4, so it needs neither the pen sync nor a settled occasion.
    */
   const partyUnstated = !!data.trip && data.trip.travelers == null;
-  const askParty =
-    isOwner && partyUnstated && occasionResolved && data.trip
-      ? () => {
-          const t = data.trip!;
-          syncActiveTripToContext({
-            id: t.id,
-            destination: t.destination,
-            startDate: t.startDate,
-            endDate: t.endDate,
-            title: t.title,
-            travelers: null,
-            adults: null,
-            kids: null,
-            experienceSlug: occasion?.slug ?? null,
-            eventType: t.eventType ?? null,
-          });
-          openPlanModal({
-            tripId: t.id,
-            focusStep: "who",
-            ...(occasion?.slug ? { experienceSlug: occasion.slug } : {}),
-          });
-        }
-      : undefined;
+  // Lane E1 (ruling 6): the ask is an INLINE panel in the header now — no modal, no pen sync.
+  const askParty = isOwner && partyUnstated && !!data.trip;
 
   const stopsLine = slipStopsLine(data.trip?.destination, data.destinations);
   const zoneLine = slipZoneLine(data.trip?.timezone);
@@ -2039,14 +2078,42 @@ export function SlipView({
   } = useSlipViewModel({ tripId, data, highlightItemId, initialView });
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
+  // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
+  const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
+  // ── THE MOMENT BOARD (slip conformance; ledger `2026-10-08-slip-moment-board`) ─────────────────
+  // A resolved Moment occasion only (the group is an internal key, R127): its primary anchor (the
+  // reservation) gets its own card, the tray marks "The reservation" done once it exists, and the
+  // optimizer card speaks of the evening. Every word comes from `@/lib/slip-moment`.
+  const isMoment = occasionResolved && manifestFor(experienceGroup, occasion?.slug ?? null).group === "moment";
+  const momentAnchor = isMoment && anchorItemId ? allActivities.find((a) => a.id === anchorItemId) ?? null : null;
+  const momentAnchorDayNum = momentAnchor ? days.find((d) => d.activities.some((a) => a.id === momentAnchor.id))?.dayNum ?? null : null;
+  const momentAnchorDateIso = momentAnchorDayNum != null ? daySlots.find((sl) => sl.dayNum === momentAnchorDayNum)?.dateIso ?? null : null;
+  // Expand all (Main board): the same open rule each day already reads, applied to every day.
+  const dayIsOpen = (key: string, idx: number, items: readonly { id: string }[]) =>
+    dayOpen[key] ?? (idx === 0 || (!!highlightItemId && items.some((a) => a.id === highlightItemId)));
+  const allDaysOpen =
+    daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
+  const setAllDaysOpen = (open: boolean) =>
+    setDayOpen(Object.fromEntries(daySlots.map((slot) => [slot.key, open])));
+  const momentSpan = isMoment ? momentSpanWord(data.trip?.startDate as any, data.trip?.endDate as any, allActivities) : null;
+  const leadCopy: SlipLeadCopy | null = isMoment
+    ? { title: momentLeadTitle(momentSpan), intro: momentLeadIntro(momentAnchor), noStay: true }
+    : null;
+  const doneTools = useMemo(
+    () => new Set<ToolKey>(momentAnchor ? ["the_reservation"] : []),
+    [momentAnchor],
+  );
 
   return (
     <div
-      className="max-w-6xl mx-auto space-y-5"
+      className={`${SLIP_SURFACE_CLASS} max-w-6xl mx-auto space-y-5`}
       data-testid={`slip-view-${tripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
       data-experience-group={occasionResolved ? experienceGroup : undefined}
     >
+      {/* The Main board's rows (ledger `2026-10-08-slip-main-rows`): the shared day and item rows take
+          the board look under the slip's tokens; the Trip Card and the Workstation keep the plain one. */}
+      <PlanRowLookProvider look="board">
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} />}
@@ -2126,7 +2193,9 @@ export function SlipView({
            34's one-writer rule). The SAME opener the Trip Strip's Edit uses, with no source: the
            modal reads the plan the traveler is already on. */
         onEditStops={() => openPlanModal()}
-        onAskParty={askParty}
+        canAskParty={askParty}
+        daySpan={momentSpan}
+        sketchLine={momentAnchor ? momentSketchLine(allActivities.length) : null}
       />
 
       {/* ── THE TWO COLUMNS (ledger `2026-09-06-slip-conformance`) ───────────────────────
@@ -2166,10 +2235,20 @@ export function SlipView({
               openTool={openTool}
               onOpenToolChange={setOpenTool}
               flags={healthFlags}
+              doneTools={doneTools}
             />
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
               width. The rail renders its OptimizerLead into this slot (a portal; its state stays there). */}
+          {/* The Moment board's anchor card: the reservation, between the tray and the optimizer. */}
+          {momentAnchor && slipView === "list" ? (
+            <MomentAnchorCard
+              item={momentAnchor}
+              facts={data.placeFacts?.[momentAnchor.id]}
+              dateIso={momentAnchorDateIso}
+              timeZone={(data.trip as any)?.timezone ?? null}
+            />
+          ) : null}
           {isOwner ? <div ref={setOptimizerSlot} data-testid="slip-optimizer-slot" /> : null}
           {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
               These were two stacked rows with the whole rail between them, so the plan's status
@@ -2207,24 +2286,39 @@ export function SlipView({
               )}
             </div>
             <div className="flex items-center gap-3 flex-wrap" data-testid="slip-view-toggle">
-              <div className="inline-flex rounded-md border border-border overflow-hidden">
+              {/* The Main board's switch (ledger `2026-10-08-slip-main-rows`): "Days" and "Map · N of M",
+                  where N is the located stops — a real coordinate, never a ward centroid. */}
+              <div className="inline-flex rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] p-[3px]">
                 <button
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "list" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"}`}
                   onClick={() => setSlipView("list")}
+                  aria-pressed={slipView === "list"}
                   data-testid="button-slip-view-list"
                 >
-                  <ListIcon className="w-3.5 h-3.5" /> List
+                  Days
                 </button>
                 <button
                   type="button"
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${slipView === "map" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "map" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"} disabled:opacity-50 disabled:cursor-not-allowed`}
                   onClick={() => setSlipView("map")}
+                  aria-pressed={slipView === "map"}
                   data-testid="button-slip-view-map"
                 >
-                  <MapIcon className="w-3.5 h-3.5" /> Map
+                  {allActivities.length > 0 ? `Map · ${locatedActivities.length} of ${allActivities.length}` : "Map"}
                 </button>
               </div>
+              {slipView === "list" && daySlots.length > 1 ? (
+                <button
+                  type="button"
+                  className="h-9 px-3 text-[13px] font-medium text-[color:var(--slip-navy)] hover:underline"
+                  onClick={() => setAllDaysOpen(!allDaysOpen)}
+                  aria-label={allDaysOpen ? "Collapse all days" : "Expand all days"}
+                  data-testid="slip-days-expand-all"
+                >
+                  {allDaysOpen ? "Collapse all" : "Expand all"}
+                </button>
+              ) : null}
               {slipView === "map" && (
                 <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
                   {/* Ledger `2026-10-03-no-ward-pins` (decision-maker): the line reads "N of M located".
@@ -2331,7 +2425,21 @@ export function SlipView({
       ) : null}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
-      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty ? renderAnchorPanel("empty") : null}
+      {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
+          `2026-10-08-slip-empty-board`) ────────────────────────────────────────────────────
+          An owner's plan with no items gets the board's start in the place the anchor question
+          always held, under the view bar: the anchor question (a Trip's), the draft card and the
+          two other ways in. Every control is an existing rail, and the anchor question renders here
+          once, never twice. The tray, the optimizer card and the view bar keep their places above
+          it, because the specs that pin them on an empty plan are unchanged. Taking them out of the
+          empty state is the Main-rail PR's ruling, not this one. */}
+      {emptyStartShown && data.trip ? (
+        <div className="space-y-3.5" data-testid="slip-empty-board">
+          {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
+          <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
+        </div>
+      ) : null}
+      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
@@ -2346,8 +2454,7 @@ export function SlipView({
           ))}
         </div>
       ) : null}
-      <Card>
-        <CardContent className="p-2 sm:p-3 divide-y divide-border">
+      <div>
           {/* §13 — "No items" is now said ONLY when there is genuinely nothing to show. A plan
               with events and no items has slots (the event cards below), so this line no longer
               contradicts the header's own event count directly above it.
@@ -2361,13 +2468,13 @@ export function SlipView({
               place. The placeholder states nothing; it is not an empty state and never says one. */}
           {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor && anchorPanelEmpty ? null : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
             <p
-              className="text-sm text-muted-foreground p-4 text-center"
+              className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4 text-center text-sm text-[color:var(--slip-muted)]"
               data-testid="slip-empty-items"
             >
               No items on this plan yet.
             </p>
           ) : daySlots.length === 0 ? (
-            <div className="p-4 space-y-2" data-testid="slip-day-list-loading" aria-hidden="true">
+            <div className="space-y-2 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4" data-testid="slip-day-list-loading" aria-hidden="true">
               <div className="h-4 rounded bg-muted animate-pulse w-1/3" />
               <div className="h-4 rounded bg-muted animate-pulse w-2/3" />
               <div className="h-4 rounded bg-muted animate-pulse w-1/2" />
@@ -2419,17 +2526,31 @@ export function SlipView({
               <DayBlock
                 key={slot.key}
                 dayKey={String(slot.dayNum ?? slot.key)}
-                heading={dayBlockHeading({ dayNum: slot.dayNum, date: day?.date ?? null, dateIso: slot.dateIso })}
-                stats={dayBlockStats({
-                  stops: slotItems.length,
-                  hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
-                })}
-                open={dayOpen[slot.key] ?? (slotIdx === 0 || (!!highlightItemId && slotItems.some((a) => a.id === highlightItemId)))}
+                heading={
+                  (momentSpan === "evening" && daySlots.length === 1 ? momentEveningHeading(slot.dateIso) : null) ??
+                  dayBlockHeading({ dayNum: slot.dayNum, date: day?.date ?? null, dateIso: slot.dateIso })
+                }
+                stats={[
+                  momentSpan && daySlots.length === 1 ? momentTimeSpan(slotItems) : null,
+                  dayBlockStats({
+                    stops: slotItems.length,
+                    hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
+                  }),
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || null}
+                open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
+                thumb={
+                  slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
+                    <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} size="thumb" testId={`slip-day-thumb-${slot.dayNum}`} />
+                  ) : null
+                }
                 photo={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
                     <PlacePhoto
                       photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]}
+                      size="band"
                       testId={`slip-day-photo-${slot.dayNum}`}
                       // R321 (S11-4): the day's photo opens its stop's ItemSheet.
                       onClick={() => {
@@ -2452,15 +2573,15 @@ export function SlipView({
                 ) : null}
                 {!arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                 {/* R-i: airport → stay, between the arrival anchor and the first stop. */}
-                {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? renderAirportLeg("arrival") : null}
+                {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? <BoardLegSlot>{renderAirportLeg("arrival")}</BoardLegSlot> : null}
                 {slot.groups.map((group) => {
                   const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
                     <Fragment key={a.id}>
-                    {renderLegBetween && slotItems.indexOf(a) > 0
-                      ? renderLegBetween(slotItems[slotItems.indexOf(a) - 1], a, slotIdx)
-                      : null}
-                    {a.id === departureItemId ? renderAirportLeg("departure") : null}
+                    {renderLegBetween && slotItems.indexOf(a) > 0 ? (
+                      <BoardLegSlot>{renderLegBetween(slotItems[slotItems.indexOf(a) - 1], a, slotIdx)}</BoardLegSlot>
+                    ) : null}
+                    {a.id === departureItemId ? <BoardLegSlot>{renderAirportLeg("departure")}</BoardLegSlot> : null}
                     <SlipDayItem
                       key={a.id}
                       tripId={tripId}
@@ -2525,7 +2646,7 @@ export function SlipView({
                     />
                     {a.id === arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                     {a.id === departureItemId ? <AnchorConflictLine kind="departure" text={departureConflict} /> : null}
-                    {a.id === arrivalItemId ? renderAirportLeg("arrival") : null}
+                    {a.id === arrivalItemId ? <BoardLegSlot>{renderAirportLeg("arrival")}</BoardLegSlot> : null}
                     </Fragment>
                   ));
                   // The implicit group carries NO heading — NULL is the plan's own unnamed event,
@@ -2561,7 +2682,7 @@ export function SlipView({
                 {/* R-i: stay → airport, before the departure anchor. Smoke 8 item 5: the departure is
                     the LAST ROW inside the last day — after its stops and legs, above the day's
                     "Add something to this day" control (which adds to the day, not after the flight). */}
-                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? renderAirportLeg("departure") : null}
+                {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? <BoardLegSlot>{renderAirportLeg("departure")}</BoardLegSlot> : null}
                 {showTravelAnchors && slot.dayNum != null && slot.dayNum === lastDayNum && !departureItemId ? (
                   <TravelAnchorPlaceholder
                     kind="departure"
@@ -2581,6 +2702,8 @@ export function SlipView({
                     to sit on (§13 — the absence is explained once, not twice). */}
                 {canEditItems && addDayNumber != null && (
                   <div className="px-3 pt-1.5 pb-0.5">
+                    {/* The Main board's day footer: a rule across the card, the dashed add under it. */}
+                    <div className="-mx-3 -mb-0.5 mt-0.5 border-t border-[color:var(--slip-line)] px-4 pt-2 pb-3">
                     <SlipAddItemControl
                       tripId={tripId}
                       dayNumber={addDayNumber}
@@ -2589,12 +2712,12 @@ export function SlipView({
                       testId={`slip-day-add-${slot.key}`}
                     />
                   </div>
+                  </div>
                 )}
               </DayBlock>
             );
           })}
-        </CardContent>
-      </Card>
+      </div>
       </>
       )}
 
@@ -2658,10 +2781,12 @@ export function SlipView({
               stopsLine={stopsLine}
               zoneLine={zoneLine}
               optimizerSlot={optimizerSlot}
+              leadCopy={leadCopy}
             />
           </div>
         )}
       </div>
+      </PlanRowLookProvider>
     </div>
   );
 }

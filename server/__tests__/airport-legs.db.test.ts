@@ -58,8 +58,8 @@ before(async () => {
   assertDisposableDb();
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'APL', 'traveler', 'traveler')`);
   for (const t of [PAID, FREE]) {
-    await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
-      VALUES (${t}, ${owner}, 'APL', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
+    await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
+      VALUES (${t}, ${owner}, 'APL', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
     await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, start_time, end_time, origin) VALUES
       (${`${t}-a`}, ${t}, 'Kyoto Station', 'activity', 1, 0, 34.9858, 135.7588, '16:00', '17:00', 'traveler'),
       (${`${t}-b`}, ${t}, 'Gion', 'activity', 2, 0, 35.0037, 135.7751, '10:00', '11:00', 'traveler')`);

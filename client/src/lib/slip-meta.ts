@@ -114,3 +114,4 @@ export function slipPlanMetaLine(
   const parts = [stopsLine, zoneLine].filter((p): p is string => !!p && p.trim().length > 0);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
+

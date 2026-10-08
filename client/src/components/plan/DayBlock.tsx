@@ -9,6 +9,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { usePlanRowLook } from "./row-look";
 
 export interface DayBlockProps {
   /** Stable key for testids — the plan day number, or the slot key for an event-only slot. */
@@ -25,10 +26,13 @@ export interface DayBlockProps {
   aside?: ReactNode;
   /** R322: the day's jump target (`planDayDomId`), stamped as the section's `id`. */
   domId?: string;
+  /** Board look: the day's image as a thumbnail, drawn beside the header while the day is closed. */
+  thumb?: ReactNode;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, children }: DayBlockProps) {
+  const look = usePlanRowLook();
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;
   const toggle = () => {
@@ -37,6 +41,46 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
     onOpenChange?.(next);
   };
   const Chevron = isOpen ? ChevronDown : ChevronRight;
+  if (look === "board") {
+    // The Main board's day (ledger `2026-10-08-slip-main-rows`): one card per day, the photo as a
+    // band when open and a thumbnail when closed, the day in Fraunces. Same testids, same toggle.
+    return (
+      <section
+        id={domId}
+        className="mb-3 overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]"
+        data-testid={`slip-day-${dayKey}`}
+        data-open={isOpen ? "true" : "false"}
+      >
+        {isOpen && photo ? <div data-testid={`slip-day-band-${dayKey}`}>{photo}</div> : null}
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 px-4 pt-3.5 pb-2.5 text-left"
+          onClick={toggle}
+          aria-expanded={isOpen}
+          data-testid={`slip-day-toggle-${dayKey}`}
+        >
+          {!isOpen && thumb ? <span className="flex-shrink-0">{thumb}</span> : null}
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="slip-display text-xl font-semibold text-[color:var(--slip-ink)]" data-testid={`slip-day-heading-${dayKey}`}>
+              {heading}
+            </span>
+            {stats ? (
+              <span className="text-[13px] text-[color:var(--slip-muted)]" data-testid={`slip-day-stats-${dayKey}`}>
+                {stats}
+              </span>
+            ) : null}
+          </span>
+          <Chevron className="h-5 w-5 flex-shrink-0 text-[color:var(--slip-muted)]" aria-hidden="true" />
+        </button>
+        {aside ? <div className="px-4 pb-2 text-xs" data-testid={`slip-day-aside-${dayKey}`}>{aside}</div> : null}
+        {isOpen ? (
+          <div className="pb-1" data-testid={`slip-day-body-${dayKey}`}>
+            {children}
+          </div>
+        ) : null}
+      </section>
+    );
+  }
   return (
     <section id={domId} className="py-2 first:pt-0 last:pb-0" data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"}>
       <button

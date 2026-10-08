@@ -222,21 +222,11 @@ export interface PlanStepsSource {
   destination?: string;
   /** Deep-open: decides the FINISH, never the steps (rule 6). */
   branch?: string;
-  /** The plan the door is about. `focusStep` is honoured only when this names one. */
+  /** The plan the door is about. */
   tripId?: string;
-  /**
-   * RC-12 (ledger `2026-09-25-rc12-party-size`): open straight on step 4. Honoured only for a door
-   * that names a plan (`tripId`) — that plan's row already holds its Where and When (both NOT
-   * NULL), so opening on Who skips no unanswered question, and every visible step stays reachable
-   * from the rail. Any other value, or no plan, falls through to the ordinary door table.
-   *
-   * Step 8 D1 (ledger `2026-10-06-step8a-experiences-entry`): `"when"` opens on step 3, honoured ONLY
-   * for the `experiences` door, and only when the occasion resolved AND a city arrived — the page
-   * asked both. Anything short of that falls through to the ordinary door table (rule 4 as written).
-   */
-  focusStep?: "who" | "when";
-  /** The door's id (the closed `PLAN_DOORS` list); read here only by the D1 `"when"` arm. */
-  door?: string;
+  // `focusStep` is DELETED with Lane E1 (ledger `2026-10-08-e1-zero-questions`; §18c): step 8 D1's
+  // `"when"` (the experiences door opens no modal now) and RC-12's `"who"` (ledger
+  // `2026-09-25-rc12-party-size` — the slip's "Who's coming?" is an inline panel now) had no caller.
 }
 
 /** The subset of the held `TripContext` this decision reads. */
@@ -284,28 +274,6 @@ export function resolvePlanSteps(
   // Rules 1 + 2. A row alone is not enough: something must have NAMED it, or this is a row the
   // caller resolved by some other route and the traveler was never asked.
   const answered = Boolean(occasion) && (namesOccasion(source) || namesOccasion(context));
-
-  // RC-12: the slip's "Who's coming?" door opens on step 4 of a plan that already exists.
-  if (
-    source?.focusStep === "who" &&
-    typeof source.tripId === "string" &&
-    source.tripId.trim().length > 0 &&
-    visibleSteps.includes("who")
-  ) {
-    return { startStep: "who", visibleSteps };
-  }
-
-  // Step 8 D1: the /experiences page answered the occasion AND Where on the page itself.
-  if (
-    source?.focusStep === "when" &&
-    source.door === "experiences" &&
-    answered &&
-    typeof source.city === "string" &&
-    source.city.trim().length > 0 &&
-    visibleSteps.includes("when")
-  ) {
-    return { startStep: "when", visibleSteps };
-  }
 
   return { startStep: answered ? "where" : "occasion", visibleSteps };
 }

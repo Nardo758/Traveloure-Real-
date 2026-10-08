@@ -73,14 +73,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
+import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { createComparison, type ComparisonPinnedAnchor } from "@/lib/create-comparison";
 import {
+  cancelOptimizationPayment,
   confirmOptimizationPayment,
   requestOptimizationGate,
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
-import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
+import { useSlipFreeDraft } from "@/components/plan/useSlipFreeDraft";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
@@ -96,7 +98,6 @@ import {
   slipDraftItemCount,
   type SlipBuildAiAction,
   slipCalendarPath,
-  slipDraftDisabledReason,
   slipExpertRailState,
   slipPdfPath,
   slipShareUrl,
@@ -132,6 +133,7 @@ import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import type { PlanCardActivity } from "./plancard-types";
 import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
+import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { useReopenMutation } from "./use-reopen-mutation";
@@ -300,7 +302,6 @@ export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]):
  * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
  */
 export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
-  const { toast } = useToast();
   /**
    * DRAFT IT WITH AI — offered ONLY on a plan with zero rows (Locked Decision 41 (b)); one row of
    * any status and this card offers Optimize instead. It calls the EXISTING generate rail
@@ -312,42 +313,29 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
    * comparison; this rail deliberately does not navigate there, because sending a traveler who
    * pressed "draft my plan" to a three-variant board is the review surface Optimize is for.
    */
-  const draftDisabledReason = slipDraftDisabledReason({
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-  const draft = useMutation<FreeDraftResult, Error, void>({
-    // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1). Smoke 4 item 5:
-    // it always drafts — where to stay is recommended after the draft, never asked before it.
-    mutationFn: () => runFreeDraft(trip as any),
-    onSuccess: (result) => {
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
-      toast({
-        title: "Draft added to your plan",
-        description:
-          result.basisLine ?? "A starting sketch — one version, without live prices. Optimize builds around it.",
-      });
-    },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Couldn't draft this plan", description: err?.message });
-    },
-  });
+  // Slip conformance (ledger `2026-10-08-conformance-slip-phase0`): the ONE free-draft action,
+  // shared with the Empty board's draft card. Lane E1 (ledger `2026-10-08-e1-zero-questions`,
+  // ruling 7; option 1): on a plan whose dates nobody chose, the row's `<DatesGate>` opens the
+  // inline dates panel right here and hands the saved window to the draft — one ask, never two.
+  const draft = useSlipFreeDraft(trip as any, tripId);
+  const draftDisabledReason = draft.disabledReason;
 
   return (
         <>
-          <RailRow
-            label="Draft it with AI"
-            meta="empty plan"
-            icon={<Sparkles className="w-3.5 h-3.5" />}
-            onClick={() => draft.mutate()}
-            busy={draft.isPending}
-            disabled={!!draftDisabledReason}
-            title={draftDisabledReason ?? undefined}
-            testId="slip-action-draft-ai"
-          />
+          <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
+            {(guard) => (
+              <RailRow
+                label="Draft it with AI"
+                meta="empty plan"
+                icon={<Sparkles className="w-3.5 h-3.5" />}
+                onClick={() => guard((dates) => draft.mutate(dates))}
+                busy={draft.isPending}
+                disabled={!!draftDisabledReason}
+                title={draftDisabledReason ?? undefined}
+                testId="slip-action-draft-ai"
+              />
+            )}
+          </DatesGate>
           <RailNote testId="slip-draft-note">
             Offered only on an empty plan — one row of any status and this becomes Optimize.
           </RailNote>
@@ -364,10 +352,12 @@ function BuildCard({
   expertState,
   aiAction,
   optimizerSlot,
+  leadCopy = null,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  leadCopy?: SlipLeadCopy | null;
   /** LD 52 (C): the owner, or the delegate who builds the plan for them (browse + add only). */
   canEditItems: boolean;
   activities: PlanCardActivity[];
@@ -411,6 +401,9 @@ function BuildCard({
   }, []);
   const [lastOptimizeCoveredByPass, setLastOptimizeCoveredByPass] = useState(false);
   const confirmedPinnedAnchor = useRef<ComparisonPinnedAnchor | undefined>(undefined);
+  // Lane E1: the window the Optimize gate handed over — the plan's own, or the one just set inline
+  // (the plancard refetch may not have landed when the run starts).
+  const gatedWindow = useRef<PlanWindow | null>(null);
 
   const optimizableCount = countOptimizableItems(activities);
   const optimizeDisabledReason = slipOptimizeDisabledReason({
@@ -440,8 +433,8 @@ function BuildCard({
       const comparison = await createComparison({
         title: trip.title || undefined,
         destination: trip.destination!,
-        startDate: String(trip.startDate).slice(0, 10),
-        endDate: String(trip.endDate).slice(0, 10),
+        startDate: gatedWindow.current?.startDate ?? String(trip.startDate).slice(0, 10),
+        endDate: gatedWindow.current?.endDate ?? String(trip.endDate).slice(0, 10),
         ...(trip.travelers ? { travelers: trip.travelers } : {}),
         tripId: trip.id,
         ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
@@ -480,6 +473,11 @@ function BuildCard({
         confirmedPinnedAnchor.current = undefined;
         return;
       }
+      if (outcome.kind === "paid") {
+        // The plan's open intent was already paid and never run on — run on it (no second charge).
+        await handleSheetSuccess(outcome.paymentIntentId);
+        return;
+      }
       if (outcome.kind === "payment_sheet") setPaySheet(outcome.payment);
     } catch (err: any) {
       toast({
@@ -491,6 +489,15 @@ function BuildCard({
     } finally {
       setOptimizing(false);
     }
+  }
+
+  // Ledger `2026-10-08-optimize-pay-flow`: Cancel (or closing the sheet) cancels the open intent, so a
+  // later press starts clean rather than leaving an uncaptured PaymentIntent behind.
+  function cancelPaySheet() {
+    const open = paySheet;
+    setPaySheet(null);
+    confirmedPinnedAnchor.current = undefined;
+    if (open?.paymentIntentId) void cancelOptimizationPayment(open.paymentIntentId);
   }
 
   async function handleSheetSuccess(paymentIntentId: string) {
@@ -512,11 +519,17 @@ function BuildCard({
 
   // ── The expert (ONE door, ONE message control) ──────────────────────────────────────────────
 
+  // The board's "Local expert" beside Optimize: the SAME handoff chooser the hire row opens.
+  const openLocalExpert = () => openHandoffChooser({});
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
               run, and the fee on the CTA. Same handler the old row had (the build-around step first). */}
           <span title={optimizeDisabledReason ?? undefined} className="block" data-testid="slip-action-optimize-wrap">
+          {/* Lane E1 (ruling 7): no confirmed dates ⇒ the dates panel opens under the card, then the
+              build-around step continues with the saved window. */}
+          <DatesGate trip={trip} action="Optimize" testId="slip-optimize-dates-gate">
+          {(guard) => (
           <OptimizerLead
             drafted={aiAction === "optimize"}
             findings={leadData.findings}
@@ -526,12 +539,22 @@ function BuildCard({
             testId="slip-action-optimize"
             onClick={() => {
               if (optimizing || creatingComparison || optimizeDisabledReason) return;
-              setBuildAroundOpen(true);
+              guard((dates) => {
+                gatedWindow.current = dates;
+                setBuildAroundOpen(true);
+              });
             }}
             busy={optimizing || creatingComparison}
             disabledReason={optimizeDisabledReason}
             ctaLabelOverride={creatingComparison ? "Building…" : null}
+            tone="board"
+            title={leadCopy?.title ?? null}
+            intro={leadCopy?.intro ?? null}
+            noStay={leadCopy?.noStay === true}
+            onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
           />
+          )}
+          </DatesGate>
           </span>
           {/* Feedback phase A (ledger `2026-10-04-feedback-phase-a`): "Does this draft fit?" — under the
               optimizer card, once the plan has a draft; the server says when the moment is open. */}
@@ -617,13 +640,15 @@ function BuildCard({
           Purchase is the owner's (LD 52 — a helper never pays), so a delegate does not mount it. */}
       {isOwner ? (
         <div data-testid="slip-rail-trip-pass">
-          <TripPassCard tripId={tripId} />
+          <TripPassCard tripId={tripId} trip={trip} planName={trip.title || trip.destination} />
         </div>
       ) : null}
 
       <BuildAroundDialog
         open={buildAroundOpen}
         tripId={trip.id}
+        planName={trip.title || trip.destination}
+        fee={leadData.fee}
         busy={optimizing || creatingComparison}
         onOpenChange={setBuildAroundOpen}
         onConfirm={(pinnedAnchor) => {
@@ -637,18 +662,17 @@ function BuildCard({
       <Dialog
         open={!!paySheet}
         onOpenChange={(open) => {
-          if (!open) {
-            setPaySheet(null);
-            confirmedPinnedAnchor.current = undefined;
-          }
+          if (!open) cancelPaySheet();
         }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Pay optimization fee</DialogTitle>
+            {/* The sheet's own heading names the purchase; this title is for assistive tech only. */}
+            <DialogTitle className="sr-only">{optimizeCheckoutHeading(trip.title || trip.destination)}</DialogTitle>
           </DialogHeader>
           {paySheet && (
             <StripeCheckout
+              heading={optimizeCheckoutHeading(trip.title || trip.destination)}
               paymentIntent={{
                 clientSecret: paySheet.clientSecret,
                 paymentIntentId: paySheet.paymentIntentId,
@@ -657,10 +681,7 @@ function BuildCard({
               bookingIds={[]}
               onSuccess={handleSheetSuccess}
               onError={(err) => toast({ variant: "destructive", title: "Payment failed", description: err })}
-              onCancel={() => {
-                setPaySheet(null);
-                confirmedPinnedAnchor.current = undefined;
-              }}
+              onCancel={cancelPaySheet}
             />
           )}
         </DialogContent>
@@ -1296,6 +1317,14 @@ export function FinishCard({
 
 // ── the rail ──────────────────────────────────────────────────────────────────────────────────
 
+/** The optimizer card's group-specific words (slip conformance, Moment board). */
+export interface SlipLeadCopy {
+  title: string | null;
+  intro: string | null;
+  /** The plan is not built around a place to stay — drop "where you stay" wording. */
+  noStay: boolean;
+}
+
 export function SlipRail({
   trip,
   tripId,
@@ -1309,10 +1338,16 @@ export function SlipRail({
   stopsLine,
   zoneLine,
   optimizerSlot = null,
+  leadCopy = null,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /**
+   * The optimizer card's group-specific words (a Moment's title and intro), resolved by `SlipView`
+   * from the plan's own facts. Null ⇒ the board's Trip wording.
+   */
+  leadCopy?: SlipLeadCopy | null;
   /** LD 52 (C): item-building for the owner or the delegate (`canEditPlanItems`); defaults to owner. */
   canEditItems?: boolean;
   /**
@@ -1382,6 +1417,7 @@ export function SlipRail({
         expertState={expertState}
         aiAction={aiAction}
         optimizerSlot={optimizerSlot}
+        leadCopy={leadCopy}
       />
       {/* ASK AI — its OWN card, beneath Build (L16 lanes 2/3). It renders NOTHING for a viewer the
           proposal-log route would refuse: the routes are the policy and this mirrors them, never

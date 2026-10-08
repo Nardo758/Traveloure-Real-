@@ -48,32 +48,30 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   await testid(page, "option-occasion-travel").click();
   await testid(page, "city-card-kyoto").click();
   await testid(page, "button-experiences-continue").click();
-  // D1: the modal opens at When, Where already answered on the page.
-  await expect(testid(page, "plan-step-when-body")).toBeVisible({ timeout: 15_000 });
-  // The start page's own picker stays rendered behind the modal, so the steps are driven INSIDE the
-  // modal (the shared walker would find the page's tiles first).
-  const modal = testid(page, "plan-modal");
+  // Lane E1 (ledger `2026-10-08-e1-zero-questions`; sanctioned rewrite of :50-77): Continue opens the plan
+  // straight away — no modal, no When, no Who — on its MAP view, Browse.
+  await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 20_000 });
+  await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
+  const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
+  expect(tripId, "Continue minted a plan").toBeTruthy();
+
+  // Ruling 9: an empty plan opens on Browse. No dates yet ⇒ one "Day 1" (the 8b-2 rule).
+  const sheet = page.locator(`[data-testid="map-sheet-${tripId}"]`);
+  await expect(sheet).toHaveAttribute("data-rail-layer", "browse", { timeout: 20_000 });
+  await expect(testid(page, `map-day-btn-1-${tripId}`)).toBeVisible();
+  await expect(testid(page, `map-day-btn-2-${tripId}`)).toHaveCount(0);
+
+  // "Set your dates" opens INLINE on the slip; once saved, the chips are the trip's own four days.
   const start = new Date();
   start.setDate(start.getDate() + 40);
   const end = new Date(start);
   end.setDate(end.getDate() + 3);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
-  await modal.getByTestId("input-etp-start-date").fill(fmt(start));
-  await modal.getByTestId("input-etp-end-date").fill(fmt(end));
-  for (let i = 0; i < 4 && !(await appears(modal.getByTestId("planning-option-myself"), 1500)); i++) {
-    await modal.getByTestId("button-planning-next").click();
-  }
-  await expect(modal.getByTestId("planning-option-myself"), "the modal reaches its finish").toBeVisible();
-
-  // ── D4: `myself` from the experiences door lands on the plan's MAP view ──────────────────────
-  const tripId = await clickPlanFinish(page, "myself");
-  expect(tripId, "the finish minted a plan").toBeTruthy();
-  await expect(page).toHaveURL(new RegExp(`/plans/${tripId}\\?view=map`), { timeout: 20_000 });
-
-  // Ruling 9: an empty plan opens on Browse; ruling 1: the chips are the trip's own four days.
-  const sheet = page.locator(`[data-testid="map-sheet-${tripId}"]`);
-  await expect(sheet).toHaveAttribute("data-rail-layer", "browse", { timeout: 20_000 });
-  for (const n of [1, 2, 3, 4]) await expect(testid(page, `map-day-btn-${n}-${tripId}`)).toBeVisible();
+  await testid(page, "slip-dates-set-cta").click();
+  await testid(page, "slip-dates-panel").getByTestId("input-slip-dates-start").fill(fmt(start));
+  await testid(page, "slip-dates-panel").getByTestId("input-slip-dates-end").fill(fmt(end));
+  await testid(page, "button-slip-dates-save").click();
+  for (const n of [1, 2, 3, 4]) await expect(testid(page, `map-day-btn-${n}-${tripId}`)).toBeVisible({ timeout: 20_000 });
   await expect(testid(page, `map-day-btn-5-${tripId}`)).toHaveCount(0);
 
   // ── Add the listing to Day 2 from the Activities tab ──────────────────────────────────────────

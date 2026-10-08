@@ -36,6 +36,7 @@ import {
   type ResolutionSubclass,
 } from "@shared/trailhead-resolution";
 import { sortByFeaturedAdjusted } from "./featured-sort";
+import { logger } from "../infrastructure/logger";
 
 /**
  * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
@@ -316,6 +317,15 @@ class LocationViewService {
         limit,
       );
     })();
+    // A handler attached at CREATION (ledger `2026-10-08-location-view-recs-rejection`). This
+    // promise can reject at once (a city with no known country) while the fan-out below is still
+    // awaiting other work, and `settle()` attaches its handler only later — so Node reported the
+    // rejection as unhandled and charged it to whatever ran then (PL3, red on main). The original
+    // promise is unchanged: `settle()` still receives the rejection and the page renders the
+    // section's honest error exactly as before. This handler only says it out loud, never silently.
+    recommendationsPromise.catch((err: any) => {
+      logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "recommendations prefetch failed");
+    });
 
     // Events (Fever)
     const eventsPromise = (async () => {

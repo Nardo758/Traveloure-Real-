@@ -9,6 +9,7 @@
  */
 import type { ReactNode } from "react";
 import { EXPERT_NOTE_TINT } from "@/components/plancard/slip-tokens";
+import { usePlanRowLook } from "./row-look";
 
 export interface ExpertNoteProps {
   note: string;
@@ -19,6 +20,22 @@ export interface ExpertNoteProps {
 }
 
 export function ExpertNote({ note, author, neighbourhood = null, followUp = null }: ExpertNoteProps) {
+  // The Main board's note (ledger `2026-10-08-slip-main-rows`): a gold rule and wash, the same words.
+  if (usePlanRowLook() === "board") {
+    return (
+      <div
+        className="mt-1 flex flex-col gap-1 rounded-r-[10px] border-l-[3px] border-[color:var(--slip-gold)] bg-[color:var(--slip-note-wash)] px-3 py-2.5"
+        data-testid="slip-expert-note"
+      >
+        <p className="text-xs font-semibold text-[color:var(--slip-gold-ink)]">
+          Note from {author || "your expert"}
+          {neighbourhood ? <span className="font-normal"> · {neighbourhood}</span> : null}
+        </p>
+        <p className="whitespace-pre-wrap text-[13px] leading-[1.45] text-[color:var(--slip-ink)]">{note}</p>
+        {followUp}
+      </div>
+    );
+  }
   return (
     <div
       className="mt-2 rounded-md border-l-2 bg-muted/30 px-3 py-2"

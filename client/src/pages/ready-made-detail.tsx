@@ -54,6 +54,7 @@ import { Button } from "@/components/ui/button";
 import { LanguageMenu } from "@/components/language-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { readyMadeCheckoutHeading } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
@@ -697,6 +698,7 @@ export default function ReadyMadeDetailPage() {
           ) : (
             paymentIntent && (
               <StripeCheckout
+                heading={readyMadeCheckoutHeading(listing.title)}
                 paymentIntent={paymentIntent}
                 bookingIds={[]}
                 onSuccess={handleStripeSuccess}

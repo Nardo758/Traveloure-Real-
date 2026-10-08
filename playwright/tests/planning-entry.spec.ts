@@ -278,15 +278,17 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
     await expect(cont).toBeEnabled();
   });
 
-  test("Continue opens the one modal at When, with Where reachable by Back", async ({ page }) => {
+  // Lane E1 (ledger `2026-10-08-e1-zero-questions`; sanctioned rewrite of :281-289): the start page is the
+  // one door with no When/Who — signed out, Continue opens the guest map with the occasion and the city.
+  test("Continue opens no modal: signed out, it lands on the guest map with the city", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("occasion-group-hosted_events").click({ timeout: 15_000 });
     await page.getByTestId("option-occasion-wedding").click();
     await page.getByTestId("map-pin-kyoto").click();
     await page.getByTestId("button-experiences-continue").click();
-    await expect(page.getByTestId("plan-step-when-body")).toBeVisible({ timeout: 10_000 });
-    await page.getByTestId("plan-step-where").click();
-    await expect(page.getByTestId("input-etp-destination")).toHaveValue(/Kyoto/);
+    await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 10_000 });
+    await expect(page.getByTestId("plan-modal")).toHaveCount(0);
+    await expect(page.getByTestId("guest-map-answers")).toContainText("Kyoto");
   });
 
   test("?destination= pre-picks only an exact match of the eight", async ({ page }) => {

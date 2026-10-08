@@ -96,6 +96,17 @@ export function itemFactsLine(
 }
 
 /**
+ * Pure. The facts line split where the Main board colours it (ledger `2026-10-08-slip-main-rows`):
+ * `lead` is the day and its hours ("Wed · 9:00 AM – 4:00 PM"), `source` the provenance that follows
+ * ("Google Maps · checked 3 Oct"). It splits `itemFactsLine`'s own text — the words are never re-made.
+ */
+export function factsLineParts(text: string): { lead: string; source: string | null } {
+  const parts = text.split(" · ");
+  if (parts.length <= 2) return { lead: text, source: null };
+  return { lead: parts.slice(0, 2).join(" · "), source: parts.slice(2).join(" · ") };
+}
+
+/**
  * Pure. The `ItemRow` PLACE line (spec §3; step-1 amendment R-ab). The order:
  *   1. a Google-checked (`places_api`) address fact — its WARD/AREA, with the Maps attribution. The
  *      area is the one the adapter derived from Google's `addressComponents` (`value.area`, smoke 8
