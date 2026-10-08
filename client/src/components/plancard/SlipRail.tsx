@@ -80,7 +80,7 @@ import {
   requestOptimizationGate,
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
-import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
+import { useSlipFreeDraft } from "@/components/plan/useSlipFreeDraft";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
@@ -96,7 +96,6 @@ import {
   slipDraftItemCount,
   type SlipBuildAiAction,
   slipCalendarPath,
-  slipDraftDisabledReason,
   slipExpertRailState,
   slipPdfPath,
   slipShareUrl,
@@ -300,7 +299,6 @@ export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]):
  * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
  */
 export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
-  const { toast } = useToast();
   /**
    * DRAFT IT WITH AI — offered ONLY on a plan with zero rows (Locked Decision 41 (b)); one row of
    * any status and this card offers Optimize instead. It calls the EXISTING generate rail
@@ -312,29 +310,11 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
    * comparison; this rail deliberately does not navigate there, because sending a traveler who
    * pressed "draft my plan" to a three-variant board is the review surface Optimize is for.
    */
-  const draftDisabledReason = slipDraftDisabledReason({
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-  });
-  const draft = useMutation<FreeDraftResult, Error, void>({
-    // ONE call, shared with the expert door (`@/lib/slip-free-draft`, §18 rule 1). Smoke 4 item 5:
-    // it always drafts — where to stay is recommended after the draft, never asked before it.
-    mutationFn: () => runFreeDraft(trip as any),
-    onSuccess: (result) => {
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
-      sharedQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
-      toast({
-        title: "Draft added to your plan",
-        description:
-          result.basisLine ?? "A starting sketch — one version, without live prices. Optimize builds around it.",
-      });
-    },
-    onError: (err: any) => {
-      toast({ variant: "destructive", title: "Couldn't draft this plan", description: err?.message });
-    },
-  });
+  // Slip conformance (ledger `2026-10-08-conformance-slip-phase0`): the ONE free-draft action,
+  // shared with the Empty board's draft card. On a plan whose dates nobody chose it asks for them
+  // first (canvas note s12); otherwise it drafts exactly as before.
+  const draft = useSlipFreeDraft(trip as any, tripId);
+  const draftDisabledReason = draft.disabledReason;
 
   return (
         <>
@@ -348,6 +328,7 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
             title={draftDisabledReason ?? undefined}
             testId="slip-action-draft-ai"
           />
+          {draft.datesDialog}
           <RailNote testId="slip-draft-note">
             Offered only on an empty plan — one row of any status and this becomes Optimize.
           </RailNote>

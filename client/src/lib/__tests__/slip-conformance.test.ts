@@ -224,6 +224,12 @@ const ALLOWED_ADDITIONS = {
   // Step 6 finalize smoke: inside the 48-hour window with no final version, the banner says to make
   // the plan final instead of claiming a card is ready (no handler).
   "slip-trip-card-finalize-now": "Step 6 — 'make your plan final' in place of a false 'ready' (no handler)",
+  // Slip conformance, Empty board (boards rev 15; ledger `2026-10-08-conformance-slip-phase0`). The
+  // placeholder-dates subline and its chips; the chips are the EXISTING dates dialog and party ask.
+  "slip-meta-dates-unset": "Empty board — 'Dates not set yet' in place of a window nobody chose (no handler)",
+  "slip-meta-zone": "Empty board — the plan's zone in the subline, e.g. 'JST' (ruling 3; no handler)",
+  "slip-meta-chips": "Empty board — the owner's 'Set your dates' / 'Who's coming?' chips row (no handler of its own)",
+  "slip-empty-board": "Empty board — the owner's empty-plan start: anchor question, draft card, other ways in (no handler of its own)",
 } as const;
 
 /**

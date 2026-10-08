@@ -26,6 +26,8 @@
   --slip-line: #E3E6E8;
   --slip-line-strong: #C9D1D8;
   --slip-wash: #E9EEF2;
+  /* Body text on a navy card (the Empty board's draft card). */
+  --slip-on-navy-muted: #D7E0E8;
 
   /* Accents. */
   --slip-teal: #2E8B8B;

@@ -82,6 +82,7 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
 import { useHealthFlags } from "@/lib/health-flags";
 import type { ToolKey } from "@shared/group-manifest";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
@@ -489,7 +490,10 @@ export function SlipHeader({
           </Link>
         )}
       </div>
-      <h1 className={`${SLIP_TITLE_FONT_CLASS} text-2xl font-bold text-foreground`} data-testid="slip-title">
+      <h1
+        className={`${SLIP_TITLE_FONT_CLASS} text-[30px] font-semibold leading-[1.1] tracking-[-0.01em] text-[color:var(--slip-ink)]`}
+        data-testid="slip-title"
+      >
         {trip?.title || trip?.destination || "Trip plan"}
       </h1>
       {readyMadeSourceLine(data.readyMadeSource) ? (
@@ -507,6 +511,7 @@ export function SlipHeader({
         partyLabel={partyLabel}
         onAskParty={onAskParty}
         eventCount={eventCount}
+        timezone={(trip as any)?.timezone ?? null}
       />
       {anchorLine ? (
         <p className="text-sm text-foreground" data-testid="slip-anchor-state">
@@ -1631,7 +1636,7 @@ export function useSlipViewModel({
       view={whereToStay}
       lodgingSet={lodgingSet}
       canChoose={canEditItems}
-      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} />}
+      addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} variant={stage === "empty" ? "board" : "outline"} />}
       addFixedControl={
         <SlipAddItemControl tripId={tripId} dayNumber={1} userExperienceId={null} label={SLIP_ADD_DAY_LABEL} testId="slip-anchor-add-fixed" />
       }
@@ -2042,6 +2047,8 @@ export function SlipView({
   } = useSlipViewModel({ tripId, data, highlightItemId, initialView });
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
+  // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
+  const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
 
   return (
     <div
@@ -2111,7 +2118,9 @@ export function SlipView({
         }
         occasionName={occasion?.name ?? null}
         anchorLine={
-          tripsAnchor && occasionResolved
+          // The Empty board's anchor card asks the question itself, so the header does not also
+          // say "not chosen yet" above it.
+          tripsAnchor && occasionResolved && !emptyStartShown
             ? tripsAnchorLine(tripsAnchor, tripsAnchorState({ anchor: tripsAnchor, items: allActivities, events: planEvents }))
             : null
         }
@@ -2144,6 +2153,20 @@ export function SlipView({
           order of the two regions depends on the breakpoint's direction. */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:gap-8" data-testid="slip-columns">
         <div className={`${tripsAnchor ? "order-1 lg:order-1" : "order-2 lg:order-1"} min-w-0 flex-1 space-y-5`}>
+          {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
+              `2026-10-08-conformance-slip-phase0`) ────────────────────────────────────────────
+              An owner's plan with no items opens on the board's start: the anchor question (a
+              Trip's), the draft card and the two other ways in, directly under the header. Every
+              control is an existing rail. The anchor question renders HERE instead of lower down,
+              never twice. The tray, the optimizer card and the view bar keep their places below,
+              because the specs that pin them on an empty plan are unchanged. Removing them from
+              the empty state is the Main-rail PR's ruling, not this one. */}
+          {emptyStartShown && data.trip ? (
+            <div className="space-y-3.5" data-testid="slip-empty-board">
+              {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
+              <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
+            </div>
+          ) : null}
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
               The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
               the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
@@ -2334,7 +2357,7 @@ export function SlipView({
       ) : null}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
-      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty ? renderAnchorPanel("empty") : null}
+      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
