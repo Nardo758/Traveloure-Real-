@@ -1,0 +1,3 @@
+- [Legacy confirmation persistence](legacy-confirmation-persistence-policy.md) — atomic future notices approved; historical repair, schema changes, and other side effects require separate approval.
+- [Crash fixture boundaries](crash-fixture-boundaries.md) — kill the transaction-owning process, not a launcher that can leave its worker alive.
+- [Assigned task merge base](assigned-task-merge-base.md) — application main and GitHub main can have different ancestry; avoid replaying unrelated upstream history at completion.

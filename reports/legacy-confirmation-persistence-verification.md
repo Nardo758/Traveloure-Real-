@@ -7,8 +7,9 @@ then approved the written design on 2026-10-08. No schema change, historical
 recovery scan, new scheduler, registry, real mail, captures, or refunds was
 authorized or performed.
 
-24 native PostgreSQL regression tests passed using the existing isolated
-development fixture runner. It created an empty constraint-preserving schema
+49 native PostgreSQL regression tests passed on the final application-main-based
+branch: 24 persistence/recovery tests and 25 retained webhook/browser race tests.
+Each suite used its own empty constraint-preserving development fixture schema
 with owned sequences, then verified its removal. Stripe retrieval and email
 transports were simulated; unexpected HTTP/HTTPS/fetch provider calls were
 forbidden.
@@ -49,26 +50,44 @@ forbidden.
 # Independently obtain the fingerprint from the DEVELOPMENT database.
 MESSAGING_DEV_FINGERPRINT=<verified-development-fingerprint> \
   node scripts/verification/run-messaging-gate.mjs --isolated-db \
+  server/__tests__/legacy-confirmation-persistence.db.test.ts
+MESSAGING_DEV_FINGERPRINT=<verified-development-fingerprint> \
+  node scripts/verification/run-messaging-gate.mjs --isolated-db \
   server/__tests__/legacy-webhook-confirmation.db.test.ts
 git diff --check
 ```
 
-TypeScript comparison against the task's initial runtime: 117 existing
+Earlier TypeScript comparison against the task's initial runtime: 117 existing
 diagnostics before and after, zero new diagnostics. The comparison substituted
 the base versions of changed runtime sources in memory and excluded newly added
 files from the baseline program; it did not edit the application to run checks.
+An origin/main comparison also returned 117 on each side. A subsequent in-memory
+two-program comparison on the final application-main branch exceeded its
+four-minute limit without a result; it is not claimed as a passing final check.
 
-The configured preview restarted successfully, its outbox scheduler registered,
-startup applied zero migrations, and the landing page rendered. The outbox
-uses its existing five-minute drain interval rather than immediate traveler
-enqueue-and-send delivery.
+The first scoped branch was based on GitHub's `origin/main`, but task completion
+syncs with the separate application main branch. Its attempted sync replayed
+unrelated history and produced incorrect edits outside this task; that sync was
+aborted. The final branch starts directly from application main, contains no
+client/shared/script changes, and retains its existing browser-race tests.
+The recovery suite is separate; the retained tests now invoke the existing
+drain after commit and synchronize the actual transactional claim.
+
+The preview started successfully, registered its existing outbox scheduler, and
+rendered the landing page; the development proxy returned 200. The first restart
+applied zero migrations. Normal startup on the intermediate GitHub-main branch
+applied its pre-existing `359_trips_stay_pick.sql`, unrelated to this fix. This
+task adds or changes no schema or registered migration. The existing five-minute
+drain interval replaces immediate traveler enqueue-and-send delivery.
 
 ## Boundaries
 
-Response handlers were invoked directly with fixture requests/responses, not
-through an HTTP listener or authenticated browser session. Synthetic signature
-verification is not proof of a live Stripe delivery. These results do not
-claim production, real provider delivery, captures/refunds, or publication.
+Persistence-failure response handlers were invoked directly with fixture
+requests/responses. The retained main suite also checks the native authenticated
+router over an owned loopback HTTP listener with synthetic session identity.
+Neither suite uses an authenticated browser. Synthetic signature verification
+is not proof of a live Stripe delivery. These results do not claim production,
+real provider delivery, captures/refunds, or publication.
 
 Already-confirmed historical bookings without an outbox row remain untouched.
 Provider notifications and post-confirmation fee-ledger recording remain
