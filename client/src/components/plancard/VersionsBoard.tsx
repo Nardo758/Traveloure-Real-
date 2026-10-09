@@ -240,12 +240,18 @@ export function VersionsBoard({
         <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="versions-run-date">
           Optimized · Run of {runDateLabel(view.run.runAt)}
         </p>
-        <h2 className="slip-display text-[28px] font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid="versions-headline">
-          {optimizedHeadline(view.versions.length, allDays.length)}
-        </h2>
-        <p className="text-[15px] leading-snug text-[color:var(--slip-muted)]">
-          {allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. Your draft is kept.
-        </p>
+        {/* The headline and what adopting does belong to the choose view; By day keeps the eyebrow only, so
+            its drag board sits where it always has (kyoto-slice §6 step 5 drags a day near the fold). */}
+        {mode === "choose" ? (
+          <>
+            <h2 className="slip-display text-[28px] font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid="versions-headline">
+              {optimizedHeadline(view.versions.length, allDays.length)}
+            </h2>
+            <p className="text-[15px] leading-snug text-[color:var(--slip-muted)]">
+              {allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. Your draft is kept.
+            </p>
+          </>
+        ) : null}
       </div>
 
       {map}
