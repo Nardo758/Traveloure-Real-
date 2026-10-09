@@ -566,13 +566,22 @@ This document captures architectural decisions to maintain consistency across co
     BOUND plan (Where · When · Who · What's happening, Save) — no Occasion step, chooser, Clear or name. The
     single opener (`usePlanning().open`) and `check-planning-entry.cjs` stand; the guard now also holds the
     PlanEntry/edit-window split. `/experiences` moves onto PlanEntry in E3.
+    **AMENDED — THE START PAGE IS PlanEntry INLINE (decision-maker, Oct 9, 2026 — E3 rulings 1–4, ledger
+    `2026-10-09-e3-experiences-inline`; supersedes Lane E1's zero-question Continue above).** `/experiences`
+    mounts `PlanEntryPanel` inline — the same steps as the pop-up, its Place picker the page's own world map
+    and eight city cards — and Start a plan (sticky at phone width) runs the provider's ONE start
+    (`usePlanning().start`, the pop-up's mint): a guest's PlanEntry sign-in record, a picked date stamps
+    confirmed dates. Lane E1's `mintStartPagePlan` / `startPageGuestRecord` / start-page replay are DELETED
+    (§18c). Deep links seed the panel and never start a plan — a visit writes nothing; a city and an
+    occasion land on Step 2 with Start a plan ready; `?group=` seeds the group. A door slug the catalog
+    does not carry is dropped, never minted (§13).
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
     shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
     included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
-    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — Lane E1 above: its
-    Continue is the `myself` landing on the map, through the zero-question mint.)
+    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — its Start a plan is
+    PlanEntry's, E3 above.)
     **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the Step2Where "add another
     stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
     that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate

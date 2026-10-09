@@ -77,7 +77,8 @@ describe("the nav's Experiences menu", () => {
 
   it("G4 the start page reads ?group= through the one helper", () => {
     const page = read("client/src/pages/experiences.tsx");
-    assert.match(page, /preselectedGroup\(new URLSearchParams\(searchString\)\)/);
-    assert.match(page, /initialGroup=\{preselectGroup\}/);
+    // E3 (sanctioned): the page hands ?group= to PlanEntry inline as its starting `group`.
+    assert.match(page, /const group = preselectedGroup\(params\);/);
+    assert.match(page, /\.\.\.\(group \? \{ group \} : \{\}\)/);
   });
 });

@@ -135,3 +135,11 @@ test("E8: landing view by group", () => {
   // A "More specific" occasion's own group decides.
   assert.equal(planEntryView({ ...base, group: "trips" }, { defaultStops: "one", defaultDuration: "day", defaultGuests: true }), "list");
 });
+
+test("E9: a starting group (?group=) seeds the group, an exact key only (E3 ruling 3)", () => {
+  assert.equal(initialPlanEntry({ group: "celebrations" }).state.group, "celebrations");
+  assert.equal(initialPlanEntry({ group: "nope" as any }).state.group, "trips", "an unknown key is never a group");
+  const deep = initialPlanEntry({ city: "Kyoto", experienceSlug: "wedding", group: "hosted_events" });
+  assert.equal(deep.step, "occasion", "a city and an occasion land on Step 2");
+  assert.equal(deep.state.group, "hosted_events");
+});

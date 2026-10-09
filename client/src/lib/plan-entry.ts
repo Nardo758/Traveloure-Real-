@@ -16,6 +16,7 @@
 import { OPERATING_MARKETS, type OperatingMarket } from "@shared/operating-markets";
 import {
   OCCASION_GROUP_DEFAULT_SLUG,
+  OCCASION_GROUP_ORDER,
   experienceGroupFor,
   type ExperienceGroupRow,
   type OccasionPickerGroup,
@@ -59,6 +60,8 @@ export interface PlanEntrySource {
   country?: string;
   destination?: string;
   experienceSlug?: string;
+  /** A starting group (the nav's `?group=`, already an exact key) — E3 ruling 3. */
+  group?: OccasionPickerGroup;
   anchor?: { title: string; firstDate: string; lastDate: string; startTime: string | null; venue: string };
 }
 
@@ -143,7 +146,8 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
     ? exactOperatingMarket(source.country ? `${source.city}, ${source.country}` : source.city) ?? exactOperatingMarket(source.city)
     : exactOperatingMarket(source.destination);
   const occasionSlug = source.experienceSlug?.trim() || null;
-  const withAnswers: PlanEntryState = { ...state, market: named, around: named ? "place" : null, occasionSlug };
+  const group = source.group && (OCCASION_GROUP_ORDER as readonly string[]).includes(source.group) ? source.group : state.group;
+  const withAnswers: PlanEntryState = { ...state, market: named, around: named ? "place" : null, occasionSlug, group };
   return { state: withAnswers, step: named ? "occasion" : "around" };
 }
 

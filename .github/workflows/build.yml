@@ -128,6 +128,12 @@ jobs:
       - name: Expert-work protection pin (LD 42 D3/D4)
         run: npx tsx --test server/__tests__/expert-work-protected.test.ts
 
+      # 2026-10-09-e3-experiences-inline (E3 ruling 2): the six seeded occasion descriptions. The
+      # seeder's sentences and migration 360's are the same text; 360 is data only and touches a row
+      # only while it still holds the generated "<name> planning experience" placeholder.
+      - name: Occasion descriptions pin (E3)
+        run: npx tsx --test server/__tests__/occasion-descriptions.test.ts
+
       # 2026-09-06-optimizer-run-predicate (CLAUDE.md Locked Decision 42 D17): the optimizer run —
       # paid, free re-run, or Trip Pass — REWRITES the plan's items, so all four run gates
       # (comparison create, generate, apply-to-trip, optimize-order + its dead twin) are authorized

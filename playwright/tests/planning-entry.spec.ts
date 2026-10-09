@@ -180,47 +180,60 @@ test.describe("The Event Planner fork's third door (2026-09-04-wedding-entry-doo
   });
 });
 
-test.describe("/experiences is the start state, and no route auto-opens (walkthrough F-T1; step 8a)", () => {
+test.describe("/experiences is the start state, and no route auto-opens (walkthrough F-T1; step 8a; E3)", () => {
   // Ruling 2026-08-28-single-planning-entry extended: a ROUTE never auto-opens the planning modal.
-  // Step 8a (ledger `2026-10-06-step8a-experiences-entry`): /experiences asks the occasion and Where
-  // ON the page; its Continue opens the one modal at When through the `experiences` door. The intake
-  // panel and its `?plan=1` deep-link are gone from this page (ruling 1).
-  test("/experiences loads with nothing open, and Continue waits for both answers", async ({ page }) => {
+  // E3 (ledger `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :183-223): /experiences mounts
+  // PlanEntry INLINE — Step 1 opens on "A place" with the page's map and cards, a city moves to the
+  // occasion, and Start a plan is the one action. There is no Continue and no pop-up over the page.
+  test("/experiences loads with nothing open, and Start a plan waits for a city", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: /What are you planning\?/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Plan around…/i })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByTestId("intake-panel")).toHaveCount(0);
-    await expect(page.getByTestId("plan-step-occasion")).toHaveCount(0);
+    await expect(page.getByTestId("plan-entry")).toHaveCount(0);
+    await expect(page.getByTestId("plan-entry-inline")).toBeVisible();
     await expect(page.getByTestId("experiences-map-credit")).toHaveText("Map: Natural Earth");
-    const cont = page.getByTestId("button-experiences-continue");
-    await expect(cont).toBeDisabled();
-    await page.getByTestId("occasion-group-trips").click();
-    await page.getByTestId("option-occasion-travel").click();
-    await expect(cont).toBeDisabled();
+    const start = page.getByTestId("button-plan-entry-start");
+    await expect(start).toBeDisabled();
     await page.getByTestId("city-card-kyoto").click();
-    await expect(cont).toBeEnabled();
+    await expect(page.getByTestId("plan-entry-step-occasion")).toBeVisible();
+    await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "true");
+    await expect(start).toBeEnabled();
   });
 
-  // Lane E1 (ledger `2026-10-08-e1-zero-questions`; sanctioned rewrite of :281-289): the start page is the
-  // one door with no When/Who — signed out, Continue opens the guest map with the occasion and the city.
-  test("Continue opens no modal: signed out, it lands on the guest map with the city", async ({ page }) => {
+  // E3 ruling 1: signed out, Start a plan writes PlanEntry's sign-in record and opens the guest map.
+  test("Start a plan opens no pop-up: signed out, it lands on the guest map with the city", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
-    await page.getByTestId("occasion-group-hosted_events").click({ timeout: 15_000 });
-    await page.getByTestId("option-occasion-wedding").click();
-    await page.getByTestId("map-pin-kyoto").click();
-    await page.getByTestId("button-experiences-continue").click();
+    await page.getByTestId("map-pin-kyoto").click({ timeout: 15_000 });
+    await page.getByTestId("plan-entry-group-hosted_events").click();
+    await page.getByTestId("button-plan-entry-start").click();
     await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 10_000 });
+    await expect(page.getByTestId("plan-entry")).toHaveCount(0);
     await expect(page.getByTestId("plan-modal")).toHaveCount(0);
     await expect(page.getByTestId("guest-map-answers")).toContainText("Kyoto");
   });
 
   test("?destination= pre-picks only an exact match of the eight", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences?destination=Porto`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByTestId("city-card-porto")).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+    await expect(page.getByTestId("plan-entry-summary")).toContainText("Porto", { timeout: 15_000 });
     await page.goto(`${BASE_URL}/experiences?destination=Lisbon`, { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("city-card-porto")).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-testid^="city-card-"][aria-pressed="true"]')).toHaveCount(0);
+  });
+
+  // E3: Start a plan stays in view at phone width (a sticky footer on the inline mount).
+  test("at 390px Start a plan is sticky and in view", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${BASE_URL}/experiences?destination=Kyoto`, { waitUntil: "domcontentloaded" });
+    const footer = page.getByTestId("plan-entry-footer");
+    await expect(footer).toBeVisible({ timeout: 15_000 });
+    expect(await footer.evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+    await page.getByTestId("plan-entry-more-specific").click();
+    await page.mouse.wheel(0, 600);
+    await expect(page.getByTestId("button-plan-entry-start")).toBeInViewport();
+    const box = await page.getByTestId("button-plan-entry-start").boundingBox();
+    expect(box && box.x >= 0 && box.x + box.width <= 390, "no horizontal overflow").toBe(true);
   });
 });
 

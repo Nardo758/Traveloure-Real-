@@ -35,7 +35,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { getTripContext, releasePendingEventsPen, switchTripContext, updateTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
-import { START_PAGE_DOOR, isStartPageRecord, mintStartPagePlan } from "@/lib/start-page-plan";
 import { finishForBranch, isPlanDoor, type PlanDoor } from "@shared/slip-funnel-events";
 import { eventTypeForSlug } from "@shared/occasions";
 import { OCCASION_GROUP_DEFAULT_SLUG } from "@shared/experience-group";
@@ -211,6 +210,11 @@ export interface PlanningSource {
 interface PlanningApi {
   open: (source?: PlanningSource) => void;
   close: () => void;
+  /**
+   * START A PLAN from an inline PlanEntry (E3: the /experiences page). The SAME mint the pop-up's
+   * Start a plan runs — guest record, mint, occasion, event, landing — never a second create path.
+   */
+  start: (start: PlanEntryStart, source?: PlanningSource) => Promise<PlanEntryStartOutcome>;
 }
 
 interface PendingGemRecovery {
@@ -571,23 +575,6 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   // ── Step 8b-2 (D3): THE GUEST'S PLAN, CARRIED THROUGH SIGN-IN ───────────────────────────────────
   // After sign-in (a full reload), the record is TAKEN — and so cleared — BEFORE the plan is created,
   // then replayed through the ONE start: the same mint, the same landing.
-  const replayStartPageRecord = async (record: PendingPlanRecord) => {
-    const experienceSlug = record.source.experienceSlug ?? record.answers.occasionSlug ?? "";
-    const city = record.source.city ?? "";
-    const country = record.source.country ?? "";
-    const outcome = await mintStartPagePlan({ experienceSlug, city, country });
-    if (!outcome.ok) {
-      toast({ variant: "destructive", title: "Your plan was not created", description: outcome.message });
-      return;
-    }
-    if (record.pendingAdd) {
-      writePendingMapAddRetry(outcome.tripId, record.pendingAdd);
-      const added = await attachPendingMapAdd(outcome.tripId, record.pendingAdd);
-      const said = pendingMapAddMessage(added);
-      toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
-    }
-    setLocation(planLandingPath(outcome.tripId, "myself", START_PAGE_DOOR));
-  };
   const replayEntryRecord = async (record: PendingPlanRecord) => {
     const start = entryStartFromRecord(record);
     if (!start) {
@@ -608,15 +595,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     replayedForUser.current = user.id;
     consumePendingPlanRecord({
       take: () => takePendingPlanRecord(),
-      replay: (record) => {
-        // Lane E1 (ledger `2026-10-08-e1-zero-questions`): a zero-question start replays through ITS
-        // mint — the occasion and the city, no dates. Every other record is a PlanEntry start (E2).
-        if (isStartPageRecord(record)) {
-          void replayStartPageRecord(record);
-          return;
-        }
-        void replayEntryRecord(record);
-      },
+      // Every record is a PlanEntry start (E2), the /experiences page's included (E3, ruling 1).
+      replay: (record) => void replayEntryRecord(record),
     });
     // Step 8d: a guest-map add whose plan was created but whose add did not land is retried here —
     // the add only, idempotently (the plan is read first). Never on a load that is replaying a record.
@@ -635,7 +615,11 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const api = useMemo(() => ({ open, close }), [open, close]);
+  const start = useCallback(
+    (entry: PlanEntryStart, from?: PlanningSource) => startFromEntry(entry, from ?? null),
+    [startFromEntry],
+  );
+  const api = useMemo(() => ({ open, close, start }), [open, close, start]);
 
   return (
     <PlanningContext.Provider value={api}>

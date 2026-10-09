@@ -3,10 +3,8 @@
  *
  *   Z1  the mint body: dates OPTIONAL — neither ⇒ admitted; one without the other ⇒ refused (§13)
  *   Z2  the one client mint door: only an explicit `datesOptional` mints with no dates, and sends NO date key
- *   Z3  the start-page mint: city only, the experiences door, then the occasion through its one rail;
- *       a failed occasion PATCH still opens the plan and says so
- *   Z4  the guest record: the occasion and the city, nothing the page did not ask; it replays through the
- *       start-page mint, never the modal
+ *   Z3  the start page starts through the provider's one start (E3); every sign-in record replays through
+ *       PlanEntry's start
  *   Z5  the server's placeholder is ONE day, the mint day in the plan's zone; a dated body is certified and a
  *       dateless one is not
  *   Z6  "Who's coming?": an empty field is never sent; the pets pair is R340's kind + count
@@ -21,7 +19,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { tripMintBodySchema, tripPetCountSchema, tripPetKindSchema } from "@shared/schema";
 import { checkSlipPrecondition, mintTripSlip } from "../trip-slip";
-import { isStartPageRecord, mintStartPagePlan, startPageDestination, startPageGuestRecord } from "../start-page-plan";
 import { datesGateBlocks, datesPanelCanSave, partyPanelBody } from "../../components/plan/SlipAnchorPanels";
 import { planDatesGateLine } from "@shared/plan-dates";
 import { placeholderMintDay } from "../../../../server/services/trip-placeholder-dates";
@@ -48,40 +45,14 @@ describe("Z1–Z2 the mint", () => {
   });
 });
 
-describe("Z3–Z4 the start page", () => {
-  const A = { experienceSlug: "travel", city: "Kyoto", country: "Japan" };
-
-  it("Z3 mints the city only, through the experiences door, then sets the occasion", async () => {
-    let body: any = null;
-    const patched: string[] = [];
-    const out = await mintStartPagePlan(A, {
-      post: async (b) => ((body = b), { id: "t9" }),
-      patchOccasion: async (id, slug) => void patched.push(`${id}:${slug}`),
-    });
-    assert.deepEqual(out, { ok: true, tripId: "t9", occasionSaved: true });
-    assert.equal(body.destination, "Kyoto, Japan");
-    assert.deepEqual(body.entry, { door: "experiences", occasionSource: "asked", finish: "myself" });
-    assert.ok(!("startDate" in body));
-    assert.deepEqual(patched, ["t9:travel"]);
-    const failed = await mintStartPagePlan(A, { post: async () => ({ id: "t10" }), patchOccasion: async () => { throw new Error("x"); } });
-    assert.deepEqual(failed, { ok: true, tripId: "t10", occasionSaved: false }, "the plan exists and is opened; the miss is said");
+describe("Z3 the start page (E3, sanctioned: replaces Lane E1's start-page mint)", () => {
+  it("Z3 the page starts through the provider's one start with the experiences door; every record replays through PlanEntry", () => {
     const page = read("client/src/pages/experiences.tsx");
-    assert.match(page, /setLocation\(planLandingPath\(outcome\.tripId, "myself", START_PAGE_DOOR\)\)/);
-    assert.match(page, /setLocation\(GUEST_MAP_PATH\)/);
-  });
-
-  it("Z4 the guest record holds what the page asked and nothing else; it replays through the start mint", () => {
-    const r = startPageGuestRecord(A);
-    assert.equal(r.branch, "myself");
-    assert.equal(r.door, "experiences");
-    assert.deepEqual(r.answers.stops, [startPageDestination(A)]);
-    assert.equal(r.answers.occasionSlug, "travel");
-    for (const k of ["startDate", "endDate", "adults", "kids"] as const) assert.equal(r.answers[k], "", k);
-    assert.equal(isStartPageRecord(r), true);
-    assert.equal(isStartPageRecord({ door: "hero", branch: "myself" }), false);
-    assert.equal(isStartPageRecord({ door: "experiences", branch: "ai" }), false);
+    assert.match(page, /planning\.start\(start, \{ door: "experiences", newPlan: true \}\)/);
+    assert.doesNotMatch(page, /mintStartPagePlan|startPageGuestRecord/);
     const ctx = read("client/src/contexts/PlanningContext.tsx");
-    assert.match(ctx, /if \(isStartPageRecord\(record\)\) \{\s*void replayStartPageRecord\(record\);\s*return;/);
+    assert.match(ctx, /replay: \(record\) => void replayEntryRecord\(record\)/);
+    assert.doesNotMatch(ctx, /isStartPageRecord|replayStartPageRecord|mintStartPagePlan/);
   });
 });
 
