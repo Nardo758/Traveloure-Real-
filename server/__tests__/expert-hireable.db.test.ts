@@ -137,8 +137,9 @@ describe("isExpertHireable — who can be invited onto a plan", () => {
 
   it("H5: the storefront publishes the same answer as acceptsPlanShares", async () => {
     assert.equal((await loadStorefront(approved.handle))?.earner.acceptsPlanShares, true);
-    assert.equal((await loadStorefront(pending.handle))?.earner.acceptsPlanShares, false);
-    assert.equal((await loadStorefront(noForm.handle))?.earner.acceptsPlanShares, false);
+    // B3 ruling 3 (sanctioned): an unapproved or form-less expert has no public storefront at all.
+    assert.equal(await loadStorefront(pending.handle), null);
+    assert.equal(await loadStorefront(noForm.handle), null);
     assert.equal((await loadStorefront(platform.handle))?.earner.acceptsPlanShares, false);
   });
 });
