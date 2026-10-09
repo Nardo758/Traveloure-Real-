@@ -47,3 +47,39 @@ export function demoSeedsAllowed(env: NodeJS.ProcessEnv = process.env): boolean 
 export function demoSeedSkipMessage(seederName: string): string {
   return `[demo-seed-gate] Skipped ${seederName} — prod-strict environment (CLAUDE.md §13: demo/fictional content must never seed in production)`;
 }
+
+/**
+ * B3 ruling 2 (ledger `2026-10-09-b3-expert-routability`): the SECOND question, the one
+ * `demoSeedsAllowed` states it cannot answer — is the DATABASE itself a development one? A hand-run
+ * seed in a dev shell that holds production's `DATABASE_URL` reads as non-production to every
+ * env-var predicate. So the demo seeders that write fictional EXPERTS (`seedMockExperts`,
+ * `seedProviderServices`, `scripts/seed-california-full.ts`) also refuse unless the URL's host is a
+ * development host: `localhost`, `127.0.0.1`, `::1`, a unix socket (`host=/…`), Replit's
+ * workspace database `helium`, or a host named in `DEMO_SEED_DATABASE_HOSTS` (comma-separated).
+ * No URL ⇒ refused. This is a guard, not a migration: it writes nothing and deletes nothing.
+ *
+ * STATED NEGATIVE SPACE: a production database reached through a local tunnel on `localhost`
+ * reads as development here. The env predicate above still refuses a prod-strict boot.
+ */
+export function demoSeedDatabaseAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env.DATABASE_URL ?? "").trim();
+  if (!raw) return false;
+  let host = "";
+  try {
+    const u = new URL(raw);
+    host = (u.searchParams.get("host") || u.hostname || "").toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host.startsWith("/")) return true;
+  const extra = String(env.DEMO_SEED_DATABASE_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return ["localhost", "127.0.0.1", "::1", "[::1]", "helium", ...extra].includes(host);
+}
+
+/** The skip line for `demoSeedDatabaseAllowed` — same shape as `demoSeedSkipMessage`. */
+export function demoSeedDatabaseSkipMessage(seederName: string): string {
+  return `[demo-seed-gate] Skipped ${seederName} — DATABASE_URL is not a development database (B3 ruling 2: demo experts are never seeded into a shared or production database)`;
+}

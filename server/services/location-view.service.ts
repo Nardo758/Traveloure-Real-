@@ -437,7 +437,12 @@ class LocationViewService {
           .innerJoin(users, eq(users.id, expertNeighborhoods.expertId))
           .where(inArray(expertNeighborhoods.neighborhoodId, neighborhoodIds))
           .orderBy(sql`${expertNeighborhoods.isLead} DESC`, asc(expertNeighborhoods.createdAt), asc(expertNeighborhoods.id));
+        // B3 ruling 4: a neighbourhood's named local is a recommendation — ROUTABLE experts only
+        // (the predicate every routing selector reads); a seed or Pending account is never named.
+        const { routableUserIds } = await import("./expert-routability");
+        const routable = await routableUserIds(Array.from(new Set(expertRows.map((r) => r.expertId))));
         for (const row of expertRows) {
+          if (!routable.has(row.expertId)) continue;
           if (!localExpertByNeighborhood.has(row.neighborhoodId)) {
             localExpertByNeighborhood.set(row.neighborhoodId, row);
           }

@@ -1,7 +1,7 @@
 /**
  * The byline gate (Lane C ruling 9; ledger `2026-09-27-blog-lifecycle`). An expert may carry a byline
  * in a market only when ALL of these hold:
- *   1. an APPROVED expert application (`isExpertApproved` — the one existing predicate);
+ *   1. an APPROVED expert application (`isExpertApplicationApproved`; B3 split it from the routing check);
  *   2. a claimed handle;
  *   3. a LIVE storefront — asked of the storefront loader itself (`loadStorefront(handle)` non-null),
  *      never a second copy of its rules (§18 rule 1: the loader already refuses unverified owners when
@@ -14,7 +14,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { isExpertApproved } from "./booking-actions.service";
+import { isExpertApplicationApproved } from "./booking-actions.service";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 
 export type BylineRefusal =
@@ -67,7 +67,7 @@ export async function loadVerifiedMarkets(expertId: string): Promise<string[]> {
 }
 
 export async function loadBylineFacts(expertId: string, marketSlug: string | null): Promise<BylineFacts> {
-  const approved = await isExpertApproved(expertId);
+  const approved = await isExpertApplicationApproved(expertId);
   const u = await db.execute(sql`SELECT handle FROM users WHERE id = ${expertId} LIMIT 1`);
   const handle = ((u.rows[0] as any)?.handle as string | null | undefined) ?? null;
   let storefrontLive = false;

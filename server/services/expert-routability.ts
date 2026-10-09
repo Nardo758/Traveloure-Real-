@@ -161,3 +161,40 @@ export async function withoutConciergePoolListings<T>(rows: readonly T[], ownerO
   const poolId = await getPlatformConciergeUserId();
   return poolId ? rows.filter((r) => ownerOf(r) !== poolId) : [...rows];
 }
+
+// ─── B3 (ledger `2026-10-09-b3-expert-routability`; decision-maker rulings 1–4, Oct 9, 2026) ────────
+
+/**
+ * A PUBLIC expert account: an APPROVED application and not seed-sourced (the seed clause relaxes
+ * under `SHOW_DEMO_EXPERTS=1`, exactly as `isRoutableExpert`'s does). Weaker than routable on
+ * purpose (ruling 1/3): an approved expert whose Identity or Connect has LAPSED is still a real
+ * person — a real hire stays on the plan, their storefront page stays up — but a seed account or a
+ * Pending/rejected application is never shown to a traveler at all.
+ */
+export function isPublicExpertAccount(input: {
+  applicationStatus: string | null | undefined;
+  email: string | null | undefined;
+}): boolean {
+  return input.applicationStatus === "approved" && (showDemoExperts() || !isSeedExpertEmail(input.email));
+}
+
+/** SQL form of `isPublicExpertAccount` over a `local_expert_forms.status` and a users-email expression. */
+export function publicExpertSql(applicationStatusExpr: SQL, emailExpr: SQL): SQL {
+  const seedClause = showDemoExperts() ? sql`` : sql` AND NOT ${seedEmailSql(emailExpr)}`;
+  return sql`(${applicationStatusExpr} = 'approved'${seedClause})`;
+}
+
+/** Is this ONE account routable (approved + Identity verified + Connect complete + not seed + not the pool)? */
+export async function isExpertIdRoutable(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  return (await routableUserIds([userId])).has(userId);
+}
+
+/** Refusal raised by the ONE advisor-row author when a NEW advisor would not be routable (ruling 1). */
+export class AdvisorNotRoutableError extends Error {
+  readonly code = "expert_not_routable";
+  readonly status = 409;
+  constructor(public readonly expertId: string) {
+    super("This expert can't be added to a plan yet — their profile is not approved, verified and payable.");
+  }
+}
