@@ -16,6 +16,8 @@
  *     `STAY_PICK_ELEMENT_BUDGET` elements are spent. A refused or failed request stops the scoring there
  *     (a paused cap is not retried). The pick comes ONLY from scored hotels.
  *   · NEVER PRICE OR COMMISSION (ruling 5): candidates leave the loader through `toStayPickCandidate`.
+ *   · FU-S1-3: the pick also records its per-day closeness (`stayDayCloseness` against
+ *     `stayCloseRoutedMinutes()`), read from the SAME matrix row the ranking used — no extra request.
  *   · A re-score REPLACES the pick; `changed` is set when the hotel differs, and the card clears it once
  *     through `markStayPickSeen`. Nothing scored ⇒ the earlier pick stays as it was (§13 — a cap-paused
  *     day never erases an answer).
@@ -32,6 +34,7 @@ import {
   planStayScoring,
   rankStays,
   readStayPick,
+  stayDayCloseness,
   stayStopsHash,
   straightLineOrder,
   toStayPickCandidate,
@@ -42,6 +45,7 @@ import {
 import { fitItems } from "./plan-option-sets.service";
 import { cityHotels, cityNeighborhoodRows, dayCount, nearestNeighborhoodSlug } from "./where-to-stay.service";
 import { gatedRouteMatrixFetch, type RouteMatrixFetch } from "./travel-time-matrix.service";
+import { stayCloseRoutedMinutes } from "../config/stay-closeness.config";
 
 export type StayPickOutcome =
   | { skipped: "no_trip" | "free_plan" | "single_day" | "no_located_stops" | "no_candidates" | "unchanged" | "nothing_scored" }
@@ -110,7 +114,10 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
   if (!candidates.length) return { skipped: "no_candidates" };
   const ordered = straightLineOrder(candidates, loaded.stops);
   const plan = planStayScoring(ordered, loaded.stops.length, deps.budget ?? STAY_PICK_ELEMENT_BUDGET);
-  const fetchMatrix = deps.fetchMatrix ?? gatedRouteMatrixFetch();
+  // FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`): the stay pick has no refresh row, so each
+  // request records its dollars on its own `api_usage_logs` gate row (purpose `stay_pick`, ref = the plan);
+  // its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP` through the same `route_matrix` caller.
+  const fetchMatrix = deps.fetchMatrix ?? gatedRouteMatrixFetch({ costHere: { purpose: "stay_pick", ref: tripId } });
 
   // The stops in the SAME canonical order the ranking reads, so a returned destinationIndex is its stop.
   const stops = [...loaded.stops].sort((a, b) => a.dayNumber - b.dayNumber || a.lat - b.lat || a.lng - b.lng);
@@ -144,6 +151,9 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
 
   const ranked = rankStays(scored, stops, (c, i) => minutes.get(`${c.kind}:${c.id}`)?.[i] ?? null);
   const top = ranked[0].candidate;
+  // FU-S1-3: the pick's per-day closeness, from the matrix row already fetched above — no extra call.
+  const topRow = minutes.get(`${top.kind}:${top.id}`);
+  const closeness = stayDayCloseness(stops, (i) => topRow?.[i] ?? null, stayCloseRoutedMinutes(), "routed");
   const next = nextStayPick(prev, {
     hotelId: top.id,
     hotelKind: top.kind,
@@ -151,6 +161,7 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
     candidateCount: plan.candidateCount,
     stopsHash: hash,
     computedAt: (deps.now?.() ?? new Date()).toISOString(),
+    closeness,
   });
   await db.update(trips).set({ stayPick: next }).where(eq(trips.id, tripId));
   return { written: next, elementsSpent };

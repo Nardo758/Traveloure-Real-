@@ -43,6 +43,13 @@ import {
   retimeGate,
   stayVersion,
   takeDay,
+  boardDayDateLabel,
+  boardDayLabel,
+  byDayHeadline,
+  optimizedHeadline,
+  yourPlanSummary,
+  versionTotalChips,
+  versionTotals,
   type BoardDrag,
   type DayPicks,
   type VersionsBoardView,
@@ -73,6 +80,7 @@ export function VersionsBoard({
   days,
   onPaidRun,
   noRunCta,
+  headerOffer = null,
 }: {
   tripId: string;
   destination: string;
@@ -85,6 +93,8 @@ export function VersionsBoard({
    * A/B/C toggle — and this is its call to action (the Optimize card). Absent ⇒ nothing renders.
    */
   noRunCta?: ReactNode;
+  /** Ruling 3: the Trip Pass offer in the Versions header (the page owner-gates it). */
+  headerOffer?: ReactNode;
 }) {
   const { toast } = useToast();
   const isDesktop = useIsDesktop();
@@ -207,258 +217,437 @@ export function VersionsBoard({
     },
   });
 
+  const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
+  const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name);
+  // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
+  // re-parenting it — a remount re-sizes the map mid-drag on the By day board (kyoto-slice §6 step 5).
+  const map = (
+    <div className={`overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)]${mode === "choose" ? " order-2" : ""}`}>
+      <MapControlCenter
+        tripId={tripId}
+        tripDestination={destination}
+        days={sortedDays}
+        selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
+        onSelectDay={setMapDayIdx}
+        compact
+        readOnly
+        versions={mapVersions}
+        versionKey={mapVersion}
+        onVersionChange={setMapVersion}
+      />
+    </div>
+  );
+
   return (
-    <section className="mb-6 space-y-4" data-testid="versions-board">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold">Your plan's versions</h2>
-        <p className="text-xs text-muted-foreground" data-testid="versions-run-date">
-          Run of {runDateLabel(view.run.runAt)}
+    <section className="mb-6 flex flex-col gap-4" data-testid="versions-board">
+      {/* The Optimized board (ledger `2026-10-08-slip-optimized-board`): the run's eyebrow, the
+          headline counted from the run's own versions and the plan's days, and what adopting does. */}
+      <div className="space-y-1.5">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="versions-run-date">
+          Optimized · Run of {runDateLabel(view.run.runAt)}
+        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="slip-display text-[28px] font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid="versions-headline">
+            {mode === "compare" && !isDesktop ? byDayHeadline(view.versions.length) : optimizedHeadline(view.versions.length, allDays.length)}
+          </h2>
+          {mode === "compare" && isDesktop ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="inline-flex min-h-[44px] items-center rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-4 text-sm font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+                onClick={() => setMode("choose")}
+                data-testid="versions-back"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-[44px] items-center rounded-[var(--slip-radius-button)] bg-[color:var(--slip-primary)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60"
+                onClick={() => apply.mutate(picks)}
+                disabled={strip.length === 0 || apply.isPending}
+                data-testid="versions-apply"
+              >
+                {applyLabel(picks)}
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <p className="text-[15px] leading-snug text-[color:var(--slip-muted)]">
+          {mode === "compare"
+            ? isDesktop
+              ? "Drag a whole day into Your plan. Reorder stops inside a day and it re-times itself."
+              : "Swipe across the versions. Days that match your draft say so. Take a single day from any column."
+            : `${allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. Your draft is kept.`}
         </p>
       </div>
-
-      <div className="rounded-lg border border-border overflow-hidden">
-        <MapControlCenter
-          tripId={tripId}
-          tripDestination={destination}
-          days={sortedDays}
-          selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
-          onSelectDay={setMapDayIdx}
-          compact
-          readOnly
-          versions={mapVersions}
-          versionKey={mapVersion}
-          onVersionChange={setMapVersion}
-        />
-      </div>
+      {headerOffer}
 
       {mode === "choose" ? (
-        <div className="grid gap-3 md:grid-cols-3" data-testid="versions-choose">
-          {cards.map((c) => (
-            <div key={c.variantId} className="rounded-lg border border-border p-3 space-y-2" data-testid={`versions-card-${c.label}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold">
-                  Version {c.label} <span className="font-normal text-muted-foreground">· {c.name}</span>
-                </p>
+        <>
+        <div className="order-1 grid gap-3 lg:grid-cols-3" data-testid="versions-choose">
+          {cards.map((c) => {
+            const v = view.versions.find((x) => x.variantId === c.variantId);
+            const chips = versionTotalChips(versionTotals(v?.days ?? []));
+            return (
+            <div
+              key={c.variantId}
+              className="overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]"
+              data-testid={`versions-card-${c.label}`}
+            >
+              <div className="flex items-start justify-between gap-2 border-b border-[color:var(--slip-line)] px-4 pb-3 pt-3.5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
+                    Version {c.label}
+                    {v?.anchor?.name ? ` · around ${v.anchor.name}` : ""}
+                  </p>
+                  <p className="slip-display text-xl font-semibold leading-tight text-[color:var(--slip-ink)]">{c.name}</p>
+                </div>
                 {c.badge ? (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary" data-testid={`versions-badge-${c.label}`}>
+                  <span
+                    className="flex-shrink-0 rounded-full bg-[color:var(--slip-gold-wash)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--slip-gold-ink)]"
+                    data-testid={`versions-badge-${c.label}`}
+                  >
                     {c.badge}
                   </span>
                 ) : null}
               </div>
-              <ul className="space-y-0.5 text-xs text-muted-foreground">
-                {c.days.map((d) => (
-                  <li key={d.dayNumber} data-testid={`versions-card-day-${c.label}-${d.dayNumber}`}>
-                    Day {d.dayNumber}: {d.summary}
-                    {d.matchedByName ? " · matched by name" : ""}
-                  </li>
-                ))}
-              </ul>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  size="sm"
-                  onClick={() => apply.mutate(adoptAllPicks(view, c.variantId))}
-                  disabled={apply.isPending}
-                  data-testid={`versions-adopt-all-${c.label}`}
-                >
-                  Adopt all
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setMode("compare");
-                    setMapVersion(c.variantId);
-                  }}
-                  data-testid={`versions-by-day-${c.label}`}
-                >
-                  By day
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : isDesktop ? (
-        // ── 4c desktop: A / B / C / Your plan ─────────────────────────────────────────────────
-        <div className="space-y-2" data-testid="versions-desktop">
-          <div className="grid grid-cols-4 gap-2">
-            {view.versions.map((v) => (
-              <p key={v.variantId} className="text-sm font-semibold" data-testid={`versions-desk-col-${v.label}`}>
-                Version {v.label}
-              </p>
-            ))}
-            <p className="text-sm font-semibold" data-testid="versions-desk-col-plan">
-              Your plan
-            </p>
-          </div>
-          {allDays.map((dayNumber) => {
-            const cols = dayColumns(view, dayNumber);
-            const planStops = planDayStops(view, dayNumber);
-            const gate = retimeGate(view, dayNumber, new Date(), feeLabel);
-            const pickedFrom = picks[dayNumber] ? view.versions.find((v) => v.variantId === picks[dayNumber])?.label : null;
-            return (
-              <div key={dayNumber} className="grid grid-cols-4 gap-2" data-testid={`versions-desk-row-${dayNumber}`}>
-                {cols.map((c) => (
-                  <div
-                    key={c.variantId}
-                    className="rounded-md border border-border p-2 text-xs"
-                    data-testid={`versions-desk-day-${c.label}-${dayNumber}`}
-                  >
-                    {/* The DAY drags by its header (times, legs and facts travel with it); a stop
-                        below drags on its own as a swap-in. */}
-                    <p
-                      {...dragProps({ kind: "day", variantId: c.variantId, dayNumber })}
-                      className="flex cursor-grab items-center gap-1 font-semibold"
-                      title={`Drag Version ${c.label}'s day ${dayNumber} onto Your plan`}
-                      data-testid={`versions-desk-day-handle-${c.label}-${dayNumber}`}
-                    >
-                      <span aria-hidden="true">⠿</span> Day {dayNumber}
-                    </p>
-                    {c.identical ? (
-                      <p className="text-muted-foreground" data-testid={`versions-desk-same-${c.label}-${dayNumber}`}>Same as draft</p>
-                    ) : (
-                      <ol className="mt-1 space-y-0.5">
-                        {c.stops.map((st) => (
-                          <li
-                            key={st.id}
-                            {...dragProps({ kind: "swap", variantId: c.variantId, dayNumber, variantItemId: st.id })}
-                            className="rounded px-1 hover:bg-muted"
-                            data-testid={`versions-desk-stop-${st.id}`}
-                          >
-                            {st.startTime ? <span className="text-muted-foreground">{st.startTime} </span> : null}
-                            {st.name}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                    {c.matchedByName ? <p className="mt-1 text-[10px] text-muted-foreground">Matched by name</p> : null}
-                  </div>
-                ))}
-                <div
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    onDropPlanDay(dayNumber, e.dataTransfer.getData(BOARD_DRAG_MIME), planStops.length);
-                  }}
-                  className="rounded-md border-2 border-dashed border-border p-2 text-xs"
-                  data-testid={`versions-desk-plan-day-${dayNumber}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">Day {dayNumber}</p>
-                    {pickedFrom ? (
-                      <button
-                        type="button"
-                        className="text-[10px] text-primary underline"
-                        onClick={() => setPicks(releaseDay(picks, dayNumber))}
-                        data-testid={`versions-desk-plan-pick-${dayNumber}`}
-                      >
-                        From {pickedFrom} · undo
-                      </button>
-                    ) : null}
-                  </div>
-                  <ol className="mt-1 space-y-0.5">
-                    {planStops.map((st, i) => (
-                      <li
-                        key={st.id}
-                        {...(st.fixed ? {} : dragProps({ kind: "stop", dayNumber, id: st.id }))}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onDropPlanDay(dayNumber, e.dataTransfer.getData(BOARD_DRAG_MIME), i);
-                        }}
-                        className={`rounded px-1 ${st.fixed ? "text-muted-foreground" : "cursor-grab hover:bg-muted"}`}
-                        data-testid={`versions-desk-plan-stop-${st.id}`}
-                      >
-                        {st.startTime ? <span className="text-muted-foreground">{st.startTime} </span> : null}
-                        {st.name}
+              <div className="space-y-3 px-4 py-3">
+                <ul className="space-y-1.5 text-sm">
+                  {c.days.map((d) => {
+                    const same = !!v?.days.find((x) => x.dayNumber === d.dayNumber)?.identical;
+                    return (
+                      <li key={d.dayNumber} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2" data-testid={`versions-card-day-${c.label}-${d.dayNumber}`}>
+                        <span className="font-semibold text-[color:var(--slip-navy)]">{boardDayLabel(d.dayNumber, dateOf.get(d.dayNumber))}</span>
+                        <span className={same ? "text-[color:var(--slip-muted)]" : "text-[color:var(--slip-ink)]"}>
+                          {d.summary}
+                          {d.matchedByName ? " · matched by name" : ""}
+                        </span>
                       </li>
-                    ))}
-                  </ol>
-                  <p className="mt-1 text-[10px] text-muted-foreground" data-testid={`versions-retime-line-${dayNumber}`}>
-                    {gate.line}
-                  </p>
+                    );
+                  })}
+                </ul>
+                <div className="flex flex-wrap gap-1.5" data-testid={`versions-totals-${c.label}`}>
+                  {chips.map((ch) => (
+                    <span
+                      key={ch.key}
+                      className={`rounded-md px-2 py-1 text-xs ${ch.warn ? "bg-[color:var(--slip-wash)] font-semibold text-[color:var(--coral-text)]" : "bg-[color:var(--slip-wash)] text-[color:var(--slip-muted)]"}`}
+                    >
+                      {ch.text}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-[46px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--coral-accent)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--coral-text)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                    onClick={() => apply.mutate(adoptAllPicks(view, c.variantId))}
+                    disabled={apply.isPending}
+                    data-testid={`versions-adopt-all-${c.label}`}
+                  >
+                    Adopt all {allDays.length === 1 ? "of it" : `${allDays.length} days`}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-[46px] flex-shrink-0 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+                    onClick={() => {
+                      setMode("compare");
+                      setMapVersion(c.variantId);
+                    }}
+                    data-testid={`versions-by-day-${c.label}`}
+                  >
+                    By day
+                  </button>
                 </div>
               </div>
+            </div>
             );
           })}
         </div>
-      ) : (
-        // ── 4b phone: day selector, snap columns, Take this day ─────────────────────────────────
-        <div className="space-y-2" data-testid="versions-phone">
-          <div className="flex flex-wrap gap-1">
-            {allDays.map((d) => (
-              <button
-                key={d}
-                type="button"
-                aria-pressed={activePhoneDay === d}
-                onClick={() => setPhoneDay(d)}
-                className={`rounded-full border px-3 py-1 text-xs font-semibold ${activePhoneDay === d ? "bg-foreground text-background" : "text-muted-foreground"}`}
-                data-testid={`versions-day-${d}`}
-              >
-                Day {d}
-              </button>
-            ))}
-          </div>
-          <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2" data-testid="versions-columns">
-            {dayColumns(view, activePhoneDay).map((c) => (
-              <div key={c.variantId} className="w-[85%] shrink-0 snap-center rounded-lg border border-border p-3 text-sm" data-testid={`versions-col-${c.label}`}>
-                <p className="font-semibold">Version {c.label}</p>
-                {c.identical ? (
-                  <p className="text-muted-foreground" data-testid={`versions-same-${c.label}`}>Same as draft</p>
-                ) : (
-                  <>
-                    <p className="text-xs text-muted-foreground">{c.summary}{c.matchedByName ? " · matched by name" : ""}</p>
-                    <ol className="mt-1 space-y-0.5 text-xs">
-                      {c.stops.map((st) => (
-                        <li key={st.id}>
-                          {st.startTime ? <span className="text-muted-foreground">{st.startTime} </span> : null}
+        <p className="order-3 text-xs leading-snug text-[color:var(--slip-muted)]" data-testid="versions-keep-note">
+          Versions are kept with the run. Adopting never deletes your draft.
+        </p>
+        </>
+      ) : isDesktop ? (
+        // ── 4c desktop: A / B / C / Your plan — one column per version, the days stacked ─────────
+        <div className="grid grid-cols-4 items-start gap-3" data-testid="versions-desktop">
+          {view.versions.map((v) => (
+            <div
+              key={v.variantId}
+              className="overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]"
+              data-testid={`versions-desk-col-${v.label}`}
+            >
+              <div className="flex items-start justify-between gap-2 border-b border-[color:var(--slip-line)] px-3.5 pb-2.5 pt-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
+                    {v.label}
+                    {v.anchor?.name ? ` · around ${v.anchor.name}` : ""}
+                  </p>
+                  <p className="slip-display text-lg font-semibold leading-tight text-[color:var(--slip-ink)]">{v.name}</p>
+                </div>
+                <button
+                  type="button"
+                  className="flex-shrink-0 rounded-lg border border-[color:var(--slip-line-strong)] px-2.5 py-1.5 text-xs font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                  onClick={() => apply.mutate(adoptAllPicks(view, v.variantId))}
+                  disabled={apply.isPending}
+                  data-testid={`versions-desk-adopt-all-${v.label}`}
+                >
+                  Adopt all
+                </button>
+              </div>
+              <div className="space-y-2 p-2.5">
+                {allDays.map((dayNumber) => {
+                  const c = dayColumns(view, dayNumber).find((x) => x.variantId === v.variantId)!;
+                  const inPlan = picks[dayNumber] === v.variantId;
+                  return (
+                    <div
+                      key={dayNumber}
+                      className={`rounded-xl border p-2.5 text-xs ${inPlan ? "border-[color:var(--slip-teal)] bg-[color:var(--slip-teal-wash)]" : "border-[color:var(--slip-line)] bg-[color:var(--slip-ground)]"}`}
+                      data-testid={`versions-desk-day-${c.label}-${dayNumber}`}
+                    >
+                      {/* The DAY drags by its header (times, legs and facts travel with it); a stop
+                          below drags on its own as a swap-in. */}
+                      <p
+                        {...dragProps({ kind: "day", variantId: c.variantId, dayNumber })}
+                        className="flex cursor-grab items-center gap-1.5 text-[13px] font-semibold text-[color:var(--slip-ink)]"
+                        title={`Drag Version ${c.label}'s day ${dayNumber} onto Your plan`}
+                        data-testid={`versions-desk-day-handle-${c.label}-${dayNumber}`}
+                      >
+                        <span aria-hidden="true" className="text-[color:var(--slip-muted)]">⠿</span>
+                        <span className="flex-1">{boardDayDateLabel(dayNumber, dateOf.get(dayNumber))}</span>
+                        <span className={`text-[11px] font-semibold ${inPlan ? "text-[color:var(--slip-teal-ink)]" : c.identical ? "text-[color:var(--slip-muted)]" : "text-[color:var(--slip-gold-ink)]"}`}>
+                          {inPlan ? "in Your plan" : c.identical ? "same as draft" : c.summary}
+                        </span>
+                      </p>
+                      {c.identical ? (
+                        <p className="mt-0.5 text-[color:var(--slip-muted)]" data-testid={`versions-desk-same-${c.label}-${dayNumber}`}>Same as draft</p>
+                      ) : (
+                        <ol className="mt-1 space-y-0.5">
+                          {c.stops.map((st) => (
+                            <li
+                              key={st.id}
+                              {...dragProps({ kind: "swap", variantId: c.variantId, dayNumber, variantItemId: st.id })}
+                              className="rounded px-1 text-[color:var(--slip-ink)] hover:bg-[color:var(--slip-wash)]"
+                              data-testid={`versions-desk-stop-${st.id}`}
+                            >
+                              {st.startTime ? <span className="text-[color:var(--slip-muted)]">{st.startTime} </span> : null}
+                              {st.name}
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                      {c.matchedByName ? <p className="mt-1 text-[10px] text-[color:var(--slip-muted)]">Matched by name</p> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div
+            className="overflow-hidden rounded-[var(--slip-radius-card)] border-2 border-dashed border-[color:var(--slip-teal)] bg-[color:var(--slip-card)]"
+            data-testid="versions-desk-col-plan"
+          >
+            <div className="flex items-start justify-between gap-2 bg-[color:var(--slip-teal-wash)] px-3.5 pb-2.5 pt-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink)]">Your plan</p>
+                <p className="slip-display text-lg font-semibold leading-tight text-[color:var(--slip-ink)]">{yourPlanSummary(strip.length, allDays.length)}</p>
+              </div>
+              {stay?.anchor ? (
+                <p className="max-w-[45%] text-right text-[11px] text-[color:var(--slip-teal-ink)]" data-testid="versions-stay">
+                  Stays at {stay.anchor.name}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2 p-2.5">
+              {allDays.map((dayNumber) => {
+                const planStops = planDayStops(view, dayNumber);
+                const gate = retimeGate(view, dayNumber, new Date(), feeLabel);
+                const pickedFrom = picks[dayNumber] ? view.versions.find((v) => v.variantId === picks[dayNumber])?.label : null;
+                return (
+                  <div
+                    key={dayNumber}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      onDropPlanDay(dayNumber, e.dataTransfer.getData(BOARD_DRAG_MIME), planStops.length);
+                    }}
+                    className={`rounded-xl p-2.5 text-xs ${pickedFrom ? "border border-[color:var(--slip-navy)] bg-[color:var(--slip-card)]" : "border border-dashed border-[color:var(--slip-line-strong)] bg-[color:var(--slip-ground)]"}`}
+                    data-testid={`versions-desk-plan-day-${dayNumber}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[13px] font-semibold text-[color:var(--slip-ink)]">{boardDayDateLabel(dayNumber, dateOf.get(dayNumber))}</p>
+                      {pickedFrom ? (
+                        <button
+                          type="button"
+                          className="rounded-md bg-[color:var(--slip-navy)] px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                          onClick={() => setPicks(releaseDay(picks, dayNumber))}
+                          data-testid={`versions-desk-plan-pick-${dayNumber}`}
+                        >
+                          From {pickedFrom} · undo
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-[color:var(--slip-muted)]">draft · drop a day here</span>
+                      )}
+                    </div>
+                    <ol className="mt-1 space-y-0.5">
+                      {planStops.map((st, i) => (
+                        <li
+                          key={st.id}
+                          {...(st.fixed ? {} : dragProps({ kind: "stop", dayNumber, id: st.id }))}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onDropPlanDay(dayNumber, e.dataTransfer.getData(BOARD_DRAG_MIME), i);
+                          }}
+                          className={`rounded px-1 ${st.fixed ? "text-[color:var(--slip-muted)]" : "cursor-grab text-[color:var(--slip-ink)] hover:bg-[color:var(--slip-wash)]"}`}
+                          data-testid={`versions-desk-plan-stop-${st.id}`}
+                        >
+                          {st.startTime ? <span className="text-[color:var(--slip-muted)]">{st.startTime} </span> : null}
                           {st.name}
                         </li>
                       ))}
                     </ol>
-                    <Button
-                      size="sm"
-                      variant={picks[activePhoneDay] === c.variantId ? "default" : "outline"}
-                      className="mt-2"
-                      onClick={() => setPicks(takeDay(picks, activePhoneDay, c.variantId))}
-                      data-testid={`versions-take-${c.label}`}
-                    >
-                      {picks[activePhoneDay] === c.variantId ? "Taken" : "Take this day"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            ))}
+                    <p className="mt-1 text-[10px] text-[color:var(--slip-gold-ink)]" data-testid={`versions-retime-line-${dayNumber}`}>
+                      {gate.line}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        // ── 4b phone: day chips, snap columns, Take this day ────────────────────────────────────
+        <div className="space-y-3" data-testid="versions-phone">
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(allDays.length, 1), 5)}, minmax(0, 1fr))` }}>
+            {allDays.map((d) => {
+              const on = activePhoneDay === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setPhoneDay(d)}
+                  className={`min-h-[44px] rounded-xl border text-sm ${on ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] font-semibold text-white" : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"}`}
+                  data-testid={`versions-day-${d}`}
+                >
+                  {on ? boardDayDateLabel(d, dateOf.get(d)) : boardDayLabel(d, dateOf.get(d))}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2" data-testid="versions-columns">
+            {dayColumns(view, activePhoneDay).map((c) => {
+              const v = view.versions.find((x) => x.variantId === c.variantId);
+              const taken = picks[activePhoneDay] === c.variantId;
+              return (
+                <div
+                  key={c.variantId}
+                  className="w-[85%] shrink-0 snap-center overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-sm"
+                  data-testid={`versions-col-${c.label}`}
+                >
+                  <div className="flex items-start justify-between gap-2 border-b border-[color:var(--slip-line)] px-4 pb-2.5 pt-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
+                        {c.label}
+                        {v?.anchor?.name ? ` · ${v.anchor.name}` : ""}
+                      </p>
+                      <p className="slip-display text-lg font-semibold leading-tight text-[color:var(--slip-ink)]">{v?.name ?? `Version ${c.label}`}</p>
+                    </div>
+                    {!c.identical ? (
+                      <span className="flex-shrink-0 rounded-full bg-[color:var(--slip-gold-wash)] px-2 py-1 text-[11px] font-semibold text-[color:var(--slip-gold-ink)]">
+                        {c.summary}
+                        {c.matchedByName ? " · matched by name" : ""}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="space-y-3 px-4 py-3">
+                    {c.identical ? (
+                      <p className="text-[color:var(--slip-muted)]" data-testid={`versions-same-${c.label}`}>Same as draft</p>
+                    ) : (
+                      <ol className="divide-y divide-[color:var(--slip-line)]">
+                        {c.stops.map((st) => (
+                          <li key={st.id} className="grid grid-cols-[52px_minmax(0,1fr)] gap-2 py-1.5">
+                            <span className="text-[13px] font-semibold tabular-nums text-[color:var(--slip-navy)]">{st.startTime ?? ""}</span>
+                            <span className="font-semibold text-[color:var(--slip-ink)]">{st.name}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    <div className="flex gap-2">
+                      {!c.identical ? (
+                        <button
+                          type="button"
+                          className={`inline-flex min-h-[44px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] px-3 text-sm font-semibold ${taken ? "bg-[color:var(--slip-teal-wash)] text-[color:var(--slip-teal-ink)]" : "bg-[color:var(--slip-primary)] text-[color:var(--slip-primary-ink)] hover:brightness-95"}`}
+                          aria-pressed={taken}
+                          onClick={() => setPicks(takeDay(picks, activePhoneDay, c.variantId))}
+                          data-testid={`versions-take-${c.label}`}
+                        >
+                          {taken ? "Taken" : "Take this day"}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="inline-flex min-h-[44px] flex-shrink-0 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] px-3 text-sm font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                        onClick={() => apply.mutate(adoptAllPicks(view, c.variantId))}
+                        disabled={apply.isPending}
+                        data-testid={`versions-col-adopt-all-${c.label}`}
+                      >
+                        Adopt all of {c.label}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {mode === "compare" ? (
-        <div className="flex flex-wrap items-center gap-2" data-testid="versions-pick-strip">
-          {strip.length === 0 ? <p className="text-xs text-muted-foreground">No days picked yet.</p> : null}
-          {strip.map((p) => (
-            <span key={p.dayNumber} className="rounded-full border px-2 py-0.5 text-xs" data-testid={`versions-pick-${p.dayNumber}`}>
-              Day {p.dayNumber} · {p.label}
-            </span>
-          ))}
-          {stay?.anchor ? (
-            <span className="text-xs text-muted-foreground" data-testid="versions-stay">
-              Where you stay follows Version {stay.label}: {stay.anchor.name} — you can change it afterwards.
-            </span>
-          ) : null}
-          <div className="ml-auto flex gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setMode("choose")} data-testid="versions-back">
-              Back
-            </Button>
-            <Button size="sm" onClick={() => apply.mutate(picks)} disabled={strip.length === 0 || apply.isPending} data-testid="versions-apply">
-              {applyLabel(picks)}
-            </Button>
+      {mode === "compare" && !isDesktop ? (
+        <div className="space-y-3 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4" data-testid="versions-pick-strip">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]">Your pick so far</p>
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(allDays.length, 1), 5)}, minmax(0, 1fr))` }}>
+            {allDays.map((d) => {
+              const label = picks[d] ? view.versions.find((v) => v.variantId === picks[d])?.label ?? "?" : null;
+              return (
+                <div
+                  key={d}
+                  className={`flex flex-col items-center rounded-lg py-1.5 text-xs ${label ? "bg-[color:var(--slip-teal-wash)] text-[color:var(--slip-teal-ink)]" : "bg-[color:var(--slip-wash)] text-[color:var(--slip-muted)]"}`}
+                  data-testid={label ? `versions-pick-${d}` : undefined}
+                >
+                  <span>{boardDayLabel(d, dateOf.get(d))}</span>
+                  <span className="font-semibold">{label ?? "draft"}</span>
+                </div>
+              );
+            })}
           </div>
+          {stay?.anchor ? (
+            <p className="text-xs text-[color:var(--slip-muted)]" data-testid="versions-stay">
+              Where you stay follows Version {stay.label}: {stay.anchor.name} — you can change it afterwards.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="inline-flex min-h-[48px] w-full items-center justify-center rounded-[var(--slip-radius-button)] bg-[color:var(--slip-primary)] px-4 text-[15px] font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60"
+            onClick={() => apply.mutate(picks)}
+            disabled={strip.length === 0 || apply.isPending}
+            data-testid="versions-apply"
+          >
+            {strip.length === 0 ? "Take a day to apply it" : `${applyLabel(picks)} to my plan`}
+          </button>
+          <button type="button" className="text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline" onClick={() => setMode("choose")} data-testid="versions-back">
+            Back to the versions
+          </button>
         </div>
       ) : null}
 
+      {/* By day: the map sits under the columns (the boards draw the days first). ONE mount in both modes —
+          choose mode places it with CSS `order`, never by re-parenting it. */}
+      {map}
+
       {paidGate ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="versions-retime-paid">
+        <div className="order-4 flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="versions-retime-paid">
           <span>
             Day {paidGate.dayNumber}: {paidGate.line}. Nothing has been changed.
           </span>

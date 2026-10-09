@@ -89,3 +89,24 @@ export function compareFootLine(status: "open" | "chosen" | "closed", chosenTitl
 export function compareTitle(count: number): string {
   return count === 1 ? "Compare 1 place" : `Compare ${count} places`;
 }
+
+/**
+ * THE COMPARE BOARD'S DAY STRIP (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`):
+ * one cell per day, the SERVER's own minutes for that day (`fit.minutesByDay`, A8 R228), in day order.
+ * Nothing is judged "close" or "far" — no threshold for that has been ruled, so the strip states the
+ * minutes and lets the cards be compared (§13). Unscored ⇒ no strip.
+ */
+export function dayStripCells(fit: PlanFit): { day: number; label: string; minutes: string }[] {
+  if (!fit.scored || !fit.minutesByDay) return [];
+  const est = fit.basis === "est";
+  return Object.entries(fit.minutesByDay)
+    .map(([d, m]) => [Number(d), Number(m)] as const)
+    .filter(([d, m]) => Number.isInteger(d) && d > 0 && Number.isFinite(m) && m >= 0)
+    .sort((a, b) => a[0] - b[0])
+    .map(([d, m]) => ({ day: d, label: `Day ${d}`, minutes: `${est ? "~" : ""}${Math.round(m)} min` }));
+}
+
+/** The board's eyebrow: what the set compares and how many places are in it. */
+export function compareEyebrow(label: string | null, count: number): string {
+  return `${label ?? "Places to stay"} · ${count} ${count === 1 ? "place" : "places"}`;
+}

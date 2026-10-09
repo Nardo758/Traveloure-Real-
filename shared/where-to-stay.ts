@@ -20,6 +20,7 @@
  */
 import { haversineMeters } from "./geo";
 import { mentionsLodging } from "./ai-place-text";
+import type { StayLink } from "./stay-link";
 
 /**
  * Smoke 9 S9-2 amendment (ledger `2026-10-04-smoke9-addendum`): is this item a place to stay? An
@@ -176,6 +177,12 @@ export interface StayHotel {
   starRating: number | null;
   /** Step 6 R-aq: the option card's thumbnail — a platform listing's own image only; absent ⇒ none. */
   photo?: { source: "ours"; url: string; licence: null; attribution: string; sourceUrl: null } | null;
+  /**
+   * FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the stay card's ONE link — on the S1 `stay` block
+   * only. `own` = the provider's own site; `google` = Google's website for the hotel; `maps` = "View on
+   * Google Maps". `google`/`maps` carry the "Google Maps" attribution wherever drawn. Absent ⇒ no link.
+   */
+  stayLink?: StayLink;
 }
 
 /** R-o: the badge a platform-listed stay carries. */
@@ -339,8 +346,18 @@ export interface WhereToStayView {
   stay?: WhereToStayStay;
 }
 
+/**
+ * FU-S1-3: "close on N of M days" for one stay — `closeDays` of `locatedDays` (days with at least one located
+ * stop on the plan's dates), by routed minutes on a paid plan or straight line on a free plan. Computed by
+ * the server only (`shared/stay-pick.ts` `stayDayCloseness`); null = unknown (§13, never zero-filled).
+ */
+export type { StayCloseness } from "./stay-pick";
+import type { StayCloseness } from "./stay-pick";
+
 export type WhereToStayStay =
-  | { tier: "straight_line"; hotels: StayHotel[] }
+  /** FU-S1-3: `closeness` is optional on the wire — absent means the payload predates it, which every reader
+   *  treats exactly like null (no closeness line, §13). The server always sets it. */
+  | { tier: "straight_line"; hotels: Array<StayHotel & { closeness?: StayCloseness | null }> }
   | {
       tier: "routed";
       /** The picked hotel, or null when nothing has been scored yet or it has left our inventory (§13). */
@@ -351,6 +368,8 @@ export type WhereToStayStay =
       /** A re-score replaced an earlier, different pick and the card has not shown it yet. */
       changed: boolean;
       computedAt: string | null;
+      /** FU-S1-3: the pick's routed closeness; null before any pick, or on a pick stored before FU-S1-3. */
+      closeness?: StayCloseness | null;
     };
 
 /**

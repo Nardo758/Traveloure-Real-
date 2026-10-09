@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type PlanCardData, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import "@/styles/slip-tokens.css";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { TripCardRail } from "@/components/plancard/TripCardRail";
 import { calendarDateToIso, parseCalendarDate } from "@/lib/calendar-date";

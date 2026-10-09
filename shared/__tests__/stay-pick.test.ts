@@ -8,6 +8,11 @@
  *   SP5  the stops fingerprint: order-free, moves when a stop moves
  *   SP6  the stored pick: the reader refuses a malformed value; a re-score replaces it and sets `changed`
  *        only for a different hotel; a first pick is not a change; an unread change survives a same-hotel re-score
+ *   SP7  FU-S1-3 closeness: a day is close only when EVERY located stop that day is within the threshold;
+ *        an unreachable stop spoils its day; M counts days with a located stop; no stops ⇒ null
+ *   SP8  FU-S1-3 straight-line closeness reads the km threshold; the stored pick carries closeness and the
+ *        reader refuses a malformed one (an old pick without it reads null — no backfill)
+ *   SP9  ruling 5 still holds: neither closeness rule can reach a price or commission field
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -22,12 +27,16 @@ import {
   planStayScoring,
   rankStays,
   readStayPick,
+  stayDayCloseness,
   stayStopsHash,
+  straightLineCloseness,
   straightLineOrder,
   toStayPickCandidate,
   type StayPickCandidate,
   type StayPickStop,
 } from "../stay-pick";
+import { stayCloseRoutedMinutes, stayCloseStraightKm } from "../../server/config/stay-closeness.config";
+import { haversineMeters } from "../geo";
 
 const hotel = (id: string, lat: number, lng: number, name = id): StayPickCandidate => ({ kind: "hotel_cache", id, name, lat, lng });
 // Kyoto-ish: stops near (35.00, 135.76) on day 1 and (35.02, 135.78) on day 2.
@@ -137,4 +146,36 @@ test("SP6 the stored pick: reader, replace, and the changed flag", () => {
   const moved = nextStayPick(first, { ...base, hotelId: "b" });
   assert.equal(moved.changed, true, "a different hotel is a change");
   assert.equal(nextStayPick(moved, { ...base, hotelId: "b", stopsHash: "3-z" }).changed, true, "an unread change survives a same-hotel re-score");
+});
+
+test("SP7 closeness: every stop of a day within the threshold, unreachable spoils the day, M = located days", () => {
+  const T = stayCloseRoutedMinutes();
+  // Canonical order of `stops`: day 1 (two stops), then day 2 (one stop).
+  assert.deepEqual(stayDayCloseness(stops, () => T, T, "routed"), { closeDays: 2, locatedDays: 2, basis: "routed" }, "exactly the threshold is close");
+  assert.deepEqual(stayDayCloseness(stops, (i) => (i === 1 ? T + 1 : T - 1), T, "routed"), { closeDays: 1, locatedDays: 2, basis: "routed" }, "one far stop spoils day 1");
+  assert.deepEqual(stayDayCloseness(stops, (i) => (i === 2 ? null : 1), T, "routed"), { closeDays: 1, locatedDays: 2, basis: "routed" }, "an unreachable stop spoils day 2");
+  assert.equal(stayDayCloseness([], () => 1, T, "routed"), null, "no located stop ⇒ unknown, never 0 of 0");
+  assert.equal(stayDayCloseness(stops, () => 1, 0, "routed"), null, "an unusable threshold ⇒ unknown");
+});
+
+test("SP8 straight-line closeness and the stored pick's closeness", () => {
+  const km = stayCloseStraightKm();
+  const near = hotel("near", 35.0005, 135.7605);
+  const day1Max = Math.max(...stops.filter((s) => s.dayNumber === 1).map((s) => haversineMeters(near.lat, near.lng, s.lat, s.lng)));
+  const day2 = haversineMeters(near.lat, near.lng, stops[2].lat, stops[2].lng);
+  const expected = (day1Max <= km * 1000 ? 1 : 0) + (day2 <= km * 1000 ? 1 : 0);
+  assert.deepEqual(straightLineCloseness(near, stops, km), { closeDays: expected, locatedDays: 2, basis: "straight_line" });
+  const base = { hotelId: "a", hotelKind: "hotel_cache" as const, scoredCount: 4, candidateCount: 9, stopsHash: "3-x", computedAt: "2026-10-09T00:00:00.000Z" };
+  const withC = nextStayPick(null, { ...base, closeness: { closeDays: 1, locatedDays: 3, basis: "routed" } });
+  assert.deepEqual(readStayPick(withC)?.closeness, { closeDays: 1, locatedDays: 3, basis: "routed" });
+  assert.equal(readStayPick({ ...base, tier: "routed" })?.closeness, null, "a pick stored before FU-S1-3 reads null");
+  for (const bad of [{ closeDays: 4, locatedDays: 3, basis: "routed" }, { closeDays: 1, locatedDays: 0, basis: "routed" }, { closeDays: 1.5, locatedDays: 3, basis: "routed" }, { closeDays: 1, locatedDays: 3, basis: "x" }]) {
+    assert.equal(readStayPick({ ...base, tier: "routed", closeness: bad })?.closeness, null, JSON.stringify(bad));
+  }
+});
+
+test("SP9 neither closeness rule can reach a price or commission field (ruling 5)", () => {
+  const src = fs.readFileSync(path.join(process.cwd(), "shared/stay-pick.ts"), "utf8");
+  const body = src.slice(src.indexOf("export function stayDayCloseness"), src.indexOf("/** Straight-line order over the plan"));
+  assert.doesNotMatch(body, /price|commission|rate\b|fee/i);
 });

@@ -241,3 +241,16 @@ test("M9 (step 9a ruling 7): a failed call records cost 0 and still counts; a pa
   assert.deepEqual(await withMapsGate("routes_transit", paused, async () => ({ value: 1 })), { refused: "paused" });
   assert.equal(paused.records.length, 0, "a cap refusal records nothing");
 });
+
+test("M10 (FU-S1-1): a call that carries its own price records it on the gate row; a failure still costs 0", async () => {
+  // $5 / 1,000 × 14 elements = 7¢ = 70 tenths of a cent.
+  assert.equal(mapsCallRecordedTenths("route_matrix", 14, true, { usdPer1000: 5 }), 70);
+  assert.equal(mapsCallRecordedTenths("route_matrix", 14, false, { usdPer1000: 5 }), 0, "a failed call costs 0 even with a price");
+  assert.equal(mapsCallRecordedTenths("route_matrix", 14, true, null), 0, "without it the matrix still records on its refresh row");
+  const d = deps({ used: 0 });
+  const costHere = { usdPer1000: 5, purpose: "stay_pick", ref: "trip-1" };
+  await withMapsGate("route_matrix", d, async () => ({ value: [], units: 14 }), { sku: "compute_route_matrix_essentials", costHere });
+  assert.deepEqual(d.records[0].costHere, costHere, "the price and purpose reach the recorder");
+  assert.equal(d.records[0].key, "route_matrix", "and the row still counts against the route_matrix cap");
+  assert.equal(d.records[0].units, 14);
+});
