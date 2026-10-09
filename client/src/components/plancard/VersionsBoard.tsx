@@ -213,8 +213,10 @@ export function VersionsBoard({
 
   const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
   const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name);
+  // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
+  // re-parenting it — a remount re-sizes the map mid-drag on the By day board (kyoto-slice §6 step 5).
   const map = (
-    <div className="overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)]">
+    <div className={`overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)]${mode === "choose" ? " order-2" : ""}`}>
       <MapControlCenter
         tripId={tripId}
         tripDestination={destination}
@@ -231,7 +233,7 @@ export function VersionsBoard({
   );
 
   return (
-    <section className="mb-6 space-y-4" data-testid="versions-board">
+    <section className="mb-6 flex flex-col gap-4" data-testid="versions-board">
       {/* The Optimized board (ledger `2026-10-08-slip-optimized-board`): the run's eyebrow, the
           headline counted from the run's own versions and the plan's days, and what adopting does. */}
       <div className="space-y-1.5">
@@ -246,11 +248,11 @@ export function VersionsBoard({
         </p>
       </div>
 
-      {mode !== "choose" ? map : null}
+      {map}
 
       {mode === "choose" ? (
         <>
-        <div className="grid gap-3 lg:grid-cols-3" data-testid="versions-choose">
+        <div className="order-1 grid gap-3 lg:grid-cols-3" data-testid="versions-choose">
           {cards.map((c) => {
             const v = view.versions.find((x) => x.variantId === c.variantId);
             const chips = versionTotalChips(versionTotals(v?.days ?? []));
@@ -329,8 +331,7 @@ export function VersionsBoard({
             );
           })}
         </div>
-        {map}
-        <p className="text-xs leading-snug text-[color:var(--slip-muted)]" data-testid="versions-keep-note">
+        <p className="order-3 text-xs leading-snug text-[color:var(--slip-muted)]" data-testid="versions-keep-note">
           Versions are kept with the run. Adopting never deletes your draft.
         </p>
         </>
@@ -491,7 +492,7 @@ export function VersionsBoard({
       )}
 
       {mode === "compare" ? (
-        <div className="flex flex-wrap items-center gap-2" data-testid="versions-pick-strip">
+        <div className="order-4 flex flex-wrap items-center gap-2" data-testid="versions-pick-strip">
           {strip.length === 0 ? <p className="text-xs text-muted-foreground">No days picked yet.</p> : null}
           {strip.map((p) => (
             <span key={p.dayNumber} className="rounded-full border px-2 py-0.5 text-xs" data-testid={`versions-pick-${p.dayNumber}`}>
@@ -515,7 +516,7 @@ export function VersionsBoard({
       ) : null}
 
       {paidGate ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="versions-retime-paid">
+        <div className="order-4 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="versions-retime-paid">
           <span>
             Day {paidGate.dayNumber}: {paidGate.line}. Nothing has been changed.
           </span>
