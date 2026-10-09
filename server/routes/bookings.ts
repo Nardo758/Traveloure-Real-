@@ -48,6 +48,68 @@ import {
 
 const router = Router();
 
+// A losing legacy writer may report BOOKING_ALREADY_CONFIRMED for *any*
+// non-pending status. Only authoritative same-booking payment facts may turn
+// that rejection into success. This is read-only: never enqueue or mint again.
+async function isConfirmedLegacyPayment(
+  bookingId: string,
+  paymentIntentId: string,
+  userId: string,
+): Promise<boolean> {
+  const stripeClient = new Stripe(getStripeSecretKey() || '', {
+    apiVersion: '2024-12-18.acacia' as any,
+  });
+  let intent: Stripe.PaymentIntent;
+  try {
+    intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
+  } catch (stripeErr: any) {
+    throw Object.assign(new Error(`Stripe lookup failed: ${stripeErr?.message ?? stripeErr}`), {
+      code: 'STRIPE_LOOKUP_FAILED',
+    });
+  }
+  if (intent.status !== 'succeeded') {
+    throw Object.assign(new Error(
+      `PaymentIntent ${paymentIntentId} has status "${intent.status}", not "succeeded"`,
+    ), { code: 'PAYMENT_NOT_SUCCEEDED' });
+  }
+  if (intent.id !== paymentIntentId ||
+      intent.metadata?.userId !== userId ||
+      !intent.metadata?.bookingIds?.split(',').map(id => id.trim()).includes(bookingId)) {
+    return false;
+  }
+  // Read after the external lookup so a status/ownership change during that
+  // lookup cannot be mistaken for a current, authoritative confirmation.
+  const result = await db.execute(sql`
+    SELECT b.id FROM bookings b
+    WHERE b.id = ${bookingId}
+      AND b.user_id = ${userId}
+      AND b.status = 'confirmed'
+      AND b.payment_status = 'succeeded'
+      AND (
+        b.stripe_payment_intent_id = ${paymentIntentId}
+        OR (
+          b.stripe_payment_intent_id IS NULL
+          -- The legacy webhook does not stamp the booking's intent. For those
+          -- rows, require the server-created ledger's exact association too.
+          AND EXISTS (
+            SELECT 1 FROM payment_intents p
+            WHERE p.stripe_payment_intent_id = ${paymentIntentId}
+              AND p.user_id = ${userId}
+              AND p.status = 'succeeded'
+              AND p.metadata->>'userId' = ${userId}
+              AND ${bookingId} = ANY(string_to_array(p.metadata->>'bookingIds', ','))
+          )
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM bookings other
+        WHERE other.stripe_payment_intent_id = ${paymentIntentId}
+          AND other.id != b.id
+      )
+  `);
+  return result.rows.length === 1;
+}
+
 // Owner (traveler) of a `service_bookings` row. The escrow confirm/dispute endpoints operate on
 // service_bookings (that's where the earnings link and where /api/my-bookings reads), so their
 // ownership gate must resolve against service_bookings.traveler_id — NOT the legacy `bookings`
@@ -355,19 +417,28 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
       });
     }
 
-    // ── LEGACY RAIL (`bookings`) — the process-cart flow. Unchanged, and deliberately so: D-12
-    // closes that rail to NEW writes on a date and leaves every confirmation of an EXISTING row
-    // exactly where it was. ──────────────────────────────────────────────────────────────
-    // Fast-path: if the webhook already confirmed this booking, return success immediately
+    // ── LEGACY RAIL (`bookings`) — confirmations of existing rows remain open. ──────────
+    // Fast-path uses the same ownership/payment checks as a losing fallback writer.
     const existing = await storage.getBookingStatusForUser(bookingId, userId);
-    if (existing?.status === 'confirmed') {
+    if (existing?.status === 'confirmed' &&
+        await isConfirmedLegacyPayment(bookingId, paymentIntentId, userId)) {
       console.log(`[confirm-payment] booking ${bookingId} already confirmed by webhook — returning success`);
       return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
     }
 
     // Fallback: webhook hasn't fired yet (or this is local dev) — confirm it now
     console.log(`[confirm-payment] webhook hasn't confirmed booking ${bookingId} yet — running fallback confirmation`);
-    await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
+    try {
+      await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
+    } catch (error: any) {
+      // The webhook can win after either the route read or the writer read.
+      // Do not swallow replay, ownership, payment, or persistence failures.
+      if (error?.code === 'BOOKING_ALREADY_CONFIRMED' &&
+          await isConfirmedLegacyPayment(bookingId, paymentIntentId, userId)) {
+        return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+      }
+      throw error;
+    }
 
     res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
   } catch (error: any) {

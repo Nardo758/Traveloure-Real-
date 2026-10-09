@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, test } from "node:test";
 import Stripe from "stripe";
+import type { RequestHandler } from "express";
 import { eq, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -20,7 +21,8 @@ assert.equal(new URL(process.env.DATABASE_URL!).searchParams.get("options"),
 const probe = new Stripe("sk_test_fixture_only");
 const stripePrototype = Object.getPrototypeOf(probe.paymentIntents);
 const previousRetrieve = stripePrototype.retrieve;
-stripePrototype.retrieve = async (id: string) => ({ id, status: "succeeded" });
+const intents = new Map<string, Stripe.PaymentIntent>();
+stripePrototype.retrieve = async (id: string) => intents.get(id) ?? { id, status: "succeeded", metadata: {} };
 const { default: http } = await import("node:http");
 const { default: https } = await import("node:https");
 const previousHttp = http.request;
@@ -37,6 +39,52 @@ const { bookings, users, emailOutbox, paymentIntents, providerEarnings, platform
 const { stripePaymentService } = await import("../services/stripe-payment.service");
 const { bookingService } = await import("../services/booking.service");
 const { _outboxTestHooks } = await import("../services/email-outbox.service");
+const { storage } = await import("../storage");
+const { default: express } = await import("express");
+const { default: bookingRouter } = await import("../routes/bookings");
+
+// Exercise the production router and its real auth/ownership checks over HTTP.
+// Only the Passport session identity is supplied by the isolated fixture.
+const app = express();
+app.use(express.json() as RequestHandler);
+app.use((req, _res, next) => {
+  req.user = { id: String(req.headers["x-fixture-user"] ?? "") };
+  req.isAuthenticated = (() => Boolean(req.headers["x-fixture-user"])) as typeof req.isAuthenticated;
+  req.logout = ((done: (error?: Error) => void) => done()) as typeof req.logout;
+  next();
+});
+app.use("/api/bookings", bookingRouter);
+const server = app.listen(0, "127.0.0.1");
+await new Promise<void>(resolve => server.once("listening", resolve));
+const address = server.address();
+assert.ok(address && typeof address !== "string");
+const port = address.port;
+
+async function confirmHttp(f: Fixture, overrides: { userId?: string; bookingId?: string; piId?: string } = {}) {
+  const body = JSON.stringify({
+    bookingId: overrides.bookingId ?? f.bookingId,
+    paymentIntentId: overrides.piId ?? f.pi.id,
+  });
+  // The original transport is allowed only to this owned local server.
+  return new Promise<{ status: number; body: { success: boolean; source?: string; error?: string } }>((resolve, reject) => {
+    const request = previousHttp({
+      hostname: "127.0.0.1", port, path: "/api/bookings/confirm-payment", method: "POST",
+      headers: { "content-type": "application/json", "x-fixture-user": overrides.userId ?? f.travelerId },
+    }, response => {
+      let text = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => { text += chunk; });
+      response.on("end", () => {
+        try { resolve({ status: response.statusCode!, body: JSON.parse(text) }); }
+        catch (error) { reject(error); }
+      });
+      response.on("error", reject);
+    });
+    request.on("error", reject);
+    request.setTimeout(10_000, () => request.destroy(new Error("Fixture confirmation HTTP timeout")));
+    request.end(body);
+  });
+}
 
 const sends: Array<{ to: string | string[]; text?: string }> = [];
 _outboxTestHooks.sendEmailFn = async (params) => {
@@ -45,6 +93,7 @@ _outboxTestHooks.sendEmailFn = async (params) => {
 };
 
 after(async () => {
+  await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   delete _outboxTestHooks.sendEmailFn;
   stripePrototype.retrieve = previousRetrieve;
   http.request = previousHttp;
@@ -70,11 +119,13 @@ async function fixture(deposit = false) {
   await db.insert(paymentIntents).values({
     stripePaymentIntentId: piId, userId: travelerId, amount: "120.00",
     currency: "usd", status: "pending", isDeposit: deposit,
+    metadata: { userId: travelerId, bookingIds: bookingId, isDeposit: String(deposit) },
   });
   const pi = {
     id: piId, status: "succeeded", currency: "usd", amount: 12000, amount_received: 12000,
     metadata: { userId: travelerId, bookingIds: bookingId, isDeposit: String(deposit) },
   } as unknown as Stripe.PaymentIntent;
+  intents.set(piId, pi);
   return { bookingId, travelerId, email, pi,
     webhook: () => stripePaymentService.handlePaymentSucceeded(pi),
     pageWriter: () => bookingService.confirmBookingPayment(bookingId, piId, travelerId) };
@@ -82,7 +133,7 @@ async function fixture(deposit = false) {
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
-async function assertConfirmation(f: Fixture, pageWon = false, deposit = false) {
+async function assertConfirmation(f: Fixture, pageWon = false, deposit = false, ledgerStatus = "succeeded") {
   // Both authoritative writers retain fire-and-forget enqueue semantics. Poll
   // boundedly for the actual persisted sent row, not a fixed sleep or acceptance.
   let rows: typeof emailOutbox.$inferSelect[] = [];
@@ -124,7 +175,7 @@ async function assertConfirmation(f: Fixture, pageWon = false, deposit = false) 
   assert.equal(Number(booking.providerPayout), 80);
   const [payment] = await db.select().from(paymentIntents)
     .where(eq(paymentIntents.stripePaymentIntentId, f.pi.id));
-  assert.equal(payment.status, "succeeded");
+  assert.equal(payment.status, ledgerStatus);
   assert.equal(Number(payment.amount), 120);
   assert.equal(payment.currency, "usd");
 }
@@ -143,6 +194,7 @@ async function concurrentWebhooks(f: Fixture, count: number) {
   const barrier = new Promise<void>(resolve => { release = resolve; });
   const deadline = setTimeout(release, 5000);
   db.execute = (async (query: Parameters<typeof db.execute>[0]) => {
+    if (typeof query === "string") return execute(query);
     const rendered = dialect.sqlToQuery(query.getSQL());
     if (/UPDATE\s+bookings\s+SET/i.test(rendered.sql) && rendered.params.includes(f.bookingId)) {
       arrived++;
@@ -185,14 +237,197 @@ test("three sequential webhook deliveries retain one confirmation", async () => 
   await assertConfirmation(f);
 });
 
-test("webhook then page fast-path retains one confirmation and no new earnings", async () => {
+test("HTTP webhook then page fast-path returns success with one confirmation and no new earnings", async () => {
   const f = await fixture();
   await f.webhook();
-  // This is the existing route fast-path, which never calls the fallback writer.
-  const [booking] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
-  assert.equal(booking.status, "confirmed");
+  assert.deepEqual(await confirmHttp(f), {
+    status: 200, body: { success: true, message: "Booking confirmed", source: "webhook" },
+  });
   await assertConfirmation(f);
 });
+
+for (const deposit of [false, true]) {
+  test(`HTTP ${deposit ? "deposit" : "full-payment"} webhook wins after route read: success and one matching traveler confirmation`, async () => {
+    const f = await fixture(deposit);
+    const read = storage.getBookingStatusForUser.bind(storage);
+    let raced = false;
+    storage.getBookingStatusForUser = async (id, userId) => {
+      const result = await read(id, userId);
+      if (id === f.bookingId) {
+        assert.equal(result?.status, "pending_payment");
+        raced = true;
+        await f.webhook();
+      }
+      return result;
+    };
+    try {
+      assert.deepEqual(await confirmHttp(f), {
+        status: 200, body: { success: true, message: "Booking confirmed", source: "webhook" },
+      });
+      assert.equal(raced, true, "webhook completed after the real stale route read");
+    } finally {
+      storage.getBookingStatusForUser = read;
+    }
+    await assertConfirmation(f, false, deposit);
+    assert.equal((await confirmHttp(f)).status, 200);
+    await assertConfirmation(f, false, deposit);
+  });
+}
+
+test("HTTP webhook wins the atomic claim after the page writer read: success without losing-writer earnings", async () => {
+  const f = await fixture();
+  const transaction = db.transaction.bind(db);
+  let raced = false;
+  db.transaction = (async (...args: Parameters<typeof db.transaction>) => {
+    if (!raced) {
+      raced = true;
+      await f.webhook();
+    }
+    return transaction(...args);
+  }) as typeof db.transaction;
+  try {
+    assert.deepEqual(await confirmHttp(f), {
+      status: 200, body: { success: true, message: "Booking confirmed", source: "webhook" },
+    });
+    assert.equal(raced, true, "webhook won immediately before the real page transaction");
+  } finally {
+    db.transaction = transaction;
+  }
+  await assertConfirmation(f);
+});
+
+test("HTTP rejects another traveler, mismatched/missing recorded intent, replay, and non-success states", async () => {
+  const f = await fixture();
+  await f.webhook();
+  await assertConfirmation(f);
+  const other = await fixture();
+  assert.equal((await confirmHttp(f, { userId: other.travelerId })).status, 403);
+  assert.equal((await confirmHttp(f, { piId: other.pi.id })).status, 409);
+  assert.equal((await confirmHttp(f, { bookingId: crypto.randomUUID() })).status, 404);
+
+  await db.update(bookings).set({ stripePaymentIntentId: f.pi.id }).where(eq(bookings.id, other.bookingId));
+  assert.equal((await confirmHttp(f)).status, 409, "duplicate intent on another booking cannot recover");
+  await db.update(bookings).set({ stripePaymentIntentId: null }).where(eq(bookings.id, other.bookingId));
+  await db.update(bookings).set({ stripePaymentIntentId: f.pi.id }).where(eq(bookings.id, f.bookingId));
+  assert.equal((await confirmHttp(other, { piId: f.pi.id })).status, 409, "pending replay still rejected");
+
+  await db.update(bookings).set({ stripePaymentIntentId: other.pi.id }).where(eq(bookings.id, f.bookingId));
+  assert.equal((await confirmHttp(f)).status, 409, "conflicting saved intent cannot recover");
+  await db.update(bookings).set({ stripePaymentIntentId: null }).where(eq(bookings.id, f.bookingId));
+  assert.equal((await confirmHttp(f)).status, 200, "unstamped legacy intent needs exact Stripe and ledger association");
+  await db.update(paymentIntents).set({ metadata: {} }).where(eq(paymentIntents.stripePaymentIntentId, f.pi.id));
+  assert.equal((await confirmHttp(f)).status, 409, "no server-created ledger association cannot recover");
+  await db.update(bookings).set({ stripePaymentIntentId: f.pi.id }).where(eq(bookings.id, f.bookingId));
+
+  for (const status of ["failed", "payment_failed", "cancelled", "completed"]) {
+    await db.update(bookings).set({ status }).where(eq(bookings.id, f.bookingId));
+    assert.equal((await confirmHttp(f)).status, 409, `${status} is not a confirmed race`);
+  }
+  await db.update(bookings).set({ status: "confirmed", paymentStatus: "failed" }).where(eq(bookings.id, f.bookingId));
+  assert.equal((await confirmHttp(f)).status, 409, "failed payment record cannot recover");
+  await db.update(bookings).set({ paymentStatus: "succeeded" }).where(eq(bookings.id, f.bookingId));
+  await assertConfirmation(f);
+});
+
+test("HTTP recovery rejects absent, wrong-traveler, and substring-only Stripe associations", async () => {
+  const f = await fixture();
+  await f.webhook();
+  const metadata = f.pi.metadata;
+  try {
+    for (const replacement of [
+      {},
+      { ...metadata, userId: crypto.randomUUID() },
+      { ...metadata, bookingIds: `${f.bookingId}0` },
+      { ...metadata, bookingIds: crypto.randomUUID() },
+    ]) {
+      f.pi.metadata = replacement;
+      assert.equal((await confirmHttp(f)).status, 409);
+    }
+  } finally {
+    f.pi.metadata = metadata;
+  }
+  await assertConfirmation(f);
+});
+
+for (const invalidFact of ["owner", "status", "payment", "intent", "ledger", "stripe-association"] as const) {
+  test(`HTTP stale route read cannot turn changed ${invalidFact} facts into race success`, async () => {
+    const f = await fixture();
+    const read = storage.getBookingStatusForUser.bind(storage);
+    let raced = false;
+    storage.getBookingStatusForUser = async (id, userId) => {
+      const result = await read(id, userId);
+      if (id === f.bookingId) {
+        assert.equal(result?.status, "pending_payment");
+        raced = true;
+        await f.webhook();
+        await assertConfirmation(f);
+        if (invalidFact === "owner") {
+          const other = await fixture();
+          await db.update(bookings).set({ userId: other.travelerId }).where(eq(bookings.id, f.bookingId));
+        } else if (invalidFact === "status") {
+          await db.update(bookings).set({ status: "payment_failed" }).where(eq(bookings.id, f.bookingId));
+        } else if (invalidFact === "payment") {
+          await db.update(bookings).set({ paymentStatus: "failed" }).where(eq(bookings.id, f.bookingId));
+        } else if (invalidFact === "intent") {
+          await db.update(bookings).set({ stripePaymentIntentId: `pi_conflict_${crypto.randomUUID()}` })
+            .where(eq(bookings.id, f.bookingId));
+        } else if (invalidFact === "ledger") {
+          await db.update(paymentIntents).set({ status: "failed" })
+            .where(eq(paymentIntents.stripePaymentIntentId, f.pi.id));
+        } else {
+          f.pi.metadata = { ...f.pi.metadata, bookingIds: crypto.randomUUID() };
+        }
+      }
+      return result;
+    };
+    try {
+      const response = await confirmHttp(f);
+      assert.equal(response.status, invalidFact === "owner" ? 403 : 409);
+      assert.equal(response.body.success, false);
+      assert.equal(raced, true);
+    } finally {
+      storage.getBookingStatusForUser = read;
+    }
+    assert.equal(sends.filter(send => [send.to].flat().includes(f.email)).length, 1);
+    assert.equal((await db.select().from(providerEarnings).where(eq(providerEarnings.sourceId, f.bookingId))).length, 0);
+    assert.equal((await db.select().from(platformRevenue).where(eq(platformRevenue.sourceId, f.bookingId))).length, 0);
+  });
+}
+
+test("HTTP page fallback still succeeds and mints its original earnings exactly once", async () => {
+  const f = await fixture();
+  assert.deepEqual(await confirmHttp(f), {
+    status: 200, body: { success: true, message: "Booking confirmed", source: "fallback" },
+  });
+  // The page writer does not advance the local PI ledger; that remains the
+  // webhook's responsibility. Verify the existing behavior, not new writes.
+  await assertConfirmation(f, true, false, "pending");
+  assert.equal((await confirmHttp(f)).status, 200);
+  await assertConfirmation(f, true, false, "pending");
+});
+
+for (const initialConfirmed of [false, true]) {
+  test(`HTTP ${initialConfirmed ? "confirmed" : "pending"} booking rejects unsuccessful Stripe payment and lookup failure`, async () => {
+    const f = await fixture();
+    if (initialConfirmed) await f.webhook();
+    const retrieve = stripePrototype.retrieve;
+    try {
+      stripePrototype.retrieve = async (id: string) => ({ id, status: "requires_payment_method" });
+      assert.equal((await confirmHttp(f)).status, 402);
+      stripePrototype.retrieve = async () => { throw new Error("Simulated Stripe lookup failure"); };
+      assert.equal((await confirmHttp(f)).status, 402);
+    } finally {
+      stripePrototype.retrieve = retrieve;
+    }
+    if (initialConfirmed) await assertConfirmation(f);
+    else {
+      const [booking] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+      assert.equal(booking.status, "pending_payment");
+      assert.equal(sends.filter(send => [send.to].flat().includes(f.email)).length, 0);
+      assert.equal((await db.select().from(providerEarnings).where(eq(providerEarnings.sourceId, f.bookingId))).length, 0);
+    }
+  });
+}
 
 test("page writer then webhook preserves its confirmation and earnings", async () => {
   const f = await fixture();
@@ -221,7 +456,7 @@ test("missing legacy IDs cannot enqueue a traveler confirmation", async () => {
   await stripePaymentService.handlePaymentSucceeded({
     id: `pi_fixture_${crypto.randomUUID()}`,
     metadata: { bookingIds: crypto.randomUUID() },
-  } as Stripe.PaymentIntent);
+  } as unknown as Stripe.PaymentIntent);
   assert.equal((await db.select().from(emailOutbox)).length, before.length);
 });
 
