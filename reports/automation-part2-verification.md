@@ -1,9 +1,12 @@
 # Part 2 — activity clock and add-time snapshot
 
-## Status: implemented on a work branch; NOT CERTIFIED
+## Status: Part 2 development verification complete; unmerged
 
 Source branch: `work/automation-part2-clock-snapshot`.
-Verified source: `99afa4da3e151b21a8657363946c6a8d35fc84f3`.
+Verified runtime source: `99afa4da3e151b21a8657363946c6a8d35fc84f3`.
+Approved CI wiring: `e48ac3a76cad609c51c0b416f6b23f6a52f7c294`.
+Retained Part 1 harness correction: `66220381817fc98cc68787a0ce5ce92222ca36f9`
+on `work/automation-part1-baseline-freeze` (test-only, not a runtime import).
 No merge, publish, production write, schema change, migration, payment-code change,
 feature-flag change or workspace secret change was performed. Part 3 was not started.
 
@@ -99,13 +102,16 @@ production data or live email transport was used.
 | Queue/notified state bookkeeping; duplicate suppression | 2 | 2 | PASS, provider-free |
 | Post-payment partner survivor unchanged | 2 | 2 | PASS |
 | Add success and latency measurements | 2 | 2 measured | 100% success; measured latency increase below |
-| Golden regression | 1 | 0 | OPEN: 142 pass, 1 retained-harness failure |
-| Current guard batch | 1 | 0 | OPEN: 77/78 pass; new test reachability failure |
+| Golden regression | 2 | 2 | PASS: 143/143 each loop, 13 stages, zero failures |
+| Current guard batch | 1 | 1 | PASS: 78/78, including new test reachability |
 | Typecheck against Part 1 baseline | 1 | 1 | Same 117 diagnostics after normalizing line/column shifts |
 
 The Node run had 7 parent tests passing, 0 failing; the integration parent contains
-the two fresh cart loops. These are not two globally clean certification loops:
-golden and CI reachability remain open.
+the two fresh cart loops. Their runtime source did not change during the approved
+verification-only correction. Two consecutive fresh golden loops now pass against
+that same runtime source plus the approved CI wiring. Earlier exploratory runs
+exposed a SQL-array binding issue and an undeclared fixture booking mode; both were
+corrected before the final two native loops and are not counted as clean loops.
 
 ### Add-to-cart measurements
 
@@ -127,17 +133,29 @@ performance or load-test result. A quieter earlier measurement of the same cart-
 implementation showed approximately +1.19 ms / +0.98 ms median overhead.
 The precise CPU/database contribution was not separately profiled.
 
-## Verification blockers
+## Verification blockers resolved
 
-1. `scripts/check-test-files-wired.cjs` identifies both new root test files as
-   unreachable from existing CI selectors. No orphan baseline or guard was weakened.
-2. The retained Part 1 harness asserts `guardCommands().length === 76`.
-   The reviewed base main already declares 78 guard commands. Its pending-assertion
-   parser safety checks must remain intact while refreshing this stale expectation.
-   This is a retained test expectation failure, not a demonstrated cart regression.
+1. Both new root suites are now explicit selectors in the existing
+   `suite-server-services` job, after its existing database bootstrap. The retained
+   isolated runner clones/disposes its own schema. Checkout fetches history because
+   the before/after test needs the exact reviewed historical storage source.
+   The CI-only target uses a fixed local IPv4 database and independently fixed
+   fingerprint; no workspace or deployment setting was changed.
+2. Reachability recognizes only the exact retained runner with `--isolated-db` and
+   explicit test paths. New positive/negative self-tests reject prose, unknown scripts,
+   a missing isolation flag and unsupported flags. No orphan baseline was changed.
+3. The retained harness now expects the exact 78 guards already present on reviewed
+   main, rather than its stale 76. Pending assertions still become failures and
+   truncated Vitest output remains rejected. Both fresh golden runs pass.
 
-Further scope approval is needed for existing CI/reachability wiring and the
-retained test expectation. Part 2 remains open until those checks pass.
+Local guard/runner checks passed; no GitHub Actions run, PR, merge or production
+certification is claimed. Part 3 and live commerce email delivery remain outside this
+completed Part 2 verification.
+
+Sanitized assertion-level evidence is retained alongside this report:
+`reports/automation-part2-evidence/golden-1-results.json` and
+`reports/automation-part2-evidence/golden-2-results.json`. Each records 143 passing
+checks and zero failures; both were checked for recipient addresses before retention.
 
 ## Changed files
 
@@ -149,6 +167,10 @@ retained test expectation. Part 2 remains open until those checks pass.
 - `server/__tests__/cart-email-state.test.ts` (new)
 - `server/__tests__/cart-email-state.db.test.ts` (new)
 - This verification report (new)
+- `.github/workflows/build.yml` (approved verification-only extension)
+- `scripts/check-test-files-wired.cjs` (approved verification-only extension)
+- Retained `server/automations/messaging/__tests__/automation-baseline-harness.test.ts`
+  on the Part 1 branch (approved verification-only assertion correction)
 
 `client/src/pages/cart.tsx` needed no change. Payment writers, checkout promotion,
 post-payment cleanup, schema and migration registration remain unchanged.

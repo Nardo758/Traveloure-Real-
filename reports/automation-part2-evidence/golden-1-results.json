@@ -1,0 +1,972 @@
+{
+  "runId": "a097679f-ee0a-45dd-ace0-f514757ad2ae",
+  "loop": "1",
+  "checkedAt": "2026-10-09T17:32:12.465Z",
+  "isolated": true,
+  "results": [
+    {
+      "stage": "Itinerary outcome payload",
+      "startedAt": "2026-10-09T17:31:04.985Z",
+      "exitCode": 0,
+      "durationMs": 3423.472655,
+      "tests": [
+        {
+          "name": "varied ready/failed loop 1: boundaries and independent itineraries",
+          "status": "PASS",
+          "durationMs": 2.455261,
+          "reason": null
+        },
+        {
+          "name": "varied ready/failed loop 2: boundaries and independent itineraries",
+          "status": "PASS",
+          "durationMs": 0.404655,
+          "reason": null
+        },
+        {
+          "name": "ready/error/timeout copy escapes persisted content and links to the actual comparison route",
+          "status": "PASS",
+          "durationMs": 0.634743,
+          "reason": null
+        },
+        {
+          "name": "missing personalization is not fabricated",
+          "status": "PASS",
+          "durationMs": 0.171573,
+          "reason": null
+        },
+        {
+          "name": "development recipient guard rejects absent/placeholder/unapproved inboxes without changing production eligibility",
+          "status": "PASS",
+          "durationMs": 0.269274,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Itinerary follow-up payload",
+      "startedAt": "2026-10-09T17:31:08.411Z",
+      "exitCode": 0,
+      "durationMs": 705.5212079999997,
+      "tests": [
+        {
+          "name": "exactly three active marketing definitions and durable delay values",
+          "status": "PASS",
+          "durationMs": 1.347254,
+          "reason": null
+        },
+        {
+          "name": "copy loop 1: real expert or top-rated activity, escaped text, bookable-only urgency",
+          "status": "PASS",
+          "durationMs": 0.994285,
+          "reason": null
+        },
+        {
+          "name": "copy loop 2: real expert or top-rated activity, escaped text, bookable-only urgency",
+          "status": "PASS",
+          "durationMs": 0.327874,
+          "reason": null
+        },
+        {
+          "name": "consent and timezone/quiet hours are explicit; missing or invalid values fail closed",
+          "status": "PASS",
+          "durationMs": 17.981693,
+          "reason": null
+        },
+        {
+          "name": "local calendar cap and quiet hours defer across midnight and DST without dropping mail",
+          "status": "PASS",
+          "durationMs": 39.452934,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Generation authoritative-writer tests",
+      "startedAt": "2026-10-09T17:31:09.117Z",
+      "exitCode": 0,
+      "durationMs": 14820.56522,
+      "tests": [
+        {
+          "name": "ready DB loop 1: concurrent completion, two same-day itineraries, provider retry and dedupe",
+          "status": "PASS",
+          "durationMs": 114.98744100000022,
+          "reason": null
+        },
+        {
+          "name": "failed DB loop 1: exact timeout and two variations, late success, error, new attempt",
+          "status": "PASS",
+          "durationMs": 64.58470100000068,
+          "reason": null
+        },
+        {
+          "name": "refinement loop 1: cancelled ready notice is recoverable, exact case plus two variants",
+          "status": "PASS",
+          "durationMs": 94.29062299999987,
+          "reason": null
+        },
+        {
+          "name": "ready DB loop 2: concurrent completion, two same-day itineraries, provider retry and dedupe",
+          "status": "PASS",
+          "durationMs": 44.454775000000154,
+          "reason": null
+        },
+        {
+          "name": "failed DB loop 2: exact timeout and two variations, late success, error, new attempt",
+          "status": "PASS",
+          "durationMs": 61.56387100000029,
+          "reason": null
+        },
+        {
+          "name": "refinement loop 2: cancelled ready notice is recoverable, exact case plus two variants",
+          "status": "PASS",
+          "durationMs": 108.77608400000008,
+          "reason": null
+        },
+        {
+          "name": "missing email and deleted/superseded itineraries or accounts never reach sender",
+          "status": "PASS",
+          "durationMs": 140.95609299999978,
+          "reason": null
+        },
+        {
+          "name": "outbox persistence failure rolls back the terminal state",
+          "status": "PASS",
+          "durationMs": 12.659264000000803,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Three itinerary follow-up tests",
+      "startedAt": "2026-10-09T17:31:23.938Z",
+      "exitCode": 0,
+      "durationMs": 16536.221120000002,
+      "tests": [
+        {
+          "name": "itinerary_nudge_2h SQL loop 1: registry fires, persisted send, stable retry identity",
+          "status": "PASS",
+          "durationMs": 165.09087299999987,
+          "reason": null
+        },
+        {
+          "name": "itinerary_followup_24h SQL loop 1: registry fires, persisted send, stable retry identity",
+          "status": "PASS",
+          "durationMs": 65.59778299999994,
+          "reason": null
+        },
+        {
+          "name": "itinerary_reengagement_5d SQL loop 1: registry fires, persisted send, stable retry identity",
+          "status": "PASS",
+          "durationMs": 58.433488000000125,
+          "reason": null
+        },
+        {
+          "name": "cancellation loop 1: a booking within one hour cancels all three at the first send",
+          "status": "PASS",
+          "durationMs": 80.22548099999995,
+          "reason": null
+        },
+        {
+          "name": "supersession loop 1: newer ready itinerary cancels old sequence, not ready notices",
+          "status": "PASS",
+          "durationMs": 123.49369099999967,
+          "reason": null
+        },
+        {
+          "name": "bookability loop 1: absent or newly paused items cancel five-day mail without urgency",
+          "status": "PASS",
+          "durationMs": 112.42859099999987,
+          "reason": null
+        },
+        {
+          "name": "itinerary_nudge_2h SQL loop 2: registry fires, persisted send, stable retry identity",
+          "status": "PASS",
+          "durationMs": 49.39309699999967,
+          "reason": null
+        },
+        {
+          "name": "itinerary_followup_24h SQL loop 2: registry fires, persisted send, stable retry identity",
+          "status": "PASS",
+          "durationMs": 55.42793299999994,
+          "reason": null
+        },
+        {
+          "name": "itinerary_reengagement_5d SQL loop 2: registry fires, persisted send, stable retry identity",
+          "status": "PASS",
+          "durationMs": 54.39579500000036,
+          "reason": null
+        },
+        {
+          "name": "cancellation loop 2: a booking within one hour cancels all three at the first send",
+          "status": "PASS",
+          "durationMs": 63.654007999999976,
+          "reason": null
+        },
+        {
+          "name": "supersession loop 2: newer ready itinerary cancels old sequence, not ready notices",
+          "status": "PASS",
+          "durationMs": 66.3303649999998,
+          "reason": null
+        },
+        {
+          "name": "bookability loop 2: absent or newly paused items cancel five-day mail without urgency",
+          "status": "PASS",
+          "durationMs": 91.32079199999998,
+          "reason": null
+        },
+        {
+          "name": "mid-sequence cancellation preserves already-sent 2h mail and stops both remaining emails",
+          "status": "PASS",
+          "durationMs": 227.1899269999999,
+          "reason": null
+        },
+        {
+          "name": "late older completion cannot cancel a newer plan: exact case plus two creation-age variations",
+          "status": "PASS",
+          "durationMs": 307.399543,
+          "reason": null
+        },
+        {
+          "name": "daily marketing cap defers, consent/deletion cancel, retries retain provider identity",
+          "status": "PASS",
+          "durationMs": 112.60405400000036,
+          "reason": null
+        },
+        {
+          "name": "a booking on the legacy, affiliate or coordination rail cancels the follow-ups at send time",
+          "status": "PASS",
+          "durationMs": 154.08643399999983,
+          "reason": null
+        },
+        {
+          "name": "real HTTP unsubscribe: scanner GET is read-only; explicit POST cancels all pending rows",
+          "status": "PASS",
+          "durationMs": 112.04578700000002,
+          "reason": null
+        },
+        {
+          "name": "authenticated preferences save actual consent, reject bad input and CSRF, preserve other preferences",
+          "status": "PASS",
+          "durationMs": 325.6455119999996,
+          "reason": null
+        },
+        {
+          "name": "booking vs send, both orders: a committed booking stops the send; a send in flight blocks the booking",
+          "status": "PASS",
+          "durationMs": 207.45605700000033,
+          "reason": null
+        },
+        {
+          "name": "actual outbox claim routes a due follow-up and will not claim a future one",
+          "status": "PASS",
+          "durationMs": 137.68063800000073,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Signup welcome",
+      "startedAt": "2026-10-09T17:31:40.474Z",
+      "exitCode": 0,
+      "durationMs": 8090.816383999998,
+      "tests": [
+        {
+          "name": "permits recorded consent and unchanged recipient",
+          "status": "PASS",
+          "durationMs": 0.874651,
+          "reason": null
+        },
+        {
+          "name": "suppresses missing, deleted and suspended accounts",
+          "status": "PASS",
+          "durationMs": 0.2249,
+          "reason": null
+        },
+        {
+          "name": "suppresses changed email, missing consent and previous delivery",
+          "status": "PASS",
+          "durationMs": 0.113838,
+          "reason": null
+        },
+        {
+          "name": "keeps signup enqueue transactional and removes its direct welcome call",
+          "status": "PASS",
+          "durationMs": 0.479877,
+          "reason": null
+        },
+        {
+          "name": "retains main itinerary dispatch and provider guards",
+          "status": "PASS",
+          "durationMs": 0.381686,
+          "reason": null
+        },
+        {
+          "name": "production app send path never imports or reads the QA inbox",
+          "status": "PASS",
+          "durationMs": 1.658219,
+          "reason": null
+        },
+        {
+          "name": "production recipient resolution returns the account address without reading the inbox",
+          "status": "PASS",
+          "durationMs": 0.429892,
+          "reason": null
+        },
+        {
+          "name": "signup welcome pure guards and main wiring",
+          "status": "PASS",
+          "durationMs": 5.488467,
+          "reason": null
+        },
+        {
+          "name": "rolls back the account and welcome obligation together",
+          "status": "PASS",
+          "durationMs": 70.05214,
+          "reason": null
+        },
+        {
+          "name": "concurrent enqueues persist exactly one welcome",
+          "status": "PASS",
+          "durationMs": 59.599753,
+          "reason": null
+        },
+        {
+          "name": "immediate delivery claims once and persists the provider ID",
+          "status": "PASS",
+          "durationMs": 27.29392,
+          "reason": null
+        },
+        {
+          "name": "production dispatcher sends to the account's own address even with an override configured",
+          "status": "PASS",
+          "durationMs": 27.238684,
+          "reason": null
+        },
+        {
+          "name": "the scheduled/admin dispatcher cannot resend an already sent row",
+          "status": "PASS",
+          "durationMs": 22.537521,
+          "reason": null
+        },
+        {
+          "name": "send-time guard cancels changed-email without transport",
+          "status": "PASS",
+          "durationMs": 25.63638,
+          "reason": null
+        },
+        {
+          "name": "send-time guard cancels no-consent without transport",
+          "status": "PASS",
+          "durationMs": 30.900049,
+          "reason": null
+        },
+        {
+          "name": "send-time guard cancels soft-deleted without transport",
+          "status": "PASS",
+          "durationMs": 110.73761,
+          "reason": null
+        },
+        {
+          "name": "send-time guard cancels suspended without transport",
+          "status": "PASS",
+          "durationMs": 22.537955,
+          "reason": null
+        },
+        {
+          "name": "send-time guard cancels missing-account without transport",
+          "status": "PASS",
+          "durationMs": 63.435318,
+          "reason": null
+        },
+        {
+          "name": "provider failure uses existing backoff and a stable retry key",
+          "status": "PASS",
+          "durationMs": 59.094674,
+          "reason": null
+        },
+        {
+          "name": "another sent welcome suppresses a duplicate row",
+          "status": "PASS",
+          "durationMs": 31.38856,
+          "reason": null
+        },
+        {
+          "name": "a stale duplicate sender waits for the first sender and cannot send again",
+          "status": "PASS",
+          "durationMs": 27.984731,
+          "reason": null
+        },
+        {
+          "name": "signup welcome real database",
+          "status": "PASS",
+          "durationMs": 669.136903,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Verification and password-reset boundaries",
+      "startedAt": "2026-10-09T17:31:48.566Z",
+      "exitCode": 0,
+      "durationMs": 536.7195280000014,
+      "tests": [
+        {
+          "name": "messaging producer definitions register eleven unique active boundaries",
+          "status": "PASS",
+          "durationMs": 1.440992,
+          "reason": null
+        },
+        {
+          "name": "producer adapter forwards its stable ID and preserves result via a mocked dispatcher",
+          "status": "PASS",
+          "durationMs": 0.536807,
+          "reason": null
+        },
+        {
+          "name": "provider transport adapter keeps mocked SDK arguments and response unchanged",
+          "status": "PASS",
+          "durationMs": 0.355728,
+          "reason": null
+        },
+        {
+          "name": "provider transport adapter propagates original SDK errors unchanged",
+          "status": "PASS",
+          "durationMs": 0.585356,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Booking confirmation duplicate and payment retry",
+      "startedAt": "2026-10-09T17:31:49.103Z",
+      "exitCode": 0,
+      "durationMs": 7393.926931000002,
+      "tests": [
+        {
+          "name": "\\#846 — sequential double-confirm writes earnings/revenue exactly once",
+          "status": "PASS",
+          "durationMs": 311.786931,
+          "reason": null
+        },
+        {
+          "name": "\\#846 — concurrent double-confirm (Promise.all) writes earnings/revenue exactly once",
+          "status": "PASS",
+          "durationMs": 67.20996,
+          "reason": null
+        },
+        {
+          "name": "\\#1581 — a pre-existing earnings row makes the confirm no-op, never abort",
+          "status": "PASS",
+          "durationMs": 117.121266,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Booking durable delivery / retry",
+      "startedAt": "2026-10-09T17:31:56.497Z",
+      "exitCode": 0,
+      "durationMs": 6039.222634999998,
+      "tests": [
+        {
+          "name": "A1: the alert payload escapes typed text and names the service",
+          "status": "PASS",
+          "durationMs": 1.186096,
+          "reason": null
+        },
+        {
+          "name": "A2: a failed send leaves a durable row scheduled for retry",
+          "status": "PASS",
+          "durationMs": 72.329664,
+          "reason": null
+        },
+        {
+          "name": "A3: a successful send marks the row sent",
+          "status": "PASS",
+          "durationMs": 8.749258,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Outbox retry / leases / dedupe / cancellation",
+      "startedAt": "2026-10-09T17:32:02.536Z",
+      "exitCode": 0,
+      "durationMs": 1117.8369590000002,
+      "tests": [
+        {
+          "name": "(A1) after 1st failure schedules a ~5-min delay",
+          "status": "PASS",
+          "durationMs": 0.790664,
+          "reason": null
+        },
+        {
+          "name": "(A2) after 2nd failure schedules a ~15-min delay",
+          "status": "PASS",
+          "durationMs": 0.234217,
+          "reason": null
+        },
+        {
+          "name": "(A3) after 3rd failure schedules a ~45-min delay",
+          "status": "PASS",
+          "durationMs": 0.172036,
+          "reason": null
+        },
+        {
+          "name": "(A4) after 4th failure schedules a ~120-min delay",
+          "status": "PASS",
+          "durationMs": 0.182162,
+          "reason": null
+        },
+        {
+          "name": "(A5) after 5th failure schedules a ~360-min delay",
+          "status": "PASS",
+          "durationMs": 0.207845,
+          "reason": null
+        },
+        {
+          "name": "(A6) out-of-bounds index clamps to the last backoff entry (360 min)",
+          "status": "PASS",
+          "durationMs": 0.390124,
+          "reason": null
+        },
+        {
+          "name": "_nextRetryAfter — backoff schedule",
+          "status": "PASS",
+          "durationMs": 2.690419,
+          "reason": null
+        },
+        {
+          "name": "(E) delays align with documented schedule [5, 15, 45, 120, 360] min",
+          "status": "PASS",
+          "durationMs": 0.292615,
+          "reason": null
+        },
+        {
+          "name": "_nextRetryAfter — five-failure sequence matches BACKOFF_MINUTES",
+          "status": "PASS",
+          "durationMs": 0.413991,
+          "reason": null
+        },
+        {
+          "name": "(B) after maxAttempts failures the row is marked dead with retry_after=NULL",
+          "status": "PASS",
+          "durationMs": 8.618904,
+          "reason": null
+        },
+        {
+          "name": "drainOutbox — terminal state (dead)",
+          "status": "PASS",
+          "durationMs": 8.842761,
+          "reason": null
+        },
+        {
+          "name": "(C) marks row sent with resend_id, clears last_error, conditional on status='processing'",
+          "status": "PASS",
+          "durationMs": 1.875035,
+          "reason": null
+        },
+        {
+          "name": "drainOutbox — success path",
+          "status": "PASS",
+          "durationMs": 2.028395,
+          "reason": null
+        },
+        {
+          "name": "(D) claim SQL contains FOR UPDATE SKIP LOCKED",
+          "status": "PASS",
+          "durationMs": 2.757311,
+          "reason": null
+        },
+        {
+          "name": "drainOutbox — concurrent drain safety",
+          "status": "PASS",
+          "durationMs": 2.947276,
+          "reason": null
+        },
+        {
+          "name": "(F) emits only the claim SQL and no update SQL when no rows are claimed",
+          "status": "PASS",
+          "durationMs": 1.085023,
+          "reason": null
+        },
+        {
+          "name": "drainOutbox — no-op on empty claim",
+          "status": "PASS",
+          "durationMs": 1.365332,
+          "reason": null
+        },
+        {
+          "name": "(G1) does not throw when the DB insert fails",
+          "status": "PASS",
+          "durationMs": 5.17168,
+          "reason": null
+        },
+        {
+          "name": "(G2) does not throw when both DB insert and send fail",
+          "status": "PASS",
+          "durationMs": 1.231267,
+          "reason": null
+        },
+        {
+          "name": "enqueueEmail — never throws",
+          "status": "PASS",
+          "durationMs": 6.722128,
+          "reason": null
+        },
+        {
+          "name": "(H) enqueueEmail inserts the row as status='processing' (not 'pending')",
+          "status": "PASS",
+          "durationMs": 1.760166,
+          "reason": null
+        },
+        {
+          "name": "(H2) a 'processing' row with a live lease is NOT targeted by the drain claim SQL",
+          "status": "PASS",
+          "durationMs": 0.810316,
+          "reason": null
+        },
+        {
+          "name": "enqueueEmail — enqueue-vs-drain race protection",
+          "status": "PASS",
+          "durationMs": 2.729709,
+          "reason": null
+        },
+        {
+          "name": "(I) status update SQL includes AND status='processing' guard for success path",
+          "status": "PASS",
+          "durationMs": 1.093371,
+          "reason": null
+        },
+        {
+          "name": "(I2) status update SQL includes AND status='processing' guard for failure path",
+          "status": "PASS",
+          "durationMs": 1.441297,
+          "reason": null
+        },
+        {
+          "name": "attemptDelivery — stale-sender conditional update",
+          "status": "PASS",
+          "durationMs": 2.696931,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Retained registry contract suites",
+      "startedAt": "2026-10-09T17:32:03.654Z",
+      "exitCode": 0,
+      "durationMs": 7639.483817,
+      "tests": [
+        {
+          "name": "legacy expiry startup, interval, and admin trigger preserve one callback and result",
+          "status": "PASS",
+          "durationMs": 5.876733,
+          "reason": null
+        },
+        {
+          "name": "Trip Card nudge startup and hourly interval preserve one callback and result",
+          "status": "PASS",
+          "durationMs": 2.209653,
+          "reason": null
+        },
+        {
+          "name": "bookings registry contains complete stable definitions without loading database services",
+          "status": "PASS",
+          "durationMs": 1.54538,
+          "reason": null
+        },
+        {
+          "name": "booking event and scheduled adapters dispatch each supplied action once and preserve its result",
+          "status": "PASS",
+          "durationMs": 0.627356,
+          "reason": null
+        },
+        {
+          "name": "booking notice/slot-release nodes retain caller-owned guards and manual policies are not nodes",
+          "status": "PASS",
+          "durationMs": 0.197087,
+          "reason": null
+        },
+        {
+          "name": "messaging delivery definitions cover the existing event and schedule rails",
+          "status": "PASS",
+          "durationMs": 1.570546,
+          "reason": null
+        },
+        {
+          "name": "messaging event adapters invoke simulated delivery actions once and preserve return values",
+          "status": "PASS",
+          "durationMs": 0.440991,
+          "reason": null
+        },
+        {
+          "name": "messaging schedule adapters invoke simulated actions once and preserve return values",
+          "status": "PASS",
+          "durationMs": 0.370849,
+          "reason": null
+        },
+        {
+          "name": "moderation registry has complete stable definitions without loading database services",
+          "status": "PASS",
+          "durationMs": 1.54291,
+          "reason": null
+        },
+        {
+          "name": "pending report notification is gated on a persisted message/user report and preserves the action closure",
+          "status": "PASS",
+          "durationMs": 0.874117,
+          "reason": null
+        },
+        {
+          "name": "moderation runtime binds the supplied action and scheduled cleanup uses its declared schedule",
+          "status": "PASS",
+          "durationMs": 0.921548,
+          "reason": null
+        },
+        {
+          "name": "retained request-path gates are not required to run through asynchronous registry dispatch",
+          "status": "PASS",
+          "durationMs": 0.419984,
+          "reason": null
+        },
+        {
+          "name": "registry rejects duplicate stable IDs and unresolved cancellation references",
+          "status": "PASS",
+          "durationMs": 1.36992,
+          "reason": null
+        },
+        {
+          "name": "event dispatcher requires a matching stable ID, trigger, enabled node, and passing condition",
+          "status": "PASS",
+          "durationMs": 1.17133,
+          "reason": null
+        },
+        {
+          "name": "scheduled wrapper gates by schedule ID and condition without owning deduplication",
+          "status": "PASS",
+          "durationMs": 0.471446,
+          "reason": null
+        },
+        {
+          "name": "non-none delay and cancellation policies fail explicitly without durable adapters",
+          "status": "PASS",
+          "durationMs": 0.473379,
+          "reason": null
+        },
+        {
+          "name": "delays receive execution context and cancellation runs only after action success",
+          "status": "PASS",
+          "durationMs": 0.583341,
+          "reason": null
+        },
+        {
+          "name": "returned failed or skipped outcomes never trigger cancellations",
+          "status": "PASS",
+          "durationMs": 0.515062,
+          "reason": null
+        },
+        {
+          "name": "messaging chat boundary nodes are metadata-only and have stable unique identities",
+          "status": "PASS",
+          "durationMs": 1.207052,
+          "reason": null
+        },
+        {
+          "name": "post-persist follow-on callbacks are condition-gated and run once without changing results",
+          "status": "PASS",
+          "durationMs": 0.529097,
+          "reason": null
+        },
+        {
+          "name": "chat realtime callback runs synchronously once and preserves its result",
+          "status": "PASS",
+          "durationMs": 0.168774,
+          "reason": null
+        },
+        {
+          "name": "legacy POST /api/chat/start retains its guards and dispatches existing follow-ons and fanout",
+          "status": "PASS",
+          "durationMs": 2.022341,
+          "reason": null
+        },
+        {
+          "name": "legacy start callback preserves notification/activity order and immediately fans out once",
+          "status": "PASS",
+          "durationMs": 0.274221,
+          "reason": null
+        },
+        {
+          "name": "messaging producer definitions register eleven unique active boundaries",
+          "status": "PASS",
+          "durationMs": 1.691286,
+          "reason": null
+        },
+        {
+          "name": "producer adapter forwards its stable ID and preserves result via a mocked dispatcher",
+          "status": "PASS",
+          "durationMs": 0.570304,
+          "reason": null
+        },
+        {
+          "name": "provider transport adapter keeps mocked SDK arguments and response unchanged",
+          "status": "PASS",
+          "durationMs": 0.315481,
+          "reason": null
+        },
+        {
+          "name": "provider transport adapter propagates original SDK errors unchanged",
+          "status": "PASS",
+          "durationMs": 0.484676,
+          "reason": null
+        },
+        {
+          "name": "checkout-session condition reads the signed event's data.object.metadata.type",
+          "status": "PASS",
+          "durationMs": 0.913796,
+          "reason": null
+        },
+        {
+          "name": "Connect-transfer condition reads signed data.object.metadata",
+          "status": "PASS",
+          "durationMs": 0.193547,
+          "reason": null
+        },
+        {
+          "name": "signed platform checkout-session endpoint dispatches a supported session through the stubbed action seam",
+          "status": "PASS",
+          "durationMs": 897.624762,
+          "reason": null
+        },
+        {
+          "name": "signed Connect transfer endpoint dispatches supported payout metadata through the stubbed action seam",
+          "status": "PASS",
+          "durationMs": 25.160714,
+          "reason": null
+        },
+        {
+          "name": "admin follow-on metadata is limited to six enabled provider nodes",
+          "status": "PASS",
+          "durationMs": 1.608061,
+          "reason": null
+        },
+        {
+          "name": "dispatch gates existing decision/request context and preserves callback result, order, and errors",
+          "status": "PASS",
+          "durationMs": 1.969046,
+          "reason": null
+        },
+        {
+          "name": "admin routes dispatch only existing notification/email groups and leave decisions outside",
+          "status": "PASS",
+          "durationMs": 186.061316,
+          "reason": null
+        },
+        {
+          "name": "all six definitions document real guard semantics and no retry guarantee",
+          "status": "PASS",
+          "durationMs": 0.394956,
+          "reason": null
+        },
+        {
+          "name": "provider intake nodes validate unique IDs and preserve callback results and errors",
+          "status": "PASS",
+          "durationMs": 3.40333,
+          "reason": null
+        },
+        {
+          "name": "bio mirror stays inside its original nonblank guard and nonfatal catch, with six original callers",
+          "status": "PASS",
+          "durationMs": 29.109485,
+          "reason": null
+        },
+        {
+          "name": "new expert hooks dispatch the original stamp once per alias, outside the unchanged AI calls",
+          "status": "PASS",
+          "durationMs": 15.568611,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Registry IDs",
+      "startedAt": "2026-10-09T17:32:11.294Z",
+      "exitCode": 0,
+      "durationMs": 520.0836520000012,
+      "tests": [
+        {
+          "name": "Registry IDs",
+          "status": "PASS",
+          "durationMs": 520.0766370000056,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "Cron roster",
+      "startedAt": "2026-10-09T17:32:11.815Z",
+      "exitCode": 0,
+      "durationMs": 37.02695699999458,
+      "tests": [
+        {
+          "name": "Cron roster",
+          "status": "PASS",
+          "durationMs": 37.020363999996334,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "New harness safety tests",
+      "startedAt": "2026-10-09T17:32:11.852Z",
+      "exitCode": 0,
+      "durationMs": 612.5282420000003,
+      "tests": [
+        {
+          "name": "provider-free environment drops all live transports and production URLs",
+          "status": "PASS",
+          "durationMs": 0.972354,
+          "reason": null
+        },
+        {
+          "name": "retained suites precede registry / roster; no live verification suites run implicitly",
+          "status": "PASS",
+          "durationMs": 1.542346,
+          "reason": null
+        },
+        {
+          "name": "randomized TAP parsing: skipped and TODO cases fail rather than certify",
+          "status": "PASS",
+          "durationMs": 11.176105,
+          "reason": null
+        },
+        {
+          "name": "five hostile reporter cases: empty, malformed, keys, recipients, token URLs",
+          "status": "PASS",
+          "durationMs": 1.957917,
+          "reason": null
+        },
+        {
+          "name": "provider receipt UUIDs remain reportable without exposing credentials",
+          "status": "PASS",
+          "durationMs": 1.209116,
+          "reason": null
+        },
+        {
+          "name": "Vitest report survives retained cleanup output without certifying skipped assertions",
+          "status": "PASS",
+          "durationMs": 9.073194,
+          "reason": null
+        },
+        {
+          "name": "HTTP transport bridge refuses preview, production, credentials and unisolated fixtures",
+          "status": "PASS",
+          "durationMs": 2.036932,
+          "reason": null
+        }
+      ]
+    }
+  ],
+  "passing": 143,
+  "failing": 0
+}
