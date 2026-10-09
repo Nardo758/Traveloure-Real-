@@ -1,5 +1,5 @@
 -- 359 — trips.stay_pick (ledger `2026-10-09-s1-one-stay`; brief docs/planning/briefs/s1-one-stay.md, ruling 3).
--- SQL as given by the decision-maker, HELD FOR THE FOUNDER'S RULING. ADDITIVE ONLY. No function, trigger,
+-- SQL as given by the decision-maker, APPROVED by the founder, Oct 9, 2026. ADDITIVE ONLY. No function, trigger,
 -- CREATE OR REPLACE or DO block. IF NOT EXISTS, so a second run is a no-op. Declared in shared/schema.ts
 -- (deploy-push durability rule).
 --

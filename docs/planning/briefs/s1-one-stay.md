@@ -21,8 +21,8 @@ the two definitions, the six rulings, the Phase 0 findings they were made agains
      150 elements are spent. The pick comes only from scored hotels, and the payload carries scored/total.
    - The calls count against `MAPS_ROUTE_MATRIX_DAILY_CAP` like any other call.
 3. **Storage:** migration 359, additive and nullable — `ALTER TABLE trips ADD COLUMN IF NOT EXISTS stay_pick jsonb;` —
-   holding `{hotelId, scoredCount, candidateCount, stopsHash, computedAt, tier}`. SQL in the PR body, held for the
-   founder's ruling.
+   holding `{hotelId, scoredCount, candidateCount, stopsHash, computedAt, tier}`. APPROVED by the founder,
+   Oct 9, 2026.
    - **Compute** at Optimize finish, Trip Pass purchase, handoff accept, and on the post-debounce stops refetch when
      `stopsHash` changes. **Never on read.**
    - A re-score replaces the pick and sets a `changed` flag that the card reads once.
@@ -62,7 +62,7 @@ the two definitions, the six rulings, the Phase 0 findings they were made agains
 | Read: `stay` block on `GET /api/trips/:tripId/where-to-stay`; tier from `tripGetsRoutedLegs` (ruling 4); no Maps call | `server/services/where-to-stay.service.ts`, type in `shared/where-to-stay.ts` |
 | The card's one read: `POST /api/trips/:tripId/stay-pick/seen` (owner or managing assistant; one 404 otherwise) | `server/routes/plan-option-sets.routes.ts` |
 | Triggers | `server/routes.ts` (both Optimize entry points), `trip-entitlement.service.ts`, `handoff.service.ts`, `routing/plan-legs-queue.ts` |
-| Migration 359 (held) and its declaration | `server/migrations/359_trips_stay_pick.sql`, `shared/schema.ts` (omitted from `insertTripSchema`, stripped in `storage.updateTrip`) |
+| Migration 359 (approved Oct 9, 2026) and its declaration | `server/migrations/359_trips_stay_pick.sql`, `shared/schema.ts` (omitted from `insertTripSchema`, stripped in `storage.updateTrip`) |
 
 ### The payload (for the Conformance lane's Compare PR)
 

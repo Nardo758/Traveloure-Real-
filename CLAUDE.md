@@ -2582,7 +2582,7 @@ This document captures architectural decisions to maintain consistency across co
     queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
-    ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, HELD FOR RULING).**
+    ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**
     A paid plan (`planGetsRoutedLegs`, which replaced the paid-optimizer-run test) gets ONE stay. It is picked by
     one Route Matrix request per hotel → every located stop on the plan's dates (DRIVE), ranked by reachability,
     then closest on most days, then least total time. Candidates are hotels in the plan's neighbourhoods, scored

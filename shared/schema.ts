@@ -259,7 +259,7 @@ export const trips = pgTable("trips", {
   // (the value set is app-enforced); written ONLY through `tripOccasionBody` (§19).
   petKind: varchar("pet_kind", { length: 60 }),
   petCount: integer("pet_count"),
-  // Ledger `2026-10-09-s1-one-stay` (migration 359, HELD): S1 "one stay on the plan" — the ONE stay a
+  // Ledger `2026-10-09-s1-one-stay` (migration 359, approved Oct 9, 2026): S1 "one stay on the plan" — the ONE stay a
   // paid plan's routed scoring picked ({ hotelId, hotelKind, scoredCount, candidateCount, stopsHash,
   // computedAt, tier, changed }; shape and reader in `shared/stay-pick.ts`). NULL = never picked, never
   // "no stay fits" (§13). Written ONLY by `server/services/stay-pick.service.ts`; never client-settable.
