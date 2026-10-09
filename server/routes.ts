@@ -390,6 +390,12 @@ import { sanitizeInput } from "./utils/sanitize";
 import { locationQueryMatches } from "@shared/location-match";
 import { refuseIfComparisonApplyToCartDisabled } from "./config/comparison-apply-to-cart.config";
 
+/** S1 (ledger `2026-10-09-s1-one-stay`): the stay pick after an Optimize run. Lazy; never throws (§15b). */
+function scheduleStayPickLazy(tripId: string | null | undefined): void {
+  if (!tripId) return;
+  void import("./services/stay-pick.service").then((m) => m.scheduleStayPick(tripId)).catch(() => undefined);
+}
+
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
 // "transportation-logistics"). booking_fee_configs.category uses broader domain
@@ -10396,7 +10402,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           resolvedPinnedAnchor,
           await openSetSlotsForRun(tripId, baselineItems, resolvedPinnedAnchor),
           runRecordFor(runAuth, { tripId: tripId ?? null, comparisonId: comparison.id, createdBy: userId, tollRunId: createToll.tollRunId }),
-        ).catch((err) => console.error("Background optimization error:", err));
+        )
+          // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): Optimize finished — pick the plan's stay.
+          .then(() => scheduleStayPickLazy(tripId))
+          .catch((err) => console.error("Background optimization error:", err));
       }
 
       // `runBasis` rides on the response so the surface can say WHY the run was free (LD 41):
@@ -10770,7 +10779,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         resolvedPinnedAnchor,
         await openSetSlotsForRun(comparison.tripId, baselineItems, resolvedPinnedAnchor),
         runRecordFor(runAuth, { tripId: comparison.tripId ?? null, comparisonId, createdBy: userId, tollRunId: genToll.tollRunId }),
-      ).catch((err) => console.error("Background optimization error:", err));
+      )
+        // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): Optimize finished — pick the plan's stay.
+        .then(() => scheduleStayPickLazy(comparison.tripId))
+        .catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
       console.error("Error starting optimization:", error);

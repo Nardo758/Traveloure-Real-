@@ -6,11 +6,13 @@
 import type { ReactNode } from "react";
 
 /** The rail's dot: a FIXED point (teal, haloed), a travel row nothing has fixed (navy), a stop whose
- *  hours were checked (teal), or a stop with no checked hours (an open navy ring). */
-export type BoardDot = "anchor" | "travel" | "checked" | "open";
+ *  hours were checked (teal), a stop with no checked hours (an open navy ring), or — the Handoff
+ *  board — a stop whose pen an expert holds (gold). */
+export type BoardDot = "anchor" | "travel" | "checked" | "open" | "pen";
 
-export function boardDotFor(input: { anchorFromTool?: string | null; isAnchor: boolean; hasFacts: boolean }): BoardDot {
+export function boardDotFor(input: { anchorFromTool?: string | null; isAnchor: boolean; hasFacts: boolean; withExpert?: boolean }): BoardDot {
   if (input.isAnchor) return input.anchorFromTool ? "anchor" : "travel";
+  if (input.withExpert) return "pen";
   return input.hasFacts ? "checked" : "open";
 }
 
@@ -19,6 +21,7 @@ const BOARD_DOT_CLASS: Record<BoardDot, string> = {
   travel: "mt-[5px] h-2.5 w-2.5 rounded-full bg-[color:var(--slip-navy)]",
   checked: "mt-[5px] h-2.5 w-2.5 rounded-full bg-[color:var(--slip-teal)]",
   open: "mt-[5px] h-2.5 w-2.5 rounded-full border-2 border-[color:var(--slip-navy)] bg-[color:var(--slip-card)]",
+  pen: "mt-[5px] h-2.5 w-2.5 rounded-full bg-[color:var(--slip-gold)]",
 };
 
 export function BoardRowFrame({

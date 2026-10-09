@@ -291,24 +291,7 @@ export async function acceptAllExpertSuggestions(tripId: string, portOverride?: 
   return { accepted, skipped };
 }
 
-/** Pure. The one-line summary a row renders for a suggestion (never a raw payload dump). */
-export function suggestionSummary(row: { kind: string; payload: any }): string {
-  const p = row.payload ?? {};
-  switch (row.kind) {
-    case "add":
-      return `Add “${p.item?.title ?? "a stop"}”${p.item?.dayNumber ? ` to day ${p.item.dayNumber}` : ""}`;
-    case "edit": {
-      const keys = Object.keys(p.updates ?? {});
-      return keys.length ? `Change ${keys.join(", ")}` : "Edit this stop";
-    }
-    case "remove":
-      return `Remove “${p.title ?? "this stop"}”`;
-    case "move":
-      return `Reorder day ${p.dayNumber}`;
-    case "leg":
-      return p.remove ? `Remove the leg ${p.label ?? ""}`.trim() : `Change the leg ${p.label ?? ""}`.trim();
-    default:
-      return "A suggestion";
-  }
-}
+// The one-line summary moved to `@shared/handoff` (slip conformance, Handoff board) so the client's
+// board tests read the SAME function the route serves (§18 rule 1). Re-exported for the route.
+export { suggestionSummary } from "@shared/handoff";
 

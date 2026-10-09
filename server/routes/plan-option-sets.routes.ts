@@ -14,6 +14,7 @@
  *   POST   /api/trips/:tripId/slip-events                         A4 — E4 `slip_plan_fit_shown` (202)
  *   GET    /api/trips/:tripId/where-to-stay                       smoke 4 item 5 — the post-draft panel
  *   POST   /api/trips/:tripId/where-to-stay                       bind: stay here / own / skip
+ *   POST   /api/trips/:tripId/stay-pick/seen                      S1: the card showed a changed pick (ledger 2026-10-09-s1-one-stay)
  *
  * §14: the actor is the session; no body carries an identity, a price or a coordinate the server
  * could read from a source row. §19: every body is a `.strict()` object. LD 40: a set, option or
@@ -332,6 +333,22 @@ router.post("/api/trips/:tripId/where-to-stay", isAuthenticated, async (req: any
     res.status(201).json(out);
   } catch (err) {
     fail(res, err, "where-to-stay bind");
+  }
+});
+
+// S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): the card read the `changed` flag once — clear it. No body
+// (`.strict()` empty object, §19); owner or managing assistant (the "choose" role); anyone else and an absent
+// plan get the same 404 (LD 40).
+const staySeenBody = z.object({}).strict();
+router.post("/api/trips/:tripId/stay-pick/seen", isAuthenticated, async (req: any, res) => {
+  if (!staySeenBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { markStayPickSeen } = await import("../services/stay-pick.service");
+    const ok = await markStayPickSeen(req.params.tripId, getUserId(req)!);
+    if (!ok) return res.status(404).json({ code: "not_found", message: "No such plan" });
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err, "stay-pick seen");
   }
 });
 

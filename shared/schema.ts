@@ -259,6 +259,11 @@ export const trips = pgTable("trips", {
   // (the value set is app-enforced); written ONLY through `tripOccasionBody` (§19).
   petKind: varchar("pet_kind", { length: 60 }),
   petCount: integer("pet_count"),
+  // Ledger `2026-10-09-s1-one-stay` (migration 359, approved Oct 9, 2026): S1 "one stay on the plan" — the ONE stay a
+  // paid plan's routed scoring picked ({ hotelId, hotelKind, scoredCount, candidateCount, stopsHash,
+  // computedAt, tier, changed }; shape and reader in `shared/stay-pick.ts`). NULL = never picked, never
+  // "no stay fits" (§13). Written ONLY by `server/services/stay-pick.service.ts`; never client-settable.
+  stayPick: jsonb("stay_pick"),
   // ── DID ANYBODY CHOOSE THESE DATES? (migration 302, ledger `2026-09-15-d22-dates-confirmed`,
   // punchlist D-22 = yes.) Additive nullable timestamp, NO DEFAULT and NO DB CHECK (the
   // publish-trap posture — migrations 181/195/273/275/276/277/279/280/281/282/284/287/295/297/301),
@@ -2758,6 +2763,9 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // traveler's, which is exactly the §13 lie the column exists to close. No pick anywhere
   // re-admits it; `storage.createTrip` and `storage.updateTrip` are its only writers.
   datesConfirmedAt: true,
+  // Ledger `2026-10-09-s1-one-stay`: the stay pick has ONE writer (`stay-pick.service.ts`) and no admission
+  // rail at all — under this denylist a new column would otherwise be body-settable (§19).
+  stayPick: true,
   // Ledger `2026-10-08-e1-zero-questions`: the pets pair has ONE admission rail, the pick-based
   // `tripOccasionBody`; under this denylist a new column would otherwise be body-settable (§19).
   petKind: true,
