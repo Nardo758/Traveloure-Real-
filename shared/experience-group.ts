@@ -176,10 +176,24 @@ export const OCCASION_GROUP_ORDER: readonly OccasionPickerGroup[] = [
 
 export const OCCASION_GROUP_LABELS: Readonly<Record<OccasionPickerGroup, string>> = {
   trips: "A trip",
-  moments: "One evening",
+  moments: "A moment",
   celebrations: "A celebration",
   hosted_events: "A hosted event",
   group_travel: "A group getaway",
+};
+
+/**
+ * THE OCCASION A GROUP STARTS A PLAN WITH (E2, ledger `2026-10-09-e2-plan-entry`; decision-maker
+ * ruling 3). Choosing only a group — "A trip" is pre-selected — must still mint a plan with a real
+ * catalog occasion, so each group names ONE seeded slug here, beside its label. "More specific"
+ * overrides it. Each slug's switches put it in the group it starts (pinned by `plan-entry.test.ts`).
+ */
+export const OCCASION_GROUP_DEFAULT_SLUG: Readonly<Record<OccasionPickerGroup, string>> = {
+  trips: "travel",
+  moments: "date-night",
+  celebrations: "birthday",
+  hosted_events: "wedding",
+  group_travel: "retreats",
 };
 
 export interface GroupedOccasions<T> {

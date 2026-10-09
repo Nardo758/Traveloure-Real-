@@ -135,10 +135,11 @@ export function draftSignature(a: DraftAnswers): string {
  */
 export function resumeStep(
   visibleSteps: readonly PlanStepId[],
-  answered: { occasion: boolean; where: boolean; when: boolean },
+  answered: { where: boolean; when: boolean },
 ): PlanStepId {
-  for (const s of ["occasion", "where", "when"] as const) {
+  // E2: the Occasion step left the window (a new plan's occasion is PlanEntry's question).
+  for (const s of ["where", "when"] as const) {
     if (visibleSteps.includes(s) && !answered[s]) return s;
   }
-  return visibleSteps[visibleSteps.length - 1] ?? "occasion";
+  return visibleSteps[visibleSteps.length - 1] ?? "where";
 }

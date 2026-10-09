@@ -1,48 +1,23 @@
 /**
- * PlanningContext — THE single planning entry (ruling `2026-08-28-single-planning-entry`), now
- * rendering THE single planning MODAL (ledger `2026-09-04-one-modal-many-doors`, CLAUDE.md
- * Locked Decision 33).
+ * PlanningContext — THE single planning entry (ruling `2026-08-28-single-planning-entry`).
  *
- * WHAT IS UNCHANGED. `usePlanning().open(source?)` is still the one opener, mounted once above the
- * router, called by every "Plan my trip" / "Start planning" CTA on the site. Every existing caller
- * keeps working with the `PlanningSource` it already passes; nothing about the contract narrowed.
+ * `usePlanning().open(source?)` is still the one opener, mounted once above the router and called by
+ * every "Start a plan" CTA on the site. What it renders was changed by E2 (ledger
+ * `2026-10-09-e2-plan-entry`; decision-maker rulings 1–7, Oct 9, 2026):
  *
- * WHAT CHANGED. What the opener RENDERS. It used to render a CHOOSER whose first screen asked
- * "how do you want to plan?" and whose branches then asked for a destination and dates a second
- * time — while the questions a plan actually needs (occasion, where, when, who, what's happening)
- * lived in a different, unreachable dialog. It now renders `PlanModal`: the five ratified steps,
- * with the three ways to build as the FINISH of the last visible step. You say what you are
- * planning before you say who should build it.
+ *   • A NEW plan — no plan bound, or a door that starts one (`doorStartsNewPlan`) — opens PlanEntry
+ *     (`components/plan/PlanEntry.tsx`): "Plan around…" a place / a date / an event → the occasion →
+ *     Start a plan → the plan. No When, no Who, no plan name, no build chooser, no Clear/Save.
+ *   • The BOUND plan — the Trip Strip's Edit, the cart header, the slip's Edit stops — opens the
+ *     edit-only `PlanModal` (Where · When · Who · What's happening, Save). It never creates a plan.
  *
- * DOORS DIFFER IN TWO THINGS ONLY — what arrives pre-filled, and which step opens first — and
- * that decision is `resolvePlanSteps` (client/src/lib/plan-steps.ts), never restated here:
+ * A door that chose a way to build (`source.branch`) mints through PlanEntry and then continues on
+ * the plan (ruling 2): `ai` → the map with Draft it with AI started (`?draft=ai`); `local` → the
+ * expert the door was (D15), else the slip's expert door; a door's own `onFinish` (the concierge, the
+ * "start a new plan, then add this" doors) runs once the plan exists. Plus stays hidden.
  *
- *   hero / about / features / how-it-works / marketplace / `/start/events`  → step 1 (Occasion)
- *   a Moment, the nav Wedding row, an experience CTA (carries an occasion) → step 2 (Where)
- *   a ticker or city page (carries a city)                                 → step 1, Where pre-filled
- *   the Trip Strip's Edit button / cart header / experience-template       → step 1 or 2, by what
- *                                                                            the plan already holds
- *
- * `source.branch` still deep-opens, but it now means the "how" is already decided rather than
- * "skip the questions": the modal runs its steps and the finish shows only that one CTA (the
- * pricing ladder rows and the Moments CTA use this).
- *
- * THE BRANCHES ARE THE SAME BRANCHES, with the same downstream behaviour:
- *   - myself  → mints the draft trip through `mintTripSlip` (THE one traveler-owned client mint
- *               door) and lands on the slip (/plans/:tripId). Sign-in IS the existing gate — the
- *               slip route is a ProtectedRoute — and it is checked BEFORE anything is minted.
- *   - ai      → the EXISTING EnhancedPlanningModal, handed the destination, dates, occasion and
- *               party the traveler just gave. Since ledger
- *               `2026-09-04-golf-occasion-and-housekeeping` it no longer carries fields for them
- *               at all: it shows them read-only, and its "change" affordance comes back here
- *               through `open(source)` — the one opener — rather than editing a second copy.
- *   - local   → /experts (?destination= prefilled when known).
- *   - occasion→ the shared Plus membership checkout client rail — offered ONLY when
- *               PLUS_SALES_ENABLED (public flag on /api/pricing); hidden, never teased, when off.
- * Returning users with an active trip still get "Continue {trip name}", which goes to the
- * PLANNING surface (/plans/:tripId), never the details card.
- *
- * Auth: unchanged. The modal itself is open to guests; branches prompt at their EXISTING gates.
+ * Auth: PlanEntry is open to guests. A guest's Start a plan writes the v2 sign-in record and lands on
+ * the guest map; the record is replayed through the same start after sign-in.
  */
 import {
   createContext,
@@ -55,26 +30,26 @@ import {
   type Context,
 } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { useSignInModal } from "@/contexts/SignInModalContext";
-import { getTripContext, updateTripContext, useTripContext } from "@/lib/trip-context";
+import { getTripContext, releasePendingEventsPen, updateTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
 import { START_PAGE_DOOR, isStartPageRecord, mintStartPagePlan } from "@/lib/start-page-plan";
-import type { PlanDoor, TripMintEntry } from "@shared/slip-funnel-events";
+import { finishForBranch, isPlanDoor, type PlanDoor } from "@shared/slip-funnel-events";
+import { eventTypeForSlug } from "@shared/occasions";
+import { OCCASION_GROUP_DEFAULT_SLUG } from "@shared/experience-group";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
-import { startMembershipCheckout } from "@/lib/membership-checkout";
-import { buildExpertsBrowseHref, withPlanTripId } from "@/lib/experts-browse";
+import { withPlanTripId } from "@/lib/experts-browse";
 import { expertDoorHref } from "@/lib/expert-door";
-import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
-import { PlanModal, type CommittedPlan, type PlanMintOutcome } from "@/components/trip/plan-modal";
+import { PlanModal, type CommittedPlan } from "@/components/trip/plan-modal";
+import { PlanEntry, type PlanEntryStart, type PlanEntryStartOutcome } from "@/components/plan/PlanEntry";
 import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
 import { doorStartsNewPlan } from "@/lib/plan-steps";
+import { eventsNotYetCreated } from "@/lib/organize-events";
 import { normalizePendingPlanItems, type PendingPlanItem } from "@shared/pending-plan-items";
-import { GUEST_MAP_PATH, opensGuestMap, planLandingPath } from "@/lib/plan-landing";
+import { DRAFT_AI_QUERY, DRAFT_AI_VALUE, GUEST_MAP_PATH, planLandingPath } from "@/lib/plan-landing";
 import {
   attachPendingMapAdd,
   pendingMapAddMessage,
@@ -320,44 +295,50 @@ export function planningRouteForTrip(tripId: string, endDate?: string): string {
   return `/plans/${tripId}`;
 }
 
-function sourceDestination(source: PlanningSource | null): string {
-  if (!source) return "";
-  if (source.destination) return source.destination;
-  if (source.city) return source.country ? `${source.city}, ${source.country}` : source.city;
-  return "";
-}
-
-/** The finish's CTA order when the door decided nothing. */
-const DEFAULT_BRANCHES: PlanningBranch[] = ["myself", "ai", "local"];
-
 export function PlanningProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
-  const [tripCtx] = useTripContext();
   const [, setLocation] = useLocation();
 
+  /** The edit-only window over the BOUND plan (E2 ruling 1). */
   const [modalOpen, setModalOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
+  /** PlanEntry — the one way a NEW plan starts (E2). */
+  const [entryOpen, setEntryOpen] = useState(false);
   const [source, setSource] = useState<PlanningSource | null>(null);
   const [pendingGemRecovery, setPendingGemRecovery] = useState<PendingGemRecovery | null>(
     readPendingGemRecovery,
   );
-  /** The plan as the modal committed it — what the AI branch is handed instead of asking again. */
-  const [committed, setCommitted] = useState<CommittedPlan | null>(null);
-  /** Step 8d: set by the guest gate for `myself` from the Experiences door; read once by `mintPlan`. */
-  const guestMapLanding = useRef(false);
 
   useEffect(() => {
     if (pendingGemRecovery) setModalOpen(true);
   }, [pendingGemRecovery]);
 
-  // PLUS_SALES_ENABLED rides the public pricing bundle (§8 posture — no literals here).
-  const { data: pricing } = useQuery<{ plusSalesEnabled?: boolean }>({
-    queryKey: ["/api/pricing"],
-    staleTime: 5 * 60_000,
-  });
-  const plusSalesEnabled = pricing?.plusSalesEnabled === true;
+  /**
+   * Where a plan continues once it exists (E2 ruling 2): `ai` → the map with Draft it with AI started
+   * (`?draft=ai`, which asks for dates first when they are unconfirmed — E1); `local` → back to the
+   * expert the door was (D15), else the slip's expert door; anything else → the landing view.
+   */
+  const continueOn = (branch: PlanningBranch, plan: CommittedPlan, source: PlanningSource | null, view: "map" | "list") => {
+    const tripId = plan.tripId as string;
+    if (branch === "ai") {
+      setLocation(`/plans/${tripId}?view=map&${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);
+      return;
+    }
+    if (branch === "local") {
+      // D15 (lane L22): a plan started FROM an expert ends back at that expert. Addressed by HANDLE
+      // (Locked Decision 40) through `earnerProfilePath`, the ONE resolver of an earner's public path.
+      if (source?.returnTo?.kind === "expert") {
+        const path = earnerProfilePath({ handle: source.returnTo.handle });
+        if (path) {
+          setLocation(withPlanTripId(path, plan.tripId));
+          return;
+        }
+      }
+      setLocation(expertDoorHref(tripId));
+      return;
+    }
+    setLocation(view === "map" ? `/plans/${tripId}?view=map` : `/plans/${tripId}`);
+  };
 
   const open = useCallback((src?: PlanningSource) => {
     if (pendingGemRecovery) {
@@ -371,8 +352,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     const next = src && !src.newPlan && doorStartsNewPlan(src, getTripContext().tripId)
       ? { ...src, newPlan: true }
       : src ?? null;
+    // A door that NAMES an existing plan and a way to build continues ON that plan (E2 ruling 2):
+    // there is nothing to create, so nothing opens.
+    if (next?.tripId && next.branch && !next.newPlan) {
+      continueOn(next.branch, { tripId: next.tripId }, next, "map");
+      return;
+    }
     setSource(next);
-    setCommitted(null);
     // The door already named the occasion — record it on the planning context so every
     // downstream surface reads the same slug. Additive merge, never a switch: this does not
     // touch trip identity. NOT onto a pen bound to a plan (ledger `2026-09-26-occasion-read-only`):
@@ -383,6 +369,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     }
     // The event a door is built around seeds the unbound pen with the event's own facts (see
     // `PlanningSource.anchor`). Never onto a pen bound to a plan: that plan's dates are its own.
+    // PlanEntry does not read the pen for the event (P-H1): it carries the anchor in its own state
+    // straight into the mint, so a traveler with a current plan still gets the event.
     if (next?.anchor && !getTripContext().tripId) {
       const a = next.anchor;
       updateTripContext({
@@ -394,8 +382,14 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         pendingEvents: [{ title: a.title, eventDate: a.firstDate, ...(a.startTime ? { startTime: a.startTime } : {}), location: a.venue }],
       });
     }
-    setModalOpen(true);
-  }, [pendingGemRecovery]);
+    // E2 ruling 1: PlanEntry only CREATES plans; the edit window only edits the bound one.
+    const bound = !!(getTripContext().tripId || next?.tripId);
+    if (!bound || next?.newPlan) {
+      setEntryOpen(true);
+    } else {
+      setModalOpen(true);
+    }
+  }, [pendingGemRecovery, setLocation]);
 
   const close = useCallback(() => {
     if (pendingGemRecovery) {
@@ -407,94 +401,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setModalOpen(false);
-    setAiOpen(false);
+    setEntryOpen(false);
   }, [pendingGemRecovery, toast]);
-
-  /**
-   * THE ONE MINT DOOR, reached from the modal's finish for every branch in `BRANCHES_THAT_MINT`
-   * — "Build it myself" and, since Locked Decision 42 D5, "Get a local expert".
-   *
-   * The destination/date checks and the mint body both live in `@/lib/trip-slip` — `mintTripSlip`
-   * is THE traveler-owned client mint door, shared with the template page's expert-request
-   * precondition (Locked Decision 32 lane (a)). Duplicating either here is the derivation-drift
-   * class §18 rule 1 names; in particular the §13 "dates are asked for, never invented" rule must
-   * have exactly one author. `mintTripSlip` refuses before it calls the server, so a short answer
-   * still costs no request.
-   *
-   * The sign-in gate is checked HERE and before the mint. For `myself` it is the slip ROUTE's gate
-   * (/plans/:tripId is a ProtectedRoute); for `local` the destination page is PUBLIC, but the gate
-   * still belongs here and D5 says so — the trip a request carries must be owned by the session
-   * user (Locked Decision 32 (b) verifies exactly that server-side), and a guest owns nothing. A
-   * guest gets the sign-in modal and a refusal carrying NO message — the screen has already
-   * changed hands, so the plan modal must not also print an error into a dialog it just closed.
-   */
-  const mintPlan = useCallback(
-    async (basics: {
-      destination?: string;
-      startDate?: string;
-      endDate?: string;
-      title?: string;
-      entry?: TripMintEntry;
-    }): Promise<PlanMintOutcome> => {
-      if (!user) {
-        setModalOpen(false);
-        // Step 8d (decision 1): `myself` from the Experiences door lands a guest on the GUEST MAP — the
-        // record the gate just wrote carries the answers there — instead of the sign-in modal.
-        if (guestMapLanding.current) {
-          guestMapLanding.current = false;
-          setLocation(GUEST_MAP_PATH);
-          return { ok: false };
-        }
-        // Step 8b-2 (D3): sign-in returns to THIS page, where the record is replayed — not /dashboard.
-        openSignInModal({ returnTo: currentPagePath() });
-        return { ok: false };
-      }
-      // The plan row already exists. Never mint another one while its gem is awaiting attachment.
-      if (pendingGemRecovery) {
-        return {
-          ok: false,
-          message: "Your plan was created, but its gem still needs to be added. Use the retry button below.",
-        };
-      }
-      const outcome = await mintTripSlip(basics);
-      if (!outcome.ok) return { ok: false, message: outcome.message };
-      // Step 8d: the guest map's one add, run ONCE onto the plan just created. The retry entry is
-      // written FIRST, so a reload or a failure retries the ADD, never the mint (the record is gone).
-      if (source?.pendingMapAdd) {
-        const add = source.pendingMapAdd;
-        writePendingMapAddRetry(outcome.tripId, add);
-        const added = await attachPendingMapAdd(outcome.tripId, add);
-        const said = pendingMapAddMessage(added);
-        toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
-        setSource((current) => (current?.pendingMapAdd ? { ...current, pendingMapAdd: undefined } : current));
-      }
-      if (source?.newPlan && source.pendingItem) {
-        const pendingItem = source.pendingItem;
-        try {
-          await addPendingGemToTrip(outcome.tripId, pendingItem);
-        } catch (error) {
-          const recovery = { tripId: outcome.tripId, item: pendingItem };
-          savePendingGemRecovery(recovery);
-          setPendingGemRecovery(recovery);
-          return {
-            ok: false,
-            message:
-              error instanceof Error
-                ? `Your plan was created, but the gem was not added: ${error.message}`
-                : "Your plan was created, but the gem was not added. Retry below; the plan will not be created again.",
-          };
-        }
-        // Only consume the source after the item is confirmed on the newly minted plan.
-        setSource((current) =>
-          current?.pendingItem?.id === pendingItem.id
-            ? { ...current, newPlan: false, pendingItem: undefined }
-            : current,
-        );
-      }
-      return { ok: true, tripId: outcome.tripId };
-    },
-    [user, openSignInModal, source, pendingGemRecovery, setLocation, toast],
-  );
 
   const retryPendingGem = useCallback(async (): Promise<PendingGemRetryOutcome> => {
     if (!pendingGemRecovery) return { ok: false, message: "There is no pending gem to retry." };
@@ -527,50 +435,132 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   }, [setLocation]);
 
   /**
-   * Run the chosen branch, AFTER the modal has committed the plan. Each branch's downstream
-   * behaviour is exactly what it was when it was a chooser row — only the point it is reached
-   * from moved.
+   * START A PLAN (E2). The ONE mint for a new plan from any door: the answers PlanEntry collected —
+   * a city, an occasion, and dates/an event only when the traveler chose them — become a plan, and
+   * the traveler lands on it.
+   *
+   *   1. A guest writes the v2 sign-in record and lands on the GUEST MAP (no dead end); the record is
+   *      replayed through this same function after sign-in.
+   *   2. The pre-trip pen is RELEASED (awaited) BEFORE the mint, so the server's drain cannot write
+   *      a stale pen's events onto the new plan (ledger `2026-09-06-event-mint-dedupe`).
+   *   3. `mintTripSlip` — THE traveler-owned client mint door. Real dates (a date or an event pick)
+   *      reach the body, which is what stamps `dates_confirmed_at` (E2 ruling 6); none ⇒ the E1
+   *      placeholder window, nothing certified.
+   *   4. The occasion PATCH, the event row (through the shared idempotency rule), the door's pending
+   *      add or gem — then the build-way continuation (E2 ruling 2) or the landing view.
    */
-  // ── Step 8b-2 (D3): THE GUEST'S PLAN, CARRIED THROUGH SIGN-IN ───────────────────────────────────
-  // `myself` gates at the mint: the record is written now. `ai` gates later, at the AI form's own
-  // sign-in, so its answers wait here (memory only) and the record is written only if that sign-in
-  // is actually pressed — a guest who closes the form leaves no record behind.
-  const guestAiAnswers = useRef<DraftAnswers | null>(null);
-  const recordFor = (branch: "myself" | "ai", answers: DraftAnswers) =>
-    writePendingPlanRecord({
-      branch,
-      door: (source?.door as string | undefined) ?? null,
-      answers,
-      source: {
-        experienceSlug: answers.occasionSlug || source?.experienceSlug || null,
-        city: source?.city ?? null,
-        country: source?.country ?? null,
-        destination: source?.destination ?? null,
-      },
-    });
-  const guestGate = useCallback(
-    (branch: "myself" | "ai", answers: DraftAnswers) => {
-      if (user) return;
-      switch (branch) {
-        case "myself":
-          recordFor("myself", answers);
-          guestMapLanding.current = opensGuestMap("myself", (source?.door as string | undefined) ?? null);
-          break;
-        default:
-          guestAiAnswers.current = answers;
+  const startFromEntry = useCallback(
+    async (start: PlanEntryStart, from: PlanningSource | null): Promise<PlanEntryStartOutcome> => {
+      const branch: PlanningBranch = from?.branch ?? "myself";
+      if (!user) {
+        writePendingPlanRecord({
+          branch: branch === "ai" ? "ai" : "myself",
+          door: (from?.door as string | undefined) ?? null,
+          answers: entryAnswers(start),
+          source: { experienceSlug: start.occasionSlug, city: start.city, country: start.country, destination: start.destination },
+          ...(from?.pendingMapAdd ? { pendingAdd: from.pendingMapAdd } : {}),
+        });
+        setEntryOpen(false);
+        setLocation(GUEST_MAP_PATH);
+        return { ok: true };
       }
+      if (pendingGemRecovery) {
+        return { ok: false, message: "Your plan was created, but its gem still needs to be added. Retry it from the plan." };
+      }
+      await releasePendingEventsPen();
+      const door = isPlanDoor(from?.door) ? from!.door : undefined;
+      const finish = finishForBranch(branch === "occasion" ? "myself" : branch);
+      const outcome = await mintTripSlip(
+        {
+          destination: start.destination,
+          ...(start.startDate && start.endDate ? { startDate: start.startDate, endDate: start.endDate } : {}),
+          entry: {
+            ...(door ? { door } : {}),
+            occasionSource: start.occasionAsked ? "asked" : "door_prefilled",
+            ...(finish ? { finish } : {}),
+          },
+        },
+        undefined,
+        { datesOptional: true },
+      );
+      if (!outcome.ok) return { ok: false, message: outcome.message };
+      const tripId = outcome.tripId;
+
+      await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, {
+        experienceSlug: start.occasionSlug,
+        eventType: eventTypeForSlug(start.occasionSlug),
+      }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn("[plan-entry] occasion not saved on the new plan:", err?.message);
+      });
+
+      if (start.event) {
+        const existing = await readPlanEventTitles(tripId);
+        const draft = { title: start.event.title };
+        const rows = existing ? eventsNotYetCreated([draft], existing) : [draft];
+        for (const row of rows) {
+          await apiRequest("POST", "/api/user-experiences", {
+            tripId,
+            title: row.title,
+            eventDate: start.event.eventDate,
+            startTime: start.event.startTime,
+            location: start.event.location,
+            ...(start.occasionId ? { experienceTypeId: start.occasionId } : {}),
+          }).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.warn(`[plan-entry] event "${row.title}" not created:`, err?.message);
+          });
+        }
+      }
+
+      // Step 8d: the guest map's one add, run ONCE onto the plan just created. The retry entry is
+      // written FIRST, so a reload or a failure retries the ADD, never the mint.
+      if (from?.pendingMapAdd) {
+        const add = from.pendingMapAdd;
+        writePendingMapAddRetry(outcome.tripId, add);
+        const added = await attachPendingMapAdd(outcome.tripId, add);
+        const said = pendingMapAddMessage(added);
+        toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+      }
+      if (from?.pendingItem) {
+        const pendingItem = from.pendingItem;
+        try {
+          await addPendingGemToTrip(tripId, pendingItem);
+        } catch (error) {
+          const recovery = { tripId, item: pendingItem };
+          savePendingGemRecovery(recovery);
+          setPendingGemRecovery(recovery);
+          setEntryOpen(false);
+          return { ok: true };
+        }
+      }
+
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      setEntryOpen(false);
+      setSource(null);
+
+      const plan: CommittedPlan = {
+        tripId,
+        destination: start.destination,
+        ...(start.startDate ? { startDate: start.startDate } : {}),
+        ...(start.endDate ? { endDate: start.endDate } : {}),
+        occasionSlug: start.occasionSlug,
+      };
+      // THE DOOR'S OWN FINISH (see `PlanningSource.onFinish`): the concierge's routed lead and the
+      // "start a new plan, then add this" doors run after the plan exists (E2 ruling 2).
+      if (from?.onFinish?.(branch, plan) === true) return { ok: true };
+      continueOn(branch, plan, from, start.view);
+      return { ok: true };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, source],
+    [user, pendingGemRecovery, setLocation, toast],
   );
-  const guestSignInFromAiForm = useCallback(() => {
-    if (guestAiAnswers.current) recordFor("ai", guestAiAnswers.current);
-    setAiOpen(false);
-    openSignInModal({ returnTo: currentPagePath() });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openSignInModal, source]);
+
+
+  // ── Step 8b-2 (D3): THE GUEST'S PLAN, CARRIED THROUGH SIGN-IN ───────────────────────────────────
   // After sign-in (a full reload), the record is TAKEN — and so cleared — BEFORE the plan is created,
-  // then replayed through the modal's own finish: the ONE mint, the ONE commit, the D4 landing.
+  // then replayed through the ONE start: the same mint, the same landing.
   const replayStartPageRecord = async (record: PendingPlanRecord) => {
     const experienceSlug = record.source.experienceSlug ?? record.answers.occasionSlug ?? "";
     const city = record.source.city ?? "";
@@ -588,6 +578,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     }
     setLocation(planLandingPath(outcome.tripId, "myself", START_PAGE_DOOR));
   };
+  const replayEntryRecord = async (record: PendingPlanRecord) => {
+    const start = entryStartFromRecord(record);
+    if (!start) {
+      toast({ variant: "destructive", title: "Your plan was not created", description: "Pick a city to start your plan." });
+      return;
+    }
+    const out = await startFromEntry(start, {
+      ...(record.door ? { door: record.door as PlanningSource["door"] } : {}),
+      newPlan: true,
+      branch: record.branch,
+      ...(record.pendingAdd ? { pendingMapAdd: record.pendingAdd } : {}),
+    });
+    if (!out.ok && out.message) toast({ variant: "destructive", title: "Your plan was not created", description: out.message });
+  };
   const replayedForUser = useRef<string | null>(null);
   useEffect(() => {
     if (!user?.id || replayedForUser.current === user.id) return;
@@ -596,23 +600,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       take: () => takePendingPlanRecord(),
       replay: (record) => {
         // Lane E1 (ledger `2026-10-08-e1-zero-questions`): a zero-question start replays through ITS
-        // mint — the occasion and the city, no dates — never the modal's auto-finish, which would refuse
-        // for want of the dates the start page deliberately did not ask. The guest map's one add then
-        // runs once onto the plan, exactly as the modal's mint runs it (retry entry written first).
+        // mint — the occasion and the city, no dates. Every other record is a PlanEntry start (E2).
         if (isStartPageRecord(record)) {
           void replayStartPageRecord(record);
           return;
         }
-        open({
-          ...(record.door ? { door: record.door as PlanningSource["door"] } : {}),
-          newPlan: true,
-          ...(record.source.experienceSlug ? { experienceSlug: record.source.experienceSlug } : {}),
-          ...(record.source.city ? { city: record.source.city } : {}),
-          ...(record.source.country ? { country: record.source.country } : {}),
-          resumeAnswers: record.answers,
-          autoFinish: record.branch,
-          ...(record.pendingAdd ? { pendingMapAdd: record.pendingAdd } : {}),
-        });
+        void replayEntryRecord(record);
       },
     });
     // Step 8d: a guest-map add whose plan was created but whose add did not land is retried here —
@@ -632,187 +625,83 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const runBranch = useCallback(
-    (branch: PlanningBranch, plan: CommittedPlan) => {
-      // THE DOOR'S OWN FINISH first (see `PlanningSource.onFinish`). A door that handles the
-      // branch takes the screen from here; the modal closes and the default rail below is not
-      // run. Everything else — including every door that sets no hook — falls straight through,
-      // so the four branches keep the downstream behaviour Locked Decision 33 gave them.
-      if (source?.onFinish?.(branch, plan) === true) {
-        setModalOpen(false);
-        return;
-      }
-      if (branch === "ai") {
-        setCommitted(plan);
-        setModalOpen(false);
-        // Smoke 5 item 4 (ledger `2026-10-03-smoke5-fixes`): the finish has MINTED the plan (RC-1),
-        // so the traveler is on its slip from this moment — the AI form opens OVER the slip, not
-        // over the page the wizard was opened from. Three smokes ended on /destinations: the form
-        // only navigated after a successful draft, so closing it, or a draft that did not finish,
-        // left the traveler on the door's page with a plan they could not see. No plan (a guest, a
-        // refused mint) ⇒ nothing to land on, and the form opens where it always did.
-        // Step 8b-2 (D4): branch `ai` lands on the plan's MAP view, from any door.
-        if (plan.tripId) setLocation(planLandingPath(plan.tripId, "ai", source?.door));
-        setAiOpen(true);
-        return;
-      }
-      setModalOpen(false);
-      if (branch === "myself") {
-        // `mintPlan` already refused (and said so in the modal) if no slip could exist, so a
-        // finish that reaches here without an id has nothing to navigate to.
-        // Step 8b-2 (D4): `myself` from the /experiences start page lands on the map view.
-        if (plan.tripId) setLocation(planLandingPath(plan.tripId, "myself", source?.door));
-        return;
-      }
-      if (branch === "local") {
-        // D15 (lane L22): a plan started FROM an expert ends back at that expert, rather than in
-        // a browse for the person whose page the traveler was already on. Addressed by HANDLE
-        // (Locked Decision 40) through `earnerProfilePath`, the ONE resolver of an earner's
-        // public path — a second `/s/${handle}` written here is the drift class §18 rule 1 names.
-        // §13: only the `expert` kind is read; a door that named nothing, or named a `service`
-        // (whose finish D15 rules but this lane does not build), falls through to exactly the
-        // browse this branch has always shown.
-        // The minted plan rides back with it (`withPlanTripId`): the storefront's booking panel
-        // reads `?tripId=` to offer "Share my plan", so arriving without it would hand the
-        // traveler "Start a plan" for the plan they just made.
-        if (source?.returnTo?.kind === "expert") {
-          const path = earnerProfilePath({ handle: source.returnTo.handle });
-          if (path) {
-            setLocation(withPlanTripId(path, plan.tripId));
-            return;
-          }
-        }
-        /**
-         * D5: FORWARD THE TRIP. The finish has just minted one (`BRANCHES_THAT_MINT`), and
-         * `/experts` already reads `?tripId=` and carries it into each expert's detail page, where
-         * `POST /api/expert-booking-requests` REQUIRES it. Without it that CTA re-opens this modal
-         * — the traveler is returned to the step they just finished, which is the loop D5 exists to
-         * close (`docs/briefs/EXPERT_HANDOFF_IS_A_LOOP.md`).
-         *
-         * §13: the id is appended only when there IS one. A mint the traveler refused at the
-         * sign-in gate, or one that failed, leaves `plan.tripId` empty and this falls back to
-         * exactly the browse this branch has always shown rather than sending `tripId=undefined`.
-         */
-        // THE EXPERT DOOR (ledger `2026-09-29-expert-door`; decision-maker dispatch Sep 29, 2026):
-        // with a plan minted, the finish lands on the SLIP, which opens with "How much help do you
-        // want?" and a picker of the experts who offer that level in the plan's market — the
-        // request then rides the storefront rail with this plan attached (LD 32). The browse below
-        // stays only for a finish that minted nothing (§13 — no plan, nothing to land on).
-        if (plan.tripId) {
-          setLocation(expertDoorHref(plan.tripId));
-          return;
-        }
-        const dest = plan.destination || sourceDestination(source);
-        setLocation(buildExpertsBrowseHref({ destination: dest, tripId: plan.tripId }));
-        return;
-      }
-      void startMembershipCheckout({
-        planKey: "plus_annual",
-        onSignInRequired: () =>
-          openSignInModal({
-            title: "Sign in to join Plus",
-            description: "Sign in to continue to secure checkout.",
-            returnTo: "/pricing",
-          }),
-        onNotice: (notice) => toast(notice),
-      });
-    },
-    [setLocation, source, openSignInModal, toast],
-  );
-
-  const continueHref = tripCtx.tripId
-    ? planningRouteForTrip(tripCtx.tripId, tripCtx.endDate)
-    : null;
-  const continueLabel = tripCtx.tripId
-    ? `Continue ${tripCtx.title || (tripCtx.destination ? `your ${tripCtx.destination.split(",")[0]} trip` : "your trip")}`
-    : null;
-
   const api = useMemo(() => ({ open, close }), [open, close]);
-
-  /**
-   * The finish's CTAs. A `source.branch` deep-open narrows it to the one the door already chose;
-   * otherwise the three ways to build, plus the Plus occasion row when — and only when — sales are
-   * on. Hidden, never teased.
-   */
-  const branches = useMemo<PlanningBranch[]>(() => {
-    if (source?.branch) return [source.branch];
-    return plusSalesEnabled ? [...DEFAULT_BRANCHES, "occasion"] : DEFAULT_BRANCHES;
-  }, [source, plusSalesEnabled]);
-
-  const initialDestination = useMemo(() => {
-    const dest = committed?.destination || sourceDestination(source);
-    if (!dest) return null;
-    const [city, ...rest] = dest.split(",");
-    return { city: city.trim(), country: rest.join(",").trim(), cityId: null };
-  }, [source, committed]);
 
   return (
     <PlanningContext.Provider value={api}>
       {children}
 
+      <PlanEntry
+        open={entryOpen}
+        onOpenChange={(v) => (v ? setEntryOpen(true) : close())}
+        source={entryOpen ? source : null}
+        onStart={(start) => startFromEntry(start, source)}
+      />
+
       <PlanModal
         open={modalOpen}
         onOpenChange={(v) => (v ? setModalOpen(true) : close())}
         source={source}
-        branches={branches}
         // The door's own answer, forwarded verbatim — never derived from `user.role` here (see the
         // field's note on `PlanningSource`).
         authoring={source?.authoring === true}
-        continueHref={continueHref}
-        continueLabel={continueLabel}
-        onContinue={(href) => setLocation(href)}
-        mintPlan={mintPlan}
-        onGuestGate={guestGate}
         pendingGemRetry={pendingGemRecovery ? { title: pendingGemRecovery.item.title } : null}
         retryPendingGem={retryPendingGem}
         onPendingGemRecovered={finishPendingGemRecovery}
-        onFinish={runBranch}
       />
-
-      {aiOpen && (
-        <EnhancedPlanningModal
-          isOpen={aiOpen}
-          onClose={() => setAiOpen(false)}
-          initialDestination={initialDestination}
-          initialExperienceType={source?.experienceType}
-          // What the traveler just told the plan modal (ledger `2026-09-04-one-modal-many-doors`).
-          // Since ledger `2026-09-04-golf-occasion-and-housekeeping` these are the AI form's ONLY
-          // source for the four basics — its duplicate destination/date/occasion/party fields are
-          // gone, and it shows a read-only summary of exactly what is passed here.
-          initialStartDate={committed?.startDate}
-          initialEndDate={committed?.endDate}
-          initialTravelers={committed?.travelers}
-          // RC-1 (ledger `2026-09-24-rc1-finish-mints`): the finish MINTED this plan before it
-          // opened the AI form (`ai` is in `BRANCHES_THAT_MINT`), so the free draft is written INTO
-          // it — onto an empty slip, which is the only place LD 41 (b) lets the free draft run.
-          // Absent (a guest, or a mint that was refused) ⇒ the form keeps its old behaviour and
-          // the server mints on a successful generation, exactly as before.
-          tripId={committed?.tripId}
-          momentKey={source?.momentKey}
-          userId={user?.id || ""}
-          // "change" on that summary. THE OPENER IS THE OPENER: this closes the AI form and calls
-          // the same `open(source)` every door on the site calls, so the traveler lands back in
-          // THE plan modal — not a second one — with the SAME door context it was opened with.
-          // Which step it opens on is `resolvePlanSteps`' answer and is not restated here: by this
-          // point the plan holds an occasion, so it re-opens at step 2 (Where), the first basic.
-          onChangeBasics={() => {
-            setAiOpen(false);
-            open(source ?? undefined);
-          }}
-          // Step 8b-2 (D3, ruling 6): the AI form signs a guest in through the SAME sign-in modal,
-          // carrying their answers in the one record — never a bare /api/login with nothing kept.
-          onGuestSignIn={guestSignInFromAiForm}
-        />
-      )}
     </PlanningContext.Provider>
   );
 }
 
-/** The page the traveler is on, as a same-origin return path for sign-in (never carries answers). */
-function currentPagePath(): string | undefined {
+/** A PlanEntry start as the v2 sign-in record's answers (the guest map reads the same shape). */
+function entryAnswers(start: PlanEntryStart): DraftAnswers {
+  return {
+    title: "",
+    stops: [start.destination],
+    startDate: start.startDate ?? "",
+    endDate: start.endDate ?? "",
+    adults: "",
+    kids: "",
+    budgetApproverName: "",
+    budgetApproverEmail: "",
+    accessibilityNote: "",
+    mainMomentTime: "",
+    mainMomentDate: "",
+    events: start.event ? [{ title: start.event.title, eventDate: start.event.eventDate, startTime: start.event.startTime, location: start.event.location }] : [],
+    occasionSlug: start.occasionSlug,
+  };
+}
+
+/** The reverse: a record back into a start. A record with no city states no plan (§13). */
+function entryStartFromRecord(record: PendingPlanRecord): PlanEntryStart | null {
+  const a = record.answers;
+  const destination = (a.stops?.[0] ?? record.source.destination ?? "").trim();
+  if (!destination) return null;
+  const [cityPart, ...rest] = destination.split(",");
+  const occasionSlug = (a.occasionSlug || record.source.experienceSlug || OCCASION_GROUP_DEFAULT_SLUG.trips).trim();
+  const ev = a.events?.[0];
+  // The record carries no catalog row to group by; a replayed start lands where the guest already was — the map.
+  const view = "map" as const;
+  return {
+    destination,
+    city: record.source.city ?? cityPart.trim(),
+    country: record.source.country ?? rest.join(",").trim(),
+    ...(a.startDate && a.endDate ? { startDate: a.startDate, endDate: a.endDate } : {}),
+    occasionSlug,
+    ...(ev ? { event: { title: ev.title, eventDate: ev.eventDate ?? a.startDate, startTime: ev.startTime ?? null, location: ev.location ?? "" } } : {}),
+    view,
+    occasionAsked: true,
+  };
+}
+
+/** The plan's existing event titles, or null when they could not be read (§13: unread ≠ empty). */
+async function readPlanEventTitles(tripId: string): Promise<string[] | null> {
   try {
-    return `${window.location.pathname}${window.location.search}`;
+    const res = await apiRequest("GET", "/api/user-experiences");
+    const rows: Array<{ tripId?: string | null; title?: string | null }> = await res.json();
+    if (!Array.isArray(rows)) return null;
+    return rows.filter((r) => r?.tripId === tripId).map((r) => (typeof r?.title === "string" ? r.title : "")).filter((t) => t.length > 0);
   } catch {
-    return undefined;
+    return null;
   }
 }

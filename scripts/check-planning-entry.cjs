@@ -481,8 +481,60 @@ function checkServicesBrowseDoors(files) {
   return errors;
 }
 
+// ── E2: THE POP-UP IS PlanEntry, AND THE EDIT WINDOW ONLY EDITS ─────────────────────────────────
+//
+// Ledger `2026-10-09-e2-plan-entry` (decision-maker rulings 1 and 7, Oct 9, 2026). Every door that
+// starts a NEW plan opens PlanEntry: "Plan around…" a place · a date · an event → the occasion →
+// Start a plan. Nothing before the plan asks When, Who or a plan name, offers a build chooser, or
+// shows Clear/Save. The bound plan's edit window (`plan-modal.tsx`) creates nothing: no Occasion step,
+// no build chooser, no Clear, no plan name.
+//
+// NEGATIVE SPACE (§18d): this reads source TEXT for test ids and the two step unions. It cannot see a
+// question asked under a different test id, nor that the steps render in this order on screen — the
+// Playwright spec `planning-entry.spec.ts` is the layer for that.
+const PLAN_ENTRY_FILE = "client/src/components/plan/PlanEntry.tsx";
+const PLAN_ENTRY_LIB = "client/src/lib/plan-entry.ts";
+const EDIT_WINDOW_FILE = "client/src/components/trip/plan-modal.tsx";
+const PLAN_ENTRY_FORBIDDEN = [
+  "plan-step-when",
+  "plan-step-who",
+  "input-etp-title",
+  "planning-option-",
+  "button-etp-clear",
+  "button-etp-save",
+];
+const EDIT_WINDOW_FORBIDDEN = ["plan-step-occasion", "planning-option-", "button-etp-clear", "input-etp-title"];
+const PLAN_ENTRY_STEPS = { around: /export type PlanAround = "place" \| "date" \| "event";/, steps: /export type PlanEntryStep = "around" \| "occasion";/ };
+
+function checkPlanEntryShape(files) {
+  const errors = [];
+  const entry = files[PLAN_ENTRY_FILE];
+  const lib = files[PLAN_ENTRY_LIB];
+  const edit = files[EDIT_WINDOW_FILE];
+  for (const [f, src] of [[PLAN_ENTRY_FILE, entry], [PLAN_ENTRY_LIB, lib], [EDIT_WINDOW_FILE, edit]]) {
+    if (src === undefined) errors.push(`${f} does not exist — E2's PlanEntry/edit-window split cannot be checked. If it moved, update this guard.`);
+  }
+  if (entry !== undefined) {
+    const code = stripComments(entry);
+    for (const id of PLAN_ENTRY_FORBIDDEN) {
+      if (code.includes(id)) errors.push(`${PLAN_ENTRY_FILE} renders \`${id}\` — PlanEntry asks nothing but place/date/event and the occasion before the plan exists (E2).`);
+    }
+  }
+  if (lib !== undefined) {
+    if (!PLAN_ENTRY_STEPS.around.test(lib)) errors.push(`${PLAN_ENTRY_LIB}: Step 1 must be exactly place · date · event (\`PlanAround\`).`);
+    if (!PLAN_ENTRY_STEPS.steps.test(lib)) errors.push(`${PLAN_ENTRY_LIB}: PlanEntry's steps must be exactly around → occasion (\`PlanEntryStep\`).`);
+  }
+  if (edit !== undefined) {
+    const code = stripComments(edit);
+    for (const id of EDIT_WINDOW_FORBIDDEN) {
+      if (code.includes(id)) errors.push(`${EDIT_WINDOW_FILE} renders \`${id}\` — the edit window edits the bound plan and creates nothing (E2 ruling 1).`);
+    }
+  }
+  return errors;
+}
+
 function check(files) {
-  return [...checkEntryShapes(files), ...checkSourceFields(files), ...checkServicesBrowseDoors(files)];
+  return [...checkEntryShapes(files), ...checkSourceFields(files), ...checkServicesBrowseDoors(files), ...checkPlanEntryShape(files)];
 }
 
 // ── committed self-test fixtures (§18d) ────────────────────────────────────────────────────────
@@ -656,6 +708,26 @@ function selfTest() {
     // real navigation on the next line must still be caught.
     ["D13 · a COMMENT naming the old `/services?…` URL does not fail the door", () => checkServicesBrowseDoors(sbd('// it used to navigate to `/services?categoryKey=x`\nnavigate(buildServicesBrowseHref({ tripId }));')).length === 0],
     ["D13 · a comment does not MASK a real hand-assembled URL below it", () => checkServicesBrowseDoors(sbd('/* was `/services?categoryKey=x` */\nnavigate(buildServicesBrowseHref({}));\nnavigate("/services?categoryKey=" + k);')).some((e) => e.includes("hand-assembles"))],
+    // E2 · PlanEntry / edit window (ledger `2026-10-09-e2-plan-entry`).
+    ...(() => {
+      const lib = 'export type PlanAround = "place" | "date" | "event";\nexport type PlanEntryStep = "around" | "occasion";';
+      const entry = '<Chip testId="plan-entry-around-place" />\n<button data-testid="button-plan-entry-start">Start a plan</button>';
+      const edit = '<button data-testid="plan-step-where" />\n<Button data-testid="button-etp-save">Save</Button>';
+      const pe = (e, l, m) => ({ [PLAN_ENTRY_FILE]: e, [PLAN_ENTRY_LIB]: l, [EDIT_WINDOW_FILE]: m });
+      return [
+        ["E2 · PlanEntry + an edit-only window passes", () => checkPlanEntryShape(pe(entry, lib, edit)).length === 0],
+        ["E2 · PlanEntry asking When FAILS", () => checkPlanEntryShape(pe(entry + '\n<div data-testid="plan-step-when" />', lib, edit)).some((x) => x.includes("plan-step-when"))],
+        ["E2 · PlanEntry asking a plan name FAILS", () => checkPlanEntryShape(pe(entry + '\n<Input data-testid="input-etp-title" />', lib, edit)).some((x) => x.includes("input-etp-title"))],
+        ["E2 · PlanEntry offering the build chooser FAILS", () => checkPlanEntryShape(pe(entry + '\n<button data-testid={`planning-option-${b}`} />', lib, edit)).some((x) => x.includes("planning-option-"))],
+        ["E2 · PlanEntry with Save FAILS", () => checkPlanEntryShape(pe(entry + '\n<Button data-testid="button-etp-save" />', lib, edit)).some((x) => x.includes("button-etp-save"))],
+        ["E2 · a COMMENT naming a retired id does not fail PlanEntry", () => checkPlanEntryShape(pe('// no plan-step-when here\n' + entry, lib, edit)).length === 0],
+        ["E2 · Step 1 not exactly place/date/event FAILS", () => checkPlanEntryShape(pe(entry, lib.replace('"event"', '"when"'), edit)).some((x) => x.includes("PlanAround"))],
+        ["E2 · steps not exactly around → occasion FAILS", () => checkPlanEntryShape(pe(entry, lib.replace('"occasion"', '"who"'), edit)).some((x) => x.includes("PlanEntryStep"))],
+        ["E2 · the edit window with an Occasion step FAILS", () => checkPlanEntryShape(pe(entry, lib, edit + '\n<div data-testid="plan-step-occasion-body" />')).some((x) => x.includes("plan-step-occasion"))],
+        ["E2 · the edit window with Clear plan FAILS", () => checkPlanEntryShape(pe(entry, lib, edit + '\n<Button data-testid="button-etp-clear" />')).some((x) => x.includes("button-etp-clear"))],
+        ["E2 · a missing PlanEntry file fails loudly", () => checkPlanEntryShape({ [PLAN_ENTRY_LIB]: lib, [EDIT_WINDOW_FILE]: edit }).some((x) => x.includes("does not exist"))],
+      ];
+    })(),
   );
 
   let failed = 0;
@@ -677,7 +749,7 @@ function main() {
   const files = {};
   // Both lists — an ENTRY_SURFACES row and a REQUIRED_SOURCE_FIELDS row are independent (a door
   // that is not a browse surface, like the ticker rail, appears only in the second).
-  for (const s of [...ENTRY_SURFACES, ...REQUIRED_SOURCE_FIELDS, ...SERVICES_BROWSE_DOORS]) {
+  for (const s of [...ENTRY_SURFACES, ...REQUIRED_SOURCE_FIELDS, ...SERVICES_BROWSE_DOORS, { file: PLAN_ENTRY_FILE }, { file: PLAN_ENTRY_LIB }, { file: EDIT_WINDOW_FILE }]) {
     if (files[s.file] !== undefined) continue;
     const p = path.join(ROOT, s.file);
     if (fs.existsSync(p)) files[s.file] = fs.readFileSync(p, "utf8");
@@ -692,7 +764,8 @@ function main() {
   }
   console.log(
     `planning-entry guard: OK — ${ENTRY_SURFACES.length} browse surfaces each offer a plan entry; ` +
-      `${REQUIRED_SOURCE_FIELDS.length} doors pass what they hold, ${SERVICES_BROWSE_DOORS.length} browse doors go through the one href builder (Locked Decision 42 D13).`,
+      `${REQUIRED_SOURCE_FIELDS.length} doors pass what they hold, ${SERVICES_BROWSE_DOORS.length} browse doors go through the one href builder (Locked Decision 42 D13); ` +
+      `the pop-up is PlanEntry and the edit window only edits (E2).`,
   );
 }
 
