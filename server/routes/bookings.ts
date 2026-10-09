@@ -40,6 +40,7 @@ import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/s
 import { logger } from '../infrastructure/logger';
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from '@shared/payment-on-record';
 import { isCanonicalBookingEmailPersistenceError } from '../services/canonical-booking-email.service';
+import { isLegacyBookingEmailPersistenceError } from '../services/legacy-booking-email-persistence-error';
 import {
   dispatchPaymentEvent,
   PLATFORM_DISPUTE_PAYOUT_AUTOMATION_IDS,
@@ -371,7 +372,7 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
 
     res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
   } catch (error: any) {
-    if (isCanonicalBookingEmailPersistenceError(error)) {
+    if (isCanonicalBookingEmailPersistenceError(error) || isLegacyBookingEmailPersistenceError(error)) {
       return res.status(503).json({
         success: false,
         error: 'booking_confirmation_persistence_failed',
