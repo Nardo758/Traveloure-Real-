@@ -21,6 +21,7 @@ import { renderToString } from "react-dom/server";
 import type { WhereToStayView } from "@shared/where-to-stay";
 import { AnchorPanelView, type AnchorPanelViewProps } from "../../plan/AnchorPanel";
 import { GOOGLE_MAPS_ATTRIBUTION, stayCardModel, stayMapsHref, stayScoredLine } from "../../../lib/stay-card";
+import { buildGoogleMapsDeepLink } from "../../../lib/maps";
 
 (globalThis as any).React = React;
 
@@ -47,8 +48,10 @@ describe("S1 stay card", () => {
     assert.equal(stayScoredLine(null, 34), null);
     assert.equal(stayScoredLine(3, 0), null);
     assert.equal(stayScoredLine(40, 34), "Scored 34 of 34 nearby");
-    assert.equal(stayMapsHref("Hotel Kanra", "Kyoto"), "https://www.google.com/maps/search/?api=1&query=Hotel%20Kanra%2C%20Kyoto");
-    assert.equal(stayMapsHref("Hotel Kanra", null), "https://www.google.com/maps/search/?api=1&query=Hotel%20Kanra");
+    // Built by the ONE canonical Maps builder (trip-card-honesty), as a name search: hotel, then city.
+    assert.equal(stayMapsHref("Hotel Kanra", "Kyoto"), buildGoogleMapsDeepLink([{ name: "Hotel Kanra, Kyoto" }]));
+    assert.equal(stayMapsHref("Hotel Kanra", null), buildGoogleMapsDeepLink([{ name: "Hotel Kanra" }]));
+    assert.match(stayMapsHref("Hotel Kanra", "Kyoto"), /destination=Hotel(\+|%20)Kanra%2C(\+|%20)Kyoto/);
   });
 
   it("SC2 no pick draws nothing; the free list is at most three", () => {
@@ -72,7 +75,7 @@ describe("S1 stay card", () => {
     assert.match(t, /Scored 21 of 34 nearby/);
     assert.match(html, /data-testid="stay-pick-stay-hotel_cache-h1"/);
     assert.match(html, /bg-\[color:var\(--slip-primary/);
-    assert.match(html, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=Hotel%20Kanra%2C%20Kyoto"/);
+    assert.ok(html.includes(`href="${stayMapsHref("Hotel Kanra", "Kyoto").replace(/&/g, "&amp;")}"`), "the canonical Maps link for the hotel in the plan's city");
     assert.match(html, /data-testid="stay-pick-map-attribution-h1"/);
     assert.match(t, new RegExp(`View on map · ${GOOGLE_MAPS_ATTRIBUTION}`));
     assert.match(html, /data-testid="stay-pick-swap"/);

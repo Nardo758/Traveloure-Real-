@@ -15,6 +15,7 @@
  * for the hotel's name and the plan's city, labelled with its attribution beside it.
  */
 import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
+import { buildGoogleMapsDeepLink } from "@/lib/maps";
 
 export const STAY_PICK_TITLE = "Our pick for your days";
 export const STAY_PICK_SUBTITLE = "Closest to your stops on most days, by travel time.";
@@ -35,10 +36,14 @@ export function stayScoredLine(scored: number | null | undefined, total: number 
   return `Scored ${Math.min(scored, total)} of ${total} nearby`;
 }
 
-/** The Maps fallback for the link slot: a search for the hotel's name in the plan's city. */
+/**
+ * The Maps fallback for the link slot: a name search for the hotel in the plan's city, built by the ONE
+ * canonical Maps builder (`@/lib/maps`; the trip-card-honesty guard). It is always a Google Maps link,
+ * because the attribution beside it says "Google Maps".
+ */
 export function stayMapsHref(name: string, city?: string | null): string {
   const query = [name.trim(), (city ?? "").trim()].filter(Boolean).join(", ");
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  return buildGoogleMapsDeepLink([{ name: query }]);
 }
 
 export type StayCardModel =
