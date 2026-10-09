@@ -3043,6 +3043,9 @@ jobs:
       JOURNEY_DB_WRITES_OK: '1'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The Part 2 benchmark builds the exact reviewed before-change storage.
+          fetch-depth: 0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -3055,6 +3058,12 @@ jobs:
         with:
           database-url: postgresql://postgres:postgres@localhost:5432/traveloure
           seed-ci-users: 'false'
+      - name: Atomic cart clock and immutable add-time snapshots (two isolated loops)
+        env:
+          # Independently fixed CI target; never derive approval from the queried DB.
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traveloure
+          MESSAGING_DEV_FINGERPRINT: 96b4d02d7161da67c35e6d9aeed73112
+        run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/cart-email-state.test.ts server/__tests__/cart-email-state.db.test.ts
       # T-2. The directory mixes pure and DB suites, so one database is cheaper
       # than a split; seven of these files were already reachable through their
       # own per-file jobs and are re-run here, which is the 2026-09-14 precedent

@@ -339,6 +339,14 @@ function parseRunner(tokens) {
   if (!head || !RUNNERS.has(head.name)) return null;
   const kind = head.name;
   const args = tokens.slice(head.index + 1);
+  // This existing wrapper invokes node:test with the explicit files after cloning
+  // a disposable schema. Do not treat arbitrary JS scripts or prose as runners.
+  if (kind === "node" && args[0] === "scripts/verification/run-messaging-gate.mjs") {
+    const files = args.slice(1).filter(arg => arg !== "--isolated-db");
+    if (!args.includes("--isolated-db") || !files.length ||
+        !files.every(arg => /^[\w./-]+\.(?:test|spec)\.ts$/.test(arg))) return null;
+    return { kind: "tsx", args: files };
+  }
   if ((kind === "tsx" || kind === "node") && !args.includes("--test")) return null;
   if (kind === "vitest" && args[0] !== "run") return null;
   if (kind === "playwright" && args[0] !== "test") return null;
@@ -488,6 +496,23 @@ function selfTest() {
   const dirExists = (candidate) => dirs.has(candidate);
 
   const cases = [
+    {
+      name: "retained isolated messaging wrapper reaches only explicit files",
+      commands: ["node scripts/verification/run-messaging-gate.mjs --isolated-db server/direct.test.ts shared/directory/covered.test.ts"],
+      reachable: ["server/direct.test.ts", "shared/directory/covered.test.ts"],
+      orphans: ["server/__tests__/prose-only.test.ts", "client/unreferenced.test.ts"],
+    },
+    {
+      name: "wrapper prose and other scripts do not establish reachability",
+      commands: [
+        'echo "node scripts/verification/run-messaging-gate.mjs --isolated-db server/direct.test.ts"',
+        "node scripts/verification/unknown.mjs --isolated-db server/direct.test.ts",
+        "node scripts/verification/run-messaging-gate.mjs server/direct.test.ts",
+        "node scripts/verification/run-messaging-gate.mjs --isolated-db --unknown server/direct.test.ts",
+      ],
+      reachable: [],
+      orphans: tests,
+    },
     {
       // Baseline (the original two fixtures): a direct file selector and a
       // directory selector are both reachable; an unreferenced test is an orphan.
