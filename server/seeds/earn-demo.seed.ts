@@ -11,6 +11,7 @@
  * Run: npm run seed:earn-demo
  */
 
+import { curatedGemTags } from "@shared/content-tiers";
 import crypto from "node:crypto";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -340,6 +341,8 @@ async function upsertReadyMade(
     preferences: { source: "earn-demo-seed" },
   }, counter, "sourceTrips");
   await upsertById(conn, readyMadeTrips, {
+    sourceClass: "local", // FD-2
+    reuseClass: "reusable",
     id: `earn-demo-${market.slug}-${prefix}-ready-made`,
     authorId: userId,
     sourceTripId: tripId,
@@ -463,6 +466,7 @@ async function upsertGems(
         // neighbourhood by this value.
         neighborhood: nb.slug,
         curatedByExpertId: curatorId,
+        ...curatedGemTags(curatorId), // FD-2
       }, counter, "gems");
     }
   }

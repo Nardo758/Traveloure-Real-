@@ -127,3 +127,97 @@ export function isDraftEligible(row: TierCandidate & { quotedOfficialExpiresAt?:
 export function isFreeDraftEligible(row: TierCandidate, now: Date = new Date()): boolean {
   return row.sourceClass === "public" && isDraftEligible(row, now);
 }
+
+/**
+ * Ruling 9 — `itinerary_items.source_class`, server-stamped at creation, never client-settable. ONE
+ * derivation (§18 rule 1), read by every item writer:
+ *   · a local input produced it (an expert's work, a gem, a nugget, a Ready Made copy, an expert-recommended
+ *     option) ⇒ `local`;
+ *   · otherwise an item the traveler (or their assistant) added, or a draft built from public inputs ⇒ `public`;
+ *   · an item whose origin the writer does not know ⇒ NULL (§13) — untagged, never guessed.
+ */
+export function itemSourceClass(input: {
+  origin?: string | null;
+  gemId?: string | null;
+  fromLocalInput?: boolean;
+}): SourceClass | null {
+  if (input.fromLocalInput || input.origin === "expert" || (input.gemId != null && input.gemId !== "")) return "local";
+  if (input.origin === "traveler" || input.origin === "assistant" || input.origin === "ai") return "public";
+  return null;
+}
+
+/**
+ * The tag pair a `place_facts` row is born with (ruling 1/2), from its origin and license. An expert-confirmed
+ * nugget is ours and local; Places is display-in-plan; a crawled fact follows the license mapping, and an unknown
+ * license on a crawled fact is link-only, as migration 362 backfills it. Any other origin has no ruled tag ⇒ null.
+ */
+export function placeFactTags(origin: string | null | undefined, license: string | null | undefined): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
+  if (origin === "expert_nugget") return { sourceClass: "local", reuseClass: "reusable" };
+  if (origin === "places_api") return { sourceClass: "public", reuseClass: "display_in_plan" };
+  if (origin === "crawled") return { sourceClass: "public", reuseClass: reuseClassForLicense(license) === "display_in_plan" ? "display_in_plan" : license === "partner" ? "internal" : "link_only" };
+  return null;
+}
+
+/** "Traveloure team" — only on a row a person on the team seeded; never on machine output (ruling 3). */
+export const TEAM_AUTHOR_LABEL = "Traveloure team";
+
+/**
+ * FD-2 ruling 9 (ledger `2026-10-09-fd2-content-tier-tags`): stamp `itinerary_items.source_class` on a row
+ * about to be INSERTED, from the server's own facts — the row's `origin` and `gemId` and the writer's
+ * `fromLocalInput` — through the ONE derivation `itemSourceClass` (§18 rule 1). Any client-supplied value
+ * was already removed by the storage strip (`stripItineraryItemRoutingFields`) or never accepted by the writer; an origin the writer does not know stays NULL.
+ */
+export function stampItemSourceClass<T extends Record<string, unknown>>(row: T, opts: { fromLocalInput?: boolean } = {}): T {
+  const { sourceClass: _ignored, ...rest } = row as Record<string, unknown>;
+  const stamped = itemSourceClass({
+    origin: (rest.origin as string | null | undefined) ?? null,
+    gemId: (rest.gemId as string | null | undefined) ?? null,
+    fromLocalInput: opts.fromLocalInput,
+  });
+  return { ...rest, sourceClass: stamped } as unknown as T;
+}
+
+
+/**
+ * The tags a GEM is born with (FD-2; ledger `2026-10-09-fd2-content-tier-tags`). Three writers, three shapes:
+ *   · a gem a person on the team SEEDED ⇒ local, reusable, "Traveloure team", verified at insert;
+ *   · a gem an EXPERT curated (nugget promotion, a curated seed) ⇒ local, reusable, verified BY that expert;
+ *   · an AI-written gem ⇒ NOTHING (ruling 3) — it stays out of every draft until a person verifies it
+ *     (`gemVerificationTags`, which makes the verifier its author).
+ */
+export function teamSeededGemTags(now: Date = new Date()) {
+  return { sourceClass: "local" as const, reuseClass: "reusable" as const, authorLabel: TEAM_AUTHOR_LABEL, verifiedAt: now };
+}
+
+export function curatedGemTags(expertUserId: string, now: Date = new Date()) {
+  return { sourceClass: "local" as const, reuseClass: "reusable" as const, verifiedBy: expertUserId, verifiedAt: now };
+}
+
+/** Ruling 3: verifying an untagged gem makes the verifier its author — never "Traveloure team". */
+export function gemVerificationTags(verifierUserId: string, now: Date = new Date()) {
+  return { sourceClass: "local" as const, reuseClass: "reusable" as const, verifiedBy: verifierUserId, verifiedAt: now, authorLabel: null };
+}
+
+/** An expert's own nugget: local, ours, verified at the moment the expert wrote it (as migration 362 backfills). */
+export function expertNuggetTags(now: Date = new Date()) {
+  return { sourceClass: "local" as const, reuseClass: "reusable" as const, verifiedAt: now };
+}
+
+/** Seasons and neighbourhood descriptions are public (ruling 4) and ours to reuse. */
+export const PUBLIC_REUSABLE_TAGS = { sourceClass: "public" as const, reuseClass: "reusable" as const };
+
+/**
+ * A `plan_options` row's source class (FD-2). An incumbent carries its item's own class; an option an expert
+ * recommended or added is a local input; anything else the traveler, their assistant or a public catalog
+ * put there is public.
+ */
+export function optionSourceClass(input: {
+  sourceKind?: string | null;
+  incumbentSourceClass?: string | null;
+  expertRecommendedBy?: string | null;
+  addedByRole?: string | null;
+}): SourceClass | null {
+  if (input.sourceKind === "incumbent") return isSourceClass(input.incumbentSourceClass) ? input.incumbentSourceClass : null;
+  if (input.expertRecommendedBy || input.addedByRole === "expert") return "local";
+  return "public";
+}

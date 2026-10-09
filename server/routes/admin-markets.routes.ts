@@ -10,6 +10,7 @@
  * same bbox's named place nodes. Read-only list endpoint reports what the DB can answer cheaply and
  * honestly — a check this route can't compute is omitted, never guessed (§13).
  */
+import { PUBLIC_REUSABLE_TAGS } from "@shared/content-tiers";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
@@ -258,7 +259,8 @@ router.post("/api/admin/markets", async (req, res) => {
       if (rows.length > 0) {
         const inserted = await db
           .insert(cityNeighborhoods)
-          .values(rows)
+          // FD-2 ruling 4: public; extracted from OpenStreetMap, so no team author is claimed.
+          .values(rows.map((r: any) => ({ ...r, ...PUBLIC_REUSABLE_TAGS })))
           .onConflictDoNothing({
             target: [cityNeighborhoods.city, cityNeighborhoods.country, cityNeighborhoods.slug],
           })

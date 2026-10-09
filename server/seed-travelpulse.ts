@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { teamSeededGemTags } from "@shared/content-tiers";
 import {
   travelPulseCalendarEvents,
   travelPulseCities,
@@ -162,6 +163,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
       const existing = await db.select().from(travelPulseHiddenGems).where(eq(travelPulseHiddenGems.id, gem.id));
       if (existing.length === 0) {
         await db.insert(travelPulseHiddenGems).values({
+          ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
           id: gem.id,
           city: gem.city,
           country: gem.country,

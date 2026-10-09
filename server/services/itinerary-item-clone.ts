@@ -125,6 +125,7 @@ export const CLONE_EXCLUDED_FIELDS: Readonly<Record<string, string>> = {
   createdAt: "audit — the clone is created now, not when the author wrote the item",
   updatedAt: "audit — same",
   lockedAt: "the AUTHOR's instruction to machines on their own plan (R-ah, migration 342) — a buyer's clone starts unlocked and they lock what they choose",
+  sourceClass: "server-stamped at the clone's own insert (FD-2 ruling 9, migration 361) — a Ready Made copy is local by `stampItemSourceClass`, never copied from the author's row",
   sourceRunId: "provenance of an adopted day on the AUTHOR's plan (migration 343) — the run lives on the author's trip, and on the buyer's plan it would name a run they never had",
   sourceVariantId: "provenance — same as sourceRunId: the version it names belongs to the author's run",
 

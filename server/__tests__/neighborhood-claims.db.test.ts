@@ -284,7 +284,8 @@ describe("neighborhood claims — Phase 1 (claims + typed evidence + one writer)
     assert.ok(ops.ok, (ops as any).message);
 
     const strip = (rows: any[]) => rows
-      .map(({ id, claimId, expertId, expertUserId, createdAt, updatedAt, miniSlipTemplateId, ...rest }) => rest)
+      // `verifiedAt` (FD-2, migration 361) is stamped at the insert instant, like `createdAt` — not content.
+      .map(({ id, claimId, expertId, expertUserId, createdAt, updatedAt, verifiedAt, miniSlipTemplateId, ...rest }) => rest)
       .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
     const consoleNuggets = strip(await db.select().from(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.claimId, claimA)));
     const opsNuggets = strip(await db.select().from(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.claimId, created.value.claim.id)));

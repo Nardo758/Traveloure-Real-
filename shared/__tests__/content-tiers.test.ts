@@ -77,3 +77,26 @@ test("CT6 — draft eligibility: untagged never, expired local never, free draft
   assert.equal(isFreeDraftEligible({ sourceClass: "public" }, NOW), true);
   assert.equal(isFreeDraftEligible({ sourceClass: undefined }, NOW), false);
 });
+
+import { itemSourceClass, placeFactTags } from "../content-tiers";
+
+test("CT7 — ruling 9: an item's source class comes from the server's own facts", () => {
+  assert.equal(itemSourceClass({ origin: "traveler" }), "public");
+  assert.equal(itemSourceClass({ origin: "assistant" }), "public");
+  assert.equal(itemSourceClass({ origin: "ai" }), "public");
+  assert.equal(itemSourceClass({ origin: "ai", fromLocalInput: true }), "local");
+  assert.equal(itemSourceClass({ origin: "expert" }), "local");
+  assert.equal(itemSourceClass({ origin: "traveler", gemId: "g1" }), "local");
+  assert.equal(itemSourceClass({ origin: null }), null);
+  assert.equal(itemSourceClass({}), null);
+});
+
+test("CT8 — a place fact is born tagged from its origin and license", () => {
+  assert.deepEqual(placeFactTags("places_api", "restricted"), { sourceClass: "public", reuseClass: "display_in_plan" });
+  assert.deepEqual(placeFactTags("crawled", "official"), { sourceClass: "public", reuseClass: "link_only" });
+  assert.deepEqual(placeFactTags("crawled", "editorial"), { sourceClass: "public", reuseClass: "link_only" });
+  assert.deepEqual(placeFactTags("crawled", "partner"), { sourceClass: "public", reuseClass: "internal" });
+  assert.deepEqual(placeFactTags("crawled", null), { sourceClass: "public", reuseClass: "link_only" });
+  assert.deepEqual(placeFactTags("expert_nugget", null), { sourceClass: "local", reuseClass: "reusable" });
+  assert.equal(placeFactTags("gem", null), null);
+});

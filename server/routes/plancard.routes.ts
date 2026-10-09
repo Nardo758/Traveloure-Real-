@@ -9,7 +9,7 @@ import { photosFor } from "../services/place-photos.service";
 import { applyGooglePins } from "@shared/ai-place-text";
 import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
-import { storage } from "../storage";
+import { storage, stampItemSourceClass } from "../storage";
 import {
   insertItineraryChangeSchema,
   itineraryItems,
@@ -244,7 +244,8 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       // W5 (H5): preserve the service link through the apply — `?? null` is the honest value for
       // an AI-invented item with no catalog row behind it. ONE batch insert (was a per-row loop).
       if (applicableVariantItems.length > 0) {
-        await tx.insert(itineraryItems).values(applicableVariantItems.map((item: any) => ({
+        // FD-2 ruling 9: each row stamped from its own origin; the comparison optimizer reads no local content.
+        await tx.insert(itineraryItems).values(applicableVariantItems.map((item: any) => stampItemSourceClass({
           tripId,
           providerServiceId: item.providerServiceId ?? null,
           title: item.name,
@@ -262,7 +263,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
           origin: "ai",
           latitude: item.latitude ? String(item.latitude) : null,
           longitude: item.longitude ? String(item.longitude) : null,
-        })));
+        })) as any);
       }
 
       // Diary entry — Lane S rulings 11/16: the apply event now lives in the append-only
@@ -507,7 +508,7 @@ async function adoptVariantItemsInTx(
       continue;
     }
     // routingStatus takes the migration-159 default ('in_planning') — not written here.
-    const [row] = await tx.insert(itineraryItems).values({
+    const [row] = await tx.insert(itineraryItems).values(stampItemSourceClass({
       tripId,
       providerServiceId: variantItem.providerServiceId ?? null,
       title: variantItem.name,
@@ -525,7 +526,7 @@ async function adoptVariantItemsInTx(
       origin: "ai",
       latitude: variantItem.latitude ? String(variantItem.latitude) : null,
       longitude: variantItem.longitude ? String(variantItem.longitude) : null,
-    }).returning();
+    }) as any).returning();
     added.push(row);
     addedByVariant.set(variantItem.variantId, [...(addedByVariant.get(variantItem.variantId) ?? []), variantItem.id]);
     if (variantItem.providerServiceId) svcIds.add(variantItem.providerServiceId);

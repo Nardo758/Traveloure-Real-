@@ -2,7 +2,8 @@
 
 Against `content-tiers-ruling.md` rev 1 (Leon, Oct 9, 2026), §2–§7, and the FD-1…FD-5 split. The nine questions
 in §B were **ruled Oct 9, 2026** and are recorded there. The migration SQL in §C (**361** columns, **362** backfill —
-360 is E3's) is held for the founder; no migration file has been written.
+360 is E3's) was **APPROVED by the founder, Oct 9, 2026**, and is written as `server/migrations/361_content_tier_tags.sql` and
+`362_content_tier_backfill.sql`.
 
 ## A. What the code does today
 
@@ -106,7 +107,7 @@ Our own content (expert nuggets, curated and seeded gems, Ready Made, seasons, n
 source's terms allow reuse, that source's facts take `reusable`. It is a later admin action on the A6 registry (one
 writer, terms-check gated); 362 sets the default only, and nothing in this lane flips a source.
 
-## C. Proposed migrations 361 and 362 (HELD for the founder — not written)
+## C. Migrations 361 and 362 (APPROVED Oct 9, 2026 — written)
 Split so the columns land separately from the data. **361** is DDL only. **362** is data only — no ALTER, no CHECK, no
 index, no DEFAULT change, so `preflight-prod-constraints.cjs` needs no manifest entry.
 
@@ -209,7 +210,7 @@ UPDATE ready_made_trips SET source_class = 'local', reuse_class = 'reusable'
 
 ## D. Build shape per sub-lane (after the rulings)
 
-### FD-2: tags, backfill, precedence, expiry (this PR's lane; code after 361/362 are approved)
+### FD-2: tags, backfill, precedence, expiry (BUILT — ledger `2026-10-09-fd2-content-tier-tags`)
 - 361/362 as above, every column declared in `shared/schema.ts`; `insertItineraryItemSchema` and the other insert
   schemas `.omit()` the new columns, and the storage writers strip them (§19, two layers).
 - `shared/content-tiers.ts` — the value sets and pure functions, **no schema dependency, so it can land first**:
