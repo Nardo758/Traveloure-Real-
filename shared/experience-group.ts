@@ -179,7 +179,7 @@ export const OCCASION_GROUP_LABELS: Readonly<Record<OccasionPickerGroup, string>
   moments: "A moment",
   celebrations: "A celebration",
   hosted_events: "A hosted event",
-  group_travel: "A group getaway",
+  group_travel: "Group travel",
 };
 
 /**

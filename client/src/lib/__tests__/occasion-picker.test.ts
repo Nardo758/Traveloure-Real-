@@ -4,7 +4,7 @@
  *
  *   P1  the page and the modal list the SAME occasions in the SAME groups, from ONE source
  *   P2  the five labels come from ONE home, and the picker renders exactly those five
- *   P3  `proposal` sits under "One evening"
+ *   P3  `proposal` sits under "A moment"
  *   P4  a NULL-switch row appears only under See all and in search — never in a group
  *   P5  Continue is disabled without BOTH a resolved occasion and one of the eight cities
  *   P6  `?destination=` / `?city=` pre-pick only an EXACT match of the eight (ruling 4)
@@ -51,17 +51,18 @@ const CATALOG = [
   row("mystery", "Something else", { defaultDuration: null, defaultGuests: null, defaultStops: null }),
 ];
 
-const BOARD_LABELS = ["A trip", "One evening", "A celebration", "A hosted event", "A group getaway"];
+const BOARD_LABELS = ["A trip", "A moment", "A celebration", "A hosted event", "Group travel"];
 
 describe("P1 — one picker, one source", () => {
   it("the page and the modal both render <OccasionPicker> and neither keeps its own occasion grid", () => {
-    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/trip/plan-modal.tsx"]) {
+    // E2 (sanctioned): the pop-up's occasion picker lives in PlanEntry now; the edit window has none.
+    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/plan/PlanEntry.tsx"]) {
       const src = read(f);
       assert.match(src, /<OccasionPicker\b/, `${f} renders the shared picker`);
       assert.doesNotMatch(src, /option-occasion-/, `${f} must not draw its own occasion tiles`);
     }
     // Both read the same rows: the one runtime vocabulary query key.
-    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/trip/plan-modal.tsx"]) {
+    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/plan/PlanEntry.tsx"]) {
       assert.match(read(f), /queryKey:\s*\["\/api\/experience-types"\]/, f);
     }
   });
@@ -124,9 +125,9 @@ describe("P2 — the five labels have ONE home", () => {
 });
 
 describe("P3/P4 — where a row lands", () => {
-  it("proposal is under One evening", () => {
+  it("proposal is under A moment", () => {
     const g = groupOccasions(CATALOG).groups.find((x) => x.rows.some((r) => r.slug === "proposal"));
-    assert.equal(g?.label, "One evening");
+    assert.equal(g?.label, "A moment");
   });
 
   it("a NULL-switch row is in no group, but See all and search reach it", () => {

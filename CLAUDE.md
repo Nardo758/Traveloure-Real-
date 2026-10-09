@@ -556,6 +556,16 @@ This document captures architectural decisions to maintain consistency across co
     show the inline dates panel when the dates are unconfirmed and continue once they are set; leg
     compute skips such a plan. Steps 2 and 3 are still never skipped INSIDE the modal. **Every other
     door keeps the modal unchanged** (they move in a later lane, PP-1/PP-2).
+    **AMENDED — ONE PlanEntry STARTS EVERY NEW PLAN; THE MODAL ONLY EDITS (decision-maker, Oct 9, 2026 —
+    E2 rulings 1–7, ledger `2026-10-09-e2-plan-entry`; supersedes the step list and the finish below for a
+    NEW plan).** A door that starts a new plan opens `PlanEntry` — "Plan around…" a place · a date · an
+    event → the occasion (five group chips, each with one seeded default occasion; "More specific" for the
+    rest) → Start a plan → the plan. Nothing before the plan asks When, Who, a name or a way to build; those
+    are chips on the plan (E1). A door that chose a way to build continues ON the plan (`ai` →
+    `?view=map&draft=ai`, `local` → the expert door). `PlanModal` survives ONLY as the edit window over the
+    BOUND plan (Where · When · Who · What's happening, Save) — no Occasion step, chooser, Clear or name. The
+    single opener (`usePlanning().open`) and `check-planning-entry.cjs` stand; the guard now also holds the
+    PlanEntry/edit-window split. `/experiences` moves onto PlanEntry in E3.
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and

@@ -33,7 +33,7 @@ import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { getTripContext, releasePendingEventsPen, updateTripContext } from "@/lib/trip-context";
+import { getTripContext, releasePendingEventsPen, switchTripContext, updateTripContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
 import { START_PAGE_DOOR, isStartPageRecord, mintStartPagePlan } from "@/lib/start-page-plan";
 import { finishForBranch, isPlanDoor, type PlanDoor } from "@shared/slip-funnel-events";
@@ -493,6 +493,16 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         // eslint-disable-next-line no-console
         console.warn("[plan-entry] occasion not saved on the new plan:", err?.message);
       });
+
+      // The new plan becomes the bound plan, with its occasion, BEFORE the traveler lands on it — the
+      // same identity switch the old finish made — so every surface (the edit window included) reads
+      // this plan's occasion rather than the previous plan's (B1: a new plan inherits nothing).
+      switchTripContext({
+        tripId,
+        destination: start.destination,
+        ...(start.startDate && start.endDate ? { startDate: start.startDate, endDate: start.endDate } : {}),
+      });
+      updateTripContext({ experienceSlug: start.occasionSlug, eventType: eventTypeForSlug(start.occasionSlug) });
 
       if (start.event) {
         const existing = await readPlanEventTitles(tripId);

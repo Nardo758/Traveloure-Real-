@@ -106,7 +106,8 @@ test("S1: the modal asks instead of guessing, and offers both answers", () => {
   const src = code("components/trip/plan-modal.tsx");
   assert.match(src, /boundPlanCityChanged\(/);
   assert.match(src, /data-testid="button-plan-city-change"/);
-  assert.match(src, /data-testid="button-plan-city-new"/);
+  // E2 (ruling 1): the edit window never starts a plan, so "start a new plan" is not one of its answers.
+  assert.doesNotMatch(src, /data-testid="button-plan-city-new"/);
 });
 
 test("S2: 'change this plan's city' writes through the owning rails and keeps the plan", () => {
@@ -123,17 +124,6 @@ test("S3: a kept plan is not treated as freshly minted (its stops are never repl
   const src = code("components/trip/plan-modal.tsx");
   assert.match(src, /async function commitPlan\(boundTripId\?: string, keepTripId\?: string\)/);
   assert.match(src, /const canReplaceStops = !tripId \|\| !!boundTripId \|\| stopsReadOk\.current;/);
-});
-
-test("S4: 'start a new plan' mints through the ONE mint step", () => {
-  const src = code("components/trip/plan-modal.tsx");
-  const resolver = src.slice(src.indexOf("const resolveCityChoice"), src.indexOf("const save = async"));
-  assert.match(resolver, /await mintThisPlan\(\)/);
-});
-
-test("S5: the occasion finish is never asked (it creates no plan)", () => {
-  const src = code("components/trip/plan-modal.tsx");
-  assert.match(src, /BRANCHES_THAT_MINT\.includes\(branch\) && needsCityChoice\(\)/);
 });
 
 test("S6: IntakePanel and the AI extraction write identity-safely, never a plain merge", () => {

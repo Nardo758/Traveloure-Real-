@@ -14,7 +14,7 @@
 import { test } from '@playwright/test';
 import { E2E_PASSWORD, e2eEmail } from './lib/run-id';
 import { signupViaUi } from './lib/accounts';
-import { fillPlanModalToFinish, clickPlanFinish, openPlanModalFromHero } from './lib/flows';
+import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
 import { q, feeBand } from './lib/db';
@@ -57,7 +57,7 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
   // ── A FRESH plan for the free-draft leg (LD 41 (b): free draft runs only on an EMPTY plan) ──
   await page.goto('/');
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-  const opened = await openPlanModalFromHero(page);
+  const opened = await openPlanEntryFromHero(page);
   if (!opened) {
     fileFinding({
       journey: 'D4',
@@ -65,9 +65,9 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
       class: 'DEAD_TRIGGER',
       severity: 'P1',
       known: null,
-      title: 'button-plan-trip did not open plan-modal for the D4 AI-draft attempt',
-      expected: 'Clicking the hero CTA opens the one planning modal',
-      actual: 'plan-modal never became visible',
+      title: 'button-plan-trip did not open plan-entry for the D4 AI-draft attempt',
+      expected: 'Clicking the hero CTA opens PlanEntry (E2)',
+      actual: 'plan-entry never became visible',
       where: 'client/src/components/landing/landing-hero.tsx',
       evidence: {},
       behavioural: true,
@@ -75,19 +75,17 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
     net.flush();
     throw new Error('D4: could not open the planning modal');
   }
-  await fillPlanModalToFinish(page, 'Kyoto, Japan', { offsetDays: 55, lenDays: 4 });
-  await shot(page, 'D4', '01', 'plan-modal-finish-row');
+  await fillPlanEntryToStart(page, 'Kyoto, Japan', { offsetDays: 55, lenDays: 4 });
+  await shot(page, 'D4', '01', 'plan-entry-start');
 
   const feeLedgerBefore = await q(
     `SELECT count(*)::int AS c FROM fee_ledger WHERE fee_type = 'ai_concierge_fee'`,
   );
 
-  const tripId = await clickPlanFinish(page, 'ai');
-  await page.waitForTimeout(1000);
-  await shot(page, 'D4', '02', 'after-ai-finish-click');
-  // "ai" does not itself navigate — it opens EnhancedPlanningModal in place, so `clickPlanFinish`
-  // (which parses the URL) is expected to return null here; the tripId is read from the DB
-  // instead, by matching the plan this account just minted for this destination/date window.
+  // E2: Start a plan mints the (empty) plan and lands on it; the free draft is then the slip's own
+  // "Draft it with AI" (the build chooser left the pop-up). The tripId falls back to the DB read.
+  const tripId = await clickPlanStart(page);
+  await shot(page, 'D4', '02', 'after-start-a-plan');
   const mintedTrip = await q(
     `SELECT id FROM trips WHERE user_id = (SELECT id FROM users WHERE email = $1) AND destination ILIKE '%Kyoto%' ORDER BY created_at DESC LIMIT 1`,
     [tauth.email],
@@ -100,11 +98,11 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
       class: 'SPEC_DIVERGENCE',
       severity: 'P1',
       known: null,
-      title: '"Plan with AI" did not mint a trips row before opening the AI draft form',
-      expected: 'ledger 2026-09-24-rc1-finish-mints: the ai branch mints through mintTripSlip before the form opens',
+      title: 'Start a plan did not mint a trips row for the AI draft',
+      expected: 'E2: Start a plan mints through mintTripSlip and lands on the plan',
       actual: 'No matching trips row found',
-      where: 'client/src/contexts/PlanningContext.tsx (runBranch, branch === "ai")',
-      evidence: { shot: 'shots/D4-02-after-ai-finish-click.png' },
+      where: 'client/src/contexts/PlanningContext.tsx (startFromEntry)',
+      evidence: { shot: 'shots/D4-02-after-start-a-plan.png' },
       behavioural: true,
     });
     net.flush();
@@ -114,8 +112,8 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
     s.trips.tauthAiDraft = { id: draftTripId, label: 'D4 AI draft plan' };
   });
 
-  const generateBtn = testid(page, 'button-generate-itinerary');
-  const generateVisible = await appears(generateBtn, 6000);
+  const generateBtn = testid(page, 'slip-action-draft-ai').first();
+  const generateVisible = await appears(generateBtn, 10_000);
   if (!generateVisible) {
     fileFinding({
       journey: 'D4',
@@ -123,11 +121,11 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
       class: 'DEAD_TRIGGER',
       severity: 'P1',
       known: null,
-      title: 'button-generate-itinerary not visible on EnhancedPlanningModal after the ai finish',
-      expected: 'The AI draft form opens with a Generate control',
-      actual: 'Not visible within 6s',
-      where: 'client/src/components/EnhancedPlanningModal.tsx',
-      evidence: { shot: 'shots/D4-02-after-ai-finish-click.png' },
+      title: 'Draft it with AI (slip-action-draft-ai) not visible on the new empty plan',
+      expected: 'An empty plan offers Draft it with AI (LD 41 (b))',
+      actual: 'Not visible within 10s',
+      where: 'client/src/components/plancard/SlipRail.tsx',
+      evidence: { shot: 'shots/D4-02-after-start-a-plan.png' },
       behavioural: true,
     });
     net.flush();

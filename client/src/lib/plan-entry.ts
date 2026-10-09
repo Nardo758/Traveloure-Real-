@@ -3,7 +3,7 @@
  * one PlanEntry, two containers", decision-maker rulings 1–7, Oct 9, 2026).
  *
  *   Step 1 "Plan around…"   a place · a date · an event
- *   Step 2 occasion          the five groups as chips, "A trip" pre-selected, "More specific" → all
+ *   Step 2 occasion          the five groups as chips, the trip group pre-selected, "More specific" → all
  *   Start a plan             creates the plan and lands on it
  *
  * No When, no Who, no plan name, no build chooser and no Clear/Save before the plan exists: those are
@@ -79,7 +79,7 @@ export function eventNights(firstDate: string, lastDate: string): number {
   return Math.round((b - a) / 86_400_000) + 1;
 }
 
-/** The brief's event default: multi-day → "A trip", one evening → "A moment". */
+/** The brief's event default: multi-day → the trip group, one evening → the moment group. */
 export function groupForEvent(e: Pick<PlanEntryEvent, "firstDate" | "lastDate">): OccasionPickerGroup {
   return cityEventPlanShape(eventNights(e.firstDate, e.lastDate)) === "trip" ? "trips" : "moments";
 }

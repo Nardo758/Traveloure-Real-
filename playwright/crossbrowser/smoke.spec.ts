@@ -281,7 +281,13 @@ test('full booking checkout with Stripe test card 4242', { timeout: 120_000 }, a
     await page.waitForTimeout(500);
   }
 
-  let dateInput = page.locator('[data-testid="input-etp-start-date"]').first();
+  // E2 (ledger `2026-10-09-e2-plan-entry`): with no plan bound the edit door opens PlanEntry, whose
+  // dates are behind "A date" → "Pick dates". Guarded like the rest of this path.
+  for (const id of ['plan-entry-around-date', 'plan-entry-date-pick']) {
+    const b = page.locator(`[data-testid="${id}"]`).first();
+    if (await b.count()) await b.click().catch(() => {});
+  }
+  let dateInput = page.locator('[data-testid="input-etp-start-date"], [data-testid="plan-entry-date-start"]').first();
   if (!(await dateInput.count())) dateInput = page.locator('input[type="date"]').first();
 
   if (await dateInput.count()) {
