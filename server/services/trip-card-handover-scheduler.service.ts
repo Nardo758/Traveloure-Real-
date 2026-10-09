@@ -23,7 +23,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
-import { TRIP_CARD_HANDOVER_WINDOW_MS, tripCardNudgeCopy } from "@shared/trip-primary-surface";
+import { TRIP_CARD_HANDOVER_WINDOW_MS, tripCardNudgeCopy, tripStartsSoon } from "@shared/trip-primary-surface";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { runBookingSchedule } from "../automations/bookings/runtime";
@@ -34,6 +34,8 @@ const HANDOVER_WINDOW_HOURS = TRIP_CARD_HANDOVER_WINDOW_MS / (60 * 60 * 1000); /
 
 interface HandoverStats {
   nudged: number;
+  /** Candidates left un-nudged because "starts soon" would not be true (placeholder dates, or started). */
+  withheld?: number;
   ranAt: Date;
   error?: string;
 }
@@ -43,6 +45,8 @@ interface HandoverCandidate {
   userId: string;
   destination: string | null;
   hasFinal: boolean;
+  startDate: string | null;
+  datesConfirmed: boolean;
 }
 
 class TripCardHandoverSchedulerService {
@@ -89,7 +93,18 @@ class TripCardHandoverSchedulerService {
     try {
       const candidates = await this.findUnnudgedCandidates();
       let nudged = 0;
+      let withheld = 0;
+      const now = new Date();
       for (const trip of candidates) {
+        // Nudge (ledger `2026-10-08-nudge-needs-real-dates`): the never-final copy says "Your trip
+        // starts soon", so it is sent only when that is TRUE — the ONE predicate the slip banner
+        // reads (`tripStartsSoon`, B1): chosen dates AND a start still ahead. A placeholder window
+        // (an undated E1 mint starts "today") is not nudged. Nothing is written for a withheld
+        // trip, so it is asked again next tick and nudged once its dates are chosen (§13).
+        if (!trip.hasFinal && !tripStartsSoon({ startDate: trip.startDate, datesConfirmed: trip.datesConfirmed, now })) {
+          withheld++;
+          continue;
+        }
         // Best-effort per-trip: one failed notification must not abort the rest of the pass.
         try {
           // Step 6 finalize smoke: "ready" only when a final version exists — a never-finalized
@@ -110,7 +125,7 @@ class TripCardHandoverSchedulerService {
           logger.error({ err, tripId: trip.id }, "[TripCardHandover] nudge notification failed (non-fatal)");
         }
       }
-      const stats: HandoverStats = { nudged, ranAt: new Date() };
+      const stats: HandoverStats = { nudged, withheld, ranAt: new Date() };
       if (nudged > 0) console.log(`[TripCardHandover] Sent ${nudged} last-call nudge(s)`);
       this.lastStats = stats;
       return stats;
@@ -138,6 +153,8 @@ class TripCardHandoverSchedulerService {
   private async findUnnudgedCandidates(): Promise<HandoverCandidate[]> {
     const result = await db.execute(sql`
       SELECT t.id, t.user_id, t.destination,
+        to_char(t.start_date, 'YYYY-MM-DD') AS start_date,
+        (t.dates_confirmed_at IS NOT NULL) AS dates_confirmed,
         EXISTS (SELECT 1 FROM trip_finals f WHERE f.trip_id = t.id) AS has_final
       FROM trips t
       WHERE t.finalized_at IS NULL
@@ -158,6 +175,8 @@ class TripCardHandoverSchedulerService {
       userId: r.user_id,
       destination: r.destination ?? null,
       hasFinal: r.has_final === true,
+      startDate: r.start_date ?? null,
+      datesConfirmed: r.dates_confirmed === true,
     }));
   }
 
