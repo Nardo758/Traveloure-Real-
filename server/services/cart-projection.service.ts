@@ -46,7 +46,7 @@
  * CART ROWS ONLY. It never writes `routing_status` — the transition endpoints own that, and
  * they call in here afterwards.
  */
-import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cartItems, customVenues, itineraryItems, providerServices, trips } from "@shared/schema";
 import { storage } from "../storage";
@@ -57,6 +57,10 @@ import { checkoutProjectionRefusals, hasPublishedPrice } from "./buy-action-payl
 // Locked Decision 56: the ONE reading of how many units a stored cart line holds (§18 rule 1).
 import { cartLineUnitCount } from "@shared/cart-quantity";
 import { normalizeCartContentCoordinates } from "@shared/cart-content-line";
+import {
+  addedCartState, deleteCartRowsWithActivity, prepareCartActivity,
+  preserveCartState, stampCartState, hasCartActivityOrigin,
+} from "./cart-email-state.service";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1 — the funnel. Thin passthroughs, behavior-identical by construction.
@@ -238,7 +242,7 @@ function displayEnvelopeFor(item: typeof itineraryItems.$inferSelect): Record<st
  * legitimate routing flip (the flip is the source of truth; the cart is the derived view).
  * The caller reports the result; the reconciler is re-runnable.
  */
-export async function syncItemProjection(itemId: string): Promise<ProjectionSyncResult> {
+export async function syncItemProjection(itemId: string, realCartActivity = hasCartActivityOrigin()): Promise<ProjectionSyncResult> {
   const [item] = await db
     .select()
     .from(itineraryItems)
@@ -248,12 +252,12 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
   // Item gone: the FK is ON DELETE CASCADE so the row is already gone, but stay defensive —
   // a projection with no source must not survive.
   if (!item) {
-    const removed = await deleteProjectionFor(itemId);
+    const removed = await deleteProjectionFor(itemId, realCartActivity);
     return removed > 0 ? { action: "deleted", removed } : { action: "noop", reason: "item_missing" };
   }
 
   if (item.routingStatus !== "ready_for_checkout") {
-    const removed = await deleteProjectionFor(itemId);
+    const removed = await deleteProjectionFor(itemId, realCartActivity);
     return removed > 0 ? { action: "deleted", removed } : { action: "noop", reason: "not_projected" };
   }
 
@@ -274,7 +278,7 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
       { itemId, tripId: item.tripId },
       "cart-projection: trip has no owner; skipping projection (L10 owner-less trip)",
     );
-    await deleteProjectionFor(itemId);
+    await deleteProjectionFor(itemId, realCartActivity);
     return { action: "noop", reason: "no_owner" };
   }
 
@@ -323,7 +327,7 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
         ])
       ).get(item.providerServiceId);
       if (refusal) {
-        await deleteProjectionFor(itemId);
+        await deleteProjectionFor(itemId, realCartActivity);
         return { action: "noop", reason: refusal };
       }
     }
@@ -414,16 +418,30 @@ export async function syncItemProjection(itemId: string): Promise<ProjectionSync
   };
 
   if (existing) {
-    await db.update(cartItems).set(values).where(eq(cartItems.id, existing.id));
+    const meta = realCartActivity
+      ? sql`CASE WHEN ${cartItems.quantity} IS DISTINCT FROM ${values.quantity}
+          THEN ${stampCartState(sql`${cartItems.contentMeta}`, prepareCartActivity(), values.contentMeta)}
+          ELSE ${preserveCartState(sql`${cartItems.contentMeta}`, values.contentMeta)} END`
+      : preserveCartState(sql`${cartItems.contentMeta}`, values.contentMeta);
+    await db.update(cartItems).set({ ...values, contentMeta: meta }).where(eq(cartItems.id, existing.id));
     return { action: "upserted", cartItemId: existing.id };
   }
 
-  const [created] = await db.insert(cartItems).values(values).returning({ id: cartItems.id });
+  const [created] = await db.insert(cartItems).values({
+    ...values,
+    contentMeta: addedCartState(values.contentMeta, values.serviceId, values.slotId,
+      prepareCartActivity(), realCartActivity),
+  }).returning({ id: cartItems.id });
   return { action: "upserted", cartItemId: created.id };
 }
 
 /** Delete the projection row(s) for one item. NULL-keyed rows can never match. */
-async function deleteProjectionFor(itemId: string): Promise<number> {
+async function deleteProjectionFor(itemId: string, realCartActivity = false): Promise<number> {
+  if (realCartActivity) {
+    return (await deleteCartRowsWithActivity(
+      and(isNotNull(cartItems.itineraryItemId), eq(cartItems.itineraryItemId, itemId))!,
+    )).length;
+  }
   const removed = await db
     .delete(cartItems)
     .where(and(isNotNull(cartItems.itineraryItemId), eq(cartItems.itineraryItemId, itemId)))
@@ -1041,10 +1059,7 @@ export async function convertCartLinesToItems(
         // THE MOVE. This module is the single writer of `cart_items` (LD 39), so the delete is
         // written here rather than through the Section 1 passthrough, which cannot join this
         // transaction. A line already gone loses the race and the whole conversion rolls back.
-        const removed = await tx
-          .delete(cartItems)
-          .where(eq(cartItems.id, line.id))
-          .returning({ id: cartItems.id });
+        const removed = await deleteCartRowsWithActivity(eq(cartItems.id, line.id), tx);
         if (removed.length === 0) throw new CartLineRacedError();
         return created.id;
       });

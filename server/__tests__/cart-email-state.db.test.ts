@@ -1,0 +1,222 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, symlinkSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { buildSync } from "esbuild";
+import { eq, sql } from "drizzle-orm";
+import { db, pool } from "../db";
+import { storage } from "../storage";
+import { cartItems, providerServices, users, emailOutbox, trips, itineraryItems } from "../../shared/schema";
+import * as projection from "../services/cart-projection.service";
+import {
+  CART_STATE_KEY, cartStateDependencies, evaluateCartClock, evaluateCartItemChange,
+  preserveCartState, recordQueuedCartValues, snapshotSkipReason,
+  queryCartClock, withCartActivityOrigin,
+} from "../services/cart-email-state.service";
+
+test("two randomized isolated Part 2 loops, actual cart writers and before/after benchmark", async () => {
+  assert.match(process.env.MESSAGING_VERIFICATION_SCHEMA ?? "", /^automation_msg_[a-f0-9]+$/,
+    "Run through the retained isolated-development harness; never public or production.");
+  const [{ schema }] = (await db.execute(sql`SELECT current_schema() AS schema`)).rows as { schema: string }[];
+  assert.equal(schema, process.env.MESSAGING_VERIFICATION_SCHEMA);
+  const temp = mkdtempSync(path.join(tmpdir(), "cart-part2-baseline-"));
+  symlinkSync(path.resolve("node_modules"), path.join(temp, "node_modules"), "dir");
+  const output = path.join(temp, "storage.mjs");
+  // Exact frozen storage source, not an approximation or a different database.
+  const frozen = execFileSync("git", ["show", "2f9bcaba9752f9700b956ef1ff30c0e748a3ba99:server/storage.ts"], { encoding: "utf8", maxBuffer: 2_000_000 }) + '\nexport { pool } from "./db";\n';
+  buildSync({ stdin: { contents: frozen, loader: "ts", resolveDir: path.resolve("server") },
+    outfile: output, bundle: true, platform: "node", format: "esm", packages: "external",
+    banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+    logLevel: "silent" });
+  const baseline = await import(pathToFileURL(output).href);
+  const fetch = async (id: string) => (await db.select().from(cartItems).where(eq(cartItems.id, id)))[0];
+  const stamp = (row: any) => row.contentMeta[CART_STATE_KEY].activity;
+  const snapshot = (row: any) => row.contentMeta[CART_STATE_KEY].snapshot;
+  const results: object[] = [];
+  try {
+    for (let loop = 1; loop <= 2; loop++) {
+      const userId = randomUUID(), providerId = randomUUID(), serviceId = randomUUID();
+      await db.insert(users).values([
+        { id: userId, email: `${randomUUID()}@traveloure-qa.test`, role: "traveler" },
+        { id: providerId, email: `${randomUUID()}@traveloure-qa.test`, role: "service_provider" },
+      ]);
+      await db.insert(providerServices).values({ id: serviceId, userId: providerId,
+        serviceName: "Isolated Part 2 service", price: "12.34", status: "active", bookingMode: "instant", availability: [] });
+      const row = await storage.addToCart(userId, { serviceId, contentMeta: {
+        [CART_STATE_KEY]: { activity: { at_ms: 99999999999999, sequence_id: "client" },
+          snapshot: { price: "0", currency: "FAKE" } },
+      } });
+      assert.equal(snapshot(row).price, "12.34");
+      assert.equal(snapshot(row).currency, "USD");
+      assert.ok(snapshot(row).availability);
+      assert.ok(Date.parse(snapshot(row).captured_at));
+      assert.notEqual(stamp(row).sequence_id, "client");
+      const original = snapshot(row);
+      const initialClock = stamp(row);
+      // Metadata, notes, dates, trip links, page reads and equal quantity do not move clock.
+      await db.update(cartItems).set({ contentMeta: preserveCartState(sql`${cartItems.contentMeta}`,
+        { imageUrl: "display-only", [CART_STATE_KEY]: { snapshot: { price: "0" } } }) }).where(eq(cartItems.id, row.id));
+      await storage.updateCartItem(row.id, { notes: "display-only", quantity: 1 });
+      const displayed = await fetch(row.id);
+      assert.deepEqual(snapshot(displayed), original);
+      assert.deepEqual(stamp(displayed), initialClock);
+      // Re-add increments atomically, preserves add-time truth even if catalog changed.
+      await db.update(providerServices).set({ price: "18.00" }).where(eq(providerServices.id, serviceId));
+      await Promise.all([
+        storage.addToCart(userId, { serviceId, quantity: 2 }),
+        storage.addToCart(userId, { serviceId, quantity: 3 }),
+      ]);
+      const concurrent = await fetch(row.id);
+      assert.equal(concurrent.quantity, 6);
+      assert.deepEqual(snapshot(concurrent), original);
+      // Resume resets the sequence; old sent-step keys cannot equal the new sequence key.
+      const oldSequence = stamp(concurrent).sequence_id;
+      await db.update(cartItems).set({ contentMeta: sql`jsonb_set(content_meta,
+        '{_cart_automation,activity,at_ms}', to_jsonb((extract(epoch from clock_timestamp())*1000)::bigint - 7200000))` })
+        .where(eq(cartItems.id, row.id));
+      await storage.updateCartItem(row.id, { quantity: 7 });
+      const resumed = await fetch(row.id);
+      assert.notEqual(stamp(resumed).sequence_id, oldSequence);
+      assert.deepEqual(evaluateCartClock([resumed], Date.now()), { eligible: false, reason: "not_idle" });
+      assert.deepEqual(await queryCartClock(userId), { eligible: false, reason: "not_idle" });
+      assert.deepEqual(evaluateCartClock([resumed], stamp(resumed).at_ms + 3_600_000 - 1),
+        { eligible: false, reason: "not_idle" });
+      assert.equal(evaluateCartClock([resumed], stamp(resumed).at_ms + 3_600_000).eligible, true);
+      assert.equal(evaluateCartClock([resumed], stamp(resumed).at_ms + 3_600_000 + 1).eligible, true);
+      // Actual fault injection at the shared preparation dependency, before a SQL mutation.
+      const normalBuilder = cartStateDependencies.builder;
+      try {
+        cartStateDependencies.builder = () => { throw Error("injected"); };
+        for (const operation of [
+          () => storage.updateCartItem(row.id, { quantity: 8 }),
+          () => storage.addToCart(userId, { serviceId }),
+          () => storage.removeFromCart(row.id),
+          () => storage.clearCart(userId),
+          () => storage.replaceUserCartWithVariantItems(userId, [{ providerServiceId: serviceId, dayNumber: 1, timeSlot: "AM" }]),
+        ]) {
+          await assert.rejects(operation(), { message: "Cart change could not be saved. Please retry." });
+          assert.deepEqual(await fetch(row.id), resumed);
+        }
+      } finally { cartStateDependencies.builder = normalBuilder; }
+      // Malformed/legacy JSON never blocks a valid re-add; no snapshot is backfilled.
+      for (const meta of [null, [], "legacy", 42, {}, { old: "cart" },
+        { [CART_STATE_KEY]: { activity: { at_ms: 99999999999999, sequence_id: "fake" } } },
+        { huge: Array.from({ length: 20_000 }, () => ({ legacy: true })) }]) {
+        await db.update(cartItems).set({ contentMeta: meta as any }).where(eq(cartItems.id, row.id));
+        await storage.addToCart(userId, { serviceId });
+        assert.equal(snapshotSkipReason((await fetch(row.id)).contentMeta), "no_snapshot");
+        assert.deepEqual(await queryCartClock(userId), { eligible: false, reason: "not_idle" });
+      }
+      // Guest migration creates user cart activity without guessing old snapshots.
+      const guestId = randomUUID();
+      const guest = await storage.addToCart(null, { contentType: "affiliate_product",
+        contentId: randomUUID(), guestSessionId: guestId });
+      const guestDuplicate = await storage.addToCart(null, { serviceId, guestSessionId: guestId });
+      const orphanId = randomUUID();
+      await db.insert(cartItems).values({ id: orphanId, guestSessionId: guestId });
+      const normalGuestBuilder = cartStateDependencies.builder;
+      try {
+        cartStateDependencies.builder = () => { throw Error("injected"); };
+        await assert.rejects(storage.migrateGuestCart(guestId, userId),
+          { message: "Cart change could not be saved. Please retry." });
+        assert.equal((await fetch(guest.id)).guestSessionId, guestId);
+        assert.ok(await fetch(guestDuplicate.id));
+        assert.ok(await fetch(orphanId));
+      } finally { cartStateDependencies.builder = normalGuestBuilder; }
+      assert.deepEqual(await storage.migrateGuestCart(guestId, userId), { migrated: 1, deduplicated: 1 });
+      assert.equal((await fetch(guest.id)).userId, userId);
+      assert.ok(stamp(await fetch(guest.id)).sequence_id);
+      // Removing an item stamps survivors in the deletion statement. Final removal closes.
+      const beforeRemoval = stamp(await fetch(guest.id)).sequence_id;
+      await storage.removeFromCart(row.id);
+      assert.equal(await fetch(row.id), undefined);
+      assert.notEqual(stamp(await fetch(guest.id)).sequence_id, beforeRemoval);
+      await storage.clearCart(userId);
+      assert.deepEqual(await queryCartClock(userId), { eligible: false, reason: "empty_cart" });
+      assert.equal(await fetch(guest.id), undefined);
+      // Actual projection writers, including background preservation and conversion.
+      const tripId = randomUUID(), itemId = randomUUID();
+      await db.insert(trips).values({ id: tripId, userId, destination: "Kyoto",
+        startDate: "2027-01-01", endDate: "2027-01-03" });
+      await db.insert(itineraryItems).values({ id: itemId, tripId, dayNumber: 1,
+        title: "Isolated projection", providerServiceId: serviceId,
+        routingStatus: "ready_for_checkout", quantity: 2 });
+      const projected = await withCartActivityOrigin(() => projection.syncItemProjection(itemId));
+      assert.equal(projected.action, "upserted");
+      const [projectedRow] = await db.select().from(cartItems).where(eq(cartItems.itineraryItemId, itemId));
+      const projectedState = projectedRow.contentMeta;
+      await db.update(itineraryItems).set({ title: "Display changed" }).where(eq(itineraryItems.id, itemId));
+      await projection.syncItemProjection(itemId);
+      assert.deepEqual((await fetch(projectedRow.id)).contentMeta, projectedState);
+      await db.update(itineraryItems).set({ quantity: 3 }).where(eq(itineraryItems.id, itemId));
+      await withCartActivityOrigin(() => projection.syncItemProjection(itemId));
+      const projectedQuantity = await fetch(projectedRow.id);
+      assert.equal(projectedQuantity.quantity, 3);
+      assert.deepEqual(snapshot(projectedQuantity), snapshot(projectedRow));
+      assert.notEqual(stamp(projectedQuantity).sequence_id, stamp(projectedRow).sequence_id);
+      await projection.attachTripToCartItems(userId, tripId);
+      assert.deepEqual(stamp(await fetch(projectedRow.id)), stamp(projectedQuantity));
+      await db.update(itineraryItems).set({ routingStatus: "in_planning" }).where(eq(itineraryItems.id, itemId));
+      assert.equal((await withCartActivityOrigin(() => projection.syncItemProjection(itemId))).action, "deleted");
+      const convertLine = await storage.addToCart(userId, { serviceId });
+      const converted = await projection.convertCartLinesToItems(userId, tripId, [convertLine.id]);
+      assert.equal(converted.converted, 1);
+      assert.equal(await fetch(convertLine.id), undefined);
+      // Variant replacement uses one statement; valid service snapshots; failed FK rolls back.
+      await storage.replaceUserCartWithVariantItems(userId,
+        [{ providerServiceId: serviceId, dayNumber: 1, timeSlot: "AM" }]);
+      const [variant] = await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+      assert.equal(snapshot(variant).price, "18.00");
+      await assert.rejects(storage.replaceUserCartWithVariantItems(userId,
+        [{ providerServiceId: randomUUID(), dayNumber: 2, timeSlot: "PM" }]));
+      assert.deepEqual(await fetch(variant.id), variant);
+      // Queue association + notified-value idempotency, without any delivery or new mail family.
+      const values = { price: "19.00", currency: "USD", availability: snapshot(variant).availability };
+      const [outbox] = await db.insert(emailOutbox).values({ emailType: "cart_item_changed",
+        toEmail: `${randomUUID()}@traveloure-qa.test`, subject: "Isolated fixture; never sent", html: "",
+        status: "pending", metadata: { cartItemId: variant.id } }).returning();
+      assert.equal(await recordQueuedCartValues(variant.id, outbox.id, values), true);
+      assert.equal(await recordQueuedCartValues(variant.id, outbox.id, values), false);
+      const notified = await fetch(variant.id);
+      assert.equal(evaluateCartItemChange(notified.contentMeta, values), "already_notified");
+      assert.deepEqual(stamp(notified), stamp(variant));
+      assert.deepEqual(snapshot(notified), snapshot(variant));
+      // Excluded payment cleanup stays byte-for-byte neutral to surviving partner state.
+      const paidPartner = await storage.addToCart(userId, { contentType: "affiliate_product",
+        contentId: randomUUID() });
+      await storage.clearCheckedOutCartLines(userId);
+      assert.equal(await fetch(variant.id), undefined);
+      assert.deepEqual(await fetch(paidPartner.id), paidPartner);
+      await storage.clearCart(userId);
+      // Alternating exact-before/after writes reduces drift. Same schema, source subject and connection warmup.
+      const timings: number[][] = [[], []];
+      const successes = [0, 0], samples = 60;
+      for (let i = 0; i < samples + 10; i++) {
+        for (const mode of i % 2 ? [1, 0] : [0, 1]) {
+          const writer = mode ? storage : baseline.storage;
+          const start = performance.now();
+          await writer.addToCart(userId, { serviceId, experienceSlug: `bench-${loop}-${mode}-${i}` });
+          const elapsed = performance.now() - start;
+          if (i >= 10) { timings[mode].push(elapsed); successes[mode]++; }
+        }
+      }
+      const summary = timings.map((times, i) => {
+        const sorted = [...times].sort((a, b) => a - b);
+        return { successes: successes[i], samples, successRate: successes[i] / samples,
+          p50Ms: sorted[Math.floor(sorted.length * .5)], p95Ms: sorted[Math.floor(sorted.length * .95)] };
+      });
+      results.push({ loop, checks: "direct-writer atomicity, snapshots, injection, malformed JSON, concurrency, resume, notification state",
+        before: summary[0], after: summary[1] });
+      console.log("PART2_LOOP_RESULT=" + JSON.stringify(results.at(-1)));
+    }
+    assert.equal(results.length, 2);
+  } finally {
+    await pool.end();
+    await baseline.pool?.end?.();
+    rmSync(temp, { recursive: true, force: true });
+  }
+});

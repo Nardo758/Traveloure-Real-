@@ -5,6 +5,10 @@ import { dispatchModerationEvent } from "./automations/moderation/runtime";
 import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 import { sql } from "drizzle-orm";
+import {
+  addedCartState, deleteCartRowsWithActivity, prepareCartActivity,
+  preserveCartState, stampCartState, replaceCartRowsWithActivity, migrateCartRowsWithActivity,
+} from "./services/cart-email-state.service";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
@@ -4429,25 +4433,31 @@ export class DatabaseStorage implements IStorage {
       // pinned archetype's re-add SETS the count to one rather than incrementing it. The caller
       // decides which archetype that is through the ONE derivation (`@shared/cart-quantity`); this
       // writer never re-derives it (§18 rule 1). Every other listing keeps the additive behaviour.
+      const activity = prepareCartActivity();
+      const nextQuantity = item.unitsPinnedToOne
+        ? sql`1`
+        : isRoomStayUpdate
+          ? sql`coalesce(${cartItems.quantity}, 1)`
+          : sql`coalesce(${cartItems.quantity}, 1) + ${item.quantity || 1}`;
+      const display = isRoomStayUpdate ? item.contentMeta : undefined;
       const [updated] = await db.update(cartItems)
         .set({
-          quantity: item.unitsPinnedToOne
-            ? 1
-            : isRoomStayUpdate
-              ? (existing.quantity || 1)
-              : (existing.quantity || 1) + (item.quantity || 1),
+          quantity: nextQuantity,
+          contentMeta: sql`CASE WHEN ${cartItems.quantity} IS DISTINCT FROM ${nextQuantity}
+            THEN ${stampCartState(sql`${cartItems.contentMeta}`, activity, display)}
+            ELSE ${preserveCartState(sql`${cartItems.contentMeta}`, display)} END`,
           // The traveler's party answer rides a re-add only when they gave one — an absent key
           // never clears a saved count (§13, ruling 83's own posture).
           ...(item.partySize !== undefined ? { partySize: item.partySize } : {}),
           // C3: re-adding with a picked slot attaches (or replaces) the slot + its derived date.
           ...(item.slotId ? { slotId: item.slotId, scheduledDate: item.scheduledDate } : {}),
-          ...(isRoomStayUpdate ? { contentMeta: item.contentMeta } : {}),
         })
         .where(eq(cartItems.id, existing.id))
         .returning();
       return updated;
     }
 
+    const activity = prepareCartActivity();
     const [newItem] = await db.insert(cartItems).values({
       userId: userId || null,
       guestSessionId: item.guestSessionId || null,
@@ -4455,7 +4465,7 @@ export class DatabaseStorage implements IStorage {
       customVenueId: item.customVenueId || null,
       contentType: item.contentType || null,
       contentId: item.contentId || null,
-      contentMeta: item.contentMeta || {},
+      contentMeta: addedCartState(item.contentMeta, item.serviceId || null, item.slotId || null, activity),
       experienceSlug: item.experienceSlug,
       quantity: item.quantity || 1,
       // D-14: written at birth when the add rail asked for it; `undefined` leaves the column NULL,
@@ -4473,8 +4483,9 @@ export class DatabaseStorage implements IStorage {
     const guestItems = await db.select().from(cartItems).where(eq(cartItems.guestSessionId, guestSessionId));
     if (guestItems.length === 0) return { migrated: 0, deduplicated: 0 };
 
-    let migrated = 0;
-    let deduplicated = 0;
+    const movedItems: typeof guestItems = [];
+    const deleteIds: string[] = [];
+    const duplicateIds: string[] = [];
 
     for (const guestItem of guestItems) {
       // Check if the authenticated cart already has this item
@@ -4487,7 +4498,7 @@ export class DatabaseStorage implements IStorage {
         dupeCondition = and(dupeCondition, eq(cartItems.contentId, guestItem.contentId));
       } else {
         // No service, venue, or content item — just delete the orphan guest row
-        await db.delete(cartItems).where(eq(cartItems.id, guestItem.id));
+        deleteIds.push(guestItem.id);
         continue;
       }
       if (guestItem.experienceSlug) {
@@ -4495,41 +4506,51 @@ export class DatabaseStorage implements IStorage {
       }
 
       const [existing] = await db.select().from(cartItems).where(dupeCondition);
-      if (existing) {
+      const plannedDuplicate = movedItems.some(previous =>
+        (guestItem.serviceId ? previous.serviceId === guestItem.serviceId
+          : guestItem.customVenueId ? previous.customVenueId === guestItem.customVenueId
+            : previous.contentId === guestItem.contentId) &&
+        (!guestItem.experienceSlug || previous.experienceSlug === guestItem.experienceSlug));
+      if (existing || plannedDuplicate) {
         // Deduplicate: remove guest row (user already has this item)
-        await db.delete(cartItems).where(eq(cartItems.id, guestItem.id));
-        deduplicated++;
+        deleteIds.push(guestItem.id);
+        duplicateIds.push(guestItem.id);
       } else {
         // Migrate: assign to user
-        await db.update(cartItems)
-          .set({ userId, guestSessionId: null })
-          .where(eq(cartItems.id, guestItem.id));
-        migrated++;
+        movedItems.push(guestItem);
       }
     }
 
-    return { migrated, deduplicated };
+    return migrateCartRowsWithActivity(guestSessionId, userId,
+      movedItems.map(item => item.id), deleteIds, duplicateIds);
   }
 
   async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string; pickupLocation?: unknown; partySize?: number | null }): Promise<any | undefined> {
     // Drizzle skips `undefined` keys, so an absent field is never touched; an explicit `null`
     // pickupLocation is a deliberate clear (§13 — the traveler removed their pickup ⇒ no surcharge).
     const [updated] = await db.update(cartItems)
-      .set(updates as any)
+      .set({
+        ...updates,
+        ...(updates.quantity !== undefined ? {
+          contentMeta: sql`CASE WHEN ${cartItems.quantity} IS DISTINCT FROM ${updates.quantity}
+            THEN ${stampCartState(sql`${cartItems.contentMeta}`, prepareCartActivity())}
+            ELSE ${cartItems.contentMeta} END`,
+        } : {}),
+      })
       .where(eq(cartItems.id, id))
       .returning();
     return updated;
   }
 
   async removeFromCart(id: string): Promise<void> {
-    await db.delete(cartItems).where(eq(cartItems.id, id));
+    await deleteCartRowsWithActivity(eq(cartItems.id, id));
   }
 
   async clearCart(userId: string, experienceSlug?: string): Promise<void> {
     if (experienceSlug) {
-      await db.delete(cartItems).where(and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug)));
+      await deleteCartRowsWithActivity(and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug))!);
     } else {
-      await db.delete(cartItems).where(eq(cartItems.userId, userId));
+      await deleteCartRowsWithActivity(eq(cartItems.userId, userId));
     }
   }
 
@@ -8666,20 +8687,11 @@ export class DatabaseStorage implements IStorage {
 
   // === Cart ===
   async replaceUserCartWithVariantItems(userId: string, variantItems: Array<{ providerServiceId: string | null; dayNumber: number | null; timeSlot: string | null }>): Promise<number> {
-    await db.delete(cartItems).where(eq(cartItems.userId, userId));
-    let inserted = 0;
-    for (const item of variantItems) {
-      if (item.providerServiceId) {
-        await db.insert(cartItems).values({
-          userId,
-          serviceId: item.providerServiceId,
-          quantity: 1,
-          notes: `Day ${item.dayNumber} - ${item.timeSlot}`,
-        });
-        inserted++;
-      }
-    }
-    return inserted;
+    return replaceCartRowsWithActivity(userId, variantItems.flatMap(item =>
+      item.providerServiceId ? [{
+        id: crypto.randomUUID(), service_id: item.providerServiceId,
+        notes: `Day ${item.dayNumber} - ${item.timeSlot}`,
+      }] : []));
   }
 
   // === AI-generated itinerary ===

@@ -154,6 +154,7 @@ import { resolveCapturedDeposit } from "./services/deposit.service";
 // storage.addToCart / updateCartItem / removeFromCart / clearCart / migrateGuestCart /
 // replaceUserCartWithVariantItems directly from a route again, and never `db.insert(cartItems)`.
 import * as cartProjection from "./services/cart-projection.service";
+import { isCartActivityRequest, withCartActivityOrigin } from "./services/cart-email-state.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
@@ -846,6 +847,12 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Only explicit traveler purchase-intent requests can stamp projection changes.
+  // GETs and direct/background reconciliation never establish activity origin.
+  app.use((req, _res, next) => {
+    if (isCartActivityRequest(req.method, req.path)) withCartActivityOrigin(next);
+    else next();
+  });
   // Auth setup
   try {
     await setupAuth(app);
