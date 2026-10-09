@@ -25,9 +25,22 @@
  */
 import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
-import { useState, type ReactNode } from "react";
+import {
+  GOOGLE_MAPS_ATTRIBUTION,
+  STAY_CHANGED_LINE,
+  STAY_HERE_LABEL,
+  STAY_MAP_LINK_LABEL,
+  STAY_PICK_SUBTITLE,
+  STAY_PICK_TITLE,
+  STAY_STRAIGHT_LINE_SUBTITLE,
+  STAY_STRAIGHT_LINE_TITLE,
+  STAY_SWAP_LEAD,
+  stayCardModel,
+  stayMapsHref,
+} from "@/lib/stay-card";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { BedDouble, ChevronRight, MapPin } from "lucide-react";
+import { BedDouble, ChevronRight, ExternalLink, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -148,6 +161,105 @@ function OwnForm({
         Save
       </button>
     </div>
+  );
+}
+
+/**
+ * S1 "one stay on the plan" (Locked Decision 64): the server's `stay` block as a board card. A
+ * routed plan shows its ONE pick with "scored N of M nearby"; a free plan shows up to three stays
+ * closest by straight line. "Stay here" binds through the SAME `stay_here` answer the ranked list
+ * uses; the swap is the existing "Add places I'm considering" starter. The link slot is the Maps
+ * fallback, with its attribution beside it, until FU-S1-2 serves the hotel's own site. Words:
+ * `@/lib/stay-card`. No price, no commission (ruling 5) — the payload carries neither.
+ */
+export function StayPickCard({
+  view,
+  canChoose,
+  busy,
+  onStayHere,
+  swapControl,
+}: {
+  view: WhereToStayView;
+  canChoose: boolean;
+  busy: boolean;
+  onStayHere?: (hotel: StayHotel) => void;
+  swapControl?: ReactNode;
+}) {
+  const model = stayCardModel(view.stay);
+  if (!model) return null;
+  const routed = model.tier === "routed";
+  return (
+    <section
+      className="space-y-2 rounded-[var(--slip-radius-card,12px)] border border-[color:var(--slip-teal,#2E8B8B)] bg-[color:var(--slip-card,#fff)] p-3"
+      data-testid="stay-pick-card"
+      data-stay-tier={model.tier}
+    >
+      <div>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink,#1F6F6F)]" data-testid="stay-pick-title">
+          {routed ? STAY_PICK_TITLE : STAY_STRAIGHT_LINE_TITLE}
+        </p>
+        <p className="text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-subtitle">
+          {routed ? STAY_PICK_SUBTITLE : STAY_STRAIGHT_LINE_SUBTITLE}
+        </p>
+        {model.scoredLine ? (
+          <p className="text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-scored">
+            {model.scoredLine}
+          </p>
+        ) : null}
+        {model.changed ? (
+          <p className="text-xs font-semibold text-[color:var(--slip-ink,#1A1A18)]" data-testid="stay-pick-changed">
+            {STAY_CHANGED_LINE}
+          </p>
+        ) : null}
+      </div>
+      <ul className="space-y-2">
+        {model.hotels.map((h) => (
+          <li key={`${h.kind}-${h.id}`} className="flex flex-wrap items-center justify-between gap-2" data-testid={`stay-pick-hotel-${h.kind}-${h.id}`}>
+            <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-foreground">
+              {h.photo ? <PlacePhoto photo={h.photo} size="thumb" testId={`stay-pick-photo-${h.id}`} /> : <BedDouble className="h-4 w-4" aria-hidden="true" />}
+              <span className="font-semibold">{h.name}</span>
+              {h.starRating ? <span className="text-xs text-[color:var(--slip-muted,#5B6B7A)]">· {h.starRating}★</span> : null}
+              {h.kind === "platform" ? (
+                <span className="rounded border border-border px-1.5 text-[11px] text-[color:var(--slip-muted,#5B6B7A)]">{PLATFORM_STAY_BADGE}</span>
+              ) : null}
+            </span>
+            <span className="flex items-center gap-3">
+              <span className="flex items-center gap-1 text-xs">
+                <a
+                  href={stayMapsHref(h.name, view.city)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-[32px] items-center gap-1 font-semibold underline underline-offset-2"
+                  data-testid={`stay-pick-map-${h.kind}-${h.id}`}
+                >
+                  {STAY_MAP_LINK_LABEL} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
+                <span className="text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-pick-map-attribution-${h.id}`}>
+                  · {GOOGLE_MAPS_ATTRIBUTION}
+                </span>
+              </span>
+              {canChoose ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-[40px] items-center rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60"
+                  onClick={() => onStayHere?.(h)}
+                  disabled={busy}
+                  data-testid={`stay-pick-stay-${h.kind}-${h.id}`}
+                >
+                  {STAY_HERE_LABEL}
+                </button>
+              ) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {canChoose && swapControl ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-swap">
+          <span>{STAY_SWAP_LEAD}</span>
+          {swapControl}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -315,6 +427,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
             {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
           </p>
         </div>
+        {view?.eligible ? <StayPickCard view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {canChoose ? (
           <div className="space-y-2 border-t border-border pt-3">
@@ -425,6 +538,8 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         </p>
       </div>
 
+      <StayPickCard view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} />
+
       {mode === "unranked" ? (
         view.unranked === "no_located_items" ? (
           <p className="text-sm text-muted-foreground" data-testid="where-to-stay-no-located-items">
@@ -486,6 +601,18 @@ export function AnchorPanel(
     onSuccess: () => refresh(),
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't reopen where you're staying", description: e?.message }),
   });
+  // S1: a re-scored pick is shown once, then the card tells the server it was seen (the ONE read,
+  // `POST /api/trips/:tripId/stay-pick/seen`; owner or managing assistant — `canChoose`).
+  const seenSent = useRef<string | null>(null);
+  const stay = props.view?.stay;
+  const changedAt = stay && stay.tier === "routed" && stay.changed && stay.pick ? stay.computedAt ?? "changed" : null;
+  useEffect(() => {
+    if (!changedAt || !props.canChoose || seenSent.current === changedAt) return;
+    seenSent.current = changedAt;
+    void apiRequest("POST", `/api/trips/${tripId}/stay-pick/seen`, {}).catch(() => {
+      seenSent.current = null;
+    });
+  }, [changedAt, props.canChoose, tripId]);
   const reanchor = useMutation({
     mutationFn: async (itemId: string) => (await apiRequest("POST", `/api/trips/${tripId}/anchor/promote`, { itemId })).json(),
     onSuccess: () => {
