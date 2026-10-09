@@ -6,16 +6,18 @@
  * on these rows holds TENTHS of a cent (an integer column; a $5/1,000 call is half a cent) — the same
  * convention the Tavily rows use, and `metadata.costUnit` says so on every row. A caller whose cost is
  * already recorded elsewhere (`costRecordedOn` ≠ api_usage_logs: Places facts on `place_facts`, the
- * matrix on its refresh row) writes its counter row with 0 so a reader never sums the spend twice.
+ * matrix on its refresh row) writes its counter row with 0 so a reader never sums the spend twice. A call
+ * that has no such row passes `costHere` and records its cost here (FU-S1-1: the stay pick's matrix requests,
+ * ledger `2026-10-09-fu-s1-1-stay-pick-cost`) — its elements count against the same caller's cap either way.
  */
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { apiUsageLogs } from "@shared/schema";
 import { MAPS_CALLERS, MAPS_USAGE_PROVIDER, type MapsCallerKey } from "@shared/maps-billing";
 import { mapsApiKey, mapsCallRecordedTenths, mapsCallerDailyCap, mapsCallerEnabled } from "../../config/maps-billing.config";
-import { withMapsGate, type MapsCallRecord, type MapsGateDeps, type MapsGateRefusal } from "./maps-billing.core";
+import { withMapsGate, type MapsCallRecord, type MapsCostHere, type MapsGateDeps, type MapsGateRefusal } from "./maps-billing.core";
 
-export type { MapsGateRefusal } from "./maps-billing.core";
+export type { MapsCostHere, MapsGateRefusal } from "./maps-billing.core";
 
 function startOfUtcDay(now = new Date()): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -41,7 +43,7 @@ export const defaultMapsGateDeps: MapsGateDeps = {
     const c = MAPS_CALLERS[r.key];
     // Step 9a ruling 7 (ledger `2026-10-07-step9a-routing-engine`): a failed call costs 0; its row still
     // carries `request_count`, so it counts toward the cap.
-    const tenths = mapsCallRecordedTenths(r.key, r.units, r.success);
+    const tenths = mapsCallRecordedTenths(r.key, r.units, r.success, r.costHere);
     try {
       await db.insert(apiUsageLogs).values({
         provider: MAPS_USAGE_PROVIDER,
@@ -55,7 +57,9 @@ export const defaultMapsGateDeps: MapsGateDeps = {
         success: r.success,
         errorMessage: r.error ?? null,
         resultCount: r.success ? 1 : 0,
-        metadata: { sku: r.sku, costUnit: "tenths_of_cent", costRecordedOn: c.costRecordedOn },
+        metadata: r.costHere
+          ? { sku: r.sku, costUnit: "tenths_of_cent", costRecordedOn: "api_usage_logs", purpose: r.costHere.purpose, ref: r.costHere.ref ?? null }
+          : { sku: r.sku, costUnit: "tenths_of_cent", costRecordedOn: c.costRecordedOn },
       } as any);
     } catch (err: any) {
       console.error(`[maps-billing] ${r.key} cost row not written:`, err?.message ?? err);
@@ -67,7 +71,7 @@ export const defaultMapsGateDeps: MapsGateDeps = {
 export function gatedMapsCall<T>(
   key: MapsCallerKey,
   call: (apiKey: string) => Promise<{ value: T; units?: number; success?: boolean }>,
-  opts: { userId?: string | null; sku?: string; deps?: MapsGateDeps } = {},
+  opts: { userId?: string | null; sku?: string; costHere?: MapsCostHere; deps?: MapsGateDeps } = {},
 ): Promise<{ value: T } | { refused: MapsGateRefusal }> {
   return withMapsGate(key, opts.deps ?? defaultMapsGateDeps, call, opts);
 }
@@ -90,7 +94,8 @@ export async function gatedMapsCallOrNull<T>(
  * Today's Maps spend per caller (step 9a ruling 8, ledger `2026-10-07-step9a-routing-engine`), for
  * `/internal/jobs/health`. Read from the SAME `api_usage_logs` rows the gate counts and records, so the
  * cap and the spend cannot disagree. `spendTenthsOfCent` is what was RECORDED (a failed call is 0; a
- * caller whose cost lives on another table is 0 here and says where). null = the read failed — never 0.
+ * caller whose cost lives on another table is 0 here and says where — except the calls that passed their
+ * own price, FU-S1-1's stay pick on `route_matrix`, whose dollars are here). null = the read failed — never 0.
  */
 export interface MapsCallerSpend {
   caller: MapsCallerKey;

@@ -110,7 +110,10 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
   if (!candidates.length) return { skipped: "no_candidates" };
   const ordered = straightLineOrder(candidates, loaded.stops);
   const plan = planStayScoring(ordered, loaded.stops.length, deps.budget ?? STAY_PICK_ELEMENT_BUDGET);
-  const fetchMatrix = deps.fetchMatrix ?? gatedRouteMatrixFetch();
+  // FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`): the stay pick has no refresh row, so each
+  // request records its dollars on its own `api_usage_logs` gate row (purpose `stay_pick`, ref = the plan);
+  // its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP` through the same `route_matrix` caller.
+  const fetchMatrix = deps.fetchMatrix ?? gatedRouteMatrixFetch({ costHere: { purpose: "stay_pick", ref: tripId } });
 
   // The stops in the SAME canonical order the ranking reads, so a returned destinationIndex is its stop.
   const stops = [...loaded.stops].sort((a, b) => a.dayNumber - b.dayNumber || a.lat - b.lat || a.lng - b.lng);

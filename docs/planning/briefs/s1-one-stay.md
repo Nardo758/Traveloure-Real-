@@ -101,10 +101,9 @@ Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ ki
 
 ## Recorded, not fixed
 
-- **Cost record:** `route_matrix` records its COST on `travel_time_matrix_refreshes` (`costRecordedOn`), so
-  stay-pick requests count their elements toward the cap through `api_usage_logs.request_count` but record $0 there.
-  No table holds what a stay pick cost in dollars. Fix: a caller row of its own, or recording the elements on the
-  pick.
+- **Cost record — FIXED by FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`):** each stay-pick request now
+  records its dollars on its own `route_matrix` gate row (`metadata.purpose = 'stay_pick'`, `ref` = the plan) at the
+  Essentials list price, and its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP`.
 - **Cross-instance overlap:** two server instances can score the same plan at once. Each run stays inside the
   budget, and the later write wins.
 - **The debounced trigger** runs only while `TRAVEL_TIME_SERVICE_ENABLED` is on (the queue's own switch). The other
