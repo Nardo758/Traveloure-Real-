@@ -67,3 +67,34 @@ export function mapDayChips(
       };
     });
 }
+
+// ── The Map board's words (slip conformance; ledger `2026-10-08-slip-map-board`) ──────────────────
+const WKD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function isoParts(iso: string | null | undefined): { wkd: string; mon: string; d: number } | null {
+  const m = typeof iso === "string" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+  if (!m) return null;
+  const dt = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (!Number.isFinite(dt.getTime())) return null;
+  return { wkd: WKD_SHORT[dt.getUTCDay()], mon: MON_SHORT[dt.getUTCMonth()], d: dt.getUTCDate() };
+}
+
+/** A day chip: "Wed", and the selected one "Sat 14". No real date ⇒ "Day N" (§13 — never a guessed weekday). */
+export function mapDayChipLabel(day: { dayNum: number; dateIso?: string | null }, selected: boolean): string {
+  const p = isoParts(day.dateIso);
+  if (!p) return `Day ${day.dayNum}`;
+  return selected ? `${p.wkd} ${p.d}` : p.wkd;
+}
+
+/** The stops sheet's title: "Day 2 · Sat · Nov 14 · Version A" — the date only when the day has one. */
+export function mapSheetTitle(input: { dayNum: number | null; dateIso?: string | null; versionLabel?: string | null }): string {
+  const p = isoParts(input.dateIso);
+  const parts = [input.dayNum != null ? `Day ${input.dayNum}` : null, p ? `${p.wkd} · ${p.mon} ${p.d}` : null, input.versionLabel ?? null];
+  return parts.filter(Boolean).join(" · ");
+}
+
+/** "2 moved vs draft" beside the version toggle; null on the draft or when nothing moved. */
+export function mapMovedLine(moved: number): string | null {
+  return moved > 0 ? `${moved} moved vs draft` : null;
+}
