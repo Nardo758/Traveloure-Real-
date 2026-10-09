@@ -150,6 +150,12 @@ const specialties = [
   "Historical Tours",
 ];
 
+/** Stored traveler-type values keep their original spelling; the label is US English (H1). */
+const TRAVELER_TYPE_LABELS: Record<string, string> = {
+  "Solo travellers": "Solo travelers",
+  "Business travellers": "Business travelers",
+};
+
 const languages = [
   "English",
   "Spanish",
@@ -1325,7 +1331,7 @@ export default function TravelExpertsPage() {
               <CardHeader>
                 <CardTitle className="text-2xl text-foreground">Your Local Specialties</CardTitle>
                 <p className="text-muted-foreground text-sm mt-1">
-                  Select the areas where you have genuine insider knowledge. These feed directly into how travellers find you.
+                  Select the areas where you have genuine insider knowledge. These feed directly into how travelers find you.
                 </p>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -1356,7 +1362,7 @@ export default function TravelExpertsPage() {
                 </div>
 
                 <div>
-                  <Label className="text-[#374151] mb-3 block">Traveller Types You Serve Best</Label>
+                  <Label className="text-[#374151] mb-3 block">Traveler Types You Serve Best</Label>
                   <div className="flex flex-wrap gap-2">
                     {["Solo travellers", "Couples", "Families", "Groups", "Business travellers"].map((type) => (
                       <Badge
@@ -1371,7 +1377,7 @@ export default function TravelExpertsPage() {
                         onClick={() => toggleArrayItem("experienceTypes", type)}
                         data-testid={`badge-traveller-type-${type.toLowerCase().replace(/\s/g, "-")}`}
                       >
-                        {type}
+                        {TRAVELER_TYPE_LABELS[type] ?? type}
                       </Badge>
                     ))}
                   </div>

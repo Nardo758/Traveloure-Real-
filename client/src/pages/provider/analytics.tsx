@@ -306,7 +306,7 @@ export default function ProviderAnalytics({ embedded = false }: { embedded?: boo
 
                 {(crossSell?.impressions ?? 0) === 0 && (
                   <p className="text-center text-console-mid text-sm py-4">
-                    No cross-sell data yet — data populates as travellers view the "Users also book" strip.
+                    No cross-sell data yet — data populates as travelers view the "Users also book" strip.
                   </p>
                 )}
               </>

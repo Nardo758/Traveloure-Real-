@@ -73,6 +73,11 @@ export interface NavGroupConfig {
   i18nKey?: string;
   href?: string;
   /**
+   * H1 (ledger `2026-10-08-h1-home-copy`): a group that stays DEFINED — its keys, its routes and
+   * `activeNavGroupName` keep working — but is not drawn in the header bar or the mobile sheet.
+   */
+  hidden?: boolean;
+  /**
    * R2 (cosmetic-public-surfaces dispatch, A2): the header row is over budget at every
    * desktop width up to 1440px with the full group name, even with `nowrap` — three trigger
    * labels wrap to two lines and their chevrons detach. An OPTIONAL short form for the
@@ -187,6 +192,9 @@ export const navGroupsConfig: NavGroupConfig[] = [
   {
     name: "Planning Tools",
     i18nKey: "groups.planningTools",
+    // H1 (ledger `2026-10-08-h1-home-copy`; decision-maker, Oct 8, 2026): hidden on desktop and
+    // mobile; the group, its keys and its routes stay.
+    hidden: true,
     shortName: "Tools",
     shortI18nKey: "groups.planningToolsShort",
     sections: [

@@ -34,3 +34,11 @@ export const GUEST_MAP_PATH = "/plans/new?view=map";
 export function opensGuestMap(branch: LandingBranch | string, door: string | null | undefined): boolean {
   return branch === "myself" && door === "experiences";
 }
+
+/**
+ * E2 ruling 2 / Q1 (a): a plan started to be built WITH AI lands on its map with "Draft it with AI"
+ * started — `/plans/:id?view=map&draft=ai`. `useSlipFreeDraft` reads it ONCE; unconfirmed dates are
+ * asked first, exactly as the button asks them (E1).
+ */
+export const DRAFT_AI_QUERY = "draft";
+export const DRAFT_AI_VALUE = "ai";

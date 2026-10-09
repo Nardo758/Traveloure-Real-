@@ -14,7 +14,7 @@
 import { test, expect } from '@playwright/test';
 import { RUN_ID, e2eEmail, E2E_PASSWORD } from './lib/run-id';
 import { signupViaUi } from './lib/accounts';
-import { fillPlanModalToFinish, clickPlanFinish, openPlanModalFromHero } from './lib/flows';
+import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding, fileVisibility } from './lib/findings';
 import { q } from './lib/db';
@@ -114,10 +114,10 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
     ms: null,
   });
 
-  // ── Plan a Kyoto trip through the ONE planning modal, "Build it myself" ──
+  // ── Plan a Kyoto trip through PlanEntry (E2): a date, Kyoto, Start a plan ──
   await page.goto('/');
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-  const opened = await openPlanModalFromHero(page);
+  const opened = await openPlanEntryFromHero(page);
   if (!opened) {
     fileFinding({
       journey: 'D1',
@@ -125,9 +125,9 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
       class: 'DEAD_TRIGGER',
       severity: 'P1',
       known: null,
-      title: 'button-plan-trip on the landing hero did not open plan-modal',
-      expected: 'Clicking the hero CTA opens the one planning modal (ruling 33)',
-      actual: 'plan-modal never became visible',
+      title: 'button-plan-trip on the landing hero did not open plan-entry',
+      expected: 'Clicking the hero CTA opens PlanEntry (E2)',
+      actual: 'plan-entry never became visible',
       where: 'client/src/components/landing/landing-hero.tsx',
       evidence: { shot: 'shots/D1-01-post-signup.png' },
       behavioural: true,
@@ -137,7 +137,7 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
   }
   await shot(page, 'D1', '04', 'plan-modal-open');
 
-  const reachedFinish = await fillPlanModalToFinish(page, 'Kyoto, Japan');
+  const reachedFinish = await fillPlanEntryToStart(page, 'Kyoto, Japan');
   await shot(page, 'D1', '05', 'plan-modal-finish-row');
   if (!reachedFinish) {
     fileFinding({
@@ -146,18 +146,18 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
       class: 'DEAD_TRIGGER',
       severity: 'P1',
       known: null,
-      title: 'Plan modal never reached a finish row (planning-option-*) for a Kyoto/travel occasion',
-      expected: 'occasion -> where -> when -> who -> events resolves to the finish row',
-      actual: 'No planning-option-* control became visible within 8 step-advances',
-      where: 'client/src/components/trip/plan-modal.tsx',
+      title: 'PlanEntry never offered Start a plan for a dated Kyoto trip',
+      expected: 'a date -> Kyoto -> the occasion resolves to Start a plan',
+      actual: 'button-plan-entry-start never became visible',
+      where: 'client/src/components/plan/PlanEntry.tsx',
       evidence: { shot: 'shots/D1-05-plan-modal-finish-row.png' },
       behavioural: true,
     });
     net.flush();
-    throw new Error('D1: plan modal did not reach its finish row');
+    throw new Error('D1: PlanEntry did not reach Start a plan');
   }
 
-  const tripId = await clickPlanFinish(page, 'myself');
+  const tripId = await clickPlanStart(page);
   await shot(page, 'D1', '06', 'after-build-it-myself');
   if (!tripId) {
     fileFinding({
@@ -166,15 +166,15 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
       class: 'SPEC_DIVERGENCE',
       severity: 'P1',
       known: null,
-      title: '"Build it myself" did not land on a /plans/:tripId (or ?tripId=) URL',
-      expected: 'LD 42 D5 / LD 45: the myself finish mints a trips row and lands on its slip',
+      title: '"Start a plan" did not land on a /plans/:tripId URL',
+      expected: 'E2: Start a plan mints a trips row and lands on it',
       actual: `Landed at ${page.url()}`,
-      where: 'client/src/components/trip/plan-modal.tsx (finish("myself"))',
+      where: 'client/src/contexts/PlanningContext.tsx (startFromEntry)',
       evidence: { shot: 'shots/D1-06-after-build-it-myself.png' },
       behavioural: true,
     });
     net.flush();
-    throw new Error('D1: no tripId minted from Build it myself');
+    throw new Error('D1: no tripId minted from Start a plan');
   }
   writeState((s) => {
     s.trips.tauthKyoto = { id: tripId, label: 'D1 Kyoto plan' };
@@ -187,7 +187,7 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
     class: 'SPEC_DIVERGENCE',
     severity: 'P3',
     known: null,
-    title: 'trips row minted by Build it myself (recorded for the record, not itself a defect)',
+    title: 'trips row minted by Start a plan (recorded for the record, not itself a defect)',
     expected: 'n/a — observation',
     actual: JSON.stringify(tripRow[0] ?? null),
     where: 'trips table',
