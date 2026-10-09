@@ -2425,6 +2425,13 @@ This document captures architectural decisions to maintain consistency across co
     at Local Izakaya" gets no fact rather than some izakaya's hours. `PLACES_LOOKUPS_PER_DRAFT` stays a
     COST cap on BILLED lookups (a cache reuse no longer spends it), spent round-robin across the plan's
     days (`lookupOrder`) instead of in plan order.
+    **AMENDED — THE PLAN IS THE TRAVELER'S RECORD FROM CREATION (decision-maker Leon Dixon, Oct 9, 2026;
+    verbatim):** "LD 57 (amended Oct 9 2026): a plan is the traveler's own record from the moment it is
+    created; purchase strengthens but does not create that ownership. Place facts stored on a plan item
+    (hours, address, access route, last admission) with 'checked on <date>' provenance are the traveler's
+    record, displayed to that traveler, and are kept for 30 days as ruled. Nothing beyond place IDs and
+    coordinates is stored from Places outside a plan; Google durations are never cached across plans; Google
+    photos are never stored."
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
