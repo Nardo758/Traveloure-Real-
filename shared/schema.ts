@@ -2763,13 +2763,13 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // traveler's, which is exactly the §13 lie the column exists to close. No pick anywhere
   // re-admits it; `storage.createTrip` and `storage.updateTrip` are its only writers.
   datesConfirmedAt: true,
+  // Ledger `2026-10-09-s1-one-stay`: the stay pick has ONE writer (`stay-pick.service.ts`) and no admission
+  // rail at all — under this denylist a new column would otherwise be body-settable (§19).
+  stayPick: true,
   // Ledger `2026-10-08-e1-zero-questions`: the pets pair has ONE admission rail, the pick-based
   // `tripOccasionBody`; under this denylist a new column would otherwise be body-settable (§19).
   petKind: true,
   petCount: true,
-  // Ledger `2026-10-09-s1-one-stay`: the stay pick has ONE writer (`stay-pick.service.ts`) and no admission
-  // rail at all — under this denylist a new column would otherwise be body-settable (§19).
-  stayPick: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
