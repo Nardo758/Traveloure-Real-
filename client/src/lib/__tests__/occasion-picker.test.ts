@@ -56,15 +56,15 @@ const BOARD_LABELS = ["A trip", "A moment", "A celebration", "A hosted event", "
 describe("P1 — one picker, one source", () => {
   it("the page and the modal both render <OccasionPicker> and neither keeps its own occasion grid", () => {
     // E2 (sanctioned): the pop-up's occasion picker lives in PlanEntry now; the edit window has none.
-    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/plan/PlanEntry.tsx"]) {
-      const src = read(f);
-      assert.match(src, /<OccasionPicker\b/, `${f} renders the shared picker`);
-      assert.doesNotMatch(src, /option-occasion-/, `${f} must not draw its own occasion tiles`);
-    }
-    // Both read the same rows: the one runtime vocabulary query key.
-    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/plan/PlanEntry.tsx"]) {
-      assert.match(read(f), /queryKey:\s*\["\/api\/experience-types"\]/, f);
-    }
+    // E3 (sanctioned): the page mounts PlanEntry inline, so its picker is PlanEntry's "More specific".
+    const entry = read("client/src/components/plan/PlanEntry.tsx");
+    assert.match(entry, /<OccasionPicker\b/, "PlanEntry renders the shared picker");
+    assert.doesNotMatch(entry, /option-occasion-/, "PlanEntry must not draw its own occasion tiles");
+    const page = read("client/src/pages/experiences.tsx");
+    assert.doesNotMatch(page, /<OccasionPicker\b|option-occasion-/, "the page keeps no occasion grid of its own");
+    assert.match(page, /<PlanEntryPanel\b/, "the page's occasion question is PlanEntry's");
+    // One reader of the rows: the one runtime vocabulary query key.
+    assert.match(entry, /queryKey:\s*\["\/api\/experience-types"\]/);
   });
 
   it("grouping is experienceGroupFor over the rows, in the board's order", () => {
@@ -149,13 +149,12 @@ describe("P5 — Continue needs both answers", () => {
     assert.equal(canContinue("wedding", CATALOG, "kyoto"), true);
   });
 
-  it("the page's Continue opens the Trip Slip with the occasion and the city — no modal (Lane E1, sanctioned)", () => {
+  it("the page starts a plan through PlanEntry inline and the provider's one start (E3, sanctioned)", () => {
     const src = read("client/src/pages/experiences.tsx");
-    assert.match(src, /experienceSlug:\s*occasionSlug,\s*city:\s*market\.cityName,\s*country:\s*market\.country/);
-    assert.match(src, /mintStartPagePlan\(answers\)/);
-    assert.match(src, /writePendingPlanRecord\(startPageGuestRecord\(answers\)\)/);
-    assert.doesNotMatch(src, /usePlanning|focusStep/, "the start page opens no planning modal");
-    assert.match(src, /disabled=\{!ready \|\| starting \|\| authLoading\}/);
+    assert.match(src, /<PlanEntryPanel\s+active\s+container="page"/);
+    assert.match(src, /planning\.start\(start, \{ door: "experiences", newPlan: true \}\)/);
+    assert.doesNotMatch(src, /mintStartPagePlan|startPageGuestRecord|button-experiences-continue/, "E1's Continue and its mint are gone");
+    assert.doesNotMatch(src, /\.open\(|focusStep/, "the page opens no pop-up over itself");
     assert.doesNotMatch(src, /IntakePanel|plan"\) === "1"/, "the intake and ?plan=1 are gone");
     assert.doesNotMatch(src, /curated experience templates/, "the template count copy is gone");
   });

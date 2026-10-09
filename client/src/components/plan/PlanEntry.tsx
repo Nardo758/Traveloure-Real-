@@ -8,13 +8,19 @@
  * No When, no Who, no plan name, no build chooser, no Clear/Save — zero typed fields on any path (the
  * city typeahead is optional; the eight markets are chips).
  *
- * Test ids (shared with the /experiences page container in E3): `plan-entry`, `plan-entry-around-*`,
+ * TWO CONTAINERS, ONE PANEL (E3, ledger `2026-10-09-e3-experiences-inline`): `PlanEntry` is the pop-up
+ * (a Dialog); `PlanEntryPanel` is the same steps and the same Start a plan, mounted INLINE on
+ * /experiences. The inline mount never auto-starts (a visit writes nothing — a deep link with a city and
+ * an occasion lands on Step 2 with Start a plan ready), its Start a plan sits in a sticky footer, and its
+ * Place picker is the page's own world map and eight city cards (`placePicker`).
+ *
+ * Test ids (shared by both containers): `plan-entry` (the pop-up) / `plan-entry-inline` (the page), `plan-entry-around-*`,
  * `plan-entry-city-<marketKey>`, `plan-entry-city-input`, `plan-entry-not-yet`,
  * `plan-entry-date-weekend|next-month|pick`, `plan-entry-date-start|end`, `plan-entry-event-<id>`,
  * `plan-entry-group-<key>`, `plan-entry-more-specific`, `plan-entry-night-<date>|all`,
  * `button-plan-entry-start`, `button-plan-entry-back`, `plan-entry-error`.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OccasionPicker } from "@/components/plan/OccasionPicker";
@@ -79,6 +85,17 @@ interface Props {
   onStart: (start: PlanEntryStart) => Promise<PlanEntryStartOutcome>;
 }
 
+interface PanelProps {
+  /** The panel is showing (the pop-up is open, or the page is mounted). Gates the queries and the reset. */
+  active: boolean;
+  source: PlanEntrySource | null;
+  onStart: (start: PlanEntryStart) => Promise<PlanEntryStartOutcome>;
+  /** "dialog" = the pop-up; "page" = inline on /experiences (no auto-start, sticky footer). */
+  container: "dialog" | "page";
+  /** The page's Place picker (the world map + the eight cards); absent ⇒ the eight city chips. */
+  placePicker?: (picked: string | null, pick: (marketKey: string) => void) => ReactNode;
+}
+
 const AROUND: Array<{ key: PlanAround; label: string }> = [
   { key: "place", label: "A place" },
   { key: "date", label: "A date" },
@@ -123,8 +140,26 @@ function Chip({ active, onClick, testId, children }: { active: boolean; onClick:
   );
 }
 
+/** The pop-up container: the panel in a Dialog. */
 export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
-  const seed = useMemo(() => initialPlanEntry(source), [source]);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[640px]" data-testid="plan-entry">
+        <PlanEntryPanel active={open} source={source} onStart={onStart} container="dialog" />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The steps and Start a plan, in either container. */
+export function PlanEntryPanel({ active, source, onStart, container, placePicker }: PanelProps) {
+  const open = active;
+  const inline = container === "page";
+  const seed = useMemo(() => {
+    const s = initialPlanEntry(source);
+    // Inline, Step 1 opens on "A place": the page's map and cards ARE its first question.
+    return inline && s.state.around === null ? { ...s, state: { ...s.state, around: "place" as const } } : s;
+  }, [source, inline]);
   const [state, setState] = useState<PlanEntryState>(seed.state);
   const [step, setStep] = useState<PlanEntryStep>(seed.step);
   const [typed, setTyped] = useState("");
@@ -173,7 +208,13 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
   useEffect(() => {
     if (!state.occasionSlug || occasionRows.length === 0) return;
     const row = occasionRows.find((o) => o.slug === state.occasionSlug);
-    const g = row ? occasionPickerGroupFor(row) : null;
+    // A slug the catalog does not carry ("photo") is not an answer: it is dropped, never minted (§13).
+    if (!row) {
+      doorOccasion.current = false;
+      setState((s) => ({ ...s, occasionSlug: null }));
+      return;
+    }
+    const g = occasionPickerGroupFor(row);
     if (g && g !== state.group) setState((s) => ({ ...s, group: g }));
   }, [state.occasionSlug, occasionRows, state.group]);
 
@@ -200,8 +241,9 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
   };
 
   // Photo tile / Moments / AI panel: the door held the city AND an occasion the catalog carries.
+  // Never inline (E3 ruling 3): a visit to /experiences writes nothing; its deep link lands on Step 2.
   useEffect(() => {
-    if (!open || autoStarted.current || occasionsLoading || occasionRows.length === 0) return;
+    if (inline || !open || autoStarted.current || occasionsLoading || occasionRows.length === 0) return;
     if (startsStraightAway(state, occasionRows.map((o) => o.slug))) {
       autoStarted.current = true;
       void start();
@@ -225,7 +267,10 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
   const title = step === "around" ? "Plan around…" : "What's the occasion?";
   const straight = starting && step !== "occasion";
 
-  const cityChips = (only?: readonly string[]) => (
+  const cityChips = (only?: readonly string[]) =>
+    !only && placePicker ? (
+      <div data-testid="plan-entry-place-picker">{placePicker(state.market?.marketKey ?? null, pickMarket)}</div>
+    ) : (
     <div className="flex flex-wrap gap-2" role="group" aria-label="Cities">
       {OPERATING_MARKETS.filter((m) => !only || only.includes(m.marketKey)).map((m) => (
         <Chip key={m.marketKey} active={state.market?.marketKey === m.marketKey} onClick={() => pickMarket(m.marketKey)} testId={`plan-entry-city-${m.marketKey}`}>
@@ -254,19 +299,25 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
     </button>
   );
 
+  const heading = straight ? "Starting your plan…" : title;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[640px]" data-testid="plan-entry">
-        <div className="-mx-1 min-h-0 space-y-5 overflow-y-auto px-1 pb-1">
-          <DialogHeader>
-            <span className="text-[10.5px] font-medium uppercase tracking-[0.14em]" style={{ fontFamily: MONO, color: "var(--coral-text)" }}>
-              Start a plan
-            </span>
-            <DialogTitle className="text-[22px] font-semibold" style={{ fontFamily: SERIF, color: "var(--earn-navy, #1A1A18)" }}>
-              {straight ? "Starting your plan…" : title}
-            </DialogTitle>
-            <DialogDescription className="sr-only">Choose what to plan around, then the occasion.</DialogDescription>
-          </DialogHeader>
+    <>
+        <div className={inline ? "space-y-5" : "-mx-1 min-h-0 space-y-5 overflow-y-auto px-1 pb-1"}>
+          {inline ? (
+            <h2 className="text-[22px] font-semibold" style={{ fontFamily: SERIF, color: "var(--earn-navy, #1A1A18)" }} data-testid="plan-entry-title">
+              {heading}
+            </h2>
+          ) : (
+            <DialogHeader>
+              <span className="text-[10.5px] font-medium uppercase tracking-[0.14em]" style={{ fontFamily: MONO, color: "var(--coral-text)" }}>
+                Start a plan
+              </span>
+              <DialogTitle className="text-[22px] font-semibold" style={{ fontFamily: SERIF, color: "var(--earn-navy, #1A1A18)" }}>
+                {heading}
+              </DialogTitle>
+              <DialogDescription className="sr-only">Choose what to plan around, then the occasion.</DialogDescription>
+            </DialogHeader>
+          )}
 
           {straight ? null : step === "around" ? (
             <div className="space-y-4" data-testid="plan-entry-step-around">
@@ -412,7 +463,15 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
         </div>
 
         {!straight && (
-          <div className="flex items-center justify-between gap-3 border-t pt-3" style={{ borderColor: "var(--earn-line, #E8E8E2)" }}>
+          <div
+            className={
+              inline
+                ? "sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-background py-3"
+                : "flex items-center justify-between gap-3 border-t pt-3"
+            }
+            style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
+            data-testid="plan-entry-footer"
+          >
             {step === "occasion" ? (
               <button type="button" onClick={() => setStep("around")} className="text-[14px] font-medium" style={{ color: "#7A7A72" }} data-testid="button-plan-entry-back">
                 Back
@@ -420,7 +479,7 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
             ) : (
               <span />
             )}
-            {(step === "occasion" || (state.market && state.occasionSlug)) && (
+            {(inline || step === "occasion" || (state.market && state.occasionSlug)) && (
               <button
                 type="button"
                 onClick={() => void start()}
@@ -434,7 +493,6 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
             )}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
