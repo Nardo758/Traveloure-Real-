@@ -2581,7 +2581,7 @@ This document captures architectural decisions to maintain consistency across co
     engine routes airport ↔ stay legs, and the buffer check adds the routed leg's minutes. `leg-google-coords`
     queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
 
-63. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
+64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, HELD FOR RULING).**
     A paid plan (`planGetsRoutedLegs`, which replaced the paid-optimizer-run test) gets ONE stay. It is picked by
     one Route Matrix request per hotel → every located stop on the plan's dates (DRIVE), ranked by reachability,
