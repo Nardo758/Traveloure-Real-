@@ -256,6 +256,7 @@ export function evaluateCartItemChange(contentMeta: unknown, current: {
   const state = (contentMeta as any)[CART_STATE_KEY];
   const key = (v: any) => JSON.stringify([v.price, v.currency, v.availability]);
   if (state.notified && key(state.notified) === key(current)) return "already_notified";
+  if (state.notified) return "changed";
   return key(state.snapshot) === key(current) ? "unchanged" : "changed";
 }
 

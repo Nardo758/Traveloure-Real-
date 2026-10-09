@@ -12,6 +12,7 @@ import { db, pool } from "../db";
 import { storage } from "../storage";
 import { cartItems, providerServices, users, emailOutbox, trips, itineraryItems } from "../../shared/schema";
 import * as projection from "../services/cart-projection.service";
+import { enqueueEmail, _outboxTestHooks } from "../services/email-outbox.service";
 import {
   CART_STATE_KEY, cartStateDependencies, evaluateCartClock, evaluateCartItemChange,
   preserveCartState, recordQueuedCartValues, snapshotSkipReason,
@@ -166,6 +167,13 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
       const converted = await projection.convertCartLinesToItems(userId, tripId, [convertLine.id]);
       assert.equal(converted.converted, 1);
       assert.equal(await fetch(convertLine.id), undefined);
+      const materializeLine = await storage.addToCart(userId, { serviceId });
+      const beforeMaterialize = (await fetch(materializeLine.id)).contentMeta;
+      await projection.materializeCartLinesAsItems(userId, tripId);
+      assert.equal((await fetch(materializeLine.id)).tripId, tripId);
+      assert.ok((await fetch(materializeLine.id)).itineraryItemId);
+      assert.deepEqual((await fetch(materializeLine.id)).contentMeta, beforeMaterialize);
+      await storage.clearCart(userId);
       // Variant replacement uses one statement; valid service snapshots; failed FK rolls back.
       await storage.replaceUserCartWithVariantItems(userId,
         [{ providerServiceId: serviceId, dayNumber: 1, timeSlot: "AM" }]);
@@ -184,6 +192,30 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
       const notified = await fetch(variant.id);
       assert.equal(evaluateCartItemChange(notified.contentMeta, values), "already_notified");
       assert.deepEqual(stamp(notified), stamp(variant));
+      const previousSender = _outboxTestHooks.sendEmailFn;
+      let mockSends = 0;
+      _outboxTestHooks.sendEmailFn = async () => {
+        mockSends++;
+        return { success: true, messageId: `provider-free-${randomUUID()}` };
+      };
+      try {
+        const nextValues = { ...values, price: "20.00" };
+        await db.update(providerServices).set({ price: nextValues.price }).where(eq(providerServices.id, serviceId));
+        const args = { to: `${randomUUID()}@traveloure-qa.test`, subject: "Provider-free cart state proof",
+          html: "<p>Isolated fixture only</p>", emailType: "cart_item_changed",
+          metadata: { cartItemId: variant.id, cartNotifiedValues: nextValues } };
+        assert.equal(typeof await enqueueEmail(args), "number");
+        assert.equal(mockSends, 1);
+        assert.equal(await enqueueEmail(args), null);
+        assert.equal(mockSends, 1);
+        assert.equal(await enqueueEmail({ ...args, metadata: { cartItemId: variant.id } }), null);
+        assert.equal(mockSends, 1);
+        assert.deepEqual(stamp(await fetch(variant.id)), stamp(variant));
+        assert.deepEqual(snapshot(await fetch(variant.id)), snapshot(variant));
+        await db.update(providerServices).set({ price: "18.00" }).where(eq(providerServices.id, serviceId));
+      } finally {
+        _outboxTestHooks.sendEmailFn = previousSender;
+      }
       assert.deepEqual(snapshot(notified), snapshot(variant));
       // Excluded payment cleanup stays byte-for-byte neutral to surviving partner state.
       const paidPartner = await storage.addToCart(userId, { contentType: "affiliate_product",

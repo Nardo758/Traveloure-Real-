@@ -38,6 +38,7 @@
  */
 
 import { db } from "../db";
+import { evaluateCartItemChange, recordQueuedCartValues } from "./cart-email-state.service";
 import { and, eq, sql } from "drizzle-orm";
 import { emailOutbox, itineraryComparisons, users, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
@@ -121,9 +122,7 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
   let outboxId: number | null = null;
 
   try {
-    const [row] = await db
-      .insert(emailOutbox)
-      .values({
+    const values = {
         emailType:    params.emailType ?? "generic",
         toEmail:      toEmailStr,
         subject:      params.subject,
@@ -137,11 +136,42 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
         attemptCount: 0,
         maxAttempts:  6,
         metadata:     params.metadata ?? {},
-      } satisfies InsertEmailOutbox)
-      .returning({ id: emailOutbox.id });
+      } satisfies InsertEmailOutbox;
+    const trackedCartNotice = params.emailType === "cart_item_changed";
+    const row = trackedCartNotice
+      ? await db.transaction(async (tx) => {
+          const cartItemId = params.metadata?.cartItemId;
+          const notified = params.metadata?.cartNotifiedValues as
+            { price?: unknown; currency?: unknown; availability?: unknown } | undefined;
+          if (typeof cartItemId !== "string" || typeof notified?.price !== "string" ||
+              typeof notified.currency !== "string" || !notified.availability) {
+            throw new Error("Cart notice state is incomplete");
+          }
+          const cart = (await tx.execute(sql`SELECT content_meta AS meta
+            FROM cart_items WHERE id = ${cartItemId}`)).rows[0] as { meta: unknown } | undefined;
+          const decision = evaluateCartItemChange(cart?.meta, {
+            price: notified.price, currency: notified.currency, availability: notified.availability,
+          });
+          if (decision !== "changed") throw new Error(decision);
+          const [queued] = await tx.insert(emailOutbox).values(values).returning({ id: emailOutbox.id });
+          if (!await recordQueuedCartValues(cartItemId, queued.id, {
+            price: notified.price, currency: notified.currency, availability: notified.availability,
+          }, tx)) throw new Error("Cart notice is missing its snapshot or already recorded");
+          return queued;
+        })
+      : (await db.insert(emailOutbox).values(values).returning({ id: emailOutbox.id }))[0];
 
     outboxId = row?.id ?? null;
   } catch (insertErr: unknown) {
+    // Only this future cart notice kind fails closed: an unrecorded/duplicate
+    // state must not take the generic family's historical direct-send fallback.
+    // No producer, template or schedule is introduced here.
+    if (params.emailType === "cart_item_changed") {
+      const skip = insertErr instanceof Error && ["no_snapshot", "unchanged", "already_notified"].includes(insertErr.message)
+        ? insertErr.message : "cart_notice_state_not_committed";
+      logger.warn({ reason: skip }, "[email-outbox] cart notice not queued");
+      return null;
+    }
     logger.error(
       { err: insertErr, subject: params.subject, to: toEmailStr },
       "[email-outbox] failed to insert outbox row — email will NOT be retried"

@@ -56,6 +56,7 @@ test("old cart skips change email; notified values suppress repetition", () => {
   const current = { price: "14", currency: "USD", availability: { capacity: 4 } };
   const meta = { [CART_STATE_KEY]: { snapshot: initial, notified: current } };
   assert.equal(evaluateCartItemChange(meta, current), "already_notified");
+  assert.equal(evaluateCartItemChange(meta, initial), "changed");
   assert.equal(evaluateCartItemChange({ [CART_STATE_KEY]: { snapshot: initial } }, current), "changed");
   assert.equal(evaluateCartItemChange({ [CART_STATE_KEY]: { snapshot: initial } }, initial), "unchanged");
 });
