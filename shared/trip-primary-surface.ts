@@ -80,9 +80,29 @@ export function tripCardForcedPrimaryByDateAlone(
  */
 export type TripCardBannerState = "ready" | "finalize_now" | null;
 
-export function tripCardBannerState(input: TripCardPrimaryInput & { finalVersion: number | null | undefined }): TripCardBannerState {
+export function tripCardBannerState(
+  input: TripCardPrimaryInput & { finalVersion: number | null | undefined; datesConfirmed?: boolean },
+): TripCardBannerState {
   if (!tripCardIsPrimary(input)) return null;
-  return input.finalVersion != null ? "ready" : "finalize_now";
+  if (input.finalVersion != null) return "ready";
+  return tripStartsSoon(input) ? "finalize_now" : null;
+}
+
+/**
+ * B1 (ledger `2026-10-08-starts-soon-needs-real-dates`): "Your trip starts soon" is a claim about a
+ * REAL start that is still AHEAD. It is said only when (a) somebody chose the dates — a placeholder
+ * window (`trips.dates_confirmed_at` NULL, LD 30 as amended; E1's mint-day window) starts "today"
+ * only because the columns demand a day, so the date arm would otherwise fire on every new undated
+ * plan — and (b) the start is still in the future: a trip already underway or over has not "started
+ * soon". Neither case invents a different banner: the slip simply says nothing (§13).
+ * `datesConfirmed` is the plancard DTO's boolean; `false` withholds the line. A caller that does not
+ * pass it states nothing about the dates, and only the future-start half applies.
+ */
+export function tripStartsSoon(input: TripCardPrimaryInput & { datesConfirmed?: boolean }): boolean {
+  if (input.datesConfirmed === false) return false;
+  const start = toDate(input.startDate);
+  if (!start) return false;
+  return start.getTime() > (input.now ?? new Date()).getTime();
 }
 
 /** The card page's own reading: a final exists ⇒ the card renders it; none ⇒ "Not final yet". */

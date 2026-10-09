@@ -399,7 +399,7 @@ function BoardItemRow(
           <button
             type="button"
             onClick={props.visited.onToggle}
-            className={`-my-1 flex-shrink-0 p-1 ${props.visited.checked ? "text-green-600" : "text-[color:var(--slip-faint)]"}`}
+            className={`-my-1 flex-shrink-0 p-1 ${props.visited.checked ? "text-green-600" : "text-[color:var(--slip-muted)]"}`}
             title={props.visited.checked ? "Mark as not visited" : "Mark as visited"}
             aria-pressed={props.visited.checked}
             data-testid={`button-visited-${a.id}`}
@@ -455,7 +455,7 @@ function BoardItemRow(
         </p>
       ) : null}
       {factsLine ? (
-        <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-medium text-[color:var(--slip-teal)]" data-testid={`slip-item-facts-${a.id}`}>
+        <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-medium text-[color:var(--slip-teal-ink)]" data-testid={`slip-item-facts-${a.id}`}>
           <Clock className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
           {factsLine.sourceUrl ? (
             <a href={factsLine.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
@@ -466,7 +466,7 @@ function BoardItemRow(
           )}
         </p>
       ) : props.checkingHours ? (
-        <p className="text-xs italic text-[color:var(--slip-faint)]" data-testid={`slip-item-facts-checking-${a.id}`}>
+        <p className="text-xs italic text-[color:var(--slip-muted)]" data-testid={`slip-item-facts-checking-${a.id}`}>
           {CHECKING_HOURS_LABEL}
         </p>
       ) : null}
@@ -524,7 +524,7 @@ function BoardFactsText({ text }: { text: string }) {
   return (
     <>
       <span>{lead}</span>
-      {source ? <span className="font-normal text-[color:var(--slip-faint)]"> · {source}</span> : null}
+      {source ? <span className="font-normal text-[color:var(--slip-muted)]"> · {source}</span> : null}
     </>
   );
 }

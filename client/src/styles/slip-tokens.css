@@ -22,6 +22,8 @@
   --slip-ink: #0D2137;
   --slip-navy: #1E3A5F;
   --slip-muted: #5B6B7A;
+  /* NON-TEXT ONLY (ledger `2026-10-08-slip-tokens-contrast`): 2.98:1 on white fails text contrast;
+     quiet text is --slip-muted (5.4:1). */
   --slip-faint: #8A97A3;
   --slip-line: #E3E6E8;
   --slip-line-strong: #C9D1D8;
@@ -32,6 +34,7 @@
   --slip-on-navy-line: #5B7A94;
 
   /* Accents. */
+  /* --slip-teal is for fills, rules, dots and icons; TEXT in teal is --slip-teal-ink (5.9:1). */
   --slip-teal: #2E8B8B;
   --slip-teal-ink: #1F6F6F;
   --slip-teal-wash: #E6F2F2;
