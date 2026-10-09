@@ -582,7 +582,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // drawn as a sign-in CTA (§13 — an unresolved answer is not a negative answer).
   const { user, isLoading: isAuthLoading, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
-  // The footer's "Start a plan" opens the SAME planning modal the landing hero opens.
+  // The nav's, the phone menu's and the footer's "Start a plan" all start a NEW plan in PlanEntry (E2).
   const { open: openPlanning } = usePlanning();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -834,12 +834,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
               )}
 
               {/* H1 (ledger `2026-10-08-h1-home-copy`): the nav's primary — "Start a plan" on the coral
-                  fill, for every visitor. It opens the ONE planning entry with no source, as the
-                  footer's "Start a plan" does (no door is recorded; `PLAN_DOORS` is a closed list). */}
+                  fill, for every visitor. E2 (ledger `2026-10-09-e2-plan-entry`, which landed second and
+                  wires it): it STARTS A NEW PLAN — `newPlan: true` opens PlanEntry even while a plan is
+                  bound (a bare open would edit the bound plan). No door is recorded; `PLAN_DOORS` is a
+                  closed list. The phone menu's and the footer's "Start a plan" do the same. */}
               <Button
                 size="sm"
                 className="hidden xl:inline-flex text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
-                onClick={() => openPlanning()}
+                onClick={() => openPlanning({ newPlan: true })}
                 data-testid="button-nav-start-plan"
               >
                 {START_PLAN_LABEL}
@@ -893,7 +895,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                   onClick={() => {
                     setIsMobileMenuOpen(false);
-                    openPlanning();
+                    openPlanning({ newPlan: true });
                   }}
                   data-testid="button-mobile-start-plan"
                 >
@@ -1124,10 +1126,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </li>
                     ) : (
                       <li key={`action-${link.action}`}>
-                        {/* No source ⇒ the modal opens on step 1 (Occasion), exactly as the hero does. */}
+                        {/* E2: "Start a plan" starts a NEW plan in PlanEntry, never the bound plan's edit window. */}
                         <button
                           type="button"
-                          onClick={() => openPlanning()}
+                          onClick={() => openPlanning({ newPlan: true })}
                           className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
                           data-testid="button-footer-start-plan"
                         >

@@ -20,7 +20,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { E2E_PASSWORD, RUN_ID, e2eEmail } from './lib/run-id';
 import { loginViaUi, signupViaUi } from './lib/accounts';
-import { fillPlanModalToFinish, clickPlanFinish, openPlanModalFromHero } from './lib/flows';
+import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
 import { q, userByEmail, closeDb } from './lib/db';
 import { readState, writeState } from './lib/state';
 import { testid, appears } from './lib/ui';
@@ -73,7 +73,7 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   const net = netLogger3(page, J);
   const startedAt = (await q(`SELECT NOW() AS now`))[0].now;
 
-  // ── 0. Traveler signs up and mints a Kyoto plan ("Build it myself") ──
+  // ── 0. Traveler signs up and mints a Kyoto plan (PlanEntry, E2) ──
   const travelerEmail = e2eEmail('tlife');
   await signupViaUi(page, { email: travelerEmail, firstName: 'E2E', lastName: 'TLife' });
   const traveler = await userByEmail(travelerEmail);
@@ -83,10 +83,10 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   });
   await page.goto('/');
   await settle(page);
-  expect(await openPlanModalFromHero(page), 'plan modal opens').toBeTruthy();
-  expect(await fillPlanModalToFinish(page, 'Kyoto, Japan', { offsetDays: 60 }), 'plan modal reaches finish').toBeTruthy();
-  const tripId = await clickPlanFinish(page, 'myself');
-  expect(tripId, 'Build it myself mints a plan').toBeTruthy();
+  expect(await openPlanEntryFromHero(page), 'PlanEntry opens').toBeTruthy();
+  expect(await fillPlanEntryToStart(page, 'Kyoto, Japan', { offsetDays: 60 }), 'PlanEntry reaches Start a plan').toBeTruthy();
+  const tripId = await clickPlanStart(page);
+  expect(tripId, 'Start a plan mints a plan').toBeTruthy();
   writeState((s) => {
     s.trips.lifecycle = { id: tripId!, label: 'P3 L1 lifecycle plan' };
   });
