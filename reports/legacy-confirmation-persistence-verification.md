@@ -66,8 +66,11 @@ The final main-based branch was reverified: all 24 tests passed, and comparison
 against `origin/main` again showed 117 diagnostics on each side with none added.
 
 The configured preview restarted successfully, its outbox scheduler registered,
-startup applied zero migrations, and the landing page rendered. The outbox
-uses its existing five-minute drain interval rather than immediate traveler
+and the landing page rendered and returned 200 through the development proxy.
+The first restart applied zero migrations. After narrowing onto current main,
+normal application startup applied main's pre-existing `359_trips_stay_pick.sql`;
+this change adds or changes no schema or registered migration. The outbox uses
+its existing five-minute drain interval rather than immediate traveler
 enqueue-and-send delivery.
 
 ## Boundaries
