@@ -2161,16 +2161,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // complete, not seed-sourced. Refused BEFORE any row is written, so a non-routable expert
         // never gains a booking or a plan (the advisor author refuses the plan half too). A service
         // provider's listing is outside the expert predicate and is unchanged.
-        if (service.userId) {
-          const [ownerRoleRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, service.userId)).limit(1);
-          if (isExpertRole(ownerRoleRow?.role)) {
-            const { isExpertIdRoutable } = await import("./services/expert-routability");
-            if (!(await isExpertIdRoutable(service.userId))) {
-              return res.status(409).json({
-                code: "expert_not_routable",
-                message: "This expert isn't taking requests yet.",
-              });
-            }
+        {
+          const { requestRailOwnerAllowed } = await import("./services/expert-routability");
+          if (!(await requestRailOwnerAllowed(service.userId))) {
+            return res.status(409).json({
+              code: "expert_not_routable",
+              message: "This expert isn't taking requests yet.",
+            });
           }
         }
 
@@ -5607,13 +5604,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // B3 ruling 4: the same public-account rule the storefront applies — a seed-sourced or
     // not-approved expert is one 404 (LD 40: "no such thing" and "not shown" are the same answer).
     {
-      const facts = await db.execute(sql`
-        SELECT lef.status, u.email FROM users u LEFT JOIN local_expert_forms lef ON lef.user_id = u.id
-        WHERE u.id = ${req.params.id} LIMIT 1
-      `);
-      const f = (facts.rows?.[0] ?? {}) as any;
-      const { isPublicExpertAccount } = await import("./services/expert-routability");
-      if (!isPublicExpertAccount({ applicationStatus: f.status ?? null, email: f.email ?? null })) {
+      const { isPublicExpertProfileId } = await import("./services/expert-routability");
+      if (!(await isPublicExpertProfileId(req.params.id))) {
         return res.status(404).json({ message: "Expert not found" });
       }
     }

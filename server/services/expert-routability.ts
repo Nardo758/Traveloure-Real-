@@ -198,3 +198,33 @@ export class AdvisorNotRoutableError extends Error {
     super("This expert can't be added to a plan yet — their profile is not approved, verified and payable.");
   }
 }
+
+/**
+ * Is this account a PUBLIC expert (approved application, not seed-sourced)? The one read for a
+ * profile-by-id surface (`GET /api/experts/:id`) — the same rule the storefront applies (ruling 3/4).
+ */
+export async function isPublicExpertProfileId(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const { db } = await import("../db");
+  const r = await db.execute(sql`
+    SELECT lef.status, u.email FROM users u LEFT JOIN local_expert_forms lef ON lef.user_id = u.id
+    WHERE u.id = ${userId} LIMIT 1
+  `);
+  const f = (r.rows?.[0] ?? null) as any;
+  if (!f) return false;
+  return isPublicExpertAccount({ applicationStatus: f.status ?? null, email: f.email ?? null });
+}
+
+/**
+ * May the storefront request rail book this listing owner? (B3 ruling 1) An EXPERT-family owner must
+ * be routable; any other owner (a service provider) is outside the expert predicate and passes.
+ */
+export async function requestRailOwnerAllowed(ownerUserId: string | null | undefined): Promise<boolean> {
+  if (!ownerUserId) return true;
+  const { db } = await import("../db");
+  const { isExpertRole } = await import("@shared/roles");
+  const r = await db.execute(sql`SELECT role FROM users WHERE id = ${ownerUserId} LIMIT 1`);
+  const role = (r.rows?.[0] as any)?.role ?? null;
+  if (!isExpertRole(role)) return true;
+  return isExpertIdRoutable(ownerUserId);
+}

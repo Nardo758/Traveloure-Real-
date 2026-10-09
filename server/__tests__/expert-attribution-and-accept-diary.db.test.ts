@@ -40,6 +40,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { insertItineraryItemSchema, itineraryItems } from "@shared/schema";
 import { eq, and, or, isNull, ne } from "drizzle-orm";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -150,6 +151,8 @@ before(async () => {
     INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.expert}, ${`eap-${RUN}-expert@t.test`}, 'EAP', 'Expert', 'local_expert')
   `);
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(ids.expert);
   await db.execute(sql`
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
     VALUES (${ids.trip}, ${ids.owner}, 'EAP fixture trip', 'Lisbon', CURRENT_DATE + 10, CURRENT_DATE + 15)

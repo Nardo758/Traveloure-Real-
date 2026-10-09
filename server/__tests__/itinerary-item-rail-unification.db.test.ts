@@ -44,6 +44,7 @@ import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -154,6 +155,8 @@ before(async () => {
     INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.expert}, ${`iru-${RUN}-expert@t.test`}, 'IRU', 'Expert', 'local_expert')
   `);
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(ids.expert);
   await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.stranger}, ${`iru-${RUN}-stranger@t.test`}, 'IRU', 'Stranger', 'traveler')

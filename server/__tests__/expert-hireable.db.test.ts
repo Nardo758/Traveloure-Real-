@@ -17,6 +17,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 process.env.DATABASE_URL ??= "postgresql://claude:claude@localhost:5432/traveloure_test";
 process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy";
@@ -65,12 +66,16 @@ async function createExpert(label: string, formStatus: string | null): Promise<{
 
 describe("isExpertHireable — who can be invited onto a plan", () => {
   let approved: { id: string; handle: string };
+  let unverified: { id: string; handle: string };
   let pending: { id: string; handle: string };
   let noForm: { id: string; handle: string };
   let platform: { id: string; handle: string };
 
   before(async () => {
     approved = await createExpert("approved", "approved");
+    // B3 group B (sanctioned): "hireable" means ROUTABLE — approved + Identity verified + Connect complete.
+    await insertRoutableExpertForm(approved.id);
+    unverified = await createExpert("unverified", "approved");
     pending = await createExpert("pending", "pending");
     noForm = await createExpert("noform", null);
     platform = await createExpert("platform", "approved");
@@ -99,8 +104,12 @@ describe("isExpertHireable — who can be invited onto a plan", () => {
     await pool.end();
   });
 
-  it("H1: an approved expert profile is hireable", async () => {
+  it("H1: a routable expert is hireable", async () => {
     assert.equal(await isExpertHireable(approved.id), true);
+  });
+
+  it("H1b: an approved expert who is not verified and payable is not hireable (B3 ruling 1)", async () => {
+    assert.equal(await isExpertHireable(unverified.id), false);
   });
 
   it("H2: a profile that is not approved is not", async () => {

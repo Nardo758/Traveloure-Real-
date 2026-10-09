@@ -428,7 +428,7 @@ function placeMapsUrl(googlePlaceId: string | null | undefined): string | null {
  * attribution source. `trip_expert_advisors` (one author, `upsertTripAdvisorRow`) is the only
  * place a trip's expert lives; the column itself stays declared in `shared/schema.ts`, unread.
  */
-async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpertAttribution | null> {
+export async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpertAttribution | null> {
   const advisorRows = await db
     .select({ localExpertId: tripExpertAdvisors.localExpertId })
     .from(tripExpertAdvisors)

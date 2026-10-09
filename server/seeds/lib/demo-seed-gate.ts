@@ -54,13 +54,18 @@ export function demoSeedSkipMessage(seederName: string): string {
  * seed in a dev shell that holds production's `DATABASE_URL` reads as non-production to every
  * env-var predicate. So the demo seeders that write fictional EXPERTS (`seedMockExperts`,
  * `seedProviderServices`, `scripts/seed-california-full.ts`) also refuse unless the URL's host is a
- * development host: `localhost`, `127.0.0.1`, `::1`, a unix socket (`host=/…`), Replit's
- * workspace database `helium`, or a host named in `DEMO_SEED_DATABASE_HOSTS` (comma-separated).
- * No URL ⇒ refused. This is a guard, not a migration: it writes nothing and deletes nothing.
+ * development host. FAILS CLOSED (decision-maker, Oct 9, 2026): the default list is `localhost`, a
+ * unix socket (`host=/…`) and Replit's workspace database `helium` — nothing else — plus any host
+ * named in `DEMO_SEED_DATABASE_HOSTS` (comma-separated; set it in the DEVELOPMENT environment only,
+ * never in Deployments). No URL, or one that does not parse ⇒ refused. This is a guard, not a
+ * migration: it writes nothing and deletes nothing.
  *
  * STATED NEGATIVE SPACE: a production database reached through a local tunnel on `localhost`
  * reads as development here. The env predicate above still refuses a prod-strict boot.
  */
+/** The default development hosts (B3 ruling 2): localhost and Replit's workspace database. A unix socket also passes. */
+export const DEMO_SEED_DEFAULT_DATABASE_HOSTS: readonly string[] = ["localhost", "helium"];
+
 export function demoSeedDatabaseAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = (env.DATABASE_URL ?? "").trim();
   if (!raw) return false;
@@ -76,10 +81,15 @@ export function demoSeedDatabaseAllowed(env: NodeJS.ProcessEnv = process.env): b
     .split(",")
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean);
-  return ["localhost", "127.0.0.1", "::1", "[::1]", "helium", ...extra].includes(host);
+  return [...DEMO_SEED_DEFAULT_DATABASE_HOSTS, ...extra].includes(host);
 }
 
 /** The skip line for `demoSeedDatabaseAllowed` — same shape as `demoSeedSkipMessage`. */
 export function demoSeedDatabaseSkipMessage(seederName: string): string {
-  return `[demo-seed-gate] Skipped ${seederName} — DATABASE_URL is not a development database (B3 ruling 2: demo experts are never seeded into a shared or production database)`;
+  return (
+    `[demo-seed-gate] REFUSED ${seederName} — DATABASE_URL's host is not a development database ` +
+    `(allowed: localhost, a unix socket, helium). If this IS the development database, add its host ` +
+    `to DEMO_SEED_DATABASE_HOSTS (comma-separated) in the DEVELOPMENT environment only — never in ` +
+    `Deployments. Demo experts are never seeded into a shared or production database (B3 ruling 2).`
+  );
 }
