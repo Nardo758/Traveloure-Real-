@@ -36,9 +36,10 @@
  *   - It never CHARGES, never claims a PaymentIntent and never writes a row. A `paid` result
  *     carrying `claimRequired: true` tells the caller it must still run its own §15 atomic
  *     conditional claim; this module makes no state transition of its own.
- *   - It never consumes a Trip Pass allowance. `optimizer_run` coverage is unlimited by ruling
- *     (`trip-entitlement.service.ts`), so a pass-authorized run decrements nothing and takes no
- *     claim — there is no counter to race on.
+ *   - It never consumes a Trip Pass allowance. `optimizer_run` coverage is capped at
+ *     `TRIP_PASS_RUNS_PER_TRIP` (R-ac), and the cap is COUNTED from the run's own `fee_waiver` rows
+ *     (`tripPassRunsUsed`, `trip-entitlement.service.ts`) rather than decremented, so a
+ *     pass-authorized run takes no claim here — there is no counter to race on.
  *   - It says nothing about whether there is anything TO optimize (the empty-baseline /
  *     cart-conversion pre-flights stay with their callers) and nothing about who may touch the
  *     trip (ownership is authorized by the caller BEFORE this is consulted).
