@@ -16,6 +16,7 @@
  */
 import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
 import type { StayCloseness } from "@shared/stay-pick";
+import type { StayLink } from "@shared/stay-link";
 import { buildGoogleMapsDeepLink } from "@/lib/maps";
 
 export const STAY_PICK_TITLE = "Our pick for your days";
@@ -29,6 +30,21 @@ export const STAY_SWAP_LEAD = "Rather pick yourself?";
 export const STAY_MAP_LINK_LABEL = "View on map";
 /** Shown beside every link that opens Google Maps. */
 export const GOOGLE_MAPS_ATTRIBUTION = "Google Maps";
+/** FU-S1-2: the hotel's own site, whether the provider typed it (`own`) or Google names it (`google`). */
+export const STAY_SITE_LINK_LABEL = "View on hotel's site";
+
+/**
+ * FU-S1-2 (R393) on the card: the ONE link a stay card draws, read from S1's `stayLink` and never built
+ * here. `own` is the provider's site and carries no attribution; `google` (Google's website for the hotel)
+ * and `maps` come from Google and always carry "Google Maps" beside them. A card with no `stayLink` (a
+ * payload from before R393) keeps the Maps fallback, which is also Google and also attributed.
+ */
+export function stayLinkView(link: StayLink | null | undefined, fallbackHref: string): { href: string; label: string; kind: StayLink["kind"]; attributed: boolean } {
+  if (link?.kind === "own") return { href: link.url, label: STAY_SITE_LINK_LABEL, kind: "own", attributed: false };
+  if (link?.kind === "google") return { href: link.url, label: STAY_SITE_LINK_LABEL, kind: "google", attributed: true };
+  if (link?.kind === "maps") return { href: link.url, label: STAY_MAP_LINK_LABEL, kind: "maps", attributed: true };
+  return { href: fallbackHref, label: STAY_MAP_LINK_LABEL, kind: "maps", attributed: true };
+}
 
 /** "Scored 21 of 34 nearby" — null unless both counts are known and the total is positive. */
 export function stayScoredLine(scored: number | null | undefined, total: number | null | undefined): string | null {
