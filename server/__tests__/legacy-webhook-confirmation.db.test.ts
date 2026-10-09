@@ -38,7 +38,7 @@ const { bookings, users, emailOutbox, paymentIntents, providerEarnings, platform
   await import("../../shared/schema");
 const { stripePaymentService } = await import("../services/stripe-payment.service");
 const { bookingService } = await import("../services/booking.service");
-const { _outboxTestHooks } = await import("../services/email-outbox.service");
+const { _outboxTestHooks, drainOutbox } = await import("../services/email-outbox.service");
 const { storage } = await import("../storage");
 const { default: express } = await import("express");
 const { default: bookingRouter } = await import("../routes/bookings");
@@ -127,15 +127,20 @@ async function fixture(deposit = false) {
   } as unknown as Stripe.PaymentIntent;
   intents.set(piId, pi);
   return { bookingId, travelerId, email, pi,
-    webhook: () => stripePaymentService.handlePaymentSucceeded(pi),
+    webhook: async () => {
+      await stripePaymentService.handlePaymentSucceeded(pi);
+      // Simulate the existing drain after the authoritative transaction commits.
+      await drainOutbox();
+    },
     pageWriter: () => bookingService.confirmBookingPayment(bookingId, piId, travelerId) };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
 async function assertConfirmation(f: Fixture, pageWon = false, deposit = false, ledgerStatus = "succeeded") {
-  // Both authoritative writers retain fire-and-forget enqueue semantics. Poll
-  // boundedly for the actual persisted sent row, not a fixed sleep or acceptance.
+  // Traveler delivery now belongs to the existing outbox drain after commit.
+  await drainOutbox();
+  // Poll boundedly for the actual persisted sent row, not fixed-sleep acceptance.
   let rows: typeof emailOutbox.$inferSelect[] = [];
   for (let attempt = 0; attempt < 200; attempt++) {
     rows = await db.select().from(emailOutbox).where(sql`
@@ -187,29 +192,35 @@ async function assertConfirmation(f: Fixture, pageWon = false, deposit = false, 
  * No SQL result or confirmation/outbox/ledger writer is mocked.
  */
 async function concurrentWebhooks(f: Fixture, count: number) {
-  const execute = db.execute.bind(db);
+  const transaction = db.transaction.bind(db);
   const dialect = new PgDialect();
   let arrived = 0;
   let release!: () => void;
   const barrier = new Promise<void>(resolve => { release = resolve; });
   const deadline = setTimeout(release, 5000);
-  db.execute = (async (query: Parameters<typeof db.execute>[0]) => {
-    if (typeof query === "string") return execute(query);
-    const rendered = dialect.sqlToQuery(query.getSQL());
-    if (/UPDATE\s+bookings\s+SET/i.test(rendered.sql) && rendered.params.includes(f.bookingId)) {
-      arrived++;
-      if (arrived === count) release();
-      await barrier;
-    }
-    return execute(query);
-  }) as typeof db.execute;
+  db.transaction = (async (action: Parameters<typeof db.transaction>[0], ...options: any[]) => {
+    return transaction(async (tx) => {
+      const execute = tx.execute.bind(tx);
+      tx.execute = (async (query: Parameters<typeof tx.execute>[0]) => {
+        if (typeof query === "string") return execute(query);
+        const rendered = dialect.sqlToQuery(query.getSQL());
+        if (/UPDATE\s+bookings\s+SET/i.test(rendered.sql) && rendered.params.includes(f.bookingId)) {
+          arrived++;
+          if (arrived === count) release();
+          await barrier;
+        }
+        return execute(query);
+      }) as typeof tx.execute;
+      return action(tx);
+    }, ...options);
+  }) as typeof db.transaction;
   try {
     await Promise.all(Array.from({ length: count }, f.webhook));
     assert.equal(arrived, count, "all webhook claims reached the same race");
   } finally {
     clearTimeout(deadline);
     release();
-    db.execute = execute;
+    db.transaction = transaction;
   }
 }
 
