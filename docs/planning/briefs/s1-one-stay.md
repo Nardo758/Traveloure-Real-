@@ -82,6 +82,12 @@ type WhereToStayStay =
 // StayHotel = { kind: "platform" | "hotel_cache" | "affiliate"; id; name; starRating; photo? } — no coordinates, no price.
 ```
 
+**FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`):** each `StayHotel` in `stay` may carry
+`stayLink: { kind: "own" | "google" | "maps"; url: string }` — the card's ONE link. On the list it is `own` (the
+provider's site) or `maps` ("View on Google Maps", built with no API call). When the PICKED stay's card is opened,
+call `GET /api/trips/:tripId/stay-pick/link` → `{ stayLink }`: the hotel's own site where Google knows one ("View on
+hotel's site"), else Google Maps. `google` and `maps` must be drawn with the "Google Maps" attribution. Absent ⇒ no link.
+
 Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ kind: "stay_here", hotel: { kind, id } }`.
 
 ## Interpretations taken (said here so they can be overruled)

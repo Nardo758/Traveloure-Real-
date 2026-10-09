@@ -20,6 +20,7 @@
  */
 import { haversineMeters } from "./geo";
 import { mentionsLodging } from "./ai-place-text";
+import type { StayLink } from "./stay-link";
 
 /**
  * Smoke 9 S9-2 amendment (ledger `2026-10-04-smoke9-addendum`): is this item a place to stay? An
@@ -176,6 +177,12 @@ export interface StayHotel {
   starRating: number | null;
   /** Step 6 R-aq: the option card's thumbnail — a platform listing's own image only; absent ⇒ none. */
   photo?: { source: "ours"; url: string; licence: null; attribution: string; sourceUrl: null } | null;
+  /**
+   * FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the stay card's ONE link — on the S1 `stay` block
+   * only. `own` = the provider's own site; `google` = Google's website for the hotel; `maps` = "View on
+   * Google Maps". `google`/`maps` carry the "Google Maps" attribution wherever drawn. Absent ⇒ no link.
+   */
+  stayLink?: StayLink;
 }
 
 /** R-o: the badge a platform-listed stay carries. */

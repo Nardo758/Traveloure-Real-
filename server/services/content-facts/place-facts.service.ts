@@ -77,7 +77,7 @@ type FactRow = typeof placeFacts.$inferSelect;
  * R-u (surface step 3): a place ID an earlier answer to this SAME query text already resolved — a
  * free shortcut to the ID (no API call at all). Never the cache key itself: the key is the ID.
  */
-async function knownPlaceIdForQuery(query: string): Promise<string | null> {
+export async function knownPlaceIdForQuery(query: string): Promise<string | null> {
   const [hit] = await db
     .select({ placeRef: placeFacts.placeRef })
     .from(placeFacts)
