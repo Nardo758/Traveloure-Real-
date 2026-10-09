@@ -14,6 +14,9 @@
  *   SD6  the read never computes: a paid plan's where-to-stay view returns the STORED pick and counts and
  *        makes no Maps call
  *   SD7  the tier test is `planGetsRoutedLegs`, not a paid optimizer run (ruling 4)
+ *   SD8  FU-S1-1: through the REAL gate, each stay-pick request writes ONE `route_matrix` row on
+ *        `api_usage_logs` carrying its elements (the cap's count) AND its dollars at the Essentials list
+ *        price, purpose `stay_pick`, ref = the plan; a refresh-style call without a price still records 0
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. The Maps call is a fake.
  */
@@ -215,4 +218,59 @@ test("SD7 the tier test is planGetsRoutedLegs, not a paid optimizer run (ruling 
   const { tripGetsRoutedLegs } = await import("../services/routing/plan-routed-legs.service");
   assert.equal(await tripGetsRoutedLegs(ids.paid), true);
   assert.equal(await tripGetsRoutedLegs(ids.free), false);
+});
+
+test("SD8 FU-S1-1: each stay-pick request records its elements and its dollars on the usage log", async () => {
+  const saved = {
+    enabled: process.env.MAPS_ROUTE_MATRIX_ENABLED,
+    key: process.env.GOOGLE_MAPS_API_KEY,
+    cap: process.env.MAPS_ROUTE_MATRIX_DAILY_CAP,
+    price: process.env.TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000,
+  };
+  const realFetch = globalThis.fetch;
+  process.env.MAPS_ROUTE_MATRIX_ENABLED = "1";
+  process.env.GOOGLE_MAPS_API_KEY = "sd8-test-key";
+  process.env.MAPS_ROUTE_MATRIX_DAILY_CAP = "100000000";
+  process.env.TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000 = "5";
+  let requests = 0;
+  globalThis.fetch = (async (url: any, init: any) => {
+    assert.match(String(url), /computeRouteMatrix/);
+    requests += 1;
+    const body = JSON.parse(init.body);
+    const out = body.destinations.map((_: unknown, j: number) => ({ originIndex: 0, destinationIndex: j, duration: `${(10 + j) * 60}s`, condition: "ROUTE_EXISTS" }));
+    return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as any;
+  try {
+    // The small plan holds a pick from SD5; move a stop so it re-scores. A budget of 14 = two hotels.
+    await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0014 WHERE id = ${`${ids.small}-i2`}`);
+    const out = await computeStayPick(ids.small, { budget: 14 });
+    assert.ok("written" in out, JSON.stringify(out));
+    assert.equal(requests, 2);
+    const r: any = await db.execute(sql`
+      SELECT request_count, estimated_cost_cents, success, metadata FROM api_usage_logs
+      WHERE provider = 'google_maps' AND endpoint = 'route_matrix' AND metadata->>'ref' = ${ids.small}
+      ORDER BY created_at`);
+    const rows = r.rows ?? r;
+    assert.equal(rows.length, 2, "one gate row per request");
+    for (const row of rows) {
+      assert.equal(row.request_count, 7, "the elements count against MAPS_ROUTE_MATRIX_DAILY_CAP");
+      assert.equal(row.estimated_cost_cents, 35, "7 elements × $5 / 1,000 = 3.5¢ = 35 tenths of a cent");
+      assert.equal(row.success, true);
+      assert.equal(row.metadata.purpose, "stay_pick");
+      assert.equal(row.metadata.costRecordedOn, "api_usage_logs");
+      assert.equal(row.metadata.sku, "compute_route_matrix_essentials", "DRIVE bills Essentials");
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+    for (const [k, v] of [
+      ["MAPS_ROUTE_MATRIX_ENABLED", saved.enabled],
+      ["GOOGLE_MAPS_API_KEY", saved.key],
+      ["MAPS_ROUTE_MATRIX_DAILY_CAP", saved.cap],
+      ["TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000", saved.price],
+    ] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    await db.execute(sql`DELETE FROM api_usage_logs WHERE metadata->>'ref' = ${ids.small}`).catch(() => {});
+  }
 });
