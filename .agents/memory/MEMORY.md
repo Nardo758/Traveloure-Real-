@@ -81,3 +81,4 @@
 - [Traveler automation policy](traveler-automation-policy.md) — Part 1 is generation outcomes only; pay-per-use/Trip Pass stay unchanged; credit alerts need a future approved policy.
 - [Signup rebuild policy](signup-rebuild-policy.md) — use small main-based changes, not the retired snapshot; QA mailbox rerouting is development-harness-only and must be disclosed.
 - [Cart metadata ownership](cart-automation-metadata-contract.md) — atomic activity writes, immutable server snapshots and explicit post-payment cleanup separation.
+- [Commerce sweep approval](commerce-sweep-release-boundary.md) — queue-only tests do not authorize release; preserve legacy heartbeat behavior and require separate founder approval.

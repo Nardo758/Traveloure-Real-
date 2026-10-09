@@ -314,3 +314,17 @@ mtime_ms = 1791567568000
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/2358b6e8-0b59-49db-b2f5-53b06cfb0332/f9c86ae4-fa74-4221-9435-116c5106126a"
 storage_version_token = "1791567674169236"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "RmmEwpFsY6CesSazy2xph"
+uri = "file://reports/automation-part3-verification.md"
+type = "text"
+title = "Part 3 — sweep verification and release restrictions"
+description = "Two clean queue-only loops, failure-heartbeat proof, cart-scope keys, before/after golden results and held migration 360. Production release remains blocked."
+logical_id = "4f9eb19c-a934-4f19-bdc5-3dea50ef0480"
+content_hash = "sha256:3ff1ede44a779af1133b38646ee918e3c5b8e7391a2c2cc59ae165a609f50929"
+size = 13287
+mtime_ms = 1791569662232
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/4f9eb19c-a934-4f19-bdc5-3dea50ef0480/099ca1f6-c4fa-4842-b33a-6b3e28bb0f05"
+storage_version_token = "1791569768170712"
+content_type = "text/markdown"

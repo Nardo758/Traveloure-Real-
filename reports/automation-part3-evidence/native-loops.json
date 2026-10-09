@@ -1,0 +1,28 @@
+[
+  {
+    "loop": 1,
+    "scenario": "718ce4c7-3491-44fc-bdf7-d7af22cc500d",
+    "clean": true,
+    "sequentialRows": 2,
+    "concurrentRows": 2,
+    "concurrentDuplicates": 2,
+    "firstFailureSuccessIsNull": true,
+    "previousSuccessPreserved": true,
+    "emptyEnqueued": 0,
+    "deliveryCalls": 0,
+    "attackScenarios": 5
+  },
+  {
+    "loop": 2,
+    "scenario": "c0a320b4-17bb-4409-9536-cf6bae53d9b8",
+    "clean": true,
+    "sequentialRows": 2,
+    "concurrentRows": 2,
+    "concurrentDuplicates": 2,
+    "firstFailureSuccessIsNull": true,
+    "previousSuccessPreserved": true,
+    "emptyEnqueued": 0,
+    "deliveryCalls": 0,
+    "attackScenarios": 5
+  }
+]
