@@ -127,6 +127,10 @@ jobs:
       # ignores a client value (ruling 9), the 362 backfill, the draft gem gate, gem verification, the census. D1–D8.
       - name: FD-2 content tiers — tags, backfill, draft gate, verification, census
         run: npx tsx --test --test-force-exit server/__tests__/content-tiers.db.test.ts
+      # FD-1 (ledger `2026-10-09-fd1-free-draft-cap`, migration 363): the free-draft cap — 3/30 days, one per plan,
+      # our failures never count, paid tier and QA exempt, the parallel-claim guard — and the count-only teaser. F1–F9.
+      - name: FD-1 free-draft cap and teaser — claim, release, one per plan, QA, race, counts-only teaser
+        run: npx tsx --test --test-force-exit server/__tests__/free-draft-cap.db.test.ts
       # Ledger `2026-10-03-build-around-places`: build-around reads Google's live location fact and
       # stores no coordinate (LD 57); the option reader resolves it. B1–B4.
       - name: Build-around on a Google-located item — read, never copied

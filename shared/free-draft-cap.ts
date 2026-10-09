@@ -88,3 +88,52 @@ export function localTeaserForDay(counts: { localPicks: number; localNotes: numb
   if (picks === 0 && notes === 0) return undefined;
   return { localPicks: picks, localNotes: notes };
 }
+
+/**
+ * FD-1 teaser basis (ledger `2026-10-09-fd1-free-draft-cap`): per day of a FREE plan, how many local picks
+ * and local notes the paid tier would add AROUND THAT DAY — counts only, never a title, place or id.
+ *   · a day's area = the neighbourhoods its LOCATED stops fall in (nearest centroid in the plan's city);
+ *   · localPicks = draft-eligible LOCAL gems in those neighbourhoods, not already on the plan;
+ *   · localNotes = live LOCAL expert notes (nuggets) about those neighbourhoods (ruling 2).
+ * A day with no located stop, or no neighbourhood, is NOT COMPUTED and absent (§13); zero is absent too.
+ */
+export interface TeaserNeighbourhood { id: string; slug: string; name: string; lat: number | null; lng: number | null }
+export interface TeaserInput {
+  items: Array<{ dayNumber: number; lat: number | null; lng: number | null; gemId: string | null }>;
+  neighbourhoods: readonly TeaserNeighbourhood[];
+  gems: Array<{ id: string; neighbourhoodSlug: string | null }>;
+  notes: Array<{ neighbourhoodId: string | null; neighbourhoodName: string | null }>;
+}
+
+function nearestArea(p: { lat: number; lng: number }, hoods: readonly TeaserNeighbourhood[]): TeaserNeighbourhood | null {
+  let best: { n: TeaserNeighbourhood; d: number } | null = null;
+  for (const n of hoods) {
+    if (n.lat == null || n.lng == null || !Number.isFinite(n.lat) || !Number.isFinite(n.lng)) continue;
+    const d = (n.lat - p.lat) ** 2 + ((n.lng - p.lng) * Math.cos((p.lat * Math.PI) / 180)) ** 2;
+    if (!best || d < best.d) best = { n, d };
+  }
+  return best?.n ?? null;
+}
+
+export function localTeasersByDay(input: TeaserInput): Map<number, LocalTeaser> {
+  const out = new Map<number, LocalTeaser>();
+  const onPlan = new Set(input.items.map((i) => i.gemId).filter((g): g is string => !!g));
+  const byDay = new Map<number, Map<string, TeaserNeighbourhood>>();
+  for (const it of input.items) {
+    if (it.lat == null || it.lng == null || !Number.isFinite(it.lat) || !Number.isFinite(it.lng)) continue;
+    const area = nearestArea({ lat: it.lat, lng: it.lng }, input.neighbourhoods);
+    if (!area) continue;
+    if (!byDay.has(it.dayNumber)) byDay.set(it.dayNumber, new Map());
+    byDay.get(it.dayNumber)!.set(area.id, area);
+  }
+  for (const [day, areas] of Array.from(byDay.entries())) {
+    const slugs = new Set(Array.from(areas.values()).map((a) => a.slug.toLowerCase()));
+    const ids = new Set(Array.from(areas.keys()));
+    const names = new Set(Array.from(areas.values()).map((a) => a.name.trim().toLowerCase()));
+    const picks = input.gems.filter((g) => g.neighbourhoodSlug && slugs.has(g.neighbourhoodSlug.toLowerCase()) && !onPlan.has(g.id)).length;
+    const notes = input.notes.filter((n) => (n.neighbourhoodId && ids.has(n.neighbourhoodId)) || (n.neighbourhoodName && names.has(n.neighbourhoodName.trim().toLowerCase()))).length;
+    const teaser = localTeaserForDay({ localPicks: picks, localNotes: notes });
+    if (teaser) out.set(day, teaser);
+  }
+  return out;
+}

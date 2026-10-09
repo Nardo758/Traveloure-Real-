@@ -10,6 +10,7 @@ import { applyGooglePins } from "@shared/ai-place-text";
 import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
+import { localTeasersForTrip } from "../services/local-teaser.service";
 import {
   insertItineraryChangeSchema,
   itineraryItems,
@@ -869,13 +870,19 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const readyMadeSource = await readyMadeProvenanceForTrip(tripId);
     // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): does the engine route this plan?
     const routedLegs = await routedLegsFor(tripId);
+    // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
+    // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
+    const localTeasers = await localTeasersForTrip(tripId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
       tripRole: plan.plancard.tripRole,
       trip: plan.plancard.trip,
       // Ledger `2026-10-03-no-ward-pins` (smoke 7): untrusted AI rows take Google's located point.
-      days: applyGooglePins(plan.days as any[], placeFacts as any),
+      days: applyGooglePins(plan.days as any[], placeFacts as any).map((d: any) => {
+        const t = localTeasers.get(d.dayNumber);
+        return t ? { ...d, localTeaser: t } : d;
+      }),
       changeLog: plan.plancard.changeLog,
       metrics: plan.plancard.metrics,
       optimizationDelta: plan.plancard.optimizationDelta,

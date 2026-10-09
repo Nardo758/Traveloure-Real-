@@ -1,8 +1,7 @@
 # FD-1 — free-draft cap and count-only teaser (Phase 0 + rulings, Oct 9, 2026)
 
 Read-only Phase 0 at `2f9bcaba9` + SH-1; the five questions were **ruled Oct 9, 2026** (§6 below). Migration
-**363** (`free_draft_runs`) is HELD for the founder and is not written; FD-1 builds on FD-2's branch and lands
-after 361/362, then 363.
+**363** (`free_draft_runs`) was **APPROVED by the founder, Oct 9, 2026**, and is written; FD-1 is BUILT on FD-2's branch.
 
 ## 1. What counts today
 | Free draft (ruling 5) | Route | Gate | Durable record | Funnel |
@@ -22,7 +21,7 @@ Every free rail requires sign-in today. There is no guest draft rail.
 - **A column on `users`** cannot express a rolling 30 days or one per plan.
 - **Guests:** there is no server-side guest record to put a column on. The only guest id is a client-minted localStorage UUID (`X-Guest-Session`, which no server code reads). It is forgeable, so it is not an enforcement key.
 
-## 3. The table: `free_draft_runs` (migration 363, HELD — ruling 1)
+## 3. The table: `free_draft_runs` (migration 363, APPROVED — ruling 1)
 ```sql
 CREATE TABLE IF NOT EXISTS free_draft_runs (
   id          varchar PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -81,10 +80,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_free_draft_runs_trip ON free_draft_runs (tr
    is not a free draft at all; only the assistant/admin-on-a-free-plan case counts, against the owner.
 6. **Guests:** the counter is keyed on the SERVER guest record E2/E3 introduce; no enforcement on a browser-made id.
 
-## 7. What lands now, and what waits
-- **Now (no schema):** `shared/free-draft-cap.ts` — `freeDraftSubject` (paid tier ⇒ none; owner; QA ⇒ none; server
+## 7. What landed (BUILT — ledger `2026-10-09-fd1-free-draft-cap`)
+- **Pure rules:** `shared/free-draft-cap.ts` — `freeDraftSubject` (paid tier ⇒ none; owner; QA ⇒ none; server
   guest record), `decideFreeDraft`, `runCounts`, the §6 copy and `localTeaserForDay`; `server/config/free-draft.config.ts`
   (3 / 30 days / 1 per guest, env-overridable). Tests FC1–FC6.
-- **After 363:** the table and its declaration; `free-draft-cap.service.ts` (claim under the advisory lock → promote
+- **With 363 (built):** the table and its declaration; `free-draft-cap.service.ts` (claim under the advisory lock → promote
   `drafted` → release `released`) called by the three rails; `GET /api/me/free-drafts`; the quick-start tier filter
   (`isFreeDraftEligible` over its gem and insight reads); the plancard `localTeaser` per day.
