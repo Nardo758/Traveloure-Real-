@@ -11,7 +11,7 @@ import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
-import { enqueueBookingAlertEmail, enqueueBookingConfirmationEmail } from './email-outbox.service';
+import { enqueueBookingAlertEmail, persistLegacyBookingConfirmationEmail } from './email-outbox.service';
 import { getStripeSecretKey } from '../utils/stripe-key';
 // Ruling 2026-09-02-traveler-fee-applies-everywhere (path 3 — the legacy `bookings` rail is
 // reachable, so billed for parity). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
@@ -846,8 +846,8 @@ class BookingService {
     const { PROCESSING_FEE_RATE } = await import('./commission');
     const earningsAvailableAt = availableAtFor('service_booking');
 
-    // Atomic transaction: confirm booking + record earnings + decrement availability.
-    // All three succeed or all roll back together.
+    // Atomic transaction: confirmation + earnings/revenue + durable traveler email.
+    // Stripe's charge is already successful; local persistence failure is retried, not recharged.
     await db.transaction(async (tx) => {
       // 1. Confirm the booking — must match exactly 1 row to proceed.
       //    Using RETURNING id so we can check the affected count inside the tx.
@@ -873,6 +873,8 @@ class BookingService {
         (err as any).code = 'BOOKING_ALREADY_CONFIRMED';
         throw err;
       }
+
+      await persistLegacyBookingConfirmationEmail(tx, bookingId);
 
       if (providerId) {
         // 2. Record provider earnings ledger entry (born held; released after clearance window)
@@ -1025,28 +1027,8 @@ class BookingService {
       }
     })();
 
-    // Fire-and-forget confirmation email — must not block the caller
-    db.execute(sql`
-      SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
-      FROM bookings b
-      JOIN users u ON u.id = b.user_id
-      WHERE b.id = ${bookingId}
-      LIMIT 1
-    `).then(result => {
-      const row = result?.rows?.[0] as any;
-      if (row?.email) {
-        enqueueBookingConfirmationEmail({
-          toEmail: row.email,
-          userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
-          bookingId,
-          bookingTitle: row.title || 'Your booking',
-          bookingDate: row.booking_date ?? null,
-          confirmationCode,
-        });
-      }
-    }).catch(err =>
-      console.error(`[email] failed to fetch booking details for confirmation email (booking ${bookingId}):`, err)
-    );
+    // Traveler confirmation was persisted in the transaction above. Delivery is
+    // owned by the existing outbox drain, including after a process restart.
   }
 
   /**

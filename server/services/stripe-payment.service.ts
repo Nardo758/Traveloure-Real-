@@ -24,7 +24,7 @@ import Stripe from 'stripe';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
-import { enqueueBookingConfirmationEmail } from './email-outbox.service';
+import { persistLegacyBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
 import { resolveSavedCardChargeId } from './saved-card-choice';
@@ -1034,63 +1034,48 @@ class StripePaymentService {
       { signatureVerified: true },
       async () => {
         for (const bookingId of bookingIdList) {
-          // Idempotency: skip bookings that are already confirmed
-          const existing = await db.execute(sql`
-            SELECT status FROM bookings WHERE id = ${bookingId} LIMIT 1
-          `);
-          const currentStatus = (existing.rows?.[0] as any)?.status;
-          if (currentStatus === 'confirmed') {
-            console.log(`[webhook] booking ${bookingId} already confirmed — skipping`);
-            continue;
-          }
+          await db.transaction(async (tx) => {
+            const confirmationCode = this.generateConfirmationCode();
 
-          const confirmationCode = this.generateConfirmationCode();
+            // The winning claim and its traveler notice commit together.
+            // Preserve the legacy acceptance rule (anything except confirmed).
+            let claimed;
+            if (isDeposit === 'true') {
+              claimed = await tx.execute(sql`
+                UPDATE bookings SET
+                  status = 'confirmed',
+                  payment_status = 'succeeded',
+                  confirmed_at = NOW(),
+                  confirmation_code = ${confirmationCode},
+                  deposit_paid = true
+                WHERE id = ${bookingId}
+                  AND status IS DISTINCT FROM 'confirmed'
+                RETURNING confirmation_code
+              `);
+            } else {
+              claimed = await tx.execute(sql`
+                UPDATE bookings SET
+                  status = 'confirmed',
+                  payment_status = 'succeeded',
+                  confirmed_at = NOW(),
+                  confirmation_code = ${confirmationCode},
+                  deposit_paid = true,
+                  balance_paid = true
+                WHERE id = ${bookingId}
+                  AND status IS DISTINCT FROM 'confirmed'
+                RETURNING confirmation_code
+              `);
+            }
 
-          if (isDeposit === 'true') {
-            await db.execute(sql`
-              UPDATE bookings SET
-                status = 'confirmed',
-                payment_status = 'succeeded',
-                confirmed_at = NOW(),
-                confirmation_code = ${confirmationCode},
-                deposit_paid = true
-              WHERE id = ${bookingId}
-            `);
-          } else {
-            await db.execute(sql`
-              UPDATE bookings SET
-                status = 'confirmed',
-                payment_status = 'succeeded',
-                confirmed_at = NOW(),
-                confirmation_code = ${confirmationCode},
-                deposit_paid = true,
-                balance_paid = true
-              WHERE id = ${bookingId}
-            `);
-          }
+            const confirmed = claimed.rows?.[0] as { confirmation_code: string } | undefined;
+            if (!confirmed) {
+              console.log(`[webhook] booking ${bookingId} already confirmed or missing — skipping`);
+              return;
+            }
 
-          console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
-
-          // Fire-and-forget confirmation email — must not block the webhook response
-          const bookingDetails = await db.execute(sql`
-            SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
-            FROM bookings b
-            JOIN users u ON u.id = b.user_id
-            WHERE b.id = ${bookingId}
-            LIMIT 1
-          `).catch(() => null);
-
-          const row = bookingDetails?.rows?.[0] as any;
-          if (row?.email) {
-            enqueueBookingConfirmationEmail({
-              toEmail: row.email,
-              userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
-              bookingId,
-              bookingTitle: row.title || 'Your booking',
-              bookingDate: row.booking_date ?? null,
-              confirmationCode,
-            });
-          }
+            await persistLegacyBookingConfirmationEmail(tx, bookingId);
+          });
+          console.log(`[webhook] processed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
         }
       },
     );
