@@ -1954,6 +1954,6 @@ export const MIGRATION_FILES = [
   "359_trips_stay_pick.sql",
   // 360 — the six seeded occasion descriptions that read "<name> planning experience" (ledger
   // 2026-10-09-e3-experiences-inline; E3 ruling 2). DATA ONLY: UPDATE by slug, only while the row still holds
-  // the generated placeholder. No DDL, nothing to declare. HELD.
+  // the generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 9, 2026.
   "360_occasion_descriptions.sql",
 ] as const;

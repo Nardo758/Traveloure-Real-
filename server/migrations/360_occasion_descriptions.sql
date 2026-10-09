@@ -1,5 +1,5 @@
 -- 360 — the six occasion descriptions that read "<name> planning experience".
--- Ledger `2026-10-09-e3-experiences-inline`; E3 ruling 2 (decision-maker, Oct 9, 2026). HELD FOR RULING.
+-- Ledger `2026-10-09-e3-experiences-inline`; E3 ruling 2 (decision-maker, Oct 9, 2026). APPROVED by the founder, Oct 9, 2026.
 --
 -- WHY THIS FILE EXISTS
 -- ────────────────────
