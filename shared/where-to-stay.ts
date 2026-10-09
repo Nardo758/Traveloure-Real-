@@ -330,7 +330,28 @@ export interface WhereToStayView {
    * the ranking has rows.
    */
   unranked?: "no_neighborhoods" | "no_located_items";
+  /**
+   * S1 "one stay on the plan" (ledger `2026-10-09-s1-one-stay`; brief s1-one-stay.md). Present on an
+   * eligible view. FREE: the top 3 hotels by straight line within the top neighbourhoods. ROUTED (the plan
+   * passes `planGetsRoutedLegs`): the ONE stay Optimize's routed scoring picked, READ from `trips.stay_pick`
+   * — never computed on read. Never ranked by price or commission, either tier.
+   */
+  stay?: WhereToStayStay;
 }
+
+export type WhereToStayStay =
+  | { tier: "straight_line"; hotels: StayHotel[] }
+  | {
+      tier: "routed";
+      /** The picked hotel, or null when nothing has been scored yet or it has left our inventory (§13). */
+      pick: StayHotel | null;
+      /** Hotels scored by routed time / hotels in the plan's neighbourhoods. Null before any pick. */
+      scoredCount: number | null;
+      candidateCount: number | null;
+      /** A re-score replaced an earlier, different pick and the card has not shown it yet. */
+      changed: boolean;
+      computedAt: string | null;
+    };
 
 /**
  * Smoke 8 item 1 — WHERE the lodging surface draws, from the server's view alone (§18 rule 1; the

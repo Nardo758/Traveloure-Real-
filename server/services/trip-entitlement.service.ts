@@ -186,6 +186,8 @@ export async function grantTripPass(input: {
   if (inserted[0]) {
     // A Trip Pass unlocks routed legs (spec §14.3; step 9a ruling 2, ledger 2026-10-07-step9a-routing-engine).
     enqueuePlanLegRecompute(input.tripId);
+    // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): a Trip Pass makes the plan routed — pick its stay.
+    void import("./stay-pick.service").then((m) => m.scheduleStayPick(input.tripId)).catch(() => undefined);
     return { entitlement: inserted[0], created: true };
   }
 

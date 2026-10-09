@@ -1949,4 +1949,7 @@ export const MIGRATION_FILES = [
   // 358 — trips.pet_kind / trips.pet_count (ledger 2026-10-08-e1-zero-questions; R340's held shape). Two
   // nullable columns, no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. HELD.
   "358_trips_pets.sql",
+  // 359 — trips.stay_pick (ledger 2026-10-09-s1-one-stay; brief s1-one-stay.md ruling 3). One nullable jsonb,
+  // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. HELD.
+  "359_trips_stay_pick.sql",
 ] as const;
