@@ -6,7 +6,8 @@
  * resolvers return for uncovered trips, and it never touches commissions.
  *
  * Coverage semantics (ruling): an ACTIVE pass on a trip grants
- *   - optimizer_run          unlimited (no per-run charge)
+ *   - optimizer_run          up to `TRIP_PASS_RUNS_PER_TRIP` full runs (default 5, R-ac); past the
+ *                            cap the run is charged like any other (no per-run charge until then)
  *   - ai_task                unlimited. NO LONGER A NO-OP: this comment used to say "no charge
  *                            surface exists", which stopped being true when the AI proposal APPLY
  *                            became the charge point (ledger `2026-09-15-d20-d21-proposal-charge`,

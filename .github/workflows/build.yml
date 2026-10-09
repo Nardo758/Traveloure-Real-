@@ -93,6 +93,12 @@ jobs:
         run: |
           node scripts/check-us-spelling.cjs --self-test
           node scripts/check-us-spelling.cjs
+      # Ledger 2026-10-08-trip-pass-five-runs: a Trip Pass covers a capped number of optimizer runs, so
+      # no client string or locale value says "unlimited" followed within 20 characters by "run".
+      - name: Unlimited-runs copy guard — self-test, source
+        run: |
+          node scripts/check-unlimited-runs.cjs --self-test
+          node scripts/check-unlimited-runs.cjs
 
       # 2026-09-05-well-known-static (CLAUDE.md Locked Decision 43(e)): Stripe verifies an Apple
       # Pay domain by fetching /.well-known/apple-developer-merchantid-domain-association, and the
