@@ -15,6 +15,7 @@
  *   GET    /api/trips/:tripId/where-to-stay                       smoke 4 item 5 — the post-draft panel
  *   POST   /api/trips/:tripId/where-to-stay                       bind: stay here / own / skip
  *   POST   /api/trips/:tripId/stay-pick/seen                      S1: the card showed a changed pick (ledger 2026-10-09-s1-one-stay)
+ *   GET    /api/trips/:tripId/stay-pick/link                      FU-S1-2: the picked stay's link, when its card is opened
  *
  * §14: the actor is the session; no body carries an identity, a price or a coordinate the server
  * could read from a source row. §19: every body is a `.strict()` object. LD 40: a set, option or
@@ -340,6 +341,20 @@ router.post("/api/trips/:tripId/where-to-stay", isAuthenticated, async (req: any
 // (`.strict()` empty object, §19); owner or managing assistant (the "choose" role); anyone else and an absent
 // plan get the same 404 (LD 40).
 const staySeenBody = z.object({}).strict();
+// FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the picked stay's ONE link, fetched lazily when its
+// card is opened — at most one Google Details call, never stored. Plan read gate; one 404 otherwise.
+router.get("/api/trips/:tripId/stay-pick/link", isAuthenticated, async (req: any, res) => {
+  try {
+    const { pickedStayLink } = await import("../services/stay-link.service");
+    const out = await pickedStayLink(req.params.tripId, getUserId(req));
+    if (!out) return res.status(404).json({ code: "not_found", message: "No such plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[stay-pick/link]", err);
+    res.status(500).json({ code: "internal", message: "Could not load the stay link" });
+  }
+});
+
 router.post("/api/trips/:tripId/stay-pick/seen", isAuthenticated, async (req: any, res) => {
   if (!staySeenBody.safeParse(req.body ?? {}).success) return badBody(res);
   try {

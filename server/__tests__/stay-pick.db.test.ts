@@ -17,6 +17,8 @@
  *   SD8  FU-S1-1: through the REAL gate, each stay-pick request writes ONE `route_matrix` row on
  *        `api_usage_logs` carrying its elements (the cap's count) AND its dollars at the Essentials list
  *        price, purpose `stay_pick`, ref = the plan; a refresh-style call without a price still records 0
+ *   SD9  FU-S1-2: the free plan's list read carries ONE `stayLink` per card (Google Maps, no call) and
+ *        makes NO Google call — the website is fetched only when the picked card is opened
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. The Maps call is a fake.
  */
@@ -272,5 +274,31 @@ test("SD8 FU-S1-1: each stay-pick request records its elements and its dollars o
       else process.env[k] = v;
     }
     await db.execute(sql`DELETE FROM api_usage_logs WHERE metadata->>'ref' = ${ids.small}`).catch(() => {});
+  }
+});
+
+test("SD9 FU-S1-2: the list read carries one link per card and makes NO Google call", async () => {
+  const keys = ["PLACE_FACTS_PLACES_ENABLED", "GOOGLE_MAPS_API_KEY"] as const;
+  const saved = keys.map((k) => process.env[k]);
+  const realFetch = globalThis.fetch;
+  process.env.PLACE_FACTS_PLACES_ENABLED = "1";
+  process.env.GOOGLE_MAPS_API_KEY = "sd9-test-key";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new Error("no network on list render");
+  }) as any;
+  try {
+    const view = await loadWhereToStay(ids.free, ids.owner);
+    assert.ok(view.stay && view.stay.tier === "straight_line");
+    assert.equal(view.stay.hotels.length, 3);
+    for (const h of view.stay.hotels) {
+      assert.equal(h.stayLink?.kind, "maps", h.name);
+      assert.match(h.stayLink!.url, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=East\+Hotel/);
+    }
+    assert.equal(calls, 0, "no Google call on list render");
+  } finally {
+    globalThis.fetch = realFetch;
+    keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
   }
 });

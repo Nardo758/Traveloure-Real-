@@ -77,6 +77,7 @@ import { enrichPlanItems } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
+import { listStayLinks } from "./stay-link.service";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -394,7 +395,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const placed = hotelsByNeighborhood(hotels, neighborhoods, ranked.map((r) => r.slug));
   const oneLiners = await neighbourhoodOneLiners(ranked, neighborhoods);
   const tied = topWonOnTieBreak(ranked);
-  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days);
+  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days, city);
   return {
     eligible: true,
     ...(dismissed ? { dismissed: true as const } : {}),
@@ -428,6 +429,7 @@ async function stayBlock(
   ranked: readonly RankedStayNeighborhood[],
   byDay: Map<number, StayDay>,
   days: number,
+  city: string | null,
 ): Promise<WhereToStayStay> {
   const byKey = new Map(hotels.map((h) => [`${h.kind}:${h.id}`, h]));
   const strip = (h: StayHotel & { lat: number; lng: number }): StayHotel => {
@@ -438,9 +440,12 @@ async function stayBlock(
     const pick = readStayPick(stored);
     if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null };
     const hotel = byKey.get(`${pick.hotelKind}:${pick.hotelId}`);
+    // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
+    // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
+    const [linked] = hotel ? await listStayLinks([strip(hotel)], city) : [];
     return {
       tier: "routed",
-      pick: hotel ? strip(hotel) : null,
+      pick: linked ?? null,
       scoredCount: pick.scoredCount,
       candidateCount: pick.candidateCount,
       changed: pick.changed,
@@ -457,7 +462,8 @@ async function stayBlock(
     return !!slug && top.has(slug);
   });
   const list = freeStayShortList(inTop.map((h) => toStayPickCandidate(h)), stops);
-  return { tier: "straight_line", hotels: list.map((c) => strip(byKey.get(`${c.kind}:${c.id}`)!)) };
+  // FU-S1-2: one link per card — own or Google Maps; no Google call on list render.
+  return { tier: "straight_line", hotels: await listStayLinks(list.map((c) => strip(byKey.get(`${c.kind}:${c.id}`)!)), city) };
 }
 
 /** The plan's latest draft row — the one its ranking and lookup progress belong to. */
