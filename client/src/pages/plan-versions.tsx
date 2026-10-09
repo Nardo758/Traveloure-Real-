@@ -11,6 +11,7 @@
  * legacy screen. It is the only caller left.
  */
 import { lazy, Suspense } from "react";
+import "@/styles/slip-tokens.css";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "wouter";
 import { Loader2 } from "lucide-react";
@@ -88,12 +89,13 @@ export default function PlanVersionsPage() {
   const slipHref = `/plans/${tripId}`;
   const optimizeHref = `${slipHref}?optimize=1`;
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-4" data-testid="plan-versions-page">
+    // The Optimized board (ledger `2026-10-08-slip-optimized-board`): the slip's tokens and ground.
+    <div className="slip-surface mx-auto max-w-6xl space-y-4 bg-[color:var(--slip-ground)] px-4 py-6" data-testid="plan-versions-page">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href={slipHref} className="text-sm underline underline-offset-2" data-testid="plan-versions-back">
+        <Link href={slipHref} className="text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline" data-testid="plan-versions-back">
           ← Back to your plan
         </Link>
-        <p className="text-sm text-muted-foreground">{plan.data.trip?.title || plan.data.trip?.destination}</p>
+        <p className="text-sm text-[color:var(--slip-muted)]">{plan.data.trip?.title || plan.data.trip?.destination}</p>
       </div>
       {runState === "building" ? (
         <p className="rounded-md border border-dashed p-3 text-sm" data-testid="plan-versions-building">

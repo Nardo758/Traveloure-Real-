@@ -43,6 +43,10 @@ import {
   retimeGate,
   stayVersion,
   takeDay,
+  boardDayLabel,
+  optimizedHeadline,
+  versionTotalChips,
+  versionTotals,
   type BoardDrag,
   type DayPicks,
   type VersionsBoardView,
@@ -207,76 +211,136 @@ export function VersionsBoard({
     },
   });
 
+  const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
+  const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name);
+  // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
+  // re-parenting it — a remount re-sizes the map mid-drag on the By day board (kyoto-slice §6 step 5).
+  const map = (
+    <div className={`overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)]${mode === "choose" ? " order-2" : ""}`}>
+      <MapControlCenter
+        tripId={tripId}
+        tripDestination={destination}
+        days={sortedDays}
+        selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
+        onSelectDay={setMapDayIdx}
+        compact
+        readOnly
+        versions={mapVersions}
+        versionKey={mapVersion}
+        onVersionChange={setMapVersion}
+      />
+    </div>
+  );
+
   return (
-    <section className="mb-6 space-y-4" data-testid="versions-board">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold">Your plan's versions</h2>
-        <p className="text-xs text-muted-foreground" data-testid="versions-run-date">
-          Run of {runDateLabel(view.run.runAt)}
+    <section className="mb-6 flex flex-col gap-4" data-testid="versions-board">
+      {/* The Optimized board (ledger `2026-10-08-slip-optimized-board`): the run's eyebrow, the
+          headline counted from the run's own versions and the plan's days, and what adopting does. */}
+      <div className="space-y-1.5">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="versions-run-date">
+          Optimized · Run of {runDateLabel(view.run.runAt)}
         </p>
+        {/* The headline and what adopting does belong to the choose view; By day keeps the eyebrow only, so
+            its drag board sits where it always has (kyoto-slice §6 step 5 drags a day near the fold). */}
+        {mode === "choose" ? (
+          <>
+            <h2 className="slip-display text-[28px] font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid="versions-headline">
+              {optimizedHeadline(view.versions.length, allDays.length)}
+            </h2>
+            <p className="text-[15px] leading-snug text-[color:var(--slip-muted)]">
+              {allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. Your draft is kept.
+            </p>
+          </>
+        ) : null}
       </div>
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <MapControlCenter
-          tripId={tripId}
-          tripDestination={destination}
-          days={sortedDays}
-          selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
-          onSelectDay={setMapDayIdx}
-          compact
-          readOnly
-          versions={mapVersions}
-          versionKey={mapVersion}
-          onVersionChange={setMapVersion}
-        />
-      </div>
+      {map}
 
       {mode === "choose" ? (
-        <div className="grid gap-3 md:grid-cols-3" data-testid="versions-choose">
-          {cards.map((c) => (
-            <div key={c.variantId} className="rounded-lg border border-border p-3 space-y-2" data-testid={`versions-card-${c.label}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold">
-                  Version {c.label} <span className="font-normal text-muted-foreground">· {c.name}</span>
-                </p>
+        <>
+        <div className="order-1 grid gap-3 lg:grid-cols-3" data-testid="versions-choose">
+          {cards.map((c) => {
+            const v = view.versions.find((x) => x.variantId === c.variantId);
+            const chips = versionTotalChips(versionTotals(v?.days ?? []));
+            return (
+            <div
+              key={c.variantId}
+              className="overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]"
+              data-testid={`versions-card-${c.label}`}
+            >
+              <div className="flex items-start justify-between gap-2 border-b border-[color:var(--slip-line)] px-4 pb-3 pt-3.5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
+                    Version {c.label}
+                    {v?.anchor?.name ? ` · around ${v.anchor.name}` : ""}
+                  </p>
+                  <p className="slip-display text-xl font-semibold leading-tight text-[color:var(--slip-ink)]">{c.name}</p>
+                </div>
                 {c.badge ? (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary" data-testid={`versions-badge-${c.label}`}>
+                  <span
+                    className="flex-shrink-0 rounded-full bg-[color:var(--slip-gold-wash)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--slip-gold-ink)]"
+                    data-testid={`versions-badge-${c.label}`}
+                  >
                     {c.badge}
                   </span>
                 ) : null}
               </div>
-              <ul className="space-y-0.5 text-xs text-muted-foreground">
-                {c.days.map((d) => (
-                  <li key={d.dayNumber} data-testid={`versions-card-day-${c.label}-${d.dayNumber}`}>
-                    Day {d.dayNumber}: {d.summary}
-                    {d.matchedByName ? " · matched by name" : ""}
-                  </li>
-                ))}
-              </ul>
-              <div className="flex gap-2 pt-1">
-                <Button
-                  size="sm"
-                  onClick={() => apply.mutate(adoptAllPicks(view, c.variantId))}
-                  disabled={apply.isPending}
-                  data-testid={`versions-adopt-all-${c.label}`}
-                >
-                  Adopt all
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setMode("compare");
-                    setMapVersion(c.variantId);
-                  }}
-                  data-testid={`versions-by-day-${c.label}`}
-                >
-                  By day
-                </Button>
+              <div className="space-y-3 px-4 py-3">
+                <ul className="space-y-1.5 text-sm">
+                  {c.days.map((d) => {
+                    const same = !!v?.days.find((x) => x.dayNumber === d.dayNumber)?.identical;
+                    return (
+                      <li key={d.dayNumber} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2" data-testid={`versions-card-day-${c.label}-${d.dayNumber}`}>
+                        <span className="font-semibold text-[color:var(--slip-navy)]">{boardDayLabel(d.dayNumber, dateOf.get(d.dayNumber))}</span>
+                        <span className={same ? "text-[color:var(--slip-muted)]" : "text-[color:var(--slip-ink)]"}>
+                          {d.summary}
+                          {d.matchedByName ? " · matched by name" : ""}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="flex flex-wrap gap-1.5" data-testid={`versions-totals-${c.label}`}>
+                  {chips.map((ch) => (
+                    <span
+                      key={ch.key}
+                      className={`rounded-md px-2 py-1 text-xs ${ch.warn ? "bg-[color:var(--slip-wash)] font-semibold text-[color:var(--coral-text)]" : "bg-[color:var(--slip-wash)] text-[color:var(--slip-muted)]"}`}
+                    >
+                      {ch.text}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-[46px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--coral-accent)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--coral-text)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                    onClick={() => apply.mutate(adoptAllPicks(view, c.variantId))}
+                    disabled={apply.isPending}
+                    data-testid={`versions-adopt-all-${c.label}`}
+                  >
+                    Adopt all {allDays.length === 1 ? "of it" : `${allDays.length} days`}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-[46px] flex-shrink-0 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+                    onClick={() => {
+                      setMode("compare");
+                      setMapVersion(c.variantId);
+                    }}
+                    data-testid={`versions-by-day-${c.label}`}
+                  >
+                    By day
+                  </button>
+                </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
+        <p className="order-3 text-xs leading-snug text-[color:var(--slip-muted)]" data-testid="versions-keep-note">
+          Versions are kept with the run. Adopting never deletes your draft.
+        </p>
+        </>
       ) : isDesktop ? (
         // ── 4c desktop: A / B / C / Your plan ─────────────────────────────────────────────────
         <div className="space-y-2" data-testid="versions-desktop">
@@ -434,7 +498,7 @@ export function VersionsBoard({
       )}
 
       {mode === "compare" ? (
-        <div className="flex flex-wrap items-center gap-2" data-testid="versions-pick-strip">
+        <div className="order-4 flex flex-wrap items-center gap-2" data-testid="versions-pick-strip">
           {strip.length === 0 ? <p className="text-xs text-muted-foreground">No days picked yet.</p> : null}
           {strip.map((p) => (
             <span key={p.dayNumber} className="rounded-full border px-2 py-0.5 text-xs" data-testid={`versions-pick-${p.dayNumber}`}>
@@ -458,7 +522,7 @@ export function VersionsBoard({
       ) : null}
 
       {paidGate ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="versions-retime-paid">
+        <div className="order-4 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="versions-retime-paid">
           <span>
             Day {paidGate.dayNumber}: {paidGate.line}. Nothing has been changed.
           </span>
