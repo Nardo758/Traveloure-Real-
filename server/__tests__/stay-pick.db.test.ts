@@ -19,6 +19,9 @@
  *        price, purpose `stay_pick`, ref = the plan; a refresh-style call without a price still records 0
  *   SD9  FU-S1-2: the free plan's list read carries ONE `stayLink` per card (Google Maps, no call) and
  *        makes NO Google call — the website is fetched only when the picked card is opened
+ *   SD10 FU-S1-3: the routed pick stores its per-day closeness from the SAME matrix the scorer fetched (no
+ *        extra request), against the configured minutes, and the read returns it as stored
+ *   SD11 FU-S1-3: each free-tier stay carries its straight-line closeness against the configured km
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. The Maps call is a fake.
  */
@@ -31,7 +34,8 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { computeStayPick, markStayPickSeen, scheduleStayPick } from "../services/stay-pick.service";
 import { loadWhereToStay } from "../services/where-to-stay.service";
-import { readStayPick } from "@shared/stay-pick";
+import { readStayPick, straightLineCloseness } from "@shared/stay-pick";
+import { stayCloseRoutedMinutes, stayCloseStraightKm } from "../config/stay-closeness.config";
 import type { RouteMatrixFetch } from "../services/travel-time-matrix.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -300,5 +304,38 @@ test("SD9 FU-S1-2: the list read carries one link per card and makes NO Google c
   } finally {
     globalThis.fetch = realFetch;
     keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+  }
+});
+
+test("SD10 FU-S1-3: the routed pick stores its closeness from the scorer's own matrix, and the read returns it", async () => {
+  const T = stayCloseRoutedMinutes();
+  // Same minutes for every hotel, by the stop's day: day 1 within T, day 2 one stop just over, day 3 unreachable.
+  const canon = STOPS.slice().sort((a, b) => a.day - b.day || a.lat - b.lat || a.lng - b.lng);
+  const perStop = (j: number) => (canon[j].day === 1 ? T : canon[j].day === 2 ? (j === 3 ? T + 1 : T - 1) : null);
+  // SD8 already moved this stop; clear the stored pick so the plan re-scores (a pick on unchanged stops is skipped).
+  await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0014 WHERE id = ${`${ids.small}-i2`}`);
+  await db.execute(sql`UPDATE trips SET stay_pick = NULL WHERE id = ${ids.small}`);
+  const m = fakeMatrix((_lat, _lng, j) => perStop(j));
+  const out = await computeStayPick(ids.small, { fetchMatrix: m.fetch });
+  assert.ok("written" in out, JSON.stringify(out));
+  assert.equal(m.calls.length, 21, "one request per scored hotel — closeness adds none");
+  const pick = await storedPick(ids.small);
+  assert.deepEqual(pick!.closeness, { closeDays: 1, locatedDays: 3, basis: "routed" });
+  const view = await loadWhereToStay(ids.small, ids.owner);
+  assert.ok(view.stay && view.stay.tier === "routed");
+  assert.deepEqual(view.stay.closeness, pick!.closeness);
+});
+
+test("SD11 FU-S1-3: each free-tier stay carries its straight-line closeness against the configured km", async () => {
+  const view = await loadWhereToStay(ids.free, ids.owner);
+  assert.ok(view.stay && view.stay.tier === "straight_line");
+  const km = stayCloseStraightKm();
+  const stops = STOPS.map((s) => ({ dayNumber: s.day, lat: s.lat, lng: s.lng }));
+  for (const h of view.stay.hotels) {
+    const n = Number(h.id.slice(-2));
+    const at = eastHotel(n);
+    assert.deepEqual(h.closeness, straightLineCloseness({ kind: "hotel_cache", id: h.id, name: h.name, lat: at.lat, lng: at.lng }, stops, km));
+    assert.equal(h.closeness!.locatedDays, 3, "the day-9 stop outside the plan's dates is not a located day");
+    assert.equal(h.closeness!.basis, "straight_line");
   }
 });

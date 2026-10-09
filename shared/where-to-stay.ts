@@ -346,8 +346,18 @@ export interface WhereToStayView {
   stay?: WhereToStayStay;
 }
 
+/**
+ * FU-S1-3: "close on N of M days" for one stay — `closeDays` of `locatedDays` (days with at least one located
+ * stop on the plan's dates), by routed minutes on a paid plan or straight line on a free plan. Computed by
+ * the server only (`shared/stay-pick.ts` `stayDayCloseness`); null = unknown (§13, never zero-filled).
+ */
+export type { StayCloseness } from "./stay-pick";
+import type { StayCloseness } from "./stay-pick";
+
 export type WhereToStayStay =
-  | { tier: "straight_line"; hotels: StayHotel[] }
+  /** FU-S1-3: `closeness` is optional on the wire — absent means the payload predates it, which every reader
+   *  treats exactly like null (no closeness line, §13). The server always sets it. */
+  | { tier: "straight_line"; hotels: Array<StayHotel & { closeness?: StayCloseness | null }> }
   | {
       tier: "routed";
       /** The picked hotel, or null when nothing has been scored yet or it has left our inventory (§13). */
@@ -358,6 +368,8 @@ export type WhereToStayStay =
       /** A re-score replaced an earlier, different pick and the card has not shown it yet. */
       changed: boolean;
       computedAt: string | null;
+      /** FU-S1-3: the pick's routed closeness; null before any pick, or on a pick stored before FU-S1-3. */
+      closeness?: StayCloseness | null;
     };
 
 /**
