@@ -15,6 +15,7 @@
  * for the hotel's name and the plan's city, labelled with its attribution beside it.
  */
 import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
+import type { StayCloseness } from "@shared/stay-pick";
 import { buildGoogleMapsDeepLink } from "@/lib/maps";
 
 export const STAY_PICK_TITLE = "Our pick for your days";
@@ -46,16 +47,32 @@ export function stayMapsHref(name: string, city?: string | null): string {
   return buildGoogleMapsDeepLink([{ name: query }]);
 }
 
+/**
+ * "Close to N of M days" (R394, ruling Oct 9, 2026): read from S1's own `closeness` and never computed
+ * here. A day is close when the stay is within the configured routed minutes (paid) or straight-line
+ * kilometres (free) of every located stop that day; M = days with a located stop. The free tier says it
+ * is by straight line. Absent, null or no located day ⇒ no line (§13) — never "0 of 0".
+ */
+export const STAY_CLOSE_STRAIGHT_SUFFIX = "by straight line";
+export function stayClosenessLine(c: StayCloseness | null | undefined): string | null {
+  if (!c) return null;
+  const { closeDays, locatedDays, basis } = c;
+  if (!Number.isInteger(closeDays) || !Number.isInteger(locatedDays) || locatedDays <= 0 || closeDays < 0) return null;
+  const base = `Close to ${Math.min(closeDays, locatedDays)} of ${locatedDays} ${locatedDays === 1 ? "day" : "days"}`;
+  return basis === "straight_line" ? `${base} ${STAY_CLOSE_STRAIGHT_SUFFIX}` : base;
+}
+
+export type StayCardHotel = StayHotel & { closeness?: StayCloseness | null };
 export type StayCardModel =
-  | { tier: "routed"; hotels: [StayHotel]; scoredLine: string | null; changed: boolean }
-  | { tier: "straight_line"; hotels: StayHotel[]; scoredLine: null; changed: false };
+  | { tier: "routed"; hotels: [StayCardHotel]; scoredLine: string | null; changed: boolean }
+  | { tier: "straight_line"; hotels: StayCardHotel[]; scoredLine: null; changed: false };
 
 /** What the card draws, or null when it draws nothing (no stay block, no pick, no hotels). */
 export function stayCardModel(stay: WhereToStayStay | null | undefined): StayCardModel | null {
   if (!stay) return null;
   if (stay.tier === "routed") {
     if (!stay.pick) return null;
-    return { tier: "routed", hotels: [stay.pick], scoredLine: stayScoredLine(stay.scoredCount, stay.candidateCount), changed: !!stay.changed };
+    return { tier: "routed", hotels: [{ ...stay.pick, closeness: stay.closeness ?? null }], scoredLine: stayScoredLine(stay.scoredCount, stay.candidateCount), changed: !!stay.changed };
   }
   const hotels = (stay.hotels ?? []).slice(0, 3);
   return hotels.length ? { tier: "straight_line", hotels, scoredLine: null, changed: false } : null;
