@@ -9843,7 +9843,8 @@ export type LandingMomentEvent = typeof landingMomentEvents.$inferSelect;
 // deploy-push durability rule; no CHECK (publish-trap posture).
 export const jobHeartbeats = pgTable("job_heartbeats", {
   jobName: varchar("job_name", { length: 80 }).primaryKey(),
-  lastSuccessAt: timestamp("last_success_at").notNull(),
+  // Held migration 360: only the development commerce sweep records failure-only rows.
+  lastSuccessAt: timestamp("last_success_at"),
   lastResult: jsonb("last_result"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

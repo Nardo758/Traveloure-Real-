@@ -42,7 +42,7 @@ export interface JobCadence {
   bucket: string;
 }
 
-export type JobHealthStatus = "ok" | "stale" | "never_succeeded";
+export type JobHealthStatus = "ok" | "stale" | "never_succeeded" | "failed";
 
 export interface JobHealthRow {
   job: string;
@@ -110,6 +110,21 @@ export async function recordJobSuccess(jobName: string, body: Record<string, unk
   }
 }
 
+/** Part 3 only: durable failure, including a first attempt. Never fabricate success.
+ * Deliberately throws if persistence fails; the endpoint must not return a green result.
+ * Other jobs continue using the unchanged success-only recorder above.
+ */
+export async function recordCommerceSweepFailure(): Promise<void> {
+  const result = { ok: false, status: "FAILED", reason: "sweep_failed" };
+  await db.insert(jobHeartbeats).values({
+    jobName: "commerce-email-sweep", lastSuccessAt: null,
+    lastResult: result, updatedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: jobHeartbeats.jobName,
+    set: { lastResult: result, updatedAt: new Date() },
+  });
+}
+
 /**
  * Health for every job in the ROSTER (never merely for the rows that happen to exist).
  */
@@ -125,7 +140,17 @@ export async function computeJobHealth(roster: readonly JobCadence[], now: Date 
 
   return roster.map((entry) => {
     const row = byName.get(entry.job);
-    if (!row) {
+    if (entry.job === "commerce-email-sweep" && row &&
+        (!row.lastSuccessAt || (row.lastResult as { ok?: boolean } | null)?.ok === false)) {
+      return {
+        ...entry, status: "failed" as const,
+        lastSuccessAt: row?.lastSuccessAt?.toISOString() ?? null,
+        ageSec: row?.lastSuccessAt
+          ? Math.max(0, Math.round((now.getTime() - row.lastSuccessAt.getTime()) / 1000)) : null,
+        lastResult: row?.lastResult ?? null,
+      };
+    }
+    if (!row?.lastSuccessAt) {
       return {
         job: entry.job,
         bucket: entry.bucket,

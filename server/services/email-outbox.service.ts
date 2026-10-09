@@ -81,6 +81,33 @@ export function _nextRetryAfter(failedAttemptCount: number): Date {
 /** The 10-minute lease window used by both enqueue and drain claim steps. */
 const LEASE_MS = 10 * 60 * 1000;
 
+/**
+ * Queue only. No immediate-send call, retry action, or cart writer.
+ * Called solely by the isolated-development commerce sweep. The explicit partial
+ * conflict target also fails closed if its existing unique index is absent.
+ */
+export async function enqueuePendingCommerceReminder(
+  recipient: string, commerceKey: string, sequenceId: string, cartScope: string,
+): Promise<boolean> {
+  const schema = process.env.MESSAGING_VERIFICATION_SCHEMA ?? "";
+  if (!["test", "development"].includes(process.env.NODE_ENV ?? "") ||
+      !/^automation_msg_[a-f0-9]{16}$/.test(schema) ||
+      !/^[^@\s]+@traveloure-qa\.test$/i.test(recipient)) {
+    throw new Error("Commerce queue is restricted to isolated development QA");
+  }
+  const inserted = await db.execute(sql`
+    INSERT INTO email_outbox (email_type, to_email, subject, html, text_body, status, metadata)
+    SELECT 'cart_reminder_1h', ${recipient}, 'Your cart is ready when you are',
+      '<p>Your saved cart is ready when you are. Open Traveloure to review it.</p>',
+      'Your saved cart is ready when you are. Open Traveloure to review it.',
+      'pending', ${JSON.stringify({ commerceKey, sequenceId, cartScope,
+        verificationOnly: true, releaseBlockedBy: ["Part 4", "Part 6"] })}::jsonb
+    WHERE current_schema() = ${schema}
+    ON CONFLICT ((metadata ->> 'commerceKey')) WHERE metadata ? 'commerceKey'
+    DO NOTHING RETURNING id`);
+  return inserted.rows.length > 0;
+}
+
 // ── Test seam ─────────────────────────────────────────────────────────────────
 
 /**

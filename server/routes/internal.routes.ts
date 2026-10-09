@@ -47,8 +47,10 @@ import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import { runModerationSchedule } from "../automations/moderation/runtime";
 import { mapsSpendToday } from "../services/maps-billing/maps-billing.service";
+import { commerceVerificationEnabled, runCommerceEmailSweepSchedule } from "../services/commerce-email-sweep.service";
 import {
   recordJobSuccess,
+  recordCommerceSweepFailure,
   computeJobHealth,
   isAnyJobUnhealthy,
   type JobCadence,
@@ -121,6 +123,8 @@ export async function runJob(
   options: {
     isSkip?: (result: any) => boolean;
     useBackgroundJobRunner?: boolean;
+    /** Additive opt-in for the development commerce sweep only. */
+    onFailure?: () => Promise<void>;
   } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
@@ -153,6 +157,7 @@ export async function runJob(
       // log at all, which is why the CI job log was the only place the message existed. Now that
       // the cron prints an allowlist instead of the body, this log is the record.
       logger.error({ job: name, error: String(error), result }, "[internal-jobs] job reported failure");
+      await options.onFailure?.();
       return { status: 500, body: { ok: false, job: name, error: String(error), result } };
     }
     const body = { ok: true, job: name, result };
@@ -165,6 +170,12 @@ export async function runJob(
     // runBackgroundJob already logs a thrown pass, but log here too so the endpoint's own record is
     // self-sufficient and does not depend on the runner's internals (L5).
     logger.error({ err, job: name }, "[internal-jobs] job threw");
+    if (options.onFailure) {
+      try { await options.onFailure(); }
+      catch (heartbeatError) {
+        logger.error({ job: name, heartbeatError }, "[internal-jobs] failure heartbeat could not be persisted");
+      }
+    }
     return { status: 500, body: { ok: false, job: name, error: err?.message || String(err) } };
   }
 }
@@ -185,6 +196,7 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "checkout-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
   { job: "itinerary-generation-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
   { job: "email-outbox", expectedIntervalSec: 15 * 60, bucket: "backstops" },
+  { job: "commerce-email-sweep", expectedIntervalSec: 15 * 60, bucket: "backstops" },
   // jobs-cron.yml — hourly, 0 * * * *
   { job: "earnings-release", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   { job: "booking-auto-completion", expectedIntervalSec: 60 * 60, bucket: "hourly" },
@@ -337,6 +349,19 @@ router.post("/internal/jobs/itinerary-generation-sweep", requireInternalSecret, 
     (r) => !!r?.error,
   );
   res.status(status).json(body);
+});
+
+router.post("/internal/jobs/commerce-email-sweep", requireInternalSecret, async (_req, res) => {
+  if (!commerceVerificationEnabled()) {
+    return res.status(200).json({
+      ok: true, skipped: true, reason: "disabled", job: "commerce-email-sweep",
+    });
+  }
+  const { status, body } = await runJob("commerce-email-sweep",
+    () => runCommerceEmailSweepSchedule(), undefined, {
+      useBackgroundJobRunner: false, onFailure: recordCommerceSweepFailure,
+    });
+  return res.status(status).json(body);
 });
 
 router.post("/internal/jobs/email-outbox", requireInternalSecret, async (_req, res) => {

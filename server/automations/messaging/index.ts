@@ -5,6 +5,7 @@ import { chatAutomations } from "./chat-index";
 import { itineraryNudge2hAutomation } from "./itinerary-nudge-2h";
 import { itineraryFollowup24hAutomation } from "./itinerary-followup-24h";
 import { itineraryReengagement5dAutomation } from "./itinerary-reengagement-5d";
+import { commerceEmailSweepAutomation } from "./commerce-email-sweep";
 
 export const messagingAutomations = [
   ...deliveryAutomations,
@@ -13,6 +14,7 @@ export const messagingAutomations = [
   itineraryNudge2hAutomation,
   itineraryFollowup24hAutomation,
   itineraryReengagement5dAutomation,
+  commerceEmailSweepAutomation,
 ] as const;
 
 export const messagingAutomationRegistry = createAutomationRegistry(messagingAutomations);

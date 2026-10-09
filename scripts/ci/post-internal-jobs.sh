@@ -300,7 +300,7 @@ post_route_with_retry() {
 # the order buckets are checked and, when due, posted in. ──
 # BUCKET_ROUTES_TABLE_BEGIN
 declare -A BUCKET_ROUTES=(
-  ["backstops"]="checkout-sweep itinerary-generation-sweep email-outbox"
+  ["backstops"]="checkout-sweep itinerary-generation-sweep email-outbox commerce-email-sweep"
   ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims handoff-timers legs-dayof-recheck"
   ["four-hourly"]="booking-expiry"
   ["six-hourly"]="travelpayouts-report-poll"
