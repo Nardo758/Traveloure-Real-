@@ -58,7 +58,8 @@ import {
   type WhereToStayView,
 } from "@shared/where-to-stay";
 import { haversineMeters } from "@shared/geo";
-import { freeStayShortList, readStayPick, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { freeStayShortList, readStayPick, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { loadMatrixReader } from "./travel-time-matrix.service";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
@@ -438,7 +439,7 @@ async function stayBlock(
   };
   if (await planIsRouted(tripId)) {
     const pick = readStayPick(stored);
-    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null };
+    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null, closeness: null };
     const hotel = byKey.get(`${pick.hotelKind}:${pick.hotelId}`);
     // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
     // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
@@ -450,6 +451,8 @@ async function stayBlock(
       candidateCount: pick.candidateCount,
       changed: pick.changed,
       computedAt: pick.computedAt,
+      // FU-S1-3: stored by the one writer; null when the pick left our inventory or predates FU-S1-3.
+      closeness: hotel ? (pick.closeness ?? null) : null,
     };
   }
   const top = new Set(ranked.map((r) => r.slug));
@@ -463,7 +466,15 @@ async function stayBlock(
   });
   const list = freeStayShortList(inTop.map((h) => toStayPickCandidate(h)), stops);
   // FU-S1-2: one link per card — own or Google Maps; no Google call on list render.
-  return { tier: "straight_line", hotels: await listStayLinks(list.map((c) => strip(byKey.get(`${c.kind}:${c.id}`)!)), city) };
+  // FU-S1-3: each listed stay's straight-line closeness over the same stops (no Maps call).
+  const km = stayCloseStraightKm();
+  return {
+    tier: "straight_line",
+    hotels: await listStayLinks(
+      list.map((c) => ({ ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km) })),
+      city,
+    ),
+  };
 }
 
 /** The plan's latest draft row — the one its ranking and lookup progress belong to. */
