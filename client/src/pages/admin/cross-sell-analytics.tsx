@@ -253,7 +253,7 @@ export default function AdminCrossSellAnalytics() {
               <Eye className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500 font-medium">No cross-sell events recorded yet</p>
               <p className="text-gray-400 text-sm mt-1">
-                Events are captured automatically when travellers view and click the "Users also book" strip.
+                Events are captured automatically when travelers view and click the "Users also book" strip.
               </p>
             </CardContent>
           </Card>

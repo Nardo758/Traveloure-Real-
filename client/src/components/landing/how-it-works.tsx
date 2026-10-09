@@ -2,7 +2,8 @@
  * how-it-works.tsx — the one-line "How it works" strip directly under the hero (landing
  * reorder, ledger `2026-09-28-landing-reorder`).
  *
- * It names the four steps and links out; the step descriptions live on /how-it-works and
+ * It names three short steps (H1, "1 Pick → 2 Plan → 3 Hand off or book") and links out; the four
+ * described steps live on /how-it-works and
  * every price lives on /pricing, which renders them from fee_bands. The
  * former four-column section, its price rows (Free, pay-per-use, Trip Pass, expert-priced,
  * quote) and the Plus band are removed from the landing page by that ruling — they are not
@@ -10,7 +11,7 @@
  */
 import { Fragment } from "react";
 import { Link } from "wouter";
-import { HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
+import { HOME_HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -30,7 +31,7 @@ export function HowItWorks() {
           How it works
         </span>
         <ol className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="how-it-works-steps">
-          {HOW_IT_WORKS_STEPS.map((step, i) => (
+          {HOME_HOW_IT_WORKS_STEPS.map((step, i) => (
             <Fragment key={step.n}>
               {i > 0 && (
                 <li aria-hidden="true" className="text-[13px]" style={{ color: "var(--earn-faint)" }}>

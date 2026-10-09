@@ -126,7 +126,8 @@ const AUTH_NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>
 // `name`/`title` is KEPT, because it is both the translation fallback and the source of this
 // file's data-testid values (`link-nav-*`, `link-mobile-*`, `nav-dropdown-*`) — translating a
 // name in place would have renamed selectors the Playwright suites depend on.
-const navItems = navGroupsConfig.map((group) => ({
+// H1: a `hidden` group is not drawn — desktop bar and mobile sheet both read this list.
+const navItems = navGroupsConfig.filter((group) => !group.hidden).map((group) => ({
   name: group.name,
   i18nKey: group.i18nKey,
   // R2 (cosmetic-public-surfaces dispatch, A2): carried through ONLY for the desktop trigger's
@@ -814,7 +815,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </DropdownMenu>
                   <Button
                     size="sm"
-                    className="text-sm text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                    className="text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                     onClick={() => openSignInModal()}
                     data-testid="button-sign-in"
                   >
@@ -831,6 +832,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                 </>
               )}
+
+              {/* H1 (ledger `2026-10-08-h1-home-copy`): the nav's primary — "Start a plan" on the coral
+                  fill, for every visitor. It opens the ONE planning entry with no source, as the
+                  footer's "Start a plan" does (no door is recorded; `PLAN_DOORS` is a closed list). */}
+              <Button
+                size="sm"
+                className="hidden xl:inline-flex text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
+                onClick={() => openPlanning()}
+                data-testid="button-nav-start-plan"
+              >
+                {START_PLAN_LABEL}
+              </Button>
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
               <div className="flex items-center xl:hidden">
@@ -875,10 +888,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   the list into an accordion is out of scope (FOLLOWUPS.md); moving the one control
                   a signed-out visitor is most likely to want is not. Signed-out only — a signed-in
                   visitor's identity/logout stays where it already was, at the panel's foot. */}
+              <div className="px-4 pt-3">
+                <Button
+                  className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    openPlanning();
+                  }}
+                  data-testid="button-mobile-start-plan"
+                >
+                  {START_PLAN_LABEL}
+                </Button>
+              </div>
               {!user && (
                 <div className="px-4 pt-3">
                   <Button
-                    className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                    className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       openSignInModal();
@@ -1003,7 +1028,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </Link>
                     ))}
                     <Button
-                      className="w-full mt-1 text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                      className="w-full mt-1 text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         openSignInModal();

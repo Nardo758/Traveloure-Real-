@@ -1808,7 +1808,7 @@ export default function DiscoverLocationPage() {
   const handleBookRecommendation = (c: { offeringId: string; categoryKey: string }) => {
     discoverySlotResult.logClick(c.offeringId);
     // Carry the FEED's city into the services surface as `location` (the param the
-    // /services page filters on). Without it, Book-now dropped which city the traveller was
+    // /services page filters on). Without it, Book-now dropped which city the traveler was
     // browsing and landed on an un-scoped catalog.
     //
     // Built by the ONE `/services` URL builder (lane L22, ledger `2026-09-07-doors-pass-tripid`;
@@ -1817,7 +1817,7 @@ export default function DiscoverLocationPage() {
     //
     // §13 — IT PASSES NO `tripId`, DELIBERATELY. This page is a city feed and holds no plan: it
     // never reads one off the URL and never resolves one. Passing an inferred "probably active"
-    // plan here would file an add against a plan the traveller did not choose on this screen.
+    // plan here would file an add against a plan the traveler did not choose on this screen.
     navigate(
       buildServicesBrowseHref({
         categoryKey: c.categoryKey,
@@ -2165,7 +2165,7 @@ export default function DiscoverLocationPage() {
                   Local experts wanted in {toTitleCase(city)}
                 </p>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Know this city well? Travellers are looking for guides, advisors, and service providers here.
+                  Know this city well? Travelers are looking for guides, advisors, and service providers here.
                 </p>
                 {/* Gap 15: name the track. Without `type=` the wizard fell back to its
                     `travel_expert` default, so a "local experts wanted" card opened the Trip

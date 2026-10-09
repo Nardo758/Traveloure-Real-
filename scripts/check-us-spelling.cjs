@@ -4,8 +4,12 @@
  * decision-maker, Oct 8, 2026).
  *
  * Fails on a British spelling in a CLIENT STRING or a LOCALE VALUE:
- *   neighbourhood · travelling · licence · colour · organis(e/ation/er…) · favourite · centre ·
- *   cancelled · catalogue
+ *   neighbourhood · travelling · traveller · licence · colour · organis(e/ation/er…) · favourite ·
+ *   centre · cancelled · catalogue · speciality
+ * and one product name, spelled ONE way: "Ready-Made" (as in "Ready-Made Trips"). Any other casing
+ * or spacing of ready-made ("Ready Made", "ready-made", "Ready-made", "Readymade") fails (H1, ledger
+ * `2026-10-08-h1-home-copy`). Strings on pages the H1 sweep has not reached yet sit in
+ * `READY_MADE_SWEEP_PENDING` by EXACT string; the sweep PR empties it and nothing is ever added.
  * matched case-insensitively from a word boundary, so suffixed forms ("neighbourhoods", "colours",
  * "centred") are caught too. A proper noun that must keep its own spelling is allowlisted by its
  * EXACT string in `ALLOWED_STRINGS` below — never by a word, a file or a pattern.
@@ -32,9 +36,76 @@ const path = require("path");
 
 const REPO = path.resolve(__dirname, "..");
 const ROOT = path.join(REPO, "client", "src");
-const BRITISH = /\b(neighbourhood|travelling|licence|colour|organis|favourite|centre|cancelled|catalogue)/i;
+const BRITISH = /\b(neighbourhood|travelling|traveller|licence|colour|organis|favourite|centre|cancelled|catalogue|speciality)/i;
+/** Every spelling of the product name; only the exact "Ready-Made" passes. */
+const READY_MADE = /\bready[\s-]?made\b/gi;
+const readyMadeVariant = (t) => (t.match(READY_MADE) ?? []).some((m) => m !== "Ready-Made");
 /** Proper nouns that keep their spelling, by EXACT string. Empty today. */
 const ALLOWED_STRINGS = new Set([]);
+/**
+ * TEMPORARY (H1, ledger `2026-10-08-h1-home-copy`): ready-made variants on pages outside the home page,
+ * by EXACT string, until the one sweep PR fixes them and empties this set. Never grows.
+ */
+const READY_MADE_SWEEP_PENDING = new Set([
+  // client/src/components/admin-sidebar.tsx
+  "Ready Made Trips",
+  // client/src/components/backoffice/link-analytics-panel.tsx
+  "Ready Made Trip",
+  // client/src/components/backoffice/my-offerings-table.tsx
+  "No offerings yet — create a service or a Ready Made Trip to start selling.",
+  "Ready Made Trip",
+  // client/src/components/expert/dmo-picker-modal.tsx
+  "Refine the raw content below so it's ready to build into a Ready Made Trip or a\n                      client itinerary.",
+  // client/src/components/expert/ready-made-listing-panel.tsx
+  "An admin reviews it before it appears in Ready Made Trips.",
+  // client/src/components/feed/ready-made-card.tsx
+  "Ready-made",
+  "Ready-made trip",
+  // client/src/lib/checkout-headings.ts
+  "Pay for this ready-made trip",
+  // client/src/lib/role-routes-config.ts
+  "Ready Made Trips approval + curation queue",
+  // client/src/lib/trip-card.ts
+  "'s Ready Made Trip",
+  "from a Ready Made Trip",
+  // client/src/pages/admin/expert-templates.tsx
+  "Ready Made Trips",
+  // client/src/pages/admin/reconciliation.tsx
+  "delivered ready-made purchase(s) handed back to the announcement sender",
+  "ready-made purchase(s)",
+  "ready-made rail: not tallied on this run",
+  // client/src/pages/admin/template-approvals.tsx
+  "Cloneable trips built in the expert Workstation. Approval snapshots the \"what's inside\"\n            counts and puts the listing on the Ready Made Trips shelf feed.",
+  "Editorial badges on live Ready Made Trips. Badged listings lead the store shelf.",
+  "Ready Made Trips awaiting review, and editorial badges on the live shelf.",
+  // client/src/pages/discover.tsx
+  "Local experts publish ready-made itinerary packages and offer services to\n              travelers on Traveloure. Turn what you know into income.",
+  // client/src/pages/expert/dmo-library.tsx
+  "Build Ready Made Trip",
+  "Ready Made Trip",
+  "Ready Made Trips",
+  "Refine the raw content below so it's ready to build into a Ready Made Trip or a client\n                  itinerary.",
+  // client/src/pages/expert/inbox.tsx
+  "From your Ready Made Trip",
+  "When a traveler asks a local about a stop in your market — or on a copy of your Ready Made Trip — it appears here.",
+  // client/src/pages/expert/ready-made.tsx
+  "Build a complete trip once, then sell it in the Ready Made Trips store as many times as you\n            like. A buyer gets their own editable copy — you keep authoring the original.",
+  "Could not start a new ready-made trip",
+  // client/src/pages/expert/workspace.tsx
+  "Create a store listing from this build — price it, submit for admin review, sell it in Ready Made Trips.",
+  // client/src/pages/my-bookings.tsx
+  "1 ready-made plan you bought isn't shown here — it's on the Trips tab.",
+  "Ready Made Trips you bought",
+  "Ready-made plan:",
+  "ready-made plans you bought aren't shown here — they're on the Trips tab.",
+  // client/src/pages/provider/earnings.tsx
+  "Ready Made Trip",
+  // client/src/pages/ready-made-detail.tsx
+  "Browse Ready Made Trips",
+  "Ready Made Trips",
+  // client/src/pages/ready-made-preview.tsx
+  "See Ready Made Trips",
+]);
 
 const CODE_VALUE = /^[A-Za-z0-9_\-\/.:@?=&#*${}]+$/;
 const isCodeValue = (s) => !/\s/.test(s) && CODE_VALUE.test(s) && !/^[A-Z]/.test(s);
@@ -62,7 +133,7 @@ function sourceHits(text, fileName) {
       // A template part is judged untrimmed: " neighbourhoods" (after a `${n}`) is copy, while
       // "badge-neighbourhood-" (a testid prefix) is a code value.
       const codeValue = literal && (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) ? isCodeValue(t) : isCodeValue(s));
-      if (BRITISH.test(t) && !ALLOWED_STRINGS.has(t) && !codeValue) {
+      if ((BRITISH.test(t) || (readyMadeVariant(t) && !READY_MADE_SWEEP_PENDING.has(t))) && !ALLOWED_STRINGS.has(t) && !codeValue) {
         hits.push({ line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1, text: t });
       }
     }
@@ -77,7 +148,7 @@ function localeHits(text) {
   const hits = [];
   const rec = (o, key) => {
     if (typeof o === "string") {
-      if (BRITISH.test(o) && !ALLOWED_STRINGS.has(o.trim())) hits.push({ key, text: o });
+      if ((BRITISH.test(o) || (readyMadeVariant(o) && !READY_MADE_SWEEP_PENDING.has(o.trim()))) && !ALLOWED_STRINGS.has(o.trim())) hits.push({ key, text: o });
     } else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) rec(v, key ? `${key}.${k}` : k);
   };
   rec(JSON.parse(text), "");
@@ -108,6 +179,10 @@ function selfTest() {
     ["word boundary: no false hit inside a word", `const a = "recentre? no: decentred";`, 0],
     ["a testid template part is a code value", "const t = `badge-neighbourhood-${id}`;", 0],
     ["import paths are not copy", `import x from "./colour-utils";`, 0],
+    ["traveller and speciality", `const a = "Help travellers"; const b = "speciality services";`, 2],
+    ["the product name passes", `const a = "Ready-Made Trips"; const b = "Browse Ready-Made Trips";`, 0],
+    ["ready-made variants fail", `const a = "Fixture: Ready Made Trips"; const b = "fixture: a ready-made trip"; const c = <p>Fixture Ready-made</p>;`, 3],
+    ["a ready-made route is a code value", `const h = "/ready-made"; const t = "storefront-lane-readymade";`, 0],
   ];
   let failed = 0;
   for (const [name, src, want] of cases) {
