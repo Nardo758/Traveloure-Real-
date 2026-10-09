@@ -58,6 +58,11 @@ diagnostics before and after, zero new diagnostics. The comparison substituted
 the base versions of changed runtime sources in memory and excluded newly added
 files from the baseline program; it did not edit the application to run checks.
 
+The pull request was narrowed onto `origin/main`, preserving the verified
+runtime sources byte-for-byte and excluding unrelated workspace work. Since
+that remote did not yet contain the approved atomic legacy claim, the scoped
+webhook diff also retains its conditional update and winner-only persistence.
+
 The configured preview restarted successfully, its outbox scheduler registered,
 startup applied zero migrations, and the landing page rendered. The outbox
 uses its existing five-minute drain interval rather than immediate traveler
