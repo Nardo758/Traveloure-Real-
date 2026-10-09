@@ -259,6 +259,11 @@ export const trips = pgTable("trips", {
   // (the value set is app-enforced); written ONLY through `tripOccasionBody` (§19).
   petKind: varchar("pet_kind", { length: 60 }),
   petCount: integer("pet_count"),
+  // Ledger `2026-10-09-s1-one-stay` (migration 359, HELD): S1 "one stay on the plan" — the ONE stay a
+  // paid plan's routed scoring picked ({ hotelId, hotelKind, scoredCount, candidateCount, stopsHash,
+  // computedAt, tier, changed }; shape and reader in `shared/stay-pick.ts`). NULL = never picked, never
+  // "no stay fits" (§13). Written ONLY by `server/services/stay-pick.service.ts`; never client-settable.
+  stayPick: jsonb("stay_pick"),
   // ── DID ANYBODY CHOOSE THESE DATES? (migration 302, ledger `2026-09-15-d22-dates-confirmed`,
   // punchlist D-22 = yes.) Additive nullable timestamp, NO DEFAULT and NO DB CHECK (the
   // publish-trap posture — migrations 181/195/273/275/276/277/279/280/281/282/284/287/295/297/301),
@@ -2762,6 +2767,9 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // `tripOccasionBody`; under this denylist a new column would otherwise be body-settable (§19).
   petKind: true,
   petCount: true,
+  // Ledger `2026-10-09-s1-one-stay`: the stay pick has ONE writer (`stay-pick.service.ts`) and no admission
+  // rail at all — under this denylist a new column would otherwise be body-settable (§19).
+  stayPick: true,
 }).extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),

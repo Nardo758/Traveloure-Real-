@@ -2581,6 +2581,20 @@ This document captures architectural decisions to maintain consistency across co
     engine routes airport ↔ stay legs, and the buffer check adds the routed leg's minutes. `leg-google-coords`
     queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
 
+63. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
+    ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, HELD FOR RULING).**
+    A paid plan (`planGetsRoutedLegs`, which replaced the paid-optimizer-run test) gets ONE stay. It is picked by
+    one Route Matrix request per hotel → every located stop on the plan's dates (DRIVE), ranked by reachability,
+    then closest on most days, then least total time. Candidates are hotels in the plan's neighbourhoods, scored
+    in straight-line order until 150 ELEMENTS are spent, against `MAPS_ROUTE_MATRIX_DAILY_CAP`; the pick comes only
+    from scored hotels. A free plan gets the top 3 by straight line, and no Maps call. Candidates carry five keys
+    (`shared/stay-pick.ts`) and no money field. `trips.stay_pick` (jsonb, nullable, no DEFAULT/CHECK/index/FK,
+    declared in `shared/schema.ts`, omitted from `insertTripSchema`) has ONE writer, `stay-pick.service.ts`. It is
+    computed at Optimize finish, Trip Pass grant, handoff accept and the debounced stops recompute when
+    `stopsHash` changed — **never on read**. A re-score replaces the pick and sets `changed`; the card clears it
+    once. **9a-ii** = self-hosted OSRM as a `RoutingAdapter` provider for walk and drive; when it is live, the
+    straight-line prune and the element budget are removed. The card is the Conformance lane's.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

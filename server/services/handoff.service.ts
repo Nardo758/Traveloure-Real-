@@ -444,6 +444,8 @@ export async function acceptHandoff(requestId: string, expertId: string): Promis
   void track(expertId, row.tripId ?? "", HANDOFF_EVENTS.accepted, { requestId, kind: row.handoffKind });
   // An accepted handoff unlocks routed legs (step 9a ruling 2, ledger 2026-10-07-step9a-routing-engine).
   enqueuePlanLegRecompute(row.tripId);
+  // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): an accepted handoff makes the plan routed — pick its stay.
+  void import("./stay-pick.service").then((m) => m.scheduleStayPick(row.tripId)).catch(() => undefined);
   return { ok: true, request: (await getHandoff(requestId))! };
 }
 
