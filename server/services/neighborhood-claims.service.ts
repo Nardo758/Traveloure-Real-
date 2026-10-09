@@ -24,6 +24,7 @@
  * The scorer (Phase 2) calls markClaimScored / markClaimScorerFailed and NEVER touches
  * expert_neighborhoods — the migration-272 trigger makes that structural, not a convention.
  */
+import { expertNuggetTags } from "@shared/content-tiers";
 import { and, asc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
@@ -335,6 +336,7 @@ export async function submitClaim(opts: {
       // P1 → local_knowledge_nuggets (the gem-candidate host) + depth columns.
       for (const entry of capture.p1) {
         await tx.insert(localKnowledgeNuggets).values({
+          ...expertNuggetTags(), // FD-2
           expertUserId: claim.expertId,
           nuggetType: "recommendation",
           city: nb.city,

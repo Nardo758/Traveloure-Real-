@@ -57,6 +57,7 @@
  *     (LD 45: free draft on an empty slip, Optimize or a paid task on a non-empty one, and nothing
  *     else).
  */
+import { stampItemSourceClass } from "@shared/content-tiers";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "../db";
@@ -568,7 +569,8 @@ export async function applyPlanProposal(params: {
       const inserted = await tx
         .insert(itineraryItems)
         .values(
-          additions.map((addition, i) => ({
+          // FD-2 ruling 9: an applied AI proposal is stamped from its origin ('ai' ⇒ public).
+          additions.map((addition, i) => stampItemSourceClass({
             tripId: params.tripId,
             title: addition.title,
             description: addition.description ?? null,
@@ -588,7 +590,7 @@ export async function applyPlanProposal(params: {
             // Ruling 12 / LD 42 D23: SERVER-STAMPED, client-settable nowhere. An applied AI
             // proposal is the AI's, and must never render in the expert's treatment (D4/D23).
             origin: "ai" as const,
-          })),
+          }) as any),
         )
         .returning({ id: itineraryItems.id });
       createdItemIds = inserted.map((r) => r.id);

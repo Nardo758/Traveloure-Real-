@@ -2602,6 +2602,23 @@ This document captures architectural decisions to maintain consistency across co
     once. **9a-ii** = self-hosted OSRM as a `RoutingAdapter` provider for walk and drive; when it is live, the
     straight-line prune and the element budget are removed. The card is the Conformance lane's.
 
+65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
+    FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
+    migrations 361 (columns) and 362 (backfill), APPROVED by the founder Oct 9, 2026).** Nine tables carry
+    `source_class` (`public` | `local`) and most carry `reuse_class` (`display_in_plan` | `link_only` | `internal` |
+    `reusable`), beside the UNCHANGED `license` / `license_class` (ruling 1; fixed mapping restricted→display_in_plan,
+    official→link_only, editorial→link_only, partner→internal). All nullable, no DEFAULT/CHECK/index/FK, declared in
+    `shared/schema.ts`; value sets and every rule ONCE in `shared/content-tiers.ts`. **NULL source_class = UNTAGGED and
+    never reaches a draft** — an AI-written gem stays untagged until a person verifies it (`POST /api/admin/gems/:id/verify`,
+    ruling 3), and verification makes the VERIFIER its author, never "Traveloure team". Official-source facts and city
+    events are `public` + `link_only` (ruling 2); neighbourhood descriptions `public` (ruling 4). Every writer stamps at
+    insert; **`itinerary_items.source_class` is server-stamped (`stampItemSourceClass`), stripped from every body and
+    update, never client-settable (ruling 9)** — an item a local input produced (expert work, a gem, a Ready Made copy,
+    an expert-recommended option, a prompt that carried local gems) is `local`; an unknown origin stays NULL. AI drafts
+    read gems only through `getDraftEligibleGems` (tagged, and a local row past `expires_at` hidden — ruling 8); nothing
+    is deleted and no status column exists; `content-expiry-census` (daily) only counts. Night-scene is not tagged (ruling
+    7). Quick-start is a free draft and the Plus occasion draft is paid (ruling 5) — the cap and tier filter are FD-1.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { PUBLIC_REUSABLE_TAGS } from "@shared/content-tiers";
 import { destinationEvents, destinationSeasons } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 
@@ -325,6 +326,7 @@ export async function seedDestinationCalendar() {
       // Seed seasons
       for (const season of destination.seasons) {
         await db.insert(destinationSeasons).values({
+          ...PUBLIC_REUSABLE_TAGS, // FD-2 (ledger 2026-10-09-fd2-content-tier-tags)
           country: destination.country,
           month: season.month,
           rating: season.rating,

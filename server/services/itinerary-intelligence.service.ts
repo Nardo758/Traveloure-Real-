@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import {
   itineraryItems,
@@ -108,7 +109,8 @@ export class ItineraryIntelligenceService {
   }
 
   async createItem(data: InsertItineraryItem): Promise<ItineraryItem> {
-    const results = await db.insert(itineraryItems).values(data).returning();
+    // FD-2 ruling 9: any incoming source_class is dropped and the server's stamp written instead.
+    const results = await db.insert(itineraryItems).values(stampItemSourceClass(data as Record<string, unknown>) as any).returning();
     enqueuePlanLegRecompute(results[0]?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return results[0];
   }

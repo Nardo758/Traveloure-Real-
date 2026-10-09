@@ -1952,4 +1952,11 @@ export const MIGRATION_FILES = [
   // 359 — trips.stay_pick (ledger 2026-10-09-s1-one-stay; brief s1-one-stay.md ruling 3). One nullable jsonb,
   // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. HELD.
   "359_trips_stay_pick.sql",
+  // 360 is E3's (six occasion blurbs, Track A) and lands from that lane; registry order is authoritative.
+  // 361 — content-tier tags, columns only (ledger 2026-10-09-fd2-content-tier-tags). Nullable, no
+  // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED by the founder, Oct 9, 2026.
+  "361_content_tier_tags.sql",
+  // 362 — content-tier tags, backfill only (same ledger). Data only, guarded by source_class IS NULL.
+  // APPROVED by the founder, Oct 9, 2026.
+  "362_content_tier_backfill.sql",
 ] as const;
