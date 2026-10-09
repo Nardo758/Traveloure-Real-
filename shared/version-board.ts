@@ -243,6 +243,46 @@ export function versionBadges(versions: ReadonlyArray<{ id: string; stops: reado
   return out;
 }
 
+/**
+ * "Recommended" (held-batch-1 item 22, decision-maker Oct 9, 2026: "strict winner by S1 tiebreak"). The
+ * versions are ordered by S1's ranking rule (`rankStays`, `shared/stay-pick.ts`) over their OWN stops:
+ * fewest unlocated stops (S1's "unreachable"), then the most days on which the version has the least
+ * travel that day (each day's straight-line path between its located stops — the measure "least travel"
+ * already uses), then the least total travel. Only a STRICT winner is recommended: a full tie on all
+ * three keys recommends nothing, and names never break a tie (§13). Fewer than two versions, or a version
+ * with no located stop at all, recommends nothing. No metre value leaves (R-h).
+ */
+export function recommendedVersion(versions: ReadonlyArray<{ id: string; stops: readonly BoardStop[] }>): string | null {
+  if (versions.length < 2) return null;
+  const rows = versions.map((v) => {
+    const perDay = new Map<number, number>();
+    let unlocated = 0;
+    let located = 0;
+    for (const [day, list] of Array.from(byDay(v.stops).entries())) {
+      const pts = list.filter((s) => typeof s.lat === "number" && typeof s.lng === "number") as Array<BoardStop & { lat: number; lng: number }>;
+      unlocated += list.length - pts.length;
+      located += pts.length;
+      let m = 0;
+      for (let i = 1; i < pts.length; i++) m += metersBetween(pts[i - 1], pts[i]);
+      perDay.set(day, m);
+    }
+    const total = Array.from(perDay.values()).reduce((a, b) => a + b, 0);
+    return { id: v.id, unlocated, located, perDay, total, closestDays: 0 };
+  });
+  if (rows.some((r) => r.located === 0)) return null;
+  const days = new Set<number>();
+  for (const r of rows) for (const d of Array.from(r.perDay.keys())) days.add(d);
+  for (const d of Array.from(days)) {
+    if (rows.some((r) => !r.perDay.has(d))) continue;
+    const best = Math.min(...rows.map((r) => r.perDay.get(d)!));
+    const winners = rows.filter((r) => r.perDay.get(d) === best);
+    if (winners.length === 1) winners[0].closestDays += 1;
+  }
+  const cmp = (a: (typeof rows)[number], b: (typeof rows)[number]) => a.unlocated - b.unlocated || b.closestDays - a.closestDays || a.total - b.total;
+  const sorted = [...rows].sort(cmp);
+  return cmp(sorted[0], sorted[1]) < 0 ? sorted[0].id : null;
+}
+
 // ── free re-times (R-ac) ────────────────────────────────────────────────────────────────────────
 
 export const FREE_RETIME_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -265,4 +305,58 @@ export function retimeLine(input: { free: boolean; remaining: number; feeLabel: 
 /** Version labels by run order (sortOrder 1, 2, 3 ⇒ A, B, C). */
 export function versionLabel(index: number): string {
   return String.fromCharCode(65 + index);
+}
+
+// ── the run's charge (held-batch-1 item 23) ─────────────────────────────────────────────────────
+
+/** What the latest run cost, read from its `fee_ledger` toll rows (LD 41 amended). */
+export interface RunCharge {
+  basis: "paid" | "trip_pass" | "free_rerun";
+  amountCents: number;
+  currency: string;
+  at: string;
+}
+
+export interface RunTollRow {
+  id: string;
+  feeType: string;
+  amount: string | number;
+  currency: string | null;
+  createdAt: Date | string;
+  stripePaymentRef: string | null;
+  reversesLedgerId?: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+/** A run's toll is written at the run point, before its versions; allow the run that long. */
+export const RUN_TOLL_MATCH_WINDOW_MS = 10 * 60_000;
+
+/**
+ * PURE: the charge for the run dated `runAt`, from the comparison's optimizer toll rows. The newest
+ * `ai_concierge_fee` row written no later than the run (plus the match window) is the run's toll.
+ * A `fee_waiver` on the same run id names what covered it; otherwise a PaymentIntent on the row
+ * makes it paid. NULL when there is no row, the row was reversed, or its basis can't be read — the
+ * board then says nothing about money (§13), never "free".
+ */
+export function runChargeFromLedger(rows: readonly RunTollRow[], runAt: Date | string): RunCharge | null {
+  const runMs = new Date(runAt).getTime();
+  if (!Number.isFinite(runMs)) return null;
+  const ms = (r: RunTollRow) => new Date(r.createdAt).getTime();
+  const fee = rows
+    .filter((r) => r.feeType === "ai_concierge_fee" && Number.isFinite(ms(r)) && ms(r) <= runMs + RUN_TOLL_MATCH_WINDOW_MS)
+    .sort((a, b) => ms(b) - ms(a))[0];
+  if (!fee) return null;
+  if (rows.some((r) => r.reversesLedgerId === fee.id)) return null;
+  const amountCents = Math.round(Number(fee.amount) * 100);
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return null;
+  const currency = (fee.currency || "usd").toLowerCase();
+  const at = new Date(fee.createdAt).toISOString();
+  const runId = typeof fee.metadata?.runId === "string" ? fee.metadata.runId : null;
+  if (runId) {
+    const waiver = rows.find((r) => r.feeType === "fee_waiver" && r.metadata?.runId === runId);
+    const by = waiver?.metadata?.covered_by;
+    if (by === "trip_pass" || by === "free_rerun") return { basis: by, amountCents, currency, at };
+    return null;
+  }
+  return fee.stripePaymentRef ? { basis: "paid", amountCents, currency, at } : null;
 }

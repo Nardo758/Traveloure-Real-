@@ -86,8 +86,9 @@ export function compareFootLine(status: "open" | "chosen" | "closed", chosenTitl
   return `Not chosen yet — your plan keeps ${all} open.`;
 }
 
-export function compareTitle(count: number): string {
-  return count === 1 ? "Compare 1 place" : `Compare ${count} places`;
+/** The board's headline (rev 15, held-batch-1 item 17). The count lives in the eyebrow. */
+export function compareTitle(_count: number): string {
+  return "Which one fits your days?";
 }
 
 /**

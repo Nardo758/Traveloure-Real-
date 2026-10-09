@@ -50,6 +50,8 @@ import {
   yourPlanSummary,
   versionTotalChips,
   versionTotals,
+  VERSION_RECOMMENDED_LABEL,
+  runChargeLine,
   type BoardDrag,
   type DayPicks,
   type VersionsBoardView,
@@ -68,6 +70,15 @@ function useIsDesktop(): boolean {
   }, []);
   return desktop;
 }
+
+const chargeDateLabel = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+};
+const chargeTimeLabel = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "";
+};
 
 const runDateLabel = (iso: string) => {
   const d = new Date(iso);
@@ -238,6 +249,13 @@ export function VersionsBoard({
     </div>
   );
 
+  const chargeLine = runChargeLine(view.run.charge, {
+    windowEndsAt: view.retimes.windowEndsAt,
+    now: new Date(),
+    formatDate: chargeDateLabel,
+    formatTime: chargeTimeLabel,
+  });
+
   return (
     <section className="mb-6 flex flex-col gap-4" data-testid="versions-board">
       {/* The Optimized board (ledger `2026-10-08-slip-optimized-board`): the run's eyebrow, the
@@ -246,6 +264,11 @@ export function VersionsBoard({
         <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="versions-run-date">
           Optimized · Run of {runDateLabel(view.run.runAt)}
         </p>
+        {chargeLine ? (
+          <p className="text-sm text-[color:var(--slip-muted)]" data-testid="versions-run-charge">
+            {chargeLine}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h2 className="slip-display text-[28px] font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid="versions-headline">
             {mode === "compare" && !isDesktop ? byDayHeadline(view.versions.length) : optimizedHeadline(view.versions.length, allDays.length)}
@@ -288,11 +311,14 @@ export function VersionsBoard({
           {cards.map((c) => {
             const v = view.versions.find((x) => x.variantId === c.variantId);
             const chips = versionTotalChips(versionTotals(v?.days ?? []));
+            // Held-batch-1 item 22: the server's strict winner by S1's tiebreak — never derived here.
+            const recommended = v?.recommended === true;
             return (
             <div
               key={c.variantId}
-              className="overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]"
+              className={`overflow-hidden rounded-[var(--slip-radius-card)] border bg-[color:var(--slip-card)] ${recommended ? "border-2 border-[color:var(--slip-navy)]" : "border-[color:var(--slip-line)]"}`}
               data-testid={`versions-card-${c.label}`}
+              data-recommended={recommended ? "true" : undefined}
             >
               <div className="flex items-start justify-between gap-2 border-b border-[color:var(--slip-line)] px-4 pb-3 pt-3.5">
                 <div className="min-w-0">
@@ -302,14 +328,21 @@ export function VersionsBoard({
                   </p>
                   <p className="slip-display text-xl font-semibold leading-tight text-[color:var(--slip-ink)]">{c.name}</p>
                 </div>
-                {c.badge ? (
-                  <span
-                    className="flex-shrink-0 rounded-full bg-[color:var(--slip-gold-wash)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--slip-gold-ink)]"
-                    data-testid={`versions-badge-${c.label}`}
-                  >
-                    {c.badge}
-                  </span>
-                ) : null}
+                <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                  {c.badge ? (
+                    <span
+                      className="rounded-full bg-[color:var(--slip-gold-wash)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--slip-gold-ink)]"
+                      data-testid={`versions-badge-${c.label}`}
+                    >
+                      {c.badge}
+                    </span>
+                  ) : null}
+                  {recommended ? (
+                    <span className="rounded-full bg-[color:var(--slip-navy)] px-2.5 py-1 text-[11px] font-semibold text-white" data-testid={`versions-recommended-${c.label}`}>
+                      {VERSION_RECOMMENDED_LABEL}
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="space-y-3 px-4 py-3">
                 <ul className="space-y-1.5 text-sm">
@@ -339,7 +372,11 @@ export function VersionsBoard({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    className="inline-flex min-h-[46px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--coral-accent)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--coral-text)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                    className={
+                      recommended
+                        ? "inline-flex min-h-[46px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] bg-[color:var(--slip-primary)] px-4 text-[15px] font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60"
+                        : "inline-flex min-h-[46px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--coral-accent)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--coral-text)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                    }
                     onClick={() => apply.mutate(adoptAllPicks(view, c.variantId))}
                     disabled={apply.isPending}
                     data-testid={`versions-adopt-all-${c.label}`}
