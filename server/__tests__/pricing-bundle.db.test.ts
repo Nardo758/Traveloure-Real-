@@ -16,6 +16,7 @@ import { getPricingHandler } from "../routes/pricing.routes";
 import { requirePlan, PLAN_KEYS } from "../services/plans.service";
 import { requireBand, requireFlatCentsBand, requireCountBand } from "../services/fee-resolution.service";
 import { getFee } from "../services/optimization-fee.service";
+import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
 
 function makeRes() {
   const captured = { status: 200, body: null as any };
@@ -84,6 +85,7 @@ test("the bundle is composed entirely from live plans/fee_bands/optimization_fee
     name: tripPass.name,
     priceCents: tripPass.priceCents,
     interval: "trip",
+    runsPerTrip: tripPassRunsPerTrip(),
   });
   assert.deepEqual(body.plusAnnual, {
     key: "plus_annual",
