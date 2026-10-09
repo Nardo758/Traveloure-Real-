@@ -289,6 +289,21 @@ test.describe("Single planning entry — authed", () => {
     await expect(page.getByTestId("button-etp-save")).toBeVisible();
   });
 
+  // H1 + E2 (E2 landed second and wires the header button): with a plan BOUND, the nav's "Start a plan"
+  // still starts a NEW plan — PlanEntry, never the bound plan's edit window.
+  test("with a plan bound, the header's Start a plan opens PlanEntry, not the edit window", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await registerUser(page);
+    await openEntryFromHero(page);
+    await startPlanIn(page, "kyoto", "wedding");
+    await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}/, { timeout: 15_000 });
+    // The plan page is a console page; the public header (and its button) is on the site's pages.
+    await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("button-nav-start-plan").click({ timeout: 15_000 });
+    await expect(page.getByTestId("plan-entry")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("plan-modal")).toHaveCount(0);
+  });
+
   test("the edit window under a many-stop trip offers stops and no accessibility note", async ({ page }) => {
     await registerUser(page);
     await openEntryFromHero(page);

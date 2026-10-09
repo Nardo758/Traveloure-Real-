@@ -14,6 +14,14 @@
  *   SD6  the read never computes: a paid plan's where-to-stay view returns the STORED pick and counts and
  *        makes no Maps call
  *   SD7  the tier test is `planGetsRoutedLegs`, not a paid optimizer run (ruling 4)
+ *   SD8  FU-S1-1: through the REAL gate, each stay-pick request writes ONE `route_matrix` row on
+ *        `api_usage_logs` carrying its elements (the cap's count) AND its dollars at the Essentials list
+ *        price, purpose `stay_pick`, ref = the plan; a refresh-style call without a price still records 0
+ *   SD9  FU-S1-2: the free plan's list read carries ONE `stayLink` per card (Google Maps, no call) and
+ *        makes NO Google call — the website is fetched only when the picked card is opened
+ *   SD10 FU-S1-3: the routed pick stores its per-day closeness from the SAME matrix the scorer fetched (no
+ *        extra request), against the configured minutes, and the read returns it as stored
+ *   SD11 FU-S1-3: each free-tier stay carries its straight-line closeness against the configured km
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. The Maps call is a fake.
  */
@@ -26,7 +34,8 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { computeStayPick, markStayPickSeen, scheduleStayPick } from "../services/stay-pick.service";
 import { loadWhereToStay } from "../services/where-to-stay.service";
-import { readStayPick } from "@shared/stay-pick";
+import { readStayPick, straightLineCloseness } from "@shared/stay-pick";
+import { stayCloseRoutedMinutes, stayCloseStraightKm } from "../config/stay-closeness.config";
 import type { RouteMatrixFetch } from "../services/travel-time-matrix.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -215,4 +224,118 @@ test("SD7 the tier test is planGetsRoutedLegs, not a paid optimizer run (ruling 
   const { tripGetsRoutedLegs } = await import("../services/routing/plan-routed-legs.service");
   assert.equal(await tripGetsRoutedLegs(ids.paid), true);
   assert.equal(await tripGetsRoutedLegs(ids.free), false);
+});
+
+test("SD8 FU-S1-1: each stay-pick request records its elements and its dollars on the usage log", async () => {
+  const saved = {
+    enabled: process.env.MAPS_ROUTE_MATRIX_ENABLED,
+    key: process.env.GOOGLE_MAPS_API_KEY,
+    cap: process.env.MAPS_ROUTE_MATRIX_DAILY_CAP,
+    price: process.env.TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000,
+  };
+  const realFetch = globalThis.fetch;
+  process.env.MAPS_ROUTE_MATRIX_ENABLED = "1";
+  process.env.GOOGLE_MAPS_API_KEY = "sd8-test-key";
+  process.env.MAPS_ROUTE_MATRIX_DAILY_CAP = "100000000";
+  process.env.TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000 = "5";
+  let requests = 0;
+  globalThis.fetch = (async (url: any, init: any) => {
+    assert.match(String(url), /computeRouteMatrix/);
+    requests += 1;
+    const body = JSON.parse(init.body);
+    const out = body.destinations.map((_: unknown, j: number) => ({ originIndex: 0, destinationIndex: j, duration: `${(10 + j) * 60}s`, condition: "ROUTE_EXISTS" }));
+    return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as any;
+  try {
+    // The small plan holds a pick from SD5; move a stop so it re-scores. A budget of 14 = two hotels.
+    await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0014 WHERE id = ${`${ids.small}-i2`}`);
+    const out = await computeStayPick(ids.small, { budget: 14 });
+    assert.ok("written" in out, JSON.stringify(out));
+    assert.equal(requests, 2);
+    const r: any = await db.execute(sql`
+      SELECT request_count, estimated_cost_cents, success, metadata FROM api_usage_logs
+      WHERE provider = 'google_maps' AND endpoint = 'route_matrix' AND metadata->>'ref' = ${ids.small}
+      ORDER BY created_at`);
+    const rows = r.rows ?? r;
+    assert.equal(rows.length, 2, "one gate row per request");
+    for (const row of rows) {
+      assert.equal(row.request_count, 7, "the elements count against MAPS_ROUTE_MATRIX_DAILY_CAP");
+      assert.equal(row.estimated_cost_cents, 35, "7 elements × $5 / 1,000 = 3.5¢ = 35 tenths of a cent");
+      assert.equal(row.success, true);
+      assert.equal(row.metadata.purpose, "stay_pick");
+      assert.equal(row.metadata.costRecordedOn, "api_usage_logs");
+      assert.equal(row.metadata.sku, "compute_route_matrix_essentials", "DRIVE bills Essentials");
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+    for (const [k, v] of [
+      ["MAPS_ROUTE_MATRIX_ENABLED", saved.enabled],
+      ["GOOGLE_MAPS_API_KEY", saved.key],
+      ["MAPS_ROUTE_MATRIX_DAILY_CAP", saved.cap],
+      ["TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000", saved.price],
+    ] as const) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    await db.execute(sql`DELETE FROM api_usage_logs WHERE metadata->>'ref' = ${ids.small}`).catch(() => {});
+  }
+});
+
+test("SD9 FU-S1-2: the list read carries one link per card and makes NO Google call", async () => {
+  const keys = ["PLACE_FACTS_PLACES_ENABLED", "GOOGLE_MAPS_API_KEY"] as const;
+  const saved = keys.map((k) => process.env[k]);
+  const realFetch = globalThis.fetch;
+  process.env.PLACE_FACTS_PLACES_ENABLED = "1";
+  process.env.GOOGLE_MAPS_API_KEY = "sd9-test-key";
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new Error("no network on list render");
+  }) as any;
+  try {
+    const view = await loadWhereToStay(ids.free, ids.owner);
+    assert.ok(view.stay && view.stay.tier === "straight_line");
+    assert.equal(view.stay.hotels.length, 3);
+    for (const h of view.stay.hotels) {
+      assert.equal(h.stayLink?.kind, "maps", h.name);
+      assert.match(h.stayLink!.url, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=East\+Hotel/);
+    }
+    assert.equal(calls, 0, "no Google call on list render");
+  } finally {
+    globalThis.fetch = realFetch;
+    keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+  }
+});
+
+test("SD10 FU-S1-3: the routed pick stores its closeness from the scorer's own matrix, and the read returns it", async () => {
+  const T = stayCloseRoutedMinutes();
+  // Same minutes for every hotel, by the stop's day: day 1 within T, day 2 one stop just over, day 3 unreachable.
+  const canon = STOPS.slice().sort((a, b) => a.day - b.day || a.lat - b.lat || a.lng - b.lng);
+  const perStop = (j: number) => (canon[j].day === 1 ? T : canon[j].day === 2 ? (j === 3 ? T + 1 : T - 1) : null);
+  // SD8 already moved this stop; clear the stored pick so the plan re-scores (a pick on unchanged stops is skipped).
+  await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0014 WHERE id = ${`${ids.small}-i2`}`);
+  await db.execute(sql`UPDATE trips SET stay_pick = NULL WHERE id = ${ids.small}`);
+  const m = fakeMatrix((_lat, _lng, j) => perStop(j));
+  const out = await computeStayPick(ids.small, { fetchMatrix: m.fetch });
+  assert.ok("written" in out, JSON.stringify(out));
+  assert.equal(m.calls.length, 21, "one request per scored hotel — closeness adds none");
+  const pick = await storedPick(ids.small);
+  assert.deepEqual(pick!.closeness, { closeDays: 1, locatedDays: 3, basis: "routed" });
+  const view = await loadWhereToStay(ids.small, ids.owner);
+  assert.ok(view.stay && view.stay.tier === "routed");
+  assert.deepEqual(view.stay.closeness, pick!.closeness);
+});
+
+test("SD11 FU-S1-3: each free-tier stay carries its straight-line closeness against the configured km", async () => {
+  const view = await loadWhereToStay(ids.free, ids.owner);
+  assert.ok(view.stay && view.stay.tier === "straight_line");
+  const km = stayCloseStraightKm();
+  const stops = STOPS.map((s) => ({ dayNumber: s.day, lat: s.lat, lng: s.lng }));
+  for (const h of view.stay.hotels) {
+    const n = Number(h.id.slice(-2));
+    const at = eastHotel(n);
+    assert.deepEqual(h.closeness, straightLineCloseness({ kind: "hotel_cache", id: h.id, name: h.name, lat: at.lat, lng: at.lng }, stops, km));
+    assert.equal(h.closeness!.locatedDays, 3, "the day-9 stop outside the plan's dates is not a located day");
+    assert.equal(h.closeness!.basis, "straight_line");
+  }
 });

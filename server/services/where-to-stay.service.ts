@@ -58,7 +58,8 @@ import {
   type WhereToStayView,
 } from "@shared/where-to-stay";
 import { haversineMeters } from "@shared/geo";
-import { freeStayShortList, readStayPick, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { freeStayShortList, readStayPick, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { loadMatrixReader } from "./travel-time-matrix.service";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
@@ -77,6 +78,7 @@ import { enrichPlanItems } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
+import { listStayLinks } from "./stay-link.service";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -394,7 +396,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const placed = hotelsByNeighborhood(hotels, neighborhoods, ranked.map((r) => r.slug));
   const oneLiners = await neighbourhoodOneLiners(ranked, neighborhoods);
   const tied = topWonOnTieBreak(ranked);
-  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days);
+  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days, city);
   return {
     eligible: true,
     ...(dismissed ? { dismissed: true as const } : {}),
@@ -428,6 +430,7 @@ async function stayBlock(
   ranked: readonly RankedStayNeighborhood[],
   byDay: Map<number, StayDay>,
   days: number,
+  city: string | null,
 ): Promise<WhereToStayStay> {
   const byKey = new Map(hotels.map((h) => [`${h.kind}:${h.id}`, h]));
   const strip = (h: StayHotel & { lat: number; lng: number }): StayHotel => {
@@ -436,15 +439,20 @@ async function stayBlock(
   };
   if (await planIsRouted(tripId)) {
     const pick = readStayPick(stored);
-    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null };
+    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null, closeness: null };
     const hotel = byKey.get(`${pick.hotelKind}:${pick.hotelId}`);
+    // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
+    // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
+    const [linked] = hotel ? await listStayLinks([strip(hotel)], city) : [];
     return {
       tier: "routed",
-      pick: hotel ? strip(hotel) : null,
+      pick: linked ?? null,
       scoredCount: pick.scoredCount,
       candidateCount: pick.candidateCount,
       changed: pick.changed,
       computedAt: pick.computedAt,
+      // FU-S1-3: stored by the one writer; null when the pick left our inventory or predates FU-S1-3.
+      closeness: hotel ? (pick.closeness ?? null) : null,
     };
   }
   const top = new Set(ranked.map((r) => r.slug));
@@ -457,7 +465,16 @@ async function stayBlock(
     return !!slug && top.has(slug);
   });
   const list = freeStayShortList(inTop.map((h) => toStayPickCandidate(h)), stops);
-  return { tier: "straight_line", hotels: list.map((c) => strip(byKey.get(`${c.kind}:${c.id}`)!)) };
+  // FU-S1-2: one link per card — own or Google Maps; no Google call on list render.
+  // FU-S1-3: each listed stay's straight-line closeness over the same stops (no Maps call).
+  const km = stayCloseStraightKm();
+  return {
+    tier: "straight_line",
+    hotels: await listStayLinks(
+      list.map((c) => ({ ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km) })),
+      city,
+    ),
+  };
 }
 
 /** The plan's latest draft row — the one its ranking and lookup progress belong to. */

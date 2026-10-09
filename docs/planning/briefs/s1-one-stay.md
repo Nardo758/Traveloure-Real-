@@ -82,6 +82,12 @@ type WhereToStayStay =
 // StayHotel = { kind: "platform" | "hotel_cache" | "affiliate"; id; name; starRating; photo? } — no coordinates, no price.
 ```
 
+**FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`):** each `StayHotel` in `stay` may carry
+`stayLink: { kind: "own" | "google" | "maps"; url: string }` — the card's ONE link. On the list it is `own` (the
+provider's site) or `maps` ("View on Google Maps", built with no API call). When the PICKED stay's card is opened,
+call `GET /api/trips/:tripId/stay-pick/link` → `{ stayLink }`: the hotel's own site where Google knows one ("View on
+hotel's site"), else Google Maps. `google` and `maps` must be drawn with the "Google Maps" attribution. Absent ⇒ no link.
+
 Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ kind: "stay_here", hotel: { kind, id } }`.
 
 ## Interpretations taken (said here so they can be overruled)
@@ -101,10 +107,9 @@ Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ ki
 
 ## Recorded, not fixed
 
-- **Cost record:** `route_matrix` records its COST on `travel_time_matrix_refreshes` (`costRecordedOn`), so
-  stay-pick requests count their elements toward the cap through `api_usage_logs.request_count` but record $0 there.
-  No table holds what a stay pick cost in dollars. Fix: a caller row of its own, or recording the elements on the
-  pick.
+- **Cost record — FIXED by FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`):** each stay-pick request now
+  records its dollars on its own `route_matrix` gate row (`metadata.purpose = 'stay_pick'`, `ref` = the plan) at the
+  Essentials list price, and its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP`.
 - **Cross-instance overlap:** two server instances can score the same plan at once. Each run stays inside the
   budget, and the later write wins.
 - **The debounced trigger** runs only while `TRAVEL_TIME_SERVICE_ENABLED` is on (the queue's own switch). The other
@@ -116,3 +121,17 @@ Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ ki
 
 When 9a-ii is live, delete `STAY_PICK_ELEMENT_BUDGET`, `planStayScoring` and the straight-line prune: every
 candidate is scored through the self-hosted adapter, and `scoredCount` equals `candidateCount`.
+
+## FU-S1-3 — per-day closeness (decision-maker ruling, Oct 9, 2026)
+
+The Compare/stay card's "Close to N of M days" is display only, read from this payload:
+
+- A day is **close** when the stay is within the threshold of **every** located stop that day — routed
+  minutes on a paid plan (`STAY_CLOSE_ROUTED_MINUTES`, default 20), straight-line km on a free plan
+  (`STAY_CLOSE_STRAIGHT_KM`, default 1.5, labelled straight-line). **M** = days with at least one located stop
+  on the plan's dates. Thresholds live in `server/config/stay-closeness.config.ts`, read by name.
+- **Routed:** the one writer stores `closeness` on `trips.stay_pick` from the matrix row the ranking already
+  fetched — no extra request. A pick stored before FU-S1-3 reads `closeness: null` until its next re-score.
+- **Free:** each listed stay carries `closeness`, computed at read time by straight line (no Maps call).
+- Payload: `stay.closeness` (routed) and `stay.hotels[].closeness` (free), each
+  `{ closeDays, locatedDays, basis: "routed" | "straight_line" } | null`. Null means unknown, never zero.

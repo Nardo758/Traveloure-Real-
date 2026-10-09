@@ -13,7 +13,14 @@
  *   · photos (R-aq) — the day's stored photo, and thumbnails on TODAY's rows only
  *   · legs — the plan's routed legs where they exist (optimized plans); none invented (R-e)
  *   · the `post_trip` feedback tap from T+1
+ *
+ * THE TRIP CARD BOARD (slip conformance, boards rev 15; ledger `2026-10-08-slip-trip-card-board`): the
+ * days take the slip's board look through the ONE row-look context (`PlanRowLookProvider`) — one card
+ * per day, the time column and dot rail — and the slip's tokens; the day strip is the board's chips
+ * (a past day carries ✓); provenance sits in a card; the re-check banners take the gold wash. Same
+ * rows, same testids, same derivations — only the look changes.
  */
+import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { routedLegLine } from "@shared/routing-engine";
 import { routedLegBetween } from "@/lib/slip-legs";
 import { Fragment, useState } from "react";
@@ -193,23 +200,28 @@ export function TripCardDays(props: TripCardDaysProps) {
   });
 
   return (
-    <div className="space-y-2 px-3 sm:px-5 pt-3" data-testid="card-days">
-      {provenance ? (
-        <p className="text-xs text-muted-foreground" data-testid="card-provenance">
-          {provenance}
-        </p>
-      ) : null}
-      {readyMadeSourceLine(props.readyMadeSource) ? (
-        <p className="text-xs text-muted-foreground" data-testid="card-ready-made-source">
-          {readyMadeSourceLine(props.readyMadeSource)}
-          {legsCheckedLine(props.readyMadeSource, timeZone) ? ` · ${legsCheckedLine(props.readyMadeSource, timeZone)}` : ""}
-        </p>
+    <PlanRowLookProvider look="board">
+    <div className="slip-surface space-y-3 px-3 pt-3 font-[family-name:var(--slip-font-body)] sm:px-5" data-testid="card-days">
+      {provenance || readyMadeSourceLine(props.readyMadeSource) ? (
+        <div className="space-y-0.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3">
+          {provenance ? (
+            <p className="text-[13px] font-semibold text-[color:var(--slip-ink)]" data-testid="card-provenance">
+              {provenance}
+            </p>
+          ) : null}
+          {readyMadeSourceLine(props.readyMadeSource) ? (
+            <p className="text-xs text-[color:var(--slip-muted)]" data-testid="card-ready-made-source">
+              {readyMadeSourceLine(props.readyMadeSource)}
+              {legsCheckedLine(props.readyMadeSource, timeZone) ? ` · ${legsCheckedLine(props.readyMadeSource, timeZone)}` : ""}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {conflict ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="card-recheck-banner">
+        <div className="rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-banner">
           <p className="flex items-start gap-1.5">
-            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-700" />
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-[color:var(--slip-gold-ink)]" />
             <span>{recheckBannerLine(conflict.findings, factCheckedLabel(conflict.checkedAt, timeZone))}</span>
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -238,10 +250,10 @@ export function TripCardDays(props: TripCardDaysProps) {
       ) : null}
 
       {recheck?.legs?.length ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="card-recheck-legs">
+        <div className="rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-legs">
           {recheck.legs.map((l, i) => (
             <p key={i} className="flex items-start gap-1.5" data-testid={`card-recheck-leg-${i}`}>
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-700" />
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-[color:var(--slip-gold-ink)]" />
               <span>{legRecheckLine(l, factCheckedLabel(l.checkedAt, timeZone))}</span>
             </p>
           ))}
@@ -256,7 +268,7 @@ export function TripCardDays(props: TripCardDaysProps) {
       ) : null}
 
       {freeLine || (!props.optimized && props.isOwner) ? (
-        <p className="text-xs text-muted-foreground" data-testid="card-free-line">
+        <p className="text-xs text-[color:var(--slip-muted)]" data-testid="card-free-line">
           <Link href={`/plans/${tripId}?optimize=1`} className="underline underline-offset-2">
             {freeLine ?? CARD_ADD_TRAVEL_TIMES_LINE}
           </Link>
@@ -267,17 +279,27 @@ export function TripCardDays(props: TripCardDaysProps) {
         {order.map((i) => {
           const d = days[i];
           const isToday = isCardToday(d, todayIso);
+          const on = openDay === d.dayNum;
+          // A day already behind today carries the board's ✓ (machine dates only — §13).
+          const past = !!(todayIso && d.dateIso && d.dateIso < todayIso);
           return (
-            <Button
+            <button
               key={d.dayNum}
-              size="sm"
-              variant={openDay === d.dayNum ? "default" : "secondary"}
-              className="flex-shrink-0 text-xs"
+              type="button"
+              className={`min-h-[44px] flex-shrink-0 rounded-xl border px-3 text-xs ${
+                on
+                  ? "border-[color:var(--slip-teal-ink)] bg-[color:var(--slip-teal-ink)] font-semibold text-white"
+                  : past
+                    ? "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-muted)]"
+                    : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"
+              }`}
+              aria-pressed={on}
               onClick={() => setOpenDay(d.dayNum)}
               data-testid={`card-day-chip-${d.dayNum}`}
             >
               {isToday ? "Today" : dayBlockHeading({ dayNum: d.dayNum, date: d.date, dateIso: d.dateIso ?? null })}
-            </Button>
+              {past ? " ✓" : ""}
+            </button>
           );
         })}
       </div>
@@ -318,7 +340,7 @@ export function TripCardDays(props: TripCardDaysProps) {
                     </span>
                   ) : null}
                   {dayHref ? (
-                    <a href={dayHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline" data-testid={`card-day-navigate-${d.dayNum}`}>
+                    <a href={dayHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-[color:var(--slip-navy)] hover:underline" data-testid={`card-day-navigate-${d.dayNum}`}>
                       <Navigation className="w-3 h-3" /> Navigate the day
                     </a>
                   ) : null}
@@ -386,5 +408,6 @@ export function TripCardDays(props: TripCardDaysProps) {
 
       {props.isOwner ? <FeedbackTap tripId={tripId} moment="post_trip" codes={FEEDBACK_CODES.post_trip} /> : null}
     </div>
+    </PlanRowLookProvider>
   );
 }

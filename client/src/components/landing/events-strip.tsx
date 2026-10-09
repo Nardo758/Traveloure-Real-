@@ -33,9 +33,22 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 /** The occasion "Plan around it" pre-sets — seeded by the experience-types seeder. */
 export const CITY_EVENT_OCCASION_SLUG = "show";
 
-function formatDay(date: string): string {
+function dayParts(date: string): { month: string; day: number; key: string } {
   const [y, m, d] = date.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const month = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  return { month, day: d, key: `${y}-${m}` };
+}
+
+/**
+ * US dates (H1, ledger `2026-10-08-h1-home-copy`): one day "Oct 16"; a range inside one month
+ * "Oct 10–12" (en dash, no spaces); a range across months "Oct 14 – Nov 5" (spaced en dash).
+ * The days are the event's own local calendar dates (`firstDate`/`lastDate`), read as written.
+ */
+export function formatEventDates(firstDate: string, lastDate: string, nights: number): string {
+  const a = dayParts(firstDate);
+  if (nights <= 1 || lastDate === firstDate) return `${a.month} ${a.day}`;
+  const b = dayParts(lastDate);
+  return a.key === b.key ? `${a.month} ${a.day}–${b.day}` : `${a.month} ${a.day} – ${b.month} ${b.day}`;
 }
 
 /**
@@ -95,7 +108,7 @@ function EventCard({
       </span>
     </>
   );
-  const dates = event.nights > 1 ? `${formatDay(event.firstDate)} – ${formatDay(event.lastDate)}` : formatDay(event.firstDate);
+  const dates = formatEventDates(event.firstDate, event.lastDate, event.nights);
   return (
     <article
       className="flex flex-col overflow-hidden rounded-[14px] border bg-white"

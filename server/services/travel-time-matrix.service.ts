@@ -107,16 +107,23 @@ export function googleRouteMatrixFetch(apiKey: string): RouteMatrixFetch {
 /**
  * R299: the live call behind the Maps billing gate (`route_matrix`). Each batch counts its ELEMENTS
  * against the daily cap; a refused batch throws, which fails the run exactly like an API error
- * (the run row records it). The cost stays on the refresh row (`costRecordedOn`), never twice.
+ * (the run row records it). The cost stays on the refresh row (`costRecordedOn`), never twice —
+ * except for a caller that passes `costHere`, which has no refresh row and records it on the gate row.
  */
-export function gatedRouteMatrixFetch(): RouteMatrixFetch {
+export function gatedRouteMatrixFetch(opts: { costHere?: { purpose: string; ref?: string | null } } = {}): RouteMatrixFetch {
   return async (body) => {
     const elements =
       (Array.isArray(body.origins) ? body.origins.length : 0) * (Array.isArray(body.destinations) ? body.destinations.length : 0);
+    const transit = body.travelMode === "TRANSIT";
+    // FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`): a caller with no refresh row (the stay pick)
+    // records its cost on the gate row, at the SAME per-SKU list price a refresh run is costed at.
+    const costHere = opts.costHere
+      ? { ...opts.costHere, usdPer1000: transit ? proPricePer1000() : essentialsPricePer1000() }
+      : undefined;
     const out = await gatedMapsCall(
       "route_matrix",
       async (apiKey) => ({ value: await googleRouteMatrixFetch(apiKey)(body), units: Math.max(1, elements) }),
-      { sku: body.travelMode === "TRANSIT" ? "compute_route_matrix_pro" : "compute_route_matrix_essentials" },
+      { sku: transit ? "compute_route_matrix_pro" : "compute_route_matrix_essentials", costHere },
     );
     if ("refused" in out) throw new Error(`computeRouteMatrix refused by the Maps billing gate: ${out.refused}`);
     return out.value;

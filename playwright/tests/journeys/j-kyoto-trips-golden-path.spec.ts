@@ -763,6 +763,13 @@ test.describe("3 · the compare view (A4)", () => {
            FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_plan_fit_shown' AND properties->>'surface' = 'compare_view'`,
         [tripId],
       );
+    // Placement (Compare board, ruling 7 — one column at every width): the cards stack, so each place's
+    // plan-fit view is SHOWN by scrolling to it and holding it there until its own row lands (the
+    // half-on-screen-for-a-second rule is unchanged); the row is still written once per card actually seen.
+    for (const o of set.options) {
+      await page.getByTestId(`compare-metrics-${o.id}`).scrollIntoViewIfNeeded();
+      await expect.poll(async () => (await read()).some((r) => r.option_id === o.id), { timeout: 15_000 }).toBe(true);
+    }
     await expect.poll(async () => (await read()).length, { timeout: 15_000 }).toBe(3);
     const got = await read();
     for (const o of set.options) {
