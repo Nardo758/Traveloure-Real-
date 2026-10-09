@@ -62,6 +62,8 @@ The pull request was narrowed onto `origin/main`, preserving the verified
 runtime sources byte-for-byte and excluding unrelated workspace work. Since
 that remote did not yet contain the approved atomic legacy claim, the scoped
 webhook diff also retains its conditional update and winner-only persistence.
+The final main-based branch was reverified: all 24 tests passed, and comparison
+against `origin/main` again showed 117 diagnostics on each side with none added.
 
 The configured preview restarted successfully, its outbox scheduler registered,
 startup applied zero migrations, and the landing page rendered. The outbox
