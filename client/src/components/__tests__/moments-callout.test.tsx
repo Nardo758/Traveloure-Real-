@@ -159,7 +159,7 @@ describe("Moments — the 'Planning your own?' callout", () => {
 
     assert.ok(html.includes("Nanzen-ji"));
     assert.ok(html.includes("@fixture"));
-    assert.ok(html.includes('data-testid="moment-builder"'));
+    assert.ok(!html.includes('data-testid="moment-builder"'), "no builder byline on a Moment (H1); photo credits stay");
     assert.ok(!html.includes("Representative photo"));
   });
 });

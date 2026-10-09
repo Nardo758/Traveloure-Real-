@@ -40,8 +40,12 @@ const BRITISH = /\b(neighbourhood|travelling|traveller|licence|colour|organis|fa
 /** Every spelling of the product name; only the exact "Ready-Made" passes. */
 const READY_MADE = /\bready[\s-]?made\b/gi;
 const readyMadeVariant = (t) => (t.match(READY_MADE) ?? []).some((m) => m !== "Ready-Made");
-/** Proper nouns that keep their spelling, by EXACT string. Empty today. */
-const ALLOWED_STRINGS = new Set([]);
+/** Strings that keep their spelling, by EXACT string. */
+const ALLOWED_STRINGS = new Set([
+  // Stored values in local_expert_forms.experience_types (travel-experts.tsx); shown through TRAVELER_TYPE_LABELS, never rewritten.
+  "Solo travellers",
+  "Business travellers",
+]);
 /**
  * TEMPORARY (H1, ledger `2026-10-08-h1-home-copy`): ready-made variants on pages outside the home page,
  * by EXACT string, until the one sweep PR fixes them and empties this set. Never grows.

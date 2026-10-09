@@ -150,6 +150,12 @@ const specialties = [
   "Historical Tours",
 ];
 
+/** Stored traveler-type values keep their original spelling; the label is US English (H1). */
+const TRAVELER_TYPE_LABELS: Record<string, string> = {
+  "Solo travellers": "Solo travelers",
+  "Business travellers": "Business travelers",
+};
+
 const languages = [
   "English",
   "Spanish",
@@ -1371,7 +1377,7 @@ export default function TravelExpertsPage() {
                         onClick={() => toggleArrayItem("experienceTypes", type)}
                         data-testid={`badge-traveller-type-${type.toLowerCase().replace(/\s/g, "-")}`}
                       >
-                        {type}
+                        {TRAVELER_TYPE_LABELS[type] ?? type}
                       </Badge>
                     ))}
                   </div>
