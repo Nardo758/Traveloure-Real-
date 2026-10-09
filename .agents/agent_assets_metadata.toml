@@ -300,3 +300,17 @@ mtime_ms = 1790936771372
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/f076e28a-d96d-4081-86fc-598a8310b85e/5e1634ee-578e-4dcc-8bbd-26ed7ce14e2e"
 storage_version_token = "1790936929075876"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "w5Sy7p29PhFageLKDGjb7"
+uri = "file://reports/automation-part2-verification.md"
+type = "text"
+title = "Part 2 verification report — certification open"
+description = "Writer coverage, two development loops, latency measurements, unchanged typecheck baseline, and the two verification blockers."
+logical_id = "2358b6e8-0b59-49db-b2f5-53b06cfb0332"
+content_hash = "sha256:d6d652e5135c07c5492128e88271e114c18515572cbf821dc8c48d796e6eb677"
+size = 9850
+mtime_ms = 1791564766409
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/2358b6e8-0b59-49db-b2f5-53b06cfb0332/cde0ec7b-64b3-43cb-b101-18f1ad929b27"
+storage_version_token = "1791564914958188"
+content_type = "text/markdown"
