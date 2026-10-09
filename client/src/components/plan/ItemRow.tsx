@@ -120,6 +120,10 @@ export interface ItemRowProps {
   photo?: PhotoView | null;
   /** Step 6 R-ay: read mode's Navigate — a Google Maps directions deep link, no API call. */
   navigateHref?: string | null;
+  /** Handoff board: an expert holds this stop's pen ("with Ana"). Board look only; null otherwise. */
+  pen?: { who: string } | null;
+  /** Handoff board: the owner's other stops while an expert holds the pen ("yours to edit"). */
+  yoursToEdit?: boolean;
   /** R297: the Trip Card's today rows — the traveler's own "visited" tick (device-local, no write). */
   visited?: { checked: boolean; onToggle: () => void } | null;
 }
@@ -390,7 +394,7 @@ function BoardItemRow(
   const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine } = props;
   const time = anchor ? (anchor.time !== undefined ? anchor.time : a.time || null) : a.time || null;
   const title = anchor ? anchor.title || a.name : a.name;
-  const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine });
+  const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine, withExpert: !!props.pen });
   const titleClass = `min-w-0 break-words text-left text-base font-semibold leading-tight ${props.visited?.checked ? "text-[color:var(--slip-muted)] line-through" : "text-[color:var(--slip-ink)]"}`;
   const body = (
     <div data-testid={anchor ? `slip-anchor-row-${a.id}` : undefined} data-anchor-placeholder={anchor && !anchor.fromTool ? "true" : undefined} className="flex min-w-0 flex-col gap-1">
@@ -414,6 +418,14 @@ function BoardItemRow(
         ) : (
           <span className={titleClass} data-testid={`slip-item-name-${a.id}`}>{title}</span>
         )}
+        {props.pen ? (
+          <span
+            className="ml-auto flex-shrink-0 rounded-md bg-[color:var(--slip-gold-wash)] px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-[color:var(--slip-gold-ink)]"
+            data-testid={`slip-item-pen-${a.id}`}
+          >
+            with {props.pen.who}
+          </span>
+        ) : null}
       </div>
       {anchor?.fromTool ? (
         <p className="text-[13px] font-medium text-[color:var(--slip-teal-ink)]" data-testid={`slip-anchor-label-${a.id}`}>
@@ -452,7 +464,10 @@ function BoardItemRow(
               {sourcedLineSuffix(place)}
             </>
           )}
+          {props.yoursToEdit ? <span data-testid={`slip-item-yours-${a.id}`}> · yours to edit</span> : null}
         </p>
+      ) : props.yoursToEdit ? (
+        <p className="text-[13px] text-[color:var(--slip-muted)]" data-testid={`slip-item-yours-${a.id}`}>yours to edit</p>
       ) : null}
       {factsLine ? (
         <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-medium text-[color:var(--slip-teal-ink)]" data-testid={`slip-item-facts-${a.id}`}>
@@ -471,7 +486,17 @@ function BoardItemRow(
         </p>
       ) : null}
       {props.bookingState ? (
-        <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`slip-item-booking-${a.id}`}>{props.bookingState}</p>
+        // The Handoff board draws a booked stop as a teal pill; every other booking note stays a line.
+        <p
+          className={
+            /^booked\b/i.test(props.bookingState)
+              ? "self-start rounded-lg bg-[color:var(--slip-teal-wash)] px-2.5 py-1 text-xs font-semibold text-[color:var(--slip-teal-ink)]"
+              : "text-xs text-[color:var(--slip-muted)]"
+          }
+          data-testid={`slip-item-booking-${a.id}`}
+        >
+          {props.bookingState}
+        </p>
       ) : null}
       {props.bookingAction ? <div className="mt-0.5">{props.bookingAction}</div> : null}
       {mode === "read" && props.navigateHref ? (
