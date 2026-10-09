@@ -558,7 +558,7 @@ export default function EarnPage() {
                     id="earn-request-desc"
                     value={requestDescription}
                     onChange={(e) => setRequestDescription(e.target.value)}
-                    placeholder="Who it's for, how you deliver it, what travellers ask you for."
+                    placeholder="Who it's for, how you deliver it, what travelers ask you for."
                     rows={3}
                     className="mt-1.5"
                     data-testid="earn-trade-request-description"
