@@ -133,12 +133,12 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
   return (
     <>
       <SEOHead
-        title="What are you planning?"
+        title="Plan around a place, a date or an event"
         description={EXPERIENCES_PAGE_DESCRIPTION}
         keywords={["trip planning", "event planning", "wedding planning", "date night", "group trip", "celebration planning"]}
         url="/experiences"
       />
-      <PageLayout eyebrow="Start a plan" title="What are you planning?" testId="page-experiences">
+      <PageLayout eyebrow="Start a plan" title="Plan around…" testId="page-experiences">
         <section className="relative" data-testid="plan-entry-inline">
           <PlanEntryPanel
             active

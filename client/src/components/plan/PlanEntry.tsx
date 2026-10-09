@@ -304,7 +304,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     <>
         <div className={inline ? "space-y-5" : "-mx-1 min-h-0 space-y-5 overflow-y-auto px-1 pb-1"}>
           {inline ? (
-            <h2 className="text-[22px] font-semibold" style={{ fontFamily: SERIF, color: "var(--earn-navy, #1A1A18)" }} data-testid="plan-entry-title">
+            // The page's h1 already asks "Plan around…", so Step 1's three choices sit right under it;
+            // only Step 2 carries its own heading inline.
+            step === "around" && !straight ? null : <h2 className="text-[22px] font-semibold" style={{ fontFamily: SERIF, color: "var(--earn-navy, #1A1A18)" }} data-testid="plan-entry-title">
               {heading}
             </h2>
           ) : (

@@ -187,7 +187,7 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
   // occasion, and Start a plan is the one action. There is no Continue and no pop-up over the page.
   test("/experiences loads with nothing open, and Start a plan waits for a city", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: /What are you planning\?/i })).toBeVisible({
+    await expect(page.getByRole("heading", { name: /Plan around…/i })).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByTestId("intake-panel")).toHaveCount(0);

@@ -23,7 +23,7 @@ import { test, expect, type Page } from '@playwright/test';
 async function gotoSlug(page: Page, slug: string, destination: string | null = 'Kyoto') {
   const qs = destination ? `?destination=${encodeURIComponent(destination)}` : '';
   await page.goto(`/experiences/${slug}${qs}`);
-  await expect(page.getByRole('heading', { name: /What are you planning\?/i })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: /Plan around…/i })).toBeVisible({ timeout: 15_000 });
 }
 
 test.describe('Selection controls (P462) — the /experiences/<slug> start page', () => {
