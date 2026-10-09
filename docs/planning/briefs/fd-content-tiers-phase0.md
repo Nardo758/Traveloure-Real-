@@ -1,7 +1,8 @@
 # FD — content tiers: Phase 0 (read-only, on `main` at `bf9354c`, R393)
 
-Against `content-tiers-ruling.md` rev 1 (Leon, Oct 9, 2026), §2–§7, and the FD-1…FD-5 split. Nothing is
-built. The migration SQL in §C is a proposal held for the founder; no migration file has been written.
+Against `content-tiers-ruling.md` rev 1 (Leon, Oct 9, 2026), §2–§7, and the FD-1…FD-5 split. The nine questions
+in §B were **ruled Oct 9, 2026** and are recorded there. The migration SQL in §C (**361** columns, **362** backfill —
+360 is E3's) is held for the founder; no migration file has been written.
 
 ## A. What the code does today
 
@@ -17,14 +18,14 @@ built. The migration SQL in §C is a proposal held for the founder; no migration
 
 | Source | Reader | Ruling's class |
 |---|---|---|
-| `place_facts`: covering-event facts only (crawled, official, `public_ok`) | `covering-events.ts:33-59` | §2 lists **R-p facts as `local`**, and the free draft reads them today (see B3) |
+| `place_facts`: covering-event facts only (crawled, official, `public_ok`) | `covering-events.ts:33-59` | ruled **`public` + `link_only`** (B2); the free draft keeps them |
 | `city_events` titles | `covering-events.ts:64-72` | public events → `public` |
 | `destination_seasons` | `season-facts.ts:22-25` | ours; class not stated in §2 |
 | `plan_options` (open sets, incl. `expert_recommendation`) | `shared/draft-basis.ts:155-173` | an expert-recommended option is `local` |
 | `temporal_anchors`, `day_boundaries`, `trips`, events | prompt blocks | the traveler's own answers; neither class |
 
 - **After the draft commits.** `enrichPlanItems` writes `places_api` facts (license `restricted`), and where-to-stay
-  reads `city_neighborhoods.description` (neighbourhood guidance, which §2 calls `local`), hotels and listings.
+  reads `city_neighborhoods.description` (ruled `public`, B4), hotels and listings.
 - **Sibling generators that DO read gems:**
   - quick-start: `trips.routes.ts:917`, `routes.ts:12141`
   - Plus occasion drafts: `occasion-drafts.service.ts:290`
@@ -52,10 +53,11 @@ built. The migration SQL in §C is a proposal held for the founder; no migration
 
 ### A4. Share rails: none withholds anything by class
 1. **`GET /api/itinerary-share/:token`** (public) emits every activity's name, times, location, description and cost,
-   plus `expertTravelerNote` for every viewer.
+   plus `expertTravelerNote` for every viewer. (The note leak is a privacy bug, pulled forward as **SH-1**, PR #1366:
+   the note is traveler-only on every share endpoint. It is not an FD item.)
 2. **`GET /api/trips/shared/:token`** emits each item's title, description, type, day, time and location.
 3. **`GET /api/shared-trips/:token`** emits the variant and comparison join raw.
-4. **`GET /api/trips/:id?token=`** gives a share-token guest the whole trips row.
+4. **`GET /api/trips/:id?token=`** gives a share-token guest the whole trips row (its `expertTravelerNote` is SH-1's).
 
 No share payload carries `place_facts`. `isPublishable` / `mustOmitOnPublicPage` are used only by the plan view and
 the blog. The `teaser` / `preview` channels of `assembleTripPlan` exist but no share rail uses `teaser`.
@@ -75,142 +77,169 @@ What does exist:
 - Expiry is read-time only: `expires_at > now()` on `place_facts`, and `isFactStale` for "checked <date>".
 - Gems, nuggets, events, seasons, neighbourhoods and Ready Made have no expiry at all.
 
-## B. Questions that block FD-2 (decision-maker)
-1. **`license_class` collides with an existing column of the same name.** `content_sources.license_class` and
-   `place_facts.license` already hold `official | editorial | partner | restricted`, read by `isPublishable`,
-   `canActivateSource`, `isConfirmableFact` and the A6 registry. Two value sets under one name would make
-   every reader guess.
-   - **Recommendation:** keep the source's license as it is and add the ruling's field as a **new column,
-     `reuse_class`** (`display_in_plan | link_only | internal | reusable`), with an explicit mapping for facts:
-     `restricted`→`display_in_plan`, `official`→`link_only`, `partner`→`internal`, `editorial`→`link_only`.
-   - The ruling would read "license_class (stored as `reuse_class`)".
-2. **R-p facts are tagged two ways.**
-   - §5 backfills them `local` + `reusable`.
-   - §2 lists JNTO-type sources as `link_only`, and an R-p fact *is* a crawled fact from an official source
-     (JNTO-type), shown with "from <source> · checked <date>" (LD 57).
-   - **Recommendation:** R-p facts are `public` + `link_only`. They are official hard facts, the free draft already
-     reads them, and their precedence rule is "official > local".
-   - Ruled `local` instead, the free draft loses its covering-events list (FD-1 would strip it).
-3. **AI-written gems.** `travelpulse.service.ts` writes gems with `ai_generated=true`. Tagging them `local` with author
-   "Traveloure team" would present machine output as a local pick (the ruling's own §2 line).
-   - **Recommendation:** `ai_generated=true` gems get NO tag in the backfill and are kept out of every draft until a
-     person verifies them (`verified_at`). Nothing untagged reaches a draft (§2), so they drop out of the paid tier too.
-4. **Neighbourhood descriptions** are seeded by us and are "neighbourhood guidance", which §2 calls `local`. But
-   where-to-stay (free tier, S1) shows them today.
-   - **Recommendation:** `local` / `reusable` / "Traveloure team". FD-1 then shows the free where-to-stay without the
-     description line.
-   - Alternative: rule seeded descriptions `public`.
-5. **Which generators count as "the free draft".** The two free rails, certainly. What about quick-start and the
-   Plus occasion draft? Both read gems today.
-   - **Recommendation:** quick-start is a free draft (gems stripped). The occasion draft is Plus (paid), so it keeps
-     local content.
-6. **QA exemption from the cap.** There is no free-run grant for drafts.
-   - **Recommendation:** exempt accounts whose email domain equals the existing `QA_ACCOUNT_EMAIL_DOMAIN` env (the same
-     test the QA Trip Pass issuer uses).
-   - **"1 per guest record":** guests have no draft rail today, so this cap has nothing to count until FD-4/G2.
-7. **"Night-scene content"** (§5) does not exist. Is it future content, or another name for something that does
-   (music-vertical `city_events`)? The backfill can only tag rows that exist.
-8. **What the expiry job does** (FD-2) when a local item passes `expires_at`. Options: (a) readers filter it out, as
-   `place_facts` does today, plus a census count; (b) a job stamps it expired.
-   - **Recommendation:** (a), plus a nightly census line listing what expired. Nothing deleted, and no second status
-     column.
-9. **The derived-content rule (§3) needs a tag on the plan item.** The count-only teaser (§4) counts local items per
-   day, and the only thing that can be counted is an `itinerary_items` row.
-   - **Recommendation:** add `itinerary_items.source_class`, server-stamped at create by the generator (`local` when
-     any local input produced it), omitted from `insertItineraryItemSchema` (§19), with NULL read as `public` only for
-     traveler-added items. This is the one column FD-1 needs from FD-2.
+## B. The nine questions — RULED (decision-maker, Oct 9, 2026)
+| # | Question | Ruling |
+|---|---|---|
+| 1 | `license_class` collides with the existing `official / editorial / partner / restricted` column | **New column `reuse_class`; `license_class` / `license` stay as they are.** Fixed mapping below. |
+| 2 | R-p (official-source) facts tagged two ways | **`public` + `link_only`.** Reuse is per source: JNTO is `link_only`; an official site is `link_only` unless its terms say otherwise. **The free draft keeps its events list.** |
+| 3 | AI-written gems | **Untagged and out of every draft until a person verifies.** Verification sets the author to the verifier and stamps `verified_at`. Machine output is never "Traveloure team". |
+| 4 | Neighbourhood descriptions | **`public`.** Expert-written neighbourhood guidance, when it exists, is `local`. |
+| 5 | Which generators are "the free draft" | **Quick-start counts as a free draft.** The occasion draft stays paid (Plus). |
+| 6 | QA exemption; guests | **Exempt via `QA_ACCOUNT_EMAIL_DOMAIN`.** Guests: build the counter keyed on the guest record now; it enforces the moment guests can draft (E2/E3 land the guest plan). |
+| 7 | Night-scene content | **Future content** (a project brief exists, nothing is in the repo). No tagging now; it enters coverage targets when seeded. |
+| 8 | What expiry does | **Expired local items are hidden at build time; a nightly count job reports them.** No delete, no status column. |
+| 9 | A tag on the plan item | **`itinerary_items.source_class`, server-stamped at creation, never client-settable**, with a test that a client-supplied value is ignored. |
 
-## C. Proposed migration 360 (HELD — not written)
-Every column is additive and nullable, with no DEFAULT, CHECK, index or FK, and is declared in `shared/schema.ts`.
-Value sets are app-enforced in one module, `shared/content-tiers.ts`. Assumes Q1 = `reuse_class`.
+### The `reuse_class` mapping (ruling 1, fixed — stated once in `shared/content-tiers.ts`)
+`reuse_class` ∈ `display_in_plan | link_only | internal | reusable`. For a fact or source that carries the existing
+license value, the default reuse class is:
+
+| `license` / `license_class` | `reuse_class` | Why |
+|---|---|---|
+| `restricted` (Google Places) | `display_in_plan` | Shown inside the plan with attribution, never reused (LD 57). |
+| `official` (JNTO-type, an official site) | `link_only` | Ruling 2: link-only unless the source's own terms say otherwise. |
+| `editorial` | `link_only` | Attributed quote + link; never republished. |
+| `partner` | `internal` | Partner content stays server-side (§16). |
+
+Our own content (expert nuggets, curated and seeded gems, Ready Made, seasons, neighbourhood descriptions) is
+`reusable`. "Unless its terms say otherwise" is a **per-source override**: when an admin records that an official
+source's terms allow reuse, that source's facts take `reusable`. It is a later admin action on the A6 registry (one
+writer, terms-check gated); 362 sets the default only, and nothing in this lane flips a source.
+
+## C. Proposed migrations 361 and 362 (HELD for the founder — not written)
+Split so the columns land separately from the data. **361** is DDL only. **362** is data only — no ALTER, no CHECK, no
+index, no DEFAULT change, so `preflight-prod-constraints.cjs` needs no manifest entry.
+
+Every column is additive and nullable, with no DEFAULT, CHECK, index or FK, no backfill inside 361, and is declared in
+`shared/schema.ts` (deploy-push durability rule). Value sets are app-enforced in one module, `shared/content-tiers.ts`.
+At publish, the expected prompt is these `ADD COLUMN IF NOT EXISTS` lines only (§20); anything else is declined.
 
 ```sql
--- 360a: columns
-ALTER TABLE place_facts                ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE place_facts                ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE place_facts                ADD COLUMN IF NOT EXISTS author_label varchar(120);
-ALTER TABLE place_facts                ADD COLUMN IF NOT EXISTS official_source_fact_id varchar;
-ALTER TABLE travel_pulse_hidden_gems   ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE travel_pulse_hidden_gems   ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE travel_pulse_hidden_gems   ADD COLUMN IF NOT EXISTS author_label varchar(120);
-ALTER TABLE travel_pulse_hidden_gems   ADD COLUMN IF NOT EXISTS verified_at  timestamp;
-ALTER TABLE travel_pulse_hidden_gems   ADD COLUMN IF NOT EXISTS expires_at   timestamp;
-ALTER TABLE local_knowledge_nuggets    ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE local_knowledge_nuggets    ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE local_knowledge_nuggets    ADD COLUMN IF NOT EXISTS verified_at  timestamp;
-ALTER TABLE local_knowledge_nuggets    ADD COLUMN IF NOT EXISTS expires_at   timestamp;
-ALTER TABLE local_knowledge_nuggets    ADD COLUMN IF NOT EXISTS official_source_fact_id varchar;
-ALTER TABLE city_events                ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE city_events                ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE destination_seasons        ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE destination_seasons        ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE city_neighborhoods         ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE city_neighborhoods         ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE city_neighborhoods         ADD COLUMN IF NOT EXISTS author_label varchar(120);
-ALTER TABLE city_neighborhoods         ADD COLUMN IF NOT EXISTS authored_at  timestamp;
-ALTER TABLE plan_options               ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE ready_made_trips           ADD COLUMN IF NOT EXISTS source_class varchar(16);
-ALTER TABLE ready_made_trips           ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
-ALTER TABLE itinerary_items            ADD COLUMN IF NOT EXISTS source_class varchar(16);
+-- 361_content_tier_tags.sql — columns only
+ALTER TABLE place_facts              ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE place_facts              ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE place_facts              ADD COLUMN IF NOT EXISTS author_label varchar(120);
+ALTER TABLE place_facts              ADD COLUMN IF NOT EXISTS official_source_fact_id varchar;
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS author_label varchar(120);
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS verified_by  varchar;      -- ruling 3: the verifier IS the author
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS verified_at  timestamp;
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS expires_at   timestamp;
+ALTER TABLE local_knowledge_nuggets  ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE local_knowledge_nuggets  ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE local_knowledge_nuggets  ADD COLUMN IF NOT EXISTS verified_at  timestamp;
+ALTER TABLE local_knowledge_nuggets  ADD COLUMN IF NOT EXISTS expires_at   timestamp;
+ALTER TABLE local_knowledge_nuggets  ADD COLUMN IF NOT EXISTS official_source_fact_id varchar;
+ALTER TABLE city_events              ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE city_events              ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE destination_seasons      ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE destination_seasons      ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE city_neighborhoods       ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE city_neighborhoods       ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE city_neighborhoods       ADD COLUMN IF NOT EXISTS author_label varchar(120);
+ALTER TABLE city_neighborhoods       ADD COLUMN IF NOT EXISTS authored_at  timestamp;
+ALTER TABLE plan_options             ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE ready_made_trips         ADD COLUMN IF NOT EXISTS source_class varchar(16);
+ALTER TABLE ready_made_trips         ADD COLUMN IF NOT EXISTS reuse_class  varchar(24);
+ALTER TABLE itinerary_items          ADD COLUMN IF NOT EXISTS source_class varchar(16);   -- ruling 9
 ```
 
-`author` reuses the existing expert-id columns (`expert_user_id`, `curated_by_expert_id`, `author_id`,
-`verified_by`). `author_label` holds "Traveloure team" only where no person authored the row. `authored_at` reuses
-`created_at` / `detected_at`, except on `city_neighborhoods`, which has none.
+**Author.** The existing expert-id columns are the author: `expert_user_id` (nuggets), `curated_by_expert_id` (gems),
+`author_id` (Ready Made), `verified_by` (`place_facts`; and, new, gems — ruling 3). `author_label` holds
+"Traveloure team" only on rows a person on the team seeded; never on machine output. `authored_at` reuses `created_at`
+/ `detected_at`, except on `city_neighborhoods`, which has none.
 
 ```sql
--- 360b: backfill (idempotent; every UPDATE guarded by source_class IS NULL; a second run touches 0 rows)
-UPDATE place_facts SET source_class='public', reuse_class='display_in_plan'
-  WHERE source_class IS NULL AND origin='places_api';
-UPDATE place_facts SET source_class='public', reuse_class='link_only'            -- Q2 recommendation
-  WHERE source_class IS NULL AND origin='crawled';
-UPDATE place_facts SET source_class='local', reuse_class='reusable'
-  WHERE source_class IS NULL AND origin='expert_nugget';
-UPDATE travel_pulse_hidden_gems SET source_class='local', reuse_class='reusable',
-       verified_at=COALESCE(verified_at, detected_at)
+-- 362_content_tier_backfill.sql — data only. Idempotent: every UPDATE is guarded by source_class IS NULL,
+-- so a second run touches 0 rows and an admin-set value is never clobbered.
+
+-- place_facts: Places = display in plan; crawled facts follow the license mapping (ruling 1/2);
+-- expert-confirmed nuggets are local and ours.
+UPDATE place_facts SET source_class = 'public', reuse_class = 'display_in_plan'
+  WHERE source_class IS NULL AND origin = 'places_api';
+UPDATE place_facts SET source_class = 'public',
+       reuse_class = CASE license WHEN 'restricted' THEN 'display_in_plan'
+                                  WHEN 'partner'    THEN 'internal'
+                                  ELSE 'link_only' END                  -- official, editorial
+  WHERE source_class IS NULL AND origin = 'crawled';
+UPDATE place_facts SET source_class = 'local', reuse_class = 'reusable'
+  WHERE source_class IS NULL AND origin = 'expert_nugget';
+
+-- Gems: expert-curated ⇒ local, verified by the curator; team-seeded (not AI) ⇒ local, "Traveloure team".
+-- AI-written gems (ai_generated = true, no curator) are LEFT UNTAGGED — ruling 3.
+UPDATE travel_pulse_hidden_gems SET source_class = 'local', reuse_class = 'reusable',
+       verified_by = COALESCE(verified_by, curated_by_expert_id),
+       verified_at = COALESCE(verified_at, detected_at)
   WHERE source_class IS NULL AND curated_by_expert_id IS NOT NULL;
-UPDATE travel_pulse_hidden_gems SET source_class='local', reuse_class='reusable',
-       author_label='Traveloure team', verified_at=COALESCE(verified_at, detected_at)
-  WHERE source_class IS NULL AND curated_by_expert_id IS NULL AND COALESCE(ai_generated,false)=false;  -- Q3
-UPDATE local_knowledge_nuggets SET source_class='local', reuse_class='reusable',
-       verified_at=COALESCE(verified_at, created_at)
+UPDATE travel_pulse_hidden_gems SET source_class = 'local', reuse_class = 'reusable',
+       author_label = 'Traveloure team', verified_at = COALESCE(verified_at, detected_at)
+  WHERE source_class IS NULL AND curated_by_expert_id IS NULL AND COALESCE(ai_generated, false) = false;
+
+-- Expert nuggets: local, authored and verified by the expert who wrote them.
+UPDATE local_knowledge_nuggets SET source_class = 'local', reuse_class = 'reusable',
+       verified_at = COALESCE(verified_at, created_at)
   WHERE source_class IS NULL;
-UPDATE city_events SET source_class='public', reuse_class='link_only'
+
+-- Public events: public, link only (the free draft keeps its events list — ruling 2).
+UPDATE city_events SET source_class = 'public', reuse_class = 'link_only'
   WHERE source_class IS NULL;
-UPDATE destination_seasons SET source_class='public', reuse_class='reusable'
+
+-- Seasons: ours, public.
+UPDATE destination_seasons SET source_class = 'public', reuse_class = 'reusable'
   WHERE source_class IS NULL;
-UPDATE city_neighborhoods SET source_class='local', reuse_class='reusable',
-       author_label='Traveloure team', authored_at=COALESCE(authored_at, created_at)
-  WHERE source_class IS NULL;                                                         -- Q4
-UPDATE ready_made_trips SET source_class='local', reuse_class='reusable'
+
+-- Neighbourhood descriptions: public (ruling 4), team-seeded.
+UPDATE city_neighborhoods SET source_class = 'public', reuse_class = 'reusable',
+       author_label = 'Traveloure team', authored_at = COALESCE(authored_at, created_at)
+  WHERE source_class IS NULL;
+
+-- Ready Made: expert-authored, local.
+UPDATE ready_made_trips SET source_class = 'local', reuse_class = 'reusable'
   WHERE source_class IS NULL;
 ```
 
-Left untagged on purpose, each recorded:
-- `place_facts` origins `platform_listing`, `hotel_cache`, `event` and `gem`: none exist today.
-- AI-written gems (Q3).
-- `plan_options` and `itinerary_items`: these are tagged at write time going forward. A legacy item with NULL reads
-  as untagged and is excluded from the teaser count, never guessed.
+**Left untagged on purpose, each recorded:**
+- `place_facts` origins `platform_listing`, `hotel_cache`, `event` and `gem`: none exist today; their writers stamp
+  at insert.
+- AI-written gems (ruling 3): untagged until a person verifies; untagged rows never reach a draft.
+- Night-scene content (ruling 7): none exists; nothing to tag.
+- `plan_options` and `itinerary_items`: stamped at write time from FD-2 on. A legacy item with NULL is untagged; it is
+  excluded from the teaser count and never guessed (§13).
 
 ## D. Build shape per sub-lane (after the rulings)
 
-### FD-2: tags, backfill, precedence, expiry
-- 360a/360b as above, all declared in `shared/schema.ts`.
-- `shared/content-tiers.ts`: the value sets and three pure functions:
-  - `admitTag`, which refuses an unknown value;
-  - `resolveFactPrecedence`, so hard facts follow official > local > aggregator and judgment follows local;
-  - `isLiveLocal`, which applies `expires_at`, and makes a quoting note expire with its official fact.
-- Writers stamp tags at insert: the gem / nugget / fact / event / neighbourhood writers and the seeders.
-- **The "nothing untagged reaches a draft" test.** A DB test that reads every row a draft reader can return and fails
-  on an untagged one. It never filters it out.
-- **The expiry census line**, per Q8.
+### FD-2: tags, backfill, precedence, expiry (this PR's lane; code after 361/362 are approved)
+- 361/362 as above, every column declared in `shared/schema.ts`; `insertItineraryItemSchema` and the other insert
+  schemas `.omit()` the new columns, and the storage writers strip them (§19, two layers).
+- `shared/content-tiers.ts` — the value sets and pure functions, **no schema dependency, so it can land first**:
+  - `admitTag` — refuses an unknown value by name;
+  - `reuseClassForLicense` — the fixed ruling-1 mapping above;
+  - `resolveFactPrecedence` — hard facts official > local > aggregator; judgment follows local;
+  - `isLiveLocal` — applies `expires_at`; a quoting note expires with its official fact;
+  - `isDraftEligible` — a row with no `source_class` never reaches a draft (ruling 3's mechanism).
+- **Writers stamp tags at insert:** gem / nugget / fact / event / neighbourhood writers and the seeders. The AI gem
+  writer stamps nothing. **Gem verification** (one writer) sets `verified_by` = the verifier, `verified_at` = now, then
+  `source_class = 'local'` — never `author_label`.
+- **`itinerary_items.source_class` (ruling 9).** Stamped by the server at create from the generator's inputs (`local`
+  when any local input produced the item, else `public`; a traveler-added item is `public`). Never client-settable:
+  omitted from `insertItineraryItemSchema`, stripped in storage. **Test: a create body carrying `sourceClass: 'local'`
+  is ignored** — the stored value is the server's.
+- **"Nothing untagged reaches a draft" test.** A DB test that reads every row a draft reader can return and fails on an
+  untagged one; it never filters one out to pass.
+- **Expiry (ruling 8).** Draft readers hide a `local` row whose `expires_at <= now()` at build time. A nightly job
+  writes one count line per table of what expired (riding the existing job runner); it deletes nothing and adds no
+  status column.
 
 ### FD-1: cap, tier filter, count-only teaser
-- **Cap.** Counted off `slip_free_draft_run`, or a new count table. The cap needs a durable count, and the funnel
-  table may be enough; to be checked.
-- **Tier filter.** Draft readers take `public` only.
-- **Count-only teaser.** `{ localPicks, localNotes }` per day, computed server-side.
-- **Test.** A "no local in a free draft" test over the prompt input and the response.
+- **Cap.** 3 per 30 days, 1 per plan, 1 per guest record. The free drafts are the two free rails **and quick-start**
+  (ruling 5); the Plus occasion draft is paid and not counted. QA accounts (`QA_ACCOUNT_EMAIL_DOMAIN`) are exempt.
+- **The counter is keyed on the account OR the guest record, built now** (ruling 6); the guest arm enforces from the
+  moment E2/E3 give guests a draft rail. Whether `slip_free_draft_run` is durable enough or a count table is needed is
+  FD-1's Phase 0; a new table is FD-1's own migration (a separate number, held the same way).
+- **Tier filter.** Draft readers take `public` only — quick-start's gem read included.
+- **Count-only teaser.** `{ localPicks, localNotes }` per day, computed server-side from `itinerary_items.source_class`.
+- **Test.** No local content in a free draft, over the prompt input and the response.
 
 ### FD-3: feasibility
 - Last admission, access route, transit and last trains, built on facts-recheck and the step-9 legs engine.
@@ -218,10 +247,10 @@ Left untagged on purpose, each recorded:
   `ticketing_rule` and `transit`).
 
 ### FD-5: coverage targets
-- Config numbers per neighbourhood × day type.
-- The census reports against them.
+- Config numbers per neighbourhood × day type, for the §7 Kyoto set.
+- The census reports against them. Night-scene enters the targets only once it is seeded (ruling 7).
 - An under-target day shows no teaser and no upsell.
 
 ### FD-4: shareable free draft
-- One share read that honours `reuse_class`. The four share rails in A4 emit unfiltered content today, which this lane
-  must address.
+- One share read that honours `reuse_class`. The share rails in A4 emit unfiltered content today; the traveler-note
+  leak is already SH-1's.
