@@ -41,12 +41,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tripPassPricingLine } from "../trip-pass-runs-copy";
+import { tripPassRunsPerTrip } from "../../../../server/config/trip-pass-runs.config";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf-8");
 
 const PRICING = read("client", "src", "pages", "pricing.tsx");
 const CARD = read("client", "src", "components", "plancard", "TripPassCard.tsx");
+const PRICING_ROUTE = read("server", "routes", "pricing.routes.ts");
 const GRANT = read("server", "routes", "trip-pass.routes.ts");
 const ENTITLEMENT = read("server", "services", "trip-entitlement.service.ts");
 
@@ -83,7 +86,15 @@ test("T2: the in-product upsell card promises no expert revision", () => {
 test("T3: the three benefits that ARE enforced are still named on both surfaces", () => {
   // The fix must not have been a gut job: what the server really enforces
   // (optimizer_run, ai_task, traveler_service_fee) must still be sold.
-  assert.match(PRICING, /Unlimited AI runs & tasks on that trip/);
+  // SANCTIONED (decision-maker, Oct 8, 2026 — B2, ledger `2026-10-08-trip-pass-five-runs`): /pricing
+  // states the run allowance from the server's own config, never "unlimited" and never a literal.
+  // The page interpolates `runsPerTrip`, the route sets it from `tripPassRunsPerTrip()`, and the
+  // template renders the ruled copy with the value from that same source.
+  assert.match(PRICING, /tripPassPricingLine\(pricing\.tripPass\.runsPerTrip\)/);
+  assert.match(PRICING_ROUTE, /runsPerTrip: tripPassRunsPerTrip\(\)/);
+  assert.equal(tripPassPricingLine(tripPassRunsPerTrip()), `${tripPassRunsPerTrip()} optimizer runs + unlimited AI tasks on that trip`);
+  delete process.env.TRIP_PASS_RUNS_PER_TRIP;
+  assert.equal(tripPassPricingLine(tripPassRunsPerTrip()), "5 optimizer runs + unlimited AI tasks on that trip");
   assert.match(PRICING, /No service fee on that trip's bookings/);
   // Ruling 3 (decision-maker, Oct 8, 2026; ledger `2026-10-08-slip-main-rail`): the card states the
   // run allowance the entitlement enforces (R-ac) — "5 optimizer runs", from the server — and never

@@ -1689,8 +1689,10 @@ export class DatabaseStorage implements IStorage {
      * a placeholder", which nothing true could have happened to make so: once a traveler has
      * answered, a later answer is still an answer.
      */
-    const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, ...safeUpdates } = updates as
-      Partial<InsertTrip> & { datesConfirmedAt?: unknown };
+    // Ledger `2026-10-09-s1-one-stay`: `stay_pick` has ONE writer (stay-pick.service.ts); stripped here too,
+    // for the same `as any` reason as `datesConfirmedAt` (§19 layer 2).
+    const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, stayPick: _clientSuppliedStayPick, ...safeUpdates } = updates as
+      Partial<InsertTrip> & { datesConfirmedAt?: unknown; stayPick?: unknown };
     if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
       derived.datesConfirmedAt = new Date();
     }

@@ -156,8 +156,8 @@ import {
 } from "./SlipOptionSets";
 import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
-import { HandoffBanner, SuggestionStrip, useExpertSuggestions } from "@/components/plan/HandoffBanner";
-import { openHandoffChooser } from "@/lib/handoff-client";
+import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
+import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -730,6 +730,8 @@ function SlipDayItem({
   canEditItems,
   isExpertViewer,
   hasAdvisor,
+  pen = null,
+  yoursToEdit = false,
   expertName,
   anchorFrom,
   travel = null,
@@ -773,6 +775,9 @@ function SlipDayItem({
   isExpertViewer: boolean;
   /** S3 — an advisor in a §12 access status is on this plan (resolved once by `SlipView`). */
   hasAdvisor: boolean;
+  /** The Handoff board: an expert holds this stop's pen, or it stays the owner's to edit. */
+  pen?: { who: string } | null;
+  yoursToEdit?: boolean;
   expertName: string | null;
   /** Non-null ⇒ this row is a fixed point, fixed by that tool (`anchorFromTool`). */
   anchorFrom: string | null;
@@ -896,6 +901,8 @@ function SlipDayItem({
       }
       expertNote={a.expertNote ? { note: a.expertNote, author: expertName } : null}
       onOpenDetails={() => setSheetOpen(true)}
+      pen={pen}
+      yoursToEdit={yoursToEdit}
     >
       {suggestionData?.suggestions?.length ? (
         <SuggestionStrip tripId={tripId} itemId={a.id} suggestions={suggestionData.suggestions} canAnswer={isOwner} />
@@ -1537,6 +1544,12 @@ export function useSlipViewModel({
   const cardReady = data.trip ? tripCardBannerState({ ...primaryInputFromTrip(data.trip), finalVersion: data.trip.finalVersion }) === "ready" : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
+  // The Handoff board: while an expert holds the pen, the stops in the request's scope carry the pen
+  // mark and the day says how many are theirs. The SAME handoff read the banner makes (one cache).
+  const { data: handoffRead } = useHandoff(tripId, isOwner || isExpertViewer);
+  const penScope = handoffPenScope(handoffRead?.handoff ?? null);
+  const penWho = isExpertViewer ? "you" : handoffExpertLabel(handoffRead?.handoff ?? null);
+  const bookedInScope = penScope.size ? allActivities.filter((a) => penScope.has(a.id) && isBookedActivity(a)).length : null;
 
   // ── List | Map view toggle (ledger 2026-08-22-slip-map-view) ──────────────────────────
   // The map is the SAME MapControlCenter the PlanCard mounts (L6 — one implementation, one
@@ -1946,6 +1959,9 @@ export function useSlipViewModel({
     isPrimary,
     cardReady,
     allActivities,
+    penScope,
+    penWho,
+    bookedInScope,
     slipView,
     setSlipView,
     mapDay,
@@ -2041,6 +2057,9 @@ export function SlipView({
     isPrimary,
     cardReady,
     allActivities,
+    penScope,
+    penWho,
+    bookedInScope,
     slipView,
     setSlipView,
     mapDay,
@@ -2444,7 +2463,7 @@ export function SlipView({
       ) : (
       <>
       {/* R323 (§12): the handoff's banner and the ONE chooser host every door opens. */}
-      {isOwner || isExpertViewer ? <HandoffBanner tripId={tripId} isOwner={isOwner} /> : null}
+      {isOwner || isExpertViewer ? <HandoffBanner tripId={tripId} isOwner={isOwner} bookedInScope={bookedInScope} /> : null}
       {/* LD 45 (5), KEPT (decision-maker, Oct 8, 2026): the done-for-you engagement, inline in the
           Handoff banner's slot above the day cards — owner only, only when one exists. */}
       <CoordinationCard tripId={tripId} isOwner={isOwner} />
@@ -2588,6 +2607,7 @@ export function SlipView({
                     stops: slotItems.length,
                     hoursOn: slotItems.filter((a) => itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null)).length,
                   }),
+                  handoffDayStat(slotItems.map((a) => a.id), penScope, penWho, isOwner),
                 ]
                   .filter(Boolean)
                   .join(" · ") || null}
@@ -2648,6 +2668,8 @@ export function SlipView({
                       isExpertViewer={isExpertViewer}
                       hasAdvisor={hasAdvisor}
                       expertName={expertName}
+                      pen={penScope.has(a.id) ? { who: penWho } : null}
+                      yoursToEdit={isOwner && penScope.size > 0 && !penScope.has(a.id) && canEditItems}
                       anchorFrom={anchorFromTool({
                         isPrimaryAnchor: a.id === anchorItemId,
                         anchorSetCategory: anchorSetCategory,
@@ -2770,6 +2792,8 @@ export function SlipView({
             );
           })}
       </div>
+      {/* The Handoff board's footer — "When <name> is done" — under the days it is about. */}
+      {isOwner ? <HandoffFooter tripId={tripId} isOwner={isOwner} /> : null}
       </>
       )}
 

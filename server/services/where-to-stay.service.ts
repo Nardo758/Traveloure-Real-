@@ -31,7 +31,6 @@ import {
   cityNeighborhoods,
   hotelCache,
   itineraryItems,
-  optimizerRuns,
   placeFacts,
   planOptionSets,
   providerServices,
@@ -55,8 +54,12 @@ import {
   type StayHotel,
   type StayNeighborhood,
   type WhereToStayIneligible,
+  type WhereToStayStay,
   type WhereToStayView,
 } from "@shared/where-to-stay";
+import { haversineMeters } from "@shared/geo";
+import { freeStayShortList, readStayPick, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { loadMatrixReader } from "./travel-time-matrix.service";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
@@ -75,10 +78,11 @@ import { enrichPlanItems } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
+import { listStayLinks } from "./stay-link.service";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
-function dayCount(start: unknown, end: unknown): number | null {
+export function dayCount(start: unknown, end: unknown): number | null {
   const iso = (v: unknown) => {
     const s = v instanceof Date ? v.toISOString() : String(v ?? "");
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
@@ -178,16 +182,32 @@ async function chosenStayIsBooked(tripId: string, setId: string): Promise<boolea
   return ((r as any)?.rows?.length ?? 0) > 0;
 }
 
-async function hasPaidOptimizerRun(tripId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: optimizerRuns.id })
-    .from(optimizerRuns)
-    .where(and(eq(optimizerRuns.tripId, tripId), eq(optimizerRuns.authorizationBasis, "paid")))
-    .limit(1);
-  return !!row;
+/**
+ * The paid tier is the step-9a predicate (`planGetsRoutedLegs`, through `tripGetsRoutedLegs`) — ruling 4 of
+ * ledger `2026-10-09-s1-one-stay`; it replaced a paid-optimizer-run check that missed Trip Pass, handoff and
+ * Ready Made plans (§18 rule 1: one answer to "is this plan paid"). Loaded lazily: the routing module pulls
+ * the handoff and entitlement services.
+ */
+async function planIsRouted(tripId: string): Promise<boolean> {
+  const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
+  return tripGetsRoutedLegs(tripId);
 }
 
-async function cityNeighborhoodRows(city: string): Promise<Array<StayNeighborhood & { description: string | null }>> {
+/** Pure: the slug of the neighbourhood whose centroid is nearest the point (null when there are none). */
+export function nearestNeighborhoodSlug(neighborhoods: readonly StayNeighborhood[], p: { lat: number; lng: number }): string | null {
+  let best: string | null = null;
+  let bestM = Infinity;
+  for (const n of neighborhoods) {
+    const m = haversineMeters(n.lat, n.lng, p.lat, p.lng);
+    if (m < bestM) {
+      bestM = m;
+      best = n.slug;
+    }
+  }
+  return best;
+}
+
+export async function cityNeighborhoodRows(city: string): Promise<Array<StayNeighborhood & { description: string | null }>> {
   const rows = await db
     .select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name, lat: cityNeighborhoods.centroidLat, lng: cityNeighborhoods.centroidLng, description: cityNeighborhoods.description })
     .from(cityNeighborhoods)
@@ -246,7 +266,7 @@ async function neighbourhoodOneLiners(
 }
 
 /** Our own inventory for a city, located rows only: census hotel anchors + affiliate lodging listings. */
-async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number; lng: number }>> {
+export async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number; lng: number }>> {
   const [platform, cache, affiliate] = await Promise.all([
     // R-o: stays LISTED ON TRAVELOURE — the same public read gate every listing surface uses
     // (approved + active), in the accommodation category, in this city, with a confirmed pin.
@@ -317,7 +337,7 @@ async function cityHotels(city: string): Promise<Array<StayHotel & { lat: number
 export async function loadWhereToStay(tripId: string, userId: string | null | undefined): Promise<WhereToStayView> {
   if (!(await planRole(tripId, userId, "read"))) return empty("not_found");
   const [trip] = await db
-    .select({ destination: trips.destination, startDate: trips.startDate, endDate: trips.endDate, marketSlug: trips.marketSlug })
+    .select({ destination: trips.destination, startDate: trips.startDate, endDate: trips.endDate, marketSlug: trips.marketSlug, stayPick: trips.stayPick })
     .from(trips)
     .where(eq(trips.id, tripId))
     .limit(1);
@@ -359,7 +379,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
     basis = stored.basis;
   } else {
     let cost: StayCost | undefined;
-    if (travelTimeServiceEnabled() && trip.marketSlug && (await hasPaidOptimizerRun(tripId))) {
+    if (travelTimeServiceEnabled() && trip.marketSlug && (await planIsRouted(tripId))) {
       const reader = await loadMatrixReader(trip.marketSlug);
       // Minutes ORDER the neighbourhoods and never leave this function (R242).
       cost = (n, p) => {
@@ -376,6 +396,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const placed = hotelsByNeighborhood(hotels, neighborhoods, ranked.map((r) => r.slug));
   const oneLiners = await neighbourhoodOneLiners(ranked, neighborhoods);
   const tied = topWonOnTieBreak(ranked);
+  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days, city);
   return {
     eligible: true,
     ...(dismissed ? { dismissed: true as const } : {}),
@@ -392,6 +413,67 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
       oneLiner: oneLiners.get(r.slug) ?? null,
       ...(i === 0 && tied ? { tieBreak: true as const } : {}),
     })),
+    stay,
+  };
+}
+
+/**
+ * S1 (ledger `2026-10-09-s1-one-stay`): the view's ONE-stay block. READ ONLY — a routed plan's pick is
+ * whatever `stay-pick.service.ts` stored; no Maps call is made here (ruling 3: never on read). A free plan's
+ * short list is pure straight line over the hotels and stops already loaded.
+ */
+async function stayBlock(
+  tripId: string,
+  stored: unknown,
+  hotels: Array<StayHotel & { lat: number; lng: number }>,
+  neighborhoods: readonly StayNeighborhood[],
+  ranked: readonly RankedStayNeighborhood[],
+  byDay: Map<number, StayDay>,
+  days: number,
+  city: string | null,
+): Promise<WhereToStayStay> {
+  const byKey = new Map(hotels.map((h) => [`${h.kind}:${h.id}`, h]));
+  const strip = (h: StayHotel & { lat: number; lng: number }): StayHotel => {
+    const { lat: _lat, lng: _lng, ...rest } = h;
+    return rest;
+  };
+  if (await planIsRouted(tripId)) {
+    const pick = readStayPick(stored);
+    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null, closeness: null };
+    const hotel = byKey.get(`${pick.hotelKind}:${pick.hotelId}`);
+    // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
+    // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
+    const [linked] = hotel ? await listStayLinks([strip(hotel)], city) : [];
+    return {
+      tier: "routed",
+      pick: linked ?? null,
+      scoredCount: pick.scoredCount,
+      candidateCount: pick.candidateCount,
+      changed: pick.changed,
+      computedAt: pick.computedAt,
+      // FU-S1-3: stored by the one writer; null when the pick left our inventory or predates FU-S1-3.
+      closeness: hotel ? (pick.closeness ?? null) : null,
+    };
+  }
+  const top = new Set(ranked.map((r) => r.slug));
+  // The plan's dates only — the same stops the routed scorer reads (ruling 1).
+  const stops: StayPickStop[] = Array.from(byDay.values())
+    .filter((d) => d.dayNumber >= 1 && d.dayNumber <= days)
+    .flatMap((d) => d.points.map((p) => ({ dayNumber: d.dayNumber, lat: p.lat, lng: p.lng })));
+  const inTop = hotels.filter((h) => {
+    const slug = nearestNeighborhoodSlug(neighborhoods, h);
+    return !!slug && top.has(slug);
+  });
+  const list = freeStayShortList(inTop.map((h) => toStayPickCandidate(h)), stops);
+  // FU-S1-2: one link per card — own or Google Maps; no Google call on list render.
+  // FU-S1-3: each listed stay's straight-line closeness over the same stops (no Maps call).
+  const km = stayCloseStraightKm();
+  return {
+    tier: "straight_line",
+    hotels: await listStayLinks(
+      list.map((c) => ({ ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km) })),
+      city,
+    ),
   };
 }
 

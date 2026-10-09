@@ -91,6 +91,7 @@ import {
   tripDestinationsBodySchema,
 } from "../services/trip-destinations.service";
 import { redactMoneyForNonOwner } from "../utils/share-money-redaction";
+import { travelerNoteForShareViewer } from "../utils/share-traveler-note";
 import { api } from "@shared/routes";
 // ONE derivation of the plan's party total, shared with the client (ledger
 // `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
@@ -439,7 +440,10 @@ router.get(api.trips.get.path, async (req, res) => {
     // every future consumer of the `...trip` spread to know not to render it — the same posture
     // `/api/itinerary-share/:token` below already takes for its own (unrelated)
     // `shared_itineraries.expertNotes` column. `expertTravelerNote` (§21's traveler-facing
-    // counterpart) is NOT redacted — it is meant for exactly this audience.
+    // counterpart) reaches the owner and the builder side (advisor, managing EA) unchanged, and is
+    // WITHHELD from a viewer admitted only by the share token (SH-1, ledger
+    // `2026-10-09-sh1-share-traveler-note`): the note is a message to the traveler, not part of
+    // the itinerary a share link hands out.
     //
     // V-33: this predicate is DELIBERATELY NOT widened by the advisor arm added above, and the
     // change is behaviour-preserving — its former `isExpert` term read `trips.expertId`, which
@@ -450,6 +454,16 @@ router.get(api.trips.get.path, async (req, res) => {
     // READ-status advisor inherit the notes through this spread would re-open exactly the §21 leak
     // that rail closed, so the access fix and the redaction predicate stay separate decisions.
     const canSeePrivateExpertNotes = isManagingEa;
+
+    // SH-1 (ledger `2026-10-09-sh1-share-traveler-note`): the advisor arm above is skipped when the
+    // token already admitted the viewer, so ask it here before deciding a token viewer is ONLY a
+    // share viewer — an assigned advisor who also holds the link keeps the note they wrote.
+    const admittedOnlyByShareToken =
+      !!isGuestWithToken && !isOwner && !isManagingEa &&
+      !(userId ? await isTripAdvisor(trip.id, userId) : false);
+    const expertTravelerNote = admittedOnlyByShareToken
+      ? travelerNoteForShareViewer(trip.expertTravelerNote, userId, trip.userId)
+      : (trip.expertTravelerNote ?? null);
 
     // Migration 281 (ledger `2026-09-04-stops-and-event-time`, Locked Decision 34): the plan's
     // ORDERED STOPS, additive — every existing consumer ignores the key. Gated by exactly the
@@ -470,6 +484,7 @@ router.get(api.trips.get.path, async (req, res) => {
     res.json({
       ...trip,
       expertNotes: canSeePrivateExpertNotes ? trip.expertNotes : null,
+      expertTravelerNote,
       expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null,
       destinations,
       occasionSlug,
@@ -2158,15 +2173,16 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
       // §21 (ratified Aug 9 2026): the TRAVELER-FACING trip-level delivery note. This is a
       // DIFFERENT column (`trips.expertTravelerNote`) from the `expertNotes`/`expertDiff` above
       // (`shared_itineraries`' own private per-share-review commentary) — never confuse the two.
-      // Unlike those, this field is meant for EVERY viewer of a delivered plan (no
-      // `canSeeExpertContent` gate) — a "view"-only friend/family link is exactly the audience
-      // §21 wrote this note for. Best-effort: `plan.meta.tripId` is nullable for a variant
-      // produced off a trip-less optimizer comparison (shared/trip-plan.ts), in which case there
-      // is no `trips` row to read the note from and it stays null (§13 — never guessed).
+      // SH-1 (ledger `2026-10-09-sh1-share-traveler-note`): it is a message TO THE TRAVELER, so on
+      // this public rail it reaches the plan's traveler (the linked trip's owner, by session) and
+      // nobody else — not a "view" link's friend, not a "suggest"/"edit" link's expert, not the
+      // sharer when the sharer is not the traveler. ONE rule, `travelerNoteForShareViewer`.
+      // `plan.meta.tripId` is nullable for a variant produced off a trip-less optimizer comparison
+      // (shared/trip-plan.ts): no `trips` row, no note, `null` (§13 — never guessed).
       let expertTravelerNote: string | null = null;
       if (plan.meta.tripId) {
         const linkedTrip = await storage.getTrip(plan.meta.tripId);
-        expertTravelerNote = linkedTrip?.expertTravelerNote ?? null;
+        expertTravelerNote = travelerNoteForShareViewer(linkedTrip?.expertTravelerNote, requesterId, linkedTrip?.userId);
       }
 
       // ── MONEY REDACTION (ledger 2026-09-03-share-link-price-redaction) ─────────────────────
@@ -2227,7 +2243,7 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         // Private expert review content — never sent to a non-owner "view"-only link holder.
         expertNotes: canSeeExpertContent ? (shared.expertNotes || null) : null,
         expertDiff: canSeeExpertContent ? (shared.expertDiff || null) : null,
-        // §21: traveler-facing trip-level note — every viewer gets it, see comment above.
+        // §21 + SH-1: the plan's traveler only, see comment above.
         expertTravelerNote,
         transportPreferences: shared.transportPreferences,
         shareToken: token,

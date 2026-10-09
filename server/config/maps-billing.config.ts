@@ -41,9 +41,20 @@ export function mapsCallerCostTenthsOfCent(key: MapsCallerKey, units: number): n
 /**
  * The cost a gate row records (step 9a ruling 7, ledger `2026-10-07-step9a-routing-engine`): a FAILED
  * call records 0 — it still counts toward the cap through its row's `request_count`; a caller whose cost
- * lives on another table (`costRecordedOn` ≠ api_usage_logs) records 0 so a reader never sums twice.
+ * lives on another table (`costRecordedOn` ≠ api_usage_logs) records 0 so a reader never sums twice —
+ * unless the call passes `costHere`, which says no other table carries THIS call (the stay pick).
+ * `usdPer1000 × units` is tenths of a cent: $5 / 1,000 × 1 element = 0.5¢ = 5 tenths.
  */
-export function mapsCallRecordedTenths(key: MapsCallerKey, units: number, success: boolean): number {
-  if (!success || MAPS_CALLERS[key].costRecordedOn !== "api_usage_logs") return 0;
+export function mapsCallRecordedTenths(
+  key: MapsCallerKey,
+  units: number,
+  success: boolean,
+  costHere?: { usdPer1000: number } | null,
+): number {
+  if (!success) return 0;
+  // FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`): a call that carries its own price records it
+  // here — no other table holds it, so nothing is summed twice.
+  if (costHere) return Math.round(costHere.usdPer1000 * units);
+  if (MAPS_CALLERS[key].costRecordedOn !== "api_usage_logs") return 0;
   return mapsCallerCostTenthsOfCent(key, units);
 }
