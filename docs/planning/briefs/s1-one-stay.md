@@ -121,3 +121,17 @@ Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ ki
 
 When 9a-ii is live, delete `STAY_PICK_ELEMENT_BUDGET`, `planStayScoring` and the straight-line prune: every
 candidate is scored through the self-hosted adapter, and `scoredCount` equals `candidateCount`.
+
+## FU-S1-3 — per-day closeness (decision-maker ruling, Oct 9, 2026)
+
+The Compare/stay card's "Close to N of M days" is display only, read from this payload:
+
+- A day is **close** when the stay is within the threshold of **every** located stop that day — routed
+  minutes on a paid plan (`STAY_CLOSE_ROUTED_MINUTES`, default 20), straight-line km on a free plan
+  (`STAY_CLOSE_STRAIGHT_KM`, default 1.5, labelled straight-line). **M** = days with at least one located stop
+  on the plan's dates. Thresholds live in `server/config/stay-closeness.config.ts`, read by name.
+- **Routed:** the one writer stores `closeness` on `trips.stay_pick` from the matrix row the ranking already
+  fetched — no extra request. A pick stored before FU-S1-3 reads `closeness: null` until its next re-score.
+- **Free:** each listed stay carries `closeness`, computed at read time by straight line (no Maps call).
+- Payload: `stay.closeness` (routed) and `stay.hotels[].closeness` (free), each
+  `{ closeDays, locatedDays, basis: "routed" | "straight_line" } | null`. Null means unknown, never zero.
