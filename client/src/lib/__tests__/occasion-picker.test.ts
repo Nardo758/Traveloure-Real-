@@ -6,7 +6,7 @@
  *   P2  the five labels come from ONE home, and the picker renders exactly those five
  *   P3  `proposal` sits under "A moment"
  *   P4  a NULL-switch row appears only under See all and in search — never in a group
- *   P5  Continue is disabled without BOTH a resolved occasion and one of the eight cities
+ *   P5  the page starts through PlanEntry inline and the provider's one start (E3; `canContinue` deleted)
  *   P6  `?destination=` / `?city=` pre-pick only an EXACT match of the eight (ruling 4)
  *   P7  the map's eight pins come from OPERATING_MARKETS through the board's projection (ruling 2)
  *   P8  only Kyoto and Bogotá carry a (credited) photo; the other six are typographic (ruling 3)
@@ -23,7 +23,6 @@ import {
 } from "@shared/experience-group";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import {
-  canContinue,
   cityPhotoFor,
   exactOperatingMarket,
   preselectedMarket,
@@ -139,16 +138,7 @@ describe("P3/P4 — where a row lands", () => {
   });
 });
 
-describe("P5 — Continue needs both answers", () => {
-  it("disabled without an occasion, without a city, or with an occasion the catalog does not carry", () => {
-    assert.equal(canContinue("", CATALOG, "kyoto"), false);
-    assert.equal(canContinue("wedding", CATALOG, null), false);
-    assert.equal(canContinue("not-a-row", CATALOG, "kyoto"), false);
-    assert.equal(canContinue("wedding", CATALOG, "paris"), false);
-    assert.equal(canContinue("wedding", undefined, "kyoto"), false);
-    assert.equal(canContinue("wedding", CATALOG, "kyoto"), true);
-  });
-
+describe("P5 — the page starts a plan through PlanEntry inline", () => {
   it("the page starts a plan through PlanEntry inline and the provider's one start (E3, sanctioned)", () => {
     const src = read("client/src/pages/experiences.tsx");
     assert.match(src, /<PlanEntryPanel\s+active\s+container="page"/);

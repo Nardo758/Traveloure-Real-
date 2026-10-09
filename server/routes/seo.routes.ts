@@ -151,7 +151,7 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
       "Meet verified local experts who plan, optimize, and book your trip — from Kyoto temple walks to Paris food tours.",
   },
   "/experiences": {
-    title: "Curated Travel Experiences | Traveloure",
+    title: "Plan around a place, a date or an event | Traveloure",
     // E3 ruling 4: the page's own description, one spelling (`shared/operating-markets.ts`).
     description: EXPERIENCES_PAGE_DESCRIPTION,
   },
