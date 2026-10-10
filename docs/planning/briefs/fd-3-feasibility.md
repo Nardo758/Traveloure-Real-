@@ -1,6 +1,6 @@
 # FD-3 — feasibility in the free draft (Phase 0 + rulings, Oct 10, 2026)
 
-Read on `main` at `5e0a0839b` (R404). Ledger row `2026-10-10-fd3-feasibility` (R?). No migration.
+Read on `main` at `5e0a0839b` (R404). Ledger row `2026-10-10-fd3-feasibility` (R408). No migration.
 
 ## 1. Rulings (decision-maker, Oct 10, 2026)
 1. **Last admission** is a new `last_admission` fact type, structured (per-weekday time, optional seasonal
