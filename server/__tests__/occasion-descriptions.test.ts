@@ -1,9 +1,9 @@
 /**
  * E3 ruling 2 — the six occasion "blurbs" (ledger `2026-10-09-e3-experiences-inline`).
  *
- *   O1  the seeder's sentences and migrations 360 + 364 are the same text, slug for slug (364 also writes the
- *       `anniversary-trip` sentence under `anniversary`, production's slug for that occasion —
- *       ledger `2026-10-10-m364-occasion-descriptions`)
+ *   O1  the seeder's sentences and migrations 360 + 364 are the same text, slug for slug; 364 writes
+ *       production's `anniversary`, read here as the seeder's `anniversary-trip` (ledger
+ *       `2026-10-10-m364-occasion-descriptions`), and every seeder slug is covered by a migration
  *   O2  each is one real sentence: no "slip", no "experience", no generated placeholder
  *   O3  360 and 364 are data only and guarded: each touches a row only while it still holds the placeholder
  *   O4  the seeder never generates a description for a slug it does not list
@@ -46,10 +46,12 @@ describe("occasion descriptions", () => {
     const sql360 = sqlMap(SQL);
     assert.deepEqual(Object.keys(sql360).sort(), ["corporate", "family-occasion", "golf-trip", "honeymoon", "milestone-birthday", "romance"]);
     const sql364 = sqlMap(SQL_364);
-    assert.deepEqual(Object.keys(sql364).sort(), ["anniversary", "anniversary-trip", "bachelor-bachelorette", "sports-event"]);
+    // Production's own spellings only: the seeder's `anniversary-trip` is not a production row.
+    assert.deepEqual(Object.keys(sql364).sort(), ["anniversary", "bachelor-bachelorette", "sports-event"]);
     const union = { ...sql360, ...sql364 };
     for (const [slug, text] of Object.entries(union)) assert.equal(text, seeded[PROD_SLUG_ALIASES[slug] ?? slug], slug);
-    for (const slug of Object.keys(seeded)) assert.ok(slug in union, `${slug} is repaired by a migration`);
+    const covered = new Set(Object.keys(union).map((slug) => PROD_SLUG_ALIASES[slug] ?? slug));
+    for (const slug of Object.keys(seeded)) assert.ok(covered.has(slug), `${slug} is repaired by a migration`);
   });
 
   it("O2 one real sentence each", () => {

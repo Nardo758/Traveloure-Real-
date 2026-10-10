@@ -70,8 +70,9 @@ interface UniversalFilterDef {
  * One real sentence for each occasion THIS seeder may create (E3, ledger `2026-10-09-e3-experiences-inline`).
  * The seeder used to write `"<name> planning experience"` — a placeholder the picker showed as the
  * occasion's description. Migrations 360 and 364 repair the rows already written that way, with these same
- * sentences (pinned by `occasion-descriptions.test.ts`); 364 also writes the anniversary sentence under
- * `anniversary`, the slug an older seeder gave that occasion on production. A slug not listed here is created with NO
+ * sentences (pinned by `occasion-descriptions.test.ts`); 364 writes the anniversary sentence under
+ * `anniversary`, the slug an older seeder gave that occasion on production (`anniversary-trip` is not a
+ * production row and 364 carries no UPDATE for it). A slug not listed here is created with NO
  * description — an honest blank, never a generated one (§13).
  */
 export const SEEDED_OCCASION_DESCRIPTIONS: Readonly<Record<string, string>> = {
