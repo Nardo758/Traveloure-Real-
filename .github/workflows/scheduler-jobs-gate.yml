@@ -139,6 +139,10 @@ jobs:
       # Saturday / momiji / unconfirmed dates gate as peak, an untargeted market is ungated; the nightly census line.
       - name: FD-5 coverage gate — teaser per neighbourhood and day type, census line
         run: npx tsx --test --test-force-exit server/__tests__/fd5-coverage-gate.db.test.ts
+      # SS-1b (ledger `2026-10-10-ss1b-official-refresh`): the market-level official refresh — read once per
+      # interval, within the ceiling, ineligible sources skipped, unsourced never written, no coordinate guessed.
+      - name: SS-1b official refresh — interval, ceiling, provenance, refusals
+        run: npx tsx --test --test-force-exit server/__tests__/official-refresh.db.test.ts
       # Ledger `2026-10-03-build-around-places`: build-around reads Google's live location fact and
       # stores no coordinate (LD 57); the option reader resolves it. B1–B4.
       - name: Build-around on a Google-located item — read, never copied

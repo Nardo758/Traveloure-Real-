@@ -648,7 +648,7 @@ export async function fetchFreshFactsForItem(input: {
   return { recorded, outcome: adapter.lastOutcome ?? "no_facts", sourceId: source.id, refused: adapter.lastRefused };
 }
 
-function defaultTavilyExtractDeps(): TavilyExtractDeps {
+export function defaultTavilyExtractDeps(): TavilyExtractDeps {
   return {
     client: (usage) => getTavilyClient({ usage }),
     complete: (opts) => claudeService.completeJson(opts),
