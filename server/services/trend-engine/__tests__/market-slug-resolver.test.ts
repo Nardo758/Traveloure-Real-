@@ -38,3 +38,24 @@ test("R8: junk and empty resolve to null, never a guess", () => {
     assert.equal(resolveMarketSlug(d as any), null, `${JSON.stringify(d)} → null`);
   }
 });
+
+// P0 legs ruling 5 (ledger `2026-10-10-p0-legs-baseline`): the configured alias pass.
+test("P0-5: a market's districts and aliases resolve to that market", () => {
+  for (const d of ["Arashiyama", "Gion, Kyoto", "Higashiyama", "Fushimi Inari", "Kyoto Prefecture", "Kyoto Station", "Arashiyama, Kyoto, Japan"]) {
+    assert.equal(resolveMarketSlug(d), "kyoto", `${d} → kyoto`);
+  }
+  assert.equal(resolveMarketSlug("Bombay"), "mumbai");
+  assert.equal(resolveMarketSlug("Panjim, Goa"), "goa");
+  assert.equal(resolveMarketSlug("Leith"), "edinburgh");
+  assert.equal(resolveMarketSlug("Usaquén"), "bogota", "accents ignored");
+  assert.equal(resolveMarketSlug("Cartagena de Indias"), "cartagena");
+});
+
+test("P0-5: whole words only, notIf vetoes, two markets ⇒ null", () => {
+  assert.equal(resolveMarketSlug("Porto Alegre, Brazil"), null, "another Porto");
+  assert.equal(resolveMarketSlug("Cartagena, Spain"), null, "another Cartagena");
+  assert.equal(resolveMarketSlug("Edinburgh, Indiana"), null, "another Edinburgh");
+  assert.equal(resolveMarketSlug("Kyoto and Mumbai"), null, "two markets is no answer");
+  assert.equal(resolveMarketSlug("Gionville"), null, "an alias inside a longer word is not a match");
+  assert.equal(resolveMarketSlug("tokyo, japan"), null);
+});

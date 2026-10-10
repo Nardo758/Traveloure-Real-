@@ -198,7 +198,11 @@ test("E8: a failed call leaves the pair a thin connector; the next run asks agai
   assert.equal(healed.written, 1, "the next run routes it — a failure was never remembered");
 });
 
-test("E9: an expert's confirmed leg wins — the engine never computes that pair", async () => {
+// AMENDED by P0 ruling 7 (ledger `2026-10-10-p0-legs-baseline`; SANCTIONED by the decision-maker, Oct 10, 2026): a
+// confirmed leg with NO source is a legacy-writer leg, re-routed ONCE on the first engine run — it keeps
+// `confirmed`, the pair still shows exactly one leg, and the legacy row is superseded, not deleted. An
+// expert's confirmed ENGINE leg is still never recomputed (L8 in p0-legs-baseline.db.test.ts).
+test("E9: an expert's confirmed leg wins its pair — a legacy one is re-routed once, keeping confirmed", async () => {
   const a = P(0, 0);
   const b = P(0.035, 0.025);
   await db.execute(sql`INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
@@ -206,10 +210,15 @@ test("E9: an expert's confirmed leg wins — the engine never computes that pair
     VALUES (${id("confirmed")}, ${PAID}, 1, 1, ${`${PAID}-a`}, 'A', ${a.lat}, ${a.lng}, ${`${PAID}-b`}, 'B', ${b.lat}, ${b.lng}, 4000, '4 km', 'taxi', 15, 'confirmed')`);
   const stub = new StubRoutingAdapter();
   const r: any = await computePlanLegs(PAID, { adapter: stub });
-  assert.equal(stub.calls, 0);
+  assert.equal(stub.calls, 0, "re-routed from the plan's own engine answer for that pair — no call");
+  assert.equal(r.superseded, 1, "the legacy confirmed leg is re-routed once");
   assert.equal(r.removed, 1, "the engine's own a→b is dropped");
   const ab = (await legs(PAID)).filter((l) => String(l.to_activity_id).endsWith("-b"));
-  assert.deepEqual(ab.map((l) => l.proposal_status), ["confirmed"]);
+  assert.deepEqual(ab.map((l) => l.proposal_status).sort(), [null, "confirmed"].sort() as any, "the re-routed leg keeps confirmed; the legacy row is kept, hidden");
+  assert.equal(ab.find((l) => l.proposal_status === null)?.origin, "superseded");
+  const again = new StubRoutingAdapter();
+  await computePlanLegs(PAID, { adapter: again });
+  assert.equal(again.calls, 0, "a confirmed engine leg is never recomputed");
 });
 
 test("E10: the read rule — routed facts on a qualifying plan; a free plan's routed legs hidden, not deleted", async () => {
@@ -223,7 +232,8 @@ test("E10: the read rule — routed facts on a qualifying plan; a free plan's ro
   }
   const confirmed = all.filter((t: any) => t.toActivityId === `${PAID}-b`);
   assert.equal(confirmed.length, 1, "one leg per pair");
-  assert.equal(confirmed[0].routed, undefined, "the confirmed leg carries no engine facts");
+  // AMENDED by P0 ruling 7: the confirmed leg was re-routed (E9), so it now carries the engine's facts.
+  assert.equal(confirmed[0].routed?.provenance.source, "stub", "the re-routed confirmed leg carries engine facts");
 
   // A free plan holding an old engine leg: hidden by the predicate, still on disk.
   const a = P(0, 0);

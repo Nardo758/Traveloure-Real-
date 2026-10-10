@@ -10,11 +10,13 @@
  */
 
 import { db } from "../db";
-import { transportBookingOptions, transportLegs, itineraryVariants, providerServices, bookingFeeConfigs } from "@shared/schema";
+import { transportBookingOptions, transportLegs, itineraryVariants, providerServices } from "@shared/schema";
 import { eq, and, ilike, sql } from "drizzle-orm";
 import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts/travelpayouts-client";
 import { buildPartnerizeTrackingLink } from "./partnerize/partnerize-client";
 import { metersPerMinute } from "@shared/travel-speeds";
+import { readBand } from "./fee-resolution.service";
+import { AFFILIATE_TRANSPORT_MARGIN_BAND, TRANSPORT_PLATFORM_COMMISSION_BAND, declaredFallbackValue } from "./fee-band-requirements";
 
 export interface TransportBookingOption {
   transportLegId?: string;
@@ -269,58 +271,40 @@ async function populateMultiDayPasses(
 }
 
 // ============================================================================
-// Fee resolution — reads from booking_fee_configs; falls back to spec defaults.
-// All defaults are admin-editable via the Fee Config admin UI once the
-// 031_transport_commerce_fee_config migration has run.
+// Fee resolution — the transport commission and the route-search partners' margin are fee bands (TC-0).
 // ============================================================================
 
-const TRANSPORT_COMMISSION_DEFAULT = 0.10; // fee-literal-ok: documented last-resort fallback BEHIND the booking_fee_configs lookup in resolveTransportCommissionRate() below — the §8 safe-failure posture (same as coordination_floor and getFee's DEFAULT_FEE_CENTS). Surfaced by the ruling-42 fee-gate predicate fix; 10% is within spec range 4-12%
-// fee-literal-ok (security-audit finding 12, 2026-09-01): the four partner margins below are
-// spec defaults consulted ONLY after the booking_fee_configs lookup in
-// resolveAffiliateMarginRate() (`affiliate_margin_<partner>` rows, admin-editable) — the same
-// DB-first-with-fallback posture as TRANSPORT_COMMISSION_DEFAULT above. Annotated so a rate
-// held in a map literal is never invisible to the fee gate's negative space (§18d).
-const AFFILIATE_MARGIN_DEFAULTS: Record<string, number> = {
-  "12go": 0.12,
-  omio: 0.08,
-  discovercars: 0.10,
-  kiwi: 0.06,
-};
-
-async function resolveTransportCommissionRate(): Promise<number> {
+/**
+ * TC-0 (ledger `2026-10-10-tc0-transport-commission-band`; LD 8): the platform transport commission is
+ * the `transport_platform_commission` fee band — admin-editable on /admin/fee-bands with no deploy — and
+ * its declared fallback (0) when the row is absent, inactive or unreadable. The old read of the dormant
+ * `booking_fee_configs` row (no admin editor since Phase 8.1) and the 10% code literal are gone.
+ */
+export async function resolveTransportCommissionRate(): Promise<number> {
   try {
-    const rows = await db
-      .select({ rate: bookingFeeConfigs.platformFeePercent })
-      .from(bookingFeeConfigs)
-      .where(and(
-        eq(bookingFeeConfigs.category, "platform_transport_commission"),
-        eq(bookingFeeConfigs.isActive, true),
-      ))
-      .limit(1);
-    const val = rows[0]?.rate;
-    if (val !== null && val !== undefined) return parseFloat(String(val)) / 100;
+    const band = await readBand(TRANSPORT_PLATFORM_COMMISSION_BAND);
+    if (band && band.rateType === "percent" && band.rate >= 0) return band.rate;
   } catch {
-    // booking_fee_configs not yet on this DB; use approved default
+    /* unreadable ⇒ the declared fallback, below */
   }
-  return TRANSPORT_COMMISSION_DEFAULT;
+  return declaredFallbackValue(TRANSPORT_PLATFORM_COMMISSION_BAND);
 }
 
-async function resolveAffiliateMarginRate(partner: string): Promise<number> {
+/**
+ * TC-0 (decision-maker, Oct 10, 2026; LD 8): the margin shown on the four route-search partners (12Go,
+ * Omio, DiscoverCars, Kiwi) is ONE band, `affiliate_transport_margin`, with its declared fallback 0. The
+ * per-partner `booking_fee_configs` rows (dormant — no admin editor since Phase 8.1) and the hard-coded
+ * per-partner defaults are gone. Partnerize transport rows keep their own `affiliate_partners.commission_rate`.
+ * Display metadata only (`revenue_rate`); no charge path reads it.
+ */
+export async function resolveAffiliateTransportMargin(): Promise<number> {
   try {
-    const rows = await db
-      .select({ rate: bookingFeeConfigs.platformFeePercent })
-      .from(bookingFeeConfigs)
-      .where(and(
-        eq(bookingFeeConfigs.category, `affiliate_margin_${partner}`),
-        eq(bookingFeeConfigs.isActive, true),
-      ))
-      .limit(1);
-    const val = rows[0]?.rate;
-    if (val !== null && val !== undefined) return parseFloat(String(val)) / 100;
+    const band = await readBand(AFFILIATE_TRANSPORT_MARGIN_BAND);
+    if (band && band.rateType === "percent" && band.rate >= 0) return band.rate;
   } catch {
-    // booking_fee_configs not yet on this DB; use approved default
+    /* unreadable ⇒ the declared fallback, below */
   }
-  return AFFILIATE_MARGIN_DEFAULTS[partner] ?? 0.08; // fee-literal-ok: unknown-partner last resort, consulted ONLY after the booking_fee_configs lookup above — spec default margin, same posture as TRANSPORT_COMMISSION_DEFAULT
+  return declaredFallbackValue(AFFILIATE_TRANSPORT_MARGIN_BAND);
 }
 
 // ============================================================================
@@ -360,7 +344,7 @@ function buildKiwiUrl(fromName: string, toName: string, token: string | null): s
 // ============================================================================
 // Phase 1 — Platform resolver
 // Queries provider_services for active transport providers matching the
-// destination and leg mode, reads commission from booking_fee_configs.
+// destination and leg mode, reads commission from the transport_platform_commission band (TC-0).
 // ============================================================================
 
 /**
@@ -472,7 +456,7 @@ async function findAffiliateTransportOptions(
   const results: any[] = [];
 
   // 12Go — trains, buses, ferries, shuttles (strong Asia + global coverage)
-  const go12Margin = await resolveAffiliateMarginRate("12go");
+  const go12Margin = await resolveAffiliateTransportMargin();
   results.push({
     partner: "12go",
     title: `${fromName} → ${toName}`,
@@ -492,7 +476,7 @@ async function findAffiliateTransportOptions(
   });
 
   // Omio — trains, buses, coaches (Europe + global)
-  const omioMargin = await resolveAffiliateMarginRate("omio");
+  const omioMargin = await resolveAffiliateTransportMargin();
   results.push({
     partner: "omio",
     title: `${fromName} → ${toName}`,
@@ -511,7 +495,7 @@ async function findAffiliateTransportOptions(
 
   // DiscoverCars — car rental for journeys likely to need a vehicle
   if (distanceMeters > 5_000) {
-    const dcMargin = await resolveAffiliateMarginRate("discovercars");
+    const dcMargin = await resolveAffiliateTransportMargin();
     results.push({
       partner: "discovercars",
       title: `Rent a car in ${destination}`,
@@ -531,7 +515,7 @@ async function findAffiliateTransportOptions(
 
   // Kiwi — flights for long-distance legs (>100 km)
   if (distanceMeters > 100_000) {
-    const kiwiMargin = await resolveAffiliateMarginRate("kiwi");
+    const kiwiMargin = await resolveAffiliateTransportMargin();
     results.push({
       partner: "kiwi",
       title: `${fromName} → ${toName}`,

@@ -399,7 +399,7 @@ export interface PlanCardTransport {
    * Step 9a (ledger `2026-10-07-step9a-routing-engine`) — present only on a routing-engine leg of a
    * routed plan: line and fare as the source gave them, and who answered when.
    */
-  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } };
+  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true };
   /** Step 9c (ledger `2026-10-07-step9c-leg-options`): an engine leg's mode options, current first (≤3). */
   routedOptions?: import("@shared/leg-options").LegOptionView[];
   /** Step 9c: the options were already asked — a tap makes no call. */
@@ -460,6 +460,8 @@ export interface PlanCardDay {
   transports: PlanCardTransport[];
   /** FD-3 (ledger `2026-10-10-fd3-feasibility`): the server's per-day feasibility counts; absent ⇒ no line. */
   feasibility?: import("@shared/plan-feasibility").DayFeasibility;
+  /** FD-1/FD-5 (ledger `2026-10-10-fd5-coverage-targets`): a free plan's gated count-only teaser; absent ⇒ none. */
+  localTeaser?: import("@shared/free-draft-cap").LocalTeaser;
 }
 
 /**

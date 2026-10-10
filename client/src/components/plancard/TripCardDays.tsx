@@ -322,6 +322,7 @@ export function TripCardDays(props: TripCardDaysProps) {
             open={openDay === d.dayNum}
             onOpenChange={(o) => setOpenDay(o ? d.dayNum : null)}
             feasibility={d.feasibility ?? null}
+            localTeaser={d.localTeaser ?? null}
             photo={
               firstPhotoId ? (
                 <PlacePhoto
