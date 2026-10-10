@@ -1,4 +1,4 @@
-# Part 7 — held-item classification, awaiting approval
+# Part 7 — approved classification, cleanup deferred
 
 No deletion, function uninstall, schema alteration or production operation was
 performed for this classification. The previously approved 15 development
@@ -53,6 +53,7 @@ candidate is identified among the eight now-unused SQL functions. If an actual
 shared caller is subsequently found, its function becomes KEEP or REFACTOR
 before any deletion.
 
-**Awaiting founder approval.** The eight REMOVE proposals are not executed.
-The unresolved historical identities remain unaccepted carried-forward blockers;
-this table does not certify their removal.
+**Founder decisions recorded:** the eight REMOVE proposals are approved with
+cleanup deferred. No function removal or DDL is authorized now. The unresolved
+historical identities are explicitly accepted as carried-forward Part 7 blockers;
+this table does not certify their removal or all-rail release readiness.
