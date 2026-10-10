@@ -37,10 +37,12 @@ import {
   STAY_SWAP_LEAD,
   stayCardModel,
   stayClosenessLine,
+  stayLinkView,
   stayMapsHref,
 } from "@/lib/stay-card";
+import type { StayLink } from "@shared/stay-link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { BedDouble, ChevronRight, ExternalLink, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -99,6 +101,8 @@ export interface AnchorPanelViewProps {
   /** When the occasion did not say whether it has a schedule (`TripsAnchor.fromFallback`). */
   fromFallback?: boolean;
   view?: WhereToStayView | null;
+  /** FU-S1-2: the routed pick's link once its card is shown (`GET …/stay-pick/link`); null = not fetched / none. */
+  openedStayLink?: StayLink | null;
   canChoose: boolean;
   busy?: boolean;
   /** The existing comparison starter, labelled "Add places I'm considering". */
@@ -175,12 +179,14 @@ function OwnForm({
  */
 export function StayPickCard({
   view,
+  openedStayLink,
   canChoose,
   busy,
   onStayHere,
   swapControl,
 }: {
   view: WhereToStayView;
+  openedStayLink?: StayLink | null;
   canChoose: boolean;
   busy: boolean;
   onStayHere?: (hotel: StayHotel) => void;
@@ -230,25 +236,34 @@ export function StayPickCard({
                 {stayClosenessLine(h.closeness)}
               </span>
             ) : null}
-            <span className="flex items-center gap-3">
-              <span className="flex items-center gap-1 text-xs">
-                <a
-                  href={stayMapsHref(h.name, view.city)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-[32px] items-center gap-1 font-semibold underline underline-offset-2"
-                  data-testid={`stay-pick-map-${h.kind}-${h.id}`}
-                >
-                  {STAY_MAP_LINK_LABEL} <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                </a>
-                <span className="text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-pick-map-attribution-${h.id}`}>
-                  · {GOOGLE_MAPS_ATTRIBUTION}
-                </span>
-              </span>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {(() => {
+                // FU-S1-2: the routed pick prefers the link fetched when its card was shown; otherwise the list's.
+                const lk = stayLinkView(routed && openedStayLink ? openedStayLink : h.stayLink, stayMapsHref(h.name, view.city));
+                return (
+                  <span className="flex flex-wrap items-center gap-x-1 text-xs">
+                    <a
+                      href={lk.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-[32px] items-center gap-1 whitespace-nowrap font-semibold underline underline-offset-2"
+                      data-testid={`stay-pick-map-${h.kind}-${h.id}`}
+                      data-link-kind={lk.kind}
+                    >
+                      {lk.label} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                    </a>
+                    {lk.attributed ? (
+                      <span className="whitespace-nowrap text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-pick-map-attribution-${h.id}`}>
+                        · {GOOGLE_MAPS_ATTRIBUTION}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              })()}
               {canChoose ? (
                 <button
                   type="button"
-                  className="inline-flex min-h-[40px] items-center rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60"
+                  className="inline-flex min-h-[40px] shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60"
                   onClick={() => onStayHere?.(h)}
                   disabled={busy}
                   data-testid={`stay-pick-stay-${h.kind}-${h.id}`}
@@ -434,7 +449,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
             {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
           </p>
         </div>
-        {view?.eligible ? <StayPickCard view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
+        {view?.eligible ? <StayPickCard view={view} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {canChoose ? (
           <div className="space-y-2 border-t border-border pt-3">
@@ -545,7 +560,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         </p>
       </div>
 
-      <StayPickCard view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} />
+      <StayPickCard view={view} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} />
 
       {mode === "unranked" ? (
         view.unranked === "no_located_items" ? (
@@ -620,6 +635,16 @@ export function AnchorPanel(
       seenSent.current = null;
     });
   }, [changedAt, props.canChoose, tripId]);
+  // FU-S1-2 (R393): the routed pick's card is shown ⇒ fetch its link ONCE per pick (`computedAt`) — at most
+  // one Google Details call server-side, never stored. A free plan has no pick and never asks.
+  const pickedAt = stay && stay.tier === "routed" && stay.pick ? stay.computedAt ?? "pick" : null;
+  const { data: openedLink } = useQuery<{ stayLink: StayLink | null }>({
+    queryKey: [`/api/trips/${tripId}/stay-pick/link`, pickedAt],
+    queryFn: async () => (await apiRequest("GET", `/api/trips/${tripId}/stay-pick/link`)).json(),
+    enabled: !!pickedAt && !!props.view?.eligible,
+    staleTime: Infinity,
+    retry: false,
+  });
   const reanchor = useMutation({
     mutationFn: async (itemId: string) => (await apiRequest("POST", `/api/trips/${tripId}/anchor/promote`, { itemId })).json(),
     onSuccess: () => {
@@ -631,6 +656,7 @@ export function AnchorPanel(
   return (
     <AnchorPanelView
       {...props}
+      openedStayLink={openedLink?.stayLink ?? null}
       busy={bind.isPending || reanchor.isPending || reopen.isPending}
       compareHref={props.lodgingSet ? `/plans/${tripId}/compare/${props.lodgingSet.id}` : null}
       onReopen={() => props.lodgingSet && reopen.mutate(props.lodgingSet.id)}
