@@ -15,6 +15,9 @@ the plan-scoped path is unchanged.
 "The targets config anchor carries `{ stationSlug, osmNodeId }`; SS-1b resolves each station once via the same
 path city-event venues use, stores lat/lng with OSM attribution on the fact row, never from Places."
 
+## Wording approved
+"LD 57 amendment approved — Leon" (Oct 10, 2026): station facts may carry an OSM-attributed coordinate.
+
 ## Built
 | Piece | Where |
 |---|---|

@@ -2452,7 +2452,7 @@ This document captures architectural decisions to maintain consistency across co
     coordinates is stored from Places outside a plan; Google durations are never cached across plans; Google
     photos are never stored."
     **AMENDED — A MARKET-LEVEL OFFICIAL REFRESH (decision-maker SS-1 ruling 1, Oct 10, 2026; ledger
-    `2026-10-10-ss1b-official-refresh`; no migration — FOUNDER WORDING REVIEW).** A second, bounded spend path
+    `2026-10-10-ss1b-official-refresh`; no migration — wording APPROVED by Leon, Oct 10, 2026).** A second, bounded spend path
     beside A6-3A: a scheduled job reads each active, official, terms-checked source that states
     `refresh_interval_days` and `cost_ceiling_cents_per_day`, on that interval and within that ceiling, OUTSIDE ANY
     PLAN, fetching only the targets in `server/config/content-source-targets.config.ts`. Its facts are
