@@ -2619,6 +2619,19 @@ This document captures architectural decisions to maintain consistency across co
     code in `server/data/iata-airports.json` (a typed airport name has none and keeps the fixed buffer); the
     engine routes airport ↔ stay legs, and the buffer check adds the routed leg's minutes. `leg-google-coords`
     queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
+    **AMENDED BY P0 (decision-maker rulings 1–7, Oct 10, 2026 — ledger `2026-10-10-p0-legs-baseline`; no
+    migration).** An unlocated stop is reported and BRIDGED (consecutive located stops are connected). A
+    default-transit `no_route` is asked ONCE as a drive, stored with `alternative_modes[0].reason=
+    'transit_unavailable'` and shown "No transit found — drive shown"; transit and drive both without a
+    route ⇒ no leg (E8 kept — never a stale leg) and a "no route found" count on the FD-3 day line. No time
+    of day ⇒ 10:00 local on the trip day, never server-now; a past day is never routed. With the engine off
+    a routed plan gets NOTHING written — the legacy "driving" writer is retired for routed plans. A
+    confirmed `source IS NULL` leg is re-routed on the plan's first engine run, keeps `confirmed`, and its
+    legacy row is superseded (`proposal_status` NULL, `origin='superseded'`), never deleted; the mode change
+    is logged (behaviour pins E9/E10 amended accordingly — sanctioned; a confirmed ENGINE leg is still never
+    recomputed). Held follow-up: move the marker to a nullable `superseded_at` with the next
+    `transport_legs` migration (`origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
+    is set by Leon in Deployments after the deploy carrying P0.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**

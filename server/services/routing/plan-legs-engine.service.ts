@@ -14,8 +14,8 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
-import { marketHasTransitCoverage, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
-import { LEG_MODE_STORED } from "@shared/travel-speeds";
+import { TRANSIT_UNAVAILABLE_REASON, marketHasTransitCoverage, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
+import { LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { StoredLegOption } from "@shared/leg-options";
 import { zonedWallClockToInstant, addCalendarDays } from "@shared/plan-timing";
 import { storage } from "../../storage";
@@ -24,9 +24,9 @@ import { formatDistance } from "../transport-leg-calculator";
 import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-facts/place-facts.service";
 import { stayPointForPlan } from "../stay-reroute.service";
 import { routingAdapter } from "./index";
-import { RouteRunMemo } from "./route-memo";
-import { routedFactsOf } from "./plan-legs";
-import { tripGetsRoutedLegs } from "./plan-routed-legs.service";
+import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
+import { legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
+import { tripGetsRoutedLegs, tripLegsShown } from "./plan-routed-legs.service";
 import { desiredPlanLegs, diffPlanLegs, legPairKey, selectedModeOf, type AirportStop, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
 export type PlanLegsResult =
@@ -44,6 +44,8 @@ export type PlanLegsResult =
       /** True when a caller's daily cap stopped the run; existing legs were left as last computed. */
       paused: boolean;
       skippedPairs: number;
+      /** P0 ruling 7: confirmed legacy legs re-routed this run (present only when > 0). */
+      superseded?: number;
     };
 
 function realPoint(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
@@ -169,7 +171,9 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
   const confirmedPairs = new Set(
     existingRows.filter((l) => l.proposalStatus === "confirmed").map((l) => legPairKey(l.dayNumber, l.fromActivityId, l.toActivityId)),
   );
-  const existing: ExistingEngineLeg[] = engineRows.map((l) => ({
+  // An engine leg an expert CONFIRMED (P0 ruling 7 writes these) is never the diff's to remove: its pair
+  // is in `confirmedPairs`, so it would read as "no longer wanted" and be deleted.
+  const existing: ExistingEngineLeg[] = engineRows.filter((l) => l.proposalStatus !== "confirmed").map((l) => ({
     id: l.id,
     dayNumber: l.dayNumber,
     legOrder: l.legOrder,
@@ -189,9 +193,11 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
   });
 
   const tripStart = trip.startDate ? String(trip.startDate).slice(0, 10) : null;
+  // P0 ruling 3: a leg with no time of day departs at a fixed local 10:00 on its trip day, never
+  // server-now; its hour bucket (in the leg key) stays its own.
   const departAt = (leg: DesiredLeg): Date | null => {
-    if (!tripStart || !leg.wallClock) return null;
-    return zonedWallClockToInstant(addCalendarDays(tripStart, leg.dayNumber - 1), leg.wallClock, trip.timezone);
+    if (!tripStart) return null;
+    return zonedWallClockToInstant(addCalendarDays(tripStart, leg.dayNumber - 1), legDepartureWallClock(leg.wallClock), trip.timezone);
   };
   const hasTransitCoverage = marketHasTransitCoverage(profile?.availableModes);
   return { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, hasTransitCoverage };
@@ -199,7 +205,7 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
 
 export async function computePlanLegs(
   tripId: string,
-  deps: { adapter?: RoutingAdapter | null; qualifies?: boolean } = {},
+  deps: { adapter?: RoutingAdapter | null; qualifies?: boolean; now?: () => Date } = {},
 ): Promise<PlanLegsResult> {
   const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
   if (!adapter) return { skipped: "engine_off" };
@@ -212,8 +218,27 @@ export async function computePlanLegs(
   // day-of re-check takes (`leg-recheck.service.ts`). Setting dates re-runs the compute.
   if (!trip.datesConfirmedAt) return { skipped: "dates_not_confirmed" };
 
-  const { desired, skipped, engineRows, confirmedPairs, existing, picked, googleFetchedAt, departAt } = await loadPlanLegContext(tripId, trip);
-  const diff = diffPlanLegs(desired, existing, confirmedPairs);
+  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt } = await loadPlanLegContext(tripId, trip);
+  // P0 ruling 3: a day that is already over is never routed — its legs are frozen (not asked, not
+  // recomputed, not deleted), so neither side of the diff sees that day.
+  const now = deps.now ? deps.now() : new Date();
+  const live = (dayNumber: number) => !planDayIsPast(trip.startDate ? String(trip.startDate) : null, dayNumber, trip.timezone, now);
+  const diff = diffPlanLegs(
+    desired.filter((d) => live(d.dayNumber)),
+    existing.filter((e) => live(e.dayNumber)),
+    confirmedPairs,
+  );
+
+  // P0 ruling 7 (ledger `2026-10-10-p0-legs-baseline`): a CONFIRMED legacy leg (`source IS NULL` — the
+  // pre-engine writer, every leg "driving") is re-routed on the plan's first engine run. The new row is
+  // an engine leg that KEEPS `confirmed` (and the expert's stamp, tip and pickup); the legacy row is
+  // superseded — hidden (`proposal_status` NULL, which every trip reader skips) and marked
+  // `origin='superseded'`, never deleted — and the mode change is logged in the plan's change log. The
+  // expert's own pick (`user_selected_mode`) is kept as the mode; else the engine's default. A pair with
+  // no route keeps its legacy leg as it was. Only pairs the plan still has, on days not yet over.
+  const legacyConfirmed = existingRows.filter((l) => l.source == null && l.proposalStatus === "confirmed" && l.variantId == null);
+  const desiredByPair = new Map(desired.map((d) => [d.pairKey, d] as const));
+  let superseded = 0;
 
   // No persistent route cache (Google terms, decision-maker Oct 7, 2026): the memo lives for THIS call,
   // seeded only from the plan's OWN legs — its engine legs and its latest run's version legs, by key —
@@ -222,7 +247,9 @@ export async function computePlanLegs(
   for (const l of [...engineRows, ...(await latestRunLegs(tripId))]) {
     const facts = routedFactsOf(l);
     const key = engineLegKey(l.alternativeModes);
-    if (facts && key && Number(l.estimatedDurationMinutes) > 0) {
+    // A fallback drive (P0 ruling 2) is stored under the transit key; it is never a transit answer, so
+    // it is not seeded (the diff keeps its own row by key without asking).
+    if (facts && key && !facts.transitUnavailable && Number(l.estimatedDurationMinutes) > 0) {
       memo.seed(key, { durationMin: Number(l.estimatedDurationMinutes), distanceM: Number(l.distanceMeters ?? 0), line: facts.line, fare: facts.fare, provenance: facts.provenance });
     }
   }
@@ -244,26 +271,119 @@ export async function computePlanLegs(
   let reused = 0;
   let noRoute = 0;
   let paused = false;
+  for (const old of legacyConfirmed) {
+    if (paused) break;
+    const want = desiredByPair.get(legPairKey(old.dayNumber, old.fromActivityId, old.toActivityId));
+    if (!want || !live(want.dayNumber)) continue;
+    const picked = old.userSelectedMode ? normalizeLegMode(old.userSelectedMode) : null;
+    const mode = picked ?? want.mode;
+    const asked = await routeWithTransitFallback(memo, adapter, { origin: want.from.point, destination: want.to.point, mode, departAt: departAt(want), hourBucket: want.hourBucket });
+    calls += asked.calls;
+    reused += asked.reused;
+    if (asked.outcome.kind === "paused") {
+      paused = true;
+      break;
+    }
+    if (asked.outcome.kind !== "ok") continue;
+    const route = asked.outcome.route;
+    const previousMode = old.userSelectedMode ?? old.recommendedMode ?? null;
+    const newMode = LEG_MODE_STORED[asked.mode];
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM trips WHERE id = ${tripId} FOR UPDATE`);
+      const claimed = await tx
+        .update(transportLegs)
+        .set({ proposalStatus: null, origin: "superseded", updatedAt: new Date() })
+        .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), isNull(transportLegs.source)))
+        .returning({ id: transportLegs.id });
+      if (!claimed.length) return; // a concurrent run superseded it first (§15)
+      await tx.insert(transportLegs).values({
+        tripId,
+        dayNumber: want.dayNumber,
+        legOrder: want.legOrder,
+        fromActivityId: want.from.id,
+        fromName: want.from.name,
+        fromLat: want.from.point.lat,
+        fromLng: want.from.point.lng,
+        toActivityId: want.to.id,
+        toName: want.to.name,
+        toLat: want.to.point.lat,
+        toLng: want.to.point.lng,
+        distanceMeters: route.distanceM,
+        distanceDisplay: formatDistance(route.distanceM),
+        recommendedMode: newMode,
+        userSelectedMode: !asked.transitUnavailable && picked ? LEG_MODE_STORED[picked] : null,
+        estimatedDurationMinutes: route.durationMin,
+        estimatedCostUsd: null,
+        alternativeModes: [
+          {
+            mode: newMode,
+            durationMinutes: route.durationMin,
+            costUsd: null,
+            energyCost: 0,
+            reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source,
+            line: route.line,
+            fare: route.fare,
+            legKey: routeLegKey(want.from.point, want.to.point, mode, want.hourBucket),
+            hourBucket: want.hourBucket,
+          },
+        ] as any,
+        energyCost: 0,
+        destinationProfile: trip.destination || null,
+        proposalStatus: "confirmed",
+        checkedBy: old.checkedBy ?? null,
+        checkedAt: old.checkedAt ?? null,
+        authorTip: old.authorTip ?? null,
+        pickupPoint: old.pickupPoint ?? null,
+        pickupTime: old.pickupTime ?? null,
+        pickupProviderServiceId: old.pickupProviderServiceId ?? null,
+        source: route.provenance.source,
+        calculatedAt: new Date(route.provenance.checkedAt),
+        ...googleCoordStamp(googleFetchedAt.get(want.from.id), googleFetchedAt.get(want.to.id)),
+      });
+      superseded += 1;
+    });
+    if (previousMode !== newMode) {
+      await storage
+        .createItineraryChange({
+          tripId,
+          activityId: want.from.id,
+          who: "Routing engine",
+          action: `Re-routed confirmed leg ${want.from.name} → ${want.to.name}: ${previousMode ?? "no mode"} → ${newMode}`,
+          changeType: "transport",
+          role: "system",
+          metadata: { supersededLegId: old.id, previousMode, newMode, transitUnavailable: asked.transitUnavailable },
+        } as any)
+        .catch((err: any) => console.error("[plan-legs] change-log write failed (non-fatal):", err?.message ?? err));
+    }
+  }
   const rows: Array<typeof transportLegs.$inferInsert> = [];
   const replacedIds: string[] = [];
   for (const leg of diff.compute) {
     if (paused) break;
-    const r = await memo.route(
-      { origin: leg.from.point, destination: leg.to.point, mode: leg.mode, departAt: departAt(leg), hourBucket: leg.hourBucket },
-      adapter,
-    );
-    if (r.outcome.kind === "paused") {
+    const asked = await routeWithTransitFallback(memo, adapter, {
+      origin: leg.from.point,
+      destination: leg.to.point,
+      mode: leg.mode,
+      departAt: departAt(leg),
+      hourBucket: leg.hourBucket,
+    });
+    calls += asked.calls;
+    reused += asked.reused;
+    if (asked.outcome.kind === "paused") {
       paused = true;
       break;
     }
-    if (r.reused) reused++;
-    else calls++;
     replacedIds.push(...(diff.replaces.get(leg.pairKey) ?? []));
-    if (r.outcome.kind === "no_route") {
+    if (asked.outcome.kind === "no_route") {
       noRoute++;
       continue;
     }
-    const route = r.outcome.route;
+    const route = asked.outcome.route;
+    const rowMode = asked.mode;
+    // The fallback drive keeps the DESIRED leg key (the transit one), so an unchanged pair is kept by
+    // the diff and not re-asked every run; the traveler's own pick is not carried onto a drive they
+    // did not choose.
+    const r = { legKey: leg.legKey };
     rows.push({
       tripId,
       dayNumber: leg.dayNumber,
@@ -278,19 +398,19 @@ export async function computePlanLegs(
       toLng: leg.to.point.lng,
       distanceMeters: route.distanceM,
       distanceDisplay: formatDistance(route.distanceM),
-      recommendedMode: LEG_MODE_STORED[leg.mode],
-      userSelectedMode: picked.get(leg.pairKey) ? LEG_MODE_STORED[picked.get(leg.pairKey)!] : null,
+      recommendedMode: LEG_MODE_STORED[rowMode],
+      userSelectedMode: !asked.transitUnavailable && picked.get(leg.pairKey) ? LEG_MODE_STORED[picked.get(leg.pairKey)!] : null,
       estimatedDurationMinutes: route.durationMin,
       estimatedCostUsd: null,
       // The ONE alternative entry carries the facts the row has no column for: line, fare (source
       // currency, never converted — L6) and the leg key the pair diff compares (ruling 10).
       alternativeModes: [
         {
-          mode: LEG_MODE_STORED[leg.mode],
+          mode: LEG_MODE_STORED[rowMode],
           durationMinutes: route.durationMin,
           costUsd: null,
           energyCost: 0,
-          reason: route.provenance.source,
+          reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source,
           line: route.line,
           fare: route.fare,
           legKey: r.legKey,
@@ -348,7 +468,30 @@ export async function computePlanLegs(
     noRoute,
     paused,
     skippedPairs: skipped.length,
+    ...(superseded ? { superseded } : {}),
   };
+}
+
+/**
+ * P0 legs rulings 2 and 6 (ledger `2026-10-10-p0-legs-baseline`): per plan day, how many legs the plan
+ * SHOULD have (the ONE `desiredPlanLegs`, bridges included) and shows none — a "no route found" marker
+ * the FD-3 day line counts and the re-check reports. Counted only where the engine could have answered:
+ * the engine on, a routed plan, chosen dates, a day not yet over. Empty map otherwise (nothing claimed).
+ * Read only — never writes a leg.
+ */
+export async function planLegGapsByDay(tripId: string, now: Date = new Date()): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (!routingAdapter()) return out;
+  if (!(await tripGetsRoutedLegs(tripId))) return out;
+  const trip = await storage.getTrip(tripId);
+  if (!trip || !trip.datesConfirmedAt) return out;
+  const { desired } = await loadPlanLegContext(tripId, trip);
+  const shown = new Set(((await tripLegsShown(tripId)) as any[]).map((l) => legPairKey(l.dayNumber, l.fromActivityId, l.toActivityId)));
+  for (const d of desired) {
+    if (planDayIsPast(trip.startDate ? String(trip.startDate) : null, d.dayNumber, trip.timezone, now)) continue;
+    if (!shown.has(d.pairKey)) out.set(d.dayNumber, (out.get(d.dayNumber) ?? 0) + 1);
+  }
+  return out;
 }
 
 /**

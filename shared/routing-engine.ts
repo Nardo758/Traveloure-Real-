@@ -141,6 +141,21 @@ export function defaultRoutedMode(origin: RoutePoint, destination: RoutePoint, h
   return hasTransitCoverage ? "transit" : "drive";
 }
 
+/**
+ * P0 legs ruling 2 (ledger `2026-10-10-p0-legs-baseline`): a default-transit leg Google answers with no
+ * route is asked ONCE as a drive, and the row says so — `alternative_modes[0].reason` carries this marker
+ * and the leg line reads `NO_TRANSIT_DRIVE_NOTE`. Transit and drive both without a route ⇒ no leg (E8).
+ */
+export const TRANSIT_UNAVAILABLE_REASON = "transit_unavailable";
+export const NO_TRANSIT_DRIVE_NOTE = "No transit found — drive shown";
+
+/**
+ * P0 legs ruling 3: a leg with no time of day departs at this LOCAL wall clock on its trip day — never
+ * server-now. The hour bucket is unchanged ("no time ⇒ its own bucket"); only the departure time sent
+ * moves, so route keys stay as they were.
+ */
+export const DEFAULT_LEG_DEPARTURE_WALL_CLOCK = "10:00";
+
 // ── The one line a routed leg reads (spec §3 LegRow; L6) ────────────────────────────────────────
 
 const MODE_WORD: Readonly<Record<RoutingMode, string>> = { walk: "walk", cycle: "cycle", transit: "transit", drive: "drive" };
