@@ -1,0 +1,1335 @@
+{
+  "loop": 1,
+  "scenario": "51d6937d-a10c-418d-b3fd-6c2ab3f21758",
+  "outcomes": [
+    {
+      "id": "enqueue.eligible",
+      "label": "All readable eligibility conditions passing",
+      "scope": "readable-record-subset",
+      "scenario": "af1ebd4f-d559-490f-a4ce-3ebe53bcb020",
+      "status": "PASS",
+      "observation": {
+        "rowId": 1,
+        "syntheticCalls": 1
+      }
+    },
+    {
+      "id": "enqueue.reject.unsubscribed",
+      "label": "Enqueue rejects unsubscribed",
+      "scope": "readable-record-subset",
+      "scenario": "86d3aff1-f190-4a39-ac32-246005a6841f",
+      "status": "PASS",
+      "observation": {
+        "reason": "marketing_unsubscribed",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.reject.suspended",
+      "label": "Enqueue rejects suspended",
+      "scope": "readable-record-subset",
+      "scenario": "70ef1631-de89-4129-bc7f-083488f78690",
+      "status": "PASS",
+      "observation": {
+        "reason": "account_suspended",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.reject.deleted",
+      "label": "Enqueue rejects deleted",
+      "scope": "readable-record-subset",
+      "scenario": "b8b951e0-e7d9-43c2-831e-1f110bbb789e",
+      "status": "PASS",
+      "observation": {
+        "reason": "account_deleted",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.reject.no_email",
+      "label": "Enqueue rejects no_email",
+      "scope": "readable-record-subset",
+      "scenario": "3fe595d5-d5db-44f2-a9d3-8b69c7028043",
+      "status": "PASS",
+      "observation": {
+        "reason": "no_account_recipient",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.reject.unknown_timezone",
+      "label": "Enqueue rejects unknown_timezone",
+      "scope": "readable-record-subset",
+      "scenario": "3a6397ea-b285-4f17-91fd-7fbd02b56418",
+      "status": "PASS",
+      "observation": {
+        "reason": "unknown_timezone_or_preferences",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.reject.empty",
+      "label": "Enqueue rejects empty",
+      "scope": "readable-record-subset",
+      "scenario": "65a65b1c-b6c7-44fa-b3ac-5c2a3eb4a813",
+      "status": "PASS",
+      "observation": {
+        "reason": "empty_cart",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.reject.no_stamp",
+      "label": "Enqueue rejects no_stamp",
+      "scope": "readable-record-subset",
+      "scenario": "2f092281-edd9-4dcf-9667-920d8e927689",
+      "status": "PASS",
+      "observation": {
+        "reason": "no_activity_stamp",
+        "rows": 0
+      }
+    },
+    {
+      "id": "idle.cart_reminder_1h.-1",
+      "label": "cart_reminder_1h: idle threshold -1ms",
+      "scope": "readable-record-subset",
+      "scenario": "a374c3b6-a487-491f-abab-0c9520e4ca8a",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 3600000,
+        "offsetMs": -1,
+        "eligible": false,
+        "reason": "not_idle"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_1h.0",
+      "label": "cart_reminder_1h: idle threshold 0ms",
+      "scope": "readable-record-subset",
+      "scenario": "586798d0-07a6-4442-95c0-65404a61ea2c",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 3600000,
+        "offsetMs": 0,
+        "eligible": true,
+        "reason": "eligible"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_1h.1",
+      "label": "cart_reminder_1h: idle threshold 1ms",
+      "scope": "readable-record-subset",
+      "scenario": "6de71a77-1605-4945-9c41-5156f255fc40",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 3600000,
+        "offsetMs": 1,
+        "eligible": true,
+        "reason": "eligible"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_1d.-1",
+      "label": "cart_reminder_1d: idle threshold -1ms",
+      "scope": "readable-record-subset",
+      "scenario": "7d1f0d51-63fc-4a04-9049-e8ccb08382b3",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 86400000,
+        "offsetMs": -1,
+        "eligible": false,
+        "reason": "not_idle"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_1d.0",
+      "label": "cart_reminder_1d: idle threshold 0ms",
+      "scope": "readable-record-subset",
+      "scenario": "3bf3c00d-d821-4c06-840d-b95ec87a203d",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 86400000,
+        "offsetMs": 0,
+        "eligible": true,
+        "reason": "eligible"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_1d.1",
+      "label": "cart_reminder_1d: idle threshold 1ms",
+      "scope": "readable-record-subset",
+      "scenario": "87e9d9ec-97d8-41c9-ad2b-23541780245f",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 86400000,
+        "offsetMs": 1,
+        "eligible": true,
+        "reason": "eligible"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_3d.-1",
+      "label": "cart_reminder_3d: idle threshold -1ms",
+      "scope": "readable-record-subset",
+      "scenario": "1fec1459-1c1f-4028-973f-de4272bd4771",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 259200000,
+        "offsetMs": -1,
+        "eligible": false,
+        "reason": "not_idle"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_3d.0",
+      "label": "cart_reminder_3d: idle threshold 0ms",
+      "scope": "readable-record-subset",
+      "scenario": "55aa8b9b-b7a2-4061-9bf6-70968aeff52d",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 259200000,
+        "offsetMs": 0,
+        "eligible": true,
+        "reason": "eligible"
+      }
+    },
+    {
+      "id": "idle.cart_reminder_3d.1",
+      "label": "cart_reminder_3d: idle threshold 1ms",
+      "scope": "readable-record-subset",
+      "scenario": "5daa3eeb-5c89-4999-99f9-85590d41129d",
+      "status": "PASS",
+      "observation": {
+        "thresholdMs": 259200000,
+        "offsetMs": 1,
+        "eligible": true,
+        "reason": "eligible"
+      }
+    },
+    {
+      "id": "enqueue.step_sent",
+      "label": "Sent step cannot enqueue again in the same sequence",
+      "scope": "readable-record-subset",
+      "scenario": "23bc98de-3374-4c85-9dce-b8a3559938a5",
+      "status": "PASS",
+      "observation": {
+        "rows": 1,
+        "syntheticCalls": 1
+      }
+    },
+    {
+      "id": "enqueue.fourth",
+      "label": "Fourth reminder is impossible",
+      "scope": "readable-record-subset",
+      "scenario": "cdc02e14-2d1f-489e-b10a-e9e7c3f87acf",
+      "status": "PASS",
+      "observation": {
+        "reason": "no_due_step_or_unsupported_step",
+        "rows": 0
+      }
+    },
+    {
+      "id": "enqueue.item_changed_today",
+      "label": "Sent change notice suppresses today's reminder",
+      "scope": "readable-record-subset",
+      "scenario": "6fbb3fad-e67b-4786-87b3-e090be12a1cc",
+      "status": "PASS",
+      "observation": {
+        "reason": "item_change_sent_today"
+      }
+    },
+    {
+      "id": "sweep.sequential",
+      "label": "Two sweeps in a row",
+      "scope": "readable-record-subset",
+      "scenario": "f12efe43-11a7-4c34-8cdf-5df548efbc37",
+      "status": "PASS",
+      "observation": {
+        "rows": 1,
+        "enqueued": 1,
+        "duplicates": 1
+      }
+    },
+    {
+      "id": "sweep.concurrent",
+      "label": "Two sweeps at once",
+      "scope": "readable-record-subset",
+      "scenario": "430235e5-d3ac-41b5-89e4-8185c7180612",
+      "status": "PASS",
+      "observation": {
+        "rows": 1,
+        "enqueued": 1,
+        "duplicates": 1
+      }
+    },
+    {
+      "id": "sweep.empty",
+      "label": "Nothing due succeeds with zero enqueues",
+      "scope": "readable-record-subset",
+      "scenario": "81371d12-2fef-43ee-a869-eeaf292f8459",
+      "status": "PASS",
+      "observation": {
+        "enqueued": 0,
+        "skipReasons": {
+          "not_idle": 1
+        }
+      }
+    },
+    {
+      "id": "payment.canonical_provider.before_send",
+      "label": "canonical_provider: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "8c9f8cef-ff1e-455d-9b0e-77c7017f7d94",
+      "status": "PASS",
+      "observation": {
+        "rowId": 17,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "canonical_provider",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.canonical_provider.after_send",
+      "label": "canonical_provider: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "1416924b-1207-4931-8199-2811fbb7ca46",
+      "status": "PASS",
+      "observation": {
+        "rowId": 18,
+        "syntheticCalls": 1,
+        "rail": "canonical_provider",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.legacy_booking.before_send",
+      "label": "legacy_booking: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "efa7993b-4746-419a-96c7-4d89e26efecb",
+      "status": "PASS",
+      "observation": {
+        "rowId": 19,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "legacy_booking",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.legacy_booking.after_send",
+      "label": "legacy_booking: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "3d0a3d88-26dc-47bb-be5a-9caf01804f12",
+      "status": "PASS",
+      "observation": {
+        "rowId": 20,
+        "syntheticCalls": 1,
+        "rail": "legacy_booking",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.stripe_intent_ledger.before_send",
+      "label": "stripe_intent_ledger: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "3a6646ff-ae68-44ed-9b54-f552fa8d56a3",
+      "status": "PASS",
+      "observation": {
+        "rowId": 21,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "stripe_intent_ledger",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.stripe_intent_ledger.after_send",
+      "label": "stripe_intent_ledger: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "3bee4001-1a10-4875-9811-265c50e686a2",
+      "status": "PASS",
+      "observation": {
+        "rowId": 22,
+        "syntheticCalls": 1,
+        "rail": "stripe_intent_ledger",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.credits.before_send",
+      "label": "credits: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "ae2e38bf-42c6-4628-b829-8cf71ee606b2",
+      "status": "PASS",
+      "observation": {
+        "rowId": 23,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "credits",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.credits.after_send",
+      "label": "credits: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "07c998ac-a99c-4156-a400-12b02d9656c5",
+      "status": "PASS",
+      "observation": {
+        "rowId": 24,
+        "syntheticCalls": 1,
+        "rail": "credits",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.wallet.before_send",
+      "label": "wallet: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "e8cbbd98-e091-4ac1-aa77-6b834143a147",
+      "status": "PASS",
+      "observation": {
+        "rowId": 25,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "wallet",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.wallet.after_send",
+      "label": "wallet: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "aab2105d-078d-480a-b233-a320e716f299",
+      "status": "PASS",
+      "observation": {
+        "rowId": 26,
+        "syntheticCalls": 1,
+        "rail": "wallet",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.trip_pass.before_send",
+      "label": "trip_pass: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "31444f2a-ff15-4e6b-8d3d-432829d039eb",
+      "status": "PASS",
+      "observation": {
+        "rowId": 27,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "trip_pass",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.trip_pass.after_send",
+      "label": "trip_pass: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "c10ee7c5-4c3c-4c7b-85b9-a5f082c54cdf",
+      "status": "PASS",
+      "observation": {
+        "rowId": 28,
+        "syntheticCalls": 1,
+        "rail": "trip_pass",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.partner_request.before_send",
+      "label": "partner_request: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "02213f27-d798-4416-8a8f-ceb7fc94b280",
+      "status": "PASS",
+      "observation": {
+        "rowId": 29,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "partner_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.partner_request.after_send",
+      "label": "partner_request: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "4423eca2-a5cb-4d29-9a40-b69c785485aa",
+      "status": "PASS",
+      "observation": {
+        "rowId": 30,
+        "syntheticCalls": 1,
+        "rail": "partner_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.coordination.before_send",
+      "label": "coordination: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "b550d70c-49c7-42b4-96ac-74692ce40113",
+      "status": "PASS",
+      "observation": {
+        "rowId": 31,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "coordination",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.coordination.after_send",
+      "label": "coordination: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "07606cb5-9fee-4e45-bafa-7d9bcfbbd2b0",
+      "status": "PASS",
+      "observation": {
+        "rowId": 32,
+        "syntheticCalls": 1,
+        "rail": "coordination",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.coordination_booking.before_send",
+      "label": "coordination_booking: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "d1943203-11a0-440d-8a44-bef842dc8205",
+      "status": "PASS",
+      "observation": {
+        "rowId": 33,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "coordination_booking",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.coordination_booking.after_send",
+      "label": "coordination_booking: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "cfa07e01-b266-4ea4-9d2f-6cc677ebd8fd",
+      "status": "PASS",
+      "observation": {
+        "rowId": 34,
+        "syntheticCalls": 1,
+        "rail": "coordination_booking",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.coordination_credit.before_send",
+      "label": "coordination_credit: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "f62127ff-dc65-4340-b60a-cd750191f257",
+      "status": "PASS",
+      "observation": {
+        "rowId": 35,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "coordination_credit",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.coordination_credit.after_send",
+      "label": "coordination_credit: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "81405016-c14e-4719-a4ea-289c780486a4",
+      "status": "PASS",
+      "observation": {
+        "rowId": 36,
+        "syntheticCalls": 1,
+        "rail": "coordination_credit",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.ready_made_purchase.before_send",
+      "label": "ready_made_purchase: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "a0da7f6e-1215-44f0-8a54-ba2216c2e6c8",
+      "status": "PASS",
+      "observation": {
+        "rowId": 37,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "ready_made_purchase",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.ready_made_purchase.after_send",
+      "label": "ready_made_purchase: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "791835a3-c785-429d-b171-40ca2ec07ff5",
+      "status": "PASS",
+      "observation": {
+        "rowId": 38,
+        "syntheticCalls": 1,
+        "rail": "ready_made_purchase",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.template_purchase.before_send",
+      "label": "template_purchase: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "6cbe6602-c6b1-4d90-ad77-45de29760ec5",
+      "status": "PASS",
+      "observation": {
+        "rowId": 39,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "template_purchase",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.template_purchase.after_send",
+      "label": "template_purchase: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "e178e913-cfa1-4f8b-89db-6ea7925214aa",
+      "status": "PASS",
+      "observation": {
+        "rowId": 40,
+        "syntheticCalls": 1,
+        "rail": "template_purchase",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.expert_tip.before_send",
+      "label": "expert_tip: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "9b2f7763-e411-4acc-a76b-97f37caae6cf",
+      "status": "PASS",
+      "observation": {
+        "rowId": 41,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "expert_tip",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.expert_tip.after_send",
+      "label": "expert_tip: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "6cd4fd18-475b-4337-9cd4-5d72a46b08a1",
+      "status": "PASS",
+      "observation": {
+        "rowId": 42,
+        "syntheticCalls": 1,
+        "rail": "expert_tip",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.expert_request.before_send",
+      "label": "expert_request: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "131e896b-7c1b-487a-94d3-42b1bdefa08e",
+      "status": "PASS",
+      "observation": {
+        "rowId": 43,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "expert_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.expert_request.after_send",
+      "label": "expert_request: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "9b57012e-eab5-44cc-b95e-b898af6e70ce",
+      "status": "PASS",
+      "observation": {
+        "rowId": 44,
+        "syntheticCalls": 1,
+        "rail": "expert_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.booking_request.before_send",
+      "label": "booking_request: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "d6838927-7235-4785-8a62-01aa9c584a71",
+      "status": "PASS",
+      "observation": {
+        "rowId": 45,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "booking_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.booking_request.after_send",
+      "label": "booking_request: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "6599a577-a10a-4663-9554-9304c59c5873",
+      "status": "PASS",
+      "observation": {
+        "rowId": 46,
+        "syntheticCalls": 1,
+        "rail": "booking_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.provider_request.before_send",
+      "label": "provider_request: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "41d4d3c8-16ab-449a-a95b-3fbc27883d9b",
+      "status": "PASS",
+      "observation": {
+        "rowId": 47,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "provider_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.provider_request.after_send",
+      "label": "provider_request: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "10dc8631-aca2-4b40-ab18-c77c04ddff13",
+      "status": "PASS",
+      "observation": {
+        "rowId": 48,
+        "syntheticCalls": 1,
+        "rail": "provider_request",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.group_transaction.before_send",
+      "label": "group_transaction: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "ad492238-8e41-4d24-bc73-358766e90d00",
+      "status": "PASS",
+      "observation": {
+        "rowId": 49,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "group_transaction",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.group_transaction.after_send",
+      "label": "group_transaction: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "626c28a5-2b63-4fa2-9e75-e0108fd4e332",
+      "status": "PASS",
+      "observation": {
+        "rowId": 50,
+        "syntheticCalls": 1,
+        "rail": "group_transaction",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.content_invoice.before_send",
+      "label": "content_invoice: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "a9de970c-e3ec-4d84-8d60-67302e535d6b",
+      "status": "PASS",
+      "observation": {
+        "rowId": 51,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "content_invoice",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.content_invoice.after_send",
+      "label": "content_invoice: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "04b636f8-dc0a-4579-8cdf-d72d975a11bb",
+      "status": "PASS",
+      "observation": {
+        "rowId": 52,
+        "syntheticCalls": 1,
+        "rail": "content_invoice",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.booking_component.before_send",
+      "label": "booking_component: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "d9f5d528-cc6b-492f-b6ba-729388565aeb",
+      "status": "PASS",
+      "observation": {
+        "rowId": 53,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "booking_component",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.booking_component.after_send",
+      "label": "booking_component: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "b510ed76-9c3d-4233-ab8d-470917362563",
+      "status": "PASS",
+      "observation": {
+        "rowId": 54,
+        "syntheticCalls": 1,
+        "rail": "booking_component",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.partial_settlement.before_send",
+      "label": "partial_settlement: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "eba99e2f-a9fb-49d3-9cba-862401113116",
+      "status": "PASS",
+      "observation": {
+        "rowId": 55,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "rail": "partial_settlement",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.partial_settlement.after_send",
+      "label": "partial_settlement: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "8e265456-8098-4931-af3b-eaf83d936427",
+      "status": "PASS",
+      "observation": {
+        "rowId": 56,
+        "syntheticCalls": 1,
+        "rail": "partial_settlement",
+        "stimulus": "recorded-birth-not-authoritative-writer"
+      }
+    },
+    {
+      "id": "payment.typed_fee_ledger.before_send",
+      "label": "typed_fee_ledger: recorded birth before synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "57a0f9f9-8cbb-4e4d-b54c-9a7789c26bca",
+      "status": "FAIL",
+      "error": "exception:Error"
+    },
+    {
+      "id": "payment.typed_fee_ledger.after_send",
+      "label": "typed_fee_ledger: recorded birth after synthetic send",
+      "scope": "readable-record-subset",
+      "scenario": "153bd8c2-8633-411f-97df-4dd1ad00bae2",
+      "status": "FAIL",
+      "error": "exception:Error"
+    },
+    {
+      "id": "cancel.cart_empty",
+      "label": "Live cancel reason cart_empty; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "2eceab79-9f43-45ea-a790-cdf7290e567b",
+      "status": "PASS",
+      "observation": {
+        "rowId": 59,
+        "reason": "cart_empty",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.unsubscribed",
+      "label": "Live cancel reason unsubscribed; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "ec8366a1-a363-4134-84a1-9e80dfb1d742",
+      "status": "PASS",
+      "observation": {
+        "rowId": 60,
+        "reason": "unsubscribed",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.account_gone",
+      "label": "Live cancel reason account_gone; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "ae028c68-37c4-4d4f-a3a9-0ec663f15310",
+      "status": "PASS",
+      "observation": {
+        "rowId": 61,
+        "reason": "account_gone",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.no_email",
+      "label": "Live cancel reason no_email; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "06e3ff87-1cd3-4326-8331-b02676f40bf7",
+      "status": "PASS",
+      "observation": {
+        "rowId": 62,
+        "reason": "no_email",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.superseded",
+      "label": "Live cancel reason superseded; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "0d055073-82fb-44ac-8d2b-dcd87f28c857",
+      "status": "PASS",
+      "observation": {
+        "rowId": 63,
+        "reason": "superseded",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.item_changed",
+      "label": "Live cancel reason item_changed; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "90b8988d-f0a8-4817-8e85-887ab87e3b74",
+      "status": "PASS",
+      "observation": {
+        "rowId": 64,
+        "reason": "item_changed",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.payment_correlation_ambiguous",
+      "label": "Live cancel reason payment_correlation_ambiguous; cancelled row terminal",
+      "scope": "readable-record-subset",
+      "scenario": "461706f9-1fb2-4a33-8452-74021d795e95",
+      "status": "PASS",
+      "observation": {
+        "rowId": 65,
+        "reason": "payment_correlation_ambiguous",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.suspended",
+      "label": "Suspended account mid-sequence",
+      "scope": "readable-record-subset",
+      "scenario": "706d3db2-cdd6-40ee-9c2d-d68ca1426a9a",
+      "status": "PASS",
+      "observation": {
+        "rowId": 66,
+        "reason": "account_gone",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "cancel.missing_email",
+      "label": "Email removed after queue",
+      "scope": "readable-record-subset",
+      "scenario": "e512c09a-2710-4ea4-a873-67388073f394",
+      "status": "PASS",
+      "observation": {
+        "rowId": 67,
+        "reason": "no_email",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "sellout.before_send",
+      "label": "Sell-out before due reminder handoff",
+      "scope": "readable-record-subset",
+      "scenario": "da89a5c2-04a9-4a54-b6ef-83104cc9b59f",
+      "status": "PASS",
+      "observation": {
+        "rowId": 68,
+        "reason": "item_changed",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "sellout.after_send",
+      "label": "Sell-out after due reminder handoff",
+      "scope": "readable-record-subset",
+      "scenario": "24737de5-8ed4-4d25-8b3a-cf6333934942",
+      "status": "PASS",
+      "observation": {
+        "syntheticCalls": 1,
+        "sellOutAfterHandoff": true
+      }
+    },
+    {
+      "id": "sellout.final_read_handoff",
+      "label": "Hostile sell-out between final read and provider handoff",
+      "scope": "readable-record-subset",
+      "scenario": "9c8c7ead-a23e-47d0-bc15-e74712d0421c",
+      "status": "FAIL",
+      "error": "assertion:Availability changed before handoff: status=sent, syntheticCalls=1; payment-only residual approval does not cover inventory"
+    },
+    {
+      "id": "price.9.99",
+      "label": "Integer-cent price boundary 9.99",
+      "scope": "readable-record-subset",
+      "scenario": "eed24f67-6c71-4456-81d9-4949aea40c21",
+      "status": "PASS",
+      "observation": {
+        "priceDeltaCents": -1,
+        "changes": 1,
+        "reasons": [
+          "price_down"
+        ]
+      }
+    },
+    {
+      "id": "price.10.00",
+      "label": "Integer-cent price boundary 10.00",
+      "scope": "readable-record-subset",
+      "scenario": "75cc5096-ae3c-4200-aa79-7593b3b40681",
+      "status": "PASS",
+      "observation": {
+        "priceDeltaCents": 0,
+        "changes": 0,
+        "reasons": []
+      }
+    },
+    {
+      "id": "price.10.01",
+      "label": "Integer-cent price boundary 10.01",
+      "scope": "readable-record-subset",
+      "scenario": "83efc49a-2770-4914-8cef-b0061b711d28",
+      "status": "PASS",
+      "observation": {
+        "priceDeltaCents": 1,
+        "changes": 1,
+        "reasons": [
+          "price_up"
+        ]
+      }
+    },
+    {
+      "id": "change.no_snapshot",
+      "label": "Legacy cart without snapshot is skipped, not guessed",
+      "scope": "readable-record-subset",
+      "scenario": "3637bb9c-075b-4a2f-a972-8338eecbb29a",
+      "status": "PASS",
+      "observation": {
+        "reason": "no_snapshot",
+        "rows": 0
+      }
+    },
+    {
+      "id": "change.notified_once",
+      "label": "Same catalog change queues and marks once",
+      "scope": "readable-record-subset",
+      "scenario": "09029949-941a-44da-8289-e395d7b11c3d",
+      "status": "PASS",
+      "observation": {
+        "rows": 1,
+        "reason": "already_notified"
+      }
+    },
+    {
+      "id": "change.unsubscribed_eligibility",
+      "label": "Change notice exempt from consent and quiet hours",
+      "scope": "readable-record-subset",
+      "scenario": "cf4da8d7-39e6-4f23-9425-bd9b26797e0a",
+      "status": "FAIL",
+      "error": "assertion:Expected values to be strictly equal:"
+    },
+    {
+      "id": "change.unsubscribed_sent",
+      "label": "Unsubscribed traveler actually receives change notice",
+      "scope": "unresolved-delivery-guarantee",
+      "scenario": "958e3466-2616-4e46-9c3c-53de7a02780c",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "must_have_payment_ordering_unknown",
+        "actualDeliveryProof": false,
+        "rowId": 73
+      }
+    },
+    {
+      "id": "guest.claim",
+      "label": "Guest receives nothing; authenticated claim starts reminders",
+      "scope": "readable-record-subset",
+      "scenario": "3e48ac72-9573-4151-9d3d-1563fba20590",
+      "status": "PASS",
+      "observation": {
+        "beforeClaim": 0,
+        "afterClaim": 1
+      }
+    },
+    {
+      "id": "resume.cap",
+      "label": "New sequence ignores old step history but respects daily cap",
+      "scope": "readable-record-subset",
+      "scenario": "ead9d5d4-4e96-485c-9a04-b3d2d39dae23",
+      "status": "PASS",
+      "observation": {
+        "newSequence": true,
+        "dailyCapRespected": true
+      }
+    },
+    {
+      "id": "quiet.08:59:59",
+      "label": "Quiet-window send boundary 08:59:59",
+      "scope": "readable-record-subset",
+      "scenario": "10b0297b-6b05-460c-ae4d-edb0512fb81d",
+      "status": "PASS",
+      "observation": {
+        "time": "08:59:59",
+        "status": "pending",
+        "calls": 0,
+        "reason": "outside_marketing_window"
+      }
+    },
+    {
+      "id": "quiet.09:00:00",
+      "label": "Quiet-window send boundary 09:00:00",
+      "scope": "readable-record-subset",
+      "scenario": "026f4c5c-e161-4db8-b0eb-5b8fc4ded074",
+      "status": "PASS",
+      "observation": {
+        "time": "09:00:00",
+        "status": "sent",
+        "calls": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "quiet.19:59:59",
+      "label": "Quiet-window send boundary 19:59:59",
+      "scope": "readable-record-subset",
+      "scenario": "b7e07c91-97a0-4ac3-8916-b71c89ffc1bf",
+      "status": "PASS",
+      "observation": {
+        "time": "19:59:59",
+        "status": "sent",
+        "calls": 1,
+        "reason": null
+      }
+    },
+    {
+      "id": "quiet.20:00:00",
+      "label": "Quiet-window send boundary 20:00:00",
+      "scope": "readable-record-subset",
+      "scenario": "c2f282aa-0ece-4ec5-92c6-041e4a06280f",
+      "status": "PASS",
+      "observation": {
+        "time": "20:00:00",
+        "status": "pending",
+        "calls": 0,
+        "reason": "outside_marketing_window"
+      }
+    },
+    {
+      "id": "quiet.unknown_at_send",
+      "label": "Timezone disappears after queue; no send and reason recorded",
+      "scope": "readable-record-subset",
+      "scenario": "2f801fb3-277e-402e-8195-fd22c3c78eee",
+      "status": "PASS",
+      "observation": {
+        "status": "cancelled",
+        "reason": "unknown_timezone",
+        "calls": 0
+      }
+    },
+    {
+      "id": "marketing.cart_priority",
+      "label": "Cart beats itinerary reminder for one marketing day",
+      "scope": "readable-record-subset",
+      "scenario": "188b4392-76f4-4258-80f0-b1c3a466a6c2",
+      "status": "FAIL",
+      "error": "exception:Error"
+    },
+    {
+      "id": "fault.skipped_sweep",
+      "label": "Deliberately skipped cart still cancelled by dispatcher",
+      "scope": "readable-record-subset",
+      "scenario": "18f8f7cc-e608-4d29-a39b-96f019b28896",
+      "status": "PASS",
+      "observation": {
+        "rowId": 81,
+        "reason": "item_changed",
+        "calls": 0,
+        "terminal": true,
+        "skippedCandidates": 0
+      }
+    },
+    {
+      "id": "fault.candidate_query",
+      "label": "Candidate query exception produces FAILED heartbeat",
+      "scope": "readable-record-subset",
+      "scenario": "a61c888b-733b-4bcb-b826-737eee34cd62",
+      "status": "FAIL",
+      "error": "exception:TypeError"
+    },
+    {
+      "id": "fault.check.initial",
+      "label": "Dispatcher initial check throws: terminal cancellation, zero send",
+      "scope": "readable-record-subset",
+      "scenario": "f6de5f6d-4e34-4a88-a28e-d61501f8282e",
+      "status": "PASS",
+      "observation": {
+        "rowId": 82,
+        "reason": "check_failed",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "fault.check.final",
+      "label": "Dispatcher final check throws: terminal cancellation, zero send",
+      "scope": "readable-record-subset",
+      "scenario": "d823c31a-6807-4611-a1b9-1f36ce437f47",
+      "status": "PASS",
+      "observation": {
+        "rowId": 83,
+        "reason": "check_failed",
+        "calls": 0,
+        "terminal": true
+      }
+    },
+    {
+      "id": "payment.residual",
+      "label": "Approved marketing-only final-read/payment residual window measured",
+      "scope": "readable-record-subset",
+      "scenario": "8ff12d58-1b27-4001-a8e6-3c48dac25701",
+      "status": "PASS",
+      "observation": {
+        "postReadToInvokeMs": 37.210963999999876,
+        "syntheticCalls": 1,
+        "acceptedMarketingWindowOnly": true
+      }
+    },
+    {
+      "id": "stripe.recorded_replays",
+      "label": "Three recorded Stripe-like signals never duplicate email",
+      "scope": "readable-record-subset",
+      "scenario": "4cc31d8f-8217-4563-9ca1-38ff213f7ac3",
+      "status": "PASS",
+      "observation": {
+        "replays": 3,
+        "syntheticCalls": 1,
+        "actualWebhookCalls": 0
+      }
+    },
+    {
+      "id": "stripe.recorded_competition",
+      "label": "Concurrent recorded success signals plus competing dispatchers",
+      "scope": "readable-record-subset",
+      "scenario": "4c81edfd-1ab2-42bf-8680-102918f95395",
+      "status": "PASS",
+      "observation": {
+        "rowId": 86,
+        "reason": "paid",
+        "calls": 0,
+        "terminal": true,
+        "actualWebhookCalls": 0,
+        "actualSuccessPageCalls": 0
+      }
+    },
+    {
+      "id": "unknown.stripe_activity_before_local_persistence_or_unstamped_lifecycle",
+      "label": "All-rail coverage gap: stripe_activity_before_local_persistence_or_unstamped_lifecycle",
+      "scope": "unresolved-payment-coverage",
+      "scenario": "a87d5a58-4cbb-45ff-a09d-f978860dab8b",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "stripe_activity_before_local_persistence_or_unstamped_lifecycle",
+        "failClosed": true,
+        "allRailProof": false
+      }
+    },
+    {
+      "id": "unknown.off_platform_partner_payment_without_local_update",
+      "label": "All-rail coverage gap: off_platform_partner_payment_without_local_update",
+      "scope": "unresolved-payment-coverage",
+      "scenario": "6f2df5b1-fe06-489a-83ad-8540cc76627f",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "off_platform_partner_payment_without_local_update",
+        "failClosed": true,
+        "allRailProof": false
+      }
+    },
+    {
+      "id": "unknown.fee_ledger_source_without_proven_traveler_ownership",
+      "label": "All-rail coverage gap: fee_ledger_source_without_proven_traveler_ownership",
+      "scope": "unresolved-payment-coverage",
+      "scenario": "2223dcd7-0615-4aba-ae5a-f1d5bdb9c734",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "fee_ledger_source_without_proven_traveler_ownership",
+        "failClosed": true,
+        "allRailProof": false
+      }
+    },
+    {
+      "id": "stripe.actual.replay_3x",
+      "label": "Actual payment handlers: replay_3x",
+      "scope": "unresolved-authoritative-handler-coverage",
+      "scenario": "c49fd179-b9e9-45f3-8b37-edf4164b4ba1",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "authentic-handler-writer-proof-not-established",
+        "entryStatus": 503,
+        "authenticatedEventsProcessed": 0,
+        "actualSuccessPageCalls": 0,
+        "detail": "Entry probe only; no signing credentials or replacement payment writer injected"
+      }
+    },
+    {
+      "id": "stripe.actual.webhook_success_together",
+      "label": "Actual payment handlers: webhook_success_together",
+      "scope": "unresolved-authoritative-handler-coverage",
+      "scenario": "fe0dc9bc-ae2e-4dbe-96d3-0bd09f3da1a0",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "authentic-handler-writer-proof-not-established",
+        "entryStatus": 503,
+        "authenticatedEventsProcessed": 0,
+        "actualSuccessPageCalls": 0,
+        "detail": "Entry probe only; no signing credentials or replacement payment writer injected"
+      }
+    }
+  ],
+  "realEmails": 0,
+  "actualExternalPaymentCalls": 0,
+  "releaseBlocked": true
+}

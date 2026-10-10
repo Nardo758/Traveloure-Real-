@@ -1,0 +1,93 @@
+{
+  "loop": 6,
+  "scenario": "e23fb4bc-7e06-44a9-ab40-7dd3f9f3a805",
+  "outcomes": [
+    {
+      "id": "sellout.final_read_handoff",
+      "label": "Hostile sell-out between final read and provider handoff",
+      "scope": "readable-record-subset",
+      "scenario": "7b5b9e42-a85d-45a0-aee0-561151beb568",
+      "status": "FAIL",
+      "error": "assertion:Availability changed before handoff: status=sent, syntheticCalls=1; payment-only residual approval does not cover inventory"
+    },
+    {
+      "id": "change.unsubscribed_sent",
+      "label": "Unsubscribed traveler actually receives change notice",
+      "scope": "unresolved-delivery-guarantee",
+      "scenario": "048a9189-19e4-469d-bc01-352454b109d6",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "must_have_payment_ordering_unknown",
+        "actualDeliveryProof": false,
+        "rowId": 2
+      }
+    },
+    {
+      "id": "unknown.stripe_activity_before_local_persistence_or_unstamped_lifecycle",
+      "label": "All-rail coverage gap: stripe_activity_before_local_persistence_or_unstamped_lifecycle",
+      "scope": "unresolved-payment-coverage",
+      "scenario": "701f2955-48ec-4ced-86f0-bea519b111de",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "stripe_activity_before_local_persistence_or_unstamped_lifecycle",
+        "failClosed": true,
+        "allRailProof": false
+      }
+    },
+    {
+      "id": "unknown.off_platform_partner_payment_without_local_update",
+      "label": "All-rail coverage gap: off_platform_partner_payment_without_local_update",
+      "scope": "unresolved-payment-coverage",
+      "scenario": "cbb0ab6e-031d-41e8-8ba9-a66952fde2de",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "off_platform_partner_payment_without_local_update",
+        "failClosed": true,
+        "allRailProof": false
+      }
+    },
+    {
+      "id": "unknown.fee_ledger_source_without_proven_traveler_ownership",
+      "label": "All-rail coverage gap: fee_ledger_source_without_proven_traveler_ownership",
+      "scope": "unresolved-payment-coverage",
+      "scenario": "6fd97a9e-faf5-430b-bec9-1fb100d5818e",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "fee_ledger_source_without_proven_traveler_ownership",
+        "failClosed": true,
+        "allRailProof": false
+      }
+    },
+    {
+      "id": "stripe.actual.replay_3x",
+      "label": "Actual payment handlers: replay_3x",
+      "scope": "unresolved-authoritative-handler-coverage",
+      "scenario": "d897604d-7597-4bae-a704-6eae32108f68",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "authentic-handler-writer-proof-not-established",
+        "entryStatus": 503,
+        "authenticatedEventsProcessed": 0,
+        "actualSuccessPageCalls": 0,
+        "detail": "Entry probe only; no signing credentials or replacement payment writer injected"
+      }
+    },
+    {
+      "id": "stripe.actual.webhook_success_together",
+      "label": "Actual payment handlers: webhook_success_together",
+      "scope": "unresolved-authoritative-handler-coverage",
+      "scenario": "0572d66f-9fd5-46c0-a2f9-b542fe38a378",
+      "status": "BLOCKED",
+      "observation": {
+        "blocked": "authentic-handler-writer-proof-not-established",
+        "entryStatus": 503,
+        "authenticatedEventsProcessed": 0,
+        "actualSuccessPageCalls": 0,
+        "detail": "Entry probe only; no signing credentials or replacement payment writer injected"
+      }
+    }
+  ],
+  "realEmails": 0,
+  "actualExternalPaymentCalls": 0,
+  "releaseBlocked": true
+}

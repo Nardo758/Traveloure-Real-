@@ -1,0 +1,24 @@
+{
+  "golden": {
+    "passing": 143,
+    "failing": 0,
+    "interpretation": "reported PASS entries, not 143 unique database cases"
+  },
+  "guards": {
+    "passing": 78,
+    "failing": 0
+  },
+  "retained": {
+    "topLevelTests": 13,
+    "passing": 13,
+    "failing": 0,
+    "skipped": 0,
+    "isolatedSchemaRemoved": true
+  },
+  "typecheck": {
+    "baseline": 117,
+    "errors": 117
+  },
+  "realEmails": 0,
+  "runtimeChanges": false
+}

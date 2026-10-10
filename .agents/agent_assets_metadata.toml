@@ -398,3 +398,17 @@ mtime_ms = 1791651264223
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/34ffd3ff-b765-4f4a-a645-0cfff1fc35ab/bd328c7f-cc50-47ba-9deb-dce87a3a1e26"
 storage_version_token = "1791651265042621"
 content_type = "text/html"
+
+[[outputs]]
+id = "-L8oM-uw2FyWOh3v_U5l5"
+uri = "file://reports/automation-part8-verification.md"
+type = "text"
+title = "Part 8 — scenario matrix and fault-test report"
+description = "Complete 107-row matrix: 100 rows closed, 7 structural risks. Includes loop counts, regression results and evidence references. Production sending remains blocked."
+logical_id = "2abd4a85-0cb8-4dfa-9e82-b2a935e4f3f9"
+content_hash = "sha256:f62c78a0b13c5f188c3533c067bd2aa1a12211174fdd923dec4a4ec889b9d8b4"
+size = 22057
+mtime_ms = 1791660188071
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/2abd4a85-0cb8-4dfa-9e82-b2a935e4f3f9/d46fa0a3-a0a3-48fd-9636-691a429247a2"
+storage_version_token = "1791660336902853"
+content_type = "text/markdown"

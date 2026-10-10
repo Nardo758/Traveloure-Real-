@@ -3064,6 +3064,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traveloure
           MESSAGING_DEV_FINGERPRINT: 96b4d02d7161da67c35e6d9aeed73112
         run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/cart-email-state.test.ts server/__tests__/cart-email-state.db.test.ts
+      - name: Commerce scenario and fault matrix (isolated; unresolved rules fail the gate)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traveloure
+          MESSAGING_DEV_FINGERPRINT: 96b4d02d7161da67c35e6d9aeed73112
+        # This is a database test runner, not a provider-free static guard.
+        run: node --no-warnings scripts/check-commerce-scenario-matrix.cjs --isolated-db
       # T-2. The directory mixes pure and DB suites, so one database is cheaper
       # than a split; seven of these files were already reachable through their
       # own per-file jobs and are re-run here, which is the 2026-09-14 precedent
