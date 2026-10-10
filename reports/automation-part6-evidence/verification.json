@@ -1,6 +1,9 @@
 {
   "part": 6,
-  "status": "DEVELOPMENT_IMPLEMENTED_NOT_CERTIFIED",
+  "status": "DEV-CLOSED",
+  "releaseCertified": false,
+  "readiness": "READY FOR PART 7",
+  "blockerTable": "reports/automation-release-blockers.md",
   "releaseBlocked": true,
   "native": {
     "freshLoops": 2,
@@ -12,8 +15,10 @@
     "realProviderCalls": 0,
     "realDeliveredEmails": 0,
     "realProviderReceiptIds": [],
-    "actualStripeWebhookReplay": "OPEN",
-    "actualWebhookSuccessPageConcurrency": "OPEN",
+    "actualStripeWebhookReplay": "PASS_TWO_FRESH_LOOPS_DEFAULT_PROCESSOR_SYNTHETIC_SIGNED_EVENT",
+    "actualWebhookSuccessPageConcurrency": "PASS_TWO_FRESH_LOOPS_EXISTING_ACTIONS_MOCKED_LOOKUP",
+    "actualAuthMiddlewareAndBrowserCoverage": false,
+    "providerSDKAndNetworkCoverage": "DEFERRED_RELEASE_BLOCKER",
     "mustHaveOrdering": "BLOCKED"
   },
   "regression": {
@@ -29,7 +34,62 @@
     "part5": "PASS_TWO_NATIVE_LOOPS",
     "part3": "PASS_TWO_NATIVE_LOOPS_AFTER_APPROVED_FIXTURE_CORRECTION"
   },
+  "completionPass": {
+    "nativeTestCasesPassed": 7,
+    "nativeTestCasesFailed": 0,
+    "nativeTestCasesSkipped": 0,
+    "independentDisposableSchemasRemoved": 6,
+    "part6Suites": [
+      {"name": "retained verifier", "loops": 2, "consecutiveCleanLoops": 2, "checkGroupsPerLoop": 24, "hostileCategoriesPerLoop": 5},
+      {"name": "send addendum", "loops": 2, "consecutiveCleanLoops": 2, "checkGroupsPerLoop": 14},
+      {"name": "actual handler replay", "loops": 2, "consecutiveCleanLoops": 2, "checkGroupsPerLoop": 4}
+    ],
+    "allReadableDescriptorsProvenInSubset": 21,
+    "originalDescriptorsProvenByFreshPart4": 17,
+    "addedDescriptorsProvenByFreshPart6": 4,
+    "allRailCertified": false,
+    "failureProof": [
+      "initial check exception",
+      "final check exception",
+      "real SQL transaction abort with cancellation persisted after rollback",
+      "bounded timeout with no late transport continuation",
+      "malformed or unknown read results",
+      "pre-queue read exception"
+    ],
+    "localWindowProof": ["19:59 sends", "20:00 holds", "08:59 holds", "crossing 20:00 after final read holds", "next eligible minute rounded exactly"],
+    "itemExemptionProof": ["consent disabled", "timezone absent", "outside marketing window", "must-have ordering hold retained", "second price change cancels"],
+    "actualHandlerOrders": ["three same-event webhook deliveries", "webhook then success", "success then webhook", "webhook and success concurrent"],
+    "realStripeCalls": 0,
+    "realProviderCalls": 0,
+    "realDeliveredEmails": 0,
+    "providerReceiptIds": [],
+    "part4Status": "DEV-CLOSED",
+    "part5Status": "DEV-CLOSED",
+    "part6Status": "DEV-CLOSED",
+    "normalReminderSending": "BLOCKED",
+    "mustHaveOrdering": "BLOCKED",
+    "freshGolden": {"passed": 143, "failed": 0, "stages": 13},
+    "freshGuards": {"passed": 78, "failed": 0},
+    "typecheck": {"before": 117, "after": 117, "sameLocationsAndCodes": true, "changedFileErrors": 0},
+    "temporaryBuild": "PASS_WITH_EXISTING_IMPORT_META_COMMONJS_WARNINGS",
+    "developmentRestart": "RUNNING",
+    "screenshot": "NORMAL_SIGNED_OUT_PAGE_TWO_EXPECTED_UNAUTHENTICATED_401_REQUESTS",
+    "freshBootMigrationCount": "NOT_CLAIMED",
+    "initialFailuresCorrected": [
+      "UTC timestamp assertion appended duplicate Z; test corrected",
+      "optional guard CLI --guards selected wrong mode; correct --guards-only passed"
+    ],
+    "part7Started": false
+  },
   "marketingWindowMs": [
+    {"loop": 1, "scenario": "ordinary", "afterVerifier": 0.325370, "wholeVerifierToInvoke": 8.879659},
+    {"loop": 1, "scenario": "payment_after_check_injected_pause", "afterVerifier": 19.850503, "wholeVerifierToInvoke": 26.956545},
+    {"loop": 1, "scenario": "competing_claims", "afterVerifier": 0.281100, "wholeVerifierToInvoke": 5.748960},
+    {"loop": 2, "scenario": "ordinary", "afterVerifier": 0.288423, "wholeVerifierToInvoke": 6.714955},
+    {"loop": 2, "scenario": "payment_after_check_injected_pause", "afterVerifier": 18.761761, "wholeVerifierToInvoke": 24.953370},
+    {"loop": 2, "scenario": "competing_claims", "afterVerifier": 0.349145, "wholeVerifierToInvoke": 6.264571}
+  ],
+  "historicalMarketingWindowMs": [
     {"loop": 1, "scenario": "ordinary", "afterVerifier": 0.063353, "wholeVerifierToInvoke": 5.893401},
     {"loop": 1, "scenario": "payment_after_check_injected_pause", "afterVerifier": 20.022339, "wholeVerifierToInvoke": 26.161775},
     {"loop": 1, "scenario": "competing_claims", "afterVerifier": 0.008660, "wholeVerifierToInvoke": 5.580979},
@@ -39,7 +99,7 @@
   ],
   "windowLimit": "Synthetic invocation only; deliberate pauses; not production bound, network delivery or exact SQL snapshot age",
   "persistentSchemaChanges": 0,
-  "developmentBootNewlyAppliedMigrations": 0,
+  "historicalDevelopmentBootNewlyAppliedMigrations": 0,
   "migrationRegistrations": 0,
   "paymentWriterChanges": 0,
   "productionChanges": 0,

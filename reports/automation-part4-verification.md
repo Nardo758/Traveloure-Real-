@@ -1,4 +1,15 @@
-# Part 4 — cart reminders: development proof, NOT CERTIFIED
+# Part 4 — cart reminders: DEV-CLOSED; release blocked
+
+**DEV-CLOSED; not RELEASE-CERTIFIED.** Under the founder's clarified definition,
+this means implemented in development, two clean readable-record-subset loops,
+all remaining gaps carried as explicit release blockers, and release still blocked.
+See [the consolidated release blockers](automation-release-blockers.md).
+
+The Part 6 completion pass re-ran this part's own native and pure-policy tests:
+both obtained two clean fresh randomized loops with zero failed/skipped tests.
+The original evidence below remains historical evidence, not all-rail certification.
+Its 17-source inventory was subsequently extended by four read-only mappings in
+Part 6; fresh tests cover the original 17 and the additional four separately.
 
 ## Decision and release boundary
 
@@ -13,7 +24,7 @@ always UNKNOWN in the paid helper; an empty local ledger is not proof of no paym
 The isolated test-only readable-record override is not release permission.
 Provider transport is unavailable for cart reminders. No real emails were sent.
 No payment writer, checkout behavior, cart writer, schema, migration registry,
-production configuration or feature flag was changed. Part 5 was not started.
+production configuration or feature flag was changed in the original Part 4 scope.
 Queue identity and calendar-day reservations use existing outbox JSONB only;
 the paid helper never writes payment, booking or cart metadata.
 

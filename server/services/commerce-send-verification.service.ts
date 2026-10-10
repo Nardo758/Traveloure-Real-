@@ -4,7 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
 import { emailOutbox } from "@shared/schema";
 import { readCurrentCartActivity } from "./cart-email-state.service";
@@ -19,6 +19,7 @@ import {
   reserveMarketingDay, type MarketingTx,
 } from "./marketing-delivery-policy.service";
 import { marketingPreferences } from "./itinerary-followup-email";
+import type { MarketingPreferences } from "./itinerary-followup-email";
 import { buildCartReminderEmail, isCartReminder } from "./cart-reminder-email";
 import {
   atEmailProviderHandoff, EmailSendCancelled, type SendEmailParams, type SendEmailResult,
@@ -36,10 +37,12 @@ export interface CartSendFacts {
 }
 export type SendDecision =
   | { eligible: false; reason: string; detail?: string }
-  | { eligible: true; facts: CartSendFacts; paymentInstant?: string };
+  | { eligible: true; facts: CartSendFacts; paymentInstant?: string; preferences?: MarketingPreferences };
 
 /** Never put recipient addresses or transport credentials in timing evidence. */
 export const commerceSendVerification = {
+  beforeCheck: null as null | ((reader: Reader) => Promise<void>),
+  checkTimeoutMs: 5_000,
   beforeFinalRead: null as null | (() => Promise<void>),
   afterFinalRead: null as null | (() => Promise<void>),
   timings: [] as { queryAndVerificationMs: number; postReadToInvokeMs: number;
@@ -135,7 +138,7 @@ async function readFacts(reader: Reader, identity: CommerceIdentity, now: Date) 
  * Shared pre-queue/send verifier. Facts originate from live server reads only.
  * No synthetic subset override exists outside a disposable NODE_ENV=test schema.
  */
-export async function verifyCommerceSend(
+async function verifyCommerceSendUnchecked(
   reader: Reader, identity: CommerceIdentity, expected?: CartSendFacts,
 ): Promise<SendDecision> {
   if (!cartReminderVerificationEnabled() ||
@@ -163,6 +166,13 @@ export async function verifyCommerceSend(
       factsDigest(expected.items) !== observed.facts.digest)) {
     return { eligible: false, reason: "item_changed", detail: "queued_facts_changed" };
   }
+  const preferences = identity.marketing ? marketingPreferences(account.preferences) : undefined;
+  if (expected && identity.marketing) {
+    if (!preferences) return { eligible: false, reason: "unknown_timezone" };
+    if (marketingWindow(await cartReminderNow(reader), preferences).quiet) {
+      return { eligible: false, reason: "outside_marketing_window" };
+    }
+  }
   // LAST database read: no outbox reservation/write is performed after this check before handoff.
   const paid = await readTravelerCommerceActivity(reader, identity.travelerId,
     observed.clock.lastActivityMs, observed.clock.lastActivityMs);
@@ -171,15 +181,52 @@ export async function verifyCommerceSend(
   if (!(subset ? paid.recordedClear : paid.allowed)) {
     return { eligible: false, reason: paid.reason ?? "payment_rail_unknown", detail: paid.unknownRails.join(",") };
   }
-  return { eligible: true, facts: observed.facts, paymentInstant: paid.eligibilityInstant };
+  return { eligible: true, facts: observed.facts, paymentInstant: paid.eligibilityInstant,
+    ...(preferences ? { preferences } : {}) };
+}
+
+/** A timed-out action may finish reading later, but it has no transport continuation. */
+async function checked(action: () => Promise<SendDecision>): Promise<SendDecision> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const isolated = process.env.NODE_ENV === "test" && cartReminderVerificationEnabled();
+  const timeout = isolated ? commerceSendVerification.checkTimeoutMs : 5_000;
+  try {
+    const result = await Promise.race([
+      Promise.resolve().then(action),
+      new Promise<SendDecision>(resolve => {
+        timer = setTimeout(() => resolve({ eligible: false, reason: "check_failed", detail: "check_timeout" }), timeout);
+      }),
+    ]);
+    if (!result || typeof result.eligible !== "boolean" ||
+        (!result.eligible && typeof result.reason !== "string")) {
+      return { eligible: false, reason: "check_failed", detail: "unknown_check_result" };
+    }
+    return result;
+  } catch {
+    // Do not serialize exception messages: they may contain recipients or credentials.
+    return { eligible: false, reason: "check_failed", detail: "check_exception" };
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+export async function verifyCommerceSend(
+  reader: Reader, identity: CommerceIdentity, expected?: CartSendFacts,
+): Promise<SendDecision> {
+  return checked(async () => {
+    if (process.env.NODE_ENV === "test" && cartReminderVerificationEnabled()) {
+      await commerceSendVerification.beforeCheck?.(reader);
+    }
+    return verifyCommerceSendUnchecked(reader, identity, expected);
+  });
 }
 
 export async function deliverVerifiedCommerce(
   outboxId: number, syntheticSender?: (params: SendEmailParams) => Promise<SendEmailResult>,
 ) {
-  const [initial] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1);
+  const [initial] = await db.select({ ...getTableColumns(emailOutbox),
+    leaseToken: sql<string | null>`${emailOutbox.retryAfter}::text`,
+  }).from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1);
   const meta = initial?.metadata as Record<string, any> | undefined;
-  return db.transaction(async tx => {
+  try { return await db.transaction(async tx => {
     if (typeof meta?.travelerId === "string") await lockMarketingTraveler(tx, meta.travelerId);
     const [row] = await tx.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1).for("update");
     if (!row || row.status !== "processing") return "skipped";
@@ -189,6 +236,16 @@ export async function deliverVerifiedCommerce(
         metadata: { ...metadata, cancelReason: reason, ...(detail ? { cancelDetail: detail } : {}) },
         updatedAt: new Date() }).where(eq(emailOutbox.id, outboxId));
       return "cancelled";
+    };
+    const holdWindow = async () => {
+      const account = (await tx.execute(sql`SELECT preferences FROM users WHERE id=${metadata?.travelerId}`)).rows[0];
+      const preferences = marketingPreferences(account?.preferences);
+      if (!preferences) return cancel("unknown_timezone");
+      const now = await cartReminderNow(tx);
+      await tx.update(emailOutbox).set({ status: "pending", lastError: "outside_marketing_window",
+        retryAfter: nextCartMarketingWindow(now, preferences), updatedAt: new Date() })
+        .where(eq(emailOutbox.id, outboxId));
+      return "deferred";
     };
     if (metadata?.cancelReason) return cancel(String(metadata.cancelReason), metadata.cancelDetail);
     if (metadata?.travelerId !== meta?.travelerId || metadata?.sequenceId !== meta?.sequenceId) {
@@ -206,7 +263,8 @@ export async function deliverVerifiedCommerce(
       scope: metadata.cartScopeRaw, recipient: row.toEmail, marketing };
     if (!metadata.cartSendFacts) return cancel("item_changed", "missing_queued_facts");
     const first = await verifyCommerceSend(tx, identity, metadata.cartSendFacts);
-    if (!first.eligible) return cancel(first.reason, first.detail);
+    if (!first.eligible) return first.reason === "outside_marketing_window"
+      ? holdWindow() : cancel(first.reason, first.detail);
     if (item && !itemEnvelopeMatches(row, metadata, first.facts)) {
       return cancel("item_changed", "quoted_item_payload_mismatch");
     }
@@ -242,7 +300,8 @@ export async function deliverVerifiedCommerce(
       idempotencyKey: `cart-reminder-${outboxId}` };
     let begin = 0, returned = 0, paymentInstant: string | undefined;
     try {
-      result = await atEmailProviderHandoff(async () => {
+       result = await atEmailProviderHandoff(async () => {
+        const decision = await checked(async () => {
         if (isolatedTest) await commerceSendVerification.beforeFinalRead?.();
         begin = performance.now();
         const final = await verifyCommerceSend(tx, identity, metadata.cartSendFacts);
@@ -250,7 +309,15 @@ export async function deliverVerifiedCommerce(
         if (!final.eligible) return { eligible: false, reason: final.reason, detail: final.detail };
         paymentInstant = final.paymentInstant;
         if (isolatedTest) await commerceSendVerification.afterFinalRead?.();
-        return { eligible: true };
+        // Synchronous server-clock check at handoff; payment remains the last DB read.
+        const handoffNow = isolatedTest && cartReminderVerification.now
+          ? new Date(cartReminderVerification.now) : new Date();
+        if (final.preferences && marketingWindow(handoffNow, final.preferences).quiet) {
+          return { eligible: false, reason: "outside_marketing_window" };
+        }
+        return final;
+        });
+        return decision;
       }, () => {
         const invoked = performance.now();
         if (isolatedTest) commerceSendVerification.timings.push({
@@ -260,7 +327,8 @@ export async function deliverVerifiedCommerce(
         return syntheticSender!(payload);
       });
     } catch (error) {
-      if (error instanceof EmailSendCancelled) return cancel(error.reason, error.detail);
+      if (error instanceof EmailSendCancelled) return error.reason === "outside_marketing_window"
+        ? holdWindow() : cancel(error.reason, error.detail);
       result = { ok: false, error: "Commerce verification or synthetic provider failed" };
     }
     const attempts = row.attemptCount + 1, dead = attempts >= row.maxAttempts;
@@ -270,5 +338,17 @@ export async function deliverVerifiedCommerce(
       retryAfter: result.ok || dead ? null : new Date(now.getTime() + 5 * 60_000), updatedAt: new Date(),
     }).where(eq(emailOutbox.id, outboxId));
     return result.ok ? "sent" : "failed";
-  });
+  }); } catch {
+    // A failed SQL statement aborts its transaction. Persist the safe outcome only
+    // after rollback, and only for the original processing lease; never overwrite
+    // a newer claim or resurrect a terminal row.
+    if (initial?.status === "processing") await db.execute(sql`
+      UPDATE email_outbox SET status='cancelled', last_error='check_failed', retry_after=NULL,
+        metadata=coalesce(metadata,'{}'::jsonb) ||
+          '{"cancelReason":"check_failed","cancelDetail":"verification_transaction_failed"}'::jsonb,
+        updated_at=NOW()
+      WHERE id=${outboxId} AND status='processing'
+        AND retry_after IS NOT DISTINCT FROM CAST(${initial.leaseToken} AS timestamp)`);
+    return "cancelled";
+  }
 }

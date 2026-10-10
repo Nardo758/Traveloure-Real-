@@ -326,7 +326,8 @@ test("Part 6: two fresh native loops; live cancellation, recorded-signal orderin
       commerceSendVerification.beforeFinalRead = async () => { throw new Error("Injected final read failure"); };
       await deliverQueuedEmail(faultId);
       commerceSendVerification.beforeFinalRead = null;
-      assert.equal((await row(faultId)).status, "failed");
+      assert.equal((await row(faultId)).status, "cancelled");
+      assert.equal((await row(faultId)).metadata.cancelReason, "check_failed");
       assert.equal(calls.get(`cart-reminder-${faultId}`) ?? 0, 0);
       await db.execute(sql`UPDATE email_outbox SET status='cancelled', retry_after=NULL WHERE id=${faultId}`);
       attacks.push("final verifier failure never invokes provider");
@@ -357,6 +358,7 @@ test("Part 6: two fresh native loops; live cancellation, recorded-signal orderin
     console.log(JSON.stringify({ part: 6, loops: reports, timings: commerceSendVerification.timings }));
   } finally {
     commerceSendVerification.beforeFinalRead = null; commerceSendVerification.afterFinalRead = null;
+    commerceSendVerification.beforeCheck = null; commerceSendVerification.checkTimeoutMs = 5_000;
     cartReminderVerification.now = null; cartReminderVerification.recordedRailsOnly = false;
     _outboxTestHooks.sendEmailFn = undefined;
     await pool.end();

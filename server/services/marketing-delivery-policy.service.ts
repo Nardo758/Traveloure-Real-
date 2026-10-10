@@ -19,8 +19,11 @@ export function marketingWindow(now: Date, preferences: MarketingPreferences) {
 }
 
 export function nextCartMarketingWindow(now: Date, preferences: MarketingPreferences, blockedDay?: string) {
+  // Start at the next absolute minute boundary so a 20:00:59 hold resumes at
+  // 09:00:00, not 09:00:59. Intl handles local offsets and DST.
+  const start = Math.floor(now.getTime() / 60_000) * 60_000;
   for (let minutes = 1; minutes <= 48 * 60; minutes++) {
-    const date = new Date(now.getTime() + minutes * 60_000);
+    const date = new Date(start + minutes * 60_000);
     const clock = marketingWindow(date, preferences);
     if (!clock.quiet && clock.day !== blockedDay) return date;
   }

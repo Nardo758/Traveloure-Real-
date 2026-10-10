@@ -1,10 +1,171 @@
 # Part 6 — Verify at send
 
-Status: **development-implemented; NOT certified; release BLOCKED**.
+Status: **DEV-CLOSED; not RELEASE-CERTIFIED; release BLOCKED**.
 
-The bounded Part 6 tests passed two fresh randomized loops. The separately
-approved retained Part 3 fixture correction also passed two fresh randomized
-loops, without weakening its assertions. No Part 7 work has started.
+**READY FOR PART 7 — development progression only.** Parts 4, 5 and 6 meet the
+founder's clarified DEV-CLOSED definition. Part 7 has not started and will not
+start until the founder supplies it.
+
+DEV-CLOSED means implemented in development, two clean readable-record-subset
+loops, every open gap documented as a release blocker, and release blocked.
+RELEASE-CERTIFIED requires every rule, no UNKNOWN rails, real delivery proof
+and production checks. None of Parts 4–6 claims RELEASE-CERTIFIED.
+
+The single [carried-forward release blocker table](automation-release-blockers.md)
+is authoritative. Real delivery proof belongs to Part 9. Provenance proposals
+remain separate and unapproved for implementation.
+
+## Completion pass: current implementation
+
+- Reused the existing shared read-only paid reader; no second payment checker,
+  new mapping or payment writer change. Twenty-one readable descriptors remain
+  readable subsets, not certified lifecycle coverage.
+- Exceptions, malformed/unknown read results and bounded timeouts fail closed
+  with `check_failed`. Raw exception messages are not persisted in recipient
+  metadata. A timed-out read has no late transport continuation.
+- Real SQL failure rolls back the verification transaction. Its cancellation
+  reason is persisted afterward only for the exact original processing lease;
+  it cannot overwrite a newer claim or resurrect a terminal row.
+- Marketing window is checked during dispatch and synchronously immediately
+  before synthetic invocation. Crossing 20:00 after the final payment read holds
+  instead of sending; payment remains the last database read before handoff.
+- Outside-window rows stay pending without a cancel reason, to the exact next
+  eligible minute. An unrestricted recipient resumes at 09:00 local; stricter
+  existing preferences are respected. Item-change notices are exempt.
+- Item notices verify live target and quoted payload, account/recipient,
+  contents/sequence and paid state. A second price change cancels as
+  `item_changed`: sequence unchanged, queued quote obsolete. Eligible must-have
+  notices still hold with `must_have_payment_ordering_unknown`.
+- Existing atomic claims and terminal-cancellation behavior were reused,
+  not redesigned. Existing email adapter/helper, registry, scheduler and outbox
+  remain; no ordinary email behavior or flag was changed.
+
+## Current per-rule proof
+
+Each suite uses fresh randomized development fixtures and two consecutive clean
+loops. Retained Part 6: 24 groups + five hostile categories per loop; addendum:
+14 groups; actual-handler suite: four groups. No tests failed or were skipped
+in the final pass.
+
+| Rule | Loops / clean | Current evidence and boundary |
+|---|---|---|
+| paid, cart_empty, unsubscribed, item_changed | 2 / 2 | Each reason persisted; direct/drain/admin replay never sends |
+| superseded, account_gone, no_email | 2 / 2 | Current identity/sequence, suspension/deletion and changed address proved |
+| payment_correlation_ambiguous | 2 / 2 | Reason persisted, zero invocation |
+| Default payment UNKNOWN | 2 / 2 | `payment_rail_unknown`; normal path remains blocked |
+| All 21 currently readable descriptors | 2 / 2 | Fresh Part 4 proof for original 17 plus retained Part 6 proof for added four; ownership/birth/lifecycle/time boundaries, never all-rail certification |
+| Pre-queue check | 2 / 2 | Stale facts/consent and read faults refuse enqueue |
+| Thrown check, real SQL abort, timeout, unknown read | 2 / 2 | `check_failed`; late resolution cannot invoke transport |
+| Payment before/after final read | 2 / 2 | Before cancels; after uses measured marketing-only exception |
+| Repeated actual signed webhook, three deliveries | 2 / 2 | Default real event processor; one processed event, zero stale cart emails |
+| Actual webhook/success action | 2 / 2 | Webhook-first, success-first and concurrent; unchanged actions, mocked Stripe retrieval |
+| Sweep intentionally omits a cart | 2 / 2 | Dispatcher independently catches stale facts |
+| Cancelled rows terminal | 2 / 2 | Direct, drain, admin retry, forced retry and late check completion |
+| Local 19:59, 20:00, 08:59 | 2 / 2 | Sent, held, held; no quiet-hour cancellation |
+| Cross 20:00 after final read | 2 / 2 | Final synchronous server-clock guard holds before invoke |
+| Hold to exact eligible minute | 2 / 2 | 20:00:59 → 09:00:00, not 09:00:59 |
+| Two direct dispatchers plus drain | 2 / 2 | Atomic claim and locks: exactly one synthetic marketing invocation |
+| Item-change exemption and second price change | 2 / 2 | Consent off, no timezone, outside window accepted for verification; paid/account/cart/recipient safeguards remain; obsolete quote cancels |
+| Must-have payment/send ordering | 2 / 2 safe hold | Actual ordering is an explicit carried-forward release blocker; no must-have provider handoff |
+| Real provider/network and delivery receipts | Deferred | Explicit release blocker; real delivery belongs to Part 9, not silently skipped |
+
+Actual-handler tests invoke existing route actions, including genuine webhook
+signature verification and the default processor. Stripe lookup is mocked.
+Success action receives an authenticated owner fixture; authentication middleware
+and browser navigation are not claimed. No payment code was edited.
+
+## Fresh measured marketing window
+
+| Loop / scenario | Verifier return → synthetic invoke, ms | Verifier entry → invoke, ms |
+|---|---:|---:|
+| 1 ordinary | 0.325 | 8.880 |
+| 1 deliberately delayed payment-after-check | 19.851 | 26.957 |
+| 1 competing claims | 0.281 | 5.749 |
+| 2 ordinary | 0.288 | 6.715 |
+| 2 deliberately delayed payment-after-check | 18.762 | 24.953 |
+| 2 competing claims | 0.349 | 6.265 |
+
+Delayed cases contain a recorded payment update and at least 15 ms injected pause.
+These measure synthetic SDK invocation, not network delivery, a production upper
+bound or exact SQL snapshot age. The recorded SQL instant is statement start,
+not a globally trusted eligibility instant. Acceptance applies to marketing only.
+
+## Fresh Part Gate and regressions
+
+| Gate | Development status | Evidence / release limit |
+|---|---|---|
+| G1 Trigger | PASS | Fresh Part 4/5 selection and pre-queue safety; payment UNKNOWNs retained |
+| G2 Recipient | PASS | Account/email/ownership/guest safeguards; browser/auth proof deferred |
+| G3 Content | PASS | Facts and item envelope; full language/client rendering deferred |
+| G4 Once-only | PASS | Atomic claims and actual handler replays; provider ambiguity deferred |
+| G5 Cancellation | PASS | Every required reason plus ambiguity/check failure; terminal retries |
+| G6 Consent/limits | PASS | Marketing window/cap/priority; item exemptions; exact-minute holds |
+| G7 Failure | PASS | SQL abort, JS failure, timeout and unknown read; no send on error |
+| G8 Concurrency | PASS | Payment/send orders, real handler actions and competing dispatchers |
+| G9 Observability | PASS | Reasons/status/retry and measured window; admin/production proof deferred |
+| G10 Proof | PASS for development | Two clean fresh loops per suite; real delivery deferred to Part 9 |
+
+- Final native batch: **7/7 native test cases passed across six isolated schemas**;
+  each retains its two-loop protocol, including Part 4 native and pure-policy loops.
+- Fresh golden: **143/143 passed**, 13 stages; no failed/skipped tests.
+- Fresh guard batch: **78/78 passed**, after a provider-free temporary build.
+- Typecheck: **117 before / 117 after**, identical locations/codes; zero errors
+  in changed files. Baseline not raised; global typecheck is not clean.
+- Development app restarted once and rendered normally in a fresh screenshot.
+  Two signed-out requests returned 401. This pass does not claim a new captured
+  boot migration count.
+- Six disposable schemas removed. Zero real Stripe API calls, provider sends,
+  delivered emails or receipt IDs. Synthetic transport is not delivery.
+
+## Completion-pass touch list and failures
+
+Runtime modified:
+- `server/services/commerce-send-verification.service.ts`
+- `server/services/marketing-delivery-policy.service.ts`
+
+Tests:
+- Modified `server/routes/__tests__/commerce-verify-at-send.db.test.ts`
+- New `server/routes/__tests__/commerce-send-addendum.db.test.ts`
+- New `server/routes/__tests__/commerce-payment-handler-replay.db.test.ts`
+
+Reports/evidence:
+- `reports/automation-part4-verification.md`
+- `reports/automation-part5-verification.md`
+- This report and `reports/automation-part6-evidence/verification.json`
+- New `reports/automation-release-blockers.md`
+
+No change to the approved optional `email.service.ts` was needed.
+No registry, CI or claim-writer edits; existing test wiring guard passes.
+Temporary verification worktrees reuse only the four retained Part 1 test/report
+harness files over current runtime, not retired runtime/outbox/registry copies.
+The standing closure definition was saved in existing project memory before
+implementation approval; it is not a runtime change.
+
+Refused/untouched: payment/checkout/booking/cart-authoring writers, payment
+metadata, schema/migrations/registration, production, secrets and feature flags.
+Existing held heartbeat SQL remains unregistered.
+
+Failures remain explicit:
+- A new time assertion appended `Z` to an already normalized timestamp and
+  failed with `Invalid time value`. SQL-formatted UTC assertion fixed the
+  test, not hold behavior; final two fresh loops passed.
+- Optional guard invocation mistakenly used `--guards` instead of
+  `--guards-only`. It selected the default suite without DB authorization,
+  refusing those stages before fixture writes. Correct guard invocation passed
+  78/78; this is not hidden as an initial clean run.
+- Temporary build succeeded with existing import.meta/CommonJS warnings.
+
+**Final: READY FOR PART 7.** All three parts are DEV-CLOSED, no required
+development rule silently skipped, all release gaps named in one table.
+Part 7 remains unstarted until supplied.
+
+---
+
+# Historical Part 6 report — preserved, superseded by the completion pass above
+
+The sections below retain prior measurements, touch lists and failures.
+Prior OPEN handler tests and implementation-only status are historical, not
+the current status. Current proof and release blockers are defined above.
 
 ## Changes
 

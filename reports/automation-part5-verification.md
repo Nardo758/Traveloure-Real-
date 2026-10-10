@@ -2,7 +2,18 @@
 
 ## Status and boundary
 
-**Development-implemented; NOT certified; release blocked. Part 6 has not started.**
+**DEV-CLOSED; not RELEASE-CERTIFIED; release blocked.**
+
+The founder's clarified DEV-CLOSED definition is met by this part's own two
+clean native readable-record-subset loops. The Part 6 completion pass freshly
+re-ran those two loops: 20 check groups and five hostile scenarios per loop,
+zero failures/skips, zero real provider calls. Every open gap is carried in
+[the consolidated release blockers](automation-release-blockers.md).
+
+The implementation and release scorecard below describe the original Part 5
+scope and historical evidence. Part 6 subsequently replaced the unconditional
+dispatcher family hold with live verification and the retained must-have
+payment-ordering hold; it does not authorize real transport.
 
 The approved sweep now selects price increases, price decreases and proven
 availability loss, then atomically enqueues `cart_item_changed` and records
@@ -74,7 +85,8 @@ recorded-rails seam never removes UNKNOWN blockers from the normal path.
 ## Master scorecard
 
 No gate is claimed fully closed merely because a queue assertion passed.
-**Full certification: 0/10; do not release.**
+**RELEASE-CERTIFIED: NO; do not release.** This release scorecard is not the
+DEV-CLOSED gate.
 
 | Gate | Status | Proven / still missing |
 |---|---|---|
@@ -90,8 +102,9 @@ No gate is claimed fully closed merely because a queue assertion passed.
 | G10 Real proof | OPEN | Zero real emails, no provider receipt; authenticated email-link and unsubscribe browser flows not proved |
 
 Structural release risk remains the incomplete payment/owner provenance and
-send-time race. More identical queue loops cannot close those gaps. No Part 6,
-writer redesign or release activation is authorized by this report.
+send-time race. More identical queue loops cannot close those gaps. Part 6 was
+separately approved; writer redesign and release activation are not authorized
+by this report.
 
 ## Scenarios and hostile cases
 
