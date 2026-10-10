@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { sql, eq } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { db, pool } from "../../db";
 import { users, trips, providerServices, itineraryItems, cartItems, vendorAvailabilitySlots } from "../../../shared/schema";
 import { addedCartState, preserveCartState, CART_STATE_KEY } from "../../services/cart-email-state.service";
@@ -227,10 +228,20 @@ test("Part 5: two randomized native loops, must-have selection only, zero provid
       const atomic = await fixture(); await price(atomic, "17.00");
       const beforeAtomic = await cartState(atomic);
       const [change] = (await assess(atomic)).changes;
-      // Wrong item forces the EXISTING marker helper to fail after INSERT.
-      await assert.rejects(db.transaction(tx => enqueuePendingCartItemChange({
-        ...change, cartItemId: randomUUID(),
-      }, tx)), /notified values were not committed/);
+      // Force a zero-row marker result AFTER the real INSERT. Stale/wrong item
+      // inputs are now correctly rejected by the pre-queue verifier before INSERT.
+      await assert.rejects(db.transaction(async tx => {
+        await lockMarketingTraveler(tx, atomic.user.id);
+        const fault = new Proxy(tx, { get(target, property) {
+          if (property === "execute") return async (query: any) => {
+            if (/^UPDATE cart_items/i.test(new PgDialect().sqlToQuery(query).sql.trim())) return { rows: [] };
+            return target.execute(query);
+          };
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        } });
+        return enqueuePendingCartItemChange(change, fault);
+      }), /notified values were not committed/);
       assert.equal((await rows(atomic)).length, 0);
       assert.deepEqual(await cartState(atomic), beforeAtomic);
       assert.equal(await queue(atomic), 1);
@@ -298,8 +309,14 @@ test("Part 5: two randomized native loops, must-have selection only, zero provid
       for (const row of await rows(up)) {
         await deliverQueuedEmail(Number(row.id));
         const blocked = (await db.execute(sql`SELECT status, metadata FROM email_outbox WHERE id=${row.id}`)).rows[0];
-        assert.equal(blocked.status, "cancelled");
-        assert.equal((blocked.metadata as any).cancelReason, "cart_item_change_release_blocked");
+        if ((blocked.metadata as any).cartNotifiedValues.price === "11.00") {
+          assert.equal(blocked.status, "pending");
+          assert.equal((await db.execute(sql`SELECT last_error FROM email_outbox WHERE id=${row.id}`)).rows[0].last_error,
+            "must_have_payment_ordering_unknown");
+        } else {
+          assert.equal(blocked.status, "cancelled");
+          assert.equal((blocked.metadata as any).cancelReason, "item_changed");
+        }
       }
       assert.equal(await enqueueEmail({ emailType: "cart_item_changed", to: up.user.email!, subject: "forged", html: "forged" }), null);
       await drainOutboxForAdminRetry(Number(notices[0].id));
@@ -313,7 +330,7 @@ test("Part 5: two randomized native loops, must-have selection only, zero provid
         await assert.rejects(runCommerceEmailSweep(), /not released/);
       } finally { process.env.NODE_ENV = production; }
       assert.equal(providerCalls, 0);
-      prove("generic/drain/admin paths cannot invoke provider; production gate");
+      prove("generic/drain/admin paths verify current item facts without provider; production gate");
       evidence.push({ loop, scenario, status: "CLEAN_READABLE_SUBSET_ONLY", checks, attacks,
         actualProviderCalls: providerCalls, allRailCertified: false, realDelivery: "OPEN" });
     }

@@ -1,5 +1,20 @@
 # Partner and legacy ownership — investigation proposal
 
+## Part 6 bounded read-only implementation update
+
+Four existing-source mappings were implemented under the separate Part 6
+approval: invoice customer ownership, component/partial-settlement ownership
+through canonical bookings, and strictly typed service-booking fee sources.
+Two disposable-schema loops distinguish birth from lifecycle, exercise inclusive
+time boundaries, and retain missing/contradictory ownership as UNKNOWN.
+
+This is not implementation of the wider proposal. Free/covered optimization,
+all fee source kinds, partner provenance, all lifecycle stamps and complete
+payment ordering are NOT certified. No writer/schema change was made. See
+`reports/automation-part6-verification.md` for the exact scope and retained
+Part 3 fixture blocker. The historical proposal status below applies to the
+remaining unapproved work.
+
 Status: **proposal only; implementation not approved**.
 All existing UNKNOWN blockers and production delivery blocks remain.
 This report is a source/schema investigation, not a production-data audit.

@@ -100,6 +100,20 @@ export async function enqueuePendingCommerceReminder(
   }
   const kind = identity?.kind ?? "cart_reminder_1h";
   if (!isCartReminder(kind)) throw new Error("Unsupported cart reminder step");
+  let cartSendFacts: unknown;
+  if (identity) {
+    const { verifyCommerceSend } = await import("./commerce-send-verification.service");
+    const checked = await verifyCommerceSend(executor, {
+      travelerId: identity.travelerId, scope: identity.scope, sequenceId,
+      recipient, marketing: true,
+    });
+    if (!checked.eligible) return false;
+    const { assessCartReminder, cartReminderNow } = await import("./cart-reminder.service");
+    const step = await assessCartReminder(executor as import("./marketing-delivery-policy.service").MarketingTx,
+      identity.travelerId, identity.scope, await cartReminderNow(executor), { kind, sequenceId });
+    if (!step.eligible) return false;
+    cartSendFacts = checked.facts;
+  }
   const message = buildCartReminderEmail();
   const inserted = await executor.execute(sql`
     INSERT INTO email_outbox (email_type, to_email, subject, html, text_body, status, metadata)
@@ -107,6 +121,7 @@ export async function enqueuePendingCommerceReminder(
       'pending', ${JSON.stringify({ commerceKey, sequenceId, cartScope,
         ...(identity ? { cartReminderVersion: 1, marketing: true, travelerId: identity.travelerId,
           cartScopeRaw: identity.scope, sequenceStartMs: identity.sequenceStartMs } : {}),
+        ...(cartSendFacts ? { cartSendFacts } : {}),
         verificationOnly: true, releaseBlockedBy: ["Part 4", "Part 6", "payment provenance"] })}::jsonb
     WHERE current_schema() = ${schema}
     ON CONFLICT ((metadata ->> 'commerceKey')) WHERE metadata ? 'commerceKey'
@@ -126,6 +141,18 @@ export async function enqueuePendingCartItemChange(
     throw new Error("Cart changes are restricted to isolated development QA");
   }
   const { buildCartItemChangeEmail } = await import("./cart-item-change-email");
+  const { verifyCommerceSend } = await import("./commerce-send-verification.service");
+  const checked = await verifyCommerceSend(tx, {
+    travelerId: change.travelerId, scope: change.scope, sequenceId: change.sequenceId,
+    recipient: change.recipient, marketing: false,
+  });
+  if (!checked.eligible) return false;
+  const target = checked.facts.items.find(item => item.id === change.cartItemId);
+  if (!target || target.price !== change.current.price || target.currency !== change.current.currency ||
+      target.title !== change.title || target.capturedAt !== change.capturedAt ||
+      JSON.stringify(target.availability) !== JSON.stringify({
+        status: (change.current.availability as any)?.status, slot: (change.current.availability as any)?.slot,
+      })) return false;
   const message = buildCartItemChangeEmail(change);
   const inserted = await tx.execute(sql`INSERT INTO email_outbox
     (email_type, to_email, subject, html, text_body, status, metadata)
@@ -134,7 +161,8 @@ export async function enqueuePendingCartItemChange(
         commerceKey: change.key, cartItemChangeVersion: 1, cartItemId: change.cartItemId,
         travelerId: change.travelerId, sequenceId: change.sequenceId, cartScopeRaw: change.scope,
         capturedAt: change.capturedAt, cartNotifiedValues: change.current, reasons: change.reasons,
-        marketing: false, verificationOnly: true,
+        cartPreviousValues: change.previous, cartChangeTitle: change.title,
+        cartSendFacts: checked.facts, marketing: false, verificationOnly: true,
         releaseBlockedBy: ["Part 4", "Part 6", "payment provenance"],
       })}::jsonb
     WHERE current_schema()=${schema}
@@ -451,12 +479,10 @@ async function attemptDelivery(
   let result: SendEmailResult;
   try {
     if (current.emailType === "cart_item_changed") {
-      // Includes drain/admin retry/generation entry points, even forged legacy rows.
-      // No synthetic or real provider call. Part 6 is NOT implemented here.
-      if (outboxId !== null) await db.execute(sql`UPDATE email_outbox
-        SET status='cancelled', updated_at=NOW(),
-          metadata=metadata || '{"cancelReason":"cart_item_change_release_blocked"}'::jsonb
-        WHERE id=${outboxId} AND status='processing'`);
+      if (outboxId !== null) {
+        const { deliverVerifiedCommerce } = await import("./commerce-send-verification.service");
+        await deliverVerifiedCommerce(outboxId, _outboxTestHooks.sendEmailFn);
+      }
       return;
     }
     if (current.emailType && isCartReminderFamily(current.emailType)) {

@@ -1,0 +1,48 @@
+{
+  "part": 6,
+  "status": "DEVELOPMENT_IMPLEMENTED_NOT_CERTIFIED",
+  "releaseBlocked": true,
+  "native": {
+    "freshLoops": 2,
+    "consecutiveCleanLoops": 2,
+    "checkGroupsPerLoop": 24,
+    "hostileCategoriesPerLoop": 5,
+    "scope": "recorded-readable-subset; synthetic marketing transport only",
+    "addedReadMappings": ["content_invoice", "booking_component", "partial_settlement", "typed_fee_ledger"],
+    "realProviderCalls": 0,
+    "realDeliveredEmails": 0,
+    "realProviderReceiptIds": [],
+    "actualStripeWebhookReplay": "OPEN",
+    "actualWebhookSuccessPageConcurrency": "OPEN",
+    "mustHaveOrdering": "BLOCKED"
+  },
+  "regression": {
+    "goldenBeforePassed": 143,
+    "goldenAfterPassed": 143,
+    "guardsPassed": 78,
+    "guardsTotal": 78,
+    "typecheckBefore": 117,
+    "typecheckAfter": 117,
+    "sameTypecheckLocationsAndCodes": true,
+    "changedFileTypecheckErrors": 0,
+    "part4": "PASS_TWO_NATIVE_AND_TWO_PURE_LOOPS",
+    "part5": "PASS_TWO_NATIVE_LOOPS",
+    "part3": "FAILED_INCOMPLETE_CATALOG_FIXTURE_TOUCH_NOT_YET_APPROVED"
+  },
+  "marketingWindowMs": [
+    {"loop": 1, "scenario": "ordinary", "afterVerifier": 0.063353, "wholeVerifierToInvoke": 5.893401},
+    {"loop": 1, "scenario": "payment_after_check_injected_pause", "afterVerifier": 20.022339, "wholeVerifierToInvoke": 26.161775},
+    {"loop": 1, "scenario": "competing_claims", "afterVerifier": 0.008660, "wholeVerifierToInvoke": 5.580979},
+    {"loop": 2, "scenario": "ordinary", "afterVerifier": 0.010777, "wholeVerifierToInvoke": 6.274688},
+    {"loop": 2, "scenario": "payment_after_check_injected_pause", "afterVerifier": 18.898407, "wholeVerifierToInvoke": 24.102044},
+    {"loop": 2, "scenario": "competing_claims", "afterVerifier": 0.010402, "wholeVerifierToInvoke": 7.052271}
+  ],
+  "windowLimit": "Synthetic invocation only; deliberate pauses; not production bound, network delivery or exact SQL snapshot age",
+  "persistentSchemaChanges": 0,
+  "developmentBootNewlyAppliedMigrations": 0,
+  "migrationRegistrations": 0,
+  "paymentWriterChanges": 0,
+  "productionChanges": 0,
+  "part7Started": false,
+  "pendingApprovalFile": "server/routes/__tests__/commerce-email-sweep.db.test.ts"
+}

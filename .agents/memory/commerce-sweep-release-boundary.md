@@ -81,6 +81,21 @@ dedupe and changes returning A→B→A as limits, not complete event history.
 Suppress cart reminders on the local day an item-change notice was actually
 sent without permanently consuming later reminder steps.
 
+## Verify-at-send timing policy
+
+The founder accepts a small final-payment-check → provider-handoff race for
+marketing reminders only. This does not authorize the same race for must-have
+item-change notices, remove payment UNKNOWNs or authorize real sending.
+
+**Why:** Part 6 explicitly accepted the narrow marketing race while retaining
+the existing payment-writer and no-foreign-key boundaries.
+
+**How to apply:** Perform the payment read last, render before that read,
+measure the residual window honestly, and distinguish synthetic invocation from
+network/provider delivery. A database statement-start timestamp is not a globally
+trusted eligibility instant. Keep must-have ordering and external/unstamped
+provenance blocked until separately proven and approved.
+
 Availability is about the cart's requested units, not whether one unit remains.
 A quantity-only edit is not a catalog availability change. Retain stock facts
 for comparisons rather than treating a stored availability boolean as valid

@@ -42,7 +42,8 @@ test("Part 4: two native randomized loops over recorded rails; unknown coverage 
     const [user] = await db.insert(users).values({ id, email: `${id}@traveloure-qa.test`, preferences: prefs }).returning();
     const [trip] = await db.insert(trips).values({ userId: id, destination: "Kyoto",
       startDate: "2030-05-05", endDate: "2030-05-07" }).returning();
-    const [service] = await db.insert(providerServices).values({ userId: id, serviceName: "Native verification" }).returning();
+    const [service] = await db.insert(providerServices).values({ userId: id, serviceName: "Native verification",
+      price: "10.00", priceType: "fixed", status: "active", availability: [] }).returning();
     const [item] = await db.insert(itineraryItems).values({ tripId: trip.id,
       providerServiceId: service.id, title: "Native verification", dayNumber: 1 }).returning();
     const start = now.getTime() - idle;
@@ -119,7 +120,9 @@ test("Part 4: two native randomized loops over recorded rails; unknown coverage 
 
       // Explicit, provider-free READABLE-SUBSET proof. Not all-rail certification.
       cartReminderVerification.recordedRailsOnly = true;
-      for (const rail of READABLE_COMMERCE_RAILS) {
+      // New Part 6 source-specific fixtures exercise the four added joins.
+      for (const rail of READABLE_COMMERCE_RAILS.filter(rail =>
+        !["content_invoice", "booking_component", "partial_settlement", "typed_fee_ledger"].includes(rail.name))) {
         const f = await fixture();
         const rowId = await addRail(rail, f.user.id, new Date(f.start - 1));
         let result = await readTravelerCommerceActivity(db, f.user.id, f.start, f.start);

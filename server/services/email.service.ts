@@ -33,11 +33,11 @@ import { escHtml, stripCrLf } from "../utils/email-escape";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 
 let cachedClient: Resend | null = null;
-function createClient(key: string): Resend {
+function createClient(key: string, guard?: SendEmailParams["beforeProviderSend"]): Resend {
   const client = new Resend(key);
   const originalSend = client.emails.send.bind(client.emails);
   client.emails.send = wrapEmailProviderTransport(
-    originalSend,
+    (...args: Parameters<typeof originalSend>) => atEmailProviderHandoff(guard, () => originalSend(...args)),
     dispatchMessagingEvent,
   ) as typeof client.emails.send;
   return client;
@@ -89,6 +89,8 @@ export interface SendEmailParams {
   idempotencyKey?: string;
   /** Internal outbox opt-in; never forwarded to the email provider. */
   generationNotice?: boolean;
+  /** Internal opt-in; runs inside the registry action immediately before SDK invocation. */
+  beforeProviderSend?: () => Promise<{ eligible: boolean; reason?: string; detail?: string }>;
   /** Optional files, including vendor coordination calendar invitations. */
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }
@@ -97,6 +99,25 @@ export interface SendEmailResult {
   ok: boolean;
   id?: string;
   error?: string;
+  cancelReason?: string;
+}
+
+export class EmailSendCancelled extends Error {
+  constructor(public readonly reason: string, public readonly detail?: string) {
+    super("Email eligibility changed before provider handoff");
+  }
+}
+
+/** Same boundary for the SDK adapter and isolated synthetic transport proofs. */
+export async function atEmailProviderHandoff<T>(
+  guard: SendEmailParams["beforeProviderSend"], invoke: () => Promise<T>,
+): Promise<T> {
+  if (!guard) return invoke();
+  const decision = await guard();
+  if (decision?.eligible !== true) {
+    throw new EmailSendCancelled(decision?.reason ?? "verification_failed", decision?.detail);
+  }
+  return invoke();
 }
 
 /**
@@ -138,7 +159,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   }
 
   try {
-    const client = createClient(apiKey);
+    const client = createClient(apiKey, params.beforeProviderSend);
     const payload = {
       from,
       to: params.to,
@@ -165,6 +186,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     console.log(`[email] sendEmail ok — id=${id} subject="${params.subject}" to=${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
     return { ok: true, id };
   } catch (err: unknown) {
+    if (err instanceof EmailSendCancelled) return { ok: false, cancelReason: err.reason };
     const message = err instanceof Error ? err.message : String(err);
     console.error("[email] sendEmail threw:", { to: params.to, subject: params.subject, error: message });
     return { ok: false, error: message };

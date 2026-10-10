@@ -117,6 +117,12 @@ export async function runCommerceEmailSweep(): Promise<CommerceSweepCounts> {
       if (!decision.eligible) return { reason: decision.reason };
       const account = (await tx.execute(sql`SELECT email, preferences FROM users WHERE id=${candidate.user_id}`)).rows[0] as
         { email: string; preferences: unknown };
+      const { verifyCommerceSend } = await import("./commerce-send-verification.service");
+      const checked = await verifyCommerceSend(tx, {
+        travelerId: candidate.user_id!, recipient: account.email, scope: candidate.scope,
+        sequenceId: decision.sequenceId!, marketing: true,
+      });
+      if (!checked.eligible) return { reason: checked.reason };
       const local = marketingWindow(now, marketingPreferences(account.preferences)!);
       if (await marketingDayReserved(tx, candidate.user_id!, local.day)) return { reason: "daily_marketing_cap" };
       const key = `${decision.kind!.replaceAll("_", "-")}:user:${candidate.user_id}:cart:${cartScope}:${decision.sequenceId}`;

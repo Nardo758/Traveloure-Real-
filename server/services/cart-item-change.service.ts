@@ -52,6 +52,9 @@ function values(raw: any, units: number): CartChangeValues | null {
     } } : null;
 }
 
+/** Shared send-time normalization; does not consult or mutate notified history. */
+export { values as normalizeCartChangeValues };
+
 /** A->B->A between sweeps is invisible; stable target keys are not event history. */
 export function classifyCartItemChange(meta: unknown, currentRaw: unknown, units = 1):
   | { eligible: false; reason: string }

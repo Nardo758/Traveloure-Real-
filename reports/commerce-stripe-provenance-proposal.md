@@ -1,5 +1,21 @@
 # Stripe activity and eligibility timing — investigation proposal
 
+## Part 6 bounded implementation update
+
+The approved development-only verifier now performs the shared recorded-payment
+read immediately before synthetic marketing invocation through the shared
+adapter callback boundary. Payload rendering precedes that check. Its SQL
+timestamp is statement start, not an exact globally trusted eligibility instant.
+Measured artificial payment-after-check windows and scope limits are in
+`reports/automation-part6-verification.md`.
+
+This does NOT implement any proposed payment writer, lifecycle stamp or schema
+change. Actual Stripe-handler concurrency, external-before-persistence coverage
+and must-have ordering remain OPEN. The founder's residual-race acceptance is
+marketing-only; item changes are held rather than sent. All UNKNOWNs and normal
+send blocks remain. The historical proposal status below applies to the
+unapproved writer/schema work, not the separately approved read-only Part 6 code.
+
 Status: **proposal only; implementation not approved**.
 Normal commerce sending stays blocked. No UNKNOWN blocker was removed.
 No runtime, payment/booking metadata, schema or production change was made.

@@ -356,3 +356,17 @@ mtime_ms = 1791622000410
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/91d6e110-dc2a-4fec-a672-77030f95b3df/a770e4d1-6362-48b6-a47b-d57e60d01f91"
 storage_version_token = "1791622024461424"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "aJ1BRZdFFVVb5bHR_Nrx5"
+uri = "file://reports/automation-part6-verification.md"
+type = "text"
+title = "Part 6 verification report — not certified"
+description = "Two fresh bounded loops, golden 143/143, guards 78/78, baseline 117, measured synthetic marketing window, and the retained Part 3 fixture blocker."
+logical_id = "3c957171-f1f1-4774-a70a-a9951b6c369a"
+content_hash = "sha256:babdbd825bb97f666b975f5e7938f4efeb7a6e2483d090c09ede502f24790d7b"
+size = 10838
+mtime_ms = 1791629138135
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/3c957171-f1f1-4774-a70a-a9951b6c369a/5a4ec440-7007-4e94-a418-6edb94a3b30a"
+storage_version_token = "1791629169139909"
+content_type = "text/markdown"

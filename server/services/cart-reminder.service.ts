@@ -41,6 +41,15 @@ export const READABLE_COMMERCE_RAILS = [
   { name: "booking_request", from: "booking_requests r", owner: "r.user_id", times: ["created_at", "updated_at"] },
   { name: "provider_request", from: "provider_booking_requests r LEFT JOIN trips t ON t.id=r.trip_id", owner: "t.user_id", times: ["created_at", "updated_at"] },
   { name: "group_transaction", from: "trip_transactions r LEFT JOIN trips t ON t.id=r.trip_id LEFT JOIN trip_participants p ON p.id=r.paid_by_participant_id", owner: "coalesce(p.user_id,t.user_id)", times: ["created_at", "updated_at"] },
+  { name: "content_invoice", from: "content_invoices r", owner: "r.customer_id", times: ["created_at", "updated_at"],
+    optionalTimes: ["paid_at"], lifecycleUnproven: true },
+  { name: "booking_component", from: "booking_component_states r LEFT JOIN service_bookings b ON b.id=r.booking_id", owner: "b.traveler_id", times: ["created_at", "updated_at"],
+    optionalTimes: ["delivered_at", "accepted_at", "completed_at", "failed_at", "cancelled_at", "refunded_at"], lifecycleUnproven: true },
+  { name: "partial_settlement", from: "bundle_partial_settlements r LEFT JOIN service_bookings b ON b.id=r.booking_id", owner: "b.traveler_id", times: ["created_at", "updated_at"],
+    optionalTimes: ["claimed_at", "settled_at"], lifecycleUnproven: true },
+  { name: "typed_fee_ledger", from: "fee_ledger r LEFT JOIN service_bookings s ON r.source_type='service_booking' AND s.id=r.source_id LEFT JOIN service_bookings b ON b.id=r.booking_id",
+    owner: "CASE WHEN r.source_type <> 'service_booking' OR s.id IS NULL OR (r.booking_id IS NOT NULL AND (b.id IS NULL OR b.id <> s.id)) THEN NULL ELSE s.traveler_id END",
+    times: ["created_at"] },
 ] as const;
 
 export interface CommerceActivityCheck {
@@ -49,6 +58,8 @@ export interface CommerceActivityCheck {
   activityRails: string[];
   unknownRails: string[];
   reason: string | null;
+  /** Statement start of the final recorded-payment SELECT, not a global eligibility instant. */
+  eligibilityInstant?: string;
 }
 
 /** Pure timestamp proof, also used for missing/malformed timestamp fuzzing. */
@@ -88,10 +99,13 @@ export async function readTravelerCommerceActivity(
   const tables = await reader.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname=current_schema()`);
   const present = new Set(tables.rows.map(row => String(row.tablename)));
   const readable = READABLE_COMMERCE_RAILS.filter(rail => {
-    const missing = !present.has(rail.from.split(" ")[0]);
+    const required = [rail.from.split(" ")[0],
+      ...Array.from(rail.from.matchAll(/\bJOIN ([a-z_]+)/g), match => match[1])];
+    const missing = required.some(table => !present.has(table));
     if (missing) unknown.add(rail.name);
     return !missing;
   });
+  let eligibilityInstant: string | undefined;
   if (readable.length) {
     const queries = readable.map(rail => {
       const owner = rail.name === "group_transaction"
@@ -101,12 +115,21 @@ export async function readTravelerCommerceActivity(
         to_jsonb(r) AS record FROM ${sql.raw(rail.from)}
         WHERE ${owner} = ${travelerId} OR ${owner} IS NULL`;
     });
-    const rows = await reader.execute(sql.join(queries, sql` UNION ALL `));
+    const rows = await reader.execute(sql`SELECT signals.*, statement_timestamp() AS eligibility_instant
+      FROM (SELECT 1) anchor LEFT JOIN LATERAL (${sql.join(queries, sql` UNION ALL `)}) signals ON true`);
+    const instant = rows.rows[0]?.eligibility_instant;
+    if (instant) eligibilityInstant = new Date(instant as string | Date).toISOString();
     for (const row of rows.rows as { rail: string; owner: string | null; record: Record<string, unknown> }[]) {
+      if (!row.rail) continue;
       const rail = readable.find(source => source.name === row.rail)!;
-      const state = recordedRailState(row.owner, rail.times.map(time => row.record[time]), sequenceStartMs);
+      const times = rail.times.map(time => row.record[time]);
+      if ("optionalTimes" in rail) {
+        times.push(...rail.optionalTimes.map(time => row.record[time]).filter(time => time != null));
+      }
+      const state = recordedRailState(row.owner, times, sequenceStartMs);
       if (state === "unknown") unknown.add(rail.name);
       if (state === "activity") activity.add(rail.name);
+      if ("lifecycleUnproven" in rail) unknown.add(`${rail.name}_lifecycle_unproven`);
     }
   }
   return {
@@ -114,6 +137,7 @@ export async function readTravelerCommerceActivity(
     recordedClear: activity.size === 0 && unknown.size === PAYMENT_COVERAGE_DEFECTS.length,
     activityRails: Array.from(activity), unknownRails: Array.from(unknown),
     reason: activity.size ? "payment_or_booking_since_sequence_start" : "payment_rail_unknown",
+    eligibilityInstant,
   };
 }
 
@@ -206,51 +230,6 @@ export async function eligibleCartHasPriority(tx: MarketingTx, travelerId: strin
 export async function deliverCartReminder(
   outboxId: number, syntheticSender?: (params: SendEmailParams) => Promise<SendEmailResult>,
 ) {
-  const [snapshot] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1);
-  const meta = snapshot?.metadata as Record<string, any> | undefined;
-  return db.transaction(async tx => {
-    if (typeof meta?.travelerId === "string") await lockMarketingTraveler(tx, meta.travelerId);
-    const [row] = await tx.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1).for("update");
-    if (!row || row.status !== "processing") return "skipped";
-    const cancel = async (reason: string) => {
-      await tx.update(emailOutbox).set({ status: "cancelled", lastError: reason, retryAfter: null, updatedAt: new Date() })
-        .where(eq(emailOutbox.id, outboxId));
-      return "cancelled";
-    };
-    if (row.sentAt) return cancel("step_already_sent");
-    if (!cartReminderVerificationEnabled() || !isCartReminder(row.emailType) ||
-        meta?.cartReminderVersion !== 1 || typeof meta.travelerId !== "string" ||
-        typeof meta.sequenceId !== "string" || !(meta.cartScopeRaw === null || typeof meta.cartScopeRaw === "string")) {
-      return cancel("unsupported_or_unreleased_cart_reminder");
-    }
-    const now = await cartReminderNow(tx);
-    const decision = await assessCartReminder(tx, meta.travelerId, meta.cartScopeRaw, now,
-      { kind: row.emailType, sequenceId: meta.sequenceId });
-    const [account] = await tx.select().from(users).where(eq(users.id, meta.travelerId)).limit(1);
-    if (account?.email !== row.toEmail) return cancel("recipient_changed");
-    const preferences = marketingPreferences(account?.preferences);
-    if (!decision.eligible && decision.reason !== "outside_marketing_window") return cancel(decision.reason);
-    const local = marketingWindow(now, preferences!);
-    const capped = await marketingDayReserved(tx, meta.travelerId, local.day, outboxId);
-    if (!decision.eligible || capped || !syntheticSender || process.env.NODE_ENV !== "test") {
-      const reason = capped ? "daily_marketing_cap" : !decision.eligible ? decision.reason : "verification_queue_only";
-      await tx.update(emailOutbox).set({ status: "pending", lastError: reason,
-        retryAfter: nextCartMarketingWindow(now, preferences!, capped ? local.day : undefined), updatedAt: new Date() })
-        .where(eq(emailOutbox.id, outboxId));
-      return "deferred";
-    }
-    const reserved = reserveMarketingDay(meta, local.day);
-    await tx.update(emailOutbox).set({ metadata: reserved }).where(eq(emailOutbox.id, outboxId));
-    let result: SendEmailResult;
-    try { result = await syntheticSender({ to: row.toEmail, ...buildCartReminderEmail(), idempotencyKey: `cart-reminder-${outboxId}` }); }
-    catch { result = { ok: false, error: "Synthetic provider attempt failed" }; }
-    const attemptCount = row.attemptCount + 1, dead = attemptCount >= row.maxAttempts;
-    await tx.update(emailOutbox).set({
-      status: result.ok ? "sent" : dead ? "dead" : "failed", attemptCount,
-      resendId: result.id ?? null, sentAt: result.ok ? now : null,
-      lastError: result.ok ? null : "Synthetic provider attempt failed",
-      retryAfter: result.ok || dead ? null : new Date(now.getTime() + 5 * 60_000), updatedAt: new Date(),
-    }).where(eq(emailOutbox.id, outboxId));
-    return result.ok ? "sent" : "failed";
-  });
+  const { deliverVerifiedCommerce } = await import("./commerce-send-verification.service");
+  return deliverVerifiedCommerce(outboxId, syntheticSender);
 }

@@ -204,5 +204,11 @@ jobs:
           MESSAGING_DEV_FINGERPRINT: 96b4d02d7161da67c35e6d9aeed73112
         run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/routes/__tests__/cart-item-changes.db.test.ts
 
+      - name: Commerce verify-at-send — fail-closed and synthetic race proof
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traveloure
+          MESSAGING_DEV_FINGERPRINT: 96b4d02d7161da67c35e6d9aeed73112
+        run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/routes/__tests__/commerce-verify-at-send.db.test.ts
+
       - name: Boot-herd startup delay — floor + jitter contract
         run: npx tsx --test server/services/__tests__/startup-delay.test.ts
