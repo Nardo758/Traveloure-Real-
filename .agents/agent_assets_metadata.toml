@@ -384,3 +384,17 @@ mtime_ms = 1791638437331
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/ddd3f0e5-c6fa-470c-86a6-04c82b3a65a0/0e55ba5d-48d8-4692-847c-f91e0f83efc5"
 storage_version_token = "1791638608354570"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "QBhkLGE6uRwKfF5HF6WFo"
+uri = "file://reports/commerce-part7-removal-inventory.html"
+type = "html"
+title = "Part 7 — removal inventory for approval"
+description = "Classification table, exact caller/import references and full development trigger DDL. No deletions or database changes; UNKNOWN items held."
+logical_id = "34ffd3ff-b765-4f4a-a645-0cfff1fc35ab"
+content_hash = "sha256:34bf5805c91a6eea8c928b414edf4e8859e64bdb123b89cf79875623657221e7"
+size = 49934
+mtime_ms = 1791651264223
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/34ffd3ff-b765-4f4a-a645-0cfff1fc35ab/bd328c7f-cc50-47ba-9deb-dce87a3a1e26"
+storage_version_token = "1791651265042621"
+content_type = "text/html"
