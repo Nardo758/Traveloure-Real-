@@ -1,0 +1,110 @@
+{
+  "runId": "649cdeaf-b3aa-4a87-9c58-c5abb609fe9f",
+  "realTransport": false,
+  "productionBlocked": true,
+  "allRailProof": false,
+  "itemDispatcherStillBlocked": true,
+  "loops": [
+    {
+      "loop": 1,
+      "exit": 0,
+      "isolationRemoved": true,
+      "fourOwnedSubmissions": true,
+      "fixtureProofClean": true
+    },
+    {
+      "loop": 2,
+      "exit": 0,
+      "isolationRemoved": true,
+      "fourOwnedSubmissions": true,
+      "fixtureProofClean": true
+    }
+  ],
+  "receipts": [
+    {
+      "loop": 1,
+      "family": "cart_reminder_1h",
+      "outboxRowId": 1,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:34.136Z",
+      "providerMessageId": "synthetic_919495e5-a1c1-4ec0-8a98-e9784b6d457a",
+      "deliveryStatus": "synthetic_only"
+    },
+    {
+      "loop": 1,
+      "family": "cart_reminder_1d",
+      "outboxRowId": 3,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:34.295Z",
+      "providerMessageId": "synthetic_ad50c826-c16d-4cd9-abae-bd41395498ad",
+      "deliveryStatus": "synthetic_only"
+    },
+    {
+      "loop": 1,
+      "family": "cart_reminder_3d",
+      "outboxRowId": 6,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:34.462Z",
+      "providerMessageId": "synthetic_c96837a1-e3e5-4428-a7e0-2098d1d26808",
+      "deliveryStatus": "synthetic_only"
+    },
+    {
+      "loop": 1,
+      "family": "cart_item_changed",
+      "outboxRowId": 7,
+      "proofLevel": "template-only",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:34.563Z",
+      "providerMessageId": "synthetic_c77127ed-88e3-4c24-8b8a-9bcdbf3282da",
+      "deliveryStatus": "synthetic_only",
+      "checkedAt": "2026-10-10T20:02:34.565Z",
+      "copyOnly": true
+    },
+    {
+      "loop": 2,
+      "family": "cart_reminder_1h",
+      "outboxRowId": 1,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:44.202Z",
+      "providerMessageId": "synthetic_4ced8764-5c9d-4b59-9baa-83ebcfc0733d",
+      "deliveryStatus": "synthetic_only"
+    },
+    {
+      "loop": 2,
+      "family": "cart_reminder_1d",
+      "outboxRowId": 3,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:44.454Z",
+      "providerMessageId": "synthetic_de89afad-afcf-4ddf-81e6-f652c754a664",
+      "deliveryStatus": "synthetic_only"
+    },
+    {
+      "loop": 2,
+      "family": "cart_reminder_3d",
+      "outboxRowId": 6,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:44.581Z",
+      "providerMessageId": "synthetic_1937a970-043e-4249-beeb-2629b5d8ef01",
+      "deliveryStatus": "synthetic_only"
+    },
+    {
+      "loop": 2,
+      "family": "cart_item_changed",
+      "outboxRowId": 7,
+      "proofLevel": "template-only",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:02:44.683Z",
+      "providerMessageId": "synthetic_82058569-c056-4476-a9aa-a5f0d87f71bb",
+      "deliveryStatus": "synthetic_only",
+      "checkedAt": "2026-10-10T20:02:44.685Z",
+      "copyOnly": true
+    }
+  ],
+  "rejected": 30
+}

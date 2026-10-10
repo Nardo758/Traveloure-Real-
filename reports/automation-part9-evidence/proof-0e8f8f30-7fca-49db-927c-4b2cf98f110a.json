@@ -1,0 +1,29 @@
+{
+  "runId": "0e8f8f30-7fca-49db-927c-4b2cf98f110a",
+  "realTransport": false,
+  "productionBlocked": true,
+  "allRailProof": false,
+  "itemDispatcherStillBlocked": true,
+  "loops": [
+    {
+      "loop": 1,
+      "exit": 1,
+      "isolationRemoved": true,
+      "fourOwnedSubmissions": false,
+      "fixtureProofClean": false
+    }
+  ],
+  "receipts": [
+    {
+      "loop": 1,
+      "family": "cart_reminder_1h",
+      "outboxRowId": 1,
+      "proofLevel": "guarded-reminder",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:01:51.892Z",
+      "providerMessageId": "synthetic_9966ad53-fd8e-49f8-a608-6c138a6a6339",
+      "deliveryStatus": "not_observed"
+    }
+  ],
+  "rejected": 5
+}

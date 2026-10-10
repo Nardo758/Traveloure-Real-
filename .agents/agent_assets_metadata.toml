@@ -426,3 +426,17 @@ mtime_ms = 1791661597427
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/9fe4f491-3918-4a66-87a7-48614b80b8e0/64de3b06-b3d6-4029-9caa-1e216532d48b"
 storage_version_token = "1791661773807886"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "QzGz7lE9AveROtAjXZOrh"
+uri = "file://reports/automation-part9-verification.md"
+type = "text"
+title = "Part 9 QA delivery proof — open blockers"
+description = "Eight provider-delivered QA receipts, isolation evidence, regressions and the two remaining proof gaps. Production sending remains blocked."
+logical_id = "695ca1d5-7a6b-429f-afdb-0973e9483929"
+content_hash = "sha256:9f19bc24c07b5c4d076991de038d2f404c46ed27b23bdb851210f60c4a3ee825"
+size = 9964
+mtime_ms = 1791663645155
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/695ca1d5-7a6b-429f-afdb-0973e9483929/415b08d7-1a3b-4c4a-af5b-d3ca01997c9c"
+storage_version_token = "1791663901293201"
+content_type = "text/markdown"

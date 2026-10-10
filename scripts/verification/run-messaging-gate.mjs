@@ -12,7 +12,23 @@ import pg from "pg";
 const args = process.argv.slice(2);
 const dbMode = args.includes("--isolated-db");
 const httpHarness = args.includes("--http-harness");
-const testFiles = args.filter((arg) => arg !== "--isolated-db" && arg !== "--http-harness");
+const qaProofChannel = args.includes("--qa-proof-channel");
+const testFiles = args.filter((arg) => !["--isolated-db", "--http-harness", "--qa-proof-channel"].includes(arg));
+let proofBinding;
+if (qaProofChannel) {
+  if (!dbMode || httpHarness || process.env.NODE_ENV !== "development" || process.env.REPLIT_DEPLOYMENT ||
+      !process.env.REPLIT_DEV_DOMAIN || process.env.ENVIRONMENT === "production" ||
+      process.env.COMMERCE_QA_DELIVERY_PROOF !== "1" || !process.send ||
+      testFiles.length !== 1 || testFiles[0] !== "server/routes/__tests__/commerce-real-delivery-proof.db.test.ts") {
+    throw new Error("Private QA proof channel is not authorized");
+  }
+  proofBinding = JSON.parse(process.env.COMMERCE_QA_PROOF_RUN_ID ?? "null");
+  if (!proofBinding || !/^[a-f0-9-]{36}$/.test(proofBinding.runId) ||
+      !/^[a-f0-9]{64}$/.test(proofBinding.token) || ![1, 2].includes(proofBinding.loop) ||
+      !Number.isInteger(proofBinding.port) || proofBinding.port < 1 || proofBinding.port > 65535) {
+    throw new Error("Invalid private proof channel");
+  }
+}
 if (httpHarness && !dbMode) {
   throw new Error("--http-harness requires --isolated-db");
 }
@@ -223,6 +239,11 @@ try {
       await isolatedPool.end();
     }
     console.log(`ISOLATED_EMPTY_SCHEMA_READY=true tables=${tables.rows.length} foreignKeys=${foreignKeys.rows.length}`);
+    if (qaProofChannel) {
+      env.COMMERCE_QA_DELIVERY_PROOF = "1";
+      env.COMMERCE_QA_PROOF_RUN_ID = JSON.stringify({ ...proofBinding, schema });
+      process.send({ type: "commerce-proof-schema", runId: proofBinding.runId, schema });
+    }
   }
   if (interrupted) throw new Error("Verification interrupted before tests started");
 
@@ -241,7 +262,7 @@ try {
   nodeArgs.push(
     "node_modules/tsx/dist/cli.mjs", "--test", "--test-force-exit", "--test-concurrency=1", ...testFiles,
   );
-  console.log("PROVIDER_FREE_ALLOWLIST=true");
+  console.log(qaProofChannel ? "CHILD_PROVIDER_CREDENTIALS_ABSENT=true; PRIVATE_QA_PARENT_CHANNEL=true" : "PROVIDER_FREE_ALLOWLIST=true");
   const exitCode = await new Promise((resolve, reject) => {
     child = spawn(process.execPath, nodeArgs, { env, stdio: "inherit", detached: true });
     let escalation;
