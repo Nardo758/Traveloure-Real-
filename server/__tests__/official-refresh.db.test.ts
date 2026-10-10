@@ -11,7 +11,9 @@
  *   J5  unsourced is never written: a quote not on the page is refused by the adapter, and the writer refuses
  *       an official_refresh row with no URL, no source or no quote
  *   J6  a target naming a source no row holds is reported and never read
- *   J7  a station-anchored last train is stored with NO coordinate — and FD-3's reader does not place it
+ *   J7  a station-anchored last train is placed by its OSM node — resolved ONCE (the next read reuses it, no
+ *       lookup), with "© OpenStreetMap contributors" in `value.point`; OSM "no such station" ⇒ stored with NO
+ *       coordinate; OSM unreachable ⇒ the target is deferred with nothing read
  */
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +21,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { runOfficialRefresh } from "../jobs/officialRefresh";
-import { recordFacts, feasibilityFactsForTrip } from "../services/content-facts/place-facts.service";
+import { recordFacts } from "../services/content-facts/place-facts.service";
 import type { ContentSourceTargets } from "@shared/content-source-targets";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -160,22 +162,56 @@ test("J6 — a target naming a source no row holds is reported and never read", 
   assert.equal(calls, 0);
 });
 
-test("J7 — a station-anchored last train is stored with no coordinate, and FD-3 does not place it", async () => {
-  modelAnswer = {
-    facts: [{
-      factType: "last_service", text: "Last weekday train from Gion-Shijo is 00:20.", quote: "last train from Gion-Shijo 00:20 (weekdays)",
-      fields: { operator: "Keihan", line: "Main Line", station: "Gion-Shijo", lastDeparture: "00:20", weekdays: [1, 2, 3, 4, 5], validFrom: "2026-03-01", validTo: "2027-03-01" },
-    }],
+const trainFact = {
+  facts: [{
+    factType: "last_service", text: "Last weekday train from Gion-Shijo is 00:20.", quote: "last train from Gion-Shijo 00:20 (weekdays)",
+    fields: { operator: "Keihan", line: "Main Line", station: "Gion-Shijo", lastDeparture: "00:20", weekdays: [1, 2, 3, 4, 5], validFrom: "2026-03-01", validTo: "2027-03-01" },
+  }],
+};
+const NODE = 1_000_000 + Math.floor(Math.random() * 1_000_000);
+const trainTarget = (slug: string, osmNodeId = NODE): ContentSourceTargets => ({
+  [sid("train")]: [{ label: "Keihan — last trains, Gion-Shijo", url: URL_TRAIN, need: "transport.local.last_service", anchor: { kind: "station", stationSlug: slug, osmNodeId } }],
+});
+
+test("J7 — a station is placed by its OSM node, resolved once, attributed; no match ⇒ unplaced; unreachable ⇒ deferred", async () => {
+  modelAnswer = trainFact;
+  const slug = `gion-shijo-${RUN.replace(/[^a-z0-9]/g, "")}`;
+  const asked: { osmNodeId: number; name: string }[] = [];
+  const osm = (answer: "hit" | "miss" | "down") => async (q: { osmNodeId: number; name: string }) => {
+    asked.push(q);
+    return answer === "down" ? ("unreachable" as const) : answer === "miss" ? null
+      : { lat: 35.0037212, lng: 135.7722146, matchedName: "Gion-Shijo", attribution: "© OpenStreetMap contributors" as const };
   };
-  const r = await runOfficialRefresh({
-    targets: { [sid("train")]: [{ label: "Keihan — last trains, Gion-Shijo", url: URL_TRAIN, need: "transport.local.last_service", anchor: { kind: "station", slug: "gion-shijo" } }] },
-    adapterDeps: deps,
-  });
-  assert.deepEqual(r.sources.map((s) => [s.read, s.facts]), [[1, 1]]);
+
+  // Unreachable ⇒ deferred, nothing read, nothing spent.
+  calls = 0;
+  const r0 = await runOfficialRefresh({ targets: trainTarget(slug), adapterDeps: deps, resolveStation: osm("down") });
+  assert.deepEqual(r0.sources.map((s) => [s.read, s.stations]), [[0, { deferred: 1 }]]);
+  assert.equal(calls, 0);
+
+  // Resolved: the fact carries the node's point and the attribution.
+  const r1 = await runOfficialRefresh({ targets: trainTarget(slug), adapterDeps: deps, resolveStation: osm("hit") });
+  assert.deepEqual(r1.sources.map((s) => [s.read, s.facts, s.stations]), [[1, 1, { resolved: 1 }]]);
+  assert.deepEqual(asked.at(-1), { osmNodeId: NODE, name: slug.replace(/-/g, " ") });
   const f: any = (await db.execute(sql`SELECT * FROM place_facts WHERE source_id = ${sid("train")}`)).rows[0];
   assert.equal(f.fact_type, "last_service");
-  assert.equal(f.place_ref, "station:gion-shijo");
-  assert.equal(f.place_lat, null, "no coordinate is guessed");
-  const read = await feasibilityFactsForTrip(`no-such-trip-${RUN}`, "kyoto");
-  assert.equal(read.lastServices.some((s: any) => s.value?.station === "Gion-Shijo" && s.value?.operator === "Keihan" && (s.value as any)?.quote?.includes("Gion-Shijo 00:20")), false);
+  assert.equal(f.place_ref, `station:${slug}`);
+  assert.equal(Number(f.place_lat), 35.0037212);
+  assert.equal(Number(f.place_lng), 135.7722146);
+  assert.deepEqual(f.value.point, { provider: "openstreetmap", osmNodeId: NODE, matchedName: "Gion-Shijo", attribution: "© OpenStreetMap contributors" });
+
+  // Once: the next read (a full interval later) reuses the stored point and asks OSM nothing.
+  const n = asked.length;
+  const later = new Date(Date.now() + 31 * 86_400_000);
+  const r2 = await runOfficialRefresh({ now: later, targets: trainTarget(slug), adapterDeps: deps, resolveStation: osm("hit") });
+  assert.deepEqual(r2.sources.map((s) => [s.read, s.stations]), [[1, { reused: 1 }]]);
+  assert.equal(asked.length, n, "no second lookup");
+
+  // No such station ⇒ the fact is stored with no coordinate; nothing guessed.
+  const other = `${slug}-x`;
+  const r3 = await runOfficialRefresh({ now: new Date(later.getTime() + 31 * 86_400_000), targets: trainTarget(other, NODE + 1), adapterDeps: deps, resolveStation: osm("miss") });
+  assert.deepEqual(r3.sources.map((s) => [s.read, s.stations]), [[1, { unlocated: 1 }]]);
+  const g: any = (await db.execute(sql`SELECT * FROM place_facts WHERE source_id = ${sid("train")} AND place_ref = ${`station:${other}`}`)).rows[0];
+  assert.equal(g.place_lat, null, "no coordinate is guessed");
+  assert.equal(g.value.point, undefined);
 });

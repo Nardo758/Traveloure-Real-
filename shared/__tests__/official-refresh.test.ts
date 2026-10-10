@@ -6,12 +6,12 @@
  *   OR3  expiry: expires_at = verified_at + interval days, exactly
  *   OR4  ceiling: what is left of it; an unreadable meter and a missing ceiling are both ZERO
  *   OR5  the writer's refusal: unsourced, non-https, non-official, quote-less and off-target facts never pass
- *   OR6  anchors: a stop is a place_id; a station is its slug with NO coordinate
+ *   OR6  anchors: a stop is a place_id; a station is its slug, placed ONLY by its own OSM node's point, with attribution
  *   OR7  a refresh fact is read as an official page read everywhere: tier, tags, publishability, feasibility admission
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { admitRefreshFact, refreshBudgetCents, refreshDue, refreshEligibleSource, refreshExpiresAt, refreshPlaceRef } from "../official-refresh";
+import { admitRefreshFact, refreshBudgetCents, refreshDue, refreshEligibleSource, refreshExpiresAt, refreshPlaceRef, stationPointValue } from "../official-refresh";
 import { isConfirmableFact, isOfficialPublicFact, isPageReadOrigin, isPublishable, originTier } from "../content-facts";
 import { placeFactTags } from "../content-tiers";
 import { admitFeasibilityFact } from "../feasibility-facts";
@@ -64,11 +64,24 @@ test("OR5 — the writer's refusal", () => {
   assert.deepEqual(admitRefreshFact(d({ value: { text: "x" } })), { ok: false, reason: "no_quote" });
   assert.deepEqual(admitRefreshFact(d(), { sourceId: "keihan", url: "https://www.keihan.co.jp/other/" }), { ok: false, reason: "off_target" });
   assert.deepEqual(admitRefreshFact(d({ origin: "crawled" })), { ok: false, reason: "not_refresh_origin" });
+  // A coordinate is only ever an attributed OSM node's.
+  assert.deepEqual(admitRefreshFact(d({ placeLat: 35, placeLng: 135 })), { ok: false, reason: "unattributed_point" });
+  assert.deepEqual(admitRefreshFact(d({ placeLat: 35, placeLng: 135, value: { text: "x", quote: "q", point: { provider: "google", osmNodeId: 1, attribution: "x" } } })), { ok: false, reason: "unattributed_point" });
+  assert.deepEqual(
+    admitRefreshFact(d({ placeLat: 35, placeLng: 135, value: { text: "x", quote: "q", ...stationPointValue({ lat: 35, lng: 135, osmNodeId: 42, matchedName: "Gion-Shijo", attribution: "© OpenStreetMap contributors" }) } })),
+    { ok: true },
+  );
 });
 
 test("OR6 — anchors", () => {
   assert.deepEqual(refreshPlaceRef({ kind: "place", placeId: "ChIJabc1234567" }), { placeRefKind: "place_id", placeRef: "ChIJabc1234567", placeLat: null, placeLng: null });
-  assert.deepEqual(refreshPlaceRef({ kind: "station", slug: "gion-shijo" }), { placeRefKind: "free_text", placeRef: "station:gion-shijo", placeLat: null, placeLng: null });
+  const st = { kind: "station" as const, stationSlug: "gion-shijo", osmNodeId: 42 };
+  assert.deepEqual(refreshPlaceRef(st), { placeRefKind: "free_text", placeRef: "station:gion-shijo", placeLat: null, placeLng: null }, "unresolved ⇒ no coordinate");
+  const pt = { lat: 35.0037, lng: 135.7722, osmNodeId: 42, matchedName: "Gion-Shijo", attribution: "© OpenStreetMap contributors" };
+  assert.deepEqual(refreshPlaceRef(st, pt), { placeRefKind: "free_text", placeRef: "station:gion-shijo", placeLat: 35.0037, placeLng: 135.7722 });
+  assert.equal(refreshPlaceRef(st, { ...pt, osmNodeId: 43 }).placeLat, null, "another node's point is never used");
+  assert.equal(refreshPlaceRef({ kind: "place", placeId: "ChIJabc1234567" }, pt).placeLat, null, "a stop carries no coordinate");
+  assert.deepEqual(stationPointValue(pt), { point: { provider: "openstreetmap", osmNodeId: 42, matchedName: "Gion-Shijo", attribution: "© OpenStreetMap contributors" } });
 });
 
 test("OR7 — a refresh fact is an official page read everywhere", () => {

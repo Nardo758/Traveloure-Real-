@@ -15,7 +15,9 @@
  *                               and an unstated ceiling is ZERO (fail closed — the ruling says "within" a
  *                               ceiling, and no ceiling is no permission to spend).
  *   · `admitRefreshFact`      — the writer's refusal: a refresh fact without its source id, its official
- *                               https URL, an official license or a verbatim quote is never stored.
+ *                               https URL, an official license or a verbatim quote is never stored, nor
+ *                               one with a coordinate that is not an attributed OSM node's.
+ *   · `refreshPlaceRef`       — where a fact attaches; a station's point is its OSM node's (`StationPoint`).
  */
 
 export const REFRESH_ORIGIN = "official_refresh" as const;
@@ -73,7 +75,7 @@ export function refreshBudgetCents(ceilingCents: number | null | undefined, spen
   return Math.max(0, ceilingCents - spentTodayCents);
 }
 
-export type RefreshRefusal = "not_refresh_origin" | "no_source" | "no_official_url" | "not_official" | "no_quote" | "off_target";
+export type RefreshRefusal = "not_refresh_origin" | "no_source" | "no_official_url" | "not_official" | "no_quote" | "off_target" | "unattributed_point";
 
 /**
  * Pure. May the writer store this refresh fact? The ruling's provenance, every part required: the source id,
@@ -81,7 +83,7 @@ export type RefreshRefusal = "not_refresh_origin" | "no_source" | "no_official_u
  * official license, and a verbatim quote. Feasibility facts additionally pass `admitFeasibilityFact` in the writer.
  */
 export function admitRefreshFact(
-  d: { origin: string; sourceId: string | null; sourceUrl: string | null; license: string | null; value: unknown },
+  d: { origin: string; sourceId: string | null; sourceUrl: string | null; license: string | null; value: unknown; placeLat?: unknown; placeLng?: unknown },
   target?: { sourceId: string; url: string },
 ): { ok: true } | { ok: false; reason: RefreshRefusal } {
   if (d.origin !== REFRESH_ORIGIN) return { ok: false, reason: "not_refresh_origin" };
@@ -91,22 +93,50 @@ export function admitRefreshFact(
   const quote = (d.value as any)?.quote;
   if (typeof quote !== "string" || !quote.trim()) return { ok: false, reason: "no_quote" };
   if (target && (target.sourceId !== d.sourceId || target.url !== d.sourceUrl)) return { ok: false, reason: "off_target" };
+  // A coordinate on a refresh fact is only ever an OSM node's, and says so (never Places, never typed).
+  if (d.placeLat != null || d.placeLng != null) {
+    const pt = (d.value as any)?.point;
+    if (pt?.provider !== "openstreetmap" || !Number.isSafeInteger(pt?.osmNodeId) || typeof pt?.attribution !== "string" || !pt.attribution.trim()) {
+      return { ok: false, reason: "unattributed_point" };
+    }
+  }
   return { ok: true };
 }
 
 /**
- * Where a refresh fact attaches. A stop's page anchors on its Google `place_id` (the key FD-3's cross-plan read
- * matches a plan's stop on; LD 57 allows a place ID outside a plan). A station page anchors on its slug, and
- * carries NO coordinate: how a station slug becomes a point is not ruled, and none is guessed (§13) — so a
- * last-service fact written today is stored and dated but not yet placed on any ride (FD-3 reads only placed ones).
+ * A station's point and where it came from (decision-maker, Oct 10, 2026: "SS-1b resolves each station once via
+ * the same path city-event venues use, stores lat/lng with OSM attribution on the fact row, never from Places").
+ * The only source of a station coordinate is the OpenStreetMap node the targets config names.
  */
-export function refreshPlaceRef(anchor: { kind: "station"; slug: string } | { kind: "place"; placeId: string }): {
+export interface StationPoint {
+  lat: number;
+  lng: number;
+  osmNodeId: number;
+  matchedName: string;
+  attribution: string;
+}
+
+/** What a station fact's `value.point` carries: the OSM node and its attribution, beside the coordinate it explains. */
+export function stationPointValue(p: StationPoint): { point: { provider: "openstreetmap"; osmNodeId: number; matchedName: string; attribution: string } } {
+  return { point: { provider: "openstreetmap", osmNodeId: p.osmNodeId, matchedName: p.matchedName, attribution: p.attribution } };
+}
+
+/**
+ * Where a refresh fact attaches. A stop's page anchors on its Google `place_id` (the key FD-3's cross-plan read
+ * matches a plan's stop on; LD 57 allows a place ID outside a plan) and carries no coordinate. A station page
+ * anchors on `station:<slug>`, with the point resolved from its OSM node when there is one — `null` when OSM
+ * named no such station, never a guess (§13); FD-3 reads only placed last-service facts.
+ */
+export function refreshPlaceRef(
+  anchor: { kind: "station"; stationSlug: string; osmNodeId: number } | { kind: "place"; placeId: string },
+  point: StationPoint | null = null,
+): {
   placeRefKind: "place_id" | "free_text";
   placeRef: string;
-  placeLat: null;
-  placeLng: null;
+  placeLat: number | null;
+  placeLng: number | null;
 } {
-  return anchor.kind === "place"
-    ? { placeRefKind: "place_id", placeRef: anchor.placeId, placeLat: null, placeLng: null }
-    : { placeRefKind: "free_text", placeRef: `station:${anchor.slug}`, placeLat: null, placeLng: null };
+  if (anchor.kind === "place") return { placeRefKind: "place_id", placeRef: anchor.placeId, placeLat: null, placeLng: null };
+  const placed = point && point.osmNodeId === anchor.osmNodeId ? point : null;
+  return { placeRefKind: "free_text", placeRef: `station:${anchor.stationSlug}`, placeLat: placed?.lat ?? null, placeLng: placed?.lng ?? null };
 }

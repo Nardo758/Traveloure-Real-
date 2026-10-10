@@ -37,7 +37,7 @@ import { factQuoteMaxChars, factTtlDays } from "../../config/content-facts.confi
 import { TAVILY_PRICE_PER_EXTRACT_USD, TAVILY_PRICE_PER_SEARCH_USD } from "../../config/trailhead.config";
 import type { TavilyLoggingClient } from "../tavily-client";
 import { CONTENT_FACTS_USAGE_PURPOSE } from "./fresh-fetch";
-import { REFRESH_ORIGIN, refreshExpiresAt, refreshPlaceRef } from "@shared/official-refresh";
+import { REFRESH_ORIGIN, refreshExpiresAt, refreshPlaceRef, stationPointValue, type StationPoint } from "@shared/official-refresh";
 import { admitFeasibilityFact, isFeasibilityFactType, parseLastAdmission, parseLastService } from "@shared/feasibility-facts";
 import { parseDayHours } from "@shared/optimizer-lead";
 
@@ -291,11 +291,14 @@ export class TavilyExtractAdapter implements SourceAdapter {
    * search: robots, one extract, the same model call and admission as `fetch`. It refuses with no call at all
    * unless the budget covers one extract, and unless the URL is on the row's own host and the row covers the
    * target's need. Facts are born `official_refresh`, `verified_at` = the read, `expires_at` = that plus the
-   * row's interval (`refreshExpiresAt`). The plan-scoped `fetch` above is unchanged.
+   * row's interval (`refreshExpiresAt`). A station target's facts carry the OSM point the job resolved, with
+   * its attribution in `value.point`. The plan-scoped `fetch` above is unchanged.
    */
   async fetchTarget(req: {
-    target: { label: string; url: string; need: string; anchor: { kind: "station"; slug: string } | { kind: "place"; placeId: string } };
+    target: { label: string; url: string; need: string; anchor: { kind: "station"; stationSlug: string; osmNodeId: number } | { kind: "place"; placeId: string } };
     market: string | null;
+    /** A station target's point, resolved by the job from its OSM node; null/absent ⇒ stored unplaced. */
+    point?: StationPoint | null;
     intervalDays: number;
     budgetCents: number;
   }): Promise<FactDraft[]> {
@@ -335,13 +338,14 @@ export class TavilyExtractAdapter implements SourceAdapter {
     if (!kept) return [];
 
     const verifiedAt = new Date();
-    const at = refreshPlaceRef(req.target.anchor);
+    const at = refreshPlaceRef(req.target.anchor, req.point ?? null);
+    const placed = at.placeLat != null && req.point ? stationPointValue(req.point) : {};
     const out: FactDraft[] = kept.facts.map((f, i) => ({
       ...at,
       market: req.market,
       need: req.target.need as ContentNeed,
       factType: f.factType,
-      value: { text: f.text, quote: f.quote, query: req.target.label, ...(f.fields ?? {}) },
+      value: { text: f.text, quote: f.quote, query: req.target.label, ...(f.fields ?? {}), ...placed },
       origin: REFRESH_ORIGIN,
       sourceId: this.source.id,
       sourceUrl: req.target.url,

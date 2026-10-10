@@ -47,11 +47,14 @@ Notes on the proposals (each is Leon's to change):
 
 Per row, the refresh targets are `{ label, url, need, anchor }`:
 - operators: one target per line or station last-train page, `need: transport.local.last_service`,
-  `anchor: { kind: "station", slug }` — the stations the Kyoto spine actually uses first
+  `anchor: { kind: "station", stationSlug, osmNodeId }` (the station's OpenStreetMap node id, read off
+  openstreetmap.org) — the stations the Kyoto spine actually uses first
   (Kyoto, Shijo / Karasuma, Kawaramachi, Gion-Shijo, Sanjo, Fushimi-Inari / Inari, Arashiyama / Saga-Arashiyama);
 - `kyoto_travel`: one target per spine top stop's page, `need: stop.hours`,
   `anchor: { kind: "place", placeId }` — the Google `place_id` the plans already store for that stop
   (production's `place_facts` holds one per neighbourhood today; a Replit read gives the ids).
 
-**Open for SS-1b, recorded here:** a station slug has to resolve to a POINT, because FD-3 places a
-last-service fact by its station's coordinates. No coordinate is typed in this sheet or the config.
+**Ruled for SS-1b (decision-maker, Oct 10, 2026):** a station resolves to a POINT from OpenStreetMap — the
+anchor names its OSM node, and SS-1b resolves it ONCE through the path city-event venues use (LD 59), storing
+lat/lng on the fact row with "© OpenStreetMap contributors", never from Google Places. No coordinate is typed in
+this sheet or the config.

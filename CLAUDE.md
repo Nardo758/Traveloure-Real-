@@ -2458,7 +2458,9 @@ This document captures architectural decisions to maintain consistency across co
     PLAN, fetching only the targets in `server/config/content-source-targets.config.ts`. Its facts are
     `official_refresh` — source id, official URL, verbatim quote, `verified_at`, `expires_at = verified_at +
     interval` — read exactly as an official crawl (`isPageReadOrigin`). The free draft's budget stays 0; it reads
-    what the refresh stored. A station-anchored fact carries no coordinate until one is ruled.
+    what the refresh stored. A station's point comes from the OSM node its anchor names (`{ stationSlug, osmNodeId }`),
+    resolved once through the city-event venue path (LD 59) and stored with "© OpenStreetMap contributors" — never
+    from Places; a station OSM does not confirm is stored unplaced, never guessed.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
