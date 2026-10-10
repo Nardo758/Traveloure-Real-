@@ -437,3 +437,34 @@ test("A13: Withdraw shows 'Request withdrawn — hold released' and the finding 
   await expect(page.getByTestId("handoff-withdraw")).toHaveCount(0);
   expect(reloaded, "the banner moved without a page reload").toBe(false);
 });
+
+// ── SS-2 Phase D, pin 1 (ledger `2026-10-10-ss2d-pins`; LD 62, R323) ──────────────────────────
+// Finalize's "Travel expert" lane is the ONE handoff door: continuing closes the chooser and opens
+// the HandoffChooser on "book" with the plan's unbooked items — and sends NOTHING. The request is
+// made only when the traveler confirms inside the HandoffChooser (with its hold), never by the
+// Finalize continue. The retired finalize-booking-modal test asserted the old POST.
+test("A14: Finalize's expert lane opens the HandoffChooser on 'book' and sends no expert request (LD 62)", async ({
+  page,
+}) => {
+  const tripId = await registerAndCreateTrip(page, "fin-expert");
+  await addItem(page, tripId);
+  await openSlip(page, tripId);
+
+  const expertRequests: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && /\/api\/expert-requests\b/.test(r.url())) expertRequests.push(r.url());
+  });
+
+  await page.getByTestId("slip-action-finalize-plan").click();
+  await expect(page.getByTestId("finalize-modal")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("finalize-option-expert").click();
+  await page.getByTestId("finalize-continue").click();
+
+  await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("handoff-kind-book")).toHaveAttribute("aria-checked", "true");
+  // Nothing is sent by opening the chooser; its confirm is the request.
+  await page.waitForTimeout(1_000);
+  expect(expertRequests, "Finalize's expert lane must not POST /api/expert-requests").toEqual([]);
+});
+
