@@ -33,7 +33,6 @@ playwright/tests/finalize-booking-modal.spec.ts
 playwright/tests/lane1-phase1d-routing.spec.ts
 playwright/tests/lb-p1-password-reset.spec.ts
 playwright/tests/offering-card.spec.ts
-playwright/tests/optimize-apply-banner.spec.ts
 playwright/tests/optimized-slip-live.spec.ts
 playwright/tests/phase-4-7-advanced-flows.spec.ts
 playwright/tests/seam-cross-console.spec.ts
