@@ -42,3 +42,12 @@ violations, fictional guest consent or reminders after payment.
 **How to apply:** Reuse existing timezone handling and recipient locking across
 both families, evaluate current eligibility before provider submission, and
 prove these policies in isolated development before requesting release approval.
+
+Cart-reminder sending is allowed from 09:00 inclusive to 20:00 exclusive in
+the traveler's local time; the complement is the no-send interval.
+
+**Why:** The founder explicitly clarified that "09:00 to 20:00 quiet hours"
+meant the allowed sending window, not a daytime prohibition.
+
+**How to apply:** Check both exact boundaries and an explicitly known timezone;
+never substitute the server timezone or infer one from a destination.

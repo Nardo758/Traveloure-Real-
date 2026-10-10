@@ -328,3 +328,17 @@ mtime_ms = 1791569662232
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/4f9eb19c-a934-4f19-bdc5-3dea50ef0480/099ca1f6-c4fa-4842-b33a-6b3e28bb0f05"
 storage_version_token = "1791569768170712"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "11pjmcR1CdrRSlt0NqTMY"
+uri = "file://reports/automation-part4-verification.md"
+type = "text"
+title = "Part 4 cart reminders — coverage blocker report"
+description = "Static cart/payment identity findings, untouched writer sites, and explicit zero-loop verification status. No production certification claimed."
+logical_id = "ca481309-60fc-4e6d-b887-88c8f7d14831"
+content_hash = "sha256:cd0a107aa4c7e7c4535cf8ae6e5f5a77032974695da0cb4433fe9291df124730"
+size = 4559
+mtime_ms = 1791614325356
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/ca481309-60fc-4e6d-b887-88c8f7d14831/bf0d6ff1-686d-41c7-82c0-1cc3eeb02d1c"
+storage_version_token = "1791614373610739"
+content_type = "text/markdown"
