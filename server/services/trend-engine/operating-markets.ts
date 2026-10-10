@@ -13,6 +13,7 @@
 
 export { OPERATING_MARKETS, type OperatingMarket } from "@shared/operating-markets";
 import { OPERATING_MARKETS, type OperatingMarket } from "@shared/operating-markets";
+import { MARKET_ALIASES } from "../../config/market-aliases.config";
 
 /**
  * Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): IANA timezone per operating market, so
@@ -59,6 +60,11 @@ export function getMarketByCityName(cityName: string): OperatingMarket | undefin
  * Barcelona) plus junk (`l`, `unknown`, `ci test destination`); all of these correctly return NULL.
  * The only real in-set volume today is Kyoto (`kyoto`, `kyoto, japan`), both handled by taking the
  * first comma-segment and matching marketKey OR cityName case-insensitively.
+ *
+ * AMENDED by P0 legs ruling 5 (ledger `2026-10-10-p0-legs-baseline`): when the first segment is not a
+ * market, a second pass looks for a market's key, city name or configured alias anywhere in the
+ * destination (`resolveMarketByAlias`) — "Arashiyama, Kyoto" and "Kyoto Station" are Kyoto. Still ONE
+ * market or NULL: two markets named, or a market's `notIf` word present, resolve to NULL.
  */
 export function resolveMarketSlug(destination: string | null | undefined): string | null {
   if (!destination) return null;
@@ -67,5 +73,40 @@ export function resolveMarketSlug(destination: string | null | undefined): strin
   const match = OPERATING_MARKETS.find(
     (m) => m.marketKey === city || m.cityName.toLowerCase() === city,
   );
-  return match ? match.marketKey : null;
+  // P0 ruling 5: a market's `notIf` word ("Cartagena, Spain") vetoes even the exact first-segment match.
+  if (match) return vetoedByNotIf(match.marketKey, normaliseForMarketMatch(destination)) ? null : match.marketKey;
+  return resolveMarketByAlias(destination);
+}
+
+function vetoedByNotIf(marketKey: string, normalisedDestination: string): boolean {
+  return (MARKET_ALIASES[marketKey]?.notIf ?? []).some((w) => normalisedDestination.includes(normaliseForMarketMatch(w)));
+}
+
+/** Lowercase, accents stripped, every non-alphanumeric run a single space, padded for whole-word tests. */
+function normaliseForMarketMatch(text: string): string {
+  const flat = text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return flat ? ` ${flat} ` : "";
+}
+
+/**
+ * P0 legs ruling 5 (ledger `2026-10-10-p0-legs-baseline`): the second pass — normalised whole-word
+ * containment of a market's key, city name or one of its configured aliases (`MARKET_ALIASES`) anywhere
+ * in the destination. Operating markets only; a market's `notIf` word vetoes it; two markets ⇒ null.
+ */
+export function resolveMarketByAlias(destination: string | null | undefined): string | null {
+  const dest = normaliseForMarketMatch(String(destination ?? ""));
+  if (!dest) return null;
+  const hits = new Set<string>();
+  for (const m of OPERATING_MARKETS) {
+    const entry = MARKET_ALIASES[m.marketKey];
+    if (vetoedByNotIf(m.marketKey, dest)) continue;
+    const terms = [m.marketKey, m.cityName, ...(entry?.aliases ?? [])].map(normaliseForMarketMatch).filter(Boolean);
+    if (terms.some((t) => dest.includes(t))) hits.add(m.marketKey);
+  }
+  return hits.size === 1 ? Array.from(hits)[0] : null;
 }

@@ -399,7 +399,7 @@ export interface PlanCardTransport {
    * Step 9a (ledger `2026-10-07-step9a-routing-engine`) — present only on a routing-engine leg of a
    * routed plan: line and fare as the source gave them, and who answered when.
    */
-  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } };
+  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true };
   /** Step 9c (ledger `2026-10-07-step9c-leg-options`): an engine leg's mode options, current first (≤3). */
   routedOptions?: import("@shared/leg-options").LegOptionView[];
   /** Step 9c: the options were already asked — a tap makes no call. */

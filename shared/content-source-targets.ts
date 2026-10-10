@@ -9,8 +9,10 @@
  * one target (brief §9). No migration.
  *
  *   · `anchor` is what a fetched fact attaches to:
- *       - `station` — a station slug, for `transport.local.last_service` (FD-3 places a last-service fact
- *         by its station's POINT; how a slug resolves to a point is SS-1b's, and no coordinate is typed here);
+ *       - `station` — `{ stationSlug, osmNodeId }`, for `transport.local.last_service`. FD-3 places a
+ *         last-service fact by its station's POINT; SS-1b resolves that point ONCE from the named
+ *         OpenStreetMap node (the city-event venue path, LD 59 — never Google Places), so no coordinate is
+ *         ever typed here (decision-maker, Oct 10, 2026; ledger `2026-10-10-ss1b-official-refresh`);
  *       - `place`   — a Google `place_id`, for `stop.hours` / `last_admission` (FD-3's cross-plan read
  *         matches an official fact to a plan's stop by place id only — `feasibilityFactsForTrip`).
  *   · `validateTargets` is the ONE check, read by the coverage report and the nightly census: a target
@@ -22,7 +24,7 @@
 import { isContentNeedKey, sourceNeedStanding } from "./content-facts";
 
 export type TargetAnchor =
-  | { kind: "station"; slug: string }
+  | { kind: "station"; stationSlug: string; osmNodeId: number }
   | { kind: "place"; placeId: string };
 
 export interface ContentSourceTarget {
@@ -42,6 +44,11 @@ export const STATION_ANCHORED_NEEDS = ["transport.local.last_service"] as const;
 
 const STATION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PLACE_ID = /^[A-Za-z0-9_-]{10,300}$/;
+
+/** An OpenStreetMap node id: a positive integer (a number, never a string). */
+export function isOsmNodeId(v: unknown): v is number {
+  return typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+}
 
 export interface RegistryRowForTargets {
   id: string;
@@ -89,7 +96,8 @@ export function validateTargets(config: ContentSourceTargets, rows: readonly Reg
       else if (!["covers", "partial"].includes(sourceNeedStanding(row, t.need))) out.push({ sourceId, index, problem: "need_not_covered" });
       const a = t.anchor as TargetAnchor | undefined;
       const wellFormed =
-        (a?.kind === "station" && STATION_SLUG.test(a.slug ?? "")) || (a?.kind === "place" && PLACE_ID.test(a.placeId ?? ""));
+        (a?.kind === "station" && STATION_SLUG.test(a.stationSlug ?? "") && isOsmNodeId(a.osmNodeId)) ||
+        (a?.kind === "place" && PLACE_ID.test(a.placeId ?? ""));
       if (!wellFormed) out.push({ sourceId, index, problem: "bad_anchor" });
       else {
         const wantsStation = (STATION_ANCHORED_NEEDS as readonly string[]).includes(t.need);
