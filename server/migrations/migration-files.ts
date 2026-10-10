@@ -1956,4 +1956,9 @@ export const MIGRATION_FILES = [
   // 2026-10-09-e3-experiences-inline; E3 ruling 2). DATA ONLY: UPDATE by slug, only while the row still holds
   // the generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 9, 2026.
   "360_occasion_descriptions.sql",
+  // 364 — the three production occasion descriptions 360 missed (anniversary, bachelor-bachelorette,
+  // sports-event; anniversary also under the seeder's `anniversary-trip`). Ledger
+  // 2026-10-10-m364-occasion-descriptions. DATA ONLY: UPDATE by slug, only while the row still holds the
+  // generated placeholder. No DDL, nothing to declare. HELD for the founder.
+  "364_occasion_descriptions_prod.sql",
 ] as const;
