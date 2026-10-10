@@ -215,7 +215,7 @@ test("E9: an expert's confirmed leg wins its pair — a legacy one is re-routed 
   assert.equal(r.removed, 1, "the engine's own a→b is dropped");
   const ab = (await legs(PAID)).filter((l) => String(l.to_activity_id).endsWith("-b"));
   assert.deepEqual(ab.map((l) => l.proposal_status).sort(), [null, "confirmed"].sort() as any, "the re-routed leg keeps confirmed; the legacy row is kept, hidden");
-  assert.equal(ab.find((l) => l.proposal_status === null)?.origin, "superseded");
+  assert.ok(ab.find((l) => l.proposal_status === null)?.superseded_at, "superseded_at stamped (migration 368)");
   const again = new StubRoutingAdapter();
   await computePlanLegs(PAID, { adapter: again });
   assert.equal(again.calls, 0, "a confirmed engine leg is never recomputed");

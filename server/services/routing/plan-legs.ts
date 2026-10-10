@@ -49,6 +49,11 @@ export interface PlanStop {
   name: string;
   dayNumber: number;
   point: RoutePoint | null;
+  /**
+   * TC-3a (migration 368): a ride item's exit pin. When present, the leg LEAVING this stop starts here;
+   * the leg arriving at it still ends at `point` (the boarding pin). Absent on every other stop.
+   */
+  exitPoint?: RoutePoint | null;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
@@ -60,6 +65,8 @@ export interface DesiredLeg {
   legOrder: number;
   from: PlanStop & { point: RoutePoint };
   to: PlanStop & { point: RoutePoint };
+  /** Where the leg starts: the from-stop's exit pin when it has one (a ride), else its own point (TC-3a). */
+  origin: RoutePoint;
   mode: RoutingMode;
   /** The departure's local wall clock, or null when the plan does not say. */
   wallClock: string | null;
@@ -151,7 +158,9 @@ export function desiredPlanLegs(
       return;
     }
     const pairKey = legPairKey(dayNumber, from.id, to.id);
-    const mode = opts.selectedMode?.(pairKey) ?? defaultRoutedMode(from.point, to.point, opts.hasTransitCoverage);
+    // TC-3a: a ride leaves the traveler at its exit pin, so the next leg is routed from there.
+    const origin = from.exitPoint ?? from.point;
+    const mode = opts.selectedMode?.(pairKey) ?? defaultRoutedMode(origin, to.point, opts.hasTransitCoverage);
     const hourBucket = routeHourBucket(wallClock);
     legs.push({
       pairKey,
@@ -159,10 +168,11 @@ export function desiredPlanLegs(
       legOrder,
       from: from as PlanStop & { point: RoutePoint },
       to: to as PlanStop & { point: RoutePoint },
+      origin,
       mode,
       wallClock,
       hourBucket,
-      legKey: routeLegKey(from.point, to.point, mode, hourBucket),
+      legKey: routeLegKey(origin, to.point, mode, hourBucket),
     });
   };
   for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
