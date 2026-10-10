@@ -504,6 +504,10 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
         run: npx tsx --test shared/__tests__/listing-save-intent.test.ts
+      # PB-1 (ledger `2026-10-10-pb1-property-category-city`): the property builder's neighbourhood
+      # pre-fill is the ONE radius-limited placement rule, and the answer is required.
+      - name: Property neighbourhood pre-fill pin
+        run: npx tsx --test client/src/lib/__tests__/property-neighborhood.test.ts
       - name: Bundle component + settlement copy pin
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin

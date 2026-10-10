@@ -42,6 +42,7 @@ import { adminRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./midd
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
 import { deriveCityPatch } from "./utils/service-city";
+import { accommodationCategoryId, isPropertyProductShape } from "./utils/property-category";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
@@ -4168,6 +4169,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Sanitize provider-authored free-text fields to strip HTML injection vectors before
       // they reach the database, emails, or AI prompts (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
+      // PB-1 R1 (ledger `2026-10-10-pb1-property-category-city`): a property or room is lodging by
+      // construction — its category is server-set to `accommodation`, never the body's, on this rail too.
+      if (isPropertyProductShape((input as any).productShape)) {
+        (input as any).categoryId = await accommodationCategoryId();
+      }
 
       // Save-as-Draft is a pick, not `approvalStatus` (that column stays omitted, §19).
       // An explicit draft is born `draft` and skips every publish/review gate. Anything else
