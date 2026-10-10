@@ -26,6 +26,8 @@ import type { PlanCardDay } from "@/components/plancard/plancard-types";
 import type { MapVersion } from "@/lib/map-scene";
 import { formatMoneyCents } from "@/lib/optimization-preview";
 import { retimeLine } from "@shared/version-board";
+import { feasibilityLine } from "@shared/plan-feasibility";
+import { DayFeasibilityLine } from "@/components/plan/DayBlock";
 import {
   BOARD_DRAG_MIME,
   adoptAllPicks,
@@ -229,6 +231,8 @@ export function VersionsBoard({
   });
 
   const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
+  // FD-3 (ledger `2026-10-10-fd3-feasibility`): the same per-day line the slip's DayBlock draws, on Your plan.
+  const feasibilityOf = new Map(sortedDays.map((d) => [d.dayNum, feasibilityLine(d.feasibility)] as const));
   const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name);
   // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
   // re-parenting it — a remount re-sizes the map mid-drag on the By day board (kyoto-slice §6 step 5).
@@ -525,6 +529,7 @@ export function VersionsBoard({
                         <span className="text-[11px] text-[color:var(--slip-muted)]">draft · drop a day here</span>
                       )}
                     </div>
+                    <DayFeasibilityLine dayKey={`versions-${dayNumber}`} text={feasibilityOf.get(dayNumber) ?? null} className="mt-0.5 text-[11px] text-[color:var(--slip-muted)]" />
                     <ol className="mt-1 space-y-0.5">
                       {planStops.map((st, i) => (
                         <li
