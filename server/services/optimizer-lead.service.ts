@@ -21,8 +21,13 @@ import { db } from "../db";
 import { itineraryItems, trips } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import {
+  afterLastAdmission,
   cityCrossings,
   closedOnArrival,
+  closesBeforeVisitEnd,
+  lastServiceMissed,
+  visitEndMinutes,
+  type RideCheck,
   leadFindings,
   paceOver,
   timedEntryConflicts,
@@ -31,7 +36,12 @@ import {
   type Finding,
   type HoursFact,
 } from "@shared/optimizer-lead";
-import { factPointsForTrip, factsForTrip } from "./content-facts/place-facts.service";
+import { factPointsForTrip, feasibilityFactsForTrip } from "./content-facts/place-facts.service";
+import { lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "@shared/feasibility-facts";
+import { isRideMode, type DayFeasibility } from "@shared/plan-feasibility";
+import { parseDayHours } from "@shared/optimizer-lead";
+import { haversineMeters } from "@shared/geo";
+import { ROUTED_WALK_MAX_METERS } from "@shared/routing-engine";
 import { storage } from "../storage";
 import { legUnreachableFinding, unreachableStops } from "@shared/leg-reachability";
 
@@ -47,7 +57,7 @@ function isoOf(v: unknown): string | null {
 }
 
 export async function loadOptimizerFindings(tripId: string): Promise<{ findings: Finding[]; hasPricedItems: boolean }> {
-  const [trip] = await db.select({ startDate: trips.startDate }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
   const start = isoOf(trip?.startDate);
   const rows = await db
     .select({
@@ -73,25 +83,11 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
 
   // a. stored hours, each with its own checkedAt. A hard closure counts only from an OFFICIAL source
-  // (R-p): a non-Places fact the registry may publish.
-  const facts = await factsForTrip(tripId);
-  const hours = new Map<string, HoursFact>();
-  for (const [itemId, list] of Object.entries(facts)) {
-    const h = list.find((f) => f.factType === "hours");
-    const desc = (h?.value as any)?.weekdayDescriptions;
-    if (!h || !Array.isArray(desc)) continue;
-    hours.set(itemId, {
-      weekdayDescriptions: desc.map(String),
-      checkedAt: h.checkedAt ?? null,
-      official: h.origin !== "places_api" && h.publishable === true,
-    });
-  }
-  const timed = items.map((r) => ({
-    id: r.id,
-    dayNumber: r.dayNumber!,
-    dateIso: start ? addDays(start, r.dayNumber! - 1) : null,
-    startTime: r.startTime ?? null,
-  }));
+  // (R-p): a non-Places fact the registry may publish. FD-3 (ledger `2026-10-10-fd3-feasibility`): read
+  // through the ONE feasibility reader, so an official crawled row carrying structured hours is read too,
+  // ahead of Places for a hard fact, and an untagged row never is.
+  const ctx = await feasibilityContext(tripId, items, start, trip?.marketSlug ?? null);
+  const { hours, timed } = ctx;
 
   // b. the plan's anchors against its timed items — the validate-schedule rule.
   const anchors = await storage.getTemporalAnchors(tripId);
@@ -134,6 +130,9 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   const findings = leadFindings([
     legUnreachableFinding(reach.unreachable),
     closedOnArrival(timed, hours, start),
+    afterLastAdmission(timed, ctx.lastEntry),
+    closesBeforeVisitEnd(timed, hours, start),
+    lastServiceMissed(ctx.rides.filter((r) => r.lastDepartures.length > 0)),
     timedEntryConflicts(anchors as any, scheduled),
     cityCrossings(days),
     walkingSavedKm(days),
@@ -143,4 +142,130 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   // estimated cost, which is a guess, not a price (§13).
   const hasPricedItems = items.some((r) => !!r.providerServiceId || !!r.bookingId);
   return { findings, hasPricedItems };
+}
+
+
+// ── FD-3: the feasibility context, shared by the findings and the day line (ledger `2026-10-10-fd3-feasibility`) ──
+
+type FeasibilityItem = {
+  id: string;
+  title: string;
+  dayNumber: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  durationMinutes: number | null;
+  lat: unknown;
+  lng: unknown;
+};
+
+interface FeasibilityContext {
+  hours: Map<string, HoursFact>;
+  timed: Array<{ id: string; dayNumber: number; dateIso: string | null; startTime: string | null; endTime: string | null; durationMinutes: number | null }>;
+  /** Item → the last-entry minute that applies on its date (ruling 1). */
+  lastEntry: Map<string, number>;
+  /** Every ride the plan takes; `lastDepartures` empty ⇒ not checked (ruling 2). */
+  rides: RideCheck[];
+}
+
+/**
+ * ONE assembly of the feasibility inputs (§18 rule 1): the findings above and `loadDayFeasibility` below
+ * read the same hours, last entries and rides, so the day line and the findings can never disagree.
+ */
+async function feasibilityContext(tripId: string, items: FeasibilityItem[], start: string | null, market: string | null): Promise<FeasibilityContext> {
+  const facts = await feasibilityFactsForTrip(tripId, market);
+  const hours = new Map<string, HoursFact>();
+  facts.hours.forEach((h, itemId) => hours.set(itemId, h));
+  const timed = items
+    .filter((r) => r.dayNumber != null)
+    .map((r) => ({
+      id: r.id,
+      dayNumber: r.dayNumber!,
+      dateIso: start ? addDays(start, r.dayNumber! - 1) : null,
+      startTime: r.startTime ?? null,
+      endTime: r.endTime ?? null,
+      durationMinutes: r.durationMinutes ?? null,
+    }));
+  const lastEntry = new Map<string, number>();
+  for (const it of timed) {
+    const v = parseLastAdmission(facts.lastAdmission.get(it.id));
+    const m = v && it.dateIso ? lastAdmissionMinutes(v, it.dateIso) : null;
+    if (m !== null) lastEntry.set(it.id, m);
+  }
+
+  // Rides: the plan's own legs by train, subway or bus, departing when the stop they leave ends. The
+  // departure is the leg's start — a ride you cannot board after the last departure (the brief's reading).
+  const legs = await tripLegsShown(tripId);
+  const points = await factPointsForTrip(tripId);
+  const byId = new Map(timed.map((t) => [t.id, t]));
+  const services = facts.lastServices
+    .map((s) => ({ ...s, v: parseLastService(s.value) }))
+    .filter((s): s is typeof s & { v: NonNullable<typeof s.v> } => s.v !== null);
+  const rides: RideCheck[] = [];
+  for (const l of legs as any[]) {
+    const mode = l.userSelectedMode ?? l.selectedMode ?? l.recommendedMode ?? null;
+    if (!isRideMode(mode)) continue;
+    const from = l.fromActivityId ? byId.get(l.fromActivityId) : undefined;
+    const end = from ? visitEndMinutes(from) : null;
+    const dateIso = from?.dateIso ?? (start && l.dayNumber ? addDays(start, l.dayNumber - 1) : null);
+    let departMin = end;
+    if (departMin !== null && departMin < SERVICE_DAY_START_MIN) departMin += 24 * 60;
+    const lat = Number(l.fromLat);
+    const lng = Number(l.fromLng);
+    const origin = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : (from ? points.get(from.id) ?? null : null);
+    const lastDepartures =
+      departMin === null || !dateIso || !origin
+        ? []
+        : services
+            .filter((s) => haversineMeters(origin.lat, origin.lng, s.lat, s.lng) <= ROUTED_WALK_MAX_METERS)
+            .map((s) => lastServiceMinutes(s.v, dateIso))
+            .filter((m): m is number => m !== null);
+    rides.push({ dayNumber: Number(l.dayNumber), departMin: departMin ?? -1, lastDepartures });
+  }
+  return { hours, timed, lastEntry, rides };
+}
+
+/**
+ * FD-3 §3d: each plan day's honest counts — what was checked, of what. Read behind the caller's own plan
+ * gate (the plancard). Only counts leave it.
+ */
+export async function loadDayFeasibility(tripId: string): Promise<Map<number, DayFeasibility>> {
+  const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  if (!trip) return new Map();
+  const start = isoOf(trip.startDate);
+  const rows = await db
+    .select({
+      id: itineraryItems.id,
+      title: itineraryItems.title,
+      dayNumber: itineraryItems.dayNumber,
+      startTime: itineraryItems.startTime,
+      endTime: itineraryItems.endTime,
+      durationMinutes: itineraryItems.durationMinutes,
+      itemType: itineraryItems.itemType,
+      lat: itineraryItems.latitude,
+      lng: itineraryItems.longitude,
+    })
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, tripId));
+  const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
+  const ctx = await feasibilityContext(tripId, items as FeasibilityItem[], start, trip.marketSlug ?? null);
+  const out = new Map<number, DayFeasibility>();
+  const day = (n: number) => {
+    let d = out.get(n);
+    if (!d) { d = { stops: 0, hoursChecked: 0, lastEntryChecked: 0, rides: 0, ridesChecked: 0 }; out.set(n, d); }
+    return d;
+  };
+  for (const it of ctx.timed) {
+    const d = day(it.dayNumber);
+    d.stops += 1;
+    const h = ctx.hours.get(it.id);
+    if (h && it.startTime && it.dateIso && parseDayHours(h.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay())) d.hoursChecked += 1;
+    if (it.startTime && ctx.lastEntry.has(it.id)) d.lastEntryChecked += 1;
+  }
+  for (const r of ctx.rides) {
+    if (!Number.isFinite(r.dayNumber)) continue;
+    const d = day(r.dayNumber);
+    d.rides += 1;
+    if (r.lastDepartures.length) d.ridesChecked += 1;
+  }
+  return out;
 }

@@ -15,7 +15,18 @@ import { anchorWallClockMs } from "./anchor-time";
  * `leg_unreachable` (Slice A2, ledger `2026-10-05-reachability-from-legs`): a stop the plan's OWN leg
  * cannot reach in time — `unreachableStops` in `shared/leg-reachability.ts`, the one reachability rule.
  */
-export type FindingKind = "leg_unreachable" | "closed_on_arrival" | "timed_entry_conflict" | "city_crossing" | "walking_saved_km" | "pace_over";
+export type FindingKind =
+  | "leg_unreachable"
+  | "closed_on_arrival"
+  // FD-3 (ledger `2026-10-10-fd3-feasibility`, rulings 1/3/6): two checks against stored OFFICIAL facts and
+  // the visit's own end — can you still get in, will you be put out — and the last ride back.
+  | "after_last_admission"
+  | "closes_before_visit_end"
+  | "last_service_missed"
+  | "timed_entry_conflict"
+  | "city_crossing"
+  | "walking_saved_km"
+  | "pace_over";
 
 export interface Finding {
   kind: FindingKind;
@@ -37,7 +48,17 @@ export interface Finding {
 }
 
 /** Problems first, then gains — the order the card reads them in (spec §8). */
-export const FINDING_ORDER: readonly FindingKind[] = ["leg_unreachable", "closed_on_arrival", "timed_entry_conflict", "city_crossing", "walking_saved_km", "pace_over"];
+export const FINDING_ORDER: readonly FindingKind[] = [
+  "leg_unreachable",
+  "closed_on_arrival",
+  "after_last_admission",
+  "closes_before_visit_end",
+  "last_service_missed",
+  "timed_entry_conflict",
+  "city_crossing",
+  "walking_saved_km",
+  "pace_over",
+];
 export const MAX_FINDINGS = 3;
 
 /** R-v: hours older than this, relative to the trip's first day, still count — with the caveat. */
@@ -150,6 +171,93 @@ export function closedOnArrival(items: readonly TimedItem[], hours: ReadonlyMap<
   }
   if (!count) return null;
   return { kind: "closed_on_arrival", count, days: Array.from(days).sort((x, y) => x - y), ...(stale ? { caveat: HOURS_CAVEAT } : {}) };
+}
+
+// ── a2. FD-3: the visit's own end, the last entry and the last ride (ledger `2026-10-10-fd3-feasibility`) ──
+
+/** A stop's start and the minute its visit ends: its own end time, else start + its planned duration. */
+export interface VisitItem extends TimedItem {
+  endTime?: string | null;
+  durationMinutes?: number | null;
+}
+
+/** Pure. The visit's end minute (may pass midnight), or null when neither an end time nor a duration is stated (§13). */
+export function visitEndMinutes(it: VisitItem): number | null {
+  const start = minutesOf(it.startTime);
+  if (start === null) return null;
+  const end = minutesOf(it.endTime ?? null);
+  if (end !== null) return end <= start ? end + 24 * 60 : end;
+  const d = it.durationMinutes;
+  return d != null && Number.isFinite(d) && d > 0 ? start + Math.round(d) : null;
+}
+
+/**
+ * Ruling 6, check 2 — "will you be put out": a stop open when the visit starts whose opening range ends
+ * before the visit does. A stop already closed on arrival is `closed_on_arrival`'s, never counted twice.
+ * Same hours facts, same stale caveat (R-v).
+ */
+export function closesBeforeVisitEnd(items: readonly VisitItem[], hours: ReadonlyMap<string, HoursFact>, tripStartIso: string | null): Finding | null {
+  const days = new Set<number>();
+  let count = 0;
+  let stale = false;
+  const tripStart = tripStartIso ? Date.parse(`${tripStartIso}T00:00:00Z`) : NaN;
+  for (const it of items) {
+    const fact = hours.get(it.id);
+    const at = minutesOf(it.startTime);
+    const end = visitEndMinutes(it);
+    if (!fact || at === null || end === null || !it.dateIso) continue;
+    const h = parseDayHours(fact.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay());
+    if (!h || h.kind !== "ranges") continue;
+    const range = h.ranges.find(([s, e]) => at >= s && at < e);
+    if (!range || end <= range[1]) continue;
+    count += 1;
+    days.add(it.dayNumber);
+    const checked = fact.checkedAt ? Date.parse(fact.checkedAt) : NaN;
+    if (!Number.isFinite(checked) || !Number.isFinite(tripStart) || tripStart - checked > HOURS_STALE_DAYS * 86_400_000) stale = true;
+  }
+  if (!count) return null;
+  return { kind: "closes_before_visit_end", count, days: Array.from(days).sort((x, y) => x - y), ...(stale ? { caveat: HOURS_CAVEAT } : {}) };
+}
+
+/**
+ * Ruling 6, check 1 — "can you still get in": a stop whose ARRIVAL is after the last entry stated for that
+ * date by a stored official `last_admission` fact. The minute is resolved by the caller from the fact
+ * (`lastAdmissionMinutes`, shared/feasibility-facts.ts); a stop with none is unchecked, never "fine".
+ */
+export function afterLastAdmission(items: readonly TimedItem[], lastEntry: ReadonlyMap<string, number>): Finding | null {
+  const days = new Set<number>();
+  let count = 0;
+  for (const it of items) {
+    const limit = lastEntry.get(it.id);
+    const at = minutesOf(it.startTime);
+    if (limit == null || at === null) continue;
+    if (at <= limit) continue;
+    count += 1;
+    days.add(it.dayNumber);
+  }
+  return count ? { kind: "after_last_admission", count, days: Array.from(days).sort((x, y) => x - y) } : null;
+}
+
+/** One transit ride the plan takes, with its departure on the service day and the last departures that apply. */
+export interface RideCheck {
+  dayNumber: number;
+  /** Minutes on the service day (a ride after midnight is past 24:00). */
+  departMin: number;
+  /** The applicable last departures (`lastServiceMinutes`) at a station by the ride's start. Empty ⇒ unchecked. */
+  lastDepartures: readonly number[];
+}
+
+/** Ruling 3 — a ride that leaves after every applicable last departure near its start. */
+export function lastServiceMissed(rides: readonly RideCheck[]): Finding | null {
+  const days = new Set<number>();
+  let count = 0;
+  for (const r of rides) {
+    if (!r.lastDepartures.length) continue;
+    if (r.lastDepartures.some((m) => r.departMin <= m)) continue;
+    count += 1;
+    days.add(r.dayNumber);
+  }
+  return count ? { kind: "last_service_missed", count, days: Array.from(days).sort((x, y) => x - y) } : null;
 }
 
 // ── b. timed_entry_conflict (the ONE overlap rule, shared with validate-schedule) ───────────────
@@ -362,6 +470,12 @@ export function findingLine(f: Finding): string {
       return `${n(f.count, "stop", "stops")} can't be reached in time with the plan's travel times${f.est ? " (est.)" : ""}`;
     case "closed_on_arrival":
       return `${n(f.count, "stop is", "stops are")} reached when ${f.count === 1 ? "it's" : "they're"} closed`;
+    case "after_last_admission":
+      return `${n(f.count, "stop is", "stops are")} reached after last entry`;
+    case "closes_before_visit_end":
+      return `${n(f.count, "stop closes", "stops close")} before your visit ends`;
+    case "last_service_missed":
+      return `${n(f.count, "ride leaves", "rides leave")} after the last train or bus`;
     case "timed_entry_conflict":
       return `${n(f.count, "timed entry clashes", "timed entries clash")} with your fixed times`;
     case "city_crossing":
