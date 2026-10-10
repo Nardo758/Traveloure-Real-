@@ -1,0 +1,279 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Commerce Part 7 removal inventory</title><style>body{font:15px/1.5 system-ui,sans-serif;margin:32px;color:#202020}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid #ccc;padding:9px;text-align:left;vertical-align:top;overflow-wrap:anywhere}th{background:#eee}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f3f3f3;padding:16px}aside{border-left:4px solid #a60;padding:12px;background:#fff8e8}</style><h1>Part 7 — removal inventory for approval</h1><p>Inspected checkout: dcf07270baf43d1735dc79b86ae7eed37f205b00. Catalog reads: DEVELOPMENT ONLY. No production inspection or modification. No deletion, trigger uninstall, migration registration, code, flag or secret change.</p><aside>NOT APPROVED. This document does not certify removal of the original 37 wrappers. The two requested source reports are absent, including exact-name local-worktree searches. No Git-history reconstruction. UNKNOWN items are held and cannot be deleted. Full DDL below was read, not executed; it must be included in the PR before trigger uninstall.</aside><h2>Classification table</h2><table><thead><tr><th>Path / trigger / object</th><th>Decision</th><th>Reason</th><th>Current callers / evidence</th></tr></thead><tbody><tr><td>reports/commerce-step0-query-sweep.md</td><td>UNKNOWN</td><td>Requested source report is absent; no historical reconstruction</td><td>No current file to trace</td></tr><tr><td>reports/commerce-step1-plan.md</td><td>KEEP</td><td>Documentation-only policy; absent in this checkout</td><td>No current file to trace</td></tr><tr><td>Legacy 37 commerce wrapper call sites: identities unresolved</td><td>UNKNOWN</td><td>No identifiable legacy commerce-wrapper implementation found; main registry wrappers are not a substitute</td><td>Cannot establish the original 37 callers without inventing identities</td></tr><tr><td>Legacy commerce mutation hooks: identities unresolved</td><td>UNKNOWN</td><td>No identifiable implementation found in searched source</td><td>No matching current commerce mutation-hook calls found</td></tr><tr><td>Legacy commerce lifecycle TS helpers: identities unresolved</td><td>UNKNOWN</td><td>No identifiable helper files found; neutral Part 2 metadata is not an email mutation hook</td><td>No matching current helper imports found</td></tr><tr><td>Unregistered commerce trigger SQL drafts: identities unresolved</td><td>UNKNOWN</td><td>No matching draft file found in migration directories, scripts or local SQL files</td><td>No current draft registration found; do not delete registered migrations</td></tr><tr><td>reports/commerce-step1-*</td><td>KEEP</td><td>Documentation only; no matching current files found</td><td>No current runtime reference found</td></tr><tr><td>server/services/cart-email-state.service.ts</td><td>KEEP</td><td>Part 2 neutral activity clock and add-time snapshot, not legacy email hook</td><td>server/storage.ts:8–11; server/routes.ts:157; server/services/cart-projection.service.ts:63; verifier:10; paid check:4; outbox:41; item-change:7</td></tr><tr><td>server/services/commerce-send-verification.service.ts</td><td>KEEP</td><td>Part 6 live verifier and atomic send claim</td><td>sweep:120; cart-reminder:233; outbox:105,144,483</td></tr><tr><td>server/services/commerce-email-sweep.service.ts</td><td>KEEP</td><td>Approved query-only enqueue job</td><td>server/routes/internal.routes.ts:50</td></tr><tr><td>server/services/cart-reminder.service.ts</td><td>KEEP</td><td>Shared read-only paid check and reminder eligibility; UNKNOWN rails retained</td><td>verifier:13–16; sweep:10; item-change:8–10; itinerary-followup:13; outbox:111,490</td></tr><tr><td>server/services/cart-item-change.service.ts</td><td>KEEP</td><td>Current-value read and normalization for Part 5/6</td><td>verifier:11; sweep:13; outbox:134 type; cart-item-change-email:1 type</td></tr><tr><td>server/services/marketing-delivery-policy.service.ts</td><td>KEEP</td><td>Recipient locks, timezone window and daily marketing reservation</td><td>verifier:17–20; sweep:11; paid check:10–14,197; itinerary-followup:12; outbox:112,135 type</td></tr><tr><td>server/services/itinerary-followup.service.ts</td><td>KEEP</td><td>Shared itinerary cancellation and delivery</td><td>itinerary-generation-outcome.service.ts:11; itinerary-email-preferences.routes.ts:9; outbox:505</td></tr><tr><td>server/services/itinerary-followup-email.ts</td><td>KEEP</td><td>Shared marketing preferences and timezone functions</td><td>verifier:21–22; sweep:12; paid check:5; outbox:47; marketing-delivery-policy:3</td></tr><tr><td>server/services/email-outbox.service.ts</td><td>KEEP</td><td>Sole retained durable commerce queue and dispatcher</td><td>sweep:7,14; server/index.ts:48; internal.routes.ts:43; admin.routes.ts:110; emailAuth.ts:9; routes.ts:2323; payments.routes.ts:942; ready-made-notifications.service.ts:67; existing activity and invite producers</td></tr><tr><td>server/services/email.service.ts</td><td>KEEP</td><td>Provider handoff checks and existing payload builders; direct senders unchanged</td><td>verifier:24–26; paid check:15 type; outbox:49–56,499,508,544</td></tr><tr><td>server/services/cart-reminder-email.ts</td><td>KEEP</td><td>Approved three-step taxonomy and payload builder</td><td>verifier:23; paid check:6–9; outbox:48</td></tr><tr><td>server/services/cart-item-change-email.ts</td><td>KEEP</td><td>Part 5 change-message payload builder</td><td>verifier:12; outbox:143</td></tr><tr><td>server/services/signup-welcome-outbox.service.ts</td><td>KEEP</td><td>Existing signup verification/delivery path</td><td>outbox:496; email.service.ts welcome enqueue</td></tr><tr><td>server/services/guest-invite-email.ts</td><td>KEEP</td><td>Existing guest-invite payload builder</td><td>outbox:57–60</td></tr><tr><td>server/services/background-job-runner.ts</td><td>KEEP</td><td>Existing outbox background execution</td><td>outbox:45</td></tr><tr><td>server/services/startup-delay.ts</td><td>KEEP</td><td>Existing outbox startup scheduling</td><td>outbox:46</td></tr><tr><td>server/services/web-push.service.ts</td><td>KEEP</td><td>Existing notification side path, outside removal scope</td><td>outbox:758</td></tr><tr><td>server/infrastructure/logger.ts</td><td>KEEP</td><td>Existing dispatcher logging</td><td>outbox:44; cart-email-state:9</td></tr><tr><td>server/db.ts</td><td>KEEP</td><td>Existing shared database adapter</td><td>verifier:8; sweep:6; paid check:2; outbox:40</td></tr><tr><td>shared/schema.ts</td><td>KEEP</td><td>Existing schema types; no schema edit</td><td>verifier:9; paid check:3; outbox:43</td></tr><tr><td>server/automations/messaging/index.ts</td><td>KEEP</td><td>Existing messaging registry and definitions</td><td>sweep:8; messaging runtime</td></tr><tr><td>server/automations/messaging/runtime.ts</td><td>KEEP</td><td>Existing event/schedule dispatch</td><td>outbox:295,434,448; storage.ts; itinerary-followup:5; signup-welcome:4</td></tr><tr><td>server/automations/messaging/producer-index.ts</td><td>KEEP</td><td>Main-owned live producer/transport wrappers, not identified legacy 37</td><td>email.service.ts:23,39,651,732,1422,2057,2129,2201,2282; other main producers</td></tr><tr><td>server/automations/registry.ts</td><td>KEEP</td><td>Main-owned automation registry</td><td>Automation family registries and public automation index</td></tr><tr><td>server/automations/contract.ts</td><td>KEEP</td><td>Main-owned registry contracts</td><td>Registry definitions, dispatcher and scheduled wrapper</td></tr><tr><td>server/automations/event-dispatcher.ts</td><td>KEEP</td><td>Main-owned event dispatcher</td><td>messaging/runtime.ts:2,13; automations/index.ts:9; existing family runtimes</td></tr><tr><td>server/automations/scheduler-wrapper.ts</td><td>KEEP</td><td>Main-owned scheduled execution and heartbeat behavior</td><td>sweep:9; automations/index.ts:10; existing scheduled jobs</td></tr><tr><td>server/automations/index.ts</td><td>KEEP</td><td>Existing public automation exports</td><td>Existing registry consumers; no removal approved</td></tr><tr><td>server/automations/messaging/commerce-email-sweep.ts</td><td>KEEP</td><td>Registered query-sweep definition</td><td>Existing messaging automation registry</td></tr><tr><td>server/migrations/migration-files.ts</td><td>KEEP</td><td>Main-owned migration registration</td><td>Boot migration runner; 346 and 347 registered at 1919/1922</td></tr><tr><td>server/migrations/346_place_photos.sql</td><td>KEEP</td><td>346 owned by main, unrelated to legacy commerce triggers</td><td>migration-files.ts:1919</td></tr><tr><td>server/migrations/347_transport_leg_authoring.sql</td><td>KEEP</td><td>347 owned by main, unrelated to legacy commerce triggers</td><td>migration-files.ts:1922</td></tr><tr><td>server/migrations/036_transport_commerce_fee_config.sql</td><td>KEEP</td><td>Registered transport fee migration, not an unregistered trigger draft</td><td>migration-files.ts:172</td></tr><tr><td>Direct senders and unused confirmation helper</td><td>KEEP</td><td>Explicitly out of scope; inventory only, no edits</td><td>Existing sender callers unchanged</td></tr><tr><td>node:crypto / node:perf_hooks / drizzle-orm</td><td>KEEP</td><td>Existing platform/dependency imports; not legacy helpers</td><td>Every exact import shown in the import appendix</td></tr><tr><td>public.activity_cache.commerce_price_observer</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_price_observer AFTER INSERT OR UPDATE ON activity_cache FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer(); invokes public.commerce_catalog_observer(); enabled=O</td></tr><tr><td>public.affiliate_booking_requests.commerce_booking_guard</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON affiliate_booking_requests FOR EACH ROW EXECUTE FUNCTION commerce_booking_started(); invokes public.commerce_booking_started(); enabled=O</td></tr><tr><td>public.affiliate_products.commerce_price_observer</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_price_observer AFTER INSERT OR UPDATE ON affiliate_products FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer(); invokes public.commerce_catalog_observer(); enabled=O</td></tr><tr><td>public.bookings.commerce_booking_guard</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION commerce_booking_started(); invokes public.commerce_booking_started(); enabled=O</td></tr><tr><td>public.cart_items.commerce_cart_activity_guard</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_cart_activity_guard AFTER INSERT OR DELETE OR UPDATE ON cart_items FOR EACH ROW EXECUTE FUNCTION commerce_cart_activity(); invokes public.commerce_cart_activity(); enabled=O</td></tr><tr><td>public.commerce_carts.commerce_cart_delete_guard</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_cart_delete_guard BEFORE DELETE ON commerce_carts FOR EACH ROW EXECUTE FUNCTION commerce_cancel_deleted_cart(); invokes public.commerce_cancel_deleted_cart(); enabled=O</td></tr><tr><td>public.commerce_catalog_events.commerce_catalog_cart_changes</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_catalog_cart_changes AFTER INSERT ON commerce_catalog_events FOR EACH ROW EXECUTE FUNCTION commerce_queue_cart_changes(); invokes public.commerce_queue_cart_changes(); enabled=O</td></tr><tr><td>public.coordination_bookings.commerce_booking_guard</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON coordination_bookings FOR EACH ROW EXECUTE FUNCTION commerce_booking_started(); invokes public.commerce_booking_started(); enabled=O</td></tr><tr><td>public.provider_services.commerce_price_observer</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_price_observer AFTER INSERT OR UPDATE ON provider_services FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer(); invokes public.commerce_catalog_observer(); enabled=O</td></tr><tr><td>public.saved_items.commerce_saved_item_delete</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_saved_item_delete BEFORE DELETE ON saved_items FOR EACH ROW EXECUTE FUNCTION commerce_remove_saved_item(); invokes public.commerce_remove_saved_item(); enabled=O</td></tr><tr><td>public.service_bookings.commerce_booking_guard</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON service_bookings FOR EACH ROW EXECUTE FUNCTION commerce_booking_started(); invokes public.commerce_booking_started(); enabled=O</td></tr><tr><td>public.trips.commerce_trip_delete</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_trip_delete BEFORE DELETE ON trips FOR EACH ROW EXECUTE FUNCTION commerce_trip_removed(); invokes public.commerce_trip_removed(); enabled=O</td></tr><tr><td>public.users.commerce_account_delete</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_account_delete BEFORE DELETE ON users FOR EACH ROW EXECUTE FUNCTION commerce_account_removed(); invokes public.commerce_account_removed(); enabled=O</td></tr><tr><td>public.users.commerce_account_update</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_account_update BEFORE UPDATE OF email, is_deleted, is_suspended ON users FOR EACH ROW EXECUTE FUNCTION commerce_account_removed(); invokes public.commerce_account_removed(); enabled=O</td></tr><tr><td>public.vendor_availability_slots.commerce_stock_observer</td><td>REMOVE</td><td>Legacy development commerce trigger; archive full DDL in PR first</td><td>CREATE TRIGGER commerce_stock_observer AFTER INSERT OR UPDATE ON vendor_availability_slots FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer(); invokes public.commerce_catalog_observer(); enabled=O</td></tr><tr><td>public.affiliate_booking_requests.itinerary_followup_booking_guard</td><td>KEEP</td><td>Shared itinerary cancellation, explicitly protected</td><td>CREATE TRIGGER itinerary_followup_booking_guard BEFORE INSERT OR UPDATE ON affiliate_booking_requests FOR EACH ROW EXECUTE FUNCTION cancel_itinerary_followups_on_booking()</td></tr><tr><td>public.bookings.itinerary_followup_booking_guard</td><td>KEEP</td><td>Shared itinerary cancellation, explicitly protected</td><td>CREATE TRIGGER itinerary_followup_booking_guard BEFORE INSERT OR UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION cancel_itinerary_followups_on_booking()</td></tr><tr><td>public.coordination_bookings.itinerary_followup_booking_guard</td><td>KEEP</td><td>Shared itinerary cancellation, explicitly protected</td><td>CREATE TRIGGER itinerary_followup_booking_guard BEFORE INSERT OR UPDATE ON coordination_bookings FOR EACH ROW EXECUTE FUNCTION cancel_itinerary_followups_on_booking()</td></tr><tr><td>public.itinerary_comparisons.itinerary_followup_delete_guard</td><td>KEEP</td><td>Shared itinerary cancellation, explicitly protected</td><td>CREATE TRIGGER itinerary_followup_delete_guard BEFORE DELETE ON itinerary_comparisons FOR EACH ROW EXECUTE FUNCTION cancel_itinerary_followups_on_delete()</td></tr><tr><td>public.service_bookings.itinerary_followup_booking_guard</td><td>KEEP</td><td>Shared itinerary cancellation, explicitly protected</td><td>CREATE TRIGGER itinerary_followup_booking_guard BEFORE INSERT OR UPDATE ON service_bookings FOR EACH ROW EXECUTE FUNCTION cancel_itinerary_followups_on_booking()</td></tr><tr><td>public.email_outbox_commerce_key</td><td>KEEP</td><td>Existing unique commerce dedupe index; no new migration</td><td>email-outbox.service.ts:127,169 ON CONFLICT; CREATE UNIQUE INDEX email_outbox_commerce_key ON public.email_outbox USING btree (((metadata -&gt;&gt; 'commerceKey'::text))) WHERE (metadata ? 'commerceKey'::text)</td></tr><tr><td>public.commerce_catalog_observer()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>activity_cache.commerce_price_observer; affiliate_products.commerce_price_observer; provider_services.commerce_price_observer; vendor_availability_slots.commerce_stock_observer</td></tr><tr><td>public.commerce_booking_started()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>affiliate_booking_requests.commerce_booking_guard; bookings.commerce_booking_guard; coordination_bookings.commerce_booking_guard; service_bookings.commerce_booking_guard</td></tr><tr><td>public.commerce_cart_activity()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>cart_items.commerce_cart_activity_guard</td></tr><tr><td>public.commerce_cancel_deleted_cart()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>commerce_carts.commerce_cart_delete_guard</td></tr><tr><td>public.commerce_queue_cart_changes()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>commerce_catalog_events.commerce_catalog_cart_changes</td></tr><tr><td>public.commerce_remove_saved_item()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>saved_items.commerce_saved_item_delete</td></tr><tr><td>public.commerce_trip_removed()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>trips.commerce_trip_delete</td></tr><tr><td>public.commerce_account_removed()</td><td>UNKNOWN</td><td>Trigger-function DDL inspected and included below. Function deletion is not assumed from permission to uninstall triggers. Retain until explicitly classified/approved.</td><td>users.commerce_account_delete; users.commerce_account_update</td></tr></tbody></table><h2>Every import found in the four dispatcher/eligibility roots</h2><p>Static declarations, dynamic imports and import-type references are listed individually. All are KEEP. No current dependency on an identified removable legacy helper was found; therefore no runtime refactor is proposed.</p><table><thead><tr><th>Source and line</th><th>Decision</th><th>Kind</th><th>Exact import / source line</th></tr></thead><tbody><tr><td>server/services/commerce-send-verification.service.ts:5</td><td>KEEP</td><td>Static import</td><td>import { createHash } from &quot;node:crypto&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:6</td><td>KEEP</td><td>Static import</td><td>import { performance } from &quot;node:perf_hooks&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:7</td><td>KEEP</td><td>Static import</td><td>import { eq, sql, getTableColumns } from &quot;drizzle-orm&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:8</td><td>KEEP</td><td>Static import</td><td>import { db } from &quot;../db&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:9</td><td>KEEP</td><td>Static import</td><td>import { emailOutbox } from &quot;@shared/schema&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:10</td><td>KEEP</td><td>Static import</td><td>import { readCurrentCartActivity } from &quot;./cart-email-state.service&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:11</td><td>KEEP</td><td>Static import</td><td>import { normalizeCartChangeValues } from &quot;./cart-item-change.service&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:12</td><td>KEEP</td><td>Static import</td><td>import { buildCartItemChangeEmail } from &quot;./cart-item-change-email&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:13</td><td>KEEP</td><td>Static import</td><td>import { cartReminderNow, cartReminderVerification, cartReminderVerificationEnabled, readTravelerCommerceActivity, assessCartReminder, } from &quot;./cart-reminder.service&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:17</td><td>KEEP</td><td>Static import</td><td>import { lockMarketingTraveler, marketingDayReserved, marketingWindow, nextCartMarketingWindow, reserveMarketingDay, type MarketingTx, } from &quot;./marketing-delivery-policy.service&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:21</td><td>KEEP</td><td>Static import</td><td>import { marketingPreferences } from &quot;./itinerary-followup-email&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:22</td><td>KEEP</td><td>Static import</td><td>import type { MarketingPreferences } from &quot;./itinerary-followup-email&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:23</td><td>KEEP</td><td>Static import</td><td>import { buildCartReminderEmail, isCartReminder } from &quot;./cart-reminder-email&quot;;</td></tr><tr><td>server/services/commerce-send-verification.service.ts:24</td><td>KEEP</td><td>Static import</td><td>import { atEmailProviderHandoff, EmailSendCancelled, type SendEmailParams, type SendEmailResult, } from &quot;./email.service&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:5</td><td>KEEP</td><td>Static import</td><td>import { sql } from &quot;drizzle-orm&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:6</td><td>KEEP</td><td>Static import</td><td>import { db } from &quot;../db&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:7</td><td>KEEP</td><td>Static import</td><td>import { enqueuePendingCommerceReminder } from &quot;./email-outbox.service&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:8</td><td>KEEP</td><td>Static import</td><td>import { messagingAutomationRegistry } from &quot;../automations/messaging&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:9</td><td>KEEP</td><td>Static import</td><td>import { runScheduledAutomation } from &quot;../automations/scheduler-wrapper&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:10</td><td>KEEP</td><td>Static import</td><td>import { assessCartReminder, cartReminderNow } from &quot;./cart-reminder.service&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:11</td><td>KEEP</td><td>Static import</td><td>import { lockMarketingTraveler, marketingDayReserved, marketingWindow } from &quot;./marketing-delivery-policy.service&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:12</td><td>KEEP</td><td>Static import</td><td>import { marketingPreferences } from &quot;./itinerary-followup-email&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:13</td><td>KEEP</td><td>Static import</td><td>import { assessCartItemChanges } from &quot;./cart-item-change.service&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:14</td><td>KEEP</td><td>Static import</td><td>import { enqueuePendingCartItemChange } from &quot;./email-outbox.service&quot;;</td></tr><tr><td>server/services/commerce-email-sweep.service.ts:120</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { verifyCommerceSend } = await import(&quot;./commerce-send-verification.service&quot;);</td></tr><tr><td>server/services/cart-reminder.service.ts:1</td><td>KEEP</td><td>Static import</td><td>import { and, eq, sql } from &quot;drizzle-orm&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:2</td><td>KEEP</td><td>Static import</td><td>import { db } from &quot;../db&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:3</td><td>KEEP</td><td>Static import</td><td>import { cartItems, emailOutbox, users } from &quot;@shared/schema&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:4</td><td>KEEP</td><td>Static import</td><td>import { evaluateCartClock } from &quot;./cart-email-state.service&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:5</td><td>KEEP</td><td>Static import</td><td>import { marketingPreferences } from &quot;./itinerary-followup-email&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:6</td><td>KEEP</td><td>Static import</td><td>import { CART_REMINDERS, dueCartReminder, isCartReminder, cartReminderThreshold, buildCartReminderEmail, type CartReminderKind, } from &quot;./cart-reminder-email&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:10</td><td>KEEP</td><td>Static import</td><td>import { lockMarketingTraveler, marketingDayReserved, marketingWindow, nextCartMarketingWindow, reserveMarketingDay, type MarketingTx, } from &quot;./marketing-delivery-policy.service&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:15</td><td>KEEP</td><td>Static import</td><td>import type { SendEmailParams, SendEmailResult } from &quot;./email.service&quot;;</td></tr><tr><td>server/services/cart-reminder.service.ts:197</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { cartItemChangeSentToday } = await import(&quot;./marketing-delivery-policy.service&quot;);</td></tr><tr><td>server/services/cart-reminder.service.ts:233</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { deliverVerifiedCommerce } = await import(&quot;./commerce-send-verification.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:40</td><td>KEEP</td><td>Static import</td><td>import { db } from &quot;../db&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:41</td><td>KEEP</td><td>Static import</td><td>import { evaluateCartItemChange, recordQueuedCartValues } from &quot;./cart-email-state.service&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:42</td><td>KEEP</td><td>Static import</td><td>import { and, eq, sql } from &quot;drizzle-orm&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:43</td><td>KEEP</td><td>Static import</td><td>import { emailOutbox, itineraryComparisons, users, type InsertEmailOutbox } from &quot;../../shared/schema&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:44</td><td>KEEP</td><td>Static import</td><td>import { logger } from &quot;../infrastructure/logger&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:45</td><td>KEEP</td><td>Static import</td><td>import { runBackgroundJob } from &quot;./background-job-runner&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:46</td><td>KEEP</td><td>Static import</td><td>import { jitteredStartupDelay } from &quot;./startup-delay&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:47</td><td>KEEP</td><td>Static import</td><td>import { isItineraryFollowup } from &quot;./itinerary-followup-email&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:48</td><td>KEEP</td><td>Static import</td><td>import { isCartReminder, isCartReminderFamily, buildCartReminderEmail, type CartReminderKind } from &quot;./cart-reminder-email&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:49</td><td>KEEP</td><td>Static import</td><td>import { buildBookingAlertEmailPayload, buildBookingConfirmationEmailPayload, type BookingAlertParams, type BookingConfirmationParams, type SendEmailParams, type SendEmailResult, } from &quot;./email.service&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:57</td><td>KEEP</td><td>Static import</td><td>import { buildGuestInviteEmailPayload, type GuestInviteEmailParams, } from &quot;./guest-invite-email&quot;;</td></tr><tr><td>server/services/email-outbox.service.ts:105</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { verifyCommerceSend } = await import(&quot;./commerce-send-verification.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:111</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { assessCartReminder, cartReminderNow } = await import(&quot;./cart-reminder.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:112</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const step = await assessCartReminder(executor as import(&quot;./marketing-delivery-policy.service&quot;).MarketingTx,</td></tr><tr><td>server/services/email-outbox.service.ts:134</td><td>KEEP</td><td>Dynamic import or type reference</td><td>change: import(&quot;./cart-item-change.service&quot;).CartChange,</td></tr><tr><td>server/services/email-outbox.service.ts:135</td><td>KEEP</td><td>Dynamic import or type reference</td><td>tx: import(&quot;./marketing-delivery-policy.service&quot;).MarketingTx,</td></tr><tr><td>server/services/email-outbox.service.ts:143</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { buildCartItemChangeEmail } = await import(&quot;./cart-item-change-email&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:144</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { verifyCommerceSend } = await import(&quot;./commerce-send-verification.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:295</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { dispatchMessagingEvent } = await import(&quot;../automations/messaging/runtime&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:434</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { runMessagingSchedule } = await import(&quot;../automations/messaging/runtime&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:448</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { dispatchMessagingEvent } = await import(&quot;../automations/messaging/runtime&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:483</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { deliverVerifiedCommerce } = await import(&quot;./commerce-send-verification.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:490</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { deliverCartReminder } = await import(&quot;./cart-reminder.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:496</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { deliverSignupWelcome } = await import(&quot;./signup-welcome-outbox.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:499</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { sendEmail } = await import(&quot;./email.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:505</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { deliverItineraryFollowup } = await import(&quot;./itinerary-followup.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:508</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { sendEmail } = await import(&quot;./email.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:544</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { sendEmail } = await import(&quot;./email.service&quot;);</td></tr><tr><td>server/services/email-outbox.service.ts:758</td><td>KEEP</td><td>Dynamic import or type reference</td><td>const { sweepUnpushedNotifications } = await import(&quot;./web-push.service&quot;);</td></tr></tbody></table><h2>Development catalog DDL — archive content, NOT a migration</h2><p>15 enabled commerce triggers and 8 unique backing trigger functions. The separate caller query found only these 15 trigger attachments to the 8 backing functions. Function deletion remains UNKNOWN, not automatically authorized.</p><pre>CREATE OR REPLACE FUNCTION public.commerce_catalog_observer()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE old_data jsonb; data jsonb; subject text; subject_type text; slot text;
+ old_amount numeric; amount numeric; cur text; old_cur text; label text; city text;
+ was_visible boolean; visible boolean; same_basis boolean; details jsonb;
+BEGIN
+ data:=to_jsonb(NEW); old_data:=CASE WHEN TG_OP='UPDATE' THEN to_jsonb(OLD) ELSE '{}'::jsonb END;
+ subject:=data-&gt;&gt;'id'; subject_type:='service'; slot:=NULL;
+ IF TG_TABLE_NAME='vendor_availability_slots' THEN
+   subject:=data-&gt;&gt;'service_id'; slot:=data-&gt;&gt;'id';
+   IF TG_OP='UPDATE' AND
+     (COALESCE((old_data-&gt;&gt;'booked_count')::int,0)&lt;COALESCE((old_data-&gt;&gt;'capacity')::int,1) AND old_data-&gt;&gt;'status'='available')
+     AND ((data-&gt;&gt;'booked_count')::int &gt;= (data-&gt;&gt;'capacity')::int OR data-&gt;&gt;'status'&lt;&gt;'available') THEN
+     INSERT INTO commerce_catalog_events(id,source_table,subject_type,subject_id,slot_id,event_kind,comparable,payload,observed_at)
+       SELECT gen_random_uuid()::text,TG_TABLE_NAME,'service',subject,slot,'sold_out',false,
+         jsonb_build_object('label',service_name,'city',location,'aliases',jsonb_build_array(id,'service-'||id)),NOW()
+       FROM provider_services WHERE id=subject;
+   END IF;
+   RETURN NEW;
+ ELSIF TG_TABLE_NAME='provider_services' THEN
+   -- Existing platform checkout prices provider_services in USD; no currency column is invented.
+   cur:='USD'; old_cur:='USD'; label:=data-&gt;&gt;'service_name'; city:=data-&gt;&gt;'location';
+   visible:=data-&gt;&gt;'approval_status'='approved' AND data-&gt;&gt;'status'='active';
+   was_visible:=old_data-&gt;&gt;'approval_status'='approved' AND old_data-&gt;&gt;'status'='active';
+   same_basis:=ROW(data-&gt;&gt;'price_type',data-&gt;&gt;'price_based_on',data-&gt;&gt;'pricing_unit',data-&gt;'pricing_tiers')
+     IS NOT DISTINCT FROM ROW(old_data-&gt;&gt;'price_type',old_data-&gt;&gt;'price_based_on',old_data-&gt;&gt;'pricing_unit',old_data-&gt;'pricing_tiers');
+ ELSIF TG_TABLE_NAME='activity_cache' THEN
+   subject_type:='activity'; cur:=data-&gt;&gt;'currency'; old_cur:=old_data-&gt;&gt;'currency';
+   label:=data-&gt;&gt;'title'; city:=COALESCE(data-&gt;&gt;'city',data-&gt;&gt;'destination');
+   visible:=true; was_visible:=TG_OP='UPDATE'; same_basis:=true;
+ ELSE
+   subject_type:='affiliate_product'; cur:=data-&gt;&gt;'currency'; old_cur:=old_data-&gt;&gt;'currency';
+   label:=data-&gt;&gt;'name'; city:=COALESCE(data-&gt;&gt;'city',data-&gt;&gt;'location');
+   visible:=(data-&gt;&gt;'is_active')::boolean IS TRUE;
+   was_visible:=(old_data-&gt;&gt;'is_active')::boolean IS TRUE; same_basis:=true;
+ END IF;
+ old_amount:=(old_data-&gt;&gt;'price')::numeric; amount:=(data-&gt;&gt;'price')::numeric;
+ details:=jsonb_build_object('label',label,'city',city,'description',data-&gt;&gt;'description',
+   'visible',visible,'aliases',jsonb_build_array(subject,
+     CASE WHEN subject_type='service' THEN 'service-'||subject WHEN subject_type='activity' THEN 'activity-'||subject ELSE subject END,
+     data-&gt;&gt;'product_code',CASE WHEN data-&gt;&gt;'product_code' IS NOT NULL THEN 'activity-'||(data-&gt;&gt;'product_code') END));
+ IF TG_OP='UPDATE' AND was_visible IS TRUE AND visible IS NOT TRUE THEN
+   INSERT INTO commerce_catalog_events(id,source_table,subject_type,subject_id,event_kind,comparable,payload,observed_at)
+     VALUES(gen_random_uuid()::text,TG_TABLE_NAME,subject_type,subject,'sold_out',false,details,NOW());
+ ELSIF TG_OP='UPDATE' AND was_visible IS TRUE AND
+   (old_amount IS DISTINCT FROM amount OR cur IS DISTINCT FROM old_cur OR same_basis IS NOT TRUE) THEN
+   INSERT INTO commerce_catalog_events(id,source_table,subject_type,subject_id,event_kind,old_price,new_price,currency,comparable,payload,observed_at)
+     VALUES(gen_random_uuid()::text,TG_TABLE_NAME,subject_type,subject,'price_changed',old_amount,amount,cur,
+       visible IS TRUE AND cur IS NOT NULL AND cur=old_cur AND same_basis IS TRUE,details,NOW());
+ END IF;
+ IF visible IS TRUE AND (was_visible IS NOT TRUE OR
+   ROW(old_data-&gt;&gt;'service_name',old_data-&gt;&gt;'title',old_data-&gt;&gt;'name',old_data-&gt;&gt;'location',old_data-&gt;&gt;'city',old_data-&gt;&gt;'description')
+   IS DISTINCT FROM ROW(data-&gt;&gt;'service_name',data-&gt;&gt;'title',data-&gt;&gt;'name',data-&gt;&gt;'location',data-&gt;&gt;'city',data-&gt;&gt;'description')) THEN
+   INSERT INTO commerce_catalog_events(id,source_table,subject_type,subject_id,event_kind,new_price,currency,comparable,payload,observed_at)
+     VALUES(gen_random_uuid()::text,TG_TABLE_NAME,subject_type,subject,'published',amount,cur,false,details,NOW());
+ END IF;
+ RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_booking_started()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE actor text;
+BEGIN
+ actor:=COALESCE(to_jsonb(NEW)-&gt;&gt;'traveler_id',to_jsonb(NEW)-&gt;&gt;'user_id');
+ IF TG_TABLE_NAME='coordination_bookings' THEN
+   SELECT user_id INTO actor FROM coordination_states WHERE id=NEW.coordination_id;
+ END IF;
+ IF actor IS NULL OR COALESCE(to_jsonb(NEW)-&gt;&gt;'status','pending')
+   IN('cancelled','canceled','failed','declined','rejected','expired','refunded','payment_failed') THEN RETURN NEW; END IF;
+ PERFORM id FROM users WHERE id=actor FOR UPDATE;
+ UPDATE commerce_carts SET state='payment_started' WHERE user_id=actor AND state IN('active','abandoned');
+ UPDATE email_outbox SET status='cancelled',retry_after=NULL,last_error='Booking or payment started',updated_at=NOW()
+ WHERE metadata-&gt;&gt;'commerceVersion'='1' AND metadata-&gt;&gt;'travelerId'=actor
+   AND email_type IN('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d')
+   AND status IN('pending','failed','processing');
+ RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_cart_activity()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE actor text; trip text; slug text; key text; cart text; previous_key text;
+BEGIN
+ actor := CASE WHEN TG_OP='DELETE' THEN OLD.user_id ELSE NEW.user_id END;
+ IF actor IS NULL THEN RETURN NULL; END IF; -- real guest rail is browser-local, never emailable
+ PERFORM id FROM users WHERE id=actor FOR UPDATE;
+ IF TG_OP='UPDATE' AND
+   ROW(OLD.user_id,OLD.trip_id,OLD.experience_slug,OLD.quantity,OLD.scheduled_date,
+       OLD.slot_id,OLD.notes,OLD.party_size,OLD.pickup_location) IS NOT DISTINCT FROM
+   ROW(NEW.user_id,NEW.trip_id,NEW.experience_slug,NEW.quantity,NEW.scheduled_date,
+       NEW.slot_id,NEW.notes,NEW.party_size,NEW.pickup_location) THEN RETURN NULL; END IF;
+ IF TG_OP&lt;&gt;'INSERT' THEN
+   previous_key := jsonb_build_array(OLD.trip_id,OLD.experience_slug)::text;
+   IF NOT EXISTS(SELECT 1 FROM cart_items c WHERE c.user_id=OLD.user_id
+     AND jsonb_build_array(c.trip_id,c.experience_slug)::text=previous_key) THEN
+     UPDATE commerce_carts SET state='empty' WHERE user_id=OLD.user_id AND group_key=previous_key;
+   END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN
+   trip:=OLD.trip_id; slug:=OLD.experience_slug;
+ ELSE
+   trip:=NEW.trip_id; slug:=NEW.experience_slug;
+   -- FK cleanup on deleted trips is not a new human activity or cart sequence.
+   IF TG_OP='UPDATE' AND OLD.trip_id IS NOT NULL AND NEW.trip_id IS NULL
+     AND NOT EXISTS(SELECT 1 FROM trips WHERE id=OLD.trip_id) THEN RETURN NULL; END IF;
+ END IF;
+ key:=jsonb_build_array(trip,slug)::text;
+ IF EXISTS(SELECT 1 FROM cart_items c WHERE c.user_id=actor
+   AND jsonb_build_array(c.trip_id,c.experience_slug)::text=key) THEN
+   INSERT INTO commerce_carts(id,user_id,group_key,trip_id,experience_slug,sequence_id,state,last_activity_at,created_at)
+     VALUES(gen_random_uuid()::text,actor,key,trip,slug,gen_random_uuid()::text,'active',NOW(),NOW())
+   ON CONFLICT(user_id,group_key) DO UPDATE SET
+     sequence_id=CASE WHEN commerce_carts.state='payment_started' THEN commerce_carts.sequence_id ELSE gen_random_uuid()::text END,
+     state=CASE WHEN commerce_carts.state='payment_started' THEN 'payment_started' ELSE 'active' END,
+     last_activity_at=NOW(),abandoned_at=NULL
+   RETURNING id INTO cart;
+ END IF;
+ -- Both moved-from and current groups physically lose their old reminder sequence.
+ UPDATE email_outbox o SET status='cancelled',retry_after=NULL,last_error='Cart activity or deletion',updated_at=NOW()
+ WHERE o.metadata-&gt;&gt;'commerceVersion'='1' AND o.email_type IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d')
+ AND o.status IN ('pending','failed','processing') AND o.metadata-&gt;&gt;'cartId' IN
+   (SELECT id FROM commerce_carts WHERE user_id=actor AND group_key IN(key,previous_key));
+ UPDATE email_outbox o SET status='cancelled',retry_after=NULL,last_error='Cart emptied',updated_at=NOW()
+ WHERE o.metadata-&gt;&gt;'commerceVersion'='1' AND o.status IN('pending','failed','processing')
+ AND o.metadata-&gt;&gt;'cartId' IN (SELECT id FROM commerce_carts WHERE user_id=actor AND state='empty');
+ RETURN NULL;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_cancel_deleted_cart()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+ UPDATE email_outbox SET status='cancelled',retry_after=NULL,last_error='Cart/account removed',updated_at=NOW()
+ WHERE metadata-&gt;&gt;'cartId'=OLD.id AND status IN('pending','failed','processing');
+ RETURN OLD;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_queue_cart_changes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE c record; actor record; zone text;
+BEGIN
+ IF NEW.event_kind NOT IN('price_changed','sold_out') THEN RETURN NEW; END IF;
+ FOR c IN SELECT DISTINCT cc.* FROM commerce_carts cc JOIN cart_items ci ON ci.user_id=cc.user_id
+   AND jsonb_build_array(ci.trip_id,ci.experience_slug)::text=cc.group_key
+   WHERE cc.state NOT IN('empty') AND
+   ((NEW.subject_type='service' AND ci.service_id=NEW.subject_id
+     AND (NEW.slot_id IS NULL OR ci.slot_id=NEW.slot_id))
+    OR (ci.content_type=NEW.subject_type AND (ci.content_id=NEW.subject_id
+      OR NEW.payload-&gt;'aliases' ? ci.content_id)))
+   ORDER BY cc.user_id,cc.id
+ LOOP
+   SELECT * INTO actor FROM users WHERE id=c.user_id FOR UPDATE;
+   IF actor.email IS NULL OR actor.is_deleted IS TRUE OR actor.is_suspended IS TRUE THEN CONTINUE; END IF;
+   UPDATE commerce_carts SET last_change_at=NEW.observed_at WHERE id=c.id;
+   SELECT name INTO zone FROM pg_timezone_names WHERE name=COALESCE(
+     actor.preferences-&gt;'marketingDelivery'-&gt;&gt;'timeZone',actor.preferences-&gt;'commerceMarketing'-&gt;&gt;'timeZone',
+     actor.preferences-&gt;'itineraryMarketing'-&gt;&gt;'timeZone') LIMIT 1;
+   IF zone IS NOT NULL THEN
+     UPDATE email_outbox SET status='cancelled',retry_after=NULL,last_error='Cart item changed on reminder day',updated_at=NOW()
+     WHERE metadata-&gt;&gt;'cartId'=c.id AND email_type IN('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d')
+       AND status IN('pending','failed','processing')
+       AND ((metadata-&gt;&gt;'dueAt')::timestamptz AT TIME ZONE zone)::date &lt;= (NEW.observed_at AT TIME ZONE zone)::date;
+   END IF;
+   INSERT INTO email_outbox(email_type,to_email,subject,html,text_body,status,retry_after,metadata)
+     VALUES('cart_item_changed',actor.email,'An item in your cart changed','&lt;p&gt;Review your cart.&lt;/p&gt;',
+       'Review your cart.','pending',NOW(),jsonb_build_object(
+       'commerceVersion',1,'commerceKey','cart-change:'||c.id||':'||NEW.id,'travelerId',c.user_id,
+       'cartId',c.id,'eventId',NEW.id,'marketing',false))
+     ON CONFLICT DO NOTHING;
+ END LOOP;
+ RETURN NEW;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_remove_saved_item()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+ PERFORM id FROM users WHERE id=OLD.user_id FOR UPDATE;
+ UPDATE email_outbox o SET metadata=jsonb_set(o.metadata,'{savedItemId}',to_jsonb(replacement.id))
+ FROM commerce_catalog_events e, saved_items replacement
+ WHERE o.metadata-&gt;&gt;'eventId'=e.id AND o.metadata-&gt;&gt;'savedItemId'=OLD.id
+   AND o.email_type='wishlist_price_drop' AND o.status IN('pending','failed','processing')
+   AND replacement.id&lt;&gt;OLD.id AND replacement.user_id=OLD.user_id AND replacement.created_at&lt;=e.observed_at
+   AND (replacement.content_id=e.subject_id OR e.payload-&gt;'aliases' ? replacement.content_id)
+   AND (replacement.content_type=e.subject_type OR
+     (e.subject_type='affiliate_product' AND replacement.content_type IN('activity','service')));
+ UPDATE email_outbox SET status='cancelled',retry_after=NULL,last_error='Saved item removed',updated_at=NOW()
+ WHERE metadata-&gt;&gt;'savedItemId'=OLD.id AND email_type='wishlist_price_drop' AND status IN('pending','failed','processing');
+ RETURN OLD;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_trip_removed()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+ UPDATE commerce_carts SET state='empty' WHERE trip_id=OLD.id;
+ UPDATE email_outbox SET status='cancelled',retry_after=NULL,last_error='Trip removed',updated_at=NOW()
+ WHERE status IN('pending','failed','processing') AND metadata-&gt;&gt;'cartId' IN(SELECT id FROM commerce_carts WHERE trip_id=OLD.id);
+ RETURN OLD;
+END $function$
+
+
+CREATE OR REPLACE FUNCTION public.commerce_account_removed()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+DECLARE remove_it boolean;
+BEGIN
+ remove_it:=TG_OP='DELETE';
+ IF TG_OP&lt;&gt;'DELETE' THEN remove_it:=NEW.is_deleted IS TRUE OR NEW.is_suspended IS TRUE OR OLD.email IS DISTINCT FROM NEW.email; END IF;
+ IF remove_it THEN
+   UPDATE email_outbox SET status='cancelled',retry_after=NULL,last_error='Account or recipient changed',updated_at=NOW()
+   WHERE metadata-&gt;&gt;'commerceVersion'='1' AND metadata-&gt;&gt;'travelerId'=OLD.id AND status IN('pending','failed','processing');
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ RETURN NEW;
+END $function$
+
+
+-- public.activity_cache; tgenabled=O
+CREATE TRIGGER commerce_price_observer AFTER INSERT OR UPDATE ON activity_cache FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer();
+
+-- public.affiliate_booking_requests; tgenabled=O
+CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON affiliate_booking_requests FOR EACH ROW EXECUTE FUNCTION commerce_booking_started();
+
+-- public.affiliate_products; tgenabled=O
+CREATE TRIGGER commerce_price_observer AFTER INSERT OR UPDATE ON affiliate_products FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer();
+
+-- public.bookings; tgenabled=O
+CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION commerce_booking_started();
+
+-- public.cart_items; tgenabled=O
+CREATE TRIGGER commerce_cart_activity_guard AFTER INSERT OR DELETE OR UPDATE ON cart_items FOR EACH ROW EXECUTE FUNCTION commerce_cart_activity();
+
+-- public.commerce_carts; tgenabled=O
+CREATE TRIGGER commerce_cart_delete_guard BEFORE DELETE ON commerce_carts FOR EACH ROW EXECUTE FUNCTION commerce_cancel_deleted_cart();
+
+-- public.commerce_catalog_events; tgenabled=O
+CREATE TRIGGER commerce_catalog_cart_changes AFTER INSERT ON commerce_catalog_events FOR EACH ROW EXECUTE FUNCTION commerce_queue_cart_changes();
+
+-- public.coordination_bookings; tgenabled=O
+CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON coordination_bookings FOR EACH ROW EXECUTE FUNCTION commerce_booking_started();
+
+-- public.provider_services; tgenabled=O
+CREATE TRIGGER commerce_price_observer AFTER INSERT OR UPDATE ON provider_services FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer();
+
+-- public.saved_items; tgenabled=O
+CREATE TRIGGER commerce_saved_item_delete BEFORE DELETE ON saved_items FOR EACH ROW EXECUTE FUNCTION commerce_remove_saved_item();
+
+-- public.service_bookings; tgenabled=O
+CREATE TRIGGER commerce_booking_guard BEFORE INSERT OR UPDATE ON service_bookings FOR EACH ROW EXECUTE FUNCTION commerce_booking_started();
+
+-- public.trips; tgenabled=O
+CREATE TRIGGER commerce_trip_delete BEFORE DELETE ON trips FOR EACH ROW EXECUTE FUNCTION commerce_trip_removed();
+
+-- public.users; tgenabled=O
+CREATE TRIGGER commerce_account_delete BEFORE DELETE ON users FOR EACH ROW EXECUTE FUNCTION commerce_account_removed();
+
+-- public.users; tgenabled=O
+CREATE TRIGGER commerce_account_update BEFORE UPDATE OF email, is_deleted, is_suspended ON users FOR EACH ROW EXECUTE FUNCTION commerce_account_removed();
+
+-- public.vendor_availability_slots; tgenabled=O
+CREATE TRIGGER commerce_stock_observer AFTER INSERT OR UPDATE ON vendor_availability_slots FOR EACH ROW EXECUTE FUNCTION commerce_catalog_observer();</pre><h2>Approval boundary</h2><p>Only the 15 explicitly identified commerce trigger instances have REMOVE classification. They remain installed. Shared itinerary triggers and the commerce dedupe index stay. Original wrapper/helper/draft identities remain UNKNOWN, not silently counted as removed. All other files stay untouched. No new migration. 346 and 347 remain main-owned. Direct senders are unchanged. Part 7 is not completed or certified; Part 8 is not started.</p></html>
