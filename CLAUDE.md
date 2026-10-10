@@ -2455,6 +2455,16 @@ This document captures architectural decisions to maintain consistency across co
     record, displayed to that traveler, and are kept for 30 days as ruled. Nothing beyond place IDs and
     coordinates is stored from Places outside a plan; Google durations are never cached across plans; Google
     photos are never stored."
+    **AMENDED — A MARKET-LEVEL OFFICIAL REFRESH (decision-maker SS-1 ruling 1, Oct 10, 2026; ledger
+    `2026-10-10-ss1b-official-refresh`; no migration — wording APPROVED by Leon, Oct 10, 2026).** A second, bounded spend path
+    beside A6-3A: a scheduled job reads each active, official, terms-checked source that states
+    `refresh_interval_days` and `cost_ceiling_cents_per_day`, on that interval and within that ceiling, OUTSIDE ANY
+    PLAN, fetching only the targets in `server/config/content-source-targets.config.ts`. Its facts are
+    `official_refresh` — source id, official URL, verbatim quote, `verified_at`, `expires_at = verified_at +
+    interval` — read exactly as an official crawl (`isPageReadOrigin`). The free draft's budget stays 0; it reads
+    what the refresh stored. A station's point comes from the OSM node its anchor names (`{ stationSlug, osmNodeId }`),
+    resolved once through the city-event venue path (LD 59) and stored with "© OpenStreetMap contributors" — never
+    from Places; a station OSM does not confirm is stored unplaced, never guessed.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
