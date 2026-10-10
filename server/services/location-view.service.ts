@@ -437,7 +437,9 @@ class LocationViewService {
           .innerJoin(users, eq(users.id, expertNeighborhoods.expertId))
           .where(inArray(expertNeighborhoods.neighborhoodId, neighborhoodIds))
           .orderBy(sql`${expertNeighborhoods.isLead} DESC`, asc(expertNeighborhoods.createdAt), asc(expertNeighborhoods.id));
-        for (const row of expertRows) {
+        // B3 ruling 4: a neighbourhood's named local is a recommendation — ROUTABLE experts only
+        // (the predicate every routing selector reads); a seed or Pending account is never named.
+        for (const row of await routableNeighborhoodExpertRows(expertRows)) {
           if (!localExpertByNeighborhood.has(row.neighborhoodId)) {
             localExpertByNeighborhood.set(row.neighborhoodId, row);
           }
@@ -744,3 +746,10 @@ class LocationViewService {
 }
 
 export const locationViewService = new LocationViewService();
+
+/** B3 ruling 4: the neighbourhood expert rows a traveler may be shown — routable experts only, order kept. */
+export async function routableNeighborhoodExpertRows<T extends { expertId: string }>(rows: readonly T[]): Promise<T[]> {
+  const { routableUserIds } = await import("./expert-routability");
+  const ok = await routableUserIds(Array.from(new Set(rows.map((r) => r.expertId))));
+  return rows.filter((r) => ok.has(r.expertId));
+}

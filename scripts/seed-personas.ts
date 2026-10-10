@@ -60,7 +60,11 @@
  * expert path... is the prerequisite for publishing the expert offering
  * without real KYB" — docs/testing/PERSONA_LANE_B_HANDOFF.md). It does NOT
  * fabricate an admin-reviewed application (`status` is left at its schema
- * default, 'pending') and it does NOT touch any rate/fee/payout column (the
+ * default, 'pending') — EXCEPT the Gion expert, which B3's routability rule
+ * (`server/services/expert-routability.ts`) needs public and bookable, so it is
+ * seeded `status='approved'` and `stripe_connect_status='complete'` (sanctioned
+ * by the decision-maker, ledger `2026-10-09-b3-expert-routability`) — and it
+ * does NOT touch any rate/fee/payout column (the
  * MI-1-swept family already `.omit()`'d from insertLocalExpertFormSchema) —
  * only the identity/business verification fields, which is the one external
  * dependency a CI container cannot itself clear.
@@ -219,6 +223,14 @@ type ExpertFormSeed = {
   city: string;
   neighborhoods: string[];
   localSpecialties: string[];
+  /**
+   * B3 (ledger `2026-10-09-b3-expert-routability`, decision-maker sanction): seed this persona
+   * ROUTABLE — application `approved` and Stripe Connect `complete` beside the verified Identity —
+   * so its storefront is public and bookable. Only the Gion expert carries it; the other two keep
+   * their schema defaults. A `traveloure.test` account is seed-sourced, so it stays unroutable and
+   * hidden wherever `SHOW_DEMO_EXPERTS=1` is not set.
+   */
+  routable?: true;
 };
 
 type ProviderFormSeed = {
@@ -241,6 +253,7 @@ const EXPERT_FORMS: ExpertFormSeed[] = [
     city: "Kyoto",
     neighborhoods: ["Gion"],
     localSpecialties: ["Gion walks", "Higashiyama history", "neighborhood etiquette"],
+    routable: true,
   },
   {
     key: "kyoto-trip-planner-form",
@@ -343,7 +356,8 @@ async function main(): Promise<void> {
     }
     for (const form of EXPERT_FORMS) {
       console.log(
-        `WOULD UPSERT local_expert_forms ${form.key}: expertType=${form.expertType} city=${form.city} identityVerificationStatus=verified`,
+        `WOULD UPSERT local_expert_forms ${form.key}: expertType=${form.expertType} city=${form.city} identityVerificationStatus=verified` +
+          (form.routable ? ` status=approved stripeConnectStatus=complete` : ``),
       );
     }
     for (const form of PROVIDER_FORMS) {
@@ -478,11 +492,15 @@ async function main(): Promise<void> {
         );
       }
 
+      // Routable personas only (see `routable` on ExpertFormSeed); NULL leaves the column to its
+      // schema default on insert and untouched on update.
+      const formStatus = form.routable ? "approved" : null;
+      const formConnect = form.routable ? "complete" : null;
       await tx.execute(sql`
         INSERT INTO local_expert_forms (
           id, user_id, expert_type, first_name, last_name, email, country, city,
           neighborhoods, local_specialties, bio,
-          identity_verification_status, identity_verified_at, created_at
+          identity_verification_status, identity_verified_at, status, stripe_connect_status, created_at
         )
         VALUES (
           ${reconciliation.survivorId},
@@ -498,6 +516,8 @@ async function main(): Promise<void> {
           ${persona.bio},
           'verified',
           ${verifiedAt},
+          COALESCE(${formStatus}::text, 'pending'),
+          COALESCE(${formConnect}::text, 'not_started'),
           now()
         )
         ON CONFLICT (id) DO UPDATE SET
@@ -511,7 +531,9 @@ async function main(): Promise<void> {
           local_specialties = EXCLUDED.local_specialties,
           bio = EXCLUDED.bio,
           identity_verification_status = 'verified',
-          identity_verified_at = COALESCE(local_expert_forms.identity_verified_at, EXCLUDED.identity_verified_at)
+          identity_verified_at = COALESCE(local_expert_forms.identity_verified_at, EXCLUDED.identity_verified_at),
+          status = COALESCE(${formStatus}::text, local_expert_forms.status),
+          stripe_connect_status = COALESCE(${formConnect}::text, local_expert_forms.stripe_connect_status)
       `);
     }
 

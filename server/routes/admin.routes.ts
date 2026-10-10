@@ -8191,6 +8191,8 @@ router.post("/api/admin/leads/:expertRequestId/confirm", isAuthenticated, async 
     try {
       await confirmLeadAssignmentHandler(req.params.expertRequestId, req, res);
     } catch (error: any) {
+      // B3 ruling 1: the one advisor author refuses a NEW non-routable expert; say so, never a 500.
+      if (error?.code === "expert_not_routable") return res.status(409).json({ error: error.message, code: error.code });
       res.status(500).json({ error: error.message });
     }
   });
@@ -8201,6 +8203,8 @@ router.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, asyn
     try {
       await confirmLeadAssignmentHandler(req.params.requestId, req, res);
     } catch (error: any) {
+      // B3 ruling 1: the one advisor author refuses a NEW non-routable expert; say so, never a 500.
+      if (error?.code === "expert_not_routable") return res.status(409).json({ error: error.message, code: error.code });
       res.status(500).json({ error: error.message });
     }
   });

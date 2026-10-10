@@ -26,6 +26,7 @@ import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "../utils/trip-advis
 import { getPlatformConciergeUserId, invalidatePlatformConciergeCache } from "../services/platform-concierge.service";
 import { storage } from "../storage";
 import { upsertTripAdvisorRow } from "../services/booking-actions.service";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const travelerId = `cpr-${RUN}-trav`;
@@ -131,6 +132,8 @@ before(async () => {
       (${poolAgentId}, ${`cpr-${RUN}-agent@test.local`}, 'expert'),
       (${noTripAgentId}, ${`cpr-${RUN}-notrip@test.local`}, 'expert')
   `);
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  for (const id of [listingOwnerId, poolAgentId, noTripAgentId]) await insertRoutableExpertForm(id);
 
   conciergeServiceId = crypto.randomUUID();
   await db.execute(sql`

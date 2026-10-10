@@ -118,7 +118,7 @@ import {
   getUserById, insertExpertChat, insertChatNotification,
   insertAiBlueprint, getProviderCountsByCategory, getExperienceTypeById,
   getDefaultServiceTemplates, getServiceTemplateById, insertAiInteraction,
-  getReviewById, flagReview, getLocalExpertUsers, getApprovedExpertForms,
+  getReviewById, flagReview, getLocalExpertUsers, getRoutableLocalExpertUsers, getApprovedExpertForms,
   insertExpertMatchScore, getCachedDestinationIntelligence,
   getCachedDestinationIntelligenceWithDates, insertDestinationIntelligence,
   insertDestinationIntelligenceStrict, insertAiGeneratedItinerary,
@@ -4458,8 +4458,9 @@ router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (re
         };
       }
 
-      // Get expert profiles from database
-      const expertsQuery = await getLocalExpertUsers();
+      // Get expert profiles from database. B3 ruling 4: a RECOMMENDATION is a first match, so only
+      // ROUTABLE experts (the predicate every routing selector reads) — never a seed or Pending account.
+      const expertsQuery = await getRoutableLocalExpertUsers();
 
       let expertsList = expertIds
         ? expertsQuery.filter(e => expertIds.includes(e.id))

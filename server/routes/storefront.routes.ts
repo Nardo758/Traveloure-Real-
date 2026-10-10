@@ -23,6 +23,7 @@
  */
 import { loadLiveStatus } from "../services/live-status.service";
 import { Router } from "express";
+import { isExpertIdRoutable, isPublicExpertAccount } from "../services/expert-routability";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
@@ -720,6 +721,17 @@ async function loadStorefrontFromOwner(
   // without inventory, but pending, rejected, and missing-form profiles remain private.
   if (!owner.handle && isExpertRole(owner.role) && expertProfile?.status !== "approved") return null;
 
+  // B3 ruling 3 (ledger `2026-10-09-b3-expert-routability`): an EXPERT storefront is public only for
+  // an approved application that is not seed-sourced — handle or not. A seed or Pending/rejected
+  // account is a 404 (LD 40: one answer). An APPROVED expert who is not yet routable (Identity or
+  // Connect incomplete) keeps the page and loses the request/book door (`bookingOpen` below).
+  let bookingOpen = true;
+  if (enforcePublicGates && isExpertRole(owner.role)) {
+    const [emailRow] = await db.select({ email: users.email }).from(users).where(eq(users.id, owner.id)).limit(1);
+    if (!isPublicExpertAccount({ applicationStatus: expertProfile?.status ?? null, email: emailRow?.email ?? null })) return null;
+    bookingOpen = await isExpertIdRoutable(owner.id);
+  }
+
   // Approved review rows are the rating authority. Listing aggregates can be stale or fixture-
   // written, so neither the profile nor cards may derive public review claims from them.
   const approvedReviewRows = await db
@@ -981,6 +993,9 @@ async function loadStorefrontFromOwner(
         ? isBusinessVerificationStatus(ownerForm?.businessVerificationStatus)
         : false,
       acceptsPlanShares,
+      // B3 ruling 3: false ⇔ an approved expert who is not routable yet — the page stays, the
+      // request/book door does not (the request rail refuses them too).
+      bookingOpen,
       specialties: Array.isArray(expertProfile?.specialties) ? expertProfile.specialties : [],
       destinations: Array.isArray(expertProfile?.destinations) ? expertProfile.destinations : [],
       languages: Array.isArray(expertProfile?.languages) ? expertProfile.languages : [],

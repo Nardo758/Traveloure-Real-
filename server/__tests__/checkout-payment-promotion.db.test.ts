@@ -76,6 +76,7 @@ import {
   getPlatformConciergeUserId,
   invalidatePlatformConciergeCache,
 } from "../services/platform-concierge.service";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -144,6 +145,8 @@ before(async () => {
     INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.expert}, ${`promo-${RUN}-expert@t.test`}, 'Promo', 'Expert', 'expert')
   `);
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(ids.expert);
   await db.execute(sql`
     INSERT INTO provider_services (id, user_id, service_name, price, delivery_method, expert_offering_type_key)
     VALUES (${ids.planWorkService}, ${ids.expert}, 'Full itinerary build', '250.00', 'pdf', 'full_itinerary')

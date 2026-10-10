@@ -2552,7 +2552,20 @@ This document captures architectural decisions to maintain consistency across co
     `SHOW_DEMO_EXPERTS=1` relaxes ONLY the seed-domain clause, for every reader alike — approval, Identity and
     Connect are never relaxed, and the pool account never passes. CI sets it in `ci-db-setup` for its seeded
     fixtures (the Kyoto door fixture lives on `traveloure-qa.test` and refuses NODE_ENV=production); production
-    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
+    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`.
+    **AMENDED BY B3 (decision-maker, Oct 9, 2026 — rulings 1–4; ledger `2026-10-09-b3-expert-routability`).**
+    The predicate now also guards every WRITE that puts an expert on a plan and every remaining read that
+    names one: the ONE advisor author `upsertTripAdvisorRow` refuses a NEW advisor who is not routable
+    (`expert_not_routable`; an existing row may still move — a lapsed Identity/Connect does not undo a real
+    hire), and so do `isExpertHireable`/`isExpertApproved`, the storefront request rail and the admin handoff
+    assign, whose ONLY way past is `overrideRoutability: true`, written to the admin audit log. Reads: the
+    plan's advisor list and "delivered by" name drop seed-sourced and not-approved experts (an approved
+    expert whose verification lapsed stays); `/api/grok/match-experts`, `/api/trip-experts`, the follow-up
+    email and the neighbourhood `localExpert` are routable only; `GET /api/experts/:id` and expert
+    storefronts are one 404 for seed or unapproved, and an approved-but-unroutable storefront keeps its page
+    with `bookingOpen: false` (no request/book door). Seed rows are hidden, never deleted; the demo seeders
+    that create experts refuse a non-development `DATABASE_URL` (localhost, a unix socket, `helium`, or
+    `DEMO_SEED_DATABASE_HOSTS` — development only), failing closed. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
     with `captured: false`; 355 marks the rows it already wrote `voided_uncaptured` (never deleted). **(c)** The
     expert is NAMED to the traveler only after ACCEPT (`handoffExpertDisclosed`); the banner names the city
     ("Kyoto"). **(d)** A traveler's withdraw cancels the hold with `requested_by_customer`, only the 48 h timer with
