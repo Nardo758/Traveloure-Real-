@@ -170,6 +170,8 @@ export async function assessCartReminder(
   const recordedOnly = process.env.NODE_ENV === "test" && cartReminderVerificationEnabled() &&
     cartReminderVerification.recordedRailsOnly;
   if (!(recordedOnly ? paid.recordedClear : paid.allowed)) return deny(paid.reason!);
+  const { cartItemChangeSentToday } = await import("./marketing-delivery-policy.service");
+  if (await cartItemChangeSentToday(tx, travelerId, now, preferences)) return deny("item_change_sent_today");
   const history = await tx.execute(sql`SELECT email_type, status, sent_at FROM email_outbox
     WHERE metadata->>'cartReminderVersion' = '1' AND metadata->>'travelerId' = ${travelerId}
       AND metadata->>'sequenceId' = ${clock.sequenceId}

@@ -10,6 +10,8 @@ import { runScheduledAutomation } from "../automations/scheduler-wrapper";
 import { assessCartReminder, cartReminderNow } from "./cart-reminder.service";
 import { lockMarketingTraveler, marketingDayReserved, marketingWindow } from "./marketing-delivery-policy.service";
 import { marketingPreferences } from "./itinerary-followup-email";
+import { assessCartItemChanges } from "./cart-item-change.service";
+import { enqueuePendingCartItemChange } from "./email-outbox.service";
 
 export const COMMERCE_SWEEP_JOB = "commerce-email-sweep";
 export interface CommerceCandidate {
@@ -23,6 +25,8 @@ export interface CommerceCandidate {
 export interface CommerceSweepCounts {
   candidates: number; enqueued: number; duplicates: number; skipped: number;
   skipReasons: Record<string, number>;
+  /** Existing top-level counters remain reminder-only for backward compatibility. */
+  itemChanges?: { enqueued: number; duplicates: number; skipped: number; skipReasons: Record<string, number> };
 }
 
 /** Reuse the retained verification runner's existing opt-in, default off. */
@@ -72,13 +76,40 @@ export async function runCommerceEmailSweep(): Promise<CommerceSweepCounts> {
   const skip = (reason: string) => {
     counts.skipped++; counts.skipReasons[reason] = (counts.skipReasons[reason] ?? 0) + 1;
   };
+  if (candidates.length) counts.itemChanges = { enqueued: 0, duplicates: 0, skipped: 0, skipReasons: {} };
+  const skipItem = (reason: string) => {
+    counts.itemChanges!.skipped++;
+    counts.itemChanges!.skipReasons[reason] = (counts.itemChanges!.skipReasons[reason] ?? 0) + 1;
+  };
   for (const candidate of candidates) {
-    if (!candidate.user_id || !candidate.email) { skip("no_account_recipient"); continue; }
+    if (!candidate.user_id || !candidate.email) {
+      skip("no_account_recipient"); skipItem("no_account_recipient"); continue;
+    }
     // Even an accidental data-bearing clone must never queue a real address.
-    if (!/^[^@\s]+@traveloure-qa\.test$/i.test(candidate.email)) { skip("non_qa_recipient"); continue; }
+    if (!/^[^@\s]+@traveloure-qa\.test$/i.test(candidate.email)) {
+      skip("non_qa_recipient"); skipItem("non_qa_recipient"); continue;
+    }
     // Re-read the authoritative cart under the recipient lock below. Do not
     // decide from an earlier candidate snapshot or a caller-supplied clock.
     const cartScope = commerceCartScopeId(candidate.scope);
+    // Must-have family comes first; it does not consult marketing consent/window/cap.
+    // Query/marker failures throw to the SAME job's FAILED heartbeat recorder.
+    const itemChanges = await db.transaction(async tx => {
+      await lockMarketingTraveler(tx, candidate.user_id!);
+      const assessed = await assessCartItemChanges(tx, candidate.user_id!, candidate.scope, await cartReminderNow(tx));
+      let enqueued = 0, duplicates = 0;
+      for (const change of assessed.changes) {
+        if (await enqueuePendingCartItemChange(change, tx)) enqueued++;
+        else duplicates++;
+      }
+      return { enqueued, duplicates, skipped: assessed.skipped };
+    });
+    counts.itemChanges!.enqueued += itemChanges.enqueued;
+    counts.itemChanges!.duplicates += itemChanges.duplicates;
+    for (const [reason, number] of Object.entries(itemChanges.skipped)) {
+      counts.itemChanges!.skipped += number;
+      counts.itemChanges!.skipReasons[reason] = (counts.itemChanges!.skipReasons[reason] ?? 0) + number;
+    }
     const result = await db.transaction(async tx => {
       await lockMarketingTraveler(tx, candidate.user_id!);
       const now = await cartReminderNow(tx);

@@ -114,6 +114,40 @@ export async function enqueuePendingCommerceReminder(
   return inserted.rows.length > 0;
 }
 
+/** Part 5 queue-only action. Caller owns the shared traveler/cart lock and transaction. */
+export async function enqueuePendingCartItemChange(
+  change: import("./cart-item-change.service").CartChange,
+  tx: import("./marketing-delivery-policy.service").MarketingTx,
+): Promise<boolean> {
+  const schema = process.env.MESSAGING_VERIFICATION_SCHEMA ?? "";
+  if (!["test", "development"].includes(process.env.NODE_ENV ?? "") ||
+      !/^automation_msg_[a-f0-9]{16}$/.test(schema) ||
+      !/^[^@\s]+@traveloure-qa\.test$/i.test(change.recipient)) {
+    throw new Error("Cart changes are restricted to isolated development QA");
+  }
+  const { buildCartItemChangeEmail } = await import("./cart-item-change-email");
+  const message = buildCartItemChangeEmail(change);
+  const inserted = await tx.execute(sql`INSERT INTO email_outbox
+    (email_type, to_email, subject, html, text_body, status, metadata)
+    SELECT 'cart_item_changed', ${change.recipient}, ${message.subject}, ${message.html}, ${message.text},
+      'pending', ${JSON.stringify({
+        commerceKey: change.key, cartItemChangeVersion: 1, cartItemId: change.cartItemId,
+        travelerId: change.travelerId, sequenceId: change.sequenceId, cartScopeRaw: change.scope,
+        capturedAt: change.capturedAt, cartNotifiedValues: change.current, reasons: change.reasons,
+        marketing: false, verificationOnly: true,
+        releaseBlockedBy: ["Part 4", "Part 6", "payment provenance"],
+      })}::jsonb
+    WHERE current_schema()=${schema}
+    ON CONFLICT ((metadata->>'commerceKey')) WHERE metadata ? 'commerceKey'
+    DO NOTHING RETURNING id`);
+  if (!inserted.rows.length) return false;
+  const id = Number(inserted.rows[0].id);
+  if (!await recordQueuedCartValues(change.cartItemId, id, change.current, tx)) {
+    throw new Error("Cart change notified values were not committed");
+  }
+  return true;
+}
+
 // ── Test seam ─────────────────────────────────────────────────────────────────
 
 /**
@@ -149,6 +183,10 @@ export interface EnqueueEmailParams extends SendEmailParams {
  * Never throws — all errors are caught and recorded on the outbox row.
  */
 async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | null> {
+  if (params.emailType === "cart_item_changed") {
+    logger.warn({ reason: "cart_item_change_requires_guarded_sweep" }, "[email-outbox] cart enqueue refused");
+    return null;
+  }
   // Cart reminders have ONE queue-only producer. Never take generic immediate
   // delivery or its historical unrecorded direct-send fallback.
   if (isCartReminderFamily(params.emailType)) {
@@ -412,6 +450,15 @@ async function attemptDelivery(
   // there is no circular import at module-load time.
   let result: SendEmailResult;
   try {
+    if (current.emailType === "cart_item_changed") {
+      // Includes drain/admin retry/generation entry points, even forged legacy rows.
+      // No synthetic or real provider call. Part 6 is NOT implemented here.
+      if (outboxId !== null) await db.execute(sql`UPDATE email_outbox
+        SET status='cancelled', updated_at=NOW(),
+          metadata=metadata || '{"cancelReason":"cart_item_change_release_blocked"}'::jsonb
+        WHERE id=${outboxId} AND status='processing'`);
+      return;
+    }
     if (current.emailType && isCartReminderFamily(current.emailType)) {
       if (outboxId === null) return;
       const { deliverCartReminder } = await import("./cart-reminder.service");

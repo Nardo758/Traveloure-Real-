@@ -147,6 +147,28 @@ test("Part 4: two native randomized loops over recorded rails; unknown coverage 
 
       const good = await fixture();
       assert.equal((await assess(good)).eligible, true);
+      // Item-change sent suppression is local-day only; pending never consumes a step.
+      const suppress = await fixture(3 * 24 * 3_600_000);
+      for (const [kind, days] of [["cart_reminder_1h", 2], ["cart_reminder_1d", 1]] as const) {
+        await db.execute(sql`INSERT INTO email_outbox
+          (email_type,to_email,subject,html,status,sent_at,metadata)
+          VALUES (${kind},${suppress.user.email},'synthetic','synthetic','sent',
+            ${new Date(now.getTime() - days * 24 * 3_600_000)},
+            ${JSON.stringify({ cartReminderVersion: 1, travelerId: suppress.user.id,
+              sequenceId: suppress.sequence, cartScopeRaw: suppress.scope, marketing: true })}::jsonb)`);
+      }
+      const [notice] = (await db.execute(sql`INSERT INTO email_outbox
+        (email_type,to_email,subject,html,status,metadata)
+        VALUES ('cart_item_changed',${suppress.user.email},'synthetic','synthetic','pending',
+          ${JSON.stringify({ travelerId: suppress.user.id, marketing: false })}::jsonb)
+        RETURNING id`)).rows;
+      assert.equal((await assess(suppress)).eligible, true);
+      await db.execute(sql`UPDATE email_outbox SET status='sent',sent_at=${now} WHERE id=${notice.id}`);
+      assert.equal((await assess(suppress)).reason, "item_change_sent_today");
+      const tomorrow = await db.transaction(tx => assessCartReminder(tx, suppress.user.id, suppress.scope,
+        new Date(now.getTime() + 24 * 3_600_000)));
+      assert.equal(tomorrow.eligible, true); assert.equal(tomorrow.kind, "cart_reminder_3d");
+      await db.execute(sql`DELETE FROM email_outbox WHERE id=${notice.id}`);
       assert.equal(await db.transaction(tx => eligibleCartHasPriority(tx, good.user.id, now)), true);
       for (const [patch, reason] of [
         [{ preferences: { itineraryMarketing: { ...prefs.itineraryMarketing, enabled: false } } }, "marketing_unsubscribed"],

@@ -1,0 +1,262 @@
+{
+  "scope": "development-only isolated QA; no release certification",
+  "native": {
+    "part": 5,
+    "loops": [
+      {
+        "loop": 1,
+        "scenario": "ba78fe95-94dd-4c70-a715-4f150dd822c3",
+        "status": "CLEAN_READABLE_SUBSET_ONLY",
+        "checks": [
+          "default UNKNOWN blocks enqueue and notified marker",
+          "price up; one queue; notified linked; snapshot/clock immutable; escaped rendered content",
+          "price down",
+          "capacity reduction still available is harmless; sold-out loss once",
+          "requested-unit stock boundary; quantity-only no false notice; raw notified facts preserved",
+          "legacy null/zero/negative requested quantities fail closed",
+          "combined change has one email",
+          "unsubscribed, unknown timezone, outside marketing hours still selected",
+          "marketing daily cap bypassed; item-change queue does not reserve marketing day",
+          "deleted/suspended refused",
+          "shared paid reader blocks canceled activity at inclusive boundary; partner-only ambiguity",
+          "no_snapshot and no activity stamp; no backfill",
+          "display/client metadata cannot overwrite snapshot",
+          "two concurrent queue passes once",
+          "marker failure rolls back enqueue; retry succeeds",
+          "guest cannot send; authenticated claim enables subset selection",
+          "documented observed target-repeat and unobserved A-B-A limits",
+          "five hostile scenarios; failed candidate heartbeat then genuine recovery",
+          "existing sweep integration; repeat sweep no duplicate",
+          "generic/drain/admin paths cannot invoke provider; production gate"
+        ],
+        "attacks": [
+          "slot orphan",
+          "cross-owner plan",
+          "custom quote",
+          "currency/decimal/JSON semantics",
+          "catalog query fault"
+        ],
+        "actualProviderCalls": 0,
+        "allRailCertified": false,
+        "realDelivery": "OPEN"
+      },
+      {
+        "loop": 2,
+        "scenario": "34c46b17-1d7a-40c7-a08b-d73d4b0ea4e8",
+        "status": "CLEAN_READABLE_SUBSET_ONLY",
+        "checks": [
+          "default UNKNOWN blocks enqueue and notified marker",
+          "price up; one queue; notified linked; snapshot/clock immutable; escaped rendered content",
+          "price down",
+          "capacity reduction still available is harmless; sold-out loss once",
+          "requested-unit stock boundary; quantity-only no false notice; raw notified facts preserved",
+          "legacy null/zero/negative requested quantities fail closed",
+          "combined change has one email",
+          "unsubscribed, unknown timezone, outside marketing hours still selected",
+          "marketing daily cap bypassed; item-change queue does not reserve marketing day",
+          "deleted/suspended refused",
+          "shared paid reader blocks canceled activity at inclusive boundary; partner-only ambiguity",
+          "no_snapshot and no activity stamp; no backfill",
+          "display/client metadata cannot overwrite snapshot",
+          "two concurrent queue passes once",
+          "marker failure rolls back enqueue; retry succeeds",
+          "guest cannot send; authenticated claim enables subset selection",
+          "documented observed target-repeat and unobserved A-B-A limits",
+          "five hostile scenarios; failed candidate heartbeat then genuine recovery",
+          "existing sweep integration; repeat sweep no duplicate",
+          "generic/drain/admin paths cannot invoke provider; production gate"
+        ],
+        "attacks": [
+          "slot orphan",
+          "cross-owner plan",
+          "custom quote",
+          "currency/decimal/JSON semantics",
+          "catalog query fault"
+        ],
+        "actualProviderCalls": 0,
+        "allRailCertified": false,
+        "realDelivery": "OPEN"
+      }
+    ],
+    "realEmails": 0,
+    "releaseBlocked": true
+  },
+  "golden": {
+    "before": {
+      "passed": 143,
+      "failed": 0,
+      "stages": [
+        {
+          "stageComplete": "Itinerary outcome payload",
+          "exitCode": 0,
+          "passed": 5,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Itinerary follow-up payload",
+          "exitCode": 0,
+          "passed": 5,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Generation authoritative-writer tests",
+          "exitCode": 0,
+          "passed": 8,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Three itinerary follow-up tests",
+          "exitCode": 0,
+          "passed": 20,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Signup welcome",
+          "exitCode": 0,
+          "passed": 22,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Verification and password-reset boundaries",
+          "exitCode": 0,
+          "passed": 4,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Booking confirmation duplicate and payment retry",
+          "exitCode": 0,
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Booking durable delivery / retry",
+          "exitCode": 0,
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Outbox retry / leases / dedupe / cancellation",
+          "exitCode": 0,
+          "passed": 26,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Retained registry contract suites",
+          "exitCode": 0,
+          "passed": 38,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Registry IDs",
+          "exitCode": 0,
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Cron roster",
+          "exitCode": 0,
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "stageComplete": "New harness safety tests",
+          "exitCode": 0,
+          "passed": 7,
+          "failed": 0
+        }
+      ]
+    },
+    "after": {
+      "passed": 143,
+      "failed": 0,
+      "stages": [
+        {
+          "stageComplete": "Itinerary outcome payload",
+          "exitCode": 0,
+          "passed": 5,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Itinerary follow-up payload",
+          "exitCode": 0,
+          "passed": 5,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Generation authoritative-writer tests",
+          "exitCode": 0,
+          "passed": 8,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Three itinerary follow-up tests",
+          "exitCode": 0,
+          "passed": 20,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Signup welcome",
+          "exitCode": 0,
+          "passed": 22,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Verification and password-reset boundaries",
+          "exitCode": 0,
+          "passed": 4,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Booking confirmation duplicate and payment retry",
+          "exitCode": 0,
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Booking durable delivery / retry",
+          "exitCode": 0,
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Outbox retry / leases / dedupe / cancellation",
+          "exitCode": 0,
+          "passed": 26,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Retained registry contract suites",
+          "exitCode": 0,
+          "passed": 38,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Registry IDs",
+          "exitCode": 0,
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "stageComplete": "Cron roster",
+          "exitCode": 0,
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "stageComplete": "New harness safety tests",
+          "exitCode": 0,
+          "passed": 7,
+          "failed": 0
+        }
+      ]
+    }
+  },
+  "tsc": {
+    "baseline": 117,
+    "after": 117,
+    "changedFileDiagnostics": 0
+  },
+  "providerReceiptIds": [],
+  "releaseBlocked": true,
+  "part6Started": false
+}

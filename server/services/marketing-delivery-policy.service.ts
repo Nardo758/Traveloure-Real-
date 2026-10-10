@@ -47,3 +47,16 @@ export function reserveMarketingDay(metadata: Record<string, unknown>, day: stri
   if (typeof metadata.deliveryCalendarDay === "string") history.push(metadata.deliveryCalendarDay);
   return { ...metadata, deliveryCalendarDay: day, deliveryCalendarDays: Array.from(new Set([...history, day])) };
 }
+
+/** Only actual SENT item-change notices suppress reminders; no marketing-cap reservation. */
+export async function cartItemChangeSentToday(
+  tx: MarketingTx, travelerId: string, now: Date, preferences: MarketingPreferences,
+) {
+  const day = marketingWindow(now, preferences).day;
+  const result = await tx.execute(sql`SELECT id FROM email_outbox
+    WHERE email_type='cart_item_changed' AND status='sent' AND sent_at IS NOT NULL
+      AND metadata->>'travelerId'=${travelerId}
+      AND ((sent_at AT TIME ZONE 'UTC') AT TIME ZONE ${preferences.timeZone})::date::text=${day}
+    LIMIT 1`);
+  return result.rows.length > 0;
+}

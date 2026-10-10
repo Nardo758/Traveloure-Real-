@@ -342,3 +342,17 @@ mtime_ms = 1791614325356
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/ca481309-60fc-4e6d-b887-88c8f7d14831/bf0d6ff1-686d-41c7-82c0-1cc3eeb02d1c"
 storage_version_token = "1791614373610739"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "ydfcN2lmNMvIpdqEGJ_mO"
+uri = "file://reports/automation-part5-verification.md"
+type = "text"
+title = "Part 5 development verification report"
+description = "Per-rule loops, master scorecard, evidence, touch list and release blockers. Not production-certified; no real emails sent."
+logical_id = "91d6e110-dc2a-4fec-a672-77030f95b3df"
+content_hash = "sha256:2787e5e6f28ef34fe38784bbea9f4c127e0ce602fdc2acc7c0b15590b84d05b0"
+size = 12497
+mtime_ms = 1791622000410
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/91d6e110-dc2a-4fec-a672-77030f95b3df/a770e4d1-6362-48b6-a47b-d57e60d01f91"
+storage_version_token = "1791622024461424"
+content_type = "text/markdown"

@@ -240,6 +240,26 @@ export function evaluateCartClock(rows: { contentMeta?: unknown }[], serverNowMs
   return { eligible: true, sequenceId: newest.sequence_id, lastActivityMs: newest.at_ms, idleMs };
 }
 
+/** Item changes are not idle reminders. Same validation, without an idle threshold. */
+export function readCurrentCartActivity(rows: { contentMeta?: unknown }[], serverNowMs: number): CartClockResult {
+  if (!rows.length) return { eligible: false, reason: "empty_cart" };
+  let newest: CartActivityStamp | undefined;
+  for (const row of rows) {
+    try {
+      const activity = (row.contentMeta as any)?.[CART_STATE_KEY]?.activity;
+      if (!activity) continue;
+      if (!Number.isSafeInteger(activity.at_ms) || activity.at_ms <= 0 ||
+          activity.at_ms > serverNowMs || typeof activity.sequence_id !== "string" || !activity.sequence_id) {
+        return { eligible: false, reason: "invalid_activity_stamp" };
+      }
+      if (!newest || activity.at_ms > newest.at_ms ||
+          (activity.at_ms === newest.at_ms && activity.sequence_id > newest.sequence_id)) newest = activity;
+    } catch { return { eligible: false, reason: "invalid_activity_stamp" }; }
+  }
+  return newest ? { eligible: true, sequenceId: newest.sequence_id, lastActivityMs: newest.at_ms,
+    idleMs: serverNowMs - newest.at_ms } : { eligible: false, reason: "no_activity_stamp" };
+}
+
 export function snapshotSkipReason(contentMeta: unknown): "no_snapshot" | null {
   try {
     const snapshot = (contentMeta as any)?.[CART_STATE_KEY]?.snapshot;

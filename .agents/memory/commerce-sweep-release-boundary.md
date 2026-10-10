@@ -80,3 +80,16 @@ marketing reminders while retaining the same UNKNOWN payment blockers.
 dedupe and changes returning A→B→A as limits, not complete event history.
 Suppress cart reminders on the local day an item-change notice was actually
 sent without permanently consuming later reminder steps.
+
+Availability is about the cart's requested units, not whether one unit remains.
+A quantity-only edit is not a catalog availability change. Retain stock facts
+for comparisons rather than treating a stored availability boolean as valid
+for every later quantity.
+
+**Why:** Hostile review found both missed insufficient-stock cases and the risk
+of false notices after a quantity edit. The add-time snapshot does not establish
+the original requested quantity for historical comparisons.
+
+**How to apply:** Evaluate reference and current stock against the current
+server-owned requested units. Preserve comparison facts in notified values;
+skip quantities or contexts that cannot be established without guessing.

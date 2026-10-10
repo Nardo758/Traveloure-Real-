@@ -1,0 +1,474 @@
+{
+  "total": 78,
+  "passed": 78,
+  "checks": [
+    {
+      "name": "scripts/check-test-files-wired.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-test-files-wired.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-workstation-retired.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-workstation-retired.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-workstation-retired.cjs --bundle",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-tripless-cart-writers.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-tripless-cart-writers.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-tripless-cart-writers.cjs --bundle",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-us-spelling.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-us-spelling.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-unlimited-runs.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-unlimited-runs.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-money-endpoints.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-money-endpoints.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-claims-only-user-lookups.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-claims-only-user-lookups.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-trip-card-honesty.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-trip-card-honesty.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-planning-entry.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-planning-entry.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-conflict-markers.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-conflict-markers.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-e2e-helper-waits.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-e2e-helper-waits.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-item-removed-logging.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-item-removed-logging.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-itinerary-rebuild-guard.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-itinerary-rebuild-guard.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-traveler-fee-coverage.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-traveler-fee-coverage.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-unmounted-routers.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-trip-mint-owner-access.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-decision-guards.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-decision-guards.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-decision-guards.cjs --require-assigned",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-ledger-union-merge.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-ledger-union-merge.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-coverage-matrix.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-coverage-matrix.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-env-allowlist.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-env-allowlist.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-omit-schema-ratchet.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-omit-schema-ratchet.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-migration-indexes-declared.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-migration-indexes-declared.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-demand-rollup.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-demand-rollup.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-coords-preservation.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-coords-preservation.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-linkage-preservation.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-artifact-deploy-guard.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-artifact-deploy-guard.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-duplicate-migration-prefixes.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-duplicate-migration-prefixes.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-category-reachability.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-category-reachability.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-roles-needed-reachability.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-roles-needed-reachability.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-page-hex.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-page-hex.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-earn-planner-keys.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-earn-planner-keys.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-trip-route-shadows.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-trip-route-shadows.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-privileged-field-completeness.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-privileged-field-completeness.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-advisor-row-author.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-advisor-row-author.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-preferences-writer.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-preferences-writer.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-query-userid-reads.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-query-userid-reads.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-public-user-id.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-public-user-id.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-ai-draft-eligibility.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-ai-draft-eligibility.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-doc-band-keys.cjs --self-test",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    },
+    {
+      "name": "scripts/check-doc-band-keys.cjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "reason": null
+    }
+  ]
+}
