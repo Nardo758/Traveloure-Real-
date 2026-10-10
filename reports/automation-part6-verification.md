@@ -2,9 +2,9 @@
 
 Status: **development-implemented; NOT certified; release BLOCKED**.
 
-The bounded Part 6 tests passed two fresh randomized loops. A retained Part 3
-fixture needs a separately approved test-only correction before the predecessor
-suite is clean. No Part 7 work has started.
+The bounded Part 6 tests passed two fresh randomized loops. The separately
+approved retained Part 3 fixture correction also passed two fresh randomized
+loops, without weakening its assertions. No Part 7 work has started.
 
 ## Changes
 
@@ -80,6 +80,7 @@ native Part 6 suite has **24 check groups and five hostile categories per loop**
 | Four added read-only mappings | 2 | 2 | Owner/other owner, inclusive time boundary, lifecycle/ownership gaps |
 | Canonical/malformed JSONB facts | 2 | 2 | Reordered keys accepted; changed/malformed content refused |
 | SDK-boundary guard function | 2 | 2 | False/null/malformed decisions never invoke synthetic transport |
+| Retained Part 3 sweep regression | 2 | 2 | Complete catalog fixture; controlled clock; original assertions retained |
 | Actual Stripe webhook replay | 0 | 0 | **OPEN** |
 | Actual webhook + success-page concurrency | 0 | 0 | **OPEN** |
 | Must-have payment/send ordering | 0 | 0 | **BLOCKED; not inferred from marketing proof** |
@@ -128,17 +129,18 @@ The approved exception applies to marketing only.
   remain; this is not a claim of a clean typecheck.
 - Part 4 predecessor: two native loops and two pure-policy loops passed.
 - Part 5 predecessor: two native loops passed.
-- Part 3 predecessor: **FAILED**, before completing its first loop. Its minimal
-  catalog fixture omits price; the strengthened pre-queue check skips the two
-  candidates. Actual `[candidates,enqueued,duplicates,skipped]` is
-  `[2,0,0,2]`, rather than the old `[2,2,0,0]` expectation. Its assertions have
-  NOT been weakened and the file has NOT been edited.
+- Part 3 predecessor after the separately approved fixture correction:
+  **two clean randomized loops passed**, including sequential/concurrent dedupe,
+  success and failed heartbeats, no-due/empty sweeps, five hostile scenarios,
+  registry/roster checks, unchanged legacy-job heartbeat behavior and zero
+  delivery calls. Its original assertions are unchanged.
 
-The requested additional touch is
-`server/routes/__tests__/commerce-email-sweep.db.test.ts`: complete the catalog
-fixture and make its eligibility clock deterministic, retaining all original
-idempotency/heartbeat/roster assertions. This is outside the approved Part 6
-file list, so it remains paused for approval.
+The approved additional touch was
+`server/routes/__tests__/commerce-email-sweep.db.test.ts`. Its catalog fixture
+now supplies fixed price, active status and availability. A disposable-test
+clock fixes eligibility at noon in Tokyo; idle/current activity use that clock,
+while actual heartbeat timing assertions retain real wall time. The previous
+test clock is restored on cleanup. No runtime file was changed for this correction.
 
 ## Failures and corrections, not hidden
 
@@ -157,7 +159,10 @@ file list, so it remains paused for approval.
   quotes are held; obsolete quotes are cancelled.
 - Two bundle guards initially lacked the temporary snapshot's compiled client.
   A provider-free temporary build supplied it; the full batch then passed 78/78.
-- The retained Part 3 catalog-fixture failure is still open as described above.
+- The retained Part 3 catalog fixture originally produced
+  `[candidates,enqueued,duplicates,skipped]=[2,0,0,2]` instead of `[2,2,0,0]`.
+  The founder approved completing that fixture and controlling its eligibility
+  clock. The corrected original assertions passed two fresh clean loops.
 
 ## Exact changed files
 
@@ -176,6 +181,7 @@ Modified:
 - `server/services/email.service.ts`
 - `server/routes/__tests__/cart-reminders.db.test.ts`
 - `server/routes/__tests__/cart-item-changes.db.test.ts`
+- `server/routes/__tests__/commerce-email-sweep.db.test.ts` (separately approved fixture-only extension)
 - `.github/workflows/scheduler-jobs-gate.yml`
 - The two retained provenance proposals and the existing release-boundary memory
 
@@ -187,5 +193,8 @@ The native harness created and removed disposable development schemas under
 the retained approval. The normal development bootstrap also ran when the
 existing workflow was restarted; it is not delivery or production evidence.
 
-**Current stop:** approval for the single retained Part 3 test-file extension.
-All UNKNOWNs, normal-send blocks and certification holds remain active.
+**Remaining holds:** complete payment provenance, actual Stripe-handler replay
+and webhook/success-page concurrency, mocked real-SDK integration, must-have
+payment/send ordering, and authorized real-delivery receipts. The fixture
+blocker is cleared; all UNKNOWNs, normal-send blocks and certification holds
+remain active.

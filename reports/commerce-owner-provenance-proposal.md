@@ -11,8 +11,8 @@ time boundaries, and retain missing/contradictory ownership as UNKNOWN.
 This is not implementation of the wider proposal. Free/covered optimization,
 all fee source kinds, partner provenance, all lifecycle stamps and complete
 payment ordering are NOT certified. No writer/schema change was made. See
-`reports/automation-part6-verification.md` for the exact scope and retained
-Part 3 fixture blocker. The historical proposal status below applies to the
+`reports/automation-part6-verification.md` for the exact scope and the separately
+approved Part 3 fixture correction, now proven in two clean loops. The historical proposal status below applies to the
 remaining unapproved work.
 
 Status: **proposal only; implementation not approved**.

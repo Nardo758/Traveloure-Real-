@@ -27,7 +27,7 @@
     "changedFileTypecheckErrors": 0,
     "part4": "PASS_TWO_NATIVE_AND_TWO_PURE_LOOPS",
     "part5": "PASS_TWO_NATIVE_LOOPS",
-    "part3": "FAILED_INCOMPLETE_CATALOG_FIXTURE_TOUCH_NOT_YET_APPROVED"
+    "part3": "PASS_TWO_NATIVE_LOOPS_AFTER_APPROVED_FIXTURE_CORRECTION"
   },
   "marketingWindowMs": [
     {"loop": 1, "scenario": "ordinary", "afterVerifier": 0.063353, "wholeVerifierToInvoke": 5.893401},
@@ -44,5 +44,16 @@
   "paymentWriterChanges": 0,
   "productionChanges": 0,
   "part7Started": false,
-  "pendingApprovalFile": "server/routes/__tests__/commerce-email-sweep.db.test.ts"
+  "approvedFixtureExtension": {
+    "file": "server/routes/__tests__/commerce-email-sweep.db.test.ts",
+    "freshLoops": 2,
+    "consecutiveCleanLoops": 2,
+    "sequentialRowsPerLoop": 2,
+    "concurrentRowsPerLoop": 2,
+    "concurrentDuplicatesPerLoop": 2,
+    "hostileCategoriesPerLoop": 5,
+    "deliveryCalls": 0,
+    "originalAssertionsRetained": true,
+    "disposableSchemaRemoved": true
+  }
 }

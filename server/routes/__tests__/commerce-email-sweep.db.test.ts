@@ -41,6 +41,10 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
   // Part 3 still proves native queue infrastructure, not unknown external rails.
   // No real transport is configured in this disposable provider-free harness.
   cartReminderVerification.recordedRailsOnly = true;
+  const previousClock = cartReminderVerification.now;
+  // Noon in Tokyo: eligibility must not depend on when CI runs.
+  const eligibilityNow = new Date("2030-01-01T03:00:00.000Z");
+  cartReminderVerification.now = eligibilityNow;
   const oldSecret = process.env.INTERNAL_JOB_SECRET;
   process.env.INTERNAL_JOB_SECRET = randomUUID();
   const app = express(); app.use(express.json()); app.use(internalRoutes);
@@ -68,7 +72,10 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
     if (userId) {
       const [trip] = await db.insert(trips).values({ userId, destination: "Kyoto",
         startDate: "2030-01-01", endDate: "2030-01-03" }).returning();
-      const [service] = await db.insert(providerServices).values({ userId, serviceName: "Isolated verification" }).returning();
+      const [service] = await db.insert(providerServices).values({
+        userId, serviceName: "Isolated verification", price: "10.00",
+        priceType: "fixed", status: "active", availability: [],
+      }).returning();
       const [item] = await db.insert(itineraryItems).values({ tripId: trip.id,
         providerServiceId: service.id, title: "Verification", dayNumber: 1 }).returning();
       tripId = trip.id; serviceId = service.id; itineraryItemId = item.id;
@@ -92,7 +99,7 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
         preferences: { itineraryMarketing: { enabled: true, timeZone: "Asia/Tokyo",
           quietStart: "00:00", quietEnd: "00:00" } },
       });
-      const idle = Date.now() - 3_600_000 - 10_000 - Math.floor(Math.random() * 50_000);
+      const idle = eligibilityNow.getTime() - 3_600_000 - 10_000 - Math.floor(Math.random() * 50_000);
       // Same sequence across two carts: without cart scope in the key this is
       // a real collision, not a vacuous different-sequence uniqueness check.
       const seqA = randomUUID(), seqB = seqA;
@@ -158,7 +165,7 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
 
       // No due carts (real current activity); then genuinely no candidate rows.
       await db.execute(sql`DELETE FROM cart_items`);
-      await fixture(userId, null, { at_ms: Date.now(), sequence_id: randomUUID() });
+      await fixture(userId, null, { at_ms: eligibilityNow.getTime(), sequence_id: randomUUID() });
       const notDue = await runCommerceEmailSweep();
       assert.deepEqual([notDue.candidates, notDue.enqueued, notDue.duplicates, notDue.skipped], [1, 0, 0, 1]);
       assert.equal(notDue.skipReasons.not_idle, 1);
@@ -221,6 +228,7 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
   } finally {
     commerceSweepDependencies.selectCandidates = originalSelect;
     cartReminderVerification.recordedRailsOnly = false;
+    cartReminderVerification.now = previousClock;
     _outboxTestHooks.sendEmailFn = null;
     if (oldSecret === undefined) delete process.env.INTERNAL_JOB_SECRET;
     else process.env.INTERNAL_JOB_SECRET = oldSecret;
