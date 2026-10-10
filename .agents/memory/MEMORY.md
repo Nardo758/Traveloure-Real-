@@ -11,6 +11,7 @@
 - [3DS payment flow](3ds-payment-flow.md) — requires_action must be handled in 3 places: client status branch, /booking/confirmation redirect-back page, webhook handler stamping DB
 - [Lead routing silent SQL failure](lead-routing-silent-sql-failure.md) — scoreExperts() swallows SQL errors and returns [], which looks identical to "no eligible experts"; verify column names against schema before trusting a no-match result
 - [Affiliate integration checklist](affiliate-integration-checklist.md) — new affiliate networks need a recurring commission-poll timer (not just catalog sync), admin UI partner-filter parity, and client-side gating for context-dependent CTA fields
+- [Affiliate access proof](affiliate-access-proof.md) — tracking/statistics access is not program approval or inventory entitlement; failed membership reads mean unknown, not absent.
 - [Stripe key misconfiguration](stripe-key-misconfiguration.md) — wrong key type (pk_ vs sk_) pasted into STRIPE_SECRET_KEY looks exactly like a platform secrets-sync bug across restarts; verify value/account first, add sk_ startup guard
 - [Prod verification constraints](prod-verification-constraints.md) — prod SQL is read-only (no role grants/cleanup); dispatch checks needing an expert session must run on dev at the same commit; MyBookings route is /bookings not /my-bookings.
 - [PlanCard item source](plancard-itinerary-items.md) — dashboard Trip Card reads itinerary_items not trip_items; routing actions need provider_service_id + routing_status
