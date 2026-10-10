@@ -23,6 +23,39 @@ export const LITEAPI_PAGE_SIZE = 500;
 /** How far before the last completed pass an incremental query reaches back (re-reads are idempotent). */
 export const LITEAPI_SYNC_OVERLAP_MS = 60 * 60 * 1000;
 
+/**
+ * S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`): live rates on the stay card.
+ *   · `LITEAPI_RATES_DAILY_CAP` — rates calls per UTC day, counted on `api_usage_logs` BEFORE the call
+ *     (R299 shape). Over the cap ⇒ "Rates unavailable right now", never an error. Default below.
+ *   · `LITEAPI_CURRENCY` / `LITEAPI_GUEST_NATIONALITY` — what the rates request asks in (ISO codes).
+ *   · `LITEAPI_RATES_TIMEOUT_MS` — the card never waits longer than this for an answer.
+ */
+export const LITEAPI_RATES_DAILY_CAP_DEFAULT = 200;
+export const LITEAPI_CURRENCY_DEFAULT = "USD";
+export const LITEAPI_GUEST_NATIONALITY_DEFAULT = "US";
+export const LITEAPI_RATES_TIMEOUT_MS_DEFAULT = 8000;
+
+function intEnv(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && (raw ?? "").trim() !== "" ? n : fallback;
+}
+/** Rates calls allowed per UTC day; 0 pauses rates. */
+export function liteapiRatesDailyCap(env: NodeJS.ProcessEnv = process.env): number {
+  return intEnv(env.LITEAPI_RATES_DAILY_CAP, LITEAPI_RATES_DAILY_CAP_DEFAULT);
+}
+export function liteapiRatesTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = intEnv(env.LITEAPI_RATES_TIMEOUT_MS, LITEAPI_RATES_TIMEOUT_MS_DEFAULT);
+  return n > 0 ? n : LITEAPI_RATES_TIMEOUT_MS_DEFAULT;
+}
+export function liteapiCurrency(env: NodeJS.ProcessEnv = process.env): string {
+  const v = (env.LITEAPI_CURRENCY ?? "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(v) ? v : LITEAPI_CURRENCY_DEFAULT;
+}
+export function liteapiGuestNationality(env: NodeJS.ProcessEnv = process.env): string {
+  const v = (env.LITEAPI_GUEST_NATIONALITY ?? "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(v) ? v : LITEAPI_GUEST_NATIONALITY_DEFAULT;
+}
+
 /** Kyoto only in S1-d-1. Each target names the LiteAPI query and the market city its rows join under. */
 export const LITEAPI_SYNC_TARGETS: ReadonlyArray<{ market: string; countryCode: string; cityName: string }> = [
   { market: "kyoto", countryCode: "JP", cityName: "Kyoto" },

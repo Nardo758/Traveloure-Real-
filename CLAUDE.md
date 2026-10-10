@@ -49,6 +49,10 @@ This document captures architectural decisions to maintain consistency across co
    `RESOLVER_FEE_BAND_REQUIREMENTS` also declares it with its fallback, so the screen states what turning
    it off does instead of "not declared". Pinned for every band a migration seeds from 354 on
    (`fee-band-admin-guards` D8). A band the screen can't see or explain fails the ruling.
+   **TC-0 (ledger `2026-10-10-tc0-transport-commission-band`, migration 367, approved):** the transport platform
+   commission is the `transport_platform_commission` band (10%) and the route-search partners' margin is ONE
+   `affiliate_transport_margin` band (6%), each with fallback 0; the dormant `booking_fee_configs` reads and
+   the 10% / per-partner literals are gone.
    **Migration 339** (ledger `2026-10-03-beta-flat-band-insert`) inserts the `beta_flat` row when it
    is missing — 051 stamped 001–050 without running them, so production never received 033's seed
    and 338's UPDATE matched nothing — then repeats 338's guarded reactivation and policy upsert.
@@ -2451,6 +2455,16 @@ This document captures architectural decisions to maintain consistency across co
     record, displayed to that traveler, and are kept for 30 days as ruled. Nothing beyond place IDs and
     coordinates is stored from Places outside a plan; Google durations are never cached across plans; Google
     photos are never stored."
+    **AMENDED — A MARKET-LEVEL OFFICIAL REFRESH (decision-maker SS-1 ruling 1, Oct 10, 2026; ledger
+    `2026-10-10-ss1b-official-refresh`; no migration — wording APPROVED by Leon, Oct 10, 2026).** A second, bounded spend path
+    beside A6-3A: a scheduled job reads each active, official, terms-checked source that states
+    `refresh_interval_days` and `cost_ceiling_cents_per_day`, on that interval and within that ceiling, OUTSIDE ANY
+    PLAN, fetching only the targets in `server/config/content-source-targets.config.ts`. Its facts are
+    `official_refresh` — source id, official URL, verbatim quote, `verified_at`, `expires_at = verified_at +
+    interval` — read exactly as an official crawl (`isPageReadOrigin`). The free draft's budget stays 0; it reads
+    what the refresh stored. A station's point comes from the OSM node its anchor names (`{ stationSlug, osmNodeId }`),
+    resolved once through the city-event venue path (LD 59) and stored with "© OpenStreetMap contributors" — never
+    from Places; a station OSM does not confirm is stored unplaced, never guessed.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
@@ -2619,6 +2633,19 @@ This document captures architectural decisions to maintain consistency across co
     code in `server/data/iata-airports.json` (a typed airport name has none and keeps the fixed buffer); the
     engine routes airport ↔ stay legs, and the buffer check adds the routed leg's minutes. `leg-google-coords`
     queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
+    **AMENDED BY P0 (decision-maker rulings 1–7, Oct 10, 2026 — ledger `2026-10-10-p0-legs-baseline`; no
+    migration).** An unlocated stop is reported and BRIDGED (consecutive located stops are connected). A
+    default-transit `no_route` is asked ONCE as a drive, stored with `alternative_modes[0].reason=
+    'transit_unavailable'` and shown "No transit found — drive shown"; transit and drive both without a
+    route ⇒ no leg (E8 kept — never a stale leg) and a "no route found" count on the FD-3 day line. No time
+    of day ⇒ 10:00 local on the trip day, never server-now; a past day is never routed. With the engine off
+    a routed plan gets NOTHING written — the legacy "driving" writer is retired for routed plans. A
+    confirmed `source IS NULL` leg is re-routed on the plan's first engine run, keeps `confirmed`, and its
+    legacy row is superseded (`proposal_status` NULL, `origin='superseded'`), never deleted; the mode change
+    is logged (behaviour pins E9/E10 amended accordingly — sanctioned; a confirmed ENGINE leg is still never
+    recomputed). Held follow-up: move the marker to a nullable `superseded_at` with the next
+    `transport_legs` migration (`origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
+    is set by Leon in Deployments after the deploy carrying P0.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**
@@ -2644,6 +2671,14 @@ This document captures architectural decisions to maintain consistency across co
     empty at creation. **The expiry sweep never deletes a LiteAPI row, nor any row a `plan_options` row or a
     `trips.stay_pick` references** (`hotel-cache-retention.ts`). "See rates", the SSP guard and the margin bands
     are S1-d-2.
+    **AMENDED — S1-d-2, LIVE RATES ON THE CARD, NEVER STORED (decision-maker, Oct 10, 2026 — ledger
+    `2026-10-10-s1-d2-liteapi-rates`; brief `docs/planning/briefs/s1-d2-liteapi-rates.md`; migration 366, HELD
+    until "Migration 366 SQL approved — Leon" is on its PR).** `GET /api/trips/:tripId/stays/:stayId/rates` asks
+    LiteAPI live for one stay (`maxRatesPerHotel: 1`) behind the plan read gate and stores nothing. The public
+    price is the retail total with the `hotel_margin_public` margin, floored at the SSP; both margin bands are
+    optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
+    is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
+    default card shows "See rates" and no price; the item row and booking are d-3.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
@@ -2678,6 +2713,13 @@ This document captures architectural decisions to maintain consistency across co
     is `days[].localTeaser = { localPicks, localNotes }` on a FREE plan's plancard: draft-eligible local gems not already
     on the plan and live local notes in the neighbourhoods of that day's located stops — COUNTS ONLY, no title, place or
     id; a day not computed, or zero, carries no key (§13). FD-5's coverage targets will hide an under-target day.
+    **AMENDED BY FD-5 (decision-maker rulings 1–7, Oct 10, 2026; numbers Leon's; ledger `2026-10-10-fd5-coverage-targets`;
+    no migration — FOUNDER WORDING REVIEW).** The teaser is gated per neighbourhood by config targets
+    (`server/config/coverage-targets.config.ts`; Kyoto: peak 5 picks / 3 notes, weekday 3 / 2): a day counts only the
+    neighbourhoods at or above their own target for its day type (`peak` = a weekend, a season at or above
+    `COVERAGE_PEAK_MULTIPLIER`, or unconfirmed dates), never summed; none ⇒ nothing. Only the teaser's own counts gate;
+    official-fact targets are census-reported (`scripts/report-coverage-census.cjs`). The day block draws it beside the
+    feasibility line, nothing on zero.
 
 67. **FEASIBILITY IN THE FREE DRAFT READS ONLY STORED OFFICIAL FACTS, AND A DAY SAYS WHAT IT DID NOT CHECK (decision-maker,
     Oct 10, 2026 — FD-3 rulings 1–7; ledger `2026-10-10-fd3-feasibility`; brief `docs/planning/briefs/fd-3-feasibility.md`;
