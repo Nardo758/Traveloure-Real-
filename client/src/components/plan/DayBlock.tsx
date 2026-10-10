@@ -10,6 +10,7 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { usePlanRowLook } from "./row-look";
+import { feasibilityLine, type DayFeasibility } from "@shared/plan-feasibility";
 
 export interface DayBlockProps {
   /** Stable key for testids — the plan day number, or the slot key for an event-only slot. */
@@ -28,10 +29,18 @@ export interface DayBlockProps {
   domId?: string;
   /** Board look: the day's image as a thumbnail, drawn beside the header while the day is closed. */
   thumb?: ReactNode;
+  /**
+   * FD-3 (ledger `2026-10-10-fd3-feasibility`, §3d): the server's per-day counts of what the feasibility
+   * checks could read. Drawn as ONE muted line at the top of the OPEN day — the words are
+   * `feasibilityLine` (shared), so the slip, the Trip Card and the versions board can never disagree.
+   * Absent ⇒ no line.
+   */
+  feasibility?: DayFeasibility | null;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, children }: DayBlockProps) {
+  const feasibilityText = feasibilityLine(feasibility);
   const look = usePlanRowLook();
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;
@@ -75,6 +84,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
         {aside ? <div className="px-4 pb-2 text-xs" data-testid={`slip-day-aside-${dayKey}`}>{aside}</div> : null}
         {isOpen ? (
           <div className="pb-1" data-testid={`slip-day-body-${dayKey}`}>
+            <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             {children}
           </div>
         ) : null}
@@ -109,9 +119,20 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
       {isOpen ? (
         <div data-testid={`slip-day-body-${dayKey}`}>
           {photo ? <div className="px-3 pt-1 pb-2">{photo}</div> : null}
+          <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           {children}
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** FD-3: the day's feasibility line, or nothing. One testid on every surface. */
+export function DayFeasibilityLine({ dayKey, text, className }: { dayKey: string; text: string | null; className?: string }) {
+  if (!text) return null;
+  return (
+    <p className={className} data-testid={`slip-day-feasibility-${dayKey}`}>
+      {text}
+    </p>
   );
 }

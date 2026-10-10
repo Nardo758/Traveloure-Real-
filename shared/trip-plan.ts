@@ -566,6 +566,12 @@ export interface TripPlanDay {
    * notes the paid tier would add around this day. Counts only. ABSENT when not computed or zero (§13).
    */
   localTeaser?: { localPicks: number; localNotes: number };
+  /**
+   * OPTIONAL (FD-3, ledger `2026-10-10-fd3-feasibility`): what the day's feasibility checks could read — stops
+   * whose hours / last entry are known, rides whose last departure is stored. Counts only; the words are
+   * `feasibilityLine` (shared/plan-feasibility.ts). ABSENT when not computed.
+   */
+  feasibility?: import("./plan-feasibility").DayFeasibility;
   /** LEGACY placement of this day's legs; the same objects also appear in `TripPlan.legs`. */
   transports: TripPlanLeg[];
 }

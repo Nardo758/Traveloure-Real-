@@ -301,7 +301,7 @@ const stayBody = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("stay_here"),
-      hotel: z.object({ kind: z.enum(["platform", "hotel_cache", "affiliate"]), id: z.string().min(1).max(64) }).strict(),
+      hotel: z.object({ kind: z.enum(["platform", "hotel_cache", "affiliate", "liteapi"]), id: z.string().min(1).max(64) }).strict(),
     })
     .strict(),
   z

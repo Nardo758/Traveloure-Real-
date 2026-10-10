@@ -36,7 +36,8 @@ interface ScoredOpportunity {
   latitude: number | null;
   longitude: number | null;
   type: "last_minute" | "trending" | "local_event" | "flash_deal";
-  source: "viator" | "fever" | "amadeus";
+  /** The row's own provider — viator, fever, or a hotel_cache provider (booking_com, liteapi). */
+  source: string;
   externalId: string;
   title: string;
   description: string | null;
@@ -105,7 +106,8 @@ const typeColors: Record<string, string> = {
 const sourceIcons: Record<string, typeof Activity> = {
   viator: Activity,
   fever: Ticket,
-  amadeus: Hotel,
+  booking_com: Hotel,
+  liteapi: Hotel,
 };
 
 export function SpontaneousDiscovery({ 

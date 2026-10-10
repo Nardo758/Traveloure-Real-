@@ -1966,4 +1966,9 @@ export const MIGRATION_FILES = [
   // partial UNIQUE on trip_id (safe: no row exists at creation). No FK. Declared in shared/schema.ts.
   // APPROVED by the founder, Oct 9, 2026.
   "363_free_draft_runs.sql",
+  // 364 is Track A's (blurbs) — held by that lane.
+  // 365 — hotel_cache LiteAPI static-content columns (ledger 2026-10-10-s1-d1-liteapi): six nullable columns,
+  // no DEFAULT/CHECK, and a UNIQUE index on (provider, provider_hotel_id) — empty at creation because the
+  // column is born NULL on every row. Declared in shared/schema.ts. APPROVED by Leon, Oct 10, 2026.
+  "365_hotel_cache_liteapi.sql",
 ] as const;
