@@ -33,6 +33,16 @@ creating both missing-delivery and double-confirmation risks. Suggested order:
 last; first decide whether to retire it under separately approved removal scope.
 It is not deleted here.
 
+## Vendor bulk proposal — still unconverted
+
+`reports/vendor-bulk-email-proposal.md` contains the exact future touch list,
+retry/acceptance/concurrency audit and isolated executable specification.
+It requires separate founder approval for sender/schema changes and rollout;
+it is not Part 8 activation. Passing specification tests does not fix the
+current direct sender or certify its future PostgreSQL implementation.
+The proposal records an initial test-isolation failure and the corrected
+network-blocked evidence rather than claiming every run was zero-network.
+
 ## Additional operational paths (not hidden inside the ten-family count)
 
 - `server/jobs/nightlyQA.ts:259`: direct QA report emails. Reliability depends on
