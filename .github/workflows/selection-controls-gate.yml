@@ -248,8 +248,8 @@ jobs:
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
-          # Keyless AI: stub aiGenerationService.generateAutonomousItinerary so journey-2A's
-          # generate→comparison→redirect flow runs without XAI/Anthropic keys.
+          # Keyless AI stub. journey-2A, which pressed generate, is retired (SS-2 A); kept so any
+          # AI call the remaining specs reach answers without XAI/Anthropic keys.
           E2E_AI_STUB: "1"
           PORT: 5000
           PGUSER: postgres
