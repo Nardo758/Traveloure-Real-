@@ -19,6 +19,7 @@
  *     in `plan_day_retimes` (migration 344) under the plan row's lock; past that it is REFUSED with
  *     the paid-run answer and nothing is written.
  */
+import { stampItemSourceClass } from "@shared/content-tiers";
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -280,7 +281,8 @@ export async function applyDays(input: {
         }
         if (r.providerServiceId && survivorServiceIds.has(r.providerServiceId)) continue;
         if (survivorTitles.has(r.name.trim().toLowerCase())) continue;
-        await tx.insert(itineraryItems).values({
+        // FD-2 ruling 9: stamped from the row's origin.
+        await tx.insert(itineraryItems).values(stampItemSourceClass({
           tripId: input.tripId,
           providerServiceId: r.providerServiceId ?? null,
           title: r.name,
@@ -300,7 +302,7 @@ export async function applyDays(input: {
           latitude: r.latitude ? String(r.latitude) : null,
           longitude: r.longitude ? String(r.longitude) : null,
           ...provenance,
-        } as any);
+        }) as any);
         added++;
       }
       await recordRunOutcome(tx, { variantId, kind: "adopted_part", actorId: input.userId, variantItemIds: vDay.map((r) => r.id) });
@@ -363,7 +365,7 @@ export async function retimeDay(input: {
       } else {
         const [row] = await tx
           .insert(itineraryItems)
-          .values({
+          .values(stampItemSourceClass({
             tripId: input.tripId,
             providerServiceId: vs.providerServiceId ?? null,
             title: vs.name,
@@ -381,7 +383,7 @@ export async function retimeDay(input: {
             longitude: vs.longitude ? String(vs.longitude) : null,
             sourceRunId: v.runId ?? null,
             sourceVariantId: v.id,
-          } as any)
+          }) as any)
           .returning({ id: itineraryItems.id });
         order.push(row.id);
       }

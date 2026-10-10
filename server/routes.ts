@@ -45,7 +45,7 @@ import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage, ExpertApplicationExistsError, type BookingStatusNotification } from "./storage";
+import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
@@ -2083,7 +2083,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
       const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
       for (const item of groundedItems) {
-        await db.insert(itineraryItems).values(item as any);
+        // FD-2 ruling 9: stamped from the row's own origin ('ai' over public inputs ⇒ public).
+        await db.insert(itineraryItems).values(stampItemSourceClass(item as Record<string, unknown>) as any);
       }
       enqueuePlanLegRecompute(trip.id); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
 
@@ -12158,7 +12159,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
-      const cityIntelligence = await travelPulseService.getCityIntelligence(destination);
+      const cityIntelligence = await travelPulseService.getCityIntelligence(destination, { forDraft: true });
       
       // Build TravelPulse context for the AI
       let travelPulseContext: any = undefined;
@@ -12246,12 +12247,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
       const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const qsInsertedItems: any[] = [];
+      const qsUsedLocalGems = (travelPulseContext?.hiddenGems?.length ?? 0) > 0;
       for (const day of qsDailyItinerary) {
         const activities = Array.isArray(day?.activities) ? day.activities : [];
         const dayNumber = normalizeGeneratedDayNumber(day?.day);
         for (const activity of activities) {
           const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
-          const [inserted] = await db.insert(itineraryItems).values({
+          const [inserted] = await db.insert(itineraryItems).values(stampItemSourceClass({
             tripId: quickTrip.id,
             title: activity.name || activity.title || "Activity",
             description: activity.description || "",
@@ -12265,7 +12267,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             currency: "USD",
             suggestedBy: "ai",
             origin: "ai",
-          }).returning();
+            // FD-2 ruling 9 (conservative): an item produced by a prompt that carried local gems is local.
+          }, { fromLocalInput: qsUsedLocalGems }) as any).returning();
           qsInsertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
         }
       }

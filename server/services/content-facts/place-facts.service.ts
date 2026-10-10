@@ -37,6 +37,7 @@ import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
 import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea } from "@shared/place-name-gate";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
+import { placeFactTags } from "@shared/content-tiers";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
 import { getTavilyClient } from "../tavily-client";
 import { claudeService } from "../claude.service";
@@ -66,6 +67,10 @@ export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | n
       costCents: String(d.costCents),
       planId: ctx.planId,
       itineraryItemId: ctx.itemId,
+      // FD-2 (ledger `2026-10-09-fd2-content-tier-tags`): the tag pair is born with the row, from its own
+      // origin and license through the ONE rule; an origin with no ruled tag stays untagged (§13).
+      sourceClass: placeFactTags(d.origin, d.license)?.sourceClass ?? null,
+      reuseClass: placeFactTags(d.origin, d.license)?.reuseClass ?? null,
     })),
   );
   return drafts.length;
@@ -685,6 +690,11 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
       costCents: "0",
       planId: fact.planId,
       itineraryItemId: fact.itineraryItemId,
+      // FD-2: the expert's confirmation is local and ours; when it confirms an OFFICIAL fact it quotes that
+      // fact, and expires with it (ruling 8, `isLiveLocal`).
+      sourceClass: "local",
+      reuseClass: "reusable",
+      officialSourceFactId: fact.license === "official" ? fact.id : null,
     });
     const claimed = await tx
       .update(placeFacts)

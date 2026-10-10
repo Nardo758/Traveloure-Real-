@@ -4,6 +4,7 @@
  * Routes → this service (or storage) → db. No raw db calls in route handlers.
  */
 
+import { stampItemSourceClass } from "@shared/content-tiers";
 import { canonicalWithinFlightWindows, daysWithinFlightWindows } from "../utils/draft-flight-windows";
 import { db } from "../db";
 import {
@@ -365,6 +366,12 @@ export interface SaveGeneratedItinerarySnapshotInput {
    */
   noLodging?: boolean;
   /**
+   * FD-2 ruling 9 (ledger `2026-10-09-fd2-content-tier-tags`): did a LOCAL input (gems, nuggets) feed the
+   * prompt? Only the caller knows. True ⇒ every item this draft produced is `local` (conservative: a per-item
+   * link does not exist, so local content is never presented as public). Absent ⇒ false (the free draft).
+   */
+  fromLocalInput?: boolean;
+  /**
    * Optional. The free draft passes none (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): a
    * draft is not an optimizer run, so no comparison row is created and `comparison` comes back null.
    */
@@ -525,7 +532,7 @@ export async function saveGeneratedItinerarySnapshot(
     const insertedRows = input.canonicalItems.length === 0
       ? []
       : await tx.insert(itineraryItems).values(
-        input.canonicalItems.map((activity, sortOrder) => ({
+        input.canonicalItems.map((activity, sortOrder) => stampItemSourceClass({
           tripId,
           title: activity.title,
           description: activity.description,
@@ -542,7 +549,7 @@ export async function saveGeneratedItinerarySnapshot(
           suggestedBy: "ai",
           origin: "ai",
           sortOrder,
-        })),
+        }, { fromLocalInput: input.fromLocalInput === true }) as any),
       ).returning({ id: itineraryItems.id });
 
     const insertedItems = input.canonicalItems.map((activity, index) => ({

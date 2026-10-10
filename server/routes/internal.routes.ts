@@ -29,6 +29,7 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
+import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
 import { runLegsDayofRecheck } from "../jobs/legsDayofRecheck";
 import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
@@ -211,6 +212,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "facts-recheck", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // R313: refresh-or-clear Google coordinates on legs — daily, so none outlives the 30-day ceiling.
   { job: "leg-google-coords", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // FD-2 ruling 8: the nightly count of expired local content (counts only).
+  { job: "content-expiry-census", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -417,6 +420,13 @@ router.post("/internal/jobs/handoff-timers", requireInternalSecret, async (req, 
 // stamp a success heartbeat. Per-plan failures remain counts, per the job contract.
 router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("facts-recheck", () => runFactsRecheck(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
+// FD-2 ruling 8 (ledger `2026-10-09-fd2-content-tier-tags`): count expired local content, per table. Counts
+// only — nothing is deleted or rewritten. A table it cannot read is an error and never stamps a success.
+router.post("/internal/jobs/content-expiry-census", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("content-expiry-census", () => runContentExpiryCensus(), (r) => Object.keys(r?.errors ?? {}).length > 0);
   res.status(status).json(body);
 });
 

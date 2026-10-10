@@ -2444,6 +2444,13 @@ This document captures architectural decisions to maintain consistency across co
     at Local Izakaya" gets no fact rather than some izakaya's hours. `PLACES_LOOKUPS_PER_DRAFT` stays a
     COST cap on BILLED lookups (a cache reuse no longer spends it), spent round-robin across the plan's
     days (`lookupOrder`) instead of in plan order.
+    **AMENDED — THE PLAN IS THE TRAVELER'S RECORD FROM CREATION (decision-maker Leon Dixon, Oct 9, 2026;
+    verbatim):** "LD 57 (amended Oct 9 2026): a plan is the traveler's own record from the moment it is
+    created; purchase strengthens but does not create that ownership. Place facts stored on a plan item
+    (hours, address, access route, last admission) with 'checked on <date>' provenance are the traveler's
+    record, displayed to that traveler, and are kept for 30 days as ruled. Nothing beyond place IDs and
+    coordinates is stored from Places outside a plan; Google durations are never cached across plans; Google
+    photos are never stored."
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
@@ -2626,6 +2633,23 @@ This document captures architectural decisions to maintain consistency across co
     `stopsHash` changed — **never on read**. A re-score replaces the pick and sets `changed`; the card clears it
     once. **9a-ii** = self-hosted OSRM as a `RoutingAdapter` provider for walk and drive; when it is live, the
     straight-line prune and the element budget are removed. The card is the Conformance lane's.
+
+65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
+    FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
+    migrations 361 (columns) and 362 (backfill), APPROVED by the founder Oct 9, 2026).** Nine tables carry
+    `source_class` (`public` | `local`) and most carry `reuse_class` (`display_in_plan` | `link_only` | `internal` |
+    `reusable`), beside the UNCHANGED `license` / `license_class` (ruling 1; fixed mapping restricted→display_in_plan,
+    official→link_only, editorial→link_only, partner→internal). All nullable, no DEFAULT/CHECK/index/FK, declared in
+    `shared/schema.ts`; value sets and every rule ONCE in `shared/content-tiers.ts`. **NULL source_class = UNTAGGED and
+    never reaches a draft** — an AI-written gem stays untagged until a person verifies it (`POST /api/admin/gems/:id/verify`,
+    ruling 3), and verification makes the VERIFIER its author, never "Traveloure team". Official-source facts and city
+    events are `public` + `link_only` (ruling 2); neighbourhood descriptions `public` (ruling 4). Every writer stamps at
+    insert; **`itinerary_items.source_class` is server-stamped (`stampItemSourceClass`), stripped from every body and
+    update, never client-settable (ruling 9)** — an item a local input produced (expert work, a gem, a Ready Made copy,
+    an expert-recommended option, a prompt that carried local gems) is `local`; an unknown origin stays NULL. AI drafts
+    read gems only through `getDraftEligibleGems` (tagged, and a local row past `expires_at` hidden — ruling 8); nothing
+    is deleted and no status column exists; `content-expiry-census` (daily) only counts. Night-scene is not tagged (ruling
+    7). Quick-start is a free draft and the Plus occasion draft is paid (ruling 5) — the cap and tier filter are FD-1.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
