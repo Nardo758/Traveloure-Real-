@@ -114,6 +114,14 @@ export const HANDOFF_WITHDRAWAL_ACCEPTED_BAND = "handoff_withdrawal_accepted";
 export const HANDOFF_WITHDRAWAL_DELIVERED_BAND = "handoff_withdrawal_delivered";
 export const ON_TRIP_SUPPORT_BAND = "on_trip_support";
 
+// TC-0 (ledger `2026-10-10-tc0-transport-commission-band`; LD 8): the platform's commission on a
+// platform-booked transport leg. Optional: absent ⇒ 0 — no commission is claimed (the rate is shown on
+// a leg's booking options as metadata; no charge path reads it).
+export const TRANSPORT_PLATFORM_COMMISSION_BAND = "transport_platform_commission";
+// TC-0: the margin shown on the route-search affiliate partners (12Go, Omio, DiscoverCars, Kiwi) — ONE
+// band. Optional: absent ⇒ 0 (no margin claimed). Display metadata only.
+export const AFFILIATE_TRANSPORT_MARGIN_BAND = "affiliate_transport_margin";
+
 /** Explicit categories that the resolver can receive on known booking paths. */
 export const COMMISSION_CATEGORY_BAND_KEYS = [
   "activities",
@@ -423,6 +431,32 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
       kind: "code_constant",
       resolver: "withdrawHandoff (handoff.service)",
       value: 0, // fee-literal-ok: documented fallback default — keep nothing, refund all
+      unit: "fraction",
+    },
+  },
+  // TC-0: the transport platform commission. Absent ⇒ 0 — no commission claimed on a platform leg.
+  {
+    bandKey: TRANSPORT_PLATFORM_COMMISSION_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "transport booking options — platform commission (transport-booking-options.service, TC-0)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "resolveTransportCommissionRate (transport-booking-options.service)",
+      value: 0, // fee-literal-ok: documented fallback — no commission claimed
+      unit: "fraction",
+    },
+  },
+  // TC-0: the route-search partners' margin. Absent ⇒ 0 — no margin claimed on an affiliate option.
+  {
+    bandKey: AFFILIATE_TRANSPORT_MARGIN_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "transport booking options — affiliate route-search margin (transport-booking-options.service, TC-0)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "resolveAffiliateTransportMargin (transport-booking-options.service)",
+      value: 0, // fee-literal-ok: documented fallback — no margin claimed
       unit: "fraction",
     },
   },
