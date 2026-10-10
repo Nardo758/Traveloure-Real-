@@ -746,11 +746,27 @@ router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) =
     if (body.galleryImages !== undefined) patch.galleryImages = body.galleryImages;
     if (body.status !== undefined) patch.status = body.status;
 
-    const [updated] = await db
-      .update(providerServices)
-      .set(patch)
-      .where(eq(providerServices.id, existing.id))
-      .returning();
+    // PB-2 / R3 (ledger `2026-10-10-pb2-property-patch-rooms`): rooms inherit the property's
+    // neighborhood and city at creation, so a change here carries to them — in the SAME
+    // transaction, so a property and its rooms never disagree about where they are. The city is
+    // the one `deriveCityPatch` just resolved for the property, never re-derived per room.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(providerServices)
+        .set(patch)
+        .where(eq(providerServices.id, existing.id))
+        .returning();
+      if (body.neighborhood !== undefined) {
+        await tx
+          .update(providerServices)
+          .set({ neighborhood: patch.neighborhood, city: patch.city ?? null, updatedAt: patch.updatedAt })
+          .where(and(
+            eq(providerServices.parentServiceId, existing.id),
+            eq(providerServices.productShape, "property_room"),
+          ));
+      }
+      return row;
+    });
     res.json(updated);
   } catch (err) {
     if (err instanceof z.ZodError) {
