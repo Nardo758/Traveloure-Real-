@@ -70,6 +70,7 @@ import { draftBasisInputs } from "../services/plan-option-sets.service";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "../services/content-facts/covering-events";
 import { healthFlags, healthEgressFlags, healthMapsCaps } from "../services/runtime-flags";
+import { readHotelSupply } from "../services/hotel-supply.service";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -389,7 +390,10 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
           .then((r: any) => (r.rows ?? r)[0]?.newest ?? null)
           .catch(() => null);
         const trendScores = trendScoreAgeReport(newestScore, trendScoreMaxAgeHours());
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, migrations, trendScores });
+        // Item 3 (ledger `2026-10-10-health-hotel-supply`): rankable hotel supply per live market, report
+        // only. A failed read is `null` (§13) and never fails the health answer.
+        const supply = { hotels: await readHotelSupply().catch(() => null) };
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, migrations, trendScores, supply });
       } else {
         res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps });
       }
