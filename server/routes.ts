@@ -13608,110 +13608,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.json({ tripScoped: true, routedLegs: false, created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [], legs: [] });
       }
 
-      // A8 (R228): behind the flag, activate-transport takes its stops from the PLAN'S ITEMS and
-      // resolves every leg through the routing engine (step 9a; the same step Finalize runs). With the
-      // flag off, the variant path below is unchanged — for a qualifying plan only.
-      if (travelTimeServiceEnabled()) {
-        const result = await activateTripTransport(tripId);
-        const legs = await getTripTransportLegs(tripId, { includeProposed: true });
-        return res.json({ tripScoped: true, ...result, legs });
+      // A8 (R228): activate-transport takes its stops from the PLAN'S ITEMS and resolves every leg
+      // through the routing engine (step 9a; the same step Finalize runs).
+      // P0 ruling 4 (ledger `2026-10-10-p0-legs-baseline`): with the engine OFF, a routed plan gets
+      // NOTHING written — the legacy variant writer (every leg "driving", no source) is retired for
+      // routed plans and its code is deleted (§18c). The response says the engine is off; never a guess.
+      if (!travelTimeServiceEnabled()) {
+        return res.json({ tripScoped: true, routedLegs: true, engineOff: true, created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [], legs: [] });
       }
-
-      const [genItinerary] = await db
-        .select()
-        .from(generatedItineraries)
-        .where(eq(generatedItineraries.tripId, tripId));
-      if (!genItinerary?.itineraryData) {
-        return res.status(404).json({ error: "No generated itinerary found for this trip" });
-      }
-
-      let [comparison] = await db
-        .select()
-        .from(itineraryComparisons)
-        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
-
-      if (!comparison) {
-        const [created] = await db.insert(itineraryComparisons).values({
-          userId,
-          tripId,
-          title: trip.title || trip.destination || "My Trip",
-          destination: trip.destination,
-          status: "active",
-        }).returning();
-        comparison = created;
-      }
-
-      let [variant] = await db
-        .select()
-        .from(itineraryVariants)
-        .where(and(
-          eq(itineraryVariants.comparisonId, comparison.id),
-          eq(itineraryVariants.source, "ai")
-        ));
-
-      if (!variant) {
-        const [created] = await db.insert(itineraryVariants).values({
-          comparisonId: comparison.id,
-          name: "AI Generated",
-          source: "ai",
-          status: "active",
-        }).returning();
-        variant = created;
-      }
-
-      const data: any = genItinerary.itineraryData;
-      const daysData: any[] = data?.days || data?.dailyItinerary || [];
-
-      const activities: import("./services/transport-leg-calculator").ActivityLocation[] = [];
-      for (const day of daysData) {
-        const dayNum: number = day.day || day.dayNumber || 1;
-        const dayActs: any[] = day.activities || [];
-        dayActs.forEach((act: any, idx: number) => {
-          if (act.lat && act.lng) {
-            activities.push({
-              id: act.id || `day${dayNum}-act${idx}`,
-              name: act.title || act.name || "Activity",
-              lat: parseFloat(act.lat),
-              lng: parseFloat(act.lng),
-              scheduledTime: act.time || act.startTime || `${9 + idx}:00`,
-              dayNumber: dayNum,
-              order: idx,
-            });
-          }
-        });
-      }
-
-      if (activities.length < 2) {
-        return res.json({ variantId: variant.id, legs: [], message: "Not enough geolocated activities to calculate transport" });
-      }
-
-      await calculateTransportLegs(variant.id, activities, trip.destination || "", {});
-
-      const savedLegs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, variant.id));
-
-      return res.json({
-        variantId: variant.id,
-        legs: savedLegs.map(leg => ({
-          id: leg.id,
-          legOrder: leg.legOrder,
-          dayNumber: leg.dayNumber,
-          fromName: leg.fromName,
-          toName: leg.toName,
-          fromLat: leg.fromLat,
-          fromLng: leg.fromLng,
-          toLat: leg.toLat,
-          toLng: leg.toLng,
-          recommendedMode: leg.recommendedMode,
-          userSelectedMode: leg.userSelectedMode,
-          distanceDisplay: leg.distanceDisplay,
-          estimatedDurationMinutes: leg.estimatedDurationMinutes,
-          estimatedCostUsd: leg.estimatedCostUsd,
-          alternativeModes: leg.alternativeModes || [],
-        })),
-      });
+      const result = await activateTripTransport(tripId);
+      const legs = await getTripTransportLegs(tripId, { includeProposed: true });
+      return res.json({ tripScoped: true, ...result, legs });
     } catch (err: any) {
       console.error("Activate transport error:", err);
       res.status(500).json({ error: "Failed to activate transport" });

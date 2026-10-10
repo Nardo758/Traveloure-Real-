@@ -355,6 +355,21 @@ router.get("/api/trips/:tripId/stay-pick/link", isAuthenticated, async (req: any
   }
 });
 
+// S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`): live rates for one LiteAPI stay on the card — a live
+// call, never stored, behind the plan read gate (one 404 otherwise, LD 40). Over the daily cap, off, an
+// error or a timeout answer `{ state: "unavailable" }` with 200 — the card says so; it is never an error.
+router.get("/api/trips/:tripId/stays/:stayId/rates", isAuthenticated, async (req: any, res) => {
+  try {
+    const { stayRates } = await import("../services/liteapi-rates.service");
+    const out = await stayRates({ tripId: req.params.tripId, userId: getUserId(req), stayId: req.params.stayId });
+    if (out.state === "not_found") return res.status(404).json({ code: "not_found", message: "No such stay on this plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[stay-rates]", err);
+    res.json({ state: "unavailable" });
+  }
+});
+
 router.post("/api/trips/:tripId/stay-pick/seen", isAuthenticated, async (req: any, res) => {
   if (!staySeenBody.safeParse(req.body ?? {}).success) return badBody(res);
   try {
