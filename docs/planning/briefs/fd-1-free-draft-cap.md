@@ -79,6 +79,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_free_draft_runs_trip ON free_draft_runs (tr
 5. **Counted against the plan's owner.** A handoff plan is paid tier (`planGetsRoutedLegs`), so an advisor's draft there
    is not a free draft at all; only the assistant/admin-on-a-free-plan case counts, against the owner.
 6. **Guests:** the counter is keyed on the SERVER guest record E2/E3 introduce; no enforcement on a browser-made id.
+7. **Teaser basis — accepted as built.** Per day, the neighbourhoods of that day's LOCATED stops (nearest
+   `city_neighborhoods` centroid); `localPicks` = draft-eligible local gems in those neighbourhoods not already on the
+   plan; `localNotes` = live local nuggets linked to them. A day with no located stop, or a count of zero, carries no key.
+8. **Gem-fed-draft marking — accepted as built** (FD-2 brief ruling 10): items written by a draft whose prompt carried
+   local gems are `local`.
 
 ## 7. What landed (BUILT — ledger `2026-10-09-fd1-free-draft-cap`)
 - **Pure rules:** `shared/free-draft-cap.ts` — `freeDraftSubject` (paid tier ⇒ none; owner; QA ⇒ none; server
