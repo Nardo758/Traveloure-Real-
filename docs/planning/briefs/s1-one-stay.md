@@ -135,3 +135,26 @@ The Compare/stay card's "Close to N of M days" is display only, read from this p
 - **Free:** each listed stay carries `closeness`, computed at read time by straight line (no Maps call).
 - Payload: `stay.closeness` (routed) and `stay.hotels[].closeness` (free), each
   `{ closeDays, locatedDays, basis: "routed" | "straight_line" } | null`. Null means unknown, never zero.
+
+## S1-b — Traveloure stays on the card (decision-maker rulings, Oct 10, 2026)
+
+Ledger `2026-10-10-s1b-provider-stays`. Small: the boost removal, the button, the attribution.
+
+**Confirmed facts (Phase 0, carried in):**
+- `cityHotels` is the ONE shared candidate pool. Every kind of stay goes through the same `rankStays`.
+- `rankStays` never reads price or commission.
+- `hotel_cache` is Amadeus / Booking.com data, not Google. "Google" enters only through a Google Maps or Google website link.
+
+**The three kinds of stay:**
+- `platform`: listed on Traveloure. It carries the "Traveloure stay" badge.
+- `hotel_cache`: Amadeus / Booking.com data.
+- `affiliate`: a partner product. It is not a Traveloure stay and never gets the badge.
+
+**Rulings:**
+1. **No boost for being a provider.** R-o is amended: `orderStaysByOrigin`, which put Traveloure stays first within a neighbourhood, is deleted. A neighbourhood's stays keep `hotelsByNeighborhood`'s order, which never reads `kind`: distance to the neighbourhood, then name. The S1 card's own candidates stay ordered by `rankStays`. The badge stays.
+2. **The pool is unchanged.** A stay counts when it is approved, active, in the `accommodation` category, in the plan's city and pinned.
+3. **"See rooms" for a Traveloure stay.** The card's link opens the listing's own page carrying the plan's id (`/services/:id?tripId=`). That page adds a room to the plan with dates, and checkout runs from the plan. There is no new booking rail. The label is "See rooms", never "Book", because the card shows no price.
+   - **This amends FU-S1-2 (R393) for `platform` stays only.** Their card link is no longer the provider's own site.
+4. **Partner stays keep Google's link.** `hotel_cache` and `affiliate` stays keep FU-S1-2's link: "View on map" or the hotel's site, with "Google Maps" beside it whenever it came from Google.
+
+**HELD (a builder gap, not a stay-card gap):** the property builder must write `category='accommodation'` and a city or neighbourhood. Until then, property-builder listings don't reach the stay card. The stay rule is not widened to `product_shape` in this lane.

@@ -18,6 +18,7 @@ import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
 import type { StayCloseness } from "@shared/stay-pick";
 import type { StayLink } from "@shared/stay-link";
 import { buildGoogleMapsDeepLink } from "@/lib/maps";
+import { serviceDetailHref } from "@/lib/trip-target";
 
 export const STAY_PICK_TITLE = "Our pick for your days";
 export const STAY_PICK_SUBTITLE = "Closest to your stops on most days, by travel time.";
@@ -32,6 +33,29 @@ export const STAY_MAP_LINK_LABEL = "View on map";
 export const GOOGLE_MAPS_ATTRIBUTION = "Google Maps";
 /** FU-S1-2: the hotel's own site, whether the provider typed it (`own`) or Google names it (`google`). */
 export const STAY_SITE_LINK_LABEL = "View on hotel's site";
+/** S1-b: a stay listed on Traveloure opens its own listing page — never "Book": the card shows no price. */
+export const STAY_SEE_ROOMS_LABEL = "See rooms";
+
+/**
+ * S1-b (decision-maker, Oct 10, 2026; ledger `2026-10-10-s1b-provider-stays`): the ONE link a stay card draws.
+ * A stay LISTED ON TRAVELOURE (`platform`) opens its listing page carrying the plan's id ("See rooms"), where a
+ * room is added to the plan with dates and checkout runs from the plan — no Google link and no attribution.
+ * This AMENDS FU-S1-2 (R393) for `platform` stays only: their card no longer sends the traveler to the
+ * provider's own site. Every other stay — `hotel_cache` (Amadeus / Booking.com data) and `affiliate` — keeps
+ * FU-S1-2's link exactly (`stayLinkView`), Google Maps attribution included.
+ */
+export type StayCardLink =
+  | { kind: "listing"; href: string; label: string; attributed: false; external: false }
+  | ({ external: true } & ReturnType<typeof stayLinkView>);
+export function stayCardLink(
+  hotel: { kind: string; id: string; name: string; stayLink?: StayLink | null },
+  opts: { tripId?: string | null; city?: string | null; openedStayLink?: StayLink | null },
+): StayCardLink {
+  if (hotel.kind === "platform") {
+    return { kind: "listing", href: serviceDetailHref(hotel.id, opts.tripId), label: STAY_SEE_ROOMS_LABEL, attributed: false, external: false };
+  }
+  return { external: true, ...stayLinkView(opts.openedStayLink ?? hotel.stayLink, stayMapsHref(hotel.name, opts.city)) };
+}
 
 /**
  * FU-S1-2 (R393) on the card: the ONE link a stay card draws, read from S1's `stayLink` and never built

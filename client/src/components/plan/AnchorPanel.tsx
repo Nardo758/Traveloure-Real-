@@ -7,7 +7,8 @@
  *                         "Add places I'm considering" / "I've got lodging sorted" / "Skip for now".
  *                         A schedule-first Trip (M7, `fixed_item`) asks what is fixed instead.
  *   DRAFTED, options      the ranked neighbourhoods (stored per draft), each with its one-liner (R-x)
- *                         and its stays — platform-listed first, badged "Traveloure stay" (R-o). When
+ *                         and its stays — in their kind-blind order, Traveloure stays badged "Traveloure stay"
+ *                         (R-o; its platform-first sort deleted by S1-b). When
  *                         the top two tie on day-count, the top one says why it leads; the rest say
  *                         nothing.
  *   DRAFTED, collapsed    R-y: no option has a stay ⇒ one line, "Best area for these days: <top> ·
@@ -29,7 +30,6 @@ import {
   GOOGLE_MAPS_ATTRIBUTION,
   STAY_CHANGED_LINE,
   STAY_HERE_LABEL,
-  STAY_MAP_LINK_LABEL,
   STAY_PICK_SUBTITLE,
   STAY_PICK_TITLE,
   STAY_STRAIGHT_LINE_SUBTITLE,
@@ -37,8 +37,7 @@ import {
   STAY_SWAP_LEAD,
   stayCardModel,
   stayClosenessLine,
-  stayLinkView,
-  stayMapsHref,
+  stayCardLink,
 } from "@/lib/stay-card";
 import type { StayLink } from "@shared/stay-link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -84,6 +83,8 @@ type Bind =
   | { kind: "skip" };
 
 export interface AnchorPanelViewProps {
+  /** S1-b: the plan this panel belongs to — a Traveloure stay's "See rooms" carries it to the listing page. */
+  tripId?: string | null;
   /** `empty` before a draft exists; `drafted` once the server ranks neighbourhoods; `chooser` in the tray. */
   stage: "empty" | "drafted" | "chooser" | "change";
   /**
@@ -173,12 +174,14 @@ function OwnForm({
  * S1 "one stay on the plan" (Locked Decision 64): the server's `stay` block as a board card. A
  * routed plan shows its ONE pick with "scored N of M nearby"; a free plan shows up to three stays
  * closest by straight line. "Stay here" binds through the SAME `stay_here` answer the ranked list
- * uses; the swap is the existing "Add places I'm considering" starter. The link slot is the Maps
- * fallback, with its attribution beside it, until FU-S1-2 serves the hotel's own site. Words:
+ * uses; the swap is the existing "Add places I'm considering" starter. The link slot is `stayCardLink`:
+ * a Traveloure stay's "See rooms" (its listing page, with the plan; no attribution — S1-b), otherwise
+ * FU-S1-2's link with "Google Maps" beside it whenever it came from Google. Words:
  * `@/lib/stay-card`. No price, no commission (ruling 5) — the payload carries neither.
  */
 export function StayPickCard({
   view,
+  tripId,
   openedStayLink,
   canChoose,
   busy,
@@ -186,6 +189,8 @@ export function StayPickCard({
   swapControl,
 }: {
   view: WhereToStayView;
+  /** S1-b: the plan a Traveloure stay's "See rooms" carries to its listing page. */
+  tripId?: string | null;
   openedStayLink?: StayLink | null;
   canChoose: boolean;
   busy: boolean;
@@ -238,8 +243,22 @@ export function StayPickCard({
             ) : null}
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {(() => {
-                // FU-S1-2: the routed pick prefers the link fetched when its card was shown; otherwise the list's.
-                const lk = stayLinkView(routed && openedStayLink ? openedStayLink : h.stayLink, stayMapsHref(h.name, view.city));
+                // S1-b: a Traveloure stay opens its listing page with the plan ("See rooms"), unattributed.
+                // FU-S1-2 otherwise: the routed pick prefers the link fetched when its card was shown.
+                const lk = stayCardLink(h, { tripId, city: view.city, openedStayLink: routed ? openedStayLink : null });
+                if (!lk.external) {
+                  return (
+                    // An in-app page, same tab — a plain anchor like the panel's own Compare link.
+                    <a
+                      href={lk.href}
+                      className="inline-flex min-h-[32px] items-center gap-1 whitespace-nowrap text-xs font-semibold underline underline-offset-2"
+                      data-testid={`stay-pick-rooms-${h.id}`}
+                      data-link-kind={lk.kind}
+                    >
+                      {lk.label}
+                    </a>
+                  );
+                }
                 return (
                   <span className="flex flex-wrap items-center gap-x-1 text-xs">
                     <a
@@ -449,7 +468,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
             {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
           </p>
         </div>
-        {view?.eligible ? <StayPickCard view={view} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
+        {view?.eligible ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {canChoose ? (
           <div className="space-y-2 border-t border-border pt-3">
@@ -560,7 +579,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         </p>
       </div>
 
-      <StayPickCard view={view} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} />
+      <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} />
 
       {mode === "unranked" ? (
         view.unranked === "no_located_items" ? (

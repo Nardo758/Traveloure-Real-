@@ -43,7 +43,6 @@ import {
   distinguishingReasons,
   isLodgingItem,
   hotelsByNeighborhood,
-  orderStaysByOrigin,
   topWonOnTieBreak,
   rankStayNeighborhoods,
   readStoredStayRanking,
@@ -408,8 +407,9 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
       slug: r.slug,
       name: r.name,
       reason: r.reason,
-      // R-o: within this neighbourhood's band, platform-listed stays first.
-      hotels: orderStaysByOrigin(placed[r.slug] ?? []),
+      // S1-b: no boost for being a provider — the stays keep `hotelsByNeighborhood`'s kind-blind order
+      // (distance to the neighbourhood, then name). R-o's platform-first sort is deleted.
+      hotels: placed[r.slug] ?? [],
       oneLiner: oneLiners.get(r.slug) ?? null,
       ...(i === 0 && tied ? { tieBreak: true as const } : {}),
     })),
