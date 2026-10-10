@@ -96,6 +96,18 @@ network/provider delivery. A database statement-start timestamp is not a globall
 trusted eligibility instant. Keep must-have ordering and external/unstamped
 provenance blocked until separately proven and approved.
 
+The Part 6 addendum requires confirmed development closure of Part 5 before
+further Part 6 work. Existing implementation or passing subset loops alone must
+not be treated as closure. Real delivery proof is deferred to Part 9.
+
+**Why:** The founder added an explicit prerequisite and replaced earlier
+Part 6 real-delivery expectations with development-only verification.
+
+**How to apply:** Check documented Part 5 closure first and stop if it cannot
+be confirmed. Preserve existing Part 6 work without advancing it. Keep all
+payment UNKNOWNs and production-send blocks; do not require real sends to
+complete the bounded Part 6 development proof.
+
 Availability is about the cart's requested units, not whether one unit remains.
 A quantity-only edit is not a catalog availability change. Retain stock facts
 for comparisons rather than treating a stored availability boolean as valid
