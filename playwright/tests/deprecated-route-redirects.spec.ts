@@ -482,8 +482,11 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
     await assertRedirectsTo(page, "/checkout", "/cart");
   });
 
-  test("/credits-billing → /dashboard", async ({ page }) => {
-    await assertRedirectsTo(page, "/credits-billing", "/dashboard");
+  // SS-2 D pin 3 (sanctioned, ledger `2026-10-10-ss2d-pins`): /dashboard itself requires sign-in,
+  // so a signed-out browser that follows the redirect ends on "/" — like the other sign-in routes,
+  // it is asserted not to 404. The redirect TARGET is pinned by the static suite above.
+  test("/credits-billing (auth-gated) — not 404", async ({ page }) => {
+    await assertAuthGatedNotFound(page, "/credits-billing");
   });
 
   test("/city/tokyo → /discover/location/tokyo (parameterised)", async ({ page }) => {
