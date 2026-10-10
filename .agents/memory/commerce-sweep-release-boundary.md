@@ -24,3 +24,21 @@ even though a general failure recorder would appear to be a useful improvement.
 **How to apply:** Never fabricate success timestamps for first failures, preserve
 past actual success on a commerce failure, and do not silently apply this policy
 to all legacy job wrappers.
+
+## Cart-reminder policy
+
+The founder's Part 4 rules permit only the 1-hour, 1-day and 3-day steps per
+cart activity sequence; 3-day is terminal. Marketing has one shared allowance
+per traveler per local calendar day, and an eligible cart reminder takes
+priority over a simultaneously due itinerary reminder.
+
+Guest carts become contactable only after authenticated claim. Missing timezone,
+missing recipient, absent consent, deletion, suspension or a paid cart on any
+payment rail must prevent a reminder; never infer eligibility from missing data.
+
+**Why:** A cart-scoped dedupe key alone cannot prevent cross-family daily-cap
+violations, fictional guest consent or reminders after payment.
+
+**How to apply:** Reuse existing timezone handling and recipient locking across
+both families, evaluate current eligibility before provider submission, and
+prove these policies in isolated development before requesting release approval.
