@@ -1,6 +1,6 @@
 # P0 — legs baseline (Kyoto)
 
-Ledger `2026-10-10-p0-legs-baseline` (R419). Decision-maker rulings, Oct 10, 2026.
+Ledger `2026-10-10-p0-legs-baseline` (R417). Decision-maker rulings, Oct 10, 2026.
 
 ## Evidence (production, read-only, Replit, Oct 10, 2026)
 
