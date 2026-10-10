@@ -39,6 +39,9 @@ export const CONTENT_SUB_NEEDS = {
   "transport.intercity.bus": "transport.intercity",
   "transport.intercity.ferry": "transport.intercity",
   "transport.local.fares": "transport.local",
+  // FD-3 ruling 3 (ledger `2026-10-10-fd3-feasibility`): an operator's last departure per line or station,
+  // from a registered official operator source. Its fact type is `last_service` (shared/feasibility-facts.ts).
+  "transport.local.last_service": "transport.local",
 } as const satisfies Record<string, ContentNeed>;
 export type ContentSubNeed = keyof typeof CONTENT_SUB_NEEDS;
 /** A value a `covers` / `does_not_cover` entry may hold: a need or a named sub-need. */
@@ -138,6 +141,10 @@ export const FACT_TYPES = [
   // names + author attributions) — never an image. Same place-ID key and TTL as the other Places facts;
   // the photo resolver reads them, and only the Place Photo media call is made per render.
   "photo_ref",
+  // FD-3 (ledger `2026-10-10-fd3-feasibility`): two STRUCTURED operational facts, admitted only through
+  // `admitFeasibilityFact` (shared/feasibility-facts.ts) — an official source required, never parsed from text.
+  "last_admission",
+  "last_service",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 
