@@ -58,6 +58,7 @@ import {
 } from "../services/plan-option-sets.service";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { easiestIndex, fitRanks } from "@shared/plan-fit";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `a3-${RUN}-${s}`;
@@ -113,6 +114,8 @@ before(async () => {
       VALUES (${hid}, ${hid}, 'KYO', ${name}, 'Kyoto', ${lat}, ${lng}, now() + interval '1 day')
     `);
   }
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  for (const id of [ids.advisor, ids.pending]) await insertRoutableExpertForm(id);
   const adv = await storage.createTripExpertAdvisor({ tripId: ids.trip, localExpertId: ids.advisor, message: "A3 fixture" } as any);
   await db.execute(sql`UPDATE trip_expert_advisors SET status = 'accepted' WHERE id = ${(adv as any).id}`);
   await storage.createTripExpertAdvisor({ tripId: ids.trip, localExpertId: ids.pending, message: "A3 fixture" } as any);

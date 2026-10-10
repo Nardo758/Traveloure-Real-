@@ -25,6 +25,7 @@
 import { pool, db } from "../server/db";
 import { sql } from "drizzle-orm";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "../server/seeds/lib/demo-seed-gate";
+import { demoSeedDatabaseAllowed, demoSeedDatabaseSkipMessage } from "../server/seeds/lib/demo-seed-gate";
 
 const TRIP_ID = "eb5f3e68-8689-4c07-89c4-b07f53bbb87c";
 const OWNER_ID = "40904180";
@@ -37,6 +38,10 @@ async function run() {
   // implementation of "what counts as production", never a second copy).
   if (!demoSeedsAllowed()) {
     console.log(demoSeedSkipMessage("seed-california-full"));
+    process.exit(1);
+  }
+  if (!demoSeedDatabaseAllowed()) {
+    console.log(demoSeedDatabaseSkipMessage("seed-california-full"));
     process.exit(1);
   }
 

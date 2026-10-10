@@ -556,13 +556,32 @@ This document captures architectural decisions to maintain consistency across co
     show the inline dates panel when the dates are unconfirmed and continue once they are set; leg
     compute skips such a plan. Steps 2 and 3 are still never skipped INSIDE the modal. **Every other
     door keeps the modal unchanged** (they move in a later lane, PP-1/PP-2).
+    **AMENDED — ONE PlanEntry STARTS EVERY NEW PLAN; THE MODAL ONLY EDITS (decision-maker, Oct 9, 2026 —
+    E2 rulings 1–7, ledger `2026-10-09-e2-plan-entry`; supersedes the step list and the finish below for a
+    NEW plan).** A door that starts a new plan opens `PlanEntry` — "Plan around…" a place · a date · an
+    event → the occasion (five group chips, each with one seeded default occasion; "More specific" for the
+    rest) → Start a plan → the plan. Nothing before the plan asks When, Who, a name or a way to build; those
+    are chips on the plan (E1). A door that chose a way to build continues ON the plan (`ai` →
+    `?view=map&draft=ai`, `local` → the expert door). `PlanModal` survives ONLY as the edit window over the
+    BOUND plan (Where · When · Who · What's happening, Save) — no Occasion step, chooser, Clear or name. The
+    single opener (`usePlanning().open`) and `check-planning-entry.cjs` stand; the guard now also holds the
+    PlanEntry/edit-window split. `/experiences` moves onto PlanEntry in E3.
+    **AMENDED — THE START PAGE IS PlanEntry INLINE (decision-maker, Oct 9, 2026 — E3 rulings 1–4, ledger
+    `2026-10-09-e3-experiences-inline`; supersedes Lane E1's zero-question Continue above).** `/experiences`
+    mounts `PlanEntryPanel` inline — the same steps as the pop-up, its Place picker the page's own world map
+    and eight city cards — and Start a plan (sticky at phone width) runs the provider's ONE start
+    (`usePlanning().start`, the pop-up's mint): a guest's PlanEntry sign-in record, a picked date stamps
+    confirmed dates. Lane E1's `mintStartPagePlan` / `startPageGuestRecord` / start-page replay are DELETED
+    (§18c). Deep links seed the panel and never start a plan — a visit writes nothing; a city and an
+    occasion land on Step 2 with Start a plan ready; `?group=` seeds the group. A door slug the catalog
+    does not carry is dropped, never minted (§13).
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
     shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
     included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
-    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — Lane E1 above: its
-    Continue is the `myself` landing on the map, through the zero-question mint.)
+    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — its Start a plan is
+    PlanEntry's, E3 above.)
     **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the Step2Where "add another
     stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
     that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate
@@ -2540,7 +2559,20 @@ This document captures architectural decisions to maintain consistency across co
     `SHOW_DEMO_EXPERTS=1` relaxes ONLY the seed-domain clause, for every reader alike — approval, Identity and
     Connect are never relaxed, and the pool account never passes. CI sets it in `ci-db-setup` for its seeded
     fixtures (the Kyoto door fixture lives on `traveloure-qa.test` and refuses NODE_ENV=production); production
-    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
+    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`.
+    **AMENDED BY B3 (decision-maker, Oct 9, 2026 — rulings 1–4; ledger `2026-10-09-b3-expert-routability`).**
+    The predicate now also guards every WRITE that puts an expert on a plan and every remaining read that
+    names one: the ONE advisor author `upsertTripAdvisorRow` refuses a NEW advisor who is not routable
+    (`expert_not_routable`; an existing row may still move — a lapsed Identity/Connect does not undo a real
+    hire), and so do `isExpertHireable`/`isExpertApproved`, the storefront request rail and the admin handoff
+    assign, whose ONLY way past is `overrideRoutability: true`, written to the admin audit log. Reads: the
+    plan's advisor list and "delivered by" name drop seed-sourced and not-approved experts (an approved
+    expert whose verification lapsed stays); `/api/grok/match-experts`, `/api/trip-experts`, the follow-up
+    email and the neighbourhood `localExpert` are routable only; `GET /api/experts/:id` and expert
+    storefronts are one 404 for seed or unapproved, and an approved-but-unroutable storefront keeps its page
+    with `bookingOpen: false` (no request/book door). Seed rows are hidden, never deleted; the demo seeders
+    that create experts refuse a non-development `DATABASE_URL` (localhost, a unix socket, `helium`, or
+    `DEMO_SEED_DATABASE_HOSTS` — development only), failing closed. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
     with `captured: false`; 355 marks the rows it already wrote `voided_uncaptured` (never deleted). **(c)** The
     expert is NAMED to the traveler only after ACCEPT (`handoffExpertDisclosed`); the banner names the city
     ("Kyoto"). **(d)** A traveler's withdraw cancels the hold with `requested_by_customer`, only the 48 h timer with

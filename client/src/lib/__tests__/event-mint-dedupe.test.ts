@@ -183,6 +183,13 @@ describe("D4 — the modal's create loop is filtered, not unconditional", () => 
     assert.match(src, /readExistingEventTitles/);
   });
 
+  it("PlanEntry's Start a plan creates its event through the same rule (E2)", () => {
+    const ctx = read("client/src/contexts/PlanningContext.tsx");
+    const start = ctx.slice(ctx.indexOf("const startFromEntry = useCallback"), ctx.indexOf("// ── Step 8b-2 (D3)"));
+    assert.match(start, /eventsNotYetCreated\(\[draft\], existing\)/);
+    assert.match(start, /readPlanEventTitles\(tripId\)/);
+  });
+
   it("does not restate the identity rule with its own comparison", () => {
     // A hand-rolled `.some(... .toLowerCase() === ...)` beside the shared call is the drift class
     // §18 rule 1 names — the two would part company the day the identity changes.
@@ -194,27 +201,19 @@ describe("D4 — the modal's create loop is filtered, not unconditional", () => 
   });
 });
 
-describe("D5 — the finish releases its own pen BEFORE it mints", () => {
-  const src = read(MODAL);
-  const finishBody = src.slice(src.indexOf("const finish = async"), src.indexOf('"CLEAR PLAN"'));
-  // Since audit RC-1 (ledger `2026-09-24-rc1-finish-mints`) the finish AND Save mint through ONE
-  // helper, `mintThisPlan`, and the release lives there — so both mints release first, and the pin
-  // follows the helper rather than the finish's own body.
-  const helperBody = src.slice(
-    src.indexOf("const mintThisPlan = async"),
-    src.indexOf("const mintThisPlan = async") + 1500,
-  );
+describe("D5 — Start a plan releases the pen BEFORE it mints (E2: the start moved from the modal to PlanEntry)", () => {
+  const ctx = read("client/src/contexts/PlanningContext.tsx");
+  const startBody = ctx.slice(ctx.indexOf("const startFromEntry = useCallback"), ctx.indexOf("// ── Step 8b-2 (D3)"));
 
   it("calls the release", () => {
-    assert.match(helperBody, /releasePendingEventsPen\(/);
-    assert.match(finishBody, /await mintThisPlan\(/, "the finish mints through the one helper");
-    assert.doesNotMatch(finishBody, /await mintPlan\(/, "and never around it");
+    assert.match(startBody, /releasePendingEventsPen\(/);
+    assert.match(startBody, /await mintTripSlip\(/, "the start mints through the one mint door");
   });
 
   it("awaits it, and does so before the mint (a release that lands after is no release at all)", () => {
-    assert.match(helperBody, /await releasePendingEventsPen\(/);
+    assert.match(startBody, /await releasePendingEventsPen\(/);
     assert.ok(
-      helperBody.indexOf("releasePendingEventsPen") < helperBody.indexOf("mintPlan("),
+      startBody.indexOf("releasePendingEventsPen") < startBody.indexOf("mintTripSlip("),
       "the pen must be released before POST /api/trips, whose drain reads it",
     );
   });

@@ -4,9 +4,9 @@
  *
  *   P1  the page and the modal list the SAME occasions in the SAME groups, from ONE source
  *   P2  the five labels come from ONE home, and the picker renders exactly those five
- *   P3  `proposal` sits under "One evening"
+ *   P3  `proposal` sits under "A moment"
  *   P4  a NULL-switch row appears only under See all and in search — never in a group
- *   P5  Continue is disabled without BOTH a resolved occasion and one of the eight cities
+ *   P5  the page starts through PlanEntry inline and the provider's one start (E3; `canContinue` deleted)
  *   P6  `?destination=` / `?city=` pre-pick only an EXACT match of the eight (ruling 4)
  *   P7  the map's eight pins come from OPERATING_MARKETS through the board's projection (ruling 2)
  *   P8  only Kyoto and Bogotá carry a (credited) photo; the other six are typographic (ruling 3)
@@ -23,7 +23,6 @@ import {
 } from "@shared/experience-group";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import {
-  canContinue,
   cityPhotoFor,
   exactOperatingMarket,
   preselectedMarket,
@@ -51,19 +50,20 @@ const CATALOG = [
   row("mystery", "Something else", { defaultDuration: null, defaultGuests: null, defaultStops: null }),
 ];
 
-const BOARD_LABELS = ["A trip", "One evening", "A celebration", "A hosted event", "A group getaway"];
+const BOARD_LABELS = ["A trip", "A moment", "A celebration", "A hosted event", "Group travel"];
 
 describe("P1 — one picker, one source", () => {
   it("the page and the modal both render <OccasionPicker> and neither keeps its own occasion grid", () => {
-    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/trip/plan-modal.tsx"]) {
-      const src = read(f);
-      assert.match(src, /<OccasionPicker\b/, `${f} renders the shared picker`);
-      assert.doesNotMatch(src, /option-occasion-/, `${f} must not draw its own occasion tiles`);
-    }
-    // Both read the same rows: the one runtime vocabulary query key.
-    for (const f of ["client/src/pages/experiences.tsx", "client/src/components/trip/plan-modal.tsx"]) {
-      assert.match(read(f), /queryKey:\s*\["\/api\/experience-types"\]/, f);
-    }
+    // E2 (sanctioned): the pop-up's occasion picker lives in PlanEntry now; the edit window has none.
+    // E3 (sanctioned): the page mounts PlanEntry inline, so its picker is PlanEntry's "More specific".
+    const entry = read("client/src/components/plan/PlanEntry.tsx");
+    assert.match(entry, /<OccasionPicker\b/, "PlanEntry renders the shared picker");
+    assert.doesNotMatch(entry, /option-occasion-/, "PlanEntry must not draw its own occasion tiles");
+    const page = read("client/src/pages/experiences.tsx");
+    assert.doesNotMatch(page, /<OccasionPicker\b|option-occasion-/, "the page keeps no occasion grid of its own");
+    assert.match(page, /<PlanEntryPanel\b/, "the page's occasion question is PlanEntry's");
+    // One reader of the rows: the one runtime vocabulary query key.
+    assert.match(entry, /queryKey:\s*\["\/api\/experience-types"\]/);
   });
 
   it("grouping is experienceGroupFor over the rows, in the board's order", () => {
@@ -124,9 +124,9 @@ describe("P2 — the five labels have ONE home", () => {
 });
 
 describe("P3/P4 — where a row lands", () => {
-  it("proposal is under One evening", () => {
+  it("proposal is under A moment", () => {
     const g = groupOccasions(CATALOG).groups.find((x) => x.rows.some((r) => r.slug === "proposal"));
-    assert.equal(g?.label, "One evening");
+    assert.equal(g?.label, "A moment");
   });
 
   it("a NULL-switch row is in no group, but See all and search reach it", () => {
@@ -138,23 +138,13 @@ describe("P3/P4 — where a row lands", () => {
   });
 });
 
-describe("P5 — Continue needs both answers", () => {
-  it("disabled without an occasion, without a city, or with an occasion the catalog does not carry", () => {
-    assert.equal(canContinue("", CATALOG, "kyoto"), false);
-    assert.equal(canContinue("wedding", CATALOG, null), false);
-    assert.equal(canContinue("not-a-row", CATALOG, "kyoto"), false);
-    assert.equal(canContinue("wedding", CATALOG, "paris"), false);
-    assert.equal(canContinue("wedding", undefined, "kyoto"), false);
-    assert.equal(canContinue("wedding", CATALOG, "kyoto"), true);
-  });
-
-  it("the page's Continue opens the Trip Slip with the occasion and the city — no modal (Lane E1, sanctioned)", () => {
+describe("P5 — the page starts a plan through PlanEntry inline", () => {
+  it("the page starts a plan through PlanEntry inline and the provider's one start (E3, sanctioned)", () => {
     const src = read("client/src/pages/experiences.tsx");
-    assert.match(src, /experienceSlug:\s*occasionSlug,\s*city:\s*market\.cityName,\s*country:\s*market\.country/);
-    assert.match(src, /mintStartPagePlan\(answers\)/);
-    assert.match(src, /writePendingPlanRecord\(startPageGuestRecord\(answers\)\)/);
-    assert.doesNotMatch(src, /usePlanning|focusStep/, "the start page opens no planning modal");
-    assert.match(src, /disabled=\{!ready \|\| starting \|\| authLoading\}/);
+    assert.match(src, /<PlanEntryPanel\s+active\s+container="page"/);
+    assert.match(src, /planning\.start\(start, \{ door: "experiences", newPlan: true \}\)/);
+    assert.doesNotMatch(src, /mintStartPagePlan|startPageGuestRecord|button-experiences-continue/, "E1's Continue and its mint are gone");
+    assert.doesNotMatch(src, /\.open\(|focusStep/, "the page opens no pop-up over itself");
     assert.doesNotMatch(src, /IntakePanel|plan"\) === "1"/, "the intake and ?plan=1 are gone");
     assert.doesNotMatch(src, /curated experience templates/, "the template count copy is gone");
   });

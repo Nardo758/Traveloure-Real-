@@ -428,7 +428,7 @@ function placeMapsUrl(googlePlaceId: string | null | undefined): string | null {
  * attribution source. `trip_expert_advisors` (one author, `upsertTripAdvisorRow`) is the only
  * place a trip's expert lives; the column itself stays declared in `shared/schema.ts`, unread.
  */
-async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpertAttribution | null> {
+export async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpertAttribution | null> {
   const advisorRows = await db
     .select({ localExpertId: tripExpertAdvisors.localExpertId })
     .from(tripExpertAdvisors)
@@ -441,6 +441,11 @@ async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpertAttribu
 
   const expert = await storage.getUser(expertId);
   if (!expert) return null;
+  // B3 ruling 1 (read): a seed-sourced or not-approved expert is never named on a plan — the
+  // advisor list drops the same accounts (`publicExpertSql`, one predicate).
+  const form = await db.execute(sql`SELECT status FROM local_expert_forms WHERE user_id = ${expertId} LIMIT 1`);
+  const { isPublicExpertAccount } = await import("./expert-routability");
+  if (!isPublicExpertAccount({ applicationStatus: (form.rows?.[0] as any)?.status ?? null, email: expert.email })) return null;
 
   const name = [expert.firstName, expert.lastName].filter(Boolean).join(" ").trim();
   return {

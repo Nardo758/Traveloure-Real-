@@ -46,6 +46,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import express from "express";
 import passport from "passport";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 import type { Server } from "http";
 
 delete process.env.REPL_ID;
@@ -349,6 +350,8 @@ test("A1-PF: induced insert failure rolls back the whole bridge — neither writ
 // confirm lands BOTH writes — advisor row (assigned/draft) + lead flip.
 // ---------------------------------------------------------------------------
 test("A1-TX: admin confirm writes the advisor row AND flips the lead in one transaction", async () => {
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(nonAdminId);
   const res = await confirmLead(requestOkId, adminCookie);
   assert.equal(res.status, 200, await res.clone().text());
   const rows = await advisorRows(tripId);

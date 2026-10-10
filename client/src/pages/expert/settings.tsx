@@ -170,7 +170,7 @@ function VerificationPayoutsTab() {
             </div>
             {idLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : idBadge}
           </CardTitle>
-          <CardDescription>Verify your government-issued ID to build trust with travellers and unlock higher visibility on the platform.</CardDescription>
+          <CardDescription>Verify your government-issued ID to build trust with travelers and unlock higher visibility on the platform.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {idVerifStatus === "verified" ? (
@@ -221,7 +221,7 @@ function VerificationPayoutsTab() {
             </div>
             {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : stripeBadge}
           </CardTitle>
-          <CardDescription>Connect your Stripe account to receive payouts directly when travellers book your services.</CardDescription>
+          <CardDescription>Connect your Stripe account to receive payouts directly when travelers book your services.</CardDescription>
         </CardHeader>
         <CardContent>
           {!stripeConnected ? (

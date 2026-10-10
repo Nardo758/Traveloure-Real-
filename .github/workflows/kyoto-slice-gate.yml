@@ -183,6 +183,16 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # B3 (ledger `2026-10-09-b3-expert-routability`): a seed account with a pending application,
+      # written straight onto the plan's advisor rows, is never named on /plans/:id (list or map).
+      - name: No seed expert on the plan (B3)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-no-seed-expert.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       # Step 8d (ledger `2026-10-07-step8d-guest-map`): the SIGNED-OUT round trip — start page → modal →
       # the guest map (no plan) → Add → sign up in the existing modal → exactly one plan, the answers
       # kept, exactly one Day 1 item; a reload creates nothing. It also closes 8b-2's signed-out gate,

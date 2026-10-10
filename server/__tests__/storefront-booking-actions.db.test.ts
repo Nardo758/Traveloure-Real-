@@ -23,6 +23,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/traveloure";
 process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy";
@@ -100,6 +101,8 @@ test("storefront booking actions (ledger 2026-09-25-storefront-booking-actions)"
     role: "expert",
     handle: earnerHandle,
   } as any);
+  // B3 (sanctioned fixture edit): an expert storefront is public only for an approved, non-seed application.
+  await insertRoutableExpertForm(earnerId);
 
   await db.insert(providerServices).values([
     {
