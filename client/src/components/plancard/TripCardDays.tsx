@@ -321,6 +321,7 @@ export function TripCardDays(props: TripCardDaysProps) {
             stats={dayBlockStats({ stops: acts.length, hoursOn: acts.filter((a) => itemFactsLine(props.placeFacts?.[a.id], d.dateIso ?? null)).length })}
             open={openDay === d.dayNum}
             onOpenChange={(o) => setOpenDay(o ? d.dayNum : null)}
+            feasibility={d.feasibility ?? null}
             photo={
               firstPhotoId ? (
                 <PlacePhoto

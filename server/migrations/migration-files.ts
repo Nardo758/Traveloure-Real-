@@ -1971,4 +1971,8 @@ export const MIGRATION_FILES = [
   // 2026-10-10-m364-occasion-descriptions. DATA ONLY: UPDATE by slug, only while the row still holds the
   // generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 10, 2026.
   "364_occasion_descriptions_prod.sql",
+  // 365 — hotel_cache LiteAPI static-content columns (ledger 2026-10-10-s1-d1-liteapi): six nullable columns,
+  // no DEFAULT/CHECK, and a UNIQUE index on (provider, provider_hotel_id) — empty at creation because the
+  // column is born NULL on every row. Declared in shared/schema.ts. APPROVED by Leon, Oct 10, 2026.
+  "365_hotel_cache_liteapi.sql",
 ] as const;

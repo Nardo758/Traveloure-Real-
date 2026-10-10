@@ -2,74 +2,9 @@ import { db } from "../db";
 import { hotelCache, hotelOfferCache, activityCache, locationCache } from "@shared/schema";
 import { eq, and, gte, lte, ilike, or, sql, inArray } from "drizzle-orm";
 import { ViatorProduct, viatorService } from "./viator.service";
-
-// Amadeus was dropped (DECISIONS.md ruling 34, 2026-08-05); this shape survives
-// only to describe the rows already sitting in hotel_cache.
-export interface HotelOffer {
-  hotel: {
-    hotelId: string;
-    name: string;
-    cityCode: string;
-    latitude: number;
-    longitude: number;
-    address?: {
-      lines?: string[];
-      cityName?: string;
-      countryCode?: string;
-    };
-    rating?: string;
-    amenities?: string[];
-    media?: Array<{ uri: string; category: string }>;
-  };
-  offers?: Array<{
-    id: string;
-    checkInDate: string;
-    checkOutDate: string;
-    room: {
-      type: string;
-      description?: { text: string };
-    };
-    price: {
-      currency: string;
-      total: string;
-    };
-  }>;
-}
+import { hotelCacheExpiredDeletable } from "./hotel-cache-retention";
 
 const CACHE_DURATION_HOURS = 24;
-
-// ============ PREFERENCE TAG INFERENCE ============
-// Infers preference tags based on hotel data (amenities, name, price, etc.)
-function inferHotelPreferenceTags(hotel: any, offers: any[]): string[] {
-  const tags: string[] = [];
-  const name = (hotel.name || "").toLowerCase();
-  const amenities = (hotel.amenities || []).map((a: string) => a.toLowerCase());
-  
-  // Price-based tags
-  const avgPrice = offers.length > 0 
-    ? offers.reduce((sum: number, o: any) => sum + parseFloat(o.price?.total || "0"), 0) / offers.length
-    : 0;
-  if (avgPrice > 0 && avgPrice <= 150) tags.push("budget");
-  if (avgPrice > 300) tags.push("luxury");
-  
-  // Amenity-based tags
-  if (amenities.some((a: string) => a.includes("pool") || a.includes("beach"))) tags.push("beach");
-  if (amenities.some((a: string) => a.includes("spa") || a.includes("wellness"))) tags.push("wellness_spa");
-  if (amenities.some((a: string) => a.includes("business") || a.includes("meeting"))) tags.push("business");
-  if (amenities.some((a: string) => a.includes("family") || a.includes("kids") || a.includes("playground"))) tags.push("family");
-  
-  // Name-based tags
-  if (name.includes("resort") || name.includes("luxury") || name.includes("palace")) tags.push("luxury");
-  if (name.includes("boutique")) tags.push("romantic");
-  if (name.includes("downtown") || name.includes("city center")) tags.push("city");
-  
-  // Rating-based tags
-  const rating = parseInt(hotel.rating) || 0;
-  if (rating >= 4) tags.push("luxury");
-  if (rating <= 2) tags.push("budget");
-  
-  return Array.from(new Set(tags)); // Remove duplicates
-}
 
 // Infers preference tags based on activity data (flags, tags, title, description)
 function inferActivityPreferenceTags(activity: ViatorProduct): string[] {
@@ -162,120 +97,6 @@ export class CacheService {
       ));
     
     return cached;
-  }
-
-  async cacheHotels(hotels: HotelOffer[], cityCode: string, locationInfo?: { city?: string; state?: string; county?: string; countryCode?: string; countryName?: string }): Promise<void> {
-    const expiresAt = getExpirationDate();
-
-    for (const hotelData of hotels) {
-      const hotel = hotelData.hotel;
-      
-      // Infer preference tags based on hotel data
-      const preferenceTags = inferHotelPreferenceTags(hotel, hotelData.offers || []);
-      
-      // Parse star rating from rating field
-      const starRating = hotel.rating ? parseInt(hotel.rating) : null;
-      
-      // Calculate popularity score based on reviews and rating
-      const popularityScore = starRating ? starRating * 20 : 0;
-      
-      const existingHotel = await db.select()
-        .from(hotelCache)
-        .where(eq(hotelCache.hotelId, hotel.hotelId))
-        .limit(1);
-
-      const hotelValues = {
-        name: hotel.name,
-        latitude: hotel.latitude?.toString(),
-        longitude: hotel.longitude?.toString(),
-        address: hotel.address?.lines?.join(", "),
-        // Enhanced location fields
-        city: locationInfo?.city || hotel.address?.cityName,
-        state: locationInfo?.state || (hotel.address as any)?.stateCode,
-        county: locationInfo?.county,
-        countryCode: locationInfo?.countryCode || hotel.address?.countryCode,
-        countryName: locationInfo?.countryName,
-        postalCode: (hotel.address as any)?.postalCode,
-        // Provider and rating
-        provider: "amadeus",
-        rating: hotel.rating,
-        starRating,
-        reviewCount: 0,
-        popularityScore,
-        // Preference tags
-        preferenceTags,
-        amenities: hotel.amenities || [],
-        media: hotel.media || [],
-        rawData: hotelData,
-        expiresAt,
-      };
-
-      if (existingHotel.length > 0) {
-        await db.update(hotelCache)
-          .set({
-            ...hotelValues,
-            lastUpdated: new Date(),
-          })
-          .where(eq(hotelCache.hotelId, hotel.hotelId));
-
-        if (hotelData.offers) {
-          for (const offer of hotelData.offers) {
-            await this.cacheHotelOffer(existingHotel[0].id, offer, expiresAt);
-          }
-        }
-      } else {
-        const [newHotel] = await db.insert(hotelCache)
-          .values({
-            hotelId: hotel.hotelId,
-            cityCode: cityCode,
-            ...hotelValues,
-          })
-          .returning();
-
-        if (hotelData.offers) {
-          for (const offer of hotelData.offers) {
-            await this.cacheHotelOffer(newHotel.id, offer, expiresAt);
-          }
-        }
-      }
-    }
-  }
-
-  private async cacheHotelOffer(hotelCacheId: string, offer: any, expiresAt: Date): Promise<void> {
-    const existing = await db.select()
-      .from(hotelOfferCache)
-      .where(eq(hotelOfferCache.offerId, offer.id))
-      .limit(1);
-
-    if (existing.length > 0) {
-      await db.update(hotelOfferCache)
-        .set({
-          checkInDate: offer.checkInDate,
-          checkOutDate: offer.checkOutDate,
-          roomType: offer.room?.type,
-          roomDescription: offer.room?.description?.text,
-          price: offer.price?.total,
-          currency: offer.price?.currency || "USD",
-          rawData: offer,
-          lastUpdated: new Date(),
-          expiresAt,
-        })
-        .where(eq(hotelOfferCache.offerId, offer.id));
-    } else {
-      await db.insert(hotelOfferCache)
-        .values({
-          hotelCacheId,
-          offerId: offer.id,
-          checkInDate: offer.checkInDate,
-          checkOutDate: offer.checkOutDate,
-          roomType: offer.room?.type,
-          roomDescription: offer.room?.description?.text,
-          price: offer.price?.total,
-          currency: offer.price?.currency || "USD",
-          rawData: offer,
-          expiresAt,
-        });
-    }
   }
 
   async getHotelsWithCache(params: {
@@ -667,9 +488,10 @@ export class CacheService {
   async cleanupExpiredCache(): Promise<{ hotels: number; activities: number }> {
     const now = new Date();
 
+    // S1-d-1: never a LiteAPI row, never a row a plan option or a stay pick references.
     const deletedHotels = await db.delete(hotelCache)
-      .where(lte(hotelCache.expiresAt, now))
-      .returning();
+      .where(hotelCacheExpiredDeletable(now))
+      .returning({ id: hotelCache.id });
 
     const deletedActivities = await db.delete(activityCache)
       .where(lte(activityCache.expiresAt, now))

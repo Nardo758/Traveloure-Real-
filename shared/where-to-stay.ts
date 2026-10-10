@@ -170,8 +170,10 @@ export interface StayHotel {
    * `platform` (surface step 3, R-o): a stay LISTED ON TRAVELOURE — an approved, active
    * `provider_services` row in the accommodation category — badged "Traveloure stay".
    * `hotel_cache` / `affiliate`: partner inventory, booked via the concierge or a deep link.
+   * `liteapi` (S1-d-1): a `hotel_cache` row whose provider is LiteAPI — derived from the provider by
+   * `stayKindForCacheProvider` (shared/liteapi.ts), never a column. No badge; the Maps link.
    */
-  kind: "platform" | "hotel_cache" | "affiliate";
+  kind: "platform" | "hotel_cache" | "affiliate" | "liteapi";
   id: string;
   name: string;
   starRating: number | null;
@@ -188,14 +190,10 @@ export interface StayHotel {
 /** R-o: the badge a platform-listed stay carries. */
 export const PLATFORM_STAY_BADGE = "Traveloure stay";
 
-/**
- * R-o (surface step 3). Pure and STABLE: within one plan-fit band — the stays of ONE ranked
- * neighbourhood, which share that neighbourhood's fit — platform-listed stays come before partner
- * stays; each group keeps the order it arrived in (distance, then name). Never re-ranks across bands.
- */
-export function orderStaysByOrigin<H extends Pick<StayHotel, "kind">>(stays: readonly H[]): H[] {
-  return [...stays.filter((h) => h.kind === "platform"), ...stays.filter((h) => h.kind !== "platform")];
-}
+// S1-b (decision-maker, Oct 10, 2026; ledger `2026-10-10-s1b-provider-stays`): R-o's `orderStaysByOrigin`
+// (platform-listed stays first within a neighbourhood) is DELETED — "no boost for being a provider". A
+// neighbourhood's stays keep the order `hotelsByNeighborhood` gives them, which never reads `kind`; the badge
+// above stays. Do not re-add a kind-based sort here or in a reader.
 
 /** The top option's note when it tied on day-count and won on total distance (surface step 3). */
 export const STAY_TIE_BREAK_NOTE = "shortest overall distance to your stops (est.)";
