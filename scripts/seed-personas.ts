@@ -659,7 +659,8 @@ async function main(): Promise<void> {
   }
 
   // FROZEN snapshot, mirroring the real Stripe-confirm grant in trip-pass.routes.ts — the
-  // plans row's CURRENT allowances plus the ruled one-revision benefit. No priceCentsPaid
+  // plans row's CURRENT allowances. No `revisionsRemaining`: LD 41 retired the revision benefit
+  // and nothing reads the key (ledger `2026-10-10-jt-trip-pass-after-run`). No priceCentsPaid
   // field: unlike a Stripe grant, nothing was actually captured, and inventing an amount here
   // would misrepresent this as a payment (§13 — never claim a fact with no fact behind it).
   const tripPassPlan = await requirePlan(PLAN_KEYS.TRIP_PASS);
@@ -668,7 +669,6 @@ async function main(): Promise<void> {
     source: "manual",
     allowancesSnapshot: {
       ...(tripPassPlan.allowances as Record<string, unknown>),
-      revisionsRemaining: 1,
       planName: tripPassPlan.name,
     },
   });

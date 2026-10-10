@@ -487,9 +487,8 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
       plan_key: string;
       source: string;
       source_payment_id: string | null;
-      allowances_snapshot: { revisionsRemaining?: number };
     }>(
-      `SELECT status, plan_key, source, source_payment_id, allowances_snapshot FROM trip_entitlements WHERE trip_id = $1 AND status = 'active'`,
+      `SELECT status, plan_key, source, source_payment_id FROM trip_entitlements WHERE trip_id = $1 AND status = 'active'`,
       [coveredTripId],
     );
     report.record({
@@ -500,8 +499,7 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
         entitlement?.status === "active" &&
         entitlement?.plan_key === "trip_pass" &&
         entitlement?.source === "manual" &&
-        entitlement?.source_payment_id === null &&
-        Number(entitlement?.allowances_snapshot?.revisionsRemaining) > 0
+        entitlement?.source_payment_id === null
           ? "PASS"
           : "FAIL",
     });
@@ -536,6 +534,26 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
     // `covered_by_pass` identically to `free_rerun` (silently proceeds, no toast). The ONE
     // real, persistent signal a covered trip shows is TripPassCard's active state
     // (data-testid="trip-pass-card-active"), asserted here instead of a fabricated banner.
+    //
+    // SANCTIONED spec edit (decision-maker, Oct 10, 2026 — ledger
+    // `2026-10-10-jt-trip-pass-after-run`): R380 / LD 45(7) offer the Trip Pass under the Optimize
+    // lead only AFTER the plan's first run (`SlipRail` reads the plancard's `lastOptimizedAt`), so
+    // the card is expected only once a finished run exists. A finished run is the newest
+    // `itinerary_comparisons` row with `optimized_at` set — exactly what the generation outcome
+    // writes (`status='generated'`). Seeded here as a fixture write, idempotent, rather than
+    // spending a model call in a nightly journey.
+    const finishedRuns = await scalar<string>(
+      `SELECT count(*)::int FROM itinerary_comparisons WHERE trip_id = $1 AND optimized_at IS NOT NULL`,
+      [coveredTripId],
+    );
+    if (Number(finishedRuns) === 0) {
+      await rows(
+        `INSERT INTO itinerary_comparisons (id, user_id, trip_id, title, destination, status, optimized_at)
+         SELECT $1, $2, t.id, t.title, t.destination, 'generated', now() FROM trips t WHERE t.id = $3
+         RETURNING id`,
+        [crypto.randomUUID(), actor.id, coveredTripId],
+      );
+    }
     await page.goto(`${BASE_URL}/plans/${coveredTripId}`);
     await page.waitForLoadState("networkidle");
     await checkpoint(page, "journey-traveler-trip-pass-covered-slip");
@@ -543,7 +561,7 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
     const activeCardVisible = await activeCard.waitFor({ state: "visible", timeout: 10_000 }).then(() => true).catch(() => false);
     const activeCardText = activeCardVisible ? await activeCard.textContent().catch(() => "") : "";
     report.record({
-      action: 'slip shows the persistent "Trip Pass active" card (the real coverage signal — no separate mid-flow banner exists)',
+      action: 'after the first run, the slip shows the "Trip Pass active" card under the Optimize lead (R380 / LD 45(7))',
       ui: `trip-pass-card-active visible=${activeCardVisible}, text="${activeCardText?.trim()}"`,
       db: `trip_entitlements.status=${entitlement?.status}`,
       verdict: activeCardVisible ? "PASS" : "FAIL",

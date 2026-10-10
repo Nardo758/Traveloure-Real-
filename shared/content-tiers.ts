@@ -13,6 +13,7 @@
  *   · Official-source facts are `public` + `link_only` by default (ruling 2); an official source whose
  *     terms say otherwise is a later per-source admin override, never decided here.
  */
+import { isPageReadOrigin } from "./content-facts";
 
 export const SOURCE_CLASSES = ["public", "local"] as const;
 export type SourceClass = (typeof SOURCE_CLASSES)[number];
@@ -158,12 +159,13 @@ export function placeFactTags(
 ): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
   // FD-3 rulings 1/3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact is public + link_only whoever
   // wrote it — an expert citing an official page writes the official fact, not a local note.
-  if ((factType === "last_admission" || factType === "last_service") && (origin === "crawled" || origin === "expert_nugget") && license === "official") {
+  if ((factType === "last_admission" || factType === "last_service") && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
     return { sourceClass: "public", reuseClass: "link_only" };
   }
   if (origin === "expert_nugget") return { sourceClass: "local", reuseClass: "reusable" };
   if (origin === "places_api") return { sourceClass: "public", reuseClass: "display_in_plan" };
-  if (origin === "crawled") return { sourceClass: "public", reuseClass: reuseClassForLicense(license) === "display_in_plan" ? "display_in_plan" : license === "partner" ? "internal" : "link_only" };
+  // SS-1b: the market-level official refresh is tagged exactly as an official crawl (`isPageReadOrigin`).
+  if (isPageReadOrigin(origin)) return { sourceClass: "public", reuseClass: reuseClassForLicense(license) === "display_in_plan" ? "display_in_plan" : license === "partner" ? "internal" : "link_only" };
   return null;
 }
 

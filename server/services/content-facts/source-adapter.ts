@@ -31,6 +31,8 @@ export interface FactDraft {
   license: LicenseClass | null;
   fetchedAt: Date;
   expiresAt: Date | null;
+  /** SS-1b: the official refresh stamps the moment it verified the page; every other writer leaves it unset. */
+  verifiedAt?: Date | null;
   /** The fetch's cost, recorded on ONE draft per call so a sum over rows is the real spend. */
   costCents: number;
   /** The billed SKU tier of the call that produced this draft (logged per call; not persisted). */
