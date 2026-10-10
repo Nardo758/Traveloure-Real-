@@ -13,6 +13,8 @@
  *   SP8  FU-S1-3 straight-line closeness reads the km threshold; the stored pick carries closeness and the
  *        reader refuses a malformed one (an old pick without it reads null — no backfill)
  *   SP9  ruling 5 still holds: neither closeness rule can reach a price or commission field
+ *   SP10 S1-d-1: the reader's KINDS allowlist admits `liteapi` (a stored LiteAPI pick reads back) and still
+ *        refuses an unknown kind
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -178,4 +180,10 @@ test("SP9 neither closeness rule can reach a price or commission field (ruling 5
   const src = fs.readFileSync(path.join(process.cwd(), "shared/stay-pick.ts"), "utf8");
   const body = src.slice(src.indexOf("export function stayDayCloseness"), src.indexOf("/** Straight-line order over the plan"));
   assert.doesNotMatch(body, /price|commission|rate\b|fee/i);
+});
+
+test("SP10 the stored-pick reader admits a liteapi pick and refuses an unknown kind (S1-d-1)", () => {
+  const stored = { hotelId: "lt1", hotelKind: "liteapi", scoredCount: 3, candidateCount: 9, stopsHash: "h", computedAt: "2026-10-10T00:00:00Z", tier: "routed", changed: false };
+  assert.equal(readStayPick(stored)?.hotelKind, "liteapi");
+  assert.equal(readStayPick({ ...stored, hotelKind: "amadeus" }), null);
 });

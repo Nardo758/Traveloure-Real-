@@ -151,7 +151,16 @@ export function itemSourceClass(input: {
  * nugget is ours and local; Places is display-in-plan; a crawled fact follows the license mapping, and an unknown
  * license on a crawled fact is link-only, as migration 362 backfills it. Any other origin has no ruled tag ⇒ null.
  */
-export function placeFactTags(origin: string | null | undefined, license: string | null | undefined): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
+export function placeFactTags(
+  origin: string | null | undefined,
+  license: string | null | undefined,
+  factType?: string | null,
+): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
+  // FD-3 rulings 1/3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact is public + link_only whoever
+  // wrote it — an expert citing an official page writes the official fact, not a local note.
+  if ((factType === "last_admission" || factType === "last_service") && (origin === "crawled" || origin === "expert_nugget") && license === "official") {
+    return { sourceClass: "public", reuseClass: "link_only" };
+  }
   if (origin === "expert_nugget") return { sourceClass: "local", reuseClass: "reusable" };
   if (origin === "places_api") return { sourceClass: "public", reuseClass: "display_in_plan" };
   if (origin === "crawled") return { sourceClass: "public", reuseClass: reuseClassForLicense(license) === "display_in_plan" ? "display_in_plan" : license === "partner" ? "internal" : "link_only" };
