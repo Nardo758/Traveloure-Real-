@@ -4209,7 +4209,18 @@ export const hotelCache = pgTable("hotel_cache", {
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
-});
+  // 365 (ledger 2026-10-10-s1-d1-liteapi): LiteAPI static content. Nullable, no DEFAULT/CHECK. Written only by
+  // the nightly LiteAPI sync (server/services/liteapi-sync.service.ts); rates are never stored here.
+  providerHotelId: varchar("provider_hotel_id", { length: 100 }),
+  hotelTypeId: integer("hotel_type_id"),
+  guestRating: decimal("guest_rating", { precision: 4, scale: 2 }),
+  mainImageUrl: text("main_image_url"),
+  fetchedAt: timestamp("fetched_at"),
+  contentUpdatedAt: timestamp("content_updated_at"),
+}, (table) => ({
+  // 365: empty at creation (provider_hotel_id is born NULL; NULLs never collide). The sync's upsert key.
+  providerHotelUniq: uniqueIndex("uq_hotel_cache_provider_hotel").on(table.provider, table.providerHotelId),
+}));
 
 export const hotelOfferCache = pgTable("hotel_offer_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

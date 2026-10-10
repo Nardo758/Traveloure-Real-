@@ -14,19 +14,20 @@ import { cityHotels } from "./where-to-stay.service";
 export interface MarketHotelSupply {
   rankable: number | null;
   low: boolean | null;
-  bySource: { platform: number; hotel_cache: number; affiliate: number } | null;
+  /** S1-d-1: `liteapi` counts LiteAPI rows (kind derived from `hotel_cache.provider`). */
+  bySource: { platform: number; hotel_cache: number; affiliate: number; liteapi: number } | null;
 }
 export interface HotelSupplyReport {
   min: number;
   markets: Record<string, MarketHotelSupply>;
 }
 
-type Hotel = { kind: "platform" | "hotel_cache" | "affiliate" };
+type Hotel = { kind: "platform" | "hotel_cache" | "affiliate" | "liteapi" };
 
 /** PURE: one market's line from the ranker's rows (or null when the read failed). */
 export function marketHotelSupply(rows: readonly Hotel[] | null, min: number): MarketHotelSupply {
   if (!rows) return { rankable: null, low: null, bySource: null };
-  const bySource = { platform: 0, hotel_cache: 0, affiliate: 0 };
+  const bySource = { platform: 0, hotel_cache: 0, affiliate: 0, liteapi: 0 };
   for (const r of rows) bySource[r.kind] += 1;
   return { rankable: rows.length, low: rows.length < min, bySource };
 }

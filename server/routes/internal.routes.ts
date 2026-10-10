@@ -30,6 +30,7 @@ import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
 import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
+import { runLiteapiSync } from "../jobs/liteapiSync";
 import { runLegsDayofRecheck } from "../jobs/legsDayofRecheck";
 import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
@@ -214,6 +215,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "leg-google-coords", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // FD-2 ruling 8: the nightly count of expired local content (counts only).
   { job: "content-expiry-census", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // S1-d-1 (ledger `2026-10-10-s1-d1-liteapi`): LiteAPI static content, Kyoto only, incremental.
+  { job: "liteapi-sync", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -427,6 +430,12 @@ router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, 
 // only — nothing is deleted or rewritten. A table it cannot read is an error and never stamps a success.
 router.post("/internal/jobs/content-expiry-census", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("content-expiry-census", () => runContentExpiryCensus(), (r) => Object.keys(r?.errors ?? {}).length > 0);
+  res.status(status).json(body);
+});
+
+// S1-d-1: the nightly LiteAPI sync. A target that failed part-way is an error (its watermark did not move).
+router.post("/internal/jobs/liteapi-sync", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("liteapi-sync", () => runLiteapiSync(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 
