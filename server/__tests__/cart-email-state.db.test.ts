@@ -12,7 +12,12 @@ import { db, pool } from "../db";
 import { storage } from "../storage";
 import { cartItems, providerServices, users, emailOutbox, trips, itineraryItems } from "../../shared/schema";
 import * as projection from "../services/cart-projection.service";
-import { enqueueEmail, _outboxTestHooks } from "../services/email-outbox.service";
+import {
+  enqueueEmail, enqueuePendingCartItemChange, deliverQueuedEmail, _outboxTestHooks,
+} from "../services/email-outbox.service";
+import { assessCartItemChanges } from "../services/cart-item-change.service";
+import { cartReminderVerification } from "../services/cart-reminder.service";
+import { lockMarketingTraveler } from "../services/marketing-delivery-policy.service";
 import {
   CART_STATE_KEY, cartStateDependencies, evaluateCartClock, evaluateCartItemChange,
   preserveCartState, recordQueuedCartValues, snapshotSkipReason,
@@ -41,12 +46,14 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
   try {
     for (let loop = 1; loop <= 2; loop++) {
       const userId = randomUUID(), providerId = randomUUID(), serviceId = randomUUID();
+      const travelerEmail = `${randomUUID()}@traveloure-qa.test`;
       await db.insert(users).values([
-        { id: userId, email: `${randomUUID()}@traveloure-qa.test`, role: "traveler" },
+        { id: userId, email: travelerEmail, role: "traveler" },
         { id: providerId, email: `${randomUUID()}@traveloure-qa.test`, role: "service_provider" },
       ]);
       await db.insert(providerServices).values({ id: serviceId, userId: providerId,
-        serviceName: "Isolated Part 2 service", price: "12.34", status: "active", bookingMode: "instant", availability: [] });
+        serviceName: "Isolated Part 2 service", price: "12.34", priceType: "fixed",
+        status: "active", bookingMode: "instant", availability: [] });
       const row = await storage.addToCart(userId, { serviceId, contentMeta: {
         [CART_STATE_KEY]: { activity: { at_ms: 99999999999999, sequence_id: "client" },
           snapshot: { price: "0", currency: "FAKE" } },
@@ -185,7 +192,7 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
       // Queue association + notified-value idempotency, without any delivery or new mail family.
       const values = { price: "19.00", currency: "USD", availability: snapshot(variant).availability };
       const [outbox] = await db.insert(emailOutbox).values({ emailType: "cart_item_changed",
-        toEmail: `${randomUUID()}@traveloure-qa.test`, subject: "Isolated fixture; never sent", html: "",
+        toEmail: travelerEmail, subject: "Isolated fixture; never sent", html: "",
         status: "pending", metadata: { cartItemId: variant.id } }).returning();
       assert.equal(await recordQueuedCartValues(variant.id, outbox.id, values), true);
       assert.equal(await recordQueuedCartValues(variant.id, outbox.id, values), false);
@@ -193,28 +200,65 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
       assert.equal(evaluateCartItemChange(notified.contentMeta, values), "already_notified");
       assert.deepEqual(stamp(notified), stamp(variant));
       const previousSender = _outboxTestHooks.sendEmailFn;
+      const previousNow = cartReminderVerification.now;
+      const previousSubset = cartReminderVerification.recordedRailsOnly;
       let mockSends = 0;
       _outboxTestHooks.sendEmailFn = async () => {
         mockSends++;
         return { success: true, messageId: `provider-free-${randomUUID()}` };
       };
       try {
+        // Use the existing guarded producer with readable-record-only eligibility.
+        // This isolated fixture does not authorize UNKNOWN rails or real delivery.
+        cartReminderVerification.now = new Date(stamp(variant).at_ms + 10);
+        cartReminderVerification.recordedRailsOnly = true;
+        await db.update(cartItems).set({ tripId, itineraryItemId: itemId })
+          .where(eq(cartItems.id, variant.id));
         const nextValues = { ...values, price: "20.00" };
         await db.update(providerServices).set({ price: nextValues.price }).where(eq(providerServices.id, serviceId));
-        const args = { to: `${randomUUID()}@traveloure-qa.test`, subject: "Provider-free cart state proof",
-          html: "<p>Isolated fixture only</p>", emailType: "cart_item_changed",
-          metadata: { cartItemId: variant.id, cartNotifiedValues: nextValues } };
-        assert.equal(typeof await enqueueEmail(args), "number");
-        assert.equal(mockSends, 1);
+        const queueChange = () => db.transaction(async tx => {
+          await lockMarketingTraveler(tx, userId);
+          const assessed = await assessCartItemChanges(tx, userId, null, cartReminderVerification.now!);
+          if (!assessed.changes.length) {
+            assert.deepEqual(assessed.skipped, { already_notified: 1 });
+            return null;
+          }
+          assert.deepEqual(assessed.skipped, {});
+          assert.equal(assessed.changes.length, 1);
+          const change = assessed.changes[0];
+          assert.equal(change.cartItemId, variant.id);
+          assert.equal(change.recipient, travelerEmail);
+          assert.equal(await enqueuePendingCartItemChange(change, tx), true);
+          const queued = await tx.execute(sql`SELECT id FROM email_outbox
+            WHERE metadata->>'commerceKey'=${change.key}`);
+          assert.equal(queued.rows.length, 1);
+          return Number(queued.rows[0].id);
+        });
+        const queuedId = await queueChange();
+        assert.equal(typeof queuedId, "number");
+        assert.equal(mockSends, 0, "Guarded queueing must not send");
+        await deliverQueuedEmail(queuedId!);
+        const [queued] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, queuedId!));
+        assert.equal(queued.status, "pending");
+        assert.equal(queued.lastError, "must_have_payment_ordering_unknown");
+        assert.equal(mockSends, 0, "Dispatcher must retain the must-have ordering hold");
+        assert.equal(await queueChange(), null);
+        const queuedCopies = await db.execute(sql`SELECT count(*)::int AS count FROM email_outbox
+          WHERE metadata->>'commerceKey'=${(queued.metadata as any).commerceKey}`);
+        assert.equal(queuedCopies.rows[0].count, 1);
+        const args = { to: travelerEmail, subject: queued.subject,
+          html: queued.html, emailType: "cart_item_changed", metadata: queued.metadata as Record<string, unknown> };
         assert.equal(await enqueueEmail(args), null);
-        assert.equal(mockSends, 1);
+        assert.equal(mockSends, 0);
         assert.equal(await enqueueEmail({ ...args, metadata: { cartItemId: variant.id } }), null);
-        assert.equal(mockSends, 1);
+        assert.equal(mockSends, 0);
         assert.deepEqual(stamp(await fetch(variant.id)), stamp(variant));
         assert.deepEqual(snapshot(await fetch(variant.id)), snapshot(variant));
         await db.update(providerServices).set({ price: "18.00" }).where(eq(providerServices.id, serviceId));
       } finally {
         _outboxTestHooks.sendEmailFn = previousSender;
+        cartReminderVerification.now = previousNow;
+        cartReminderVerification.recordedRailsOnly = previousSubset;
       }
       assert.deepEqual(snapshot(notified), snapshot(variant));
       // Excluded payment cleanup stays byte-for-byte neutral to surviving partner state.
