@@ -41,7 +41,7 @@ export const STAY_SEE_ROOMS_LABEL = "See rooms";
  * A stay LISTED ON TRAVELOURE (`platform`) opens its listing page carrying the plan's id ("See rooms"), where a
  * room is added to the plan with dates and checkout runs from the plan — no Google link and no attribution.
  * This AMENDS FU-S1-2 (R393) for `platform` stays only: their card no longer sends the traveler to the
- * provider's own site. Every other stay — `hotel_cache` (Amadeus / Booking.com data) and `affiliate` — keeps
+ * provider's own site — the listing page is the booking surface for provider stays and may carry that site. Every other stay — `hotel_cache` (Amadeus / Booking.com data) and `affiliate` — keeps
  * FU-S1-2's link exactly (`stayLinkView`), Google Maps attribution included.
  */
 export type StayCardLink =
