@@ -315,6 +315,10 @@ function RankedList({
   busy: boolean;
   onStayHere?: (hotel: StayHotel) => void;
 }) {
+  // Item 2 (ledger `2026-10-10-no-stays-no-promise`): a market with ZERO rankable stays near any of these
+  // neighbourhoods shows the neighbourhoods and no stays block at all — never "Hotels coming soon", which
+  // promises supply nobody has scheduled (§13). The decision is the panel's own `anchorPanelMode`.
+  const showStays = anchorPanelMode(view.neighborhoods) === "options";
   return (
         <ol className="space-y-3">
           {view.neighborhoods.map((n, i) => (
@@ -337,7 +341,7 @@ function RankedList({
                   {n.oneLiner.text}
                 </p>
               ) : null}
-              {n.hotels.length === 0 ? (
+              {!showStays ? null : n.hotels.length === 0 ? (
                 <p className="pl-5 text-xs text-muted-foreground italic" data-testid={`where-to-stay-coming-soon-${n.slug}`}>
                   {HOTELS_COMING_SOON}
                 </p>
