@@ -295,5 +295,13 @@ export async function loadDayFeasibility(tripId: string): Promise<Map<number, Da
     d.rides += 1;
     if (r.lastDepartures.length) d.ridesChecked += 1;
   }
+  // P0 ruling 2: the "no route found" marker — the ONE gap count the re-check also reads (§18 rule 1).
+  const gaps = await import("./routing/plan-legs-engine.service")
+    .then(({ planLegGapsByDay }) => planLegGapsByDay(tripId))
+    .catch(() => new Map<number, number>());
+  gaps.forEach((n, dayNumber) => {
+    const d = out.get(dayNumber);
+    if (d && n > 0) d.noRoute = n;
+  });
   return out;
 }
