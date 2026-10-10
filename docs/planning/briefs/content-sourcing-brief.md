@@ -116,10 +116,13 @@ crawled fact enters a plan → traveler uses it → expert confirms it (one tap 
 
 | Source | Adapter | Covers | Does not cover | License class |
 |---|---|---|---|---|
-| Kyoto City Official Travel Guide (kyoto.travel) | tavily_extract | stop.hours, event, neighbourhood, practicalities | lodging, dining reservations | official |
+| Kyoto City Official Travel Guide (kyoto.travel) | tavily_extract | stop.hours (incl. `last_admission` for the spine's top stops), event, neighbourhood, practicalities | lodging, dining reservations | official |
 | JNTO (japan.travel) | tavily_extract | practicalities, event, stop.hours (major) | transport.local detail | official |
-| Kyoto City Bus & Subway (city.kyoto.lg.jp / Kyoto City Transportation Bureau) | tavily_extract | transport.local | intercity | official |
-| JR West / JR Central official | tavily_extract (api later) | transport.intercity rail | local bus, cruise | official |
+| Kyoto City Bus & Subway (city.kyoto.lg.jp / Kyoto City Transportation Bureau) | tavily_extract | transport.local, transport.local.last_service | intercity | official |
+| Hankyu Railway (hankyu.co.jp) | tavily_extract | transport.local.last_service | intercity, cruise | official |
+| Keihan Electric Railway (keihan.co.jp) | tavily_extract | transport.local.last_service | intercity, cruise | official |
+| JR West (westjr.co.jp) — Kyoto-area lines | tavily_extract | transport.local.last_service | intercity, cruise | official |
+| JR West / JR Central official — intercity | tavily_extract (api later) | transport.intercity.rail (its own row) | transport.local, cruise | official |
 | Temple/shrine official pages (per stop, registered individually) | tavily_extract | stop.hours, stop.ticketing | — | official |
 | Kyoto Convention & Visitors Bureau event calendar | tavily_extract / manual | event | — | official |
 | Google Places | api | stop.hours, dining basics, coordinates | ticketing rules, seasonal notices | restricted (display only) |
@@ -127,6 +130,14 @@ crawled fact enters a plan → traveler uses it → expert confirms it (one tap 
 | Viator / Musement (existing keys) | affiliate_feed | activity | — | partner |
 | 12Go via Travelpayouts | affiliate_feed | transport.intercity bus/ferry | rail_jp, cruise | partner |
 | One or two editorial locals (to be chosen; terms permitting) | tavily_extract | tip, neighbourhood, dining | — | editorial |
+
+**Amended Oct 10, 2026 (SS-1 rulings 2–3, ledger `2026-10-10-ss1a-registry-entry-sheet`):** Hankyu and Keihan join
+Kyoto City Bus & Subway and JR West for `transport.local.last_service` (FD-3's last-train check); JR West/Central keeps
+`transport.intercity.rail` on its own row; kyoto.travel covers `stop.hours` and `last_admission` for the spine's top
+stops. What the market-level refresh (SS-1b) fetches from each row is config — `server/config/content-source-targets.config.ts`,
+`{ label, url, need, anchor }` per target (a station slug for last-service pages, a Google `place_id` for a stop's
+page) — not a column. The filled entry sheet is `docs/planning/ss-1-entry-sheet.md`; Leon reads the terms and types
+the rows (R251).
 
 Gaps the report will show on day one: `transport.intercity.rail` until JR is registered; `dining` reservations (no source; expert nuggets carry it); `transport.cruise` n/a for Kyoto.
 

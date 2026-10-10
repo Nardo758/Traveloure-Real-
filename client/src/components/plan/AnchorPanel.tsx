@@ -38,6 +38,10 @@ import {
   stayCardModel,
   stayClosenessLine,
   stayCardLink,
+  STAY_RATES_LOADING,
+  STAY_RATES_SEE,
+  stayRatesLines,
+  type StayRatesView,
 } from "@/lib/stay-card";
 import type { StayLink } from "@shared/stay-link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -111,6 +115,9 @@ export interface AnchorPanelViewProps {
   /** The existing day-1 add control, for a fixed-item anchor. */
   addFixedControl?: ReactNode;
   onStayHere?: (hotel: StayHotel) => void;
+  /** S1-d-2: live rates per LiteAPI stay id, once its "See rates" was tapped; absent ⇒ not asked. */
+  stayRates?: Record<string, StayRatesView>;
+  onSeeRates?: (hotel: StayHotel) => void;
   onOwn?: (answer: { hotelName: string | null; neighborhoodSlug: string | null }) => void;
   onSkip?: () => void;
   bound?: { name: string } | null;
@@ -187,6 +194,8 @@ export function StayPickCard({
   busy,
   onStayHere,
   swapControl,
+  stayRates,
+  onSeeRates,
 }: {
   view: WhereToStayView;
   /** S1-b: the plan a Traveloure stay's "See rooms" carries to its listing page. */
@@ -196,6 +205,8 @@ export function StayPickCard({
   busy: boolean;
   onStayHere?: (hotel: StayHotel) => void;
   swapControl?: ReactNode;
+  stayRates?: Record<string, StayRatesView>;
+  onSeeRates?: (hotel: StayHotel) => void;
 }) {
   const model = stayCardModel(view.stay);
   if (!model) return null;
@@ -291,6 +302,7 @@ export function StayPickCard({
                 </button>
               ) : null}
             </span>
+            {h.kind === "liteapi" ? <StayRatesRow hotel={h} view={stayRates?.[h.id]} onSeeRates={onSeeRates} /> : null}
           </li>
         ))}
       </ul>
@@ -301,6 +313,45 @@ export function StayPickCard({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * S1-d-2: a LiteAPI stay's "See rates" control and, after the tap, its live rate. Before the tap there is
+ * NO price text on the card (SC3/SC7). Test ids carry the `stay-rates-` prefix so the card's other counts
+ * (SC5, SC6, CL4) are untouched. The panel reads the server's answer and computes nothing.
+ */
+function StayRatesRow({ hotel, view, onSeeRates }: { hotel: StayHotel; view?: StayRatesView; onSeeRates?: (h: StayHotel) => void }) {
+  if (!view) {
+    return (
+      <span className="basis-full">
+        <button type="button" className={quiet} onClick={() => onSeeRates?.(hotel)} data-testid={`stay-rates-open-${hotel.id}`}>
+          {STAY_RATES_SEE}
+        </button>
+      </span>
+    );
+  }
+  const lines = stayRatesLines(view);
+  return (
+    <div className="basis-full rounded-md border border-border bg-muted/20 px-3 py-2 text-xs" data-testid={`stay-rates-panel-${hotel.id}`} data-rates-state={view.state}>
+      {!lines ? (
+        <p className="text-[color:var(--slip-muted,#5B6B7A)]">{STAY_RATES_LOADING}</p>
+      ) : lines.kind === "message" ? (
+        <p className="text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-rates-message-${hotel.id}`}>{lines.text}</p>
+      ) : (
+        <div className="space-y-0.5">
+          <p className="text-sm font-semibold text-foreground" data-testid={`stay-rates-price-${hotel.id}`}>
+            {lines.price} <span className="font-normal text-[color:var(--slip-muted,#5B6B7A)]">{lines.party}</span>
+          </p>
+          {lines.board ? <p data-testid={`stay-rates-board-${hotel.id}`}>{lines.board}</p> : null}
+          {lines.cancellation ? <p data-testid={`stay-rates-cancel-${hotel.id}`}>{lines.cancellation}</p> : null}
+          {lines.payAtProperty.map((t, i) => (
+            <p key={i} data-testid={`stay-rates-property-${hotel.id}-${i}`}>{t}</p>
+          ))}
+          {lines.childrenNote ? <p className="text-[color:var(--slip-muted,#5B6B7A)]">{lines.childrenNote}</p> : null}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -472,7 +523,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
             {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
           </p>
         </div>
-        {view?.eligible ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
+        {view?.eligible ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} stayRates={props.stayRates} onSeeRates={props.onSeeRates} /> : null}
         {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {canChoose ? (
           <div className="space-y-2 border-t border-border pt-3">
@@ -583,7 +634,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         </p>
       </div>
 
-      <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} />
+      <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} stayRates={props.stayRates} onSeeRates={props.onSeeRates} />
 
       {mode === "unranked" ? (
         view.unranked === "no_located_items" ? (
@@ -618,7 +669,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
 
 /** The container: wires the three answers to `POST /api/trips/:tripId/where-to-stay` and the free re-anchor. */
 export function AnchorPanel(
-  props: Omit<AnchorPanelViewProps, "busy" | "bound" | "onStayHere" | "onOwn" | "onSkip" | "onReanchor" | "onDismissReanchor" | "onReopen" | "compareHref"> & { tripId: string },
+  props: Omit<AnchorPanelViewProps, "busy" | "bound" | "onStayHere" | "onOwn" | "onSkip" | "onReanchor" | "onDismissReanchor" | "onReopen" | "compareHref" | "stayRates" | "onSeeRates"> & { tripId: string },
 ) {
   const { tripId } = props;
   const { toast } = useToast();
@@ -668,6 +719,16 @@ export function AnchorPanel(
     staleTime: Infinity,
     retry: false,
   });
+  // S1-d-2: "See rates" on a LiteAPI stay asks the server ONCE per tap (a live call, never stored). Any
+  // failure reads as "Rates unavailable right now" — never an error toast.
+  const [stayRates, setStayRates] = useState<Record<string, StayRatesView>>({});
+  const seeRates = (h: StayHotel) => {
+    setStayRates((m) => ({ ...m, [h.id]: { state: "loading" } }));
+    void apiRequest("GET", `/api/trips/${tripId}/stays/${encodeURIComponent(h.id)}/rates`)
+      .then((r) => r.json())
+      .then((v: StayRatesView) => setStayRates((m) => ({ ...m, [h.id]: v && typeof v === "object" && "state" in v ? v : { state: "unavailable" } })))
+      .catch(() => setStayRates((m) => ({ ...m, [h.id]: { state: "unavailable" } })));
+  };
   const reanchor = useMutation({
     mutationFn: async (itemId: string) => (await apiRequest("POST", `/api/trips/${tripId}/anchor/promote`, { itemId })).json(),
     onSuccess: () => {
@@ -680,6 +741,8 @@ export function AnchorPanel(
     <AnchorPanelView
       {...props}
       openedStayLink={openedLink?.stayLink ?? null}
+      stayRates={stayRates}
+      onSeeRates={seeRates}
       busy={bind.isPending || reanchor.isPending || reopen.isPending}
       compareHref={props.lodgingSet ? `/plans/${tripId}/compare/${props.lodgingSet.id}` : null}
       onReopen={() => props.lodgingSet && reopen.mutate(props.lodgingSet.id)}

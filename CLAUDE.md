@@ -2657,6 +2657,14 @@ This document captures architectural decisions to maintain consistency across co
     empty at creation. **The expiry sweep never deletes a LiteAPI row, nor any row a `plan_options` row or a
     `trips.stay_pick` references** (`hotel-cache-retention.ts`). "See rates", the SSP guard and the margin bands
     are S1-d-2.
+    **AMENDED — S1-d-2, LIVE RATES ON THE CARD, NEVER STORED (decision-maker, Oct 10, 2026 — ledger
+    `2026-10-10-s1-d2-liteapi-rates`; brief `docs/planning/briefs/s1-d2-liteapi-rates.md`; migration 366, HELD
+    until "Migration 366 SQL approved — Leon" is on its PR).** `GET /api/trips/:tripId/stays/:stayId/rates` asks
+    LiteAPI live for one stay (`maxRatesPerHotel: 1`) behind the plan read gate and stores nothing. The public
+    price is the retail total with the `hotel_margin_public` margin, floored at the SSP; both margin bands are
+    optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
+    is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
+    default card shows "See rates" and no price; the item row and booking are d-3.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
@@ -2691,6 +2699,13 @@ This document captures architectural decisions to maintain consistency across co
     is `days[].localTeaser = { localPicks, localNotes }` on a FREE plan's plancard: draft-eligible local gems not already
     on the plan and live local notes in the neighbourhoods of that day's located stops — COUNTS ONLY, no title, place or
     id; a day not computed, or zero, carries no key (§13). FD-5's coverage targets will hide an under-target day.
+    **AMENDED BY FD-5 (decision-maker rulings 1–7, Oct 10, 2026; numbers Leon's; ledger `2026-10-10-fd5-coverage-targets`;
+    no migration — FOUNDER WORDING REVIEW).** The teaser is gated per neighbourhood by config targets
+    (`server/config/coverage-targets.config.ts`; Kyoto: peak 5 picks / 3 notes, weekday 3 / 2): a day counts only the
+    neighbourhoods at or above their own target for its day type (`peak` = a weekend, a season at or above
+    `COVERAGE_PEAK_MULTIPLIER`, or unconfirmed dates), never summed; none ⇒ nothing. Only the teaser's own counts gate;
+    official-fact targets are census-reported (`scripts/report-coverage-census.cjs`). The day block draws it beside the
+    feasibility line, nothing on zero.
 
 67. **FEASIBILITY IN THE FREE DRAFT READS ONLY STORED OFFICIAL FACTS, AND A DAY SAYS WHAT IT DID NOT CHECK (decision-maker,
     Oct 10, 2026 — FD-3 rulings 1–7; ledger `2026-10-10-fd3-feasibility`; brief `docs/planning/briefs/fd-3-feasibility.md`;

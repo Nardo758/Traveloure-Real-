@@ -13,6 +13,8 @@
  *   · A guest counts only on a SERVER guest record; a browser-made id is never a key (§13).
  */
 
+import { meetsTarget, nearestArea, type CoverageDayType, type SlugTargets } from "./coverage-targets";
+
 export const FREE_DRAFT_RAILS = ["slip", "trip", "quick_start"] as const;
 export type FreeDraftRail = (typeof FREE_DRAFT_RAILS)[number];
 
@@ -90,6 +92,20 @@ export function localTeaserForDay(counts: { localPicks: number; localNotes: numb
 }
 
 /**
+ * FD-5 (ledger `2026-10-10-fd5-coverage-targets`): the teaser's words on the day block — the server's counts,
+ * never padded, nothing on a zero day (§13). Counts only: no title, place or tier word.
+ *   "3 local picks and 2 local notes for this day" · "1 local pick for this day" · "2 local notes for this day"
+ */
+export function localTeaserLine(t: LocalTeaser | null | undefined): string | null {
+  const v = localTeaserForDay(t);
+  if (!v) return null;
+  const parts: string[] = [];
+  if (v.localPicks > 0) parts.push(`${v.localPicks} local pick${v.localPicks === 1 ? "" : "s"}`);
+  if (v.localNotes > 0) parts.push(`${v.localNotes} local note${v.localNotes === 1 ? "" : "s"}`);
+  return `${parts.join(" and ")} for this day`;
+}
+
+/**
  * FD-1 teaser basis (ledger `2026-10-09-fd1-free-draft-cap`): per day of a FREE plan, how many local picks
  * and local notes the paid tier would add AROUND THAT DAY — counts only, never a title, place or id.
  *   · a day's area = the neighbourhoods its LOCATED stops fall in (nearest centroid in the plan's city);
@@ -103,16 +119,17 @@ export interface TeaserInput {
   neighbourhoods: readonly TeaserNeighbourhood[];
   gems: Array<{ id: string; neighbourhoodSlug: string | null }>;
   notes: Array<{ neighbourhoodId: string | null; neighbourhoodName: string | null }>;
-}
-
-function nearestArea(p: { lat: number; lng: number }, hoods: readonly TeaserNeighbourhood[]): TeaserNeighbourhood | null {
-  let best: { n: TeaserNeighbourhood; d: number } | null = null;
-  for (const n of hoods) {
-    if (n.lat == null || n.lng == null || !Number.isFinite(n.lat) || !Number.isFinite(n.lng)) continue;
-    const d = (n.lat - p.lat) ** 2 + ((n.lng - p.lng) * Math.cos((p.lat * Math.PI) / 180)) ** 2;
-    if (!best || d < best.d) best = { n, d };
-  }
-  return best?.n ?? null;
+  /**
+   * FD-5 (ledger `2026-10-10-fd5-coverage-targets`, rulings 3/4): per neighbourhood SLUG, its targets by day
+   * type, and each plan day's type. A day's teaser counts only the neighbourhoods at or above their own
+   * target for that day type, measured on the neighbourhood's whole live local content (not the plan's
+   * remainder); none at target ⇒ the day carries nothing. Never summed across neighbourhoods. A slug with no
+   * target has no gate; absent `gate` ⇒ FD-1's behaviour.
+   */
+  gate?: {
+    targets: Record<string, SlugTargets>;
+    dayTypeOf: (dayNumber: number) => CoverageDayType;
+  };
 }
 
 export function localTeasersByDay(input: TeaserInput): Map<number, LocalTeaser> {
@@ -126,7 +143,17 @@ export function localTeasersByDay(input: TeaserInput): Map<number, LocalTeaser> 
     if (!byDay.has(it.dayNumber)) byDay.set(it.dayNumber, new Map());
     byDay.get(it.dayNumber)!.set(area.id, area);
   }
-  for (const [day, areas] of Array.from(byDay.entries())) {
+  // FD-5: each neighbourhood's own totals, the census's measure (shared/coverage-targets.ts).
+  const totals = (a: TeaserNeighbourhood) => ({
+    localPicks: input.gems.filter((g) => g.neighbourhoodSlug && g.neighbourhoodSlug.toLowerCase() === a.slug.toLowerCase()).length,
+    localNotes: input.notes.filter((n) => (n.neighbourhoodId && n.neighbourhoodId === a.id) || (n.neighbourhoodName && n.neighbourhoodName.trim().toLowerCase() === a.name.trim().toLowerCase())).length,
+  });
+  for (const [day, allAreas] of Array.from(byDay.entries())) {
+    const gate = input.gate;
+    const areas = gate
+      ? new Map(Array.from(allAreas.entries()).filter(([, a]) => meetsTarget(totals(a), gate.targets[a.slug]?.[gate.dayTypeOf(day)])))
+      : allAreas;
+    if (areas.size === 0) continue;
     const slugs = new Set(Array.from(areas.values()).map((a) => a.slug.toLowerCase()));
     const ids = new Set(Array.from(areas.keys()));
     const names = new Set(Array.from(areas.values()).map((a) => a.name.trim().toLowerCase()));

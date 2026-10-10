@@ -1966,9 +1966,17 @@ export const MIGRATION_FILES = [
   // partial UNIQUE on trip_id (safe: no row exists at creation). No FK. Declared in shared/schema.ts.
   // APPROVED by the founder, Oct 9, 2026.
   "363_free_draft_runs.sql",
-  // 364 is Track A's (blurbs) — held by that lane.
+  // 364 — the three production occasion descriptions 360 missed (anniversary, bachelor-bachelorette,
+  // sports-event — production's own slugs; the seeder's `anniversary-trip` is not a production row). Ledger
+  // 2026-10-10-m364-occasion-descriptions. DATA ONLY: UPDATE by slug, only while the row still holds the
+  // generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 10, 2026.
+  "364_occasion_descriptions_prod.sql",
   // 365 — hotel_cache LiteAPI static-content columns (ledger 2026-10-10-s1-d1-liteapi): six nullable columns,
   // no DEFAULT/CHECK, and a UNIQUE index on (provider, provider_hotel_id) — empty at creation because the
   // column is born NULL on every row. Declared in shared/schema.ts. APPROVED by Leon, Oct 10, 2026.
   "365_hotel_cache_liteapi.sql",
+  // 366 — LiteAPI hotel margin bands (ledger 2026-10-10-s1-d2-liteapi-rates). DATA ONLY: two fee_bands rows,
+  // insert-if-missing (hotel_margin_public 0.12, hotel_margin_bundle 0.06). Nothing to declare.
+  // HELD: merges only with "Migration 366 SQL approved — Leon" on the S1-d-2 PR.
+  "366_hotel_margin_bands.sql",
 ] as const;
