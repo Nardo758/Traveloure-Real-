@@ -96,17 +96,21 @@ network/provider delivery. A database statement-start timestamp is not a globall
 trusted eligibility instant. Keep must-have ordering and external/unstamped
 provenance blocked until separately proven and approved.
 
-The Part 6 addendum requires confirmed development closure of Part 5 before
-further Part 6 work. Existing implementation or passing subset loops alone must
-not be treated as closure. Real delivery proof is deferred to Part 9.
+Use the founder's distinct statuses: DEV-CLOSED means built in development,
+two clean readable-record-subset loops, every open gap explicitly carried as a
+release blocker, and release still blocked. RELEASE-CERTIFIED requires every
+rule proven, no UNKNOWN rails, real delivery proof and production checks.
+Real delivery proof is deferred to Part 9.
 
-**Why:** The founder added an explicit prerequisite and replaced earlier
-Part 6 real-delivery expectations with development-only verification.
+**Why:** The founder clarified that "closed in development" does not mean
+release certification. Do not block development progression solely because
+documented payment UNKNOWNs or later-part delivery proofs remain.
 
-**How to apply:** Check documented Part 5 closure first and stop if it cannot
-be confirmed. Preserve existing Part 6 work without advancing it. Keep all
-payment UNKNOWNs and production-send blocks; do not require real sends to
-complete the bounded Part 6 development proof.
+**How to apply:** Check each part's own loop evidence and complete blocker
+inventory before assigning DEV-CLOSED. Keep provenance implementation on its
+separate approval track and normal commerce sending blocked. Parts 4, 5 and 6
+must all be DEV-CLOSED for READY FOR PART 7, but never start Part 7 before
+the founder supplies it.
 
 Availability is about the cart's requested units, not whether one unit remains.
 A quantity-only edit is not a catalog availability change. Retain stock facts
