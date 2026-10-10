@@ -198,7 +198,7 @@ test("E8: a failed call leaves the pair a thin connector; the next run asks agai
   assert.equal(healed.written, 1, "the next run routes it — a failure was never remembered");
 });
 
-// AMENDED by P0 ruling 7 (ledger `2026-10-10-p0-legs-baseline`; sanction requested in the PR): a
+// AMENDED by P0 ruling 7 (ledger `2026-10-10-p0-legs-baseline`; SANCTIONED by the decision-maker, Oct 10, 2026): a
 // confirmed leg with NO source is a legacy-writer leg, re-routed ONCE on the first engine run — it keeps
 // `confirmed`, the pair still shows exactly one leg, and the legacy row is superseded, not deleted. An
 // expert's confirmed ENGINE leg is still never recomputed (L8 in p0-legs-baseline.db.test.ts).

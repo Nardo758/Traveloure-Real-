@@ -2628,7 +2628,9 @@ This document captures architectural decisions to maintain consistency across co
     a routed plan gets NOTHING written — the legacy "driving" writer is retired for routed plans. A
     confirmed `source IS NULL` leg is re-routed on the plan's first engine run, keeps `confirmed`, and its
     legacy row is superseded (`proposal_status` NULL, `origin='superseded'`), never deleted; the mode change
-    is logged. `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
+    is logged (behaviour pins E9/E10 amended accordingly — sanctioned; a confirmed ENGINE leg is still never
+    recomputed). Held follow-up: move the marker to a nullable `superseded_at` with the next
+    `transport_legs` migration (`origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
     is set by Leon in Deployments after the deploy carrying P0.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —

@@ -65,5 +65,10 @@ hit answers `paused` and leaves legs as last computed.
 
 ## Held — needs data or ruling
 
-- None for this lane. Item 7's re-route amends behaviour pin E9 (and E10's dependent assertion) — the
-  amendment is listed in the PR for sanction.
+- **E9/E10 — SANCTIONED (decision-maker, Oct 10, 2026).** Before: a confirmed leg is never recomputed.
+  After: a confirmed engine leg (`source` set) is never recomputed; a confirmed legacy leg (`source IS
+  NULL`) is re-routed once on the plan's first engine run, stays confirmed with the expert's
+  stamp/tip/pickup, and the legacy row is hidden. Recorded as the LD 63 amendment.
+- **Follow-up (held): `superseded_at`.** `origin='superseded'` is accepted for P0 (no migration, nothing
+  else reads it), but `origin` is a provenance field, not lifecycle. When the next `transport_legs`
+  migration happens anyway, add a nullable `superseded_at` and move this marker there.
