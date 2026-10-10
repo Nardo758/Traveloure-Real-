@@ -36,6 +36,7 @@ import {
   STAY_STRAIGHT_LINE_TITLE,
   STAY_SWAP_LEAD,
   stayCardModel,
+  stayClosenessLine,
   stayMapsHref,
 } from "@/lib/stay-card";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -223,6 +224,12 @@ export function StayPickCard({
                 <span className="rounded border border-border px-1.5 text-[11px] text-[color:var(--slip-muted,#5B6B7A)]">{PLATFORM_STAY_BADGE}</span>
               ) : null}
             </span>
+            {stayClosenessLine(h.closeness) ? (
+              // R394: S1's own per-day closeness, display only — the card computes nothing.
+              <span className="basis-full text-xs font-semibold text-[color:var(--slip-teal-ink,#1F6F6F)]" data-testid={`stay-pick-closeness-${h.id}`}>
+                {stayClosenessLine(h.closeness)}
+              </span>
+            ) : null}
             <span className="flex items-center gap-3">
               <span className="flex items-center gap-1 text-xs">
                 <a
