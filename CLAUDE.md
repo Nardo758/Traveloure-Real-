@@ -2643,8 +2643,8 @@ This document captures architectural decisions to maintain consistency across co
     confirmed `source IS NULL` leg is re-routed on the plan's first engine run, keeps `confirmed`, and its
     legacy row is superseded (`proposal_status` NULL, `origin='superseded'`), never deleted; the mode change
     is logged (behaviour pins E9/E10 amended accordingly — sanctioned; a confirmed ENGINE leg is still never
-    recomputed). Held follow-up: move the marker to a nullable `superseded_at` with the next
-    `transport_legs` migration (`origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
+    recomputed). The marker now lives in `superseded_at` (migration 368, TC-3a — the held follow-up is closed;
+    `origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
     is set by Leon in Deployments after the deploy carrying P0.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
@@ -2734,6 +2734,24 @@ This document captures architectural decisions to maintain consistency across co
     for the same place; Google hours never are (LD 57). Every day block draws ONE line (`feasibilityLine`) from `days[].feasibility`:
     honest counts, "not checked" where nothing is stored. Expert hard constraints never enter a draft (LD 27). Unsourced
     transport-profile hours and Kyoto's last-train note are deleted.
+
+68. **A RIDE IS A PLAN ITEM; IT LOCKS ON INSERT AND SUPERSEDES THE LEG IT REPLACES WITHOUT DELETING IT (decision-maker,
+    Oct 10, 2026 — TC-3 brief rev 1, lane TC-3a; ledger `2026-10-11-tc3a-ride-item`; brief
+    `docs/planning/briefs/tc-3a-ride-item.md`; migration 368, HELD for Leon).** A ride is an ordinary `itinerary_items` row:
+    `item_type='transport'` with `provider_service_id` set to a transport CATALOG row — a `provider_services` row that has
+    a `service_transport_facts` row (weather rule + routed-fallback mode, luggage, pass validity, payment constraints,
+    official link, `official_source` REQUIRED, `verified_at`, booking window, OSM attribution; one per service), approved
+    and active. Boarding pin = the item's own point; exit pin = the new nullable `itinerary_items.exit_latitude`/
+    `exit_longitude`, both from the service's `service_route_points` (first and last), written ONLY by
+    `ride-item.service.ts` (insert schema omits them, storage strips them). The legs engine routes the leg AFTER a ride
+    from its exit pin (`DesiredLeg.origin`); pair diff and debounce unchanged. The schedule is the catalog's (a slot that
+    day, else `earliest_start_time`; end = + `duration_minutes`, never guessed). Born LOCKED (LD 61) — Optimize keeps it
+    fixed and no rebuild deletes it. Inserted between A and C (owner only, `POST /api/trips/:tripId/rides`), it
+    supersedes any confirmed A→C leg: `proposal_status` NULL + the new `transport_legs.superseded_at` +
+    `superseded_by_item_id`; removing the ride (the ordinary item delete) restores exactly those legs. P0's interim
+    `origin='superseded'` marker moved to `superseded_at` (held follow-up closed). The catalog seed (migration 369 —
+    Sagano Romantic Train, Hozugawa boat, Eizan Kirara) waits on Chrome's official reads; an unverified field stays
+    NULL and the row stays inactive.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

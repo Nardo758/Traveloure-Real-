@@ -81,7 +81,7 @@ async function ask(tripId: string, legId: string, deps: { adapter?: RoutingAdapt
 
   const candidates = legOptionCandidates({
     current: desired.mode,
-    straightLineMeters: haversineMeters(desired.from.point.lat, desired.from.point.lng, desired.to.point.lat, desired.to.point.lng),
+    straightLineMeters: haversineMeters(desired.origin.lat, desired.origin.lng, desired.to.point.lat, desired.to.point.lng),
     hasTransitCoverage: ctx.hasTransitCoverage,
   });
   const toAsk = legOptionsToAsk(candidates, held.map((o) => o.mode));
@@ -90,7 +90,7 @@ async function ask(tripId: string, legId: string, deps: { adapter?: RoutingAdapt
   let calls = 0;
   for (const mode of toAsk) {
     const r = await memo.route(
-      { origin: desired.from.point, destination: desired.to.point, mode, departAt: ctx.departAt(desired), hourBucket: desired.hourBucket },
+      { origin: desired.origin, destination: desired.to.point, mode, departAt: ctx.departAt(desired), hourBucket: desired.hourBucket },
       adapter,
     );
     if (r.outcome.kind === "paused") return { options: held, calls, paused: true };

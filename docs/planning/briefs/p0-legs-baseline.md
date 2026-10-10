@@ -69,6 +69,5 @@ hit answers `paused` and leaves legs as last computed.
   After: a confirmed engine leg (`source` set) is never recomputed; a confirmed legacy leg (`source IS
   NULL`) is re-routed once on the plan's first engine run, stays confirmed with the expert's
   stamp/tip/pickup, and the legacy row is hidden. Recorded as the LD 63 amendment.
-- **Follow-up (held): `superseded_at`.** `origin='superseded'` is accepted for P0 (no migration, nothing
-  else reads it), but `origin` is a provenance field, not lifecycle. When the next `transport_legs`
-  migration happens anyway, add a nullable `superseded_at` and move this marker there.
+- **Follow-up `superseded_at` — CLOSED by TC-3a (migration 368, ledger `2026-10-11-tc3a-ride-item`).** The P0
+  supersede now stamps `superseded_at`; 368 moves any `origin='superseded'` row over and clears `origin`.

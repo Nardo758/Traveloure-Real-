@@ -6016,6 +6016,13 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Optimize and Build-around never move or remove it. No DEFAULT, no CHECK; written ONLY by the
   // owner's lock rail and the Moment default, and omitted from `insertItineraryItemSchema` (§19).
   lockedAt: timestamp("locked_at"),
+  // TC-3a (migration 368; ledger `2026-10-11-tc3a-ride-item`): a RIDE item's exit pin — where the ride
+  // leaves the traveler. The boarding pin is the item's own `latitude`/`longitude`; when an exit pin is
+  // present the legs engine routes the FOLLOWING leg from it. Nullable, no DEFAULT/CHECK/index. Written
+  // only by the ride service (`ride-item.service.ts`); omitted from the insert schema and stripped from
+  // every generic write. NULL = not a ride, or a ride that ends where it starts.
+  exitLatitude: decimal("exit_latitude", { precision: 10, scale: 7 }),
+  exitLongitude: decimal("exit_longitude", { precision: 10, scale: 7 }),
   // Migration 343 (step 5): the optimizer run and version an ADOPTED day came from. Written only by
   // apply-days. NULL = not adopted from a version. No DEFAULT/CHECK/index/FK.
   sourceRunId: varchar("source_run_id"),
@@ -6379,7 +6386,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -8170,6 +8177,13 @@ export const transportLegs = pgTable("transport_legs", {
   // Writer: the stay re-route. NULL = no Google coordinate recorded on the leg.
   coordSource: varchar("coord_source", { length: 20 }),
   coordFetchedAt: timestamp("coord_fetched_at"),
+  // TC-3a (migration 368): a SUPERSEDED leg — kept, hidden, never deleted. Set with `proposal_status` NULL
+  // (which every trip reader already skips). `superseded_by_item_id` names the ride item that replaced it,
+  // so removing the ride restores exactly the legs it superseded; NULL there with `superseded_at` set =
+  // superseded by the engine's re-route of a legacy leg (P0 ruling 7) — never restored. Nullable, no
+  // DEFAULT/CHECK/index/FK.
+  supersededAt: timestamp("superseded_at"),
+  supersededByItemId: varchar("superseded_by_item_id"),
   // Migration 357 (ledger `2026-10-07-step9a-routing-engine`, step 9a ruling 3): the routing source that
   // computed this leg — `google_routes` | `stub`. NULL = not a routing-engine leg. A traveler sees an
   // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
@@ -11470,6 +11484,34 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+/**
+ * TC-3a (migration 368; ledger `2026-10-11-tc3a-ride-item`): the facts a TRANSPORT catalog row carries that
+ * `provider_services` has no column for — one row per service (UNIQUE), FK CASCADE. A service is a ride in
+ * the catalog exactly when it has a row here. `official_source` is REQUIRED (FD-3's admission rule: nothing
+ * seeds without the official page it was read from); every other fact is NULL until an official read
+ * confirms it, and NULL is never rendered as "no rule". Pins live in `service_route_points` (first =
+ * boarding, last = exit). Born empty; table and index declared here per the deploy-push durability rule.
+ */
+export const serviceTransportFacts = pgTable("service_transport_facts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  weatherRule: text("weather_rule"),
+  weatherFallbackMode: varchar("weather_fallback_mode", { length: 20 }),
+  luggageRule: text("luggage_rule"),
+  passValidity: text("pass_validity"),
+  paymentConstraints: text("payment_constraints"),
+  officialLink: text("official_link"),
+  officialSource: text("official_source").notNull(),
+  verifiedAt: timestamp("verified_at"),
+  bookingWindowDays: integer("booking_window_days"),
+  osmAttribution: boolean("osm_attribution"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("service_transport_facts_service_id_uniq").on(table.serviceId),
+]);
+export type ServiceTransportFacts = typeof serviceTransportFacts.$inferSelect;
 
 /**
  * D-25 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`; punchlist D-25 = option A).
