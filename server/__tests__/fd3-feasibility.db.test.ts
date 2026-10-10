@@ -15,6 +15,8 @@
  *   G5  an UNTAGGED fact never produces a finding; a text-only crawled hours row is never read
  *   G6  the day counts: honest numbers on day 1, "not checked" on day 2
  *   G7  the extractor keeps structured fields only when they parse and the quote prints the time
+ *   G8  LD 57 boundary: another plan's Google Places hours for the same place id never feed this plan's findings
+ *       or counts — only official crawled facts are read across plans
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -36,6 +38,7 @@ const other = id("other");
 const P1 = `p1-${RUN}`;
 const P2 = `p2-${RUN}`;
 const P3 = `p3-${RUN}`;
+const P4 = `p4-${RUN}`;
 const NOW = new Date();
 const later = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
 
@@ -117,10 +120,14 @@ before(async () => {
     { planId: trip, itemId: id("a") },
   );
   await db.execute(sql`UPDATE place_facts SET source_class = NULL WHERE plan_id = ${trip} AND fact_type = 'last_admission'`);
+  // G8: day 2's stop has a Places id on THIS plan (its location), and ANOTHER plan holds Google hours for it that,
+  // if read, would put the 10:00 arrival at closing time.
+  await recordFacts([fact({ placeRef: P4, factType: "location", value: { lat: 35.01, lng: 135.76 } })], { planId: trip, itemId: id("d2") });
+  await recordFacts([fact({ placeRef: P4, value: { weekdayDescriptions: ["Tuesday: 9:00 AM – 10:00 AM"] } })], { planId: other, itemId: null });
 });
 
 after(async () => {
-  await db.execute(sql`DELETE FROM place_facts WHERE plan_id IN (${trip}, ${other}) OR place_ref IN (${P1}, ${P2}, ${P3}, 'Kiyomizu-gojo')`);
+  await db.execute(sql`DELETE FROM place_facts WHERE plan_id IN (${trip}, ${other}) OR place_ref IN (${P1}, ${P2}, ${P3}, ${P4}, 'Kiyomizu-gojo')`);
   await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${trip}`);
   await db.execute(sql`DELETE FROM trips WHERE id IN (${trip}, ${other})`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
@@ -137,7 +144,7 @@ test("G1 — an unsourced or unofficial last admission is refused by the one wri
     { planId: trip, itemId: id("d2") },
   );
   assert.equal(n, 0);
-  const rows = (await db.execute(sql`SELECT count(*)::int AS n FROM place_facts WHERE itinerary_item_id = ${id("d2")}`)).rows as any[];
+  const rows = (await db.execute(sql`SELECT count(*)::int AS n FROM place_facts WHERE itinerary_item_id = ${id("d2")} AND fact_type IN ('last_admission', 'last_service')`)).rows as any[];
   assert.equal(rows[0].n, 0);
 });
 
@@ -146,7 +153,7 @@ test("G2–G5 — the findings: last entry, visit end, last ride; untagged and t
   const by = new Map(findings.map((f) => [f.kind, f]));
   assert.deepEqual(by.get("after_last_admission"), { kind: "after_last_admission", count: 1, days: [1] }, "Kiyomizu at 16:45 after 16:30 — the untagged 19:00 for the 20:00 stop is not read");
   assert.equal(by.get("closes_before_visit_end")?.count, 1, "Temple B closes at 16:00 (official) before 16:30 — Places' 20:00 lost");
-  assert.equal(by.get("last_service_missed")?.count, 1, "the 17:15 ride after the 17:00 last bus");
+  assert.deepEqual(by.get("last_service_missed"), { kind: "last_service_missed", count: 1, days: [1], inferred: true }, "the 17:15 ride after the 17:00 last bus — inferred, no stored leg");
   assert.equal(by.has("closed_on_arrival"), false);
 });
 
@@ -167,4 +174,12 @@ test("G7 — the extractor keeps structured fields only when they parse and the 
   assert.deepEqual(structuredFields("hours", { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] }, "9–17"), { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] });
   assert.equal(structuredFields("hours", { weekdayDescriptions: ["Monday: whenever"] }, "x"), null, "an unreadable line keeps the row text-only");
   assert.equal(structuredFields("tip", { anything: 1 }, "x"), null);
+});
+
+test("G8 — another plan's Google hours never feed this plan (LD 57); official crawled facts do", async () => {
+  const days = await loadDayFeasibility(trip);
+  assert.equal(days.get(2)?.hoursChecked, 0, "the other plan's Places hours for P4 were not read");
+  const { findings } = await loadOptimizerFindings(trip);
+  assert.equal(findings.some((f) => f.kind === "closed_on_arrival"), false);
+  assert.equal(days.get(1)?.lastEntryChecked, 1, "the other plan's OFFICIAL last admission for P1 was read");
 });

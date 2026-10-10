@@ -228,7 +228,8 @@ async function feasibilityContext(tripId: string, items: FeasibilityItem[], star
       const a = located[i];
       const b = located[i + 1];
       const key = `${dayNumber}|${a.r.id}|${b.r.id}`;
-      const mode = shownMode.has(key) ? shownMode.get(key) ?? null : defaultRoutedMode(a.p, b.p, transitCoverage);
+      const inferred = !shownMode.has(key);
+      const mode = inferred ? defaultRoutedMode(a.p, b.p, transitCoverage) : shownMode.get(key) ?? null;
       if (!isRideMode(mode)) continue;
       const from = byId.get(a.r.id);
       let departMin = from ? visitEndMinutes(from) : null;
@@ -241,7 +242,7 @@ async function feasibilityContext(tripId: string, items: FeasibilityItem[], star
               .filter((s) => haversineMeters(a.p.lat, a.p.lng, s.lat, s.lng) <= ROUTED_WALK_MAX_METERS)
               .map((s) => lastServiceMinutes(s.v, dateIso))
               .filter((m): m is number => m !== null);
-      rides.push({ dayNumber, departMin: departMin ?? -1, lastDepartures });
+      rides.push({ dayNumber, departMin: departMin ?? -1, lastDepartures, inferred });
     }
   });
   return { hours, timed, lastEntry, rides };

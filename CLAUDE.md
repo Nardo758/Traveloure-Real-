@@ -2676,7 +2676,9 @@ This document captures architectural decisions to maintain consistency across co
     printed in the quote; never parsed from free-text hours; tagged public + link_only. The free draft's fetch budget stays
     zero (A6-3A): the post-draft Places hours lookup is its only live source. Three findings — `after_last_admission`
     (arrival vs last entry), `closes_before_visit_end` (visit end vs closing) and `last_service_missed` — join the T-3
-    re-check; they flag, never reorder. Every day block draws ONE line (`feasibilityLine`) from `days[].feasibility`:
+    re-check; they flag, never reorder; a last-train finding on a ride inferred by the engine's default-mode rule reads
+    "may leave", and it under-reports until every operator is registered. Official crawled facts are read across plans
+    for the same place; Google hours never are (LD 57). Every day block draws ONE line (`feasibilityLine`) from `days[].feasibility`:
     honest counts, "not checked" where nothing is stored. Expert hard constraints never enter a draft (LD 27). Unsourced
     transport-profile hours and Kyoto's last-train note are deleted.
 

@@ -37,6 +37,8 @@ export interface Finding {
   est?: true;
   /** R-v: hours read more than 14 days before the trip carry this. */
   caveat?: string;
+  /** FD-3: `last_service_missed` only — a counted ride was inferred (no stored leg); the line hedges. */
+  inferred?: true;
   /** S12-4: `leg_unreachable` only — the stops it counts, by name and day, so a card can name them. */
   stops?: Array<{ itemId: string; title: string; day: number }>;
   /**
@@ -245,19 +247,31 @@ export interface RideCheck {
   departMin: number;
   /** The applicable last departures (`lastServiceMinutes`) at a station by the ride's start. Empty ⇒ unchecked. */
   lastDepartures: readonly number[];
+  /**
+   * The ride was INFERRED by the engine's default-mode rule (no stored leg for the pair). A finding that counts
+   * any inferred ride carries `inferred` and reads hedged ("may leave"); a stored leg keeps the plain form.
+   */
+  inferred?: boolean;
 }
 
-/** Ruling 3 — a ride that leaves after every applicable last departure near its start. */
+/**
+ * Ruling 3, with the review's decision rule: every stored last departure within 1.2 km of the ride's start is
+ * considered. None stored ⇒ not checked (no finding). Any still running at departure ⇒ no finding. Only when ALL
+ * have passed ⇒ the ride counts. Coverage depends on which operators are registered, so this under-reports until
+ * every operator in the market is.
+ */
 export function lastServiceMissed(rides: readonly RideCheck[]): Finding | null {
   const days = new Set<number>();
   let count = 0;
+  let inferred = false;
   for (const r of rides) {
     if (!r.lastDepartures.length) continue;
     if (r.lastDepartures.some((m) => r.departMin <= m)) continue;
     count += 1;
     days.add(r.dayNumber);
+    if (r.inferred) inferred = true;
   }
-  return count ? { kind: "last_service_missed", count, days: Array.from(days).sort((x, y) => x - y) } : null;
+  return count ? { kind: "last_service_missed", count, days: Array.from(days).sort((x, y) => x - y), ...(inferred ? { inferred: true as const } : {}) } : null;
 }
 
 // ── b. timed_entry_conflict (the ONE overlap rule, shared with validate-schedule) ───────────────
@@ -475,7 +489,9 @@ export function findingLine(f: Finding): string {
     case "closes_before_visit_end":
       return `${n(f.count, "stop closes", "stops close")} before your visit ends`;
     case "last_service_missed":
-      return `${n(f.count, "ride leaves", "rides leave")} after the last train or bus`;
+      return f.inferred
+        ? `${n(f.count, "ride may leave", "rides may leave")} after the last train or bus`
+        : `${n(f.count, "ride leaves", "rides leave")} after the last train or bus`;
     case "timed_entry_conflict":
       return `${n(f.count, "timed entry clashes", "timed entries clash")} with your fixed times`;
     case "city_crossing":

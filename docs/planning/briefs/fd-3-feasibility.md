@@ -64,10 +64,15 @@ page (same refusal list); free text for these two types is refused. Crawled `hou
 - `after_last_admission`: arrival later than the stored last entry for that date (in season). Equal is in.
 - `closes_before_visit_end`: open at arrival, but the visit's end (end time, else start + duration) passes closing.
   No end and no duration ⇒ unchecked. A stop closed on arrival stays `closed_on_arrival`'s.
-- `last_service_missed`: a ride leaving after every applicable last departure stored within 1.2 km
-  (`ROUTED_WALK_MAX_METERS`) of its start. A free plan stores no estimated legs, so the ride is derived the way the
-  engine picks its default mode (`defaultRoutedMode`: over 1.2 km and the market lists transit); a leg the plan shows
-  for the pair wins with its own mode. The ride departs when the stop it leaves ends. No fact ⇒ unchecked.
+- `last_service_missed` (review guards, Oct 10, 2026): every stored `last_service` whose station is within 1.2 km
+  (`ROUTED_WALK_MAX_METERS`) of the ride's start is considered — **none stored ⇒ "not checked"; any still running
+  at departure ⇒ no finding; only when all have passed ⇒ the ride counts.** A free plan stores no estimated legs,
+  so the ride is derived the way the engine picks its default mode (`defaultRoutedMode`: over 1.2 km and the market
+  lists transit); a leg the plan shows for the pair wins with its own mode. The ride departs when the stop it
+  leaves ends. **An inferred ride reads hedged** — "N rides may leave after the last train or bus"; a stored leg
+  keeps "N rides leave after …". **Coverage depends on which operators are registered**: until Supply Scout
+  registers JR West, Hankyu, Keihan and Kyoto City Bus & Subway, the finding under-reports (an unregistered
+  operator's station has nothing stored, so a ride there is "not checked", never "fine").
 - All three join `recheckConflicts`. Order: after `closed_on_arrival`.
 
 **d. Day feasibility (`days[].feasibility` on the plancard; words `feasibilityLine`, shared/plan-feasibility.ts).**
@@ -82,6 +87,12 @@ with no ride has no last-train clause (no question to answer). Rendered on every
 stored `last_admission` earlier than the ARRIVAL flags `after_last_admission`; a visit ENDING after closing flags
 `closes_before_visit_end`; a missed last service flags `last_service_missed` and an absent one is unchecked; text-only
 crawled hours are ignored.
+
+**Cross-plan boundary (review, Oct 10, 2026).** Official crawled facts (our extraction from an official page) are
+read for the same place id across plans. Google Places hours stay per-plan under LD 57: the cross-plan read takes
+`origin IN (crawled, expert_nugget)` with `license = official` only, so another plan's Places row never feeds a
+finding (pinned by G8). The existing post-draft lookup's place-id cache (R-u) still COPIES a Places answer onto
+this plan's own item with its original expiry — that is LD 57's ratified per-plan copy, unchanged here.
 
 ## 4. Answers (decision-maker, Oct 10, 2026)
 1. The one-prop `SlipView.tsx:2598` edit is allowed; the line renders on the day block everywhere it appears.

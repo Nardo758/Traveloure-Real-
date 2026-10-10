@@ -9,7 +9,8 @@
  *   FF5  after_last_admission compares the ARRIVAL with last entry; equal is still in
  *   FF6  closes_before_visit_end compares the visit's END with closing; a stop closed on arrival is not counted twice;
  *        no end time and no duration ⇒ unchecked
- *   FF7  last_service_missed: a ride after every applicable last departure; no stored fact ⇒ unchecked
+ *   FF7  last_service_missed: none stored ⇒ unchecked; any still running ⇒ none; all passed ⇒ counted;
+ *        an inferred ride reads hedged ("may leave"), a stored leg plain
  *   FF8  the day line: honest counts, "not checked" when nothing is stored, no last-train clause without rides
  *   FF9  the re-check reports the new kinds; the tags are public + link_only for either writer
  */
@@ -110,15 +111,21 @@ test("FF6 — closes_before_visit_end compares the visit's end with closing", ()
   assert.equal(findingLine(f!), "1 stop closes before your visit ends");
 });
 
-test("FF7 — last_service_missed: after every applicable last departure; none stored is unchecked", () => {
-  const f = lastServiceMissed([
-    { dayNumber: 1, departMin: 24 * 60 + 40, lastDepartures: [24 * 60 + 20, 23 * 60 + 50] },
-    { dayNumber: 1, departMin: 23 * 60, lastDepartures: [24 * 60 + 20] },
-    { dayNumber: 2, departMin: 25 * 60, lastDepartures: [] },
-  ]);
-  assert.deepEqual(f, { kind: "last_service_missed", count: 1, days: [1] });
+test("FF7 — last_service_missed: the three branches, and the hedged line for an inferred ride", () => {
+  // Branch 1: nothing stored near the start ⇒ not checked, no finding.
   assert.equal(lastServiceMissed([{ dayNumber: 1, departMin: 25 * 60, lastDepartures: [] }]), null);
-  assert.equal(findingLine(f!), "1 ride leaves after the last train or bus");
+  // Branch 2: any stored service still running at departure ⇒ no finding.
+  assert.equal(lastServiceMissed([{ dayNumber: 1, departMin: 23 * 60 + 30, lastDepartures: [23 * 60, 24 * 60 + 20] }]), null);
+  // Branch 3: every stored service has passed ⇒ the ride counts.
+  const stored = lastServiceMissed([{ dayNumber: 1, departMin: 24 * 60 + 40, lastDepartures: [24 * 60 + 20, 23 * 60 + 50] }]);
+  assert.deepEqual(stored, { kind: "last_service_missed", count: 1, days: [1] });
+  assert.equal(findingLine(stored!), "1 ride leaves after the last train or bus", "a stored leg keeps the plain form");
+  const inferred = lastServiceMissed([
+    { dayNumber: 1, departMin: 24 * 60 + 40, lastDepartures: [24 * 60 + 20], inferred: true },
+    { dayNumber: 2, departMin: 24 * 60 + 40, lastDepartures: [24 * 60 + 20] },
+  ]);
+  assert.deepEqual(inferred, { kind: "last_service_missed", count: 2, days: [1, 2], inferred: true });
+  assert.equal(findingLine(inferred!), "2 rides may leave after the last train or bus");
 });
 
 test("FF8 — the day line: honest counts, not checked, no last-train clause without rides", () => {
