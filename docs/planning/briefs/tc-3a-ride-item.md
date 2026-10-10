@@ -46,9 +46,14 @@ container, so every field comes from Chrome's official reads. Per row, the read 
 
 Anything the read does not confirm stays NULL; a row is seeded INACTIVE and goes live only once it is verified.
 
+## Brief amendments (decision-maker, Oct 10, 2026)
+- **`superseded_by_item_id` — KEPT.** Restore must be exact: removing a ride brings back exactly the legs that
+  ride superseded, and a leg the engine superseded (P0 ruling 7, ride link NULL) never comes back on an
+  unrelated ride's removal.
+- **L8/E9 re-pointed from `origin='superseded'` to `superseded_at` — SANCTIONED** (the marker move was in the brief).
+- **Queue:** TC-3a lands as R428, after SS-2 D. The 369 seed and the "Traveloure Transport" operator account
+  follow in their own PR once Chrome's official reads land.
+
 ## Held — needs data or ruling
 - "Migration 368 SQL approved — Leon" on the PR.
-- `superseded_by_item_id` is one column beyond the brief: it lets removing a ride restore exactly the legs it
-  superseded, never a leg the engine superseded (P0 ruling 7). Ruling requested with the 368 sign-off.
-- Chrome official reads for 369 (checklist above).
-- The reserved operator account "Traveloure Transport" is created with the 369 seed (it owns nothing until then).
+- Chrome official reads for 369 (checklist above) — a separate PR.
