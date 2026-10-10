@@ -2620,6 +2620,7 @@ export function SlipView({
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}
+                localTeaser={day?.localTeaser ?? null}
                 thumb={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
                     <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} size="thumb" testId={`slip-day-thumb-${slot.dayNum}`} />
