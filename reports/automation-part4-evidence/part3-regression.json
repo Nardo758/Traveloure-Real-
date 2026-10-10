@@ -1,0 +1,33 @@
+{
+  "scope": "development-isolated-provider-free",
+  "certified": false,
+  "realEmails": 0,
+  "loops": [
+    {
+      "loop": 1,
+      "scenario": "8e32b66a-db45-4150-b7e1-13dd06e6fa25",
+      "clean": true,
+      "sequentialRows": 2,
+      "concurrentRows": 2,
+      "concurrentDuplicates": 2,
+      "firstFailureSuccessIsNull": true,
+      "previousSuccessPreserved": true,
+      "emptyEnqueued": 0,
+      "deliveryCalls": 0,
+      "attackScenarios": 5
+    },
+    {
+      "loop": 2,
+      "scenario": "4d1a9c90-96f6-4318-9fb7-3bb7da1fef61",
+      "clean": true,
+      "sequentialRows": 2,
+      "concurrentRows": 2,
+      "concurrentDuplicates": 2,
+      "firstFailureSuccessIsNull": true,
+      "previousSuccessPreserved": true,
+      "emptyEnqueued": 0,
+      "deliveryCalls": 0,
+      "attackScenarios": 5
+    }
+  ]
+}

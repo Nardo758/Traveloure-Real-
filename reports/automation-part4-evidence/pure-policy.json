@@ -1,0 +1,23 @@
+{
+  "scope": "development-isolated-provider-free",
+  "certified": false,
+  "realEmails": 0,
+  "loops": [
+    {
+      "loop": 1,
+      "scenario": "a54096a3-19d0-4af3-a364-737ca3d9a7a0",
+      "clean": true,
+      "thresholds": 9,
+      "localBoundaries": 6,
+      "malformedTimestamps": 8
+    },
+    {
+      "loop": 2,
+      "scenario": "461099c1-8568-4d6d-9ab2-13920ad69127",
+      "clean": true,
+      "thresholds": 9,
+      "localBoundaries": 6,
+      "malformedTimestamps": 8
+    }
+  ]
+}

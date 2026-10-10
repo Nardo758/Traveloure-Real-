@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import express from "express";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../../db";
-import { users, cartItems } from "../../../shared/schema";
+import { users, cartItems, trips, providerServices, itineraryItems } from "../../../shared/schema";
+import { cartReminderVerification } from "../../services/cart-reminder.service";
 import internalRoutes, { JOB_CADENCE, runJob } from "../internal.routes";
 import {
   runCommerceEmailSweep, commerceSweepDependencies, commerceCartScopeId,
@@ -37,6 +38,9 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
   let deliveryCalls = 0;
   _outboxTestHooks.sendEmailFn = async () => { deliveryCalls++; throw new Error("Delivery forbidden in Part 3"); };
   const originalSelect = commerceSweepDependencies.selectCandidates;
+  // Part 3 still proves native queue infrastructure, not unknown external rails.
+  // No real transport is configured in this disposable provider-free harness.
+  cartReminderVerification.recordedRailsOnly = true;
   const oldSecret = process.env.INTERNAL_JOB_SECRET;
   process.env.INTERNAL_JOB_SECRET = randomUUID();
   const app = express(); app.use(express.json()); app.use(internalRoutes);
@@ -59,12 +63,23 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
     await db.execute(sql`DELETE FROM job_heartbeats`);
   };
   const fixture = async (userId: string | null, scope: string | null,
-    activity: unknown, guest: string | null = null) =>
-    db.insert(cartItems).values({
+    activity: unknown, guest: string | null = null) => {
+    let tripId: string | undefined, serviceId: string | undefined, itineraryItemId: string | undefined;
+    if (userId) {
+      const [trip] = await db.insert(trips).values({ userId, destination: "Kyoto",
+        startDate: "2030-01-01", endDate: "2030-01-03" }).returning();
+      const [service] = await db.insert(providerServices).values({ userId, serviceName: "Isolated verification" }).returning();
+      const [item] = await db.insert(itineraryItems).values({ tripId: trip.id,
+        providerServiceId: service.id, title: "Verification", dayNumber: 1 }).returning();
+      tripId = trip.id; serviceId = service.id; itineraryItemId = item.id;
+    }
+    return db.insert(cartItems).values({
       userId, guestSessionId: guest, experienceSlug: scope,
+      tripId, serviceId, itineraryItemId,
       quantity: 1 + Math.floor(Math.random() * 4),
       contentMeta: { _cart_automation: { activity } },
     });
+  };
   const evidence: object[] = [];
   try {
     assert.equal((await post("")).status, 401);
@@ -74,6 +89,8 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
       const userId = randomUUID();
       await db.insert(users).values({
         id: userId, role: "traveler", email: `${randomUUID()}@traveloure-qa.test`,
+        preferences: { itineraryMarketing: { enabled: true, timeZone: "Asia/Tokyo",
+          quietStart: "00:00", quietEnd: "00:00" } },
       });
       const idle = Date.now() - 3_600_000 - 10_000 - Math.floor(Math.random() * 50_000);
       // Same sequence across two carts: without cart scope in the key this is
@@ -203,6 +220,7 @@ test("Part 3: two randomized isolated queue-only loops plus hostile scenarios", 
     console.log("PART3_LOOP_EVIDENCE=" + JSON.stringify(evidence));
   } finally {
     commerceSweepDependencies.selectCandidates = originalSelect;
+    cartReminderVerification.recordedRailsOnly = false;
     _outboxTestHooks.sendEmailFn = null;
     if (oldSecret === undefined) delete process.env.INTERNAL_JOB_SECRET;
     else process.env.INTERNAL_JOB_SECRET = oldSecret;

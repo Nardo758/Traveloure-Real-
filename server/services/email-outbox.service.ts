@@ -45,6 +45,7 @@ import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { isItineraryFollowup } from "./itinerary-followup-email";
+import { isCartReminder, isCartReminderFamily, buildCartReminderEmail, type CartReminderKind } from "./cart-reminder-email";
 import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
@@ -88,6 +89,8 @@ const LEASE_MS = 10 * 60 * 1000;
  */
 export async function enqueuePendingCommerceReminder(
   recipient: string, commerceKey: string, sequenceId: string, cartScope: string,
+  identity?: { kind: CartReminderKind; travelerId: string; scope: string | null; sequenceStartMs: number },
+  executor: Pick<typeof db, "execute"> = db,
 ): Promise<boolean> {
   const schema = process.env.MESSAGING_VERIFICATION_SCHEMA ?? "";
   if (!["test", "development"].includes(process.env.NODE_ENV ?? "") ||
@@ -95,13 +98,16 @@ export async function enqueuePendingCommerceReminder(
       !/^[^@\s]+@traveloure-qa\.test$/i.test(recipient)) {
     throw new Error("Commerce queue is restricted to isolated development QA");
   }
-  const inserted = await db.execute(sql`
+  const kind = identity?.kind ?? "cart_reminder_1h";
+  if (!isCartReminder(kind)) throw new Error("Unsupported cart reminder step");
+  const message = buildCartReminderEmail();
+  const inserted = await executor.execute(sql`
     INSERT INTO email_outbox (email_type, to_email, subject, html, text_body, status, metadata)
-    SELECT 'cart_reminder_1h', ${recipient}, 'Your cart is ready when you are',
-      '<p>Your saved cart is ready when you are. Open Traveloure to review it.</p>',
-      'Your saved cart is ready when you are. Open Traveloure to review it.',
+    SELECT ${kind}, ${recipient}, ${message.subject}, ${message.html}, ${message.text},
       'pending', ${JSON.stringify({ commerceKey, sequenceId, cartScope,
-        verificationOnly: true, releaseBlockedBy: ["Part 4", "Part 6"] })}::jsonb
+        ...(identity ? { cartReminderVersion: 1, marketing: true, travelerId: identity.travelerId,
+          cartScopeRaw: identity.scope, sequenceStartMs: identity.sequenceStartMs } : {}),
+        verificationOnly: true, releaseBlockedBy: ["Part 4", "Part 6", "payment provenance"] })}::jsonb
     WHERE current_schema() = ${schema}
     ON CONFLICT ((metadata ->> 'commerceKey')) WHERE metadata ? 'commerceKey'
     DO NOTHING RETURNING id`);
@@ -143,6 +149,12 @@ export interface EnqueueEmailParams extends SendEmailParams {
  * Never throws — all errors are caught and recorded on the outbox row.
  */
 async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | null> {
+  // Cart reminders have ONE queue-only producer. Never take generic immediate
+  // delivery or its historical unrecorded direct-send fallback.
+  if (isCartReminderFamily(params.emailType)) {
+    logger.warn({ reason: "cart_reminder_requires_guarded_sweep" }, "[email-outbox] cart enqueue refused");
+    return null;
+  }
   const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
   const lease      = new Date(Date.now() + LEASE_MS);
 
@@ -400,6 +412,13 @@ async function attemptDelivery(
   // there is no circular import at module-load time.
   let result: SendEmailResult;
   try {
+    if (current.emailType && isCartReminderFamily(current.emailType)) {
+      if (outboxId === null) return;
+      const { deliverCartReminder } = await import("./cart-reminder.service");
+      // No real provider import: the founder requires zero emails in Part 4.
+      await deliverCartReminder(outboxId, _outboxTestHooks.sendEmailFn);
+      return;
+    }
     if (outboxId !== null && current.emailType === "signup_welcome") {
       const { deliverSignupWelcome } = await import("./signup-welcome-outbox.service");
       await deliverSignupWelcome(outboxId, async (payload) => {

@@ -1,13 +1,15 @@
 /**
- * Part 3 infrastructure only. NO production activation, sender, new timer,
- * clock mutation, payment logic, or Parts 4/6 send-time policy.
+ * Development-only sweep: stored-state SELECTs and durable outbox enqueue only.
+ * Unknown rail coverage blocks eligibility; no provider transport or new timer.
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { evaluateCartClock } from "./cart-email-state.service";
 import { enqueuePendingCommerceReminder } from "./email-outbox.service";
 import { messagingAutomationRegistry } from "../automations/messaging";
 import { runScheduledAutomation } from "../automations/scheduler-wrapper";
+import { assessCartReminder, cartReminderNow } from "./cart-reminder.service";
+import { lockMarketingTraveler, marketingDayReserved, marketingWindow } from "./marketing-delivery-policy.service";
+import { marketingPreferences } from "./itinerary-followup-email";
 
 export const COMMERCE_SWEEP_JOB = "commerce-email-sweep";
 export interface CommerceCandidate {
@@ -74,13 +76,28 @@ export async function runCommerceEmailSweep(): Promise<CommerceSweepCounts> {
     if (!candidate.user_id || !candidate.email) { skip("no_account_recipient"); continue; }
     // Even an accidental data-bearing clone must never queue a real address.
     if (!/^[^@\s]+@traveloure-qa\.test$/i.test(candidate.email)) { skip("non_qa_recipient"); continue; }
-    const clock = evaluateCartClock(candidate.items, Number(candidate.now_ms));
-    if (!clock.eligible) { skip(clock.reason); continue; }
+    // Re-read the authoritative cart under the recipient lock below. Do not
+    // decide from an earlier candidate snapshot or a caller-supplied clock.
     const cartScope = commerceCartScopeId(candidate.scope);
-    const key = `cart-reminder-1h:user:${candidate.user_id}:cart:${cartScope}:${clock.sequenceId}`;
-    if (await enqueuePendingCommerceReminder(candidate.email, key, clock.sequenceId, cartScope)) {
-      counts.enqueued++;
-    } else counts.duplicates++;
+    const result = await db.transaction(async tx => {
+      await lockMarketingTraveler(tx, candidate.user_id!);
+      const now = await cartReminderNow(tx);
+      const decision = await assessCartReminder(tx, candidate.user_id!, candidate.scope, now);
+      if (!decision.eligible) return { reason: decision.reason };
+      const account = (await tx.execute(sql`SELECT email, preferences FROM users WHERE id=${candidate.user_id}`)).rows[0] as
+        { email: string; preferences: unknown };
+      const local = marketingWindow(now, marketingPreferences(account.preferences)!);
+      if (await marketingDayReserved(tx, candidate.user_id!, local.day)) return { reason: "daily_marketing_cap" };
+      const key = `${decision.kind!.replaceAll("_", "-")}:user:${candidate.user_id}:cart:${cartScope}:${decision.sequenceId}`;
+      const queued = await enqueuePendingCommerceReminder(account.email, key, decision.sequenceId!, cartScope, {
+        kind: decision.kind!, travelerId: candidate.user_id!, scope: candidate.scope,
+        sequenceStartMs: decision.sequenceStartMs!,
+      }, tx);
+      return { queued };
+    });
+    if ("reason" in result) skip(result.reason!);
+    else if (result.queued) counts.enqueued++;
+    else counts.duplicates++;
   }
   return counts;
 }

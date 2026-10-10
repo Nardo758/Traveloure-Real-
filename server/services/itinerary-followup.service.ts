@@ -9,6 +9,8 @@ import {
   ITINERARY_FOLLOWUPS, buildItineraryFollowupEmail, isItineraryFollowup,
   marketingPreferences, localMarketingClock, nextMarketingWindow,
 } from "./itinerary-followup-email";
+import { lockMarketingTraveler, marketingDayReserved, reserveMarketingDay } from "./marketing-delivery-policy.service";
+import { eligibleCartHasPriority, cartReminderNow, cartReminderVerificationEnabled } from "./cart-reminder.service";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface FollowupMetadata {
@@ -24,7 +26,7 @@ export interface FollowupMetadata {
 /** The traveler's users-row lock, held while a follow-up is checked and sent. Do not substitute a process-local mutex.
  * There is no database trigger (migration 351 was rejected): a booking is caught by bookingExists at send time. */
 export async function lockFollowupTraveler(tx: Tx, travelerId: string) {
-  await tx.execute(sql`SELECT id FROM users WHERE id = ${travelerId} FOR UPDATE`);
+  await lockMarketingTraveler(tx, travelerId);
 }
 
 export async function cancelItineraryFollowups(tx: Tx, travelerId: string, reason: string, exceptItinerary?: string) {
@@ -131,7 +133,7 @@ export async function followupPersonalization(tx: Tx, itineraryId: string, desti
     expertName: (expert?.rows[0] as { name?: string } | undefined)?.name ?? null };
 }
 
-/** Transaction spans the provider attempt: a booking cannot commit between check and send. */
+/** Recipient lock serializes marketing attempts, not every payment writer. */
 export async function deliverItineraryFollowup(outboxId: number, sender: (params: SendEmailParams) => Promise<SendEmailResult>) {
   const [snapshot] = await db.select({ metadata: emailOutbox.metadata }).from(emailOutbox)
     .where(eq(emailOutbox.id, outboxId)).limit(1);
@@ -163,16 +165,14 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
       await cancelItineraryFollowups(tx, meta.travelerId, "Booking or payment started");
       return "cancelled" as const;
     }
-    const now = new Date();
+    const now = cartReminderVerificationEnabled() ? await cartReminderNow(tx) : new Date();
     const clock = localMarketingClock(now, preferences);
-    const reservations = await tx.select({ id: emailOutbox.id }).from(emailOutbox)
-      .where(sql`${emailOutbox.id} <> ${outboxId} AND ${emailOutbox.metadata}->>'travelerId' = ${meta.travelerId}
-        AND ${emailOutbox.metadata}->>'marketing' = 'true'
-        AND ${emailOutbox.metadata}->>'deliveryCalendarDay' = ${clock.day}`).limit(1);
-    if (clock.quiet || reservations.length > 0) {
+    const reserved = await marketingDayReserved(tx, meta.travelerId, clock.day, outboxId);
+    const cartPriority = await eligibleCartHasPriority(tx, meta.travelerId, now);
+    if (clock.quiet || reserved || cartPriority) {
       await tx.update(emailOutbox).set({
-        status: "pending", retryAfter: nextMarketingWindow(now, preferences, reservations.length ? clock.day : undefined),
-        lastError: reservations.length ? "Deferred by daily marketing cap" : "Deferred by recipient quiet hours", updatedAt: now,
+        status: "pending", retryAfter: nextMarketingWindow(now, preferences, reserved ? clock.day : undefined),
+        lastError: reserved ? "Deferred by daily marketing cap" : cartPriority ? "Deferred by eligible cart priority" : "Deferred by recipient quiet hours", updatedAt: now,
       }).where(eq(emailOutbox.id, outboxId));
       return "deferred" as const;
     }
@@ -184,7 +184,7 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
     });
     if (!message) return cancel("No currently bookable itinerary items");
     const definition = ITINERARY_FOLLOWUPS.find((entry) => entry.kind === row.emailType)!;
-    const deliveryMetadata = { ...meta, deliveryCalendarDay: clock.day };
+    const deliveryMetadata = reserveMarketingDay(meta as unknown as Record<string, unknown>, clock.day);
     await tx.update(emailOutbox).set({
       metadata: deliveryMetadata, subject: message.subject, html: message.html, textBody: message.text,
     })

@@ -1,0 +1,281 @@
+{
+  "scope": "development-isolated-provider-free",
+  "certified": false,
+  "realEmails": 0,
+  "loops": [
+    {
+      "loop": 1,
+      "scenario": "6da07dfb-bb6a-4f72-aad2-9eba202609e6",
+      "clean": true,
+      "scope": "recorded-readable-subset-only",
+      "rails": [
+        {
+          "rail": "canonical_provider",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "legacy_booking",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "stripe_intent_ledger",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "credits",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "wallet",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "trip_pass",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "partner_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "coordination",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "coordination_booking",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "coordination_credit",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "ready_made_purchase",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": false
+        },
+        {
+          "rail": "template_purchase",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "expert_tip",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "expert_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "booking_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "provider_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "group_transaction",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        }
+      ],
+      "eligibilityCases": 11,
+      "duplicates": 2,
+      "resumedDayCap": true,
+      "fourthRejected": true,
+      "paidProviderRemovedPartnerOnly": true,
+      "defaultUnknownBlocked": true,
+      "paymentSweepOrderings": 2,
+      "guestClaim": true,
+      "itineraryFirstAndCartFirst": true,
+      "realEmails": 0
+    },
+    {
+      "loop": 2,
+      "scenario": "3500f91e-900c-40d5-bdde-ee873f0d3191",
+      "clean": true,
+      "scope": "recorded-readable-subset-only",
+      "rails": [
+        {
+          "rail": "canonical_provider",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "legacy_booking",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "stripe_intent_ledger",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "credits",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "wallet",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "trip_pass",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "partner_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "coordination",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "coordination_booking",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "coordination_credit",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "ready_made_purchase",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": false
+        },
+        {
+          "rail": "template_purchase",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "expert_tip",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "expert_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "booking_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "provider_request",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        },
+        {
+          "rail": "group_transaction",
+          "before": true,
+          "at": true,
+          "after": true,
+          "nullColumnTested": true
+        }
+      ],
+      "eligibilityCases": 11,
+      "duplicates": 2,
+      "resumedDayCap": true,
+      "fourthRejected": true,
+      "paidProviderRemovedPartnerOnly": true,
+      "defaultUnknownBlocked": true,
+      "paymentSweepOrderings": 2,
+      "guestClaim": true,
+      "itineraryFirstAndCartFirst": true,
+      "realEmails": 0
+    }
+  ]
+}

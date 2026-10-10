@@ -51,3 +51,18 @@ meant the allowed sending window, not a daytime prohibition.
 
 **How to apply:** Check both exact boundaries and an explicitly known timezone;
 never substitute the server timezone or infer one from a destination.
+
+When payment provenance is incomplete, cart reminders remain fail-closed.
+The approved interim check disqualifies any traveler payment/booking activity
+at or after the server sequence start, even canceled/unsettled activity.
+Tripless and residual partner-only carts are ambiguous, not presumed unpaid.
+Payment writers and checkout cannot be changed without separate approval.
+
+**Why:** The founder chose conservative query-only suppression instead of an
+unapproved payment/cart correlation redesign. Stored ledger timestamps alone
+cannot prove external payment activity or serialize the final-read/send race.
+
+**How to apply:** Distinguish readable-record test proof from complete rail
+certification. Keep UNKNOWN blockers active, do not use an isolated test override
+as release evidence, and obtain separate approval for provenance fixes. Preserve
+the current no-email verification boundary until explicitly replaced.
