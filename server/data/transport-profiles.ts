@@ -9,7 +9,6 @@ export interface TransportModeConfig {
   comfortScore: number;
   scenicScore: number;
   accessibilityScore: number;
-  availableHours: { start: number; end: number };
   seasonalRestrictions?: string[];
   localName?: string;
 }
@@ -35,7 +34,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
     cyclingInfrastructure: 85,
     specialNotes: [
       "Trains are extremely punctual",
-      "Last trains around 23:30",
       "Cycling is a popular local transport mode",
       "Bus system covers areas trains don't",
       "Taxis are expensive but very safe",
@@ -52,7 +50,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 60,
         scenicScore: 90,
         accessibilityScore: 40,
-        availableHours: { start: 0, end: 24 },
       },
       {
         mode: "train",
@@ -65,7 +62,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 85,
         scenicScore: 50,
         accessibilityScore: 80,
-        availableHours: { start: 5, end: 24 },
         localName: "JR / Hankyu / Keihan",
       },
       {
@@ -79,7 +75,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 60,
         scenicScore: 70,
         accessibilityScore: 70,
-        availableHours: { start: 6, end: 22 },
       },
       {
         mode: "bike",
@@ -92,7 +87,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 70,
         scenicScore: 95,
         accessibilityScore: 10,
-        availableHours: { start: 6, end: 22 },
         localName: "Rental bicycle / Pippa Cycle",
       },
       {
@@ -106,7 +100,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 95,
         scenicScore: 40,
         accessibilityScore: 60,
-        availableHours: { start: 0, end: 24 },
       },
       {
         mode: "rental_car",
@@ -119,7 +112,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 80,
         scenicScore: 60,
         accessibilityScore: 70,
-        availableHours: { start: 0, end: 24 },
       },
     ],
   },
@@ -150,7 +142,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 30,
         scenicScore: 60,
         accessibilityScore: 20,
-        availableHours: { start: 6, end: 22 },
       },
       {
         mode: "train",
@@ -163,7 +154,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 30,
         scenicScore: 40,
         accessibilityScore: 20,
-        availableHours: { start: 4, end: 24 },
         localName: "Mumbai Local",
       },
       {
@@ -177,7 +167,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 50,
         scenicScore: 75,
         accessibilityScore: 15,
-        availableHours: { start: 6, end: 24 },
         localName: "Auto-rickshaw",
       },
       {
@@ -191,7 +180,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 75,
         scenicScore: 50,
         accessibilityScore: 50,
-        availableHours: { start: 0, end: 24 },
         localName: "Kaali-Peeli / Uber / Ola",
       },
       {
@@ -205,7 +193,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 80,
         scenicScore: 50,
         accessibilityScore: 50,
-        availableHours: { start: 0, end: 24 },
         localName: "Uber / Ola (AC)",
       },
       {
@@ -219,7 +206,6 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
         comfortScore: 70,
         scenicScore: 95,
         accessibilityScore: 30,
-        availableHours: { start: 6, end: 20 },
         localName: "Mumbai Ferry",
       },
     ],
@@ -239,11 +225,11 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
       "Uber operates here but legally ambiguous",
     ],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4, waitTimeMinutes: 0, energyCostPerKm: 5, comfortScore: 50, scenicScore: 70, accessibilityScore: 40, availableHours: { start: 6, end: 22 } },
-      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 0.7, averageSpeedKmh: 22, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 55, scenicScore: 40, accessibilityScore: 60, availableHours: { start: 5, end: 23 }, localName: "TransMilenio" },
-      { mode: "taxi", available: true, baseCostPerKm: 0.5, flagFall: 1.2, averageSpeedKmh: 18, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 70, scenicScore: 50, accessibilityScore: 55, availableHours: { start: 0, end: 24 } },
-      { mode: "rideshare", available: true, baseCostPerKm: 0.45, flagFall: 1.0, averageSpeedKmh: 18, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 75, scenicScore: 50, accessibilityScore: 55, availableHours: { start: 0, end: 24 }, localName: "InDriver / Cabify" },
-      { mode: "bike", available: true, baseCostPerKm: 0.1, flagFall: 0.5, averageSpeedKmh: 14, waitTimeMinutes: 2, energyCostPerKm: 4, comfortScore: 60, scenicScore: 85, accessibilityScore: 10, availableHours: { start: 6, end: 20 }, localName: "Cicla / Tembici" },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4, waitTimeMinutes: 0, energyCostPerKm: 5, comfortScore: 50, scenicScore: 70, accessibilityScore: 40 },
+      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 0.7, averageSpeedKmh: 22, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 55, scenicScore: 40, accessibilityScore: 60, localName: "TransMilenio" },
+      { mode: "taxi", available: true, baseCostPerKm: 0.5, flagFall: 1.2, averageSpeedKmh: 18, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 70, scenicScore: 50, accessibilityScore: 55 },
+      { mode: "rideshare", available: true, baseCostPerKm: 0.45, flagFall: 1.0, averageSpeedKmh: 18, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 75, scenicScore: 50, accessibilityScore: 55, localName: "InDriver / Cabify" },
+      { mode: "bike", available: true, baseCostPerKm: 0.1, flagFall: 0.5, averageSpeedKmh: 14, waitTimeMinutes: 2, energyCostPerKm: 4, comfortScore: 60, scenicScore: 85, accessibilityScore: 10, localName: "Cicla / Tembici" },
     ],
   },
 
@@ -261,11 +247,11 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
       "Monsoon season (Jun-Sep) limits outdoor transport options",
     ],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4, waitTimeMinutes: 0, energyCostPerKm: 4, comfortScore: 50, scenicScore: 85, accessibilityScore: 30, availableHours: { start: 6, end: 22 } },
-      { mode: "bike", available: true, baseCostPerKm: 0.2, flagFall: 5.0, averageSpeedKmh: 25, waitTimeMinutes: 5, energyCostPerKm: 2, comfortScore: 70, scenicScore: 90, accessibilityScore: 5, availableHours: { start: 6, end: 22 }, localName: "Scooter rental" },
-      { mode: "taxi", available: true, baseCostPerKm: 0.8, flagFall: 3.0, averageSpeedKmh: 30, waitTimeMinutes: 10, energyCostPerKm: 0.2, comfortScore: 85, scenicScore: 60, accessibilityScore: 55, availableHours: { start: 0, end: 24 } },
-      { mode: "rideshare", available: true, baseCostPerKm: 0.5, flagFall: 1.5, averageSpeedKmh: 28, waitTimeMinutes: 8, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 55, accessibilityScore: 50, availableHours: { start: 6, end: 23 }, localName: "Rapido / Ola" },
-      { mode: "auto_rickshaw", available: true, baseCostPerKm: 0.25, flagFall: 0.5, averageSpeedKmh: 20, waitTimeMinutes: 5, energyCostPerKm: 1, comfortScore: 55, scenicScore: 75, accessibilityScore: 15, availableHours: { start: 7, end: 22 } },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4, waitTimeMinutes: 0, energyCostPerKm: 4, comfortScore: 50, scenicScore: 85, accessibilityScore: 30 },
+      { mode: "bike", available: true, baseCostPerKm: 0.2, flagFall: 5.0, averageSpeedKmh: 25, waitTimeMinutes: 5, energyCostPerKm: 2, comfortScore: 70, scenicScore: 90, accessibilityScore: 5, localName: "Scooter rental" },
+      { mode: "taxi", available: true, baseCostPerKm: 0.8, flagFall: 3.0, averageSpeedKmh: 30, waitTimeMinutes: 10, energyCostPerKm: 0.2, comfortScore: 85, scenicScore: 60, accessibilityScore: 55 },
+      { mode: "rideshare", available: true, baseCostPerKm: 0.5, flagFall: 1.5, averageSpeedKmh: 28, waitTimeMinutes: 8, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 55, accessibilityScore: 50, localName: "Rapido / Ola" },
+      { mode: "auto_rickshaw", available: true, baseCostPerKm: 0.25, flagFall: 0.5, averageSpeedKmh: 20, waitTimeMinutes: 5, energyCostPerKm: 1, comfortScore: 55, scenicScore: 75, accessibilityScore: 15 },
     ],
   },
 
@@ -283,11 +269,11 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
       "Taxis (black cabs) are reliable and metered",
     ],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4.5, waitTimeMinutes: 0, energyCostPerKm: 2, comfortScore: 70, scenicScore: 95, accessibilityScore: 55, availableHours: { start: 0, end: 24 } },
-      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 1.8, averageSpeedKmh: 18, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 70, scenicScore: 55, accessibilityScore: 75, availableHours: { start: 5, end: 24 }, localName: "Lothian Bus / Tram" },
-      { mode: "taxi", available: true, baseCostPerKm: 2.5, flagFall: 4.0, averageSpeedKmh: 25, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 90, scenicScore: 45, accessibilityScore: 75, availableHours: { start: 0, end: 24 }, localName: "Black Cab" },
-      { mode: "rideshare", available: true, baseCostPerKm: 1.8, flagFall: 2.5, averageSpeedKmh: 25, waitTimeMinutes: 4, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 45, accessibilityScore: 60, availableHours: { start: 0, end: 24 }, localName: "Uber / Bolt" },
-      { mode: "bike", available: true, baseCostPerKm: 0.15, flagFall: 1.0, averageSpeedKmh: 13, waitTimeMinutes: 3, energyCostPerKm: 2.5, comfortScore: 60, scenicScore: 88, accessibilityScore: 10, availableHours: { start: 6, end: 22 }, localName: "Just Eat Cycles" },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4.5, waitTimeMinutes: 0, energyCostPerKm: 2, comfortScore: 70, scenicScore: 95, accessibilityScore: 55 },
+      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 1.8, averageSpeedKmh: 18, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 70, scenicScore: 55, accessibilityScore: 75, localName: "Lothian Bus / Tram" },
+      { mode: "taxi", available: true, baseCostPerKm: 2.5, flagFall: 4.0, averageSpeedKmh: 25, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 90, scenicScore: 45, accessibilityScore: 75, localName: "Black Cab" },
+      { mode: "rideshare", available: true, baseCostPerKm: 1.8, flagFall: 2.5, averageSpeedKmh: 25, waitTimeMinutes: 4, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 45, accessibilityScore: 60, localName: "Uber / Bolt" },
+      { mode: "bike", available: true, baseCostPerKm: 0.15, flagFall: 1.0, averageSpeedKmh: 13, waitTimeMinutes: 3, energyCostPerKm: 2.5, comfortScore: 60, scenicScore: 88, accessibilityScore: 10, localName: "Just Eat Cycles" },
     ],
   },
 
@@ -305,11 +291,11 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
       "Heat can be intense — plan morning/evening walks",
     ],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 3.8, waitTimeMinutes: 0, energyCostPerKm: 5, comfortScore: 55, scenicScore: 95, accessibilityScore: 45, availableHours: { start: 6, end: 22 } },
-      { mode: "tuk_tuk", available: true, baseCostPerKm: 0.3, flagFall: 1.0, averageSpeedKmh: 15, waitTimeMinutes: 3, energyCostPerKm: 1, comfortScore: 65, scenicScore: 85, accessibilityScore: 20, availableHours: { start: 7, end: 23 }, localName: "Tuk-tuk / Mototaxi" },
-      { mode: "taxi", available: true, baseCostPerKm: 0.6, flagFall: 2.0, averageSpeedKmh: 20, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 75, scenicScore: 50, accessibilityScore: 50, availableHours: { start: 0, end: 24 } },
-      { mode: "rideshare", available: true, baseCostPerKm: 0.5, flagFall: 1.5, averageSpeedKmh: 20, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 78, scenicScore: 50, accessibilityScore: 50, availableHours: { start: 6, end: 23 }, localName: "InDriver / Uber" },
-      { mode: "ferry", available: true, baseCostPerKm: 0.2, flagFall: 2.0, averageSpeedKmh: 25, waitTimeMinutes: 20, energyCostPerKm: 0.5, comfortScore: 75, scenicScore: 98, accessibilityScore: 25, availableHours: { start: 7, end: 18 }, localName: "Lancha / Water taxi" },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 3.8, waitTimeMinutes: 0, energyCostPerKm: 5, comfortScore: 55, scenicScore: 95, accessibilityScore: 45 },
+      { mode: "tuk_tuk", available: true, baseCostPerKm: 0.3, flagFall: 1.0, averageSpeedKmh: 15, waitTimeMinutes: 3, energyCostPerKm: 1, comfortScore: 65, scenicScore: 85, accessibilityScore: 20, localName: "Tuk-tuk / Mototaxi" },
+      { mode: "taxi", available: true, baseCostPerKm: 0.6, flagFall: 2.0, averageSpeedKmh: 20, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 75, scenicScore: 50, accessibilityScore: 50 },
+      { mode: "rideshare", available: true, baseCostPerKm: 0.5, flagFall: 1.5, averageSpeedKmh: 20, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 78, scenicScore: 50, accessibilityScore: 50, localName: "InDriver / Uber" },
+      { mode: "ferry", available: true, baseCostPerKm: 0.2, flagFall: 2.0, averageSpeedKmh: 25, waitTimeMinutes: 20, energyCostPerKm: 0.5, comfortScore: 75, scenicScore: 98, accessibilityScore: 25, localName: "Lancha / Water taxi" },
     ],
   },
 
@@ -327,11 +313,11 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
       "Heat in summer (Apr-Jun) makes walking challenging",
     ],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 3.5, waitTimeMinutes: 0, energyCostPerKm: 5, comfortScore: 35, scenicScore: 70, accessibilityScore: 25, availableHours: { start: 6, end: 21 } },
-      { mode: "auto_rickshaw", available: true, baseCostPerKm: 0.15, flagFall: 0.25, averageSpeedKmh: 20, waitTimeMinutes: 3, energyCostPerKm: 1, comfortScore: 50, scenicScore: 80, accessibilityScore: 15, availableHours: { start: 6, end: 24 }, localName: "Auto-rickshaw" },
-      { mode: "tuk_tuk", available: true, baseCostPerKm: 0.12, flagFall: 0.2, averageSpeedKmh: 15, waitTimeMinutes: 2, energyCostPerKm: 1, comfortScore: 55, scenicScore: 85, accessibilityScore: 20, availableHours: { start: 6, end: 22 }, localName: "Cycle rickshaw" },
-      { mode: "taxi", available: true, baseCostPerKm: 0.35, flagFall: 1.0, averageSpeedKmh: 22, waitTimeMinutes: 8, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 50, accessibilityScore: 55, availableHours: { start: 0, end: 24 } },
-      { mode: "rideshare", available: true, baseCostPerKm: 0.28, flagFall: 0.8, averageSpeedKmh: 22, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 82, scenicScore: 50, accessibilityScore: 55, availableHours: { start: 0, end: 24 }, localName: "Uber / Ola" },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 3.5, waitTimeMinutes: 0, energyCostPerKm: 5, comfortScore: 35, scenicScore: 70, accessibilityScore: 25 },
+      { mode: "auto_rickshaw", available: true, baseCostPerKm: 0.15, flagFall: 0.25, averageSpeedKmh: 20, waitTimeMinutes: 3, energyCostPerKm: 1, comfortScore: 50, scenicScore: 80, accessibilityScore: 15, localName: "Auto-rickshaw" },
+      { mode: "tuk_tuk", available: true, baseCostPerKm: 0.12, flagFall: 0.2, averageSpeedKmh: 15, waitTimeMinutes: 2, energyCostPerKm: 1, comfortScore: 55, scenicScore: 85, accessibilityScore: 20, localName: "Cycle rickshaw" },
+      { mode: "taxi", available: true, baseCostPerKm: 0.35, flagFall: 1.0, averageSpeedKmh: 22, waitTimeMinutes: 8, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 50, accessibilityScore: 55 },
+      { mode: "rideshare", available: true, baseCostPerKm: 0.28, flagFall: 0.8, averageSpeedKmh: 22, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 82, scenicScore: 50, accessibilityScore: 55, localName: "Uber / Ola" },
     ],
   },
 
@@ -349,13 +335,13 @@ export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
       "Cable car (Funicular) connects riverside to upper city",
     ],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4, waitTimeMinutes: 0, energyCostPerKm: 3, comfortScore: 65, scenicScore: 95, accessibilityScore: 40, availableHours: { start: 0, end: 24 } },
-      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 1.5, averageSpeedKmh: 22, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 70, scenicScore: 65, accessibilityScore: 70, availableHours: { start: 6, end: 24 }, localName: "Metro / Bus / Tram" },
-      { mode: "tram", available: true, baseCostPerKm: 0, flagFall: 4.0, averageSpeedKmh: 10, waitTimeMinutes: 15, energyCostPerKm: 0.5, comfortScore: 75, scenicScore: 98, accessibilityScore: 45, availableHours: { start: 8, end: 22 }, localName: "Tram 22E (historic)" },
-      { mode: "taxi", available: true, baseCostPerKm: 1.8, flagFall: 3.5, averageSpeedKmh: 28, waitTimeMinutes: 4, energyCostPerKm: 0.2, comfortScore: 88, scenicScore: 45, accessibilityScore: 65, availableHours: { start: 0, end: 24 } },
-      { mode: "rideshare", available: true, baseCostPerKm: 1.4, flagFall: 2.5, averageSpeedKmh: 28, waitTimeMinutes: 4, energyCostPerKm: 0.2, comfortScore: 82, scenicScore: 45, accessibilityScore: 60, availableHours: { start: 0, end: 24 }, localName: "Uber / Bolt" },
-      { mode: "bike", available: true, baseCostPerKm: 0.2, flagFall: 1.0, averageSpeedKmh: 11, waitTimeMinutes: 3, energyCostPerKm: 3, comfortScore: 60, scenicScore: 90, accessibilityScore: 10, availableHours: { start: 7, end: 21 }, localName: "Gira (city bikes)" },
-      { mode: "cable_car", available: true, baseCostPerKm: 0, flagFall: 6.0, averageSpeedKmh: 5, waitTimeMinutes: 10, energyCostPerKm: 0.1, comfortScore: 85, scenicScore: 99, accessibilityScore: 50, availableHours: { start: 8, end: 20 }, localName: "Funicular dos Guindais" },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4, waitTimeMinutes: 0, energyCostPerKm: 3, comfortScore: 65, scenicScore: 95, accessibilityScore: 40 },
+      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 1.5, averageSpeedKmh: 22, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 70, scenicScore: 65, accessibilityScore: 70, localName: "Metro / Bus / Tram" },
+      { mode: "tram", available: true, baseCostPerKm: 0, flagFall: 4.0, averageSpeedKmh: 10, waitTimeMinutes: 15, energyCostPerKm: 0.5, comfortScore: 75, scenicScore: 98, accessibilityScore: 45, localName: "Tram 22E (historic)" },
+      { mode: "taxi", available: true, baseCostPerKm: 1.8, flagFall: 3.5, averageSpeedKmh: 28, waitTimeMinutes: 4, energyCostPerKm: 0.2, comfortScore: 88, scenicScore: 45, accessibilityScore: 65 },
+      { mode: "rideshare", available: true, baseCostPerKm: 1.4, flagFall: 2.5, averageSpeedKmh: 28, waitTimeMinutes: 4, energyCostPerKm: 0.2, comfortScore: 82, scenicScore: 45, accessibilityScore: 60, localName: "Uber / Bolt" },
+      { mode: "bike", available: true, baseCostPerKm: 0.2, flagFall: 1.0, averageSpeedKmh: 11, waitTimeMinutes: 3, energyCostPerKm: 3, comfortScore: 60, scenicScore: 90, accessibilityScore: 10, localName: "Gira (city bikes)" },
+      { mode: "cable_car", available: true, baseCostPerKm: 0, flagFall: 6.0, averageSpeedKmh: 5, waitTimeMinutes: 10, energyCostPerKm: 0.1, comfortScore: 85, scenicScore: 99, accessibilityScore: 50, localName: "Funicular dos Guindais" },
     ],
   },
 };
@@ -382,10 +368,10 @@ function getDefaultProfile(destination: string): DestinationTransportProfile {
     cyclingInfrastructure: 40,
     specialNotes: [],
     availableModes: [
-      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4.5, waitTimeMinutes: 0, energyCostPerKm: 3, comfortScore: 60, scenicScore: 75, accessibilityScore: 50, availableHours: { start: 0, end: 24 } },
-      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 2.0, averageSpeedKmh: 20, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 65, scenicScore: 50, accessibilityScore: 65, availableHours: { start: 5, end: 24 } },
-      { mode: "taxi", available: true, baseCostPerKm: 1.5, flagFall: 3.0, averageSpeedKmh: 25, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 85, scenicScore: 40, accessibilityScore: 60, availableHours: { start: 0, end: 24 } },
-      { mode: "rideshare", available: true, baseCostPerKm: 1.2, flagFall: 2.0, averageSpeedKmh: 25, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 40, accessibilityScore: 55, availableHours: { start: 0, end: 24 } },
+      { mode: "walk", available: true, baseCostPerKm: 0, flagFall: 0, averageSpeedKmh: 4.5, waitTimeMinutes: 0, energyCostPerKm: 3, comfortScore: 60, scenicScore: 75, accessibilityScore: 50 },
+      { mode: "transit", available: true, baseCostPerKm: 0, flagFall: 2.0, averageSpeedKmh: 20, waitTimeMinutes: 8, energyCostPerKm: 0.5, comfortScore: 65, scenicScore: 50, accessibilityScore: 65 },
+      { mode: "taxi", available: true, baseCostPerKm: 1.5, flagFall: 3.0, averageSpeedKmh: 25, waitTimeMinutes: 5, energyCostPerKm: 0.2, comfortScore: 85, scenicScore: 40, accessibilityScore: 60 },
+      { mode: "rideshare", available: true, baseCostPerKm: 1.2, flagFall: 2.0, averageSpeedKmh: 25, waitTimeMinutes: 6, energyCostPerKm: 0.2, comfortScore: 80, scenicScore: 40, accessibilityScore: 55 },
     ],
   };
 }

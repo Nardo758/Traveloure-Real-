@@ -28,6 +28,9 @@ const TTL_DAYS: Record<FactType, number | null> = {
   address: 30,
   // R297: photo references live exactly as long as the Places facts they came with.
   photo_ref: 30,
+  // FD-3: official operational facts — re-read on the registry's cadence, not kept indefinitely.
+  last_admission: 30,
+  last_service: 30,
 };
 
 export function factTtlDays(type: FactType): number | null {

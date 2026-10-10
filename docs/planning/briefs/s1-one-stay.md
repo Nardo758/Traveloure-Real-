@@ -149,6 +149,7 @@ Ledger `2026-10-10-s1b-provider-stays`. Small: the boost removal, the button, th
 - `platform`: listed on Traveloure. It carries the "Traveloure stay" badge.
 - `hotel_cache`: Amadeus / Booking.com data.
 - `affiliate`: a partner product. It is not a Traveloure stay and never gets the badge.
+- `liteapi` (added by S1-d-1, R408, after these rulings): LiteAPI static content. It is not a Traveloure stay, so it is treated like `hotel_cache`: the attributed Google link, never "See rooms" or the badge.
 
 **Rulings:**
 1. **No boost for being a provider.** R-o is amended: `orderStaysByOrigin`, which put Traveloure stays first within a neighbourhood, is deleted. "`rankStays` only" means **no kind-based ordering anywhere** (clarified by the decision-maker, Oct 10, 2026). It does not mean re-sorting the neighbourhood lists: a neighbourhood's stays keep `hotelsByNeighborhood`'s existing order, which never reads `kind` (distance to the neighbourhood, then name), and that order stands untouched. The S1 card's own candidates stay ordered by `rankStays`. The badge stays.

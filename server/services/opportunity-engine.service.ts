@@ -84,7 +84,7 @@ class OpportunityEngineService {
     const events = await this.fetchCachedEvents(params, timeWindow);
     opportunities.push(...events);
 
-    // 3. Fetch hotels with deals from Amadeus cache
+    // 3. Fetch hotels with deals from hotel_cache
     const hotels = await this.fetchCachedHotels(params);
     opportunities.push(...hotels);
 
@@ -326,7 +326,9 @@ class OpportunityEngineService {
         : await query.orderBy(sql`RANDOM()`).limit(30);
 
       return hotels
-        .filter(hotel => {
+        .filter((hotel): hotel is typeof hotel & { provider: string } => {
+          // A row that names no provider cannot say where it came from, so it is not shown (§13).
+          if (!hotel.provider) return false;
           // Only include hotels with good deals (assumed from rating/price ratio)
           const rating = parseInt(hotel.rating || "0");
           return rating >= 3;
@@ -339,12 +341,12 @@ class OpportunityEngineService {
           const actionabilityScore = 80; // Hotels are always bookable
 
           return {
-            id: `amadeus-${hotel.hotelId}`,
+            id: `${hotel.provider}-${hotel.hotelId}`,
             city: hotel.city || params.city || "Unknown",
             latitude: hotel.latitude ? parseFloat(hotel.latitude) : null,
             longitude: hotel.longitude ? parseFloat(hotel.longitude) : null,
             type: "last_minute" as const,
-            source: "amadeus" as const,
+            source: hotel.provider,
             externalId: hotel.hotelId || "",
             title: hotel.name || "Untitled Hotel",
             description: null,

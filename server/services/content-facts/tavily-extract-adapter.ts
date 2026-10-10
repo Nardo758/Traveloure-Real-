@@ -35,6 +35,8 @@ import { factQuoteMaxChars, factTtlDays } from "../../config/content-facts.confi
 import { TAVILY_PRICE_PER_EXTRACT_USD, TAVILY_PRICE_PER_SEARCH_USD } from "../../config/trailhead.config";
 import type { TavilyLoggingClient } from "../tavily-client";
 import { CONTENT_FACTS_USAGE_PURPOSE } from "./fresh-fetch";
+import { admitFeasibilityFact, isFeasibilityFactType, parseLastAdmission, parseLastService } from "@shared/feasibility-facts";
+import { parseDayHours } from "@shared/optimizer-lead";
 
 /** What one lookup costs in cents: one search plus one extract, derived from config (§8). */
 export function tavilyLookupCostCents(): number {
@@ -45,10 +47,12 @@ export function tavilyLookupCostCents(): number {
 export const FACT_TYPES_FOR_NEED: Readonly<Record<ContentNeed, readonly FactType[]>> = {
   lodging: ["description", "price"],
   "transport.intercity": ["transit", "price"],
-  "transport.local": ["transit", "price"],
+  // FD-3 ruling 3: the operator's last departure, as a STRUCTURED `last_service` fact.
+  "transport.local": ["transit", "price", "last_service"],
   "transport.cruise": ["transit", "price"],
-  "stop.hours": ["hours", "closure"],
-  "stop.ticketing": ["ticketing_rule", "price"],
+  // FD-3 ruling 1: the latest entry, as a STRUCTURED `last_admission` fact.
+  "stop.hours": ["hours", "closure", "last_admission"],
+  "stop.ticketing": ["ticketing_rule", "price", "last_admission"],
   dining: ["hours", "price", "tip"],
   activity: ["description", "price", "tip"],
   event: ["event"],
@@ -210,8 +214,9 @@ export class TavilyExtractAdapter implements SourceAdapter {
           "You read one web page and report facts about ONE named place. Report only what the page states. " +
           `Each fact has: factType (one of ${allowed.join(", ")}), text (a plain-English statement, at most ${FACT_TEXT_MAX} characters), ` +
           `and quote (an exact, verbatim excerpt from the page that supports it, at most ${quoteMax} characters). ` +
-          'If the page says nothing about the place for these types, return {"facts":[]}. Never guess.',
-        user: `Place: ${queryText}\nNeed: ${req.need}\nPage URL: ${candidate}\n\nPAGE:\n${page}\n\nReturn {"facts":[{"factType":"…","text":"…","quote":"…"}]}`,
+          'If the page says nothing about the place for these types, return {"facts":[]}. Never guess. ' +
+          STRUCTURED_FIELDS_INSTRUCTION,
+        user: `Place: ${queryText}\nNeed: ${req.need}\nPage URL: ${candidate}\n\nPAGE:\n${page}\n\nReturn {"facts":[{"factType":"…","text":"…","quote":"…","fields":{…}}]}`,
         maxTokens: 1200,
         sourceType: "content_fact_extract",
         userId: ctx?.actorId ?? null,
@@ -241,7 +246,7 @@ export class TavilyExtractAdapter implements SourceAdapter {
         market: req.market,
         need: req.need,
         factType: f.factType,
-        value: { text: f.text, quote: f.quote, query: queryText },
+        value: { text: f.text, quote: f.quote, query: queryText, ...(f.fields ?? {}) },
         origin: "crawled",
         sourceId: this.source.id,
         sourceUrl: candidate,
@@ -264,8 +269,8 @@ export class TavilyExtractAdapter implements SourceAdapter {
 export function admitExtractedFacts(
   answer: unknown,
   opts: { allowed: readonly FactType[]; page: string; quoteMax: number },
-): { facts: { factType: FactType; text: string; quote: string }[]; refused: { factType: string; reason: string }[] } {
-  const facts: { factType: FactType; text: string; quote: string }[] = [];
+): { facts: ExtractedFact[]; refused: { factType: string; reason: string }[] } {
+  const facts: ExtractedFact[] = [];
   const refused: { factType: string; reason: string }[] = [];
   const list = (answer as any)?.facts;
   if (!Array.isArray(list)) return { facts, refused };
@@ -280,7 +285,48 @@ export function admitExtractedFacts(
     if (!quote) { refused.push({ factType, reason: "no_quote" }); continue; }
     if (quote.length > opts.quoteMax) { refused.push({ factType, reason: "quote_too_long" }); continue; }
     if (!pageNorm.includes(norm(quote))) { refused.push({ factType, reason: "quote_not_on_page" }); continue; }
-    facts.push({ factType: factType as FactType, text, quote });
+    // FD-3: structured fields. The two feasibility types REQUIRE them, and every time they state must be
+    // printed in the quote (`admitFeasibilityFact`); hours MAY carry Google-shaped lines, kept only when
+    // every line parses. Free text alone is never turned into a time (ruling 1).
+    const fields = structuredFields(factType, f?.fields, quote);
+    if (fields === "refused") { refused.push({ factType, reason: "bad_fields" }); continue; }
+    facts.push({ factType: factType as FactType, text, quote, ...(fields ? { fields } : {}) });
   }
   return { facts, refused };
 }
+
+export interface ExtractedFact {
+  factType: FactType;
+  text: string;
+  quote: string;
+  /** FD-3: the structured value, merged into the stored `value` beside text and quote. */
+  fields?: Record<string, unknown>;
+}
+
+const STRUCTURED_FIELDS_INSTRUCTION =
+  "For factType last_admission, add fields {byWeekday:{\"0\"..\"6\": \"HH:MM\" 24-hour, 0 = Sunday}, season?:{from:\"MM-DD\",to:\"MM-DD\"}} — the LATEST ENTRY time the page states, with the quote containing that time. " +
+  "For factType last_service, add fields {operator, line, station, direction?, lastDeparture:\"HH:MM\", weekdays:[0-6], validFrom:\"YYYY-MM-DD\", validTo:\"YYYY-MM-DD\"} — the LAST DEPARTURE the page states, with the quote containing that time. " +
+  "For factType hours you may add fields {weekdayDescriptions:[\"Monday: 9:00 AM – 5:00 PM\", …]} using exactly that line form. Omit fields you cannot read from the page.";
+
+/** Pure. The fact's structured fields: an object to store, null for none, or "refused". */
+export function structuredFields(factType: string, raw: unknown, quote: string): Record<string, unknown> | null | "refused" {
+  if (isFeasibilityFactType(factType)) {
+    if (!raw || typeof raw !== "object") return "refused";
+    const value = factType === "last_admission" ? parseLastAdmission(raw) : parseLastService(raw);
+    if (!value) return "refused";
+    const verdict = admitFeasibilityFact({ factType, value: { ...value, quote }, origin: "crawled", license: "official", sourceUrl: "https://page.invalid/" });
+    return verdict.ok ? (value as unknown as Record<string, unknown>) : "refused";
+  }
+  if (factType === "hours" && raw && typeof raw === "object") {
+    const lines = (raw as any).weekdayDescriptions;
+    if (!Array.isArray(lines) || !lines.length) return null;
+    const strings = lines.map(String);
+    for (let wd = 0; wd < 7; wd++) {
+      const has = strings.some((l) => l.normalize("NFKC").trim().startsWith(`${HOURS_WEEKDAYS[wd]}:`));
+      if (has && parseDayHours(strings, wd) === null) return null;
+    }
+    return { weekdayDescriptions: strings };
+  }
+  return null;
+}
+const HOURS_WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];

@@ -26,7 +26,7 @@ export const STAY_PICK_FREE_TOP = 3;
 
 /** The ONLY fields a stay candidate carries into a ranking. No price, rate, fee or commission — by design. */
 export const STAY_PICK_CANDIDATE_KEYS = ["kind", "id", "name", "lat", "lng"] as const;
-export type StayPickCandidateKind = "platform" | "hotel_cache" | "affiliate";
+export type StayPickCandidateKind = "platform" | "hotel_cache" | "affiliate" | "liteapi";
 export interface StayPickCandidate {
   kind: StayPickCandidateKind;
   id: string;
@@ -198,7 +198,8 @@ export interface StayPick {
   closeness?: StayCloseness | null;
 }
 
-const KINDS: readonly string[] = ["platform", "hotel_cache", "affiliate"];
+// S1-d-1: `liteapi` is allowlisted, or a stored LiteAPI pick would read as no pick.
+const KINDS: readonly string[] = ["platform", "hotel_cache", "affiliate", "liteapi"];
 
 /** Reader: a stored value that is not this shape is no pick (§13 — never guessed into one). */
 export function readStayPick(value: unknown): StayPick | null {

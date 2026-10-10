@@ -170,8 +170,10 @@ export interface StayHotel {
    * `platform` (surface step 3, R-o): a stay LISTED ON TRAVELOURE — an approved, active
    * `provider_services` row in the accommodation category — badged "Traveloure stay".
    * `hotel_cache` / `affiliate`: partner inventory, booked via the concierge or a deep link.
+   * `liteapi` (S1-d-1): a `hotel_cache` row whose provider is LiteAPI — derived from the provider by
+   * `stayKindForCacheProvider` (shared/liteapi.ts), never a column. No badge; the Maps link.
    */
-  kind: "platform" | "hotel_cache" | "affiliate";
+  kind: "platform" | "hotel_cache" | "affiliate" | "liteapi";
   id: string;
   name: string;
   starRating: number | null;

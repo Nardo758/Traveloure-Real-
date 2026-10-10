@@ -458,6 +458,8 @@ export interface PlanCardDay {
   energyProfile?: string;
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
+  /** FD-3 (ledger `2026-10-10-fd3-feasibility`): the server's per-day feasibility counts; absent ⇒ no line. */
+  feasibility?: import("@shared/plan-feasibility").DayFeasibility;
 }
 
 /**
