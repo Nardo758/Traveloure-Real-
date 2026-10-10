@@ -3,7 +3,9 @@
  *
  *   CL1 pure: own ⇒ "View on hotel's site", no attribution; google ⇒ the same label WITH "Google Maps";
  *       maps ⇒ "View on map" with "Google Maps"; none ⇒ the Maps fallback, attributed
- *   CL2 render, free: each card links where its own stayLink points, attribution beside google/maps only
+ *   CL2 render, free: each card links where its own stayLink points, attribution beside google/maps only;
+ *       a Traveloure (`platform`) stay links "See rooms" to its listing page with the plan instead of the
+ *       provider's own site (S1-b amends R393 for platform stays — sanctioned edit, Oct 10, 2026)
  *   CL3 render, routed: the link fetched when the pick's card was shown wins over the list link
  *   CL4 source: the container asks `/stay-pick/link` once per pick, only on a routed pick, never retried
  *
@@ -16,7 +18,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import type { WhereToStayView } from "@shared/where-to-stay";
 import { AnchorPanelView, type AnchorPanelViewProps } from "../../plan/AnchorPanel";
-import { GOOGLE_MAPS_ATTRIBUTION, STAY_MAP_LINK_LABEL, STAY_SITE_LINK_LABEL, stayLinkView } from "../../../lib/stay-card";
+import { GOOGLE_MAPS_ATTRIBUTION, STAY_MAP_LINK_LABEL, STAY_SEE_ROOMS_LABEL, STAY_SITE_LINK_LABEL, stayLinkView } from "../../../lib/stay-card";
 
 (globalThis as any).React = React;
 
@@ -36,22 +38,30 @@ describe("FU-S1-2 on the stay card", () => {
     assert.deepEqual(stayLinkView(undefined, "fb"), { href: "fb", label: STAY_MAP_LINK_LABEL, kind: "maps", attributed: true });
   });
 
-  it("CL2 free: each card follows its own link; attribution only beside Google", () => {
+  it("CL2 free: each card follows its own link; attribution only beside Google; a Traveloure stay links See rooms", () => {
     const html = render({
+      tripId: "trip-1",
       view: base({
         tier: "straight_line",
         hotels: [
           { ...hotel("p1", "Ryokan Own", "platform"), stayLink: { kind: "own", url: "https://ryokan.example/" } },
+          { ...hotel("g1", "Site Hotel"), stayLink: { kind: "google", url: "https://site-hotel.example/" } },
           { ...hotel("m1", "Map Hotel"), stayLink: { kind: "maps", url: "https://maps-link.example/map-hotel" } },
         ],
       }),
     });
-    assert.match(anchor(html, "p1"), /href="https:\/\/ryokan\.example\/"/);
-    assert.match(anchor(html, "p1"), /data-link-kind="own"/);
-    assert.doesNotMatch(html, /data-testid="stay-pick-map-attribution-p1"/, "a provider's own site is not Google's");
+    // S1-b: the Traveloure stay opens its listing page carrying the plan — not the provider's own site.
+    assert.match(html, /<a[^>]*href="\/services\/p1\?tripId=trip-1"[^>]*data-testid="stay-pick-rooms-p1"/);
+    assert.ok(html.includes(STAY_SEE_ROOMS_LABEL));
+    assert.doesNotMatch(html, /ryokan\.example/, "the provider's site is not on the card");
+    assert.doesNotMatch(html, /data-testid="stay-pick-map-attribution-p1"/, "See rooms is not Google's");
+    // A non-platform `google` link keeps "View on hotel's site", attributed.
+    assert.match(anchor(html, "g1"), /href="https:\/\/site-hotel\.example\/"/);
+    assert.match(anchor(html, "g1"), /data-link-kind="google"/);
+    assert.match(html, new RegExp(`data-testid="stay-pick-map-attribution-g1"[^>]*>· (<!-- -->)?${GOOGLE_MAPS_ATTRIBUTION}`));
+    assert.ok(html.includes(STAY_SITE_LINK_LABEL.replace("'", "&#x27;")));
     assert.match(anchor(html, "m1"), /data-link-kind="maps"/);
     assert.match(html, new RegExp(`data-testid="stay-pick-map-attribution-m1"[^>]*>· (<!-- -->)?${GOOGLE_MAPS_ATTRIBUTION}`));
-    assert.ok(html.includes(STAY_SITE_LINK_LABEL.replace("'", "&#x27;")));
   });
 
   it("CL3 routed: the opened link wins over the list link, with Google's attribution", () => {
