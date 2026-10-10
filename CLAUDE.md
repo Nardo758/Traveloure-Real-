@@ -2633,6 +2633,17 @@ This document captures architectural decisions to maintain consistency across co
     `stopsHash` changed — **never on read**. A re-score replaces the pick and sets `changed`; the card clears it
     once. **9a-ii** = self-hosted OSRM as a `RoutingAdapter` provider for walk and drive; when it is live, the
     straight-line prune and the element budget are removed. The card is the Conformance lane's.
+    **AMENDED — S1-d-1, LITEAPI JOINS THE POOL AS STATIC CONTENT ONLY (decision-maker, Oct 10, 2026 — ledger
+    `2026-10-10-s1-d1-liteapi`; brief `docs/planning/briefs/s1-d1-liteapi.md`; migration 365, APPROVED by
+    Leon Oct 10, 2026).** LiteAPI hotels are `hotel_cache` rows with `provider='liteapi'`, written ONLY by the nightly
+    Kyoto sync (`liteapi-sync.service.ts`; incremental on `lastUpdatedAt`; `LITEAPI_ENV` on every row's
+    `raw_data.provenance`). Static content is stored with no retention cap; images are hot-linked, never copied;
+    reviews and sentiment are never stored; rates are never stored (`hotel_offer_cache` is not used for them).
+    Their stay kind `liteapi` is DERIVED from the provider (`stayKindForCacheProvider`), never a column, and the
+    ranking still reads no money field. 365 adds six nullable columns and a UNIQUE (provider, provider_hotel_id),
+    empty at creation. **The expiry sweep never deletes a LiteAPI row, nor any row a `plan_options` row or a
+    `trips.stay_pick` references** (`hotel-cache-retention.ts`). "See rates", the SSP guard and the margin bands
+    are S1-d-2.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;

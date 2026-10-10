@@ -304,7 +304,7 @@ declare -A BUCKET_ROUTES=(
   ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims handoff-timers legs-dayof-recheck"
   ["four-hourly"]="booking-expiry"
   ["six-hourly"]="travelpayouts-report-poll"
-  ["daily"]="stripe-reconciliation availability-materialization travel-matrix-refresh travelpulse-weekly facts-recheck leg-google-coords content-expiry-census"
+  ["daily"]="stripe-reconciliation availability-materialization travel-matrix-refresh travelpulse-weekly facts-recheck leg-google-coords content-expiry-census liteapi-sync"
 )
 # BUCKET_ROUTES_TABLE_END
 BUCKET_ORDER=(backstops hourly four-hourly six-hourly daily)
