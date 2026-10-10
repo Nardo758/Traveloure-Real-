@@ -2651,6 +2651,23 @@ This document captures architectural decisions to maintain consistency across co
     is deleted and no status column exists; `content-expiry-census` (daily) only counts. Night-scene is not tagged (ruling
     7). Quick-start is a free draft and the Plus occasion draft is paid (ruling 5) — the cap and tier filter are FD-1.
 
+66. **THE FREE DRAFT IS CAPPED, AND A FREE PLAN IS SHOWN WHAT LOCAL WOULD ADD AS COUNTS ONLY (decision-maker, Oct 9,
+    2026 — FD-1 rulings 1–5; ledger `2026-10-09-fd1-free-draft-cap`; brief `docs/planning/briefs/fd-1-free-draft-cap.md`;
+    migration 363, APPROVED by the founder Oct 9, 2026).** `free_draft_runs` (new table born empty; partial UNIQUE on
+    `trip_id` where `status <> 'released'`, safe because the table is new; NO FK to trips, so deleting a plan never
+    refunds a draft; declared in `shared/schema.ts`) has ONE writer, `server/services/free-draft-cap.service.ts`. The
+    free drafts are the slip draft, the trip draft and quick-start (every quick-start counts); the Plus occasion draft
+    is paid. **3 per 30 days per PLAN OWNER, one per plan** (config, `server/config/free-draft.config.ts`), CLAIMED under
+    a per-owner advisory lock BEFORE the model call (§15b), promoted to `drafted` when the draft commits and `released`
+    when it fails on OUR side (provider error, our exception, the canned fallback) — a released run never counts; a
+    crash after the model call returns may count (recorded). A **paid-tier plan** (`planGetsRoutedLegs`, e.g. an accepted
+    handoff) is not a free draft at all; **QA accounts** (`QA_ACCOUNT_EMAIL_DOMAIN`) are exempt and make no row. A refusal
+    is 429 with the server's numbers; `GET /api/me/free-drafts` serves them and the §6 sentence. **Guests** count only on
+    the SERVER guest record E2/E3 introduce — never a browser-made id. Quick-start takes public gems only. **The teaser**
+    is `days[].localTeaser = { localPicks, localNotes }` on a FREE plan's plancard: draft-eligible local gems not already
+    on the plan and live local notes in the neighbourhoods of that day's located stops — COUNTS ONLY, no title, place or
+    id; a day not computed, or zero, carries no key (§13). FD-5's coverage targets will hide an under-target day.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

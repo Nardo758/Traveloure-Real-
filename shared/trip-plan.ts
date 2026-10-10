@@ -561,6 +561,11 @@ export interface TripPlanDay {
   /** Derived day headline; the `teaser` level's `title`. */
   label: string;
   activities: TripPlanActivity[];
+  /**
+   * OPTIONAL (FD-1, ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan, the COUNT of local picks and local
+   * notes the paid tier would add around this day. Counts only. ABSENT when not computed or zero (§13).
+   */
+  localTeaser?: { localPicks: number; localNotes: number };
   /** LEGACY placement of this day's legs; the same objects also appear in `TripPlan.legs`. */
   transports: TripPlanLeg[];
 }

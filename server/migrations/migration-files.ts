@@ -1962,4 +1962,8 @@ export const MIGRATION_FILES = [
   // 362 — content-tier tags, backfill only (same ledger). Data only, guarded by source_class IS NULL.
   // APPROVED by the founder, Oct 9, 2026.
   "362_content_tier_backfill.sql",
+  // 363 — free_draft_runs (ledger 2026-10-09-fd1-free-draft-cap): a new table born empty, two indexes and a
+  // partial UNIQUE on trip_id (safe: no row exists at creation). No FK. Declared in shared/schema.ts.
+  // APPROVED by the founder, Oct 9, 2026.
+  "363_free_draft_runs.sql",
 ] as const;

@@ -12410,3 +12410,22 @@ export const planDayRetimes = pgTable("plan_day_retimes", {
   createdAt: timestamp("created_at").notNull(),
 });
 export type PlanDayRetime = typeof planDayRetimes.$inferSelect;
+
+// FD-1 (migration 363; ledger `2026-10-09-fd1-free-draft-cap`): one row per counted FREE draft. Born empty;
+// NO FK to trips (deleting a plan never refunds a draft). `rail` / `status` are app-enforced in
+// shared/free-draft-cap.ts (no CHECK). ONE writer: server/services/free-draft-cap.service.ts. No insert
+// schema exists — nothing client-facing writes this table (§19). Indexes declared here (deploy-push rule).
+export const freeDraftRuns = pgTable("free_draft_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  guestKey: varchar("guest_key"),
+  tripId: varchar("trip_id"),
+  rail: varchar("rail", { length: 32 }),
+  status: varchar("status", { length: 16 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userCreatedIdx: index("idx_free_draft_runs_user_created").on(table.userId, table.createdAt),
+  guestCreatedIdx: index("idx_free_draft_runs_guest_created").on(table.guestKey, table.createdAt),
+  tripUniq: uniqueIndex("uq_free_draft_runs_trip").on(table.tripId).where(sql`status <> 'released'`),
+}));
+export type FreeDraftRun = typeof freeDraftRuns.$inferSelect;
