@@ -94,12 +94,43 @@ function collectWorkflowText(dir) {
 const ID_ALT = String.raw`\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d+|R-[A-Z]`;
 const ROW_ID_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|\s*[\d-]+\s*\|\s*(\[[^\]]+\])\s*\|`);
 const ROW_ID_PREFIX_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|`);
+/**
+ * EVERY ledger row, whatever its tag cell holds: an id cell then a date cell. `ROW_ID_RE` above only
+ * matches a row whose third cell is the tag ALONE, and most rows carry text after the tag in that same
+ * cell (`[guarded: …] (No migration …) |`), so 662 of 856 date-slug rows never parsed and every one of
+ * them was invisible to the duplicate check (found Oct 10, 2026 when a stale duplicate of the FD-3 row
+ * passed — ledger-dupes lane). Duplicates are counted over THIS match. The guard-wiring check still
+ * reads only `ROW_ID_RE` rows — stated negative space, unchanged here.
+ */
+const ROW_ANY_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|\s*\d{4}-\d{2}-\d{2}\s*\|`);
+
+/**
+ * Ids already duplicated on main when the check above started seeing every row (Oct 10, 2026). The
+ * ledger is append-only and ids 1–122 are frozen, so they are not rewritten here; each is PRINTED on
+ * every run (never a silent baseline — the `fee-literal-debt` posture), and an entry that is no longer
+ * duplicated FAILS, so this list only shrinks. Removing a copy is a decision-maker call.
+ */
+const KNOWN_DUPLICATE_IDS = {
+  "113": "frozen numeric collision — the Workstation-vs-Catalog ruling (Aug 14) and the Replit-stream audit record (Aug 17)",
+  "2026-09-07-concierge-conversation-trip-id": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-concierge-page-is-a-door": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-ask-ai-drawer-paid-task": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-trip-cart-leaves-sidebar": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-my-events-folds-into-my-plans": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-trip-card-loses-tab-shell": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-console-one-grammar": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-home-owns-time-axis": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
+  "2026-09-07-slip-canvas-unrecoverable": "record row written twice; the second copy moved the note out of the tag cell",
+};
 
 function parseLedger(text) {
   const entries = [];
   const ids = [];
+  const allIds = [];
   const malformed = [];
   for (const line of text.split("\n")) {
+    const any = line.match(ROW_ANY_RE);
+    if (any) allIds.push(any[1]);
     // Table rows: | <id> | <date> | [tag] | ...
     // IDs come in three shapes: the DATE-SLUG key new rows use (2026-08-16-some-lane),
     // the frozen numeric series (1..122), and the closed Console Realign letters (R-A).
@@ -127,7 +158,7 @@ function parseLedger(text) {
       entries.push({ id, guards, deferred: deferred ? deferred.slice("deferred:".length) : null });
     }
   }
-  return { entries, ids, malformed };
+  return { entries, ids, allIds, malformed };
 }
 
 /**
@@ -213,17 +244,23 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   return { failures, exempted, unassigned, cited };
 }
 
-function lint({ ledgerText, workflowText, requireAssigned = false }) {
+function lintLedger({ ledgerText, workflowText, requireAssigned = false, knownDuplicates = KNOWN_DUPLICATE_IDS }) {
   const failures = [];
   const warnings = [];
-  const { entries, ids, malformed } = parseLedger(ledgerText);
+  const notes = [];
+  const { entries, allIds: ids, malformed } = parseLedger(ledgerText);
 
   for (const m of malformed) failures.push(`Malformed ledger row (unparseable tag — fix, don't skip): ${m}`);
 
   // Every id shape, not just numeric: a duplicated date-slug is the same append-only violation,
   // and catching it HERE is the point of the scheme — CI fails instead of a human renumbering.
-  const dupes = ids.filter((v, i) => ids.indexOf(v) !== i);
-  if (dupes.length) failures.push(`Duplicate ruling ids (append-only violated): ${[...new Set(dupes)].join(", ")}`);
+  const dupes = [...new Set(ids.filter((v, i) => ids.indexOf(v) !== i))];
+  const newDupes = dupes.filter((d) => !Object.prototype.hasOwnProperty.call(knownDuplicates, d));
+  if (newDupes.length) failures.push(`Duplicate ruling ids (append-only violated): ${newDupes.join(", ")}`);
+  for (const [id, why] of Object.entries(knownDuplicates)) {
+    if (dupes.includes(id)) notes.push(`Known duplicate id ${id} (baseline, not a pass): ${why}`);
+    else failures.push(`Known-duplicate baseline entry ${id} is no longer duplicated — remove it from KNOWN_DUPLICATE_IDS (the list only shrinks).`);
+  }
 
   if (entries.length === 0) failures.push("No [guarded: ...] entries parsed from the ledger — tag format drifted?");
 
@@ -244,10 +281,12 @@ function lint({ ledgerText, workflowText, requireAssigned = false }) {
       }
     }
   }
-  return { failures, warnings, laneLocal: r.exempted.length };
+  return { failures, warnings, notes, laneLocal: r.exempted.length };
 }
 
 function selfTest() {
+  // Fixtures are synthetic ledgers: they start from an EMPTY known-duplicate baseline, never the real one.
+  const lint = (o) => lintLedger({ knownDuplicates: {}, ...o });
   const ledgerText = [
     "| 1 | 2026-01-01 | [guarded: real-guard] | x | y |",
     "| 2 | 2026-01-01 | [guarded: ghost-guard] | x | y |",
@@ -358,15 +397,28 @@ function selfTest() {
   const ok16 = rBad.failures.filter((f) => f.startsWith("Out-of-order")).length === 3
     && rAsc.failures.length === 0
     && rLate.failures.some((f) => f.includes("R270") && f.includes("R271"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16) {
+  // (m) ledger-dupes lane: a duplicate whose tag cell carries TEXT AFTER THE TAG (the shape most rows
+  // have, which the old parse never saw), and a copy differing only in its R-number, both fail; a known
+  // baseline id is reported, not failed; a baseline id that is no longer duplicated fails (it only shrinks).
+  const tail = (r) => `| 2026-01-07-feat | 2026-01-07 | [guarded: real-guard] (note after the tag) | **${r} — F.** | numeric citation ${r} |`;
+  const textDupe = lint({ ledgerText: [tail("R301"), tail("R301")].join("\n"), workflowText, knownDuplicates: {} });
+  const rOnlyDupe = lint({ ledgerText: [tail("R301"), tail("R?")].join("\n"), workflowText, knownDuplicates: {} });
+  const known = lint({ ledgerText: [tail("R301"), tail("R?")].join("\n"), workflowText, knownDuplicates: { "2026-01-07-feat": "fixture" } });
+  const stale = lint({ ledgerText: tail("R301"), workflowText, knownDuplicates: { "2026-01-07-feat": "fixture" } });
+  const ok17 = textDupe.failures.some((f) => f.includes("Duplicate ruling ids") && f.includes("2026-01-07-feat"))
+    && rOnlyDupe.failures.some((f) => f.includes("Duplicate ruling ids") && f.includes("2026-01-07-feat"))
+    && !known.failures.some((f) => f.includes("Duplicate ruling ids")) && known.notes.some((n) => n.includes("2026-01-07-feat"))
+    && stale.failures.some((f) => f.includes("no longer duplicated"));
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16 || !ok17) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, rBad: rBad.failures, rAsc: rAsc.failures, rLate: rLate.failures,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, ok17,
+      textDupe: textDupe.failures, rOnlyDupe: rOnlyDupe.failures, known: known.failures, stale: stale.failures, rBad: rBad.failures, rAsc: rAsc.failures, rLate: rLate.failures,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline)");
   process.exit(0);
 }
 
@@ -378,8 +430,9 @@ if (process.argv.includes("--self-test")) selfTest();
 const ledgerText = fs.readFileSync(LEDGER, "utf8");
 const workflowText = collectWorkflowText(WORKFLOW_DIR);
 const requireAssigned = process.argv.includes("--require-assigned");
-const { failures, warnings, laneLocal } = lint({ ledgerText, workflowText, requireAssigned });
+const { failures, warnings, notes, laneLocal } = lintLedger({ ledgerText, workflowText, requireAssigned });
 
+for (const n of notes) console.warn(`NOTE  ${n}`);
 for (const w of warnings) console.warn(`WARN  ${w}`);
 if (failures.length) {
   for (const f of failures) console.error(`FAIL  ${f}`);
