@@ -11,7 +11,8 @@
  *   P5 COLLAPSED (R-y): no option has a stay ⇒ ONE line "Best area for these days: <top> · <one-liner>"
  *      and Skip — no list, no coming-soon slots
  *   P6 unranked views say why (§13), and nothing printed is a distance or a minute
- *   P7 pure rules: orderStaysByOrigin (R-o), topWonOnTieBreak, anchorPanelMode, collapsedStayLine
+ *   P7 pure rules: topWonOnTieBreak, anchorPanelMode, collapsedStayLine (R-o's orderStaysByOrigin is
+ *       deleted by S1-b — sanctioned edit, ledger `2026-10-10-s1b-provider-stays`)
  *   P8 smoke 8 — the tray CHOOSER always offers compare / I've got lodging sorted / Skip for now, with
  *      the ranking (never collapsed) when there is one, and a dismissed view renders in full
  *   P9 smoke 8 — `anchorSurfaces`: a Skip dismisses the slip panel for its own state only; the tray's
@@ -28,7 +29,6 @@ import {
   STAY_TIE_BREAK_NOTE,
   anchorPanelMode,
   collapsedStayLine,
-  orderStaysByOrigin,
   anchorSurfaces,
   topWonOnTieBreak,
   type WhereToStayView,
@@ -82,14 +82,16 @@ describe("AnchorPanel", () => {
     assert.doesNotMatch(text(html), /lodging sorted|Skip for now/);
   });
 
-  it("P3 drafted options: one-liners, platform stays first with their badge", () => {
+  it("P3 drafted options: one-liners, stays in the server's kind-blind order, the platform badge kept", () => {
+    // S1-b (sanctioned edit): no boost for being a provider — the list draws stays in the order the server
+    // sends them, whatever their kind; a Traveloure stay keeps its badge.
     const v = view([
       nb("gion", {
         oneLiner: { text: "Lantern-lit lanes by the river", source: "spine" },
-        hotels: orderStaysByOrigin([
+        hotels: [
           { kind: "hotel_cache", id: "h1", name: "Partner Inn", starRating: 3 },
           { kind: "platform", id: "p1", name: "Machiya Stay", starRating: null },
-        ]),
+        ],
       }),
       nb("arashiyama", { reason: "closest to 1 of your 5 days" }),
     ]);
@@ -97,7 +99,7 @@ describe("AnchorPanel", () => {
     const t = text(html);
     assert.match(html, /data-anchor-panel="options"/);
     assert.match(t, /Lantern-lit lanes by the river/);
-    assert.ok(t.indexOf("Machiya Stay") < t.indexOf("Partner Inn"), "platform first");
+    assert.ok(t.indexOf("Partner Inn") < t.indexOf("Machiya Stay"), "the server's order, not platform first");
     assert.match(html, /where-to-stay-platform-badge-p1/);
     assert.match(t, new RegExp(PLATFORM_STAY_BADGE));
     assert.doesNotMatch(html, /where-to-stay-platform-badge-h1/);
@@ -137,13 +139,6 @@ describe("AnchorPanel", () => {
   });
 
   it("P7 pure rules", () => {
-    const stays = [
-      { kind: "affiliate" as const, id: "a" },
-      { kind: "platform" as const, id: "p1" },
-      { kind: "hotel_cache" as const, id: "h" },
-      { kind: "platform" as const, id: "p2" },
-    ];
-    assert.deepEqual(orderStaysByOrigin(stays).map((s) => s.id), ["p1", "p2", "a", "h"], "platform first, each group stable");
     assert.equal(topWonOnTieBreak([{ closestDays: 2 }, { closestDays: 2 }]), true);
     assert.equal(topWonOnTieBreak([{ closestDays: 3 }, { closestDays: 2 }]), false);
     assert.equal(topWonOnTieBreak([{ closestDays: 3 }]), false);
