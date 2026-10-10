@@ -5,6 +5,7 @@
  *   HS2 a failed read is `rankable: null`, `low: null` — never "0, low" (§13)
  *   HS3 every operating market is reported, keyed by marketKey, with the configured threshold
  *   HS4 HOTEL_SUPPLY_MIN: default 20; a non-positive or non-integer value reads the default
+ *   HS6 S1-d-1: a LiteAPI row counts under its own `liteapi` key, never under `hotel_cache`
  *   HS5 source: the count reads the ranker's ONE reader (`cityHotels`) and the health route carries `supply`
  */
 import { test } from "node:test";
@@ -21,9 +22,9 @@ const rows = (p: number, h: number, a: number) => [
 ];
 
 test("HS1 counts by source and flags low under the threshold", () => {
-  assert.deepEqual(marketHotelSupply(rows(1, 12, 3), 20), { rankable: 16, low: true, bySource: { platform: 1, hotel_cache: 12, affiliate: 3 } });
+  assert.deepEqual(marketHotelSupply(rows(1, 12, 3), 20), { rankable: 16, low: true, bySource: { platform: 1, hotel_cache: 12, affiliate: 3, liteapi: 0 } });
   assert.equal(marketHotelSupply(rows(0, 20, 0), 20).low, false);
-  assert.deepEqual(marketHotelSupply([], 20), { rankable: 0, low: true, bySource: { platform: 0, hotel_cache: 0, affiliate: 0 } });
+  assert.deepEqual(marketHotelSupply([], 20), { rankable: 0, low: true, bySource: { platform: 0, hotel_cache: 0, affiliate: 0, liteapi: 0 } });
 });
 
 test("HS2 a failed read claims nothing", () => {
@@ -58,4 +59,10 @@ test("HS5 one reader, and the health route reports it", () => {
   assert.doesNotMatch(svc, /hotelCache|hotel_cache\s*WHERE|from\(hotelCache\)/);
   const route = readFileSync(new URL("../../routes/content.routes.ts", import.meta.url), "utf8");
   assert.match(route, /supply = \{ hotels: await readHotelSupply\(\)\.catch\(\(\) => null\) \}/);
+});
+
+test("HS6 a LiteAPI row counts under its own key (S1-d-1)", () => {
+  const line = marketHotelSupply([...rows(0, 2, 0), { kind: "liteapi" as const }, { kind: "liteapi" as const }], 20);
+  assert.deepEqual(line.bySource, { platform: 0, hotel_cache: 2, affiliate: 0, liteapi: 2 });
+  assert.equal(line.rankable, 4);
 });

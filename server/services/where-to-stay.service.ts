@@ -79,6 +79,7 @@ import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
 import { listStayLinks } from "./stay-link.service";
+import { stayKindForCacheProvider } from "@shared/liteapi";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -287,7 +288,7 @@ export async function cityHotels(city: string): Promise<Array<StayHotel & { lat:
       .orderBy(asc(providerServices.id))
       .limit(200),
     db
-      .select({ id: hotelCache.id, name: hotelCache.name, lat: hotelCache.latitude, lng: hotelCache.longitude, starRating: hotelCache.starRating })
+      .select({ id: hotelCache.id, name: hotelCache.name, lat: hotelCache.latitude, lng: hotelCache.longitude, starRating: hotelCache.starRating, provider: hotelCache.provider })
       .from(hotelCache)
       .where(and(or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city)), isNotNull(hotelCache.latitude), isNotNull(hotelCache.longitude)))
       .orderBy(asc(hotelCache.id))
@@ -322,7 +323,8 @@ export async function cityHotels(city: string): Promise<Array<StayHotel & { lat:
     const lng = Number(h.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
     const star = h.starRating == null ? null : Number(h.starRating);
-    out.push({ kind: "hotel_cache", id: h.id, name: h.name, starRating: Number.isFinite(star as number) ? star : null, lat, lng });
+    // S1-d-1: a LiteAPI row joins the pool as kind `liteapi`, derived from its provider (no column).
+    out.push({ kind: stayKindForCacheProvider(h.provider), id: h.id, name: h.name, starRating: Number.isFinite(star as number) ? star : null, lat, lng });
   }
   for (const a of affiliate) {
     if (!LODGING_CATEGORY.test(`${a.category ?? ""} ${a.subCategory ?? ""}`)) continue;
@@ -505,7 +507,7 @@ async function storeStayRanking(draftId: string, value: StoredStayRanking): Prom
 }
 
 export type StayBinding =
-  | { kind: "stay_here"; hotel: { kind: "platform" | "hotel_cache" | "affiliate"; id: string } }
+  | { kind: "stay_here"; hotel: { kind: "platform" | "hotel_cache" | "affiliate" | "liteapi"; id: string } }
   | { kind: "own"; hotelName?: string | null; neighborhoodSlug?: string | null }
   | { kind: "skip" }
   | { kind: "this_item"; itemId: string };
@@ -725,14 +727,15 @@ async function bindWhereToStayInner(
         .limit(1);
       if (!city || !row) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
       source = { kind: "listing", providerServiceId: row.id };
-    } else if (binding.hotel.kind === "hotel_cache") {
-      // Only a hotel in this plan's own city (the panel's own inventory rule).
+    } else if (binding.hotel.kind === "hotel_cache" || binding.hotel.kind === "liteapi") {
+      // Only a hotel in this plan's own city (the panel's own inventory rule), and only under the kind
+      // its own provider derives (S1-d-1) — a LiteAPI row is bound as `liteapi`, any other as `hotel_cache`.
       const [h] = await db
-        .select({ id: hotelCache.id })
+        .select({ id: hotelCache.id, provider: hotelCache.provider })
         .from(hotelCache)
         .where(and(eq(hotelCache.id, binding.hotel.id), or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city))))
         .limit(1);
-      if (!city || !h) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
+      if (!city || !h || stayKindForCacheProvider(h.provider) !== binding.hotel.kind) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
       source = { kind: "hotel_cache", hotelCacheId: binding.hotel.id };
     } else {
       // §14: name and coordinates come from OUR row, never the body — and only a lodging listing in
