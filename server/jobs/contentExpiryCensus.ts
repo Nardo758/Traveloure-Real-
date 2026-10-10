@@ -4,10 +4,17 @@
  * (`isLiveLocal` / `getDraftEligibleGems`); this nightly job only COUNTS them, per table, and logs one line.
  * It deletes nothing, writes no status column and changes no row. A table it cannot read is reported as
  * `null` with the reason — never as 0, which would claim nothing has expired (§13).
+ *
+ * SS-1a (ledger `2026-10-10-ss1a-registry-entry-sheet`): it also validates the refresh targets config
+ * against the registry; any problem (above all a source id no row holds) is an `errors` entry, which
+ * marks the run failed on `/internal/jobs/health` — SS-1 ruling 2's "fails loudly".
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { logger } from "../infrastructure/logger";
+import { contentSources } from "@shared/schema";
+import { targetProblemLine, validateTargets } from "@shared/content-source-targets";
+import { CONTENT_SOURCE_TARGETS } from "../config/content-source-targets.config";
 
 export interface ContentExpiryCensus {
   at: string;
@@ -43,6 +50,13 @@ export async function runContentExpiryCensus(): Promise<ContentExpiryCensus> {
     "untagged_gems",
     errors,
   );
+  try {
+    const rows = await db.select({ id: contentSources.id, homepage: contentSources.homepage, covers: contentSources.covers, doesNotCover: contentSources.doesNotCover }).from(contentSources);
+    const problems = validateTargets(CONTENT_SOURCE_TARGETS, rows);
+    if (problems.length) errors.refresh_targets = problems.map(targetProblemLine).join("; ").slice(0, 500);
+  } catch (err: any) {
+    errors.refresh_targets = `not checked: ${String(err?.message ?? err).slice(0, 200)}`;
+  }
   const out: ContentExpiryCensus = { at: new Date().toISOString(), expiredLocal, untaggedGems, errors };
   logger.info({ job: "content-expiry-census", ...out }, "[content-expiry-census] counts");
   return out;
