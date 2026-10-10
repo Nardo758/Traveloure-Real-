@@ -35,7 +35,7 @@ export function planCityName(destination: string | null | undefined): string | n
 
 export const EMPTY_FOOTNOTE_NOTHING_CHARGED = "Nothing is booked or charged until you say so.";
 export const EMPTY_FOOTNOTE_PLACES = "Facts on places come from Google Maps and show when they were checked.";
-export const EMPTY_BROWSE_DETAIL = "Activities, dining, places to stay and local hosts";
+export const EMPTY_BROWSE_DETAIL = "Places and hosts near your stops";
 export const EMPTY_HANDOFF_DETAIL = "An expert plans it with you · fee shown before you commit";
 
 /** The draft card's sentence, built from what this press will really do (§13). */

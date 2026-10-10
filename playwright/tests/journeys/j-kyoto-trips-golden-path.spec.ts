@@ -695,8 +695,9 @@ test.describe("3 · the compare view (A4)", () => {
     await addKyotoStops(page, tripId);
     await openCompareView(page, tripId, setId);
     const set = await serverSet(page, tripId, setId);
-    await expect(testid(page, "compare-title")).toHaveText("Compare 3 places");
-    await expect(testid(page, "compare-intro")).toContainText("Based on 3 of 4 stops that have a location.");
+    // Sanctioned copy pin (held-batch-1 item 17, decision-maker Oct 9, 2026): the board's headline and intro.
+    await expect(testid(page, "compare-title")).toHaveText("Which one fits your days?");
+    await expect(testid(page, "compare-intro")).toContainText("the 3 of your 4 stops that have a location");
     for (const o of set.options) {
       expect(o.fit.scored).toBe(true);
       expect(["matrix", "est"]).toContain(o.fit.basis);

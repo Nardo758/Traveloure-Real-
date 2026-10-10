@@ -23,11 +23,14 @@ import { stampItemSourceClass } from "@shared/content-tiers";
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryComparisons, itineraryItems, itineraryVariantItems, itineraryVariants, planDayRetimes, trips } from "@shared/schema";
+import { feeLedger, itineraryComparisons, itineraryItems, itineraryVariantItems, itineraryVariants, planDayRetimes, trips } from "@shared/schema";
 import {
   diffVersionDays,
   retimeIsFree,
   retimeLine,
+  recommendedVersion,
+  runChargeFromLedger,
+  type RunCharge,
   versionBadges,
   versionLabel,
   type BoardStop,
@@ -44,6 +47,7 @@ import { recordRunOutcome } from "./optimizer-runs.service";
 import { optimizerFreeRetimes } from "../config/optimizer-retimes.config";
 import { complexityTier, retimeDayInOrder } from "./smart-sequencing.service";
 import { getFee } from "./optimization-fee.service";
+import { OPTIMIZER_RUN_TOLL_SOURCE_TYPE } from "./fee-ledger.service";
 import { coversAction, tripHasPass } from "./trip-entitlement.service";
 
 export class VersionBoardError extends Error {
@@ -160,13 +164,16 @@ export async function paidRetimeFee(tripId: string): Promise<{ priceCents: numbe
 }
 
 export interface VersionsBoardView {
-  run: { comparisonId: string; runId: string | null; runAt: string } | null;
+  /** `charge` is present for the plan's OWNER only (held-batch-1 item 23) — what they paid is theirs. */
+  run: { comparisonId: string; runId: string | null; runAt: string; charge?: RunCharge | null } | null;
   plan: { stops: BoardStop[] };
   versions: Array<{
     variantId: string;
     label: string;
     name: string;
     badge: BadgeKey | null;
+    /** Held-batch-1 item 22: the strict winner by S1's tiebreak (`recommendedVersion`); at most one. */
+    recommended: boolean;
     anchor: { name: string; lat: number | null; lng: number | null } | null;
     stops: BoardStop[];
     days: DayDiff[];
@@ -174,7 +181,7 @@ export interface VersionsBoardView {
   retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean>; unlimited?: boolean };
 }
 
-export async function loadVersionsBoard(tripId: string, now = new Date()): Promise<VersionsBoardView> {
+export async function loadVersionsBoard(tripId: string, now = new Date(), viewerId: string | null = null): Promise<VersionsBoardView> {
   const plan = await planStops(tripId);
   const run = await latestRun(tripId);
   const limit = optimizerFreeRetimes();
@@ -185,6 +192,7 @@ export async function loadVersionsBoard(tripId: string, now = new Date()): Promi
     return { v, i, stops };
   });
   const badges = versionBadges(versions.map((x) => ({ id: x.v.id, stops: x.stops })));
+  const recommendedId = recommendedVersion(versions.map((x) => ({ id: x.v.id, stops: x.stops })));
   const used = await retimeCounts(tripId, run.runAt);
   const free: Record<string, boolean> = {};
   const unlimited = await tripHasPass(tripId).catch(() => false);
@@ -192,19 +200,53 @@ export async function loadVersionsBoard(tripId: string, now = new Date()): Promi
   const anchorOf = (v: (typeof run.variants)[number]) =>
     v.anchorName ? { name: v.anchorName, lat: num(v.anchorLat), lng: num(v.anchorLng) } : null;
   return {
-    run: { comparisonId: run.comparisonId, runId: run.runId, runAt: run.runAt.toISOString() },
+    run: {
+      comparisonId: run.comparisonId,
+      runId: run.runId,
+      runAt: run.runAt.toISOString(),
+      ...((await viewerOwnsPlan(tripId, viewerId)) ? { charge: await runCharge(run.comparisonId, run.runAt) } : {}),
+    },
     plan: { stops: plan },
     versions: versions.map(({ v, i, stops }) => ({
       variantId: v.id,
       label: versionLabel(i),
       name: v.name,
       badge: badges.get(v.id) ?? null,
+      recommended: recommendedId === v.id,
       anchor: anchorOf(v),
       stops,
       days: diffVersionDays(plan, stops),
     })),
     retimes: { limit, used, windowEndsAt: new Date(run.runAt.getTime() + 24 * 3600_000).toISOString(), free, unlimited },
   };
+}
+
+async function viewerOwnsPlan(tripId: string, viewerId: string | null): Promise<boolean> {
+  if (!viewerId) return false;
+  const [t] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  return !!t && t.userId === viewerId;
+}
+
+/** The latest run's charge from its optimizer toll rows; NULL when unreadable (§13 — never "free"). */
+async function runCharge(comparisonId: string, runAt: Date): Promise<RunCharge | null> {
+  try {
+    const rows = await db
+      .select({
+        id: feeLedger.id,
+        feeType: feeLedger.feeType,
+        amount: feeLedger.amount,
+        currency: feeLedger.currency,
+        createdAt: feeLedger.createdAt,
+        stripePaymentRef: feeLedger.stripePaymentRef,
+        reversesLedgerId: feeLedger.reversesLedgerId,
+        metadata: feeLedger.metadata,
+      })
+      .from(feeLedger)
+      .where(and(eq(feeLedger.sourceType, OPTIMIZER_RUN_TOLL_SOURCE_TYPE), eq(feeLedger.sourceId, comparisonId)));
+    return runChargeFromLedger(rows as any, runAt);
+  } catch {
+    return null;
+  }
 }
 
 async function retimeCounts(tripId: string, since: Date, exec: any = db): Promise<Record<string, number>> {

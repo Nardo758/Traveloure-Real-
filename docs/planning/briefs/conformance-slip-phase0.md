@@ -340,3 +340,33 @@ the answer wins.
   - checks on every shared-component mount;
   - no test edits beyond snapshot updates, listed by file and test id.
 - No migrations are expected; if one appears, stop.
+
+## Held items after the batch ruling (decision-maker, Oct 9, 2026)
+
+The eleven board PRs listed 32 items as "Held — needs data or ruling". The batch ruling:
+
+- **Built in held-batch-1:** 1 (Browse subtitle reads "Places and hosts near your stops"), 9 ("Compare →"
+  on the map's versions sheet), 17 (Compare reads "Which one fits your days?" and the shorter intro),
+  22 ("Recommended" on the strict winner by S1's tiebreak — none when two versions tie), 23 (the run's
+  paid line, owner only) and 28 (the navy cover hero with "Trip Card · final vN" on both cards).
+- **Dropped:** 19 (Compare "+"), 20 ("Can't decide? Optimize keeps all three"), 24 ("Your optimized plans"
+  history), 27 ("Show on map"), 30 ("Show all 5 stops"), 31 ("Your bookings" card), 32 ("Reopen" beside
+  provenance).
+- **Kept as is:** 2 ("Skip for now" stays under the two answers).
+- **Resolved earlier:** 7 (pricing copy), 15 (FU-S1-2), and 16 on the stay card (R394).
+
+**Still held, each with the lane that owns it.** None is built by this lane; a lane that adds the data
+or the rail also draws the board's piece.
+
+| # | Item | Needs | Owning lane |
+|---|---|---|---|
+| 3 | "Reservation in your name" | whose name a booking is in | Booking agent (LD 44) |
+| 4 | Day "Day options" ⋯ and "Swap a stop" | a day-level action rail | Versions board (surface step 5, R-ac) |
+| 5, 10 | "<name> · <ward> local"; expert's neighbourhood on the handoff banner | an expert's recorded locality | Field knowledge / neighbourhood claims (LD 27) |
+| 6, 26 | "all within Gion on foot"; day verdicts ("ends 17:30") | measured walk times and day ends | Routing engine 9a-ii (OSRM walk) |
+| 8, 21, 25 | per-stop and per-day reasons | why the optimizer moved a stop | Optimizer (step 9b findings) |
+| 11, 12 | a suggestion's reason; "Reply" on a suggestion | a reason column and a reply rail | Handoff (step 7b, LD 62) |
+| 13 | "Accept & book" on a swap | a one-step accept-and-book rail | Booking on behalf (LD 52 (A)/(B)) |
+| 14, 29 | "Find a host" strip with a count; inline host card with Message host | a served host count and a host note on an item | Expert door / host supply (LD 42 D5 amendment) |
+| 16 (rest) | "Close to N of M days" on Compare's three option cards; the far-day sentence | per-day closeness for considered places, and which day is far | S1 one stay (FU-S1) |
+| 18 | hotel photos and street address on Compare options | photo and address facts for a considered place | Content sourcing (LD 57, A6) |

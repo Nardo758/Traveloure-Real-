@@ -46,7 +46,7 @@ function fail(res: any, err: unknown, what: string) {
 router.get("/api/trips/:tripId/versions", isAuthenticated, async (req: any, res) => {
   if (!(await gate(req, res, false))) return;
   try {
-    res.json(await loadVersionsBoard(req.params.tripId));
+    res.json(await loadVersionsBoard(req.params.tripId, new Date(), getUserId(req)));
   } catch (err) {
     fail(res, err, "read the versions");
   }

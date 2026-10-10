@@ -24,6 +24,7 @@ import { TransportSection } from "./TransportSection";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
+import { tripCardEyebrow } from "@/lib/trip-card-eyebrow";
 import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
 import { planMapAnchor } from "@/lib/map-scene";
@@ -308,6 +309,7 @@ function PlanCardSummary({
           statusLabel={statusLabel}
           metrics={{ days: numDays, activities: totalActivities, legs: totalLegs, transitTime: formatMinutes(totalMinutes) }}
           testId={`plancard-header-${trip.id}`}
+          eyebrow={tripCardEyebrow(plancardData?.trip?.finalVersion, !!plancardData?.trip?.finalizedAt)}
           badges={pendingExpertRequest ? (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-white/10 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"

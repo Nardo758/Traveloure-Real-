@@ -55,7 +55,8 @@ import { SceneMapGoogle } from "./map/SceneMapGoogle";
 import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
 import type { SceneLeg } from "./map/scene-legs";
 import { usePlanRowLook } from "@/components/plan/row-look";
-import { mapDayChipLabel, mapMovedLine, mapSheetTitle } from "@/lib/map-days";
+import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } from "@/lib/map-days";
+import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
 const MAPS_API_KEY = MAPS_BROWSER_KEY;
@@ -104,6 +105,8 @@ export interface MapControlCenterProps {
   /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
   versionKey?: string;
   onVersionChange?: (key: string) => void;
+  /** Held-batch-1 item 9: the run's versions board ("Compare →" on the board's stops sheet). Absent ⇒ no link (§13). */
+  compareHref?: string | null;
   /**
    * R322 (step 7a, R-bh): the Workstation's open Add-panel drawer — its own already-filtered,
    * already-located results (`useMapCandidates`). Drawn as hollow browse markers and rows, with the
@@ -149,6 +152,7 @@ export function MapControlCenter({
   showTravelMinutes = false,
   versionKey: versionKeyControlled,
   onVersionChange,
+  compareHref = null,
   candidates = null,
   onAddCandidate,
   layout = "stacked",
@@ -506,9 +510,17 @@ export function MapControlCenter({
         <>
         {split ? (
           board ? (
-            <p className="slip-display text-lg font-semibold text-[color:var(--slip-ink)]" data-testid="map-your-plan-title">
-              {mapSheetTitle({ dayNum: dayNumber, dateIso: (day as any)?.dateIso ?? null, versionLabel: versions?.length ? versionLabel : null })}
-            </p>
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="slip-display text-lg font-semibold text-[color:var(--slip-ink)]" data-testid="map-your-plan-title">
+                {mapSheetTitle({ dayNum: dayNumber, dateIso: (day as any)?.dateIso ?? null, versionLabel: versions?.length ? versionLabel : null })}
+              </p>
+              {/* Held-batch-1 item 9: the board's "Compare →" — the run's versions board, only when a run exists. */}
+              {versions?.length && compareHref ? (
+                <Link href={compareHref} className="text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline" data-testid="map-compare-link">
+                  {MAP_COMPARE_LINK_LABEL}
+                </Link>
+              ) : null}
+            </div>
           ) : (
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="map-your-plan-title">
               Your plan · Day {dayNumber}

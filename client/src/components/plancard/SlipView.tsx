@@ -2447,6 +2447,7 @@ export function SlipView({
             showAreas={shading.show}
             emphasizeAreas={shading.emphasize}
             versions={mapVersions}
+            compareHref={data.lastComparisonId ? `/itinerary-comparison/${data.lastComparisonId}` : null}
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
             showTravelMinutes={data.travelTimesShown === true}

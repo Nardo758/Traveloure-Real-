@@ -3,9 +3,9 @@ import { MetricStrip } from "./MetricStrip";
 import { getDestinationPhoto } from "./plancard-types";
 
 /**
- * PlanCardHeader — shared header used by the summary card. Shows a destination
- * photo behind a dark-to-transparent scrim (same pattern as HeroSection so the
- * two stages feel continuous).
+ * PlanCardHeader — shared header used by the summary card and the full Trip Card. Held-batch-1
+ * item 28 (boards rev 15, TripCard): a NAVY cover (#0D2137) with a navy scrim over the photo,
+ * the Fraunces title and, on a final plan, the gold "Trip Card · final vN" eyebrow.
  *
  * L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): `getDestinationPhoto` now
  * returns NULL for a destination with no curated photo (the generic `travel` fallback was a
@@ -39,6 +39,11 @@ interface PlanCardHeaderProps {
    */
   zoneLine?: string | null;
   partyLabel?: string | null;
+  /**
+   * Held-batch-1 item 28: the gold eyebrow over the title ("Trip Card · final v1"), from
+   * `tripCardEyebrow`. NULL ⇒ no eyebrow.
+   */
+  eyebrow?: string | null;
   /** extra pills next to the status (e.g. "Expert review pending") */
   badges?: React.ReactNode;
   /** top-right region (countdown, delete, share…) */
@@ -58,6 +63,7 @@ export function PlanCardHeader({
   badges,
   topRight,
   testId,
+  eyebrow,
 }: PlanCardHeaderProps) {
   const photoUrl = getDestinationPhoto(destination);
 
@@ -70,7 +76,7 @@ export function PlanCardHeader({
 
   return (
     <div
-      className="relative overflow-hidden text-white px-4 pt-4 pb-3 bg-gradient-to-br from-slate-900 via-slate-800 to-primary/40"
+      className="relative overflow-hidden text-white px-4 pt-4 pb-3 bg-[#0D2137]"
       data-testid={testId}
       data-hero={photoUrl ? "photo" : "typographic"}
     >
@@ -88,7 +94,7 @@ export function PlanCardHeader({
       {/* Dark scrim — the mockup's `.phead` is solid dark, so the photo reads as a subtle
           texture, never a bright field the white title can wash out against (Phase 2b: the title
           now sits at the TOP of the header, over what used to be the lightest part of the scrim). */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/70 to-black/60" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#0D2137]/95 via-[#0D2137]/80 to-[#0D2137]/60" />
 
       {/* Content sits above the scrim */}
       <div className="relative z-10">
@@ -104,14 +110,22 @@ export function PlanCardHeader({
           {topRight && <div className="flex-shrink-0 text-right">{topRight}</div>}
         </div>
 
+        {eyebrow ? (
+          <div
+            className="mt-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#E8B339]"
+            data-testid={testId ? `${testId}-eyebrow` : undefined}
+          >
+            {eyebrow}
+          </div>
+        ) : null}
         <h2
-          className="mt-2 font-['DM_Serif_Display',serif] text-[20px] font-bold leading-tight tracking-[-0.01em] pr-2 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]"
+          className={`${eyebrow ? "mt-1" : "mt-2"} font-['Fraunces',Georgia,serif] text-[24px] font-semibold leading-[1.1] pr-2 text-white`}
           data-testid={testId ? `${testId}-title` : undefined}
         >
           {title}
         </h2>
         <div
-          className="mt-0.5 text-[12px] text-white/80"
+          className="mt-1 text-[13px] text-[#D7E0E8]"
           data-testid={testId ? `${testId}-meta` : undefined}
         >
           {/* QA F13: the range is its own node so a walkthrough can read the days the card

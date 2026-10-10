@@ -98,3 +98,6 @@ export function mapSheetTitle(input: { dayNum: number | null; dateIso?: string |
 export function mapMovedLine(moved: number): string | null {
   return moved > 0 ? `${moved} moved vs draft` : null;
 }
+
+/** Held-batch-1 item 9 (rev 15 Map board): the stops sheet's link to the run's versions board. */
+export const MAP_COMPARE_LINK_LABEL = "Compare →";
