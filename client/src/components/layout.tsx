@@ -1,5 +1,5 @@
 import { type CSSProperties } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useRecentlyViewed } from "@/hooks/use-recently-viewed";
 import { useLocale } from "@/hooks/use-locale";
@@ -585,6 +585,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // The nav's, the phone menu's and the footer's "Start a plan" all start a NEW plan in PlanEntry (E2).
   const { open: openPlanning } = usePlanning();
   const [location] = useLocation();
+  const search = useSearch();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -678,6 +679,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
     wasOpenRef.current = isMobileMenuOpen;
   }, [isMobileMenuOpen]);
+
+  // Mobile-nav (Chrome smoke at 390 wide, ledger `2026-10-10-mobile-nav-close`): the phone menu and any open
+  // desktop dropdown close on EVERY route change — path or query (the group links on /experiences change only
+  // the query) — however the change happened: a menu link, a link elsewhere on the page, Back/Forward, or a
+  // programmatic navigation. A menu item's own onClick closing it is not the only path to a new route.
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setOpenMenu(null);
+  }, [location, search]);
 
   const isActive = (path: string) => location === path;
   // A dropdown page lights its parent group (footer-pages ruling): the ONE rule, nav-config.
@@ -873,7 +883,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* TEST 7 — Mobile menu: id for aria-controls, role=dialog, aria-modal, focus-trapped */}
-        <AnimatePresence>
+        {/* Mobile-nav (ledger `2026-10-10-mobile-nav-close`): keyed on the route so a navigation REMOUNTS the
+            presence. Without it, a route change landing on /experiences left the closing panel mid-exit —
+            the menu state was already closed, but framer-motion never finished the exit, so the panel stayed
+            drawn over the page at full height. A route change drops any exiting panel at once. */}
+        <AnimatePresence key={`${location}?${search}`}>
           {isMobileMenuOpen && (
             <motion.div
               id="mobile-menu"

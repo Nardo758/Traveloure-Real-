@@ -69,17 +69,22 @@ interface UniversalFilterDef {
 /**
  * One real sentence for each occasion THIS seeder may create (E3, ledger `2026-10-09-e3-experiences-inline`).
  * The seeder used to write `"<name> planning experience"` — a placeholder the picker showed as the
- * occasion's description. Migration 360 repairs the six rows already written that way, with these same
- * sentences (pinned by `occasion-descriptions.test.ts`). A slug not listed here is created with NO
+ * occasion's description. Migrations 360 and 364 repair the rows already written that way, with these same
+ * sentences (pinned by `occasion-descriptions.test.ts`); 364 writes the anniversary sentence under
+ * `anniversary`, the slug an older seeder gave that occasion on production (`anniversary-trip` is not a
+ * production row and 364 carries no UPDATE for it). A slug not listed here is created with NO
  * description — an honest blank, never a generated one (§13).
  */
 export const SEEDED_OCCASION_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "anniversary-trip": "Another year together, marked with a stay, a dinner to remember and time for the two of you.",
+  "bachelor-bachelorette": "A weekend with your friends before the wedding, with the nights out, the activities and the group's stays.",
   corporate: "Offsites and team retreats, with the venue, the sessions and the group's travel in one plan.",
   "family-occasion": "A family gathering across generations — a reunion, an anniversary or a long weekend together.",
   "golf-trip": "Tee times on the courses you want, and the evenings in between, for your group.",
   honeymoon: "Your first trip as newlyweds, with the stay, the dinners and time to slow down.",
   "milestone-birthday": "A big birthday worth marking, with the dinner, the venue and the guests.",
   romance: "A getaway for two, with a stay, a table for dinner and time on your own.",
+  "sports-event": "The game, the match or the race, with the stay, the getting there and the evenings around it.",
 };
 
 async function getOrCreateExperienceType(slug: string, name: string): Promise<string> {

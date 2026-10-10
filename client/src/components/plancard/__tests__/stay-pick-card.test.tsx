@@ -8,7 +8,11 @@
  *   SC3 render, routed: the ONE pick, its scored line, Stay here (coral), the map link with
  *       "Google Maps" beside it, the swap; no price or commission anywhere
  *   SC4 render, changed: the "Updated" line shows; a non-chooser sees no Stay here and no swap
- *   SC5 render, free: up to three by straight line, each with Stay here and an attributed map link
+ *   SC5 render, free: up to three by straight line, each with Stay here; a Traveloure stay links "See rooms"
+ *       to its listing page with the plan and carries no Maps attribution; the others keep the attributed
+ *       map link (S1-b, ledger `2026-10-10-s1b-provider-stays` — sanctioned edit)
+ *   SC5b render: `hotel_cache` and `affiliate` stays keep "View on map" with "Google Maps" beside it and
+ *       never get "See rooms" or the Traveloure badge (S1-b)
  *   SC6 source: the container posts the ONE seen read, only for a chooser, once per computed pick
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/stay-pick-card.test.tsx
@@ -20,7 +24,8 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import type { WhereToStayView } from "@shared/where-to-stay";
 import { AnchorPanelView, type AnchorPanelViewProps } from "../../plan/AnchorPanel";
-import { GOOGLE_MAPS_ATTRIBUTION, stayCardModel, stayMapsHref, stayScoredLine } from "../../../lib/stay-card";
+import { GOOGLE_MAPS_ATTRIBUTION, STAY_SEE_ROOMS_LABEL, stayCardModel, stayMapsHref, stayScoredLine } from "../../../lib/stay-card";
+import { PLATFORM_STAY_BADGE } from "@shared/where-to-stay";
 import { buildGoogleMapsDeepLink } from "../../../lib/maps";
 
 (globalThis as any).React = React;
@@ -91,15 +96,31 @@ describe("S1 stay card", () => {
     assert.match(ro, /stay-pick-map-hotel_cache-h2/);
   });
 
-  it("SC5 free: up to three by straight line, each with Stay here and an attributed map link", () => {
-    const html = render({ view: base({ tier: "straight_line", hotels: [hotel("a", "A"), hotel("b", "B", "platform"), hotel("c", "C")] }) });
+  it("SC5 free: up to three by straight line, each with Stay here; a Traveloure stay links See rooms, unattributed", () => {
+    const html = render({ tripId: "trip-1", view: base({ tier: "straight_line", hotels: [hotel("a", "A"), hotel("b", "B", "platform"), hotel("c", "C")] }) });
     const t = text(html);
     assert.match(html, /data-stay-tier="straight_line"/);
     assert.match(t, /Closest to your stops/);
     assert.match(t, /By straight line\./);
     assert.equal((html.match(/data-testid="stay-pick-stay-/g) ?? []).length, 3);
-    assert.equal((html.match(/data-testid="stay-pick-map-attribution-/g) ?? []).length, 3);
-    assert.doesNotMatch(t, /Scored \d+ of/);
+    // S1-b: the Traveloure stay opens its listing page carrying the plan — no Google link, no attribution.
+    assert.match(html, /<a[^>]*href="\/services\/b\?tripId=trip-1"[^>]*data-testid="stay-pick-rooms-b"/);
+    assert.match(t, new RegExp(STAY_SEE_ROOMS_LABEL));
+    assert.doesNotMatch(html, /stay-pick-map-attribution-b"|stay-pick-map-platform-b"/);
+    assert.equal((html.match(/data-testid="stay-pick-map-attribution-/g) ?? []).length, 2);
+    assert.doesNotMatch(t, /Scored \d+ of|\bBook\b/);
+  });
+
+  it("SC5b partner stays keep the attributed map link and never get See rooms or the badge", () => {
+    const html = render({ tripId: "trip-1", view: base({ tier: "straight_line", hotels: [hotel("h", "H", "hotel_cache"), hotel("f", "F", "affiliate")] }) });
+    const t = text(html);
+    for (const [kind, id] of [["hotel_cache", "h"], ["affiliate", "f"]] as const) {
+      assert.match(html, new RegExp(`data-testid="stay-pick-map-${kind}-${id}"`), `${kind}: map link`);
+      assert.match(html, new RegExp(`data-testid="stay-pick-map-attribution-${id}"`), `${kind}: attribution`);
+      assert.doesNotMatch(html, new RegExp(`stay-pick-rooms-${id}"`), `${kind}: no See rooms`);
+    }
+    assert.equal(t.split(GOOGLE_MAPS_ATTRIBUTION).length - 1, 2);
+    assert.doesNotMatch(t, new RegExp(`${STAY_SEE_ROOMS_LABEL}|${PLATFORM_STAY_BADGE}`));
   });
 
   it("SC6 the container posts the one seen read, for a chooser, once per pick", () => {
