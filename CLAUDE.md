@@ -2679,6 +2679,14 @@ This document captures architectural decisions to maintain consistency across co
     optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
     is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
     default card shows "See rates" and no price; the item row and booking are d-3.
+    **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
+    ledger `2026-10-10-s1-d3a-liteapi-booking`; brief `docs/planning/briefs/s1-d3-liteapi-booking.md`; migration
+    371, HELD until "Migration 371 SQL approved — Leon" — FOUNDER WORDING REVIEW).** Nuitée is merchant of record:
+    its Payment SDK takes the card and we send only `payment.method = TRANSACTION_ID`
+    (`scripts/check-liteapi-payment-method.cjs`). One `liteapi_bookings` row per prebook, written before the SDK
+    opens; owner-only; the offer is re-quoted server-side and never taken from the browser; confirmed flips the
+    item to `purchased` and inserts the voucher in one transaction; cancel is a `confirmed → cancelling` claim with
+    no refund row; the daily sync records LiteAPI's status and never books. Sandbox only (`liteapiBookingEnabled`).
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;

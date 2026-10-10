@@ -32,6 +32,7 @@ import { runFactsRecheck } from "../jobs/factsRecheck";
 import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
 import { runOfficialRefresh } from "../jobs/officialRefresh";
 import { runLiteapiSync } from "../jobs/liteapiSync";
+import { runLiteapiBookingSync } from "../jobs/liteapiBookingSync";
 import { runLegsDayofRecheck } from "../jobs/legsDayofRecheck";
 import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
 import { runStripeReconciliation } from "../jobs/stripeReconciliation";
@@ -221,6 +222,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // SS-1b (ledger `2026-10-10-ss1b-official-refresh`): posted daily; reads only targets that are DUE on their
   // source's interval, within its daily ceiling. A day with nothing due is still a real pass.
   { job: "official-refresh", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): reads each live LiteAPI booking and records what
+  // LiteAPI says — it detects, never books or cancels. Sandbox only.
+  { job: "liteapi-booking-sync", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -447,6 +451,13 @@ router.post("/internal/jobs/liteapi-sync", requireInternalSecret, async (_req, r
 // plan; a run that could not read the registry is an error and never stamps a success.
 router.post("/internal/jobs/official-refresh", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("official-refresh", () => runOfficialRefresh(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
+// S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): the LiteAPI booking sync. Records facts only; a pass
+// that could not read its own table is an error.
+router.post("/internal/jobs/liteapi-booking-sync", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("liteapi-booking-sync", () => runLiteapiBookingSync(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 

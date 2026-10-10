@@ -1984,4 +1984,9 @@ export const MIGRATION_FILES = [
   // DATA ONLY: INSERT … ON CONFLICT DO NOTHING, band_key first. Nothing to declare. APPROVED by Leon on the
   // TC-0 PR (#1394), Oct 10, 2026.
   "367_transport_fee_bands.sql",
+  // 371 — liteapi_bookings (ledger 2026-10-10-s1-d3a-liteapi-booking): a new table born empty, a UNIQUE on
+  // prebook_id and a partial UNIQUE of one live booking per item (safe: no row exists at creation), plus a
+  // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are held by
+  // the TC-3 lane. HELD: merges only with "Migration 371 SQL approved — Leon" on the S1-d-3a PR.
+  "371_liteapi_bookings.sql",
 ] as const;

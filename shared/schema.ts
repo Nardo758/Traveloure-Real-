@@ -12440,3 +12440,45 @@ export const freeDraftRuns = pgTable("free_draft_runs", {
   tripUniq: uniqueIndex("uq_free_draft_runs_trip").on(table.tripId).where(sql`status <> 'released'`),
 }));
 export type FreeDraftRun = typeof freeDraftRuns.$inferSelect;
+
+// S1-d-3a (migration 371; ledger `2026-10-10-s1-d3a-liteapi-booking`): one row per LiteAPI prebook. Nuitée is
+// merchant of record (the Payment SDK takes the card), so no PaymentIntent and no platform_revenue row hang
+// off this. NO FK (a paid booking outlives the plan it came from), NO DEFAULT/CHECK on status (value set ONCE
+// in shared/liteapi-booking.ts). ONE writer: server/services/liteapi-booking.service.ts.
+export const liteapiBookings = pgTable("liteapi_bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull(),
+  itineraryItemId: varchar("itinerary_item_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  hotelCacheId: varchar("hotel_cache_id"),
+  providerHotelId: varchar("provider_hotel_id", { length: 64 }).notNull(),
+  env: varchar("env", { length: 16 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  offerId: text("offer_id").notNull(),
+  prebookId: varchar("prebook_id", { length: 128 }).notNull(),
+  transactionId: varchar("transaction_id", { length: 128 }).notNull(),
+  liteapiBookingId: varchar("liteapi_booking_id", { length: 128 }),
+  hotelConfirmationCode: varchar("hotel_confirmation_code", { length: 128 }),
+  checkin: date("checkin").notNull(),
+  checkout: date("checkout").notNull(),
+  adults: integer("adults").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  commissionCents: integer("commission_cents"),
+  processingFeeCents: integer("processing_fee_cents"),
+  cancellationPolicy: jsonb("cancellation_policy"),
+  failureReason: text("failure_reason"),
+  claimedAt: timestamp("claimed_at"),
+  bookedAt: timestamp("booked_at"),
+  cancellingAt: timestamp("cancelling_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncStatus: varchar("last_sync_status", { length: 32 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  prebookUniq: uniqueIndex("uq_liteapi_bookings_prebook").on(table.prebookId),
+  liveItemUniq: uniqueIndex("uq_liteapi_bookings_live_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling')`),
+  statusIdx: index("idx_liteapi_bookings_status").on(table.status),
+}));
+export type LiteapiBooking = typeof liteapiBookings.$inferSelect;

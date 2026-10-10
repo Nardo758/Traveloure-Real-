@@ -1,7 +1,9 @@
 /**
  * LITEAPI CLIENT (S1-d-1; ledger `2026-10-10-s1-d1-liteapi`). Static content: `GET /data/hotels`.
  * S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`): live rates, `POST /hotels/rates` — never stored.
- * Prebook and book are a later lane.
+ * S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): prebook (`usePaymentSdk: true`), book, read and
+ * cancel on the booking host. The book body is built in ONE place, `bookRequestBody`, and its payment method
+ * is the one constant `LITEAPI_PAYMENT_METHOD` (scripts/check-liteapi-payment-method.cjs).
  *
  *   · Auth is the `X-API-Key` header; the key is read by name (`LITEAPI_API_KEY`) through the config.
  *   · Paced to `maxRps` (5/s in sandbox) and backs off on 429 (or body code 4290): three retries,
@@ -9,6 +11,28 @@
  *   · `fetch` and `sleep` are injected so the pacing and back-off are provable without a network.
  */
 import type { LiteapiConfig } from "../config/liteapi.config";
+import { LITEAPI_PAYMENT_METHOD } from "@shared/liteapi-booking";
+
+/** The traveler named on the booking: the session user's own account (§14), never a request body. */
+export interface LiteapiHolder {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+/**
+ * The ONE book body. Nuitée is merchant of record: the Payment SDK has already taken the card, so the only
+ * payment this platform sends is the SDK's transaction id. `clientReference` is our row id.
+ */
+export function bookRequestBody(q: { prebookId: string; transactionId: string; clientReference: string; holder: LiteapiHolder }) {
+  return {
+    prebookId: q.prebookId,
+    clientReference: q.clientReference,
+    holder: { firstName: q.holder.firstName, lastName: q.holder.lastName, email: q.holder.email },
+    payment: { method: LITEAPI_PAYMENT_METHOD, transactionId: q.transactionId },
+    guests: [{ occupancyNumber: 1, firstName: q.holder.firstName, lastName: q.holder.lastName, email: q.holder.email }],
+  };
+}
 
 /** One hotel row of `GET /data/hotels`, the fields this lane reads. Reviews are never read (S1-d-1). */
 export interface LiteapiHotel {
@@ -69,14 +93,16 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
     return request(`${cfg.dataBaseUrl}${path}?${qs.toString()}`, path);
   }
 
-  async function request(url: string, path: string, payload?: unknown): Promise<any> {
+  async function request(url: string, path: string, payload?: unknown, method?: "PUT"): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       await pace();
       const res = await doFetch(
         url,
-        payload === undefined
-          ? { headers: { "X-API-Key": cfg.apiKey, accept: "application/json" } }
-          : { method: "POST", headers: { "X-API-Key": cfg.apiKey, accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(payload) },
+        method === "PUT"
+          ? { method: "PUT", headers: { "X-API-Key": cfg.apiKey, accept: "application/json" } }
+          : payload === undefined
+            ? { headers: { "X-API-Key": cfg.apiKey, accept: "application/json" } }
+            : { method: "POST", headers: { "X-API-Key": cfg.apiKey, accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(payload) },
       );
       const body: any = await res.json().catch(() => null);
       const limited = res.status === 429 || body?.error?.code === 4290;
@@ -124,6 +150,22 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
         margin: q.marginPercent,
         timeout: q.timeoutSeconds,
       });
+    },
+    /** S1-d-3a: prebook one offer for the Nuitée Payment SDK. The answer carries prebookId + transactionId. */
+    async prebook(q: { offerId: string }): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/rates/prebook`, "/rates/prebook", { offerId: q.offerId, usePaymentSdk: true });
+    },
+    /** S1-d-3a: book a prebook the SDK has paid — through the ONE body builder. */
+    async book(q: { prebookId: string; transactionId: string; clientReference: string; holder: LiteapiHolder }): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/rates/book`, "/rates/book", bookRequestBody(q));
+    },
+    /** S1-d-3a: read one booking (the sync — it detects, never books). */
+    async getBooking(bookingId: string): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/bookings/${encodeURIComponent(bookingId)}`, "/bookings/:id");
+    },
+    /** S1-d-3a: cancel one booking. Any refund is Nuitée's; we move no money. */
+    async cancelBooking(bookingId: string): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/bookings/${encodeURIComponent(bookingId)}`, "/bookings/:id", undefined, "PUT");
     },
   };
 }
