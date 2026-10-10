@@ -30,6 +30,7 @@ import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
 import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
+import { runOfficialRefresh } from "../jobs/officialRefresh";
 import { runLiteapiSync } from "../jobs/liteapiSync";
 import { runLegsDayofRecheck } from "../jobs/legsDayofRecheck";
 import { runLegGoogleCoordsRefresh } from "../jobs/legGoogleCoordsRefresh";
@@ -217,6 +218,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "content-expiry-census", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // S1-d-1 (ledger `2026-10-10-s1-d1-liteapi`): LiteAPI static content, Kyoto only, incremental.
   { job: "liteapi-sync", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // SS-1b (ledger `2026-10-10-ss1b-official-refresh`): posted daily; reads only targets that are DUE on their
+  // source's interval, within its daily ceiling. A day with nothing due is still a real pass.
+  { job: "official-refresh", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // occasion-drafts-daily.yml — its own workflow, daily
   { job: "run-occasion-drafts", expectedIntervalSec: 24 * 60 * 60, bucket: "occasion-drafts-daily" },
 ];
@@ -436,6 +440,13 @@ router.post("/internal/jobs/content-expiry-census", requireInternalSecret, async
 // S1-d-1: the nightly LiteAPI sync. A target that failed part-way is an error (its watermark did not move).
 router.post("/internal/jobs/liteapi-sync", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("liteapi-sync", () => runLiteapiSync(), (r) => !!r?.error);
+  res.status(status).json(body);
+});
+
+// SS-1b ruling 1 (ledger `2026-10-10-ss1b-official-refresh`): the market-level official refresh. Outside any
+// plan; a run that could not read the registry is an error and never stamps a success.
+router.post("/internal/jobs/official-refresh", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("official-refresh", () => runOfficialRefresh(), (r) => !!r?.error);
   res.status(status).json(body);
 });
 
