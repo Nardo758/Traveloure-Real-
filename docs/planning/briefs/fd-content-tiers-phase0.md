@@ -90,6 +90,7 @@ What does exist:
 | 7 | Night-scene content | **Future content** (a project brief exists, nothing is in the repo). No tagging now; it enters coverage targets when seeded. |
 | 8 | What expiry does | **Expired local items are hidden at build time; a nightly count job reports them.** No delete, no status column. |
 | 9 | A tag on the plan item | **`itinerary_items.source_class`, server-stamped at creation, never client-settable**, with a test that a client-supplied value is ignored. |
+| 10 | Marking a draft built from a prompt that carried local gems | **Accepted as built (decision-maker, Oct 9, 2026):** every item such a draft writes is `local` (`fromLocalInput`), because a local input shaped it, even where an individual item names no gem. A draft whose prompt carried no local gem stamps its items from `origin` alone. |
 
 ### The `reuse_class` mapping (ruling 1, fixed — stated once in `shared/content-tiers.ts`)
 `reuse_class` ∈ `display_in_plan | link_only | internal | reusable`. For a fact or source that carries the existing
