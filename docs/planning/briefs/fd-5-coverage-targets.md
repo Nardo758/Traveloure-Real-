@@ -1,7 +1,7 @@
 # FD-5 — coverage targets (Phase 0 + rulings, Oct 10, 2026)
 
 Read on `main` at `80789efd9` (R406); built on FD-3's branch (DayBlock's feasibility line). Ledger row
-`2026-10-10-fd5-coverage-targets` (R?). No migration.
+`2026-10-10-fd5-coverage-targets` (R414). No migration.
 
 ## 1. Production facts (Replit reads, Oct 10, 2026)
 - Kyoto `city_neighborhoods`: one row each — `gion`, `higashiyama`, `arashiyama`, `pontocho`, `kyoto-station`,
