@@ -3,7 +3,9 @@
  * what a partner row draws: no badge, Stay here, and the Maps link with its attribution. No rate, no
  * price and no "See rates" in d-1 (that is S1-d-2). No existing pin is edited.
  *
- *   SC7 routed pick of kind liteapi: Stay here keyed `liteapi`, the attributed Maps link, no badge, no money
+ *   SC7 routed pick of kind liteapi: Stay here keyed `liteapi`, the attributed Maps link, no badge, no money.
+ *       AMENDED by S1-d-2 (sanctioned, ledger `2026-10-10-s1-d2-liteapi-rates`): the default card still shows
+ *       no `$`, `¥` or "per night", and now carries the "See rates" control — with no price text until tapped
  *   SC8 free list mixing kinds: only the platform row is badged; the liteapi row keeps its Maps link
  *   P10 ranked options: a liteapi stay in a neighbourhood has no "Traveloure stay" badge and a Stay here
  *
@@ -45,7 +47,11 @@ describe("LiteAPI stay row", () => {
     assert.ok(html.includes(`href="${stayMapsHref("Hotel Kanra", "Kyoto").replace(/&/g, "&amp;")}"`));
     assert.match(t, new RegExp(`View on map · ${GOOGLE_MAPS_ATTRIBUTION}`));
     assert.doesNotMatch(t, new RegExp(PLATFORM_STAY_BADGE));
-    assert.doesNotMatch(t, /\$|¥|per night|See rates|commission/i);
+    assert.doesNotMatch(t, /\$|¥|per night|commission/i);
+    // S1-d-2: the control is present on the default card, and no price is drawn until it is tapped.
+    assert.match(html, /data-testid="stay-rates-open-lt1"/);
+    assert.match(t, /See rates/);
+    assert.doesNotMatch(html, /data-testid="stay-rates-panel-/);
   });
 
   it("SC8 a free list mixing kinds badges only the platform row", () => {

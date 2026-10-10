@@ -3,13 +3,21 @@
  * FD-1 ruling 2). For a FREE plan only (not `planGetsRoutedLegs`): per day, `{ localPicks, localNotes }` from
  * `localTeasersByDay` (shared/free-draft-cap.ts). It reads only DRAFT-ELIGIBLE local rows (tagged, unexpired —
  * FD-2 rulings 3/8) and returns COUNTS: no title, place, id or text ever leaves this module. Any failure, or a
- * paid plan, returns an EMPTY map — no teaser, never a fabricated zero (§13). FD-5's coverage targets will hide
- * an under-target day; until then every computed, non-zero day is shown.
+ * paid plan, returns an EMPTY map — no teaser, never a fabricated zero (§13).
+ *
+ * FD-5 (ledger `2026-10-10-fd5-coverage-targets`): the plan's market targets gate it per neighbourhood and day
+ * type (`server/config/coverage-targets.config.ts`; rule `shared/coverage-targets.ts`). A day's type is read
+ * from its date and the market's season calendar; unconfirmed dates gate against `peak`. A market with no
+ * targets keeps FD-1's ungated behaviour; a season read that fails gates every day as `peak` (the stricter target,
+ * ruling 2's posture on an unknown).
  */
 import { and, eq, ilike, sql } from "drizzle-orm";
 import { db } from "../db";
-import { cityNeighborhoods, itineraryItems, localKnowledgeNuggets, travelPulseHiddenGems, trips } from "@shared/schema";
+import { cityNeighborhoods, itineraryItems, localKnowledgeNuggets, marketSeasonCalendars, travelPulseHiddenGems, trips } from "@shared/schema";
 import { localTeasersByDay, type LocalTeaser } from "@shared/free-draft-cap";
+import { coverageDayType, planDayIso, type SeasonRow } from "@shared/coverage-targets";
+import { planDatesAreConfirmed } from "@shared/plan-dates";
+import { coveragePeakMultiplier, coverageTargetsForMarket } from "../config/coverage-targets.config";
 
 const LIVE_LOCAL = (t: { sourceClass: any; expiresAt: any }) =>
   sql`${t.sourceClass} = 'local' AND (${t.expiresAt} IS NULL OR ${t.expiresAt} > NOW())`;
@@ -18,7 +26,9 @@ export async function localTeasersForTrip(tripId: string): Promise<Map<number, L
   try {
     const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
     if (await tripGetsRoutedLegs(tripId)) return new Map();
-    const [trip] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    const [trip] = await db
+      .select({ destination: trips.destination, marketSlug: trips.marketSlug, startDate: trips.startDate, datesConfirmedAt: trips.datesConfirmedAt })
+      .from(trips).where(eq(trips.id, tripId)).limit(1);
     const city = (trip?.destination ?? "").split(",")[0].trim();
     if (!city) return new Map();
     const [items, hoods] = await Promise.all([
@@ -37,7 +47,24 @@ export async function localTeasersForTrip(tripId: string): Promise<Map<number, L
         .where(and(ilike(localKnowledgeNuggets.city, city), LIVE_LOCAL(localKnowledgeNuggets))),
     ]);
     const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
+    const targets = coverageTargetsForMarket(trip?.marketSlug);
+    let gate: Parameters<typeof localTeasersByDay>[0]["gate"];
+    if (Object.keys(targets).length > 0) {
+      const seasons: SeasonRow[] | null = await db
+        .select({ startMonthDay: marketSeasonCalendars.startMonthDay, endMonthDay: marketSeasonCalendars.endMonthDay, multiplier: marketSeasonCalendars.expectedDemandMultiplier })
+        .from(marketSeasonCalendars)
+        .where(eq(marketSeasonCalendars.marketKey, String(trip!.marketSlug).toLowerCase()))
+        .then((rows) => rows.map((r) => ({ startMonthDay: r.startMonthDay, endMonthDay: r.endMonthDay, multiplier: Number(r.multiplier) })))
+        .catch(() => null);
+      const datesConfirmed = planDatesAreConfirmed(trip!.datesConfirmedAt as any);
+      const peakMultiplier = coveragePeakMultiplier();
+      gate = {
+        targets,
+        dayTypeOf: (day) => seasons === null ? "peak" : coverageDayType({ dateIso: planDayIso(String(trip!.startDate ?? ""), day), datesConfirmed, seasons, peakMultiplier }),
+      };
+    }
     return localTeasersByDay({
+      gate,
       items: items.map((i) => ({ dayNumber: i.dayNumber, lat: num(i.lat), lng: num(i.lng), gemId: i.gemId ?? null })),
       neighbourhoods: hoods.map((h) => ({ id: h.id, slug: h.slug, name: h.name, lat: num(h.lat), lng: num(h.lng) })),
       gems: gems.map((g) => ({ id: g.id, neighbourhoodSlug: g.slug ?? null })),
