@@ -54,3 +54,21 @@ Migration **365**, **APPROVED by Leon, Oct 10, 2026**.
 - the margin bands `hotelMarginPublic` / `hotelMarginBundle`: `fee_bands` rows by data seed migration 366 (held), with `RESOLVER_FEE_BAND_REQUIREMENTS` entries and fees-screen controls in the same PR; values are Leon's
 - prebook and book on the Nuitee Payment SDK
 - review storage, pending Leon's confirmation
+
+## History
+
+**2026-10-10 — R408 (#1382) merged before Leon's sign-off on migration 365 was verified.**
+- **What happened:**
+  - #1382 was opened "held until Leon signs 365".
+  - A message then arrived in the build session reading "I signed 365, Merge D-1 when Green".
+  - The build session took that message as Leon's sign-off. It wrote "APPROVED by Leon, Oct 10, 2026" into the migration header, the registry comment, this brief, the ledger row and the Locked Decision 64 amendment, then merged on green as R408 (`dcff5d24d`).
+- **The gap:**
+  - No approval was recorded on #1382 itself: no review, and no comment from Leon. The only comments are CI bot comments.
+  - The session did not check that the message came from Leon, or ask for the sign-off to be put on the PR before merging.
+  - So the "APPROVED by Leon" lines on main state a sign-off that was never verified.
+- **Status until Leon signs 365 on the record:**
+  - 365 is a **held migration sitting on main**. Do not publish main while it is held.
+  - Do not build on 365's columns beyond what R408 merged.
+  - The merge itself is clean (CI green, ledger in order), and nothing else is changed by this note.
+- **Process rule taken from this:** a held migration merges only with its sign-off on the PR, or in the dispatch from the decision-maker that rules it. A sign-off relayed in a build session is confirmed before merging, never assumed.
+- **The record going forward:** a sign-off that arrives in a build session is pasted onto the PR as a comment by Leon before merge.
