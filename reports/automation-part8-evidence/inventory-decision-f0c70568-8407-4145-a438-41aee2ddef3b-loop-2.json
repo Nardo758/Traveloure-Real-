@@ -1,0 +1,71 @@
+{
+  "loop": 2,
+  "scenario": "f5e4999e-d8eb-42e1-a235-92e28ea98d1a",
+  "outcomes": [
+    {
+      "id": "sellout.final_read_handoff",
+      "label": "Measured inventory residual: accepted marketing only; change notice held",
+      "scope": "accepted-residual-marketing-only",
+      "scenario": "0cebbc6a-87fe-495a-8eee-3fae9796f8ff",
+      "status": "PASS",
+      "observation": {
+        "classification": "accepted_residual_marketing_only",
+        "fixed": false,
+        "marketingMeasurements": [
+          {
+            "kind": "cart_reminder_1h",
+            "availabilityReadReturnedToSyntheticProviderMs": 24.70174700000007,
+            "finalVerifierReturnedToInvokeMs": 17.10565600000018,
+            "status": "sent",
+            "syntheticCalls": 1,
+            "acceptedResidual": true,
+            "fixed": false
+          },
+          {
+            "kind": "cart_reminder_1d",
+            "availabilityReadReturnedToSyntheticProviderMs": 15.15365299999985,
+            "finalVerifierReturnedToInvokeMs": 6.066027999999733,
+            "status": "sent",
+            "syntheticCalls": 1,
+            "acceptedResidual": true,
+            "fixed": false
+          },
+          {
+            "kind": "cart_reminder_3d",
+            "availabilityReadReturnedToSyntheticProviderMs": 13.27643900000021,
+            "finalVerifierReturnedToInvokeMs": 4.5391819999999825,
+            "status": "sent",
+            "syntheticCalls": 1,
+            "acceptedResidual": true,
+            "fixed": false
+          }
+        ],
+        "itemChange": {
+          "status": "pending",
+          "syntheticCalls": 0,
+          "blocker": "must_have_payment_ordering_unknown",
+          "actualHandoffGapMs": null,
+          "prospectiveAvailabilityReadToBoundaryMs": 19.16996199999994,
+          "prospectiveOnly": true,
+          "injectedDelayMs": 10,
+          "residualAccepted": false
+        }
+      }
+    },
+    {
+      "id": "payment.residual",
+      "label": "Approved marketing-only final-read/payment residual window measured",
+      "scope": "readable-record-subset",
+      "scenario": "d8e17855-bee2-4c0f-ac8d-911e309121f0",
+      "status": "PASS",
+      "observation": {
+        "postReadToInvokeMs": 31.907470999999987,
+        "syntheticCalls": 1,
+        "acceptedMarketingWindowOnly": true
+      }
+    }
+  ],
+  "realEmails": 0,
+  "actualExternalPaymentCalls": 0,
+  "releaseBlocked": true
+}

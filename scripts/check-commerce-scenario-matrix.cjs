@@ -74,15 +74,18 @@ async function main() {
         blocked: evidence.outcomes.filter(row => row.status === "BLOCKED").length });
       fs.writeFileSync(path.join(OUTPUT, `${runId}-loop-${loop}.json`), JSON.stringify(evidence, null, 2));
       console.log(JSON.stringify({ loop, executed: seen.size, failed: failures,
-        blocked: loops.at(-1).blocked, closed: [...state.values()].filter(row => row.streak >= 2).length }));
+        blocked: loops.at(-1).blocked, closed: [...state.values()].filter(row =>
+          row.streak >= 2 && row.scope !== "accepted-residual-marketing-only").length }));
     }
   } finally { fs.unlinkSync(CONTROL); }
   const rows = [...state.values()].map(row => ({ ...row, status: row.streak >= 2
-    ? "CLOSED_READABLE_SCOPE"
+    ? row.scope === "accepted-residual-marketing-only"
+      ? "STRUCTURAL_RISK_ACCEPTED_RESIDUAL" : "CLOSED_READABLE_SCOPE"
     : row.attemptedLoops >= 6 ? "STRUCTURAL_RISK"
       : row.observations.at(-1).status === "BLOCKED" ? "BLOCKED" : "OPEN" }));
-  const report = { runId, loops, rows, closed: rows.filter(row => row.streak >= 2).length,
-    structuralRisks: rows.filter(row => row.status === "STRUCTURAL_RISK").length,
+  const report = { runId, loops, rows, closed: rows.filter(row => row.status === "CLOSED_READABLE_SCOPE").length,
+    structuralRisks: rows.filter(row => row.status.startsWith("STRUCTURAL_RISK")).length,
+    acceptedMeasuredResiduals: rows.filter(row => row.status === "STRUCTURAL_RISK_ACCEPTED_RESIDUAL").length,
     realEmails: 0, actualExternalPaymentCalls: 0, releaseBlocked: true };
   fs.writeFileSync(path.join(OUTPUT, "matrix-results.json"), JSON.stringify(report, null, 2));
   let markdown = `# Part 8 scenario proof and fault testing\n\nRun: ${runId}\n\n` +

@@ -1,0 +1,29 @@
+{
+  "loop": 1,
+  "scenario": "c2c2e421-a917-422d-88f5-12f482977309",
+  "outcomes": [
+    {
+      "id": "sellout.final_read_handoff",
+      "label": "Measured inventory residual: accepted marketing only; change notice held",
+      "scope": "accepted-residual-marketing-only",
+      "scenario": "6f3ee8dd-13ce-4602-bfd7-93286e6c4d95",
+      "status": "FAIL",
+      "error": "exception:TypeError"
+    },
+    {
+      "id": "payment.residual",
+      "label": "Approved marketing-only final-read/payment residual window measured",
+      "scope": "readable-record-subset",
+      "scenario": "02976340-3223-4b60-bfef-04ddaadb5edd",
+      "status": "PASS",
+      "observation": {
+        "postReadToInvokeMs": 44.54508299999998,
+        "syntheticCalls": 1,
+        "acceptedMarketingWindowOnly": true
+      }
+    }
+  ],
+  "realEmails": 0,
+  "actualExternalPaymentCalls": 0,
+  "releaseBlocked": true
+}

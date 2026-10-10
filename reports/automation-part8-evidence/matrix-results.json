@@ -4581,5 +4581,17 @@
   "structuralRisks": 7,
   "realEmails": 0,
   "actualExternalPaymentCalls": 0,
-  "releaseBlocked": true
+  "releaseBlocked": true,
+  "devStatus": "DEV-CLOSED WITH BLOCKERS",
+  "historicalCountsPreserved": true,
+  "decisionClassifications": {
+    "sellout.final_read_handoff": "ACCEPTED_MEASURED_RESIDUAL_MARKETING_ONLY_NOT_FIXED",
+    "change.unsubscribed_sent": "CARRIED_FORWARD_RELEASE_BLOCKER",
+    "unknown.stripe_activity_before_local_persistence_or_unstamped_lifecycle": "CARRIED_FORWARD_RELEASE_BLOCKER",
+    "unknown.off_platform_partner_payment_without_local_update": "CARRIED_FORWARD_RELEASE_BLOCKER",
+    "unknown.fee_ledger_source_without_proven_traveler_ownership": "CARRIED_FORWARD_RELEASE_BLOCKER",
+    "stripe.actual.replay_3x": "CARRIED_FORWARD_RELEASE_BLOCKER",
+    "stripe.actual.webhook_success_together": "CARRIED_FORWARD_RELEASE_BLOCKER"
+  },
+  "residualMeasurementEvidence": "inventory-decision-measurements.json"
 }

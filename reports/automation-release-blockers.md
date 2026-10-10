@@ -1,11 +1,22 @@
 # Commerce automation — carried-forward release blockers
 
+**Current Part 8 decision: DEV-CLOSED WITH BLOCKERS.** The current consolidated
+nine-row table (seven classified risks plus two explicit holds) is
+[One risk / release-blocker table](automation-part8-verification.md#one-risk--release-blocker-table).
+It links the separate [Stripe eligibility proposal #1828](commerce-stripe-provenance-proposal.md)
+and [ownership proposal #1829](commerce-owner-provenance-proposal.md).
+The historical entries below remain context, not permission to close UNKNOWNs.
+Normal reminders and item-change delivery remain blocked; Part 9 is proposal only.
+
+## Historical Parts 4–6 evidence and boundaries
+
 Parts 4, 5 and 6: **DEV-CLOSED; release blocked; not RELEASE-CERTIFIED**.
 
 DEV-CLOSED means built in development, two clean randomized readable-record
 subset loops, all open gaps documented here, and release blocked. It does not
 mean complete payment lifecycle coverage, real provider delivery or production
-verification. Part 7 has not started.
+verification. Parts 7 and 8 subsequently proceeded under their separate
+approvals; current Part 8 classification is linked above.
 
 | Item | Part affected | What is needed | Approval owner / boundary |
 |---|---|---|---|

@@ -1,5 +1,7 @@
 # Part 8 scenario proof and fault testing
 
+**Current status: DEV-CLOSED WITH BLOCKERS.** 100 rows closed within the documented readable-record scope; the seven historical structural-risk rows remain listed. One is now an accepted, measured inventory residual for marketing reminders only; six remain carried-forward release blockers. This is not RELEASE-CERTIFIED, not an all-rail claim, and not authorization to start Part 9.
+
 Run: e2070336-632d-4d4d-baec-c72125184de2
 
 Development-only, provider-free, fresh randomized scenarios in disposable schemas. The existing database harness owns isolation and cleanup. No runtime, payment writer, checkout, production, feature flag, sender or migration registration changed.
@@ -122,7 +124,7 @@ The idle boundary is inclusive at 60 minutes / 1 day / 3 days. A 15-minute sched
 
 ## Open evidence and structural risks
 
-- **sellout.final_read_handoff** (STRUCTURAL_RISK): assertion:Availability changed before handoff: status=sent, syntheticCalls=1; payment-only residual approval does not cover inventory; attempted 6, clean 0. Evidence: automation-part8-evidence/e2070336-632d-4d4d-baec-c72125184de2-loop-6.json.
+- **sellout.final_read_handoff** (historical STRUCTURAL_RISK; now ACCEPTED RESIDUAL for marketing only): the original zero-send assertion failed six times. The founder subsequently accepted the measured inventory window for 1h/1d/3d reminders, not for cart_item_changed. Two new clean measurement loops are recorded separately; this is not a fix and does not turn the historical matrix into 101 closed rows.
 - **change.unsubscribed_sent** (STRUCTURAL_RISK): must_have_payment_ordering_unknown; attempted 6, clean 0. Evidence: automation-part8-evidence/e2070336-632d-4d4d-baec-c72125184de2-loop-6.json.
 - **unknown.stripe_activity_before_local_persistence_or_unstamped_lifecycle** (STRUCTURAL_RISK): stripe_activity_before_local_persistence_or_unstamped_lifecycle; attempted 6, clean 0. Evidence: automation-part8-evidence/e2070336-632d-4d4d-baec-c72125184de2-loop-6.json.
 - **unknown.off_platform_partner_payment_without_local_update** (STRUCTURAL_RISK): off_platform_partner_payment_without_local_update; attempted 6, clean 0. Evidence: automation-part8-evidence/e2070336-632d-4d4d-baec-c72125184de2-loop-6.json.
@@ -144,9 +146,9 @@ The idle boundary is inclusive at 60 minutes / 1 day / 3 days. A 15-minute sched
 
 The golden total includes parent/registry/guard entries; it is **not** 143 unique database cases. Native golden artifacts were relocated into the approved Part 8 evidence directory without changing results.
 
-### New inventory handoff failure
+### Historical inventory failure and subsequent decision
 
-When the availability slot is filled **after the final read but before provider invocation**, the row becomes `sent` and the synthetic provider is invoked once. All six final-loop attempts fail the zero-send assertion. The approved residual exception covers marketing **payment** races, not catalog availability changes. No runtime fix or broader exception has been introduced.
+When the availability slot is filled **after the final read but before provider invocation**, the row becomes `sent` and the synthetic provider is invoked once. All six original final-loop attempts failed the zero-send assertion under the earlier payment-only exception. The founder has now expressly accepted this inventory residual for marketing reminders only. No runtime fix has been introduced; cart_item_changed remains blocked.
 
 The accepted marketing/payment residual was measured at **26.76 ms and 27.53 ms** in the two passing scenarios. These are measured synthetic-fixture observations, **not** a production upper bound.
 
@@ -156,7 +158,53 @@ Two exploratory fixture-validation loops are archived separately in this directo
 
 Only the approved new tests, test runner, verification-only CI step and reports changed. Disposable setup reuses existing fixture DDL for heartbeat nullability and the commerce dedupe index; no shared development schema, production schema or migration registry changed. Direct senders and payment/checkout/booking runtime code were untouched. No real emails or external payment calls were made.
 
-**PART 8 NOT FULLY CLOSED: 100 rows closed, 7 STRUCTURAL RISK rows after six final attempts.** Those seven comprise the new inventory race, three UNKNOWN payment-provenance gaps, two authentic handler-coverage gaps, and the preserved change-notice delivery hold. The latter six remain blockers rather than fabricated successful coverage. Normal commerce sending remains blocked. Part 9 has not started.
+**DEV-CLOSED WITH BLOCKERS: 100 rows closed, 7 historical structural risks classified below.** The accepted marketing residual is not a fixed rule. The three UNKNOWN payment-provenance gaps, two authentic handler-coverage gaps and change-notice delivery hold are still actual release blockers. Normal commerce sending remains blocked. Part 9 has not started.
+
+## Decision addendum: residual measurements
+
+Evidence: `automation-part8-evidence/inventory-decision-measurements.json`, run `f0c70568-8407-4145-a438-41aee2ddef3b`, with its two referenced per-loop JSON/log files.
+
+| Family | Availability read returned → synthetic provider invocation, loop 1 / 2 | Final verifier returned → invocation, loop 1 / 2 | Classification |
+|---|---:|---:|---|
+| cart_reminder_1h | 36.637 / 24.702 ms | 30.688 / 17.106 ms | Accepted marketing-only residual; not fixed |
+| cart_reminder_1d | 10.548 / 15.154 ms | 4.414 / 6.066 ms | Accepted marketing-only residual; not fixed |
+| cart_reminder_3d | 9.733 / 13.276 ms | 5.081 / 4.539 ms | Accepted marketing-only residual; not fixed |
+| cart_item_changed | Actual handoff: N/A; held | Prospective read→boundary: 19.442 / 19.170 ms | NOT accepted; pending; zero provider calls |
+| Marketing payment residual | Not an inventory read measurement | 25.628 / 31.907 ms | Existing accepted payment residual |
+
+The item-change prospective measurement deliberately includes a slot sell-out plus a 10 ms injected delay after a read-only verifier. It is not an actual dispatcher handoff, production latency or permission to send. Both loops confirmed the actual dispatcher leaves the change row pending with `must_have_payment_ordering_unknown`.
+
+Instrumentation observes completion of the existing cart/catalog SELECT, then the existing synthetic provider entry. It does not record a database-internal snapshot instant. The full availability gap includes the required later payment read; the smaller post-verifier gap excludes that read. Neither is a production maximum.
+
+The existing dispatcher already renders before the final verifier, performs no reservation write after that verifier and runs the required payment read last, followed by the synchronous quiet-hours check and provider handoff. We retained that ordering: making the catalog query later or combining queries would change runtime sender behavior, which this dispatch prohibits. The test adds no runtime work.
+
+**Two clean randomized measurement loops** passed for all three reminder steps and the held change notice; each disposable schema was removed. Four preceding measurement-fixture attempts failed (raw SQL `last_error` was mistakenly treated as a camel-case field, and one diagnostic mistakenly treated `skipped` counts as an array). Their sanitized evidence is retained; they are not clean loops and are not new payment/inventory fixes. Only the measurement test and documentation changed.
+
+## One risk / release-blocker table
+
+The six carried-forward rows below retain their original six attempts / zero clean loops. Recorded signals and fail-closed suppression do not close them.
+
+| Item / matrix row | Classification | Parts affected | What is missing / what closes it | Approval owner |
+|---|---|---|---|---|
+| sellout.final_read_handoff | ACCEPTED RESIDUAL, marketing only; historical risk retained | 6, 8; future 9 | Measured twice as above, not fixed. Acceptance never extends to cart_item_changed. Production release still needs other blockers closed. | Founder: accepted marketing window; separate release approval |
+| change.unsubscribed_sent | CARRIED-FORWARD RELEASE BLOCKER | 5, 6, 8, 9 | Exemption is verified, but actual delivery is held by must-have payment ordering. Needs approved timing/provenance guarantee, two clean genuine delivery loops, provider-delivered evidence. | Founder; payment-provenance implementation owner |
+| unknown.stripe_activity_before_local_persistence_or_unstamped_lifecycle | CARRIED-FORWARD RELEASE BLOCKER | 4, 5, 6, 8, 9 | Readable local births cannot prove upstream activity or unstamped lifecycle changes. Approve and prove trusted eligibility instant / reliable provenance; do not weaken UNKNOWN. [Proposal #1828: Stripe eligibility timing](commerce-stripe-provenance-proposal.md), [proposal #1829: ownership/provenance](commerce-owner-provenance-proposal.md). | Founder approves exact writer/schema scope separately |
+| unknown.off_platform_partner_payment_without_local_update | CARRIED-FORWARD RELEASE BLOCKER | 4, 5, 6, 8, 9 | No local evidence of partner-only payment. Needs approved authoritative evidence or a separately approved safe eligibility policy; [#1828](commerce-stripe-provenance-proposal.md) / [#1829](commerce-owner-provenance-proposal.md) track. | Founder; provenance / partner-integration owner |
+| unknown.fee_ledger_source_without_proven_traveler_ownership | CARRIED-FORWARD RELEASE BLOCKER | 4, 5, 6, 8, 9 | Fee birth does not establish traveler/cart ownership reliably. Needs proven existing joins or separately approved minimal provenance changes; [#1828](commerce-stripe-provenance-proposal.md) / [#1829](commerce-owner-provenance-proposal.md) track. | Founder; provenance implementation owner |
+| stripe.actual.replay_3x | CARRIED-FORWARD RELEASE BLOCKER | 6, 8, 9 certification | Real authenticated handler/writer replay has not been exercised. Need safe isolated actual-handler execution three times, persisted evidence and no duplicate email. An entry probe / recorded row is not equivalent. | Founder approves safe handler harness; QA proves it |
+| stripe.actual.webhook_success_together | CARRIED-FORWARD RELEASE BLOCKER | 6, 8, 9 certification | Actual webhook and actual success path have not been exercised concurrently. Need both authoritative paths and observed race/duplicate outcomes in approved isolation. | Founder approves harness scope; QA proves it |
+| Normal cart-reminder sending remains blocked | GLOBAL RELEASE HOLD | 4–9 | All-rail safety, genuine delivery evidence and explicit release approval still missing. Development proof is not activation. | Founder |
+| Item-change inventory residual / time-qualified copy | ADDITIONAL MUST-HAVE HOLD within the inventory risk | 5, 6, 9 | No inventory residual accepted. Actual handoff remains absent. Founder must decide time-qualified wording and policy; copy alone cannot resolve payment ordering. | Founder |
+
+Suggested item-change wording, **proposal only**:
+
+> “When we checked at {date}, {time} {time zone}, {item} was priced at {price} {currency} and its availability was {availability}. Price and availability may change before you book. Review the current details in your cart.”
+
+For a loss: “When we checked at {date}, {time} {time zone}, {item} had no availability for the quantity in your cart.” Never use the add-time snapshot's captured_at as the current check time; the approved copy would need a server-authored timestamp from the live check. Unknown traveler timezone must be labelled explicitly as UTC, not inferred. This wording is not implemented and does not remove any hold.
+
+## Part 9 preparation — proposal only
+
+See `automation-part9-delivery-proposal.md` for the smallest opt-in disposable-schema QA delivery harness, exact proposed files / process-local flags, off-state proof and limits. No Part 9 code, flag or transport was built or enabled. In particular, transport-only proof of an item-change template is not end-to-end dispatcher proof.
 
 Every row includes fresh scenario IDs and observed outcomes in matrix-results.json and the per-loop JSON files. Assertion failures reset the clean streak. Closed rows are not rerun to inflate counts; only unclosed rows continue. Six unclosed attempts are explicitly STRUCTURAL_RISK, not a successful gate. No real delivery receipt is claimed.
 

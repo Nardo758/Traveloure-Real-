@@ -1,0 +1,161 @@
+{
+  "runId": "f0c70568-8407-4145-a438-41aee2ddef3b",
+  "loops": [
+    {
+      "loop": 1,
+      "file": "inventory-decision-f0c70568-8407-4145-a438-41aee2ddef3b-loop-1.json",
+      "evidence": {
+        "loop": 1,
+        "scenario": "0ad08a26-d756-4662-8787-7f7d1a45b037",
+        "outcomes": [
+          {
+            "id": "sellout.final_read_handoff",
+            "label": "Measured inventory residual: accepted marketing only; change notice held",
+            "scope": "accepted-residual-marketing-only",
+            "scenario": "b975ba01-0453-45ff-b98f-8d2cf22aee80",
+            "status": "PASS",
+            "observation": {
+              "classification": "accepted_residual_marketing_only",
+              "fixed": false,
+              "marketingMeasurements": [
+                {
+                  "kind": "cart_reminder_1h",
+                  "availabilityReadReturnedToSyntheticProviderMs": 36.636526,
+                  "finalVerifierReturnedToInvokeMs": 30.688147999999956,
+                  "status": "sent",
+                  "syntheticCalls": 1,
+                  "acceptedResidual": true,
+                  "fixed": false
+                },
+                {
+                  "kind": "cart_reminder_1d",
+                  "availabilityReadReturnedToSyntheticProviderMs": 10.547709999999825,
+                  "finalVerifierReturnedToInvokeMs": 4.413974999999937,
+                  "status": "sent",
+                  "syntheticCalls": 1,
+                  "acceptedResidual": true,
+                  "fixed": false
+                },
+                {
+                  "kind": "cart_reminder_3d",
+                  "availabilityReadReturnedToSyntheticProviderMs": 9.732778999999937,
+                  "finalVerifierReturnedToInvokeMs": 5.080635999999686,
+                  "status": "sent",
+                  "syntheticCalls": 1,
+                  "acceptedResidual": true,
+                  "fixed": false
+                }
+              ],
+              "itemChange": {
+                "status": "pending",
+                "syntheticCalls": 0,
+                "blocker": "must_have_payment_ordering_unknown",
+                "actualHandoffGapMs": null,
+                "prospectiveAvailabilityReadToBoundaryMs": 19.441647999999986,
+                "prospectiveOnly": true,
+                "injectedDelayMs": 10,
+                "residualAccepted": false
+              }
+            }
+          },
+          {
+            "id": "payment.residual",
+            "label": "Approved marketing-only final-read/payment residual window measured",
+            "scope": "readable-record-subset",
+            "scenario": "f2aad705-d9a5-447f-b9e9-569216e1df2a",
+            "status": "PASS",
+            "observation": {
+              "postReadToInvokeMs": 25.628063999999995,
+              "syntheticCalls": 1,
+              "acceptedMarketingWindowOnly": true
+            }
+          }
+        ],
+        "realEmails": 0,
+        "actualExternalPaymentCalls": 0,
+        "releaseBlocked": true
+      },
+      "cleanup": true
+    },
+    {
+      "loop": 2,
+      "file": "inventory-decision-f0c70568-8407-4145-a438-41aee2ddef3b-loop-2.json",
+      "evidence": {
+        "loop": 2,
+        "scenario": "f5e4999e-d8eb-42e1-a235-92e28ea98d1a",
+        "outcomes": [
+          {
+            "id": "sellout.final_read_handoff",
+            "label": "Measured inventory residual: accepted marketing only; change notice held",
+            "scope": "accepted-residual-marketing-only",
+            "scenario": "0cebbc6a-87fe-495a-8eee-3fae9796f8ff",
+            "status": "PASS",
+            "observation": {
+              "classification": "accepted_residual_marketing_only",
+              "fixed": false,
+              "marketingMeasurements": [
+                {
+                  "kind": "cart_reminder_1h",
+                  "availabilityReadReturnedToSyntheticProviderMs": 24.70174700000007,
+                  "finalVerifierReturnedToInvokeMs": 17.10565600000018,
+                  "status": "sent",
+                  "syntheticCalls": 1,
+                  "acceptedResidual": true,
+                  "fixed": false
+                },
+                {
+                  "kind": "cart_reminder_1d",
+                  "availabilityReadReturnedToSyntheticProviderMs": 15.15365299999985,
+                  "finalVerifierReturnedToInvokeMs": 6.066027999999733,
+                  "status": "sent",
+                  "syntheticCalls": 1,
+                  "acceptedResidual": true,
+                  "fixed": false
+                },
+                {
+                  "kind": "cart_reminder_3d",
+                  "availabilityReadReturnedToSyntheticProviderMs": 13.27643900000021,
+                  "finalVerifierReturnedToInvokeMs": 4.5391819999999825,
+                  "status": "sent",
+                  "syntheticCalls": 1,
+                  "acceptedResidual": true,
+                  "fixed": false
+                }
+              ],
+              "itemChange": {
+                "status": "pending",
+                "syntheticCalls": 0,
+                "blocker": "must_have_payment_ordering_unknown",
+                "actualHandoffGapMs": null,
+                "prospectiveAvailabilityReadToBoundaryMs": 19.16996199999994,
+                "prospectiveOnly": true,
+                "injectedDelayMs": 10,
+                "residualAccepted": false
+              }
+            }
+          },
+          {
+            "id": "payment.residual",
+            "label": "Approved marketing-only final-read/payment residual window measured",
+            "scope": "readable-record-subset",
+            "scenario": "d8e17855-bee2-4c0f-ac8d-911e309121f0",
+            "status": "PASS",
+            "observation": {
+              "postReadToInvokeMs": 31.907470999999987,
+              "syntheticCalls": 1,
+              "acceptedMarketingWindowOnly": true
+            }
+          }
+        ],
+        "realEmails": 0,
+        "actualExternalPaymentCalls": 0,
+        "releaseBlocked": true
+      },
+      "cleanup": true
+    }
+  ],
+  "acceptedMarketingOnly": true,
+  "fixed": false,
+  "productionChanged": false,
+  "realEmails": 0
+}
