@@ -1,6 +1,6 @@
 # SS-1 — Kyoto source registry entry sheet (for Leon, `/admin/content-sources`)
 
-SS-1 rulings 1–5 (decision-maker, Oct 10, 2026). Ledger `2026-10-10-ss1a-registry-entry-sheet` (R?).
+SS-1 rulings 1–5 (decision-maker, Oct 10, 2026). Ledger `2026-10-10-ss1a-registry-entry-sheet` (R415).
 Leon reads each terms page, types the row in `/admin/content-sources` (R251), then activates — the
 activation IS the terms check, and it is his.
 

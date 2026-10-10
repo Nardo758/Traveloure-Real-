@@ -2678,6 +2678,13 @@ This document captures architectural decisions to maintain consistency across co
     is `days[].localTeaser = { localPicks, localNotes }` on a FREE plan's plancard: draft-eligible local gems not already
     on the plan and live local notes in the neighbourhoods of that day's located stops — COUNTS ONLY, no title, place or
     id; a day not computed, or zero, carries no key (§13). FD-5's coverage targets will hide an under-target day.
+    **AMENDED BY FD-5 (decision-maker rulings 1–7, Oct 10, 2026; numbers Leon's; ledger `2026-10-10-fd5-coverage-targets`;
+    no migration — FOUNDER WORDING REVIEW).** The teaser is gated per neighbourhood by config targets
+    (`server/config/coverage-targets.config.ts`; Kyoto: peak 5 picks / 3 notes, weekday 3 / 2): a day counts only the
+    neighbourhoods at or above their own target for its day type (`peak` = a weekend, a season at or above
+    `COVERAGE_PEAK_MULTIPLIER`, or unconfirmed dates), never summed; none ⇒ nothing. Only the teaser's own counts gate;
+    official-fact targets are census-reported (`scripts/report-coverage-census.cjs`). The day block draws it beside the
+    feasibility line, nothing on zero.
 
 67. **FEASIBILITY IN THE FREE DRAFT READS ONLY STORED OFFICIAL FACTS, AND A DAY SAYS WHAT IT DID NOT CHECK (decision-maker,
     Oct 10, 2026 — FD-3 rulings 1–7; ledger `2026-10-10-fd3-feasibility`; brief `docs/planning/briefs/fd-3-feasibility.md`;
