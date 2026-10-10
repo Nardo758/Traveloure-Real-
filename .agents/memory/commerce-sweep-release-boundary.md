@@ -66,3 +66,17 @@ cannot prove external payment activity or serialize the final-read/send race.
 certification. Keep UNKNOWN blockers active, do not use an isolated test override
 as release evidence, and obtain separate approval for provenance fixes. Preserve
 the current no-email verification boundary until explicitly replaced.
+
+Cart item-change notices are must-have, not marketing: price increases,
+decreases and proven availability loss bypass marketing unsubscribe, quiet
+hours and its daily cap, but never account/ownership/paid-state safety.
+No snapshot means skip, not guessed backfill. Notified values are recorded only
+with a committed outbox enqueue; the add-time snapshot remains immutable.
+
+**Why:** The founder explicitly distinguished transactional item changes from
+marketing reminders while retaining the same UNKNOWN payment blockers.
+
+**How to apply:** Reuse the shared read-only paid check. Document value-only
+dedupe and changes returning A→B→A as limits, not complete event history.
+Suppress cart reminders on the local day an item-change notice was actually
+sent without permanently consuming later reminder steps.
