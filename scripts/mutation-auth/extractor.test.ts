@@ -236,6 +236,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 680 / 671 → 682 / 673 (ledger `2026-10-09-fd2-content-tier-tags`): POST /api/admin/gems/:id/verify — an
  * admin verifies an untagged gem (ruling 3); admin boundary. POST /internal/jobs/content-expiry-census —
  * the internal-secret trigger (ruling 8); public-or-system. admin 170 → 171, other 235 → 236.
+ * 682 / 673 → 683 / 674 (ledger `2026-10-10-s1-d1-liteapi`): POST /internal/jobs/liteapi-sync — the nightly
+ * LiteAPI sync's internal-secret trigger; public-or-system. other 236 → 237, public-or-system 44 → 45.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -244,8 +246,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 682);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 673);
+  assert.equal(result.mutations.length, 683);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 674);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -255,9 +257,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 673);
-  assert.equal(manifest.rawRegistrationCount, 682);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 673);
+  assert.equal(endpointRows.length, 674);
+  assert.equal(manifest.rawRegistrationCount, 683);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 674);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -274,7 +276,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // markStayPickSeen checks the plan's "choose" role before the write.
   // + POST /api/admin/gems/:id/verify (FD-2 ruling 3): admin, behind the blanket /api/admin guard.
   // + POST /internal/jobs/content-expiry-census (FD-2 ruling 8): other, public-or-system — the internal-secret trigger.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 171, "user-data": 235, other: 236 });
+  // + POST /internal/jobs/liteapi-sync (S1-d-1): other, public-or-system — the internal-secret trigger.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 171, "user-data": 235, other: 237 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -293,7 +296,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/trips/:tripId/stay-pick/seen (R386): session-self 352 → 353.
   assert.deepEqual(manifest.boundaryTotals, {
     "admin-role": 171, "session-self": 353, "resource-owner": 99,
-    signature: 6, "public-or-system": 44, unknown: 0,
+    signature: 6, "public-or-system": 45, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

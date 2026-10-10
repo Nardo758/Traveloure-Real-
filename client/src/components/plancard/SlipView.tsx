@@ -1648,6 +1648,11 @@ export function useSlipViewModel({
   // tray's "Where to stay" opens the full chooser whenever the stay is undecided (`anchorSurfaces`).
   const anchorSurface = anchorSurfaces(whereToStayQuery.data, hasStayItem);
   const [optimizerSlot, setOptimizerSlot] = useState<HTMLDivElement | null>(null);
+  // Item 1 (ledger `2026-10-10-empty-anchor-card`): the empty stay card follows the server's surface
+  // decision ALONE (`anchorSurfaces` — undismissed `no_draft`), exactly as the tray's chooser does. It
+  // was also gated on a resolved Trips occasion, so a plan whose occasion row is unresolved, has NULL
+  // switches or is another group showed the stay options only inside the sheet. The question and
+  // anchor kind still come from the group manifest and `tripsAnchor` (lodging when not a Trip).
   const anchorPanelEmpty = anchorSurface.slip === "empty";
   // Smoke 5 items 6/8: when the draft's lookups finish, its stops' coordinates have landed — re-ask
   // Where to stay once, which then ranks on them and stores that order for the draft.
@@ -1791,7 +1796,7 @@ export function useSlipViewModel({
   const mapAnchor: MapAnchor | null = planMapAnchor(planActivities, anchorItemId);
   // Neighbourhoods are shaded whenever the stay is located, and emphasised while the AnchorPanel is
   // open (on the slip or in the tray) — spec v1.3.4 §2.3, step 6 (`areaShading`).
-  const anchorPanelOpen = anchorSurface.slip === "drafted" || (!!tripsAnchor && anchorPanelEmpty) || openTool === "where_to_stay";
+  const anchorPanelOpen = anchorSurface.slip === "drafted" || anchorPanelEmpty || openTool === "where_to_stay";
   const shading = areaShading({ stayLocated: mapAnchor?.kind === "stay", panelOpen: anchorPanelOpen });
   const mapCity = (data.trip?.destination ?? "").split(",")[0].trim();
   const { data: areaRows } = useQuery<{ data?: Array<{ slug: string; name: string; centroidLat: string; centroidLng: string }> }>({
@@ -2259,7 +2264,7 @@ export function SlipView({
               view bar come after it, never before (decision-maker, Oct 8, 2026). */}
           {emptyStartShown && data.trip ? (
             <div className="space-y-3.5" data-testid="slip-empty-board">
-              {tripsAnchor && anchorPanelEmpty && anchorSurface.slip !== "drafted" ? renderAnchorPanel("empty") : null}
+              {anchorPanelEmpty ? renderAnchorPanel("empty") : null}
               <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
             </div>
           ) : null}
@@ -2511,7 +2516,7 @@ export function SlipView({
           leadCopy={leadCopy}
         />
       ) : null}
-      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : tripsAnchor && anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
+      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
@@ -2538,7 +2543,7 @@ export function SlipView({
               before the plan has answered — so the sentence waits for `occasionResolved` (the ONE
               signal, from the hook that owns the lookup) and a neutral placeholder stands in its
               place. The placeholder states nothing; it is not an empty state and never says one. */}
-          {showsSlipEmptyState(daySlots.length, occasionResolved) && tripsAnchor && anchorPanelEmpty ? null : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
+          {showsSlipEmptyState(daySlots.length, occasionResolved) && anchorPanelEmpty ? null : showsSlipEmptyState(daySlots.length, occasionResolved) ? (
             <p
               className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4 text-center text-sm text-[color:var(--slip-muted)]"
               data-testid="slip-empty-items"
@@ -2614,6 +2619,7 @@ export function SlipView({
                   .join(" · ") || null}
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
+                feasibility={day?.feasibility ?? null}
                 thumb={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
                     <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} size="thumb" testId={`slip-day-thumb-${slot.dayNum}`} />

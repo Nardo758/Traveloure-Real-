@@ -80,37 +80,6 @@ export class ApiUsageService {
     }
   }
 
-  async logAmadeusCall(
-    endpoint: keyof typeof AMADEUS_PRICING_TENTHS | string,
-    operation: string,
-    options: {
-      userId?: string;
-      responseTimeMs?: number;
-      success?: boolean;
-      errorMessage?: string;
-      resultCount?: number;
-      metadata?: Record<string, any>;
-    } = {}
-  ): Promise<void> {
-    // Get cost in tenths of cents - store as-is for precision
-    // estimatedCostCents actually stores TENTHS of cents for external APIs
-    const costTenths = AMADEUS_PRICING_TENTHS[endpoint as keyof typeof AMADEUS_PRICING_TENTHS] || AMADEUS_PRICING_TENTHS.default;
-    
-    await this.logApiCall({
-      provider: 'amadeus',
-      endpoint,
-      operation,
-      userId: options.userId,
-      estimatedCostCents: costTenths, // Actually tenths of cents for precision
-      costPerCallCents: costTenths, // Same value for reference
-      responseTimeMs: options.responseTimeMs,
-      success: options.success,
-      errorMessage: options.errorMessage,
-      resultCount: options.resultCount,
-      metadata: options.metadata,
-    });
-  }
-
   async getUsageSummary(days: number = 30): Promise<{
     totalCalls: number;
     totalCostCents: number;
