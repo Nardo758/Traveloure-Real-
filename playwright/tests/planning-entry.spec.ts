@@ -356,3 +356,56 @@ test.describe("TripStrip continue routing (date-derived phase, ruling 2)", () =>
     expect(href).toBe("/trip/11111111-1111-4111-8111-111111111111");
   });
 });
+
+// Mobile-nav (Chrome smoke at 390 wide, ledger `2026-10-10-mobile-nav-close`): the phone menu never stays
+// open over the page once the route changes, and Escape and a tap outside the header still close it.
+test.describe("Mobile nav at 390px", () => {
+  const menu = (page: Page) =>
+    page.locator('[role="dialog"][aria-modal="true"]').filter({ has: page.getByTestId("button-mobile-start-plan") });
+  async function openMenu(page: Page) {
+    await page.getByTestId("button-mobile-menu").click();
+    await expect(menu(page)).toBeVisible();
+  }
+  async function expectClosed(page: Page) {
+    await expect(menu(page)).toBeHidden();
+    await expect(page.getByTestId("button-mobile-menu")).toHaveAttribute("aria-expanded", "false");
+  }
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  test("a group link from the open menu lands with the menu closed — a new path, then a query-only change", async ({ page }) => {
+    await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
+    await openMenu(page);
+    await page.getByTestId("link-mobile-a-moment").click();
+    await expect(page).toHaveURL(/\/experiences\?group=moments$/);
+    await expectClosed(page);
+    await openMenu(page);
+    await page.getByTestId("link-mobile-a-trip").click();
+    await expect(page).toHaveURL(/\/experiences\?group=trips$/);
+    await expectClosed(page);
+  });
+
+  test("Start a plan from the open menu opens PlanEntry with the menu closed", async ({ page }) => {
+    await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
+    await openMenu(page);
+    await page.getByTestId("button-mobile-start-plan").click();
+    await expect(page.getByTestId("plan-entry")).toBeVisible();
+    await expectClosed(page);
+  });
+
+  test("Back, Escape and a tap outside the header each close the open menu", async ({ page }) => {
+    await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${BASE_URL}/pricing`, { waitUntil: "domcontentloaded" });
+    await openMenu(page);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/about$/);
+    await expectClosed(page);
+    await openMenu(page);
+    await page.keyboard.press("Escape");
+    await expectClosed(page);
+    await openMenu(page);
+    await page.mouse.click(195, 830);
+    await expectClosed(page);
+  });
+});
