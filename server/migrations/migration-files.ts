@@ -1975,9 +1975,13 @@ export const MIGRATION_FILES = [
   // no DEFAULT/CHECK, and a UNIQUE index on (provider, provider_hotel_id) — empty at creation because the
   // column is born NULL on every row. Declared in shared/schema.ts. APPROVED by Leon, Oct 10, 2026.
   "365_hotel_cache_liteapi.sql",
+  // 366 — LiteAPI hotel margin bands (ledger 2026-10-10-s1-d2-liteapi-rates). DATA ONLY: two fee_bands rows,
+  // insert-if-missing (hotel_margin_public 0.12, hotel_margin_bundle 0.06). Nothing to declare.
+  // HELD: merges only with "Migration 366 SQL approved — Leon" on the S1-d-2 PR.
+  "366_hotel_margin_bands.sql",
   // 367 — transport fee bands: transport_platform_commission + affiliate_transport_margin (ledger
   // 2026-10-10-tc0-transport-commission-band; LD 8).
-  // DATA ONLY: INSERT … ON CONFLICT DO NOTHING, band_key first. Nothing to declare. HELD — merges only with
-  // "Migration 367 SQL approved — Leon" on the TC-0 PR. (366 is S1-d-2's hotel margin bands, #1386.)
+  // DATA ONLY: INSERT … ON CONFLICT DO NOTHING, band_key first. Nothing to declare. APPROVED by Leon on the
+  // TC-0 PR (#1394), Oct 10, 2026.
   "367_transport_fee_bands.sql",
 ] as const;

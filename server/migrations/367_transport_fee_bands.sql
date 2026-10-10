@@ -1,6 +1,6 @@
 -- 367 — transport fees become fee bands (ledger `2026-10-10-tc0-transport-commission-band`; LD 8).
 -- DATA ONLY: no DDL, no CHECK, no index, nothing to declare.
--- HELD: merges only with "Migration 367 SQL approved — Leon" on the TC-0 PR. Values are Leon's.
+-- APPROVED by Leon on the TC-0 PR (#1394), Oct 10, 2026. Values are Leon's.
 --
 -- Two percent bands read BY NAME (no rate literal in code), each declared optional in
 -- RESOLVER_FEE_BAND_REQUIREMENTS with fallback 0 (nothing claimed):

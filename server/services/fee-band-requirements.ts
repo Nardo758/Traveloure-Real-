@@ -113,6 +113,11 @@ export const EXPERT_REVIEW_EXPERT_SHARE_BAND = "expert_review_expert_share";
 export const HANDOFF_WITHDRAWAL_ACCEPTED_BAND = "handoff_withdrawal_accepted";
 export const HANDOFF_WITHDRAWAL_DELIVERED_BAND = "handoff_withdrawal_delivered";
 export const ON_TRIP_SUPPORT_BAND = "on_trip_support";
+// S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`, migration 366): LiteAPI hotel margins, percent. The public
+// band is the markup on a stay's public rate (floored at the SSP); the bundle band is seeded for the bundle
+// lane and read by nothing yet. Both optional: absent ⇒ 0 = sell at the SSP, a no-margin state.
+export const HOTEL_MARGIN_PUBLIC_BAND = "hotel_margin_public";
+export const HOTEL_MARGIN_BUNDLE_BAND = "hotel_margin_bundle";
 
 // TC-0 (ledger `2026-10-10-tc0-transport-commission-band`; LD 8): the platform's commission on a
 // platform-booked transport leg. Optional: absent ⇒ 0 — no commission is claimed (the rate is shown on
@@ -468,6 +473,31 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
     required: true,
     owner: "handoff on-trip support (handoff.service, §12 step 6)",
     fallback: { kind: "none", reader: "onTripSupportCents (handoff.service) — on-trip support is not offered without it" },
+  },
+  // S1-d-2: LiteAPI hotel margins. Absent ⇒ 0 — the stay sells at the SSP, a safe no-margin state.
+  {
+    bandKey: HOTEL_MARGIN_PUBLIC_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "LiteAPI stay rates — public margin (liteapi-rates.service, S1-d-2)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "publicMarginFraction (liteapi-rates.service)",
+      value: 0, // fee-literal-ok: documented fallback — no margin, sell at the SSP
+      unit: "fraction",
+    },
+  },
+  {
+    bandKey: HOTEL_MARGIN_BUNDLE_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "LiteAPI stay rates — bundle margin (seeded for the bundle lane; not read yet)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "none yet — the bundle lane reads it",
+      value: 0, // fee-literal-ok: documented fallback — no margin, sell at the SSP
+      unit: "fraction",
+    },
   },
 ];
 
