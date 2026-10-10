@@ -18,6 +18,7 @@ import { db } from "../../db";
 import { contentSources, itineraryItems, placeFacts } from "@shared/schema";
 import {
   asFactOrigin,
+  PAGE_READ_ORIGINS,
   factProvenanceLine,
   isConfirmableFact,
   isFactStale,
@@ -39,6 +40,7 @@ import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, t
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
 import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
 import { getTavilyClient } from "../tavily-client";
 import { claudeService } from "../claude.service";
@@ -50,6 +52,15 @@ export async function recordFacts(input: FactDraft[], ctx: { planId: string | nu
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact passes the ONE admission rule or is not
   // stored — an unsourced last admission or last train never reaches a finding (rulings 1/3).
   const drafts = input.filter((d) => {
+    // SS-1b ruling 1 (ledger `2026-10-10-ss1b-official-refresh`): a market-level refresh fact is stored only
+    // with its source id, its official https URL, an official license and a verbatim quote — never unsourced.
+    if (d.origin === REFRESH_ORIGIN) {
+      const r = admitRefreshFact(d);
+      if (!r.ok) {
+        console.info(`[place-facts] refused official_refresh fact_type=${d.factType} reason=${r.reason} source_id=${d.sourceId ?? "none"}`);
+        return false;
+      }
+    }
     if (!isFeasibilityFactType(d.factType)) return true;
     const verdict = admitFeasibilityFact(d);
     if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
@@ -73,6 +84,7 @@ export async function recordFacts(input: FactDraft[], ctx: { planId: string | nu
       license: d.license,
       fetchedAt: d.fetchedAt,
       expiresAt: d.expiresAt,
+      verifiedAt: d.verifiedAt ?? null,
       costCents: String(d.costCents),
       planId: ctx.planId,
       itineraryItemId: ctx.itemId,
@@ -776,7 +788,8 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
             eq(placeFacts.placeRefKind, "place_id"),
             inArray(placeFacts.placeRef, placeIds),
             inArray(placeFacts.factType, ["hours", "last_admission"]),
-            inArray(placeFacts.origin, ["crawled", "expert_nugget"]),
+            // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
+            inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
             eq(placeFacts.license, "official"),
             isNull(placeFacts.supersededBy),
             sql`${placeFacts.sourceClass} IS NOT NULL`,
