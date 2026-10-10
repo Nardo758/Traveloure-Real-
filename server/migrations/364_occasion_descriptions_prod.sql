@@ -1,5 +1,5 @@
 -- 364 — the three occasion descriptions production still shows as "<name> planning experience".
--- Ledger `2026-10-10-m364-occasion-descriptions`; decision-maker dispatch, Oct 10, 2026. HELD for the founder.
+-- Ledger `2026-10-10-m364-occasion-descriptions`; decision-maker dispatch, Oct 10, 2026. APPROVED by the founder, Oct 10, 2026.
 --
 -- WHY THIS FILE EXISTS
 -- ────────────────────

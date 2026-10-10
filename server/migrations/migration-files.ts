@@ -1969,6 +1969,6 @@ export const MIGRATION_FILES = [
   // 364 — the three production occasion descriptions 360 missed (anniversary, bachelor-bachelorette,
   // sports-event — production's own slugs; the seeder's `anniversary-trip` is not a production row). Ledger
   // 2026-10-10-m364-occasion-descriptions. DATA ONLY: UPDATE by slug, only while the row still holds the
-  // generated placeholder. No DDL, nothing to declare. HELD for the founder.
+  // generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 10, 2026.
   "364_occasion_descriptions_prod.sql",
 ] as const;
