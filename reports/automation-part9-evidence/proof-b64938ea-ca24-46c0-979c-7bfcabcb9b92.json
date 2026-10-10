@@ -1,0 +1,60 @@
+{
+  "runId": "b64938ea-ca24-46c0-979c-7bfcabcb9b92",
+  "realTransport": false,
+  "itemCopyOnly": true,
+  "authorizedMessageBudget": 2,
+  "productionBlocked": true,
+  "allRailProof": false,
+  "itemDispatcherStillBlocked": true,
+  "loops": [
+    {
+      "loop": 1,
+      "exit": 0,
+      "isolationRemoved": true,
+      "expectedSubmissions": 1,
+      "ownedSubmissions": 1,
+      "authorizedSubmissionsComplete": true,
+      "fixtureProofClean": true
+    },
+    {
+      "loop": 2,
+      "exit": 0,
+      "isolationRemoved": true,
+      "expectedSubmissions": 1,
+      "ownedSubmissions": 1,
+      "authorizedSubmissionsComplete": true,
+      "fixtureProofClean": true
+    }
+  ],
+  "receipts": [
+    {
+      "loop": 1,
+      "family": "cart_item_changed",
+      "outboxRowId": 1,
+      "proofLevel": "template-only",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:39:46.709Z",
+      "providerMessageId": "synthetic_e3c7cdef-ac2d-4561-84a6-92e75c65626b",
+      "deliveryStatus": "synthetic_only",
+      "copyScenario": "price_change_unknown_stock",
+      "checkedAt": "2026-10-10T20:39:46.712Z",
+      "copyOnly": true,
+      "recordedAvailability": "availability for your cart quantity could not be verified"
+    },
+    {
+      "loop": 2,
+      "family": "cart_item_changed",
+      "outboxRowId": 1,
+      "proofLevel": "template-only",
+      "phase": "accepted",
+      "submittedAt": "2026-10-10T20:39:55.018Z",
+      "providerMessageId": "synthetic_e5e3e794-4a6c-4877-bb48-8bfed7c4e04e",
+      "deliveryStatus": "synthetic_only",
+      "copyScenario": "availability_loss",
+      "checkedAt": "2026-10-10T20:39:55.020Z",
+      "copyOnly": true,
+      "recordedAvailability": "the recorded slot did not have capacity for your cart quantity"
+    }
+  ],
+  "rejected": 12
+}

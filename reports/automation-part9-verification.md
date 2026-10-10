@@ -1,26 +1,33 @@
-# Part 9 — development QA delivery proof; NOT DEV-CLOSED
+# Part 9 — development QA delivery proof; DEV-CLOSED
 
 ## Readiness
 
-**NOT READY for the next Part Gate. NOT RELEASE-CERTIFIED.**
+**DEV-CLOSED on the approved isolated QA/readable-record scope.
+READY FOR PART 10 when the founder supplies it. NOT RELEASE-CERTIFIED.**
 
-Eight explicitly authorized QA messages have provider-observed **delivered**
+Ten explicitly authorized QA messages have provider-observed **delivered**
 statuses. Six reminders traversed the guarded producer and dispatcher in
-disposable development schemas. Two item-change copies were separate,
+disposable development schemas. Four item-change copies were separate,
 labelled template/provider proofs: the real item-change rows stayed pending.
+The original two copies were not corrected-stock wording proofs. The two
+additional, separately approved copies prove the corrected wording and
+transport only. No reminders were resent.
 
-Two open items prevent closing this part:
+The two previously open Part 9 proof gaps are now closed:
 
-1. Fresh typecheck is **119**, above the Part 1 baseline **117**. The two extra
-   diagnostics are in the pre-existing vendor-bulk proposal fixture, outside
-   this part's approved touch list. No baseline increase or runtime fix was made.
+1. The founder separately approved replacing exactly two Set iterations in
+   the vendor-bulk test fixture with `Array.from`. Its 17 tests pass.
+   Fresh typecheck is **117**, matching the Part 1 baseline and the retained
+   Part 8 diagnostic set. No compiler setting or baseline was changed.
 2. Post-delivery review found that the two item-change QA copies equated an
    active listing with availability. That does not prove stock. The harness
    has been corrected to use the recorded slot's remaining capacity and cart
-   quantity, or explicitly say availability cannot be verified. This corrected
-   wording passed two new dry loops, **but has no real delivered receipt yet**.
-   The initial eight-message authorization has been used; no additional emails
-   were sent silently.
+   quantity, or explicitly say availability cannot be verified. It replaces
+   rather than appends the unqualified template claim in QA copies. After
+   separate approval, two fresh dry loops and two fresh real loops passed:
+   price change with unknown stock, then recorded availability loss.
+   Both additional copies have provider-observed delivered receipts.
+   This does not change any application template or clear the dispatcher hold.
 
 ## Scope and isolation
 
@@ -38,12 +45,16 @@ Two open items prevent closing this part:
 - Ownership requires the schema-local account marker for this run, the
   `traveloure-qa.test` fixture domain, matching outbox identity and guarded
   processing status. Arbitrary recipients and unrelated accounts are rejected.
-- Maximum four provider submissions per loop, eight per run. Families can
+- Normal proof mode permits four submissions per loop, eight per run.
+  Separately approved `--item-copy-only` permits only the item-change family,
+  one submission per loop, two per run. It refuses every reminder family.
+  Families can
   submit once only. Stable scoped provider idempotency keys; uncertain
   acceptance blocks subsequent live proof attempts rather than being retried
   with a new key.
 - The real transport run recorded **30 rejected requests**, with no additional
-  provider submissions.
+  provider submissions. The corrected copy-only run recorded **12 rejected
+  requests** and exactly two submissions.
 - Development inbox settings present; both inbox names absent from production.
   No inbox addresses, keys, email bodies or private channel tokens are included
   in these artifacts.
@@ -56,19 +67,22 @@ Two open items prevent closing this part:
 
 | Rule | Status | Clean loops | Evidence |
 |---|---|---:|---|
-| Explicit opt-in, published-runtime refusal, malformed permissions | PASS, synthetic negatives | 2 | isolation-loop-1.log; isolation-loop-2.log, 3/3 each, no skips |
-| Wrong run, wrong schema, arbitrary recipient, unrelated account, replay and budget rejection | PASS | 2 | isolation logs and 30 live-channel rejections |
-| Child contains no provider key or approved inbox settings | PASS | 2 real + 2 final dry | native proof logs |
+| Explicit opt-in, published-runtime refusal, malformed permissions | PASS, synthetic negatives | 2 fresh | copy-isolation-loop-1.log; copy-isolation-loop-2.log, 4/4 each, no skips |
+| Wrong run, wrong schema, arbitrary recipient, unrelated account, replay and budget rejection | PASS | 2 fresh | copy isolation logs and 12 corrected live-channel rejections |
+| Child contains no provider key or approved inbox settings | PASS | 2 corrected real + 2 corrected dry | native proof logs |
 | Guarded 1h reminder delivered | PASS on readable subset | 2 | receipt table below |
 | Guarded 1d reminder delivered, valid-format synthetic prior-step history | PASS on readable subset | 2 | receipt table below |
 | Guarded 3d reminder delivered, valid-format synthetic prior-step history | PASS on readable subset | 2 | receipt table below |
-| Item-change dispatcher stays held, zero handoffs, no sent timestamp or metadata mutation by copy proof | PASS | 2 real + 2 final dry | native proof logs |
-| Item-change template/provider delivery | Transport proven only | 2 | original copy receipts; corrected content is NOT delivery-proven |
-| Corrected timestamp-qualified stock wording | Dry proof only; real proof BLOCKED | 2 dry, 0 real | final dry run below |
-| Owned schemas removed and parent channel closed | PASS | 2 real + 2 final dry | owner cleanup logs and successful controller exits |
+| Item-change dispatcher stays held, zero handoffs, no sent timestamp or metadata mutation by copy proof | PASS | 2 corrected real + 2 corrected dry | native proof logs |
+| Item-change template/provider delivery | PASS, QA transport only | 2 corrected real | corrected copy receipts below; no actual item dispatch |
+| Corrected timestamp-qualified stock wording | PASS, isolated QA scope | 2 corrected dry + 2 corrected real | one unknown-stock price scenario and one loss scenario per two-loop run; both stock branches also tested in each isolation run |
+| Copy-only budget, reminder-family refusal, replay refusal | PASS | 2 dry + 2 real; 2 isolation | exactly one item copy per loop, no reminder resends |
+| Null/invalid capacity never becomes a stock claim | PASS | 2 isolation | qualified-copy test covers known capacity, loss and malformed/unknown facts |
+| Owned schemas removed and parent channel closed | PASS | 2 corrected real + 2 corrected dry | owner cleanup logs and successful controller exits |
 | Normal workspace proof markers absent after invocation | PASS | post-run check | both process marker presence checks false |
 | Existing golden regression gate | PASS | 1 fresh full gate | 143 reported pass entries, 0 failing |
-| Typecheck at baseline 117 | FAIL; 119 | 1 fresh check | typecheck.log; two inherited diagnostics below |
+| Vendor-bulk fixture behavior unchanged | PASS | 1 targeted run, 17/17 | vendor-bulk-fixture-regression.log |
+| Typecheck at baseline 117 | PASS; 117 | 1 fresh check | typecheck-corrected.log; identical diagnostic set to retained Part 8 baseline |
 | Production activation / all-rail certification | BLOCKED deliberately | 0 | existing release blockers remain |
 
 ## Actual delivered receipts — original eight-message proof
@@ -94,31 +108,58 @@ alone was insufficient. Observation timestamps, IDs and statuses are in
 
 ## Final corrected-copy dry proof
 
-`automation-part9-evidence/proof-5261a68c-ca25-4a63-9466-0acd7c804b62.json`:
-two clean fresh loops, four synthetic submissions per loop, zero real messages,
-both schemas removed. Corrected copy uses server/database check time in UTC,
+Final copy-only dry proof:
+`automation-part9-evidence/proof-b64938ea-ca24-46c0-979c-7bfcabcb9b92.json`:
+two clean fresh loops, one synthetic submission per loop, zero real messages,
+both schemas removed. Earlier four-family corrected dry evidence is retained
+as `proof-5261a68c-ca25-4a63-9466-0acd7c804b62.json`.
+Corrected copy uses server/database check time in UTC,
 not the add-time snapshot, and makes no stock claim from listing status alone.
 The check qualifies recorded slot capacity only, not external supplier stock.
 No application email template or sender was changed.
 
+## Additional corrected-copy delivered proof
+
+Run: `16a453a0-059a-4160-ae0e-59489ac20d68`.
+Exactly two additional real messages; zero reminder resends.
+Each loop uses a new randomized account, cart, service and sequence in a new
+owned development schema. Each schema was removed. Outbox IDs are schema-local.
+
+| Loop | Scenario | Outbox row | Provider message ID | Observed status |
+|---:|---|---:|---|---|
+| 1 | Price change; availability cannot be verified | 1 | 01a1278b-871e-7b42-b294-54dd88d0db2d | delivered |
+| 2 | Recorded slot lacks capacity for cart quantity | 1 | 01a1278b-c906-7184-a932-d52ad5736d6b | delivered |
+
+These are two clean common-path copy/transport loops with different scenarios,
+not a claim that each variant has two real deliveries. Both wording branches
+were exercised in each of the two synthetic isolation runs.
+The provider GET matched each ID and `last_event=delivered`; acceptance alone
+was not enough. The journal records server check time, provider delivery
+observation time, sanitized availability description, IDs and counts.
+Actual item-change rows remained `pending`,
+`last_error=must_have_payment_ordering_unknown`, `sent_at=null`, with zero
+dispatcher provider calls and no metadata mutation from the copy transport.
+
 ## Golden and typecheck
 
 Fresh existing golden gate:
-`automation-part9-evidence/golden-1-84dbe8af-dd60-420e-803e-c451c5c81b69/results.json`.
+`automation-part9-evidence/golden-1-10fba7ea-f5dd-4cf0-9113-2476f2b79a10/results.json`.
 **143/143 reported pass entries**, not a claim of 143 unique database tests.
 
-Fresh `tsc --noEmit`: exit 2, **119 errors**, zero diagnostics naming the new
-Part 9 tests. Comparison to the retained Part 8 log, normalizing line numbers,
-shows precisely two additions:
+Fresh `tsc --noEmit`: exit 2, **117 existing errors**, zero new diagnostics.
+Comparison to retained Part 8 diagnostics, normalizing line numbers, shows
+zero additions and zero removals. This is baseline parity, not a clean compiler.
 
-| Existing file | Location | Diagnostic |
+The earlier failed 119-error run remains in `typecheck.log` for audit:
+
+| Corrected test-only file | Original location | Prior diagnostic |
 |---|---|---|
 | server/services/__tests__/fixtures/vendor-bulk-proposal-model.ts | 41:54 | TS2802, Set iteration requires downlevelIteration or newer target |
 | server/services/__tests__/fixtures/vendor-bulk-proposal-model.ts | 46:29 | TS2802, Set iteration requires downlevelIteration or newer target |
 
-Proposed separate approval: change only those two fixture Set iterations to
-`Array.from(...)`; preserve fixture behavior, compiler settings and baseline.
-Then rerun its tests, golden gate and typecheck. No such edit has been made.
+The separately approved correction changes only those two Set iterations to
+`Array.from(...)`, preserving behavior and dedupe semantics. Its targeted
+suite passes **17/17**. Compiler settings and the baseline are unchanged.
 
 ## Carried-forward release blockers
 
@@ -159,7 +200,13 @@ Approved implementation touch list:
 - reports/automation-part9-verification.md
 - reports/automation-part9-evidence/
 
+Separately approved test-only addition:
+
+- server/services/__tests__/fixtures/vendor-bulk-proposal-model.ts
+  (the two Set iteration expressions only)
+
 No payment writer, booking/checkout behavior, public/production schema,
 migration registration, runtime sender/template or feature flag was changed.
 The workspace `.replit` settings change from the secure inbox form was not
 edited or reverted by this implementation. Production was not touched.
+Part 10 was not started.

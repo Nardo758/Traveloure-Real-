@@ -38,12 +38,12 @@ export class ProposalFixture {
   // Conservative synthetic window. This is NOT provider documentation/certification.
   safeRetryWindow = 23 * 60 * 60 * 1000;
   commit(batch: string, payload: string, recipients: string[], fail = false) {
-    const fingerprint = JSON.stringify([payload, [...new Set(recipients)].sort()]);
+    const fingerprint = JSON.stringify([payload, Array.from(new Set(recipients)).sort()]);
     const prior = this.batches.get(batch);
     if (prior !== undefined && prior !== fingerprint) throw new Error("409 batch identity conflict");
     if (fail) throw new Error("atomic commit aborted");
     this.batches.set(batch, fingerprint);
-    for (const recipient of new Set(recipients)) {
+    for (const recipient of Array.from(new Set(recipients))) {
       const key = `${batch}/${recipient}`;
       if (!this.rows.has(key)) this.rows.set(key, {
         payload, state: "pending", lease: 0, historyPending: false,

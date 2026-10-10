@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, pool } from "../../db";
-import { users } from "../../../shared/schema";
+import { users, vendorAvailabilitySlots } from "../../../shared/schema";
 import { createScenarioRig, anchor, preferences } from "./helpers/commerce-scenario-fixtures";
 import { enqueuePendingCommerceReminder, deliverQueuedEmail, _outboxTestHooks } from "../../services/email-outbox.service";
 import { lockMarketingTraveler } from "../../services/marketing-delivery-policy.service";
@@ -15,6 +15,7 @@ test("Part 9: owned QA reminders and separate held-item template transport", {
   assert.equal(process.env.NODE_ENV, "test");
   assert.equal(binding.schema, process.env.MESSAGING_VERIFICATION_SCHEMA);
   assert.match(binding.schema, /^automation_msg_[a-f0-9]{16}$/);
+  assert.equal(typeof binding.itemCopyOnly, "boolean");
   assert.equal(process.env.RESEND_API_KEY, undefined);
   assert.equal(process.env.SIGNUP_QA_TEST_INBOX, undefined);
   assert.equal(process.env.ITINERARY_OUTCOME_TEST_EMAIL, undefined);
@@ -30,7 +31,9 @@ test("Part 9: owned QA reminders and separate held-item template transport", {
   let handoffs = 0;
   const records: object[] = [];
   try {
-    for (const family of ["cart_reminder_1h", "cart_reminder_1d", "cart_reminder_3d"] as const) {
+    const reminderFamilies = binding.itemCopyOnly ? []
+      : ["cart_reminder_1h", "cart_reminder_1d", "cart_reminder_3d"] as const;
+    for (const family of reminderFamilies) {
       rig.reset();
       const idle = { cart_reminder_1h: 3_660_000, cart_reminder_1d: 86_460_000, cart_reminder_3d: 259_260_000 }[family];
       const f = await rig.fixture({ idle });
@@ -71,10 +74,17 @@ test("Part 9: owned QA reminders and separate held-item template transport", {
       records.push({ family, outboxRowId:id, proofLevel:"guarded-readable-subset", status:"sent" });
     }
     rig.reset();
-    const f = await rig.fixture({ slot: true });
+    const availabilityLoss = binding.itemCopyOnly && binding.loop === 2;
+    const f = await rig.fixture({ slot: !binding.itemCopyOnly || availabilityLoss });
     await db.update(users).set({ preferences: { ...preferences, commerceQaProofRun: binding.runId } })
       .where(eq(users.id, f.user.id));
-    await rig.price(f, "12.00");
+    if (availabilityLoss) {
+      assert.ok(f.slot);
+      await db.update(vendorAvailabilitySlots).set({ bookedCount: f.slot.capacity })
+        .where(eq(vendorAvailabilitySlots.id, f.slot.id));
+    } else {
+      await rig.price(f, "12.00");
+    }
     const id = await rig.queue(f, true), before = handoffs;
     _outboxTestHooks.sendEmailFn = async () => { throw new Error("Held item must not reach provider"); };
     await deliverQueuedEmail(id);
@@ -84,14 +94,25 @@ test("Part 9: owned QA reminders and separate held-item template transport", {
     assert.equal(handoffs, before);
     const metadataBefore = JSON.stringify(held.metadata);
     await new Promise(resolve => setTimeout(resolve, 650));
-    const result = await post({ runId:binding.runId, accountId:f.user.id, outboxId:id,
-      family:"cart_item_changed", mode:"template-only" });
+    const request = { runId:binding.runId, accountId:f.user.id, outboxId:id,
+      family:"cart_item_changed", mode:"template-only" };
+    if (binding.itemCopyOnly) {
+      for (const wrong of [{ ...request, accountId: randomUUID() },
+        { ...request, to: "forbidden@example.invalid" }, { ...request, runId: randomUUID() },
+        { ...request, family:"cart_reminder_1h", mode:"guarded-reminder" }]) {
+        assert.equal((await post(wrong)).status, 403);
+      }
+      assert.equal((await post(request, false)).status, 403);
+    }
+    const result = await post(request);
     assert.equal(result.status, 200);
+    assert.equal((await post(request)).status, 403);
     const after = await rig.row(id);
     assert.equal(after.status, "pending");
     assert.equal(after.sent_at, null);
     assert.equal(JSON.stringify(after.metadata), metadataBefore);
     records.push({ family:"cart_item_changed",outboxRowId:id,proofLevel:"template-only",
+      copyScenario: binding.itemCopyOnly ? availabilityLoss ? "availability_loss" : "price_change_unknown_stock" : "price_change",
       dispatcherStatus:"pending", dispatcherHandoffs:0, hold:held.last_error });
     console.log(`COMMERCE_QA_FIXTURE_PROOF=${JSON.stringify({loop:binding.loop,records,
       noProductionChanges:true,allRailProof:false,qaDomain:"traveloure-qa.test"})}`);

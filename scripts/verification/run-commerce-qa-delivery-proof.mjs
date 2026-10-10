@@ -23,7 +23,8 @@ export function validateInvocation(env, args) {
   if (env.COMMERCE_QA_DELIVERY_PROOF !== "1") fail("PROOF_OFF");
   if (!args.includes("--isolated-db") ||
       args.filter(arg => arg === "--deliver-qa" || arg === "--dry-run").length !== 1 ||
-      args.some(arg => !["--isolated-db", "--deliver-qa", "--dry-run"].includes(arg))) fail("EXPLICIT_PERMISSION_REQUIRED");
+      new Set(args).size !== args.length ||
+      args.some(arg => !["--isolated-db", "--deliver-qa", "--dry-run", "--item-copy-only"].includes(arg))) fail("EXPLICIT_PERMISSION_REQUIRED");
   if (!/^[a-f0-9]{32}$/.test(env.MESSAGING_DEV_FINGERPRINT ?? "")) fail("FINGERPRINT_REQUIRED");
 }
 export function validateEnvelope(request, context) {
@@ -32,9 +33,10 @@ export function validateEnvelope(request, context) {
   if (request.runId !== context.runId || !uuid.test(request.accountId ?? "") ||
       !Number.isSafeInteger(request.outboxId) || request.outboxId < 1) fail("IDENTITY_MISMATCH");
   if (!namespace.test(context.schema ?? "")) fail("UNOWNED_SCHEMA");
-  if (!families.includes(request.family) ||
+  const permittedFamilies = context.itemCopyOnly ? ["cart_item_changed"] : families;
+  if (!permittedFamilies.includes(request.family) ||
       request.mode !== (request.family === "cart_item_changed" ? "template-only" : "guarded-reminder")) fail("UNSUPPORTED_PROOF");
-  if (context.used >= 4 || context.seen.has(request.family)) fail("BUDGET_OR_REPLAY");
+  if (context.used >= (context.itemCopyOnly ? 1 : 4) || context.seen.has(request.family)) fail("BUDGET_OR_REPLAY");
 }
 export function validateOwnedRow(row, request) {
   if (!row || row.traveler_id !== request.accountId || row.email_type !== request.family ||
@@ -49,9 +51,23 @@ export function validateOwnedRow(row, request) {
 const escape = value => String(value).replace(/[&<>"']/g, char =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 
+export function describeRecordedAvailability(item) {
+  const integer = value => (typeof value === "number" ||
+    (typeof value === "string" && /^\d+$/.test(value))) && Number.isSafeInteger(Number(value));
+  if (!item?.slot_id || item.status !== "active" || item.slot_status !== "available" ||
+      !integer(item.capacity) || !integer(item.booked_count) || !integer(item.quantity) ||
+      Number(item.capacity) < 0 || Number(item.booked_count) < 0 || Number(item.quantity) <= 0) {
+    return "availability for your cart quantity could not be verified";
+  }
+  return Number(item.capacity) - Number(item.booked_count) >= Number(item.quantity)
+    ? "the recorded slot had capacity for your cart quantity"
+    : "the recorded slot did not have capacity for your cart quantity";
+}
+
 export async function main(args = process.argv.slice(2), env = process.env) {
   validateInvocation(env, args);
   const dry = args.includes("--dry-run");
+  const itemCopyOnly = args.includes("--item-copy-only"), expectedPerLoop = itemCopyOnly ? 1 : 4;
   if (!dry && (![env.SIGNUP_QA_TEST_INBOX, env.ITINERARY_OUTCOME_TEST_EMAIL]
     .every(value => typeof value === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value) &&
       !/@(?:.*\.)?(?:resend\.dev|example\.(?:com|org|net))$|\.(?:test|invalid|example)$/i.test(value)) ||
@@ -66,7 +82,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     }
   }
   const runId = crypto.randomUUID(), token = crypto.randomBytes(32).toString("hex");
-  const evidence = { runId, realTransport: !dry, productionBlocked: true,
+  const evidence = { runId, realTransport: !dry, itemCopyOnly, authorizedMessageBudget: expectedPerLoop * 2, productionBlocked: true,
     allRailProof: false, itemDispatcherStillBlocked: true, loops: [], receipts: [], rejected: 0 };
   const journal = path.join(dir, `proof-${runId}.json`);
   const save = () => fs.writeFileSync(journal, JSON.stringify(evidence, null, 2), { mode: 0o600 });
@@ -118,17 +134,18 @@ export async function main(args = process.argv.slice(2), env = process.env) {
           WHERE c.id::text=$1 AND c.user_id=$2`, [row.metadata.cartItemId, request.accountId]);
         if (catalog.rows.length !== 1) fail("MISSING_LIVE_QA_CATALOG");
         const item = catalog.rows[0], checkedAt = new Date(item.checked_at).toISOString();
-        const remaining = Number(item.capacity) - Number(item.booked_count);
-        const recordedAvailability = item.slot_id && item.status === "active" &&
-          item.slot_status === "available" && Number.isSafeInteger(remaining) &&
-          Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 0
-          ? remaining >= Number(item.quantity) ? "the recorded slot had capacity for your cart quantity"
-            : "the recorded slot did not have capacity for your cart quantity"
-          : "availability for your cart quantity could not be verified";
+        const recordedAvailability = describeRecordedAvailability(item);
+        if (itemCopyOnly) {
+          if (active.loop === 1 && (item.slot_id || Number(item.price) !== 12)) fail("WRONG_COPY_SCENARIO");
+          if (active.loop === 2 && (Number(item.price) !== 10 ||
+              recordedAvailability !== "the recorded slot did not have capacity for your cart quantity")) fail("WRONG_COPY_SCENARIO");
+          receipt.copyScenario = active.loop === 1 ? "price_change_unknown_stock" : "availability_loss";
+        }
         const wording = `When we checked at ${checkedAt} UTC, ${item.service_name} was priced at ${item.price} USD and ${recordedAvailability}. Price and availability may change before you book. Review the current details in your cart.`;
-        html = `<p>${escape(wording)}</p>${html}`;
-        text = `${wording}\n${text}`;
-        receipt.checkedAt = checkedAt; receipt.copyOnly = true;
+        // QA copy only: do not append the unqualified production-template stock claim.
+        html = `<p>${escape(wording)}</p>`;
+        text = wording;
+        receipt.checkedAt = checkedAt; receipt.copyOnly = true; receipt.recordedAvailability = recordedAvailability;
       }
       const destination = request.family === "cart_reminder_1h" || request.family === "cart_reminder_1d"
         ? env.SIGNUP_QA_TEST_INBOX : env.ITINERARY_OUTCOME_TEST_EMAIL;
@@ -160,8 +177,8 @@ export async function main(args = process.argv.slice(2), env = process.env) {
   try {
     for (let loop = 1; loop <= 2; loop++) {
       if (interrupted) fail("INTERRUPTED");
-      active = { loop, schema: null, used: 0, seen: new Set() };
-      const binding = { runId, loop, token, port: server.address().port };
+      active = { loop, schema: null, used: 0, seen: new Set(), itemCopyOnly };
+      const binding = { runId, loop, token, port: server.address().port, itemCopyOnly };
       let log = "";
       const exit = await new Promise((resolve, reject) => {
         owner = spawn(process.execPath, ["scripts/verification/run-messaging-gate.mjs",
@@ -177,10 +194,11 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         owner.stderr.on("data", data => { log += data; });
         owner.once("error", reject); owner.once("exit", code => resolve(code ?? 1));
       });
-      const clean = exit === 0 && log.includes("ISOLATED_SCHEMA_REMOVED=true") && active.used === 4;
+      const clean = exit === 0 && log.includes("ISOLATED_SCHEMA_REMOVED=true") && active.used === expectedPerLoop;
       fs.writeFileSync(path.join(dir, `${runId}-loop-${loop}.log`), redact(log));
       evidence.loops.push({ loop, exit, isolationRemoved: log.includes("ISOLATED_SCHEMA_REMOVED=true"),
-        fourOwnedSubmissions: active.used === 4, fixtureProofClean: clean }); save();
+        expectedSubmissions: expectedPerLoop, ownedSubmissions: active.used,
+        authorizedSubmissionsComplete: active.used === expectedPerLoop, fixtureProofClean: clean }); save();
       active = null;
       if (!clean) fail("FIXTURE_OR_CLEANUP_FAILED");
       if (!dry) {
@@ -205,7 +223,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
         for (const receipt of evidence.receipts.filter(r => r.loop === loop)) receipt.deliveryStatus = "synthetic_only";
         save();
       }
-      console.log(JSON.stringify({ loop, fixtureProofClean: true, delivered: dry ? 0 : 4, realTransport: !dry }));
+      console.log(JSON.stringify({ loop, fixtureProofClean: true, delivered: dry ? 0 : expectedPerLoop, realTransport: !dry }));
     }
   } finally {
     active = null; interrupted = true;
@@ -215,7 +233,7 @@ export async function main(args = process.argv.slice(2), env = process.env) {
     process.removeListener("SIGTERM", stop); process.removeListener("SIGINT", stop);
     delete env.COMMERCE_QA_DELIVERY_PROOF; delete env.COMMERCE_QA_PROOF_RUN_ID;
   }
-  console.log(JSON.stringify({ evidence: journal, loops: 2, realDelivered: dry ? 0 : 8,
+  console.log(JSON.stringify({ evidence: journal, loops: 2, realDelivered: dry ? 0 : expectedPerLoop * 2,
     itemProof: "template-only; actual dispatcher still held", releaseCertified: false }));
   return evidence;
 }
