@@ -41,7 +41,8 @@ import { lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLast
 import { isRideMode, type DayFeasibility } from "@shared/plan-feasibility";
 import { parseDayHours } from "@shared/optimizer-lead";
 import { haversineMeters } from "@shared/geo";
-import { ROUTED_WALK_MAX_METERS } from "@shared/routing-engine";
+import { ROUTED_WALK_MAX_METERS, defaultRoutedMode, marketHasTransitCoverage } from "@shared/routing-engine";
+import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import { storage } from "../storage";
 import { legUnreachableFinding, unreachableStops } from "@shared/leg-reachability";
 
@@ -147,6 +148,7 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
 
 // ── FD-3: the feasibility context, shared by the findings and the day line (ledger `2026-10-10-fd3-feasibility`) ──
 
+/** A plan row as the feasibility checks read it — in plan order (day, start, sort order). */
 type FeasibilityItem = {
   id: string;
   title: string;
@@ -156,6 +158,9 @@ type FeasibilityItem = {
   durationMinutes: number | null;
   lat: unknown;
   lng: unknown;
+  origin?: string | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
 };
 
 interface FeasibilityContext {
@@ -192,35 +197,53 @@ async function feasibilityContext(tripId: string, items: FeasibilityItem[], star
     if (m !== null) lastEntry.set(it.id, m);
   }
 
-  // Rides: the plan's own legs by train, subway or bus, departing when the stop they leave ends. The
-  // departure is the leg's start — a ride you cannot board after the last departure (the brief's reading).
+  // Rides (ruling 3). A free plan stores no estimated legs, so the ride is derived the way the routing
+  // engine picks its default mode (`defaultRoutedMode`): between two consecutive LOCATED stops of a day,
+  // walk up to 1.2 km straight line, else transit where the market's profile lists it. A leg the plan
+  // actually shows for that pair (an expert-confirmed or routed leg) wins with its own mode. The ride
+  // departs when the stop it leaves ends (its end time, else start + duration); no end ⇒ unchecked.
   const legs = await tripLegsShown(tripId);
+  const shownMode = new Map<string, string | null>();
+  for (const l of legs as any[]) shownMode.set(`${l.dayNumber}|${l.fromActivityId}|${l.toActivityId}`, l.userSelectedMode ?? l.selectedMode ?? l.recommendedMode ?? null);
   const points = await factPointsForTrip(tripId);
+  const pointOf = (r: FeasibilityItem): { lat: number; lng: number } | null => {
+    const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
+    return own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : points.get(r.id) ?? null;
+  };
+  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }> }>)[(market ?? "").toLowerCase()];
+  const transitCoverage = marketHasTransitCoverage(profile?.availableModes);
   const byId = new Map(timed.map((t) => [t.id, t]));
   const services = facts.lastServices
     .map((s) => ({ ...s, v: parseLastService(s.value) }))
     .filter((s): s is typeof s & { v: NonNullable<typeof s.v> } => s.v !== null);
   const rides: RideCheck[] = [];
-  for (const l of legs as any[]) {
-    const mode = l.userSelectedMode ?? l.selectedMode ?? l.recommendedMode ?? null;
-    if (!isRideMode(mode)) continue;
-    const from = l.fromActivityId ? byId.get(l.fromActivityId) : undefined;
-    const end = from ? visitEndMinutes(from) : null;
-    const dateIso = from?.dateIso ?? (start && l.dayNumber ? addDays(start, l.dayNumber - 1) : null);
-    let departMin = end;
-    if (departMin !== null && departMin < SERVICE_DAY_START_MIN) departMin += 24 * 60;
-    const lat = Number(l.fromLat);
-    const lng = Number(l.fromLng);
-    const origin = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : (from ? points.get(from.id) ?? null : null);
-    const lastDepartures =
-      departMin === null || !dateIso || !origin
-        ? []
-        : services
-            .filter((s) => haversineMeters(origin.lat, origin.lng, s.lat, s.lng) <= ROUTED_WALK_MAX_METERS)
-            .map((s) => lastServiceMinutes(s.v, dateIso))
-            .filter((m): m is number => m !== null);
-    rides.push({ dayNumber: Number(l.dayNumber), departMin: departMin ?? -1, lastDepartures });
+  const byDay = new Map<number, FeasibilityItem[]>();
+  for (const r of items) {
+    if (r.dayNumber == null) continue;
+    byDay.set(r.dayNumber, [...(byDay.get(r.dayNumber) ?? []), r]);
   }
+  byDay.forEach((list, dayNumber) => {
+    const located = list.map((r) => ({ r, p: pointOf(r) })).filter((x): x is { r: FeasibilityItem; p: { lat: number; lng: number } } => x.p !== null);
+    for (let i = 0; i + 1 < located.length; i++) {
+      const a = located[i];
+      const b = located[i + 1];
+      const key = `${dayNumber}|${a.r.id}|${b.r.id}`;
+      const mode = shownMode.has(key) ? shownMode.get(key) ?? null : defaultRoutedMode(a.p, b.p, transitCoverage);
+      if (!isRideMode(mode)) continue;
+      const from = byId.get(a.r.id);
+      let departMin = from ? visitEndMinutes(from) : null;
+      if (departMin !== null && departMin < SERVICE_DAY_START_MIN) departMin += 24 * 60;
+      const dateIso = from?.dateIso ?? null;
+      const lastDepartures =
+        departMin === null || !dateIso
+          ? []
+          : services
+              .filter((s) => haversineMeters(a.p.lat, a.p.lng, s.lat, s.lng) <= ROUTED_WALK_MAX_METERS)
+              .map((s) => lastServiceMinutes(s.v, dateIso))
+              .filter((m): m is number => m !== null);
+      rides.push({ dayNumber, departMin: departMin ?? -1, lastDepartures });
+    }
+  });
   return { hours, timed, lastEntry, rides };
 }
 
@@ -243,9 +266,13 @@ export async function loadDayFeasibility(tripId: string): Promise<Map<number, Da
       itemType: itineraryItems.itemType,
       lat: itineraryItems.latitude,
       lng: itineraryItems.longitude,
+      origin: itineraryItems.origin,
+      locationName: itineraryItems.locationName,
+      locationAddress: itineraryItems.locationAddress,
     })
     .from(itineraryItems)
-    .where(eq(itineraryItems.tripId, tripId));
+    .where(eq(itineraryItems.tripId, tripId))
+    .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.startTime), asc(itineraryItems.sortOrder));
   const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
   const ctx = await feasibilityContext(tripId, items as FeasibilityItem[], start, trip.marketSlug ?? null);
   const out = new Map<number, DayFeasibility>();
