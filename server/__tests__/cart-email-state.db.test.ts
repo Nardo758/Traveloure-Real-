@@ -189,6 +189,10 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
       await assert.rejects(storage.replaceUserCartWithVariantItems(userId,
         [{ providerServiceId: randomUUID(), dayNumber: 2, timeSlot: "PM" }]));
       assert.deepEqual(await fetch(variant.id), variant);
+      const countFixtureEmails = async () => Number((await db.execute(sql`SELECT count(*) AS count
+        FROM email_outbox WHERE to_email=${travelerEmail} OR metadata->>'travelerId'=${userId}`)).rows[0].count);
+      assert.equal(await countFixtureEmails(), 0,
+        "Cart authoring, guest claim and projection writers must not enqueue email");
       // Queue association + notified-value idempotency, without any delivery or new mail family.
       const values = { price: "19.00", currency: "USD", availability: snapshot(variant).availability };
       const [outbox] = await db.insert(emailOutbox).values({ emailType: "cart_item_changed",
@@ -260,6 +264,8 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
         cartReminderVerification.now = previousNow;
         cartReminderVerification.recordedRailsOnly = previousSubset;
       }
+      assert.equal(await countFixtureEmails(), 2,
+        "Only the explicit setup row and guarded producer row may exist");
       assert.deepEqual(snapshot(notified), snapshot(variant));
       // Excluded payment cleanup stays byte-for-byte neutral to surviving partner state.
       const paidPartner = await storage.addToCart(userId, { contentType: "affiliate_product",
@@ -285,6 +291,8 @@ test("two randomized isolated Part 2 loops, actual cart writers and before/after
         return { successes: successes[i], samples, successRate: successes[i] / samples,
           p50Ms: sorted[Math.floor(sorted.length * .5)], p95Ms: sorted[Math.floor(sorted.length * .95)] };
       });
+      assert.equal(await countFixtureEmails(), 2,
+        "Cart cleanup and repeated baseline/current add-to-cart writes must not enqueue email");
       results.push({ loop, checks: "direct-writer atomicity, snapshots, injection, malformed JSON, concurrency, resume, notification state",
         before: summary[0], after: summary[1] });
       console.log("PART2_LOOP_RESULT=" + JSON.stringify(results.at(-1)));

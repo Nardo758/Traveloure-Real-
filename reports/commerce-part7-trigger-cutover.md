@@ -1,5 +1,12 @@
 # Part 7 — approved trigger-only cutover
 
+**Historical checkpoint:** the later approved work restored the complete golden
+runner and added cart-writer outbox-count assertions. See
+`commerce-part7-golden-db-proof.md`, `commerce-part7-unknown-classification.md`,
+`commerce-direct-senders.md` and `commerce-part7-gate.md` for the current results
+and readiness. The earlier missing-runner and incomplete-DB-proof entries below
+are retained as history, not current blockers.
+
 ## Scope completed
 
 All 15 explicitly approved development commerce trigger instances were removed in one guarded transaction. Their trigger and function DDL was saved in draft PR https://github.com/Nardo758/Traveloure-Real-/pull/1391 before removal; the SQL archive was verified byte-for-byte (SHA256 ca050dff6b612af6ad65ef82cdd71c4c6bcf06f8c9e7f442e3ae78fff8260aa8). PR contents are documentation only, with no runtime or migration edits.
