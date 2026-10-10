@@ -18,6 +18,10 @@ import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
 import type { StayCloseness } from "@shared/stay-pick";
 import type { StayLink } from "@shared/stay-link";
 import { buildGoogleMapsDeepLink } from "@/lib/maps";
+import { cancellationLine, type StayRatesState } from "@shared/liteapi-rates";
+import { localTime } from "@shared/city-events";
+import { slipZoneAbbrev } from "@/lib/slip-zone-label";
+import { formatMoneyCents } from "@/lib/optimization-preview";
 
 export const STAY_PICK_TITLE = "Our pick for your days";
 export const STAY_PICK_SUBTITLE = "Closest to your stops on most days, by travel time.";
@@ -92,4 +96,53 @@ export function stayCardModel(stay: WhereToStayStay | null | undefined): StayCar
   }
   const hotels = (stay.hotels ?? []).slice(0, 3);
   return hotels.length ? { tier: "straight_line", hotels, scoredLine: null, changed: false } : null;
+}
+
+/**
+ * S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`): live rates on the card, LiteAPI stays only. The
+ * default card shows the control and NO price (SC3/SC7); the panel opens only after a tap and reads the
+ * server's answer — the card computes no price, margin or floor. Rates are never stored.
+ */
+export const STAY_RATES_SEE = "See rates";
+export const STAY_RATES_LOADING = "Checking rates…";
+export const STAY_RATES_UNAVAILABLE = "Rates unavailable right now";
+export const STAY_RATES_DATES_NEEDED = "Set your dates to see rates";
+export const STAY_RATES_PARTY_NEEDED = "Add who's coming to see rates";
+export const STAY_RATES_CHILDREN_NOT_PRICED = "Children are not included in this price";
+
+/** What the panel draws after a tap. `loading` until the server answers. */
+export type StayRatesView = { state: "loading" } | StayRatesState;
+
+/** The free-cancellation deadline in the plan's own zone: "Oct 12, 14:00 JST". null when it cannot be said. */
+export function stayDeadlineLocal(iso: string, timezone: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  try {
+    const day = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "short", day: "numeric" }).format(at);
+    const abbrev = slipZoneAbbrev(timezone, at);
+    return `${day}, ${localTime(at, timezone)}${abbrev ? ` ${abbrev}` : ""}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The panel's lines for an answered state; null for `loading` (the caller draws the loading line). */
+export function stayRatesLines(v: StayRatesView):
+  | { kind: "message"; text: string }
+  | { kind: "offer"; price: string; party: string; board: string | null; cancellation: string | null; payAtProperty: string[]; childrenNote: string | null }
+  | null {
+  if (v.state === "loading") return null;
+  if (v.state === "unavailable") return { kind: "message", text: STAY_RATES_UNAVAILABLE };
+  if (v.state === "dates_needed") return { kind: "message", text: STAY_RATES_DATES_NEEDED };
+  if (v.state === "party_needed") return { kind: "message", text: STAY_RATES_PARTY_NEEDED };
+  const o = v.offer;
+  return {
+    kind: "offer",
+    price: `${formatMoneyCents(o.amountCents, o.currency)} total`,
+    party: `for ${o.adults} ${o.adults === 1 ? "adult" : "adults"}`,
+    board: o.boardName,
+    cancellation: cancellationLine(o, { checkin: v.checkin, timezone: v.timezone, local: stayDeadlineLocal }),
+    payAtProperty: o.payAtProperty.map((t) => `Plus ${formatMoneyCents(t.amountCents, t.currency)} payable at the property (${t.label})`),
+    childrenNote: o.childrenNotPriced ? STAY_RATES_CHILDREN_NOT_PRICED : null,
+  };
 }

@@ -2644,6 +2644,14 @@ This document captures architectural decisions to maintain consistency across co
     empty at creation. **The expiry sweep never deletes a LiteAPI row, nor any row a `plan_options` row or a
     `trips.stay_pick` references** (`hotel-cache-retention.ts`). "See rates", the SSP guard and the margin bands
     are S1-d-2.
+    **AMENDED — S1-d-2, LIVE RATES ON THE CARD, NEVER STORED (decision-maker, Oct 10, 2026 — ledger
+    `2026-10-10-s1-d2-liteapi-rates`; brief `docs/planning/briefs/s1-d2-liteapi-rates.md`; migration 366, HELD
+    until "Migration 366 SQL approved — Leon" is on its PR).** `GET /api/trips/:tripId/stays/:stayId/rates` asks
+    LiteAPI live for one stay (`maxRatesPerHotel: 1`) behind the plan read gate and stores nothing. The public
+    price is the retail total with the `hotel_margin_public` margin, floored at the SSP; both margin bands are
+    optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
+    is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
+    default card shows "See rates" and no price; the item row and booking are d-3.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
