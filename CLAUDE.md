@@ -49,6 +49,10 @@ This document captures architectural decisions to maintain consistency across co
    `RESOLVER_FEE_BAND_REQUIREMENTS` also declares it with its fallback, so the screen states what turning
    it off does instead of "not declared". Pinned for every band a migration seeds from 354 on
    (`fee-band-admin-guards` D8). A band the screen can't see or explain fails the ruling.
+   **TC-0 (ledger `2026-10-10-tc0-transport-commission-band`, migration 367, approved):** the transport platform
+   commission is the `transport_platform_commission` band (10%) and the route-search partners' margin is ONE
+   `affiliate_transport_margin` band (6%), each with fallback 0; the dormant `booking_fee_configs` reads and
+   the 10% / per-partner literals are gone.
    **Migration 339** (ledger `2026-10-03-beta-flat-band-insert`) inserts the `beta_flat` row when it
    is missing — 051 stamped 001–050 without running them, so production never received 033's seed
    and 338's UPDATE matched nothing — then repeats 338's guarded reactivation and policy upsert.
