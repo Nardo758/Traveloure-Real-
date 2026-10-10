@@ -15,8 +15,9 @@ Read on `main` at `5e0a0839b` (R404). Ledger row `2026-10-10-fd3-feasibility` (R
    unsourced train/bus hour spans are deleted from the transport profile.
 4. **Access route** is official text + link, `link_only`, public tier. Expert versions are local-tier notes, not FD-3.
 5. **Expert hard constraints never enter drafts** (claim evidence, LD 27).
-6. **Visit length:** a new finding `closes_before_visit_end` — arrival + planned duration against closing time, and
-   against `last_admission` when stored. `closed_on_arrival` is unchanged.
+6. **Visit length:** two checks, two findings — `after_last_admission` (arrival vs last entry: can you still get in)
+   and `closes_before_visit_end` (arrival + planned duration vs closing: will you be put out). `closed_on_arrival` is
+   unchanged. Flag only (answer 2).
 7. **Duplicate neighbourhood slugs:** a production read first; if duplicates exist, a held merge lane onto the 042
    slugs before FD-5. Not in FD-3.
 
@@ -57,39 +58,39 @@ page (same refusal list); free text for these two types is refused. Crawled `hou
 "not checked".
 
 **c. Findings (`shared/optimizer-lead.ts`).**
-- The reader takes hours from Places OR a crawled official row carrying the structured shape.
-- New `closes_before_visit_end`: for a stop with a start time and a planned duration, end = start + duration; flagged
-  when end passes the day's closing time, or when start is after the stored `last_admission` for that weekday (in
-  season). Needs both a time and a duration — otherwise the stop is uncounted. Problems-first order: after
-  `closed_on_arrival`. Added to `recheckConflicts`.
-- New `last_service_missed`: for an estimated or routed transit leg, its end time against stored `last_service`
-  facts whose station is within the walk threshold (`ROUTED_WALK_MAX_METERS`) of the leg's origin, for the leg's
-  weekday and validity; flagged when every matching last departure is earlier than the leg's departure. No matching
-  fact ⇒ not checked.
+- The reader takes hours through ONE feasibility reader (`feasibilityFactsForTrip`, place-facts.service): the plan's
+  own rows plus official rows stored for the item's place id by any plan, in FD-2's precedence (official first for a
+  hard fact), tagged rows only, Google-shaped lines only.
+- `after_last_admission`: arrival later than the stored last entry for that date (in season). Equal is in.
+- `closes_before_visit_end`: open at arrival, but the visit's end (end time, else start + duration) passes closing.
+  No end and no duration ⇒ unchecked. A stop closed on arrival stays `closed_on_arrival`'s.
+- `last_service_missed`: a ride leaving after every applicable last departure stored within 1.2 km
+  (`ROUTED_WALK_MAX_METERS`) of its start. A free plan stores no estimated legs, so the ride is derived the way the
+  engine picks its default mode (`defaultRoutedMode`: over 1.2 km and the market lists transit); a leg the plan shows
+  for the pair wins with its own mode. The ride departs when the stop it leaves ends. No fact ⇒ unchecked.
+- All three join `recheckConflicts`. Order: after `closed_on_arrival`.
 
-**d. Day feasibility (`days[].feasibility` on the plancard, pure `feasibilityForDay`).** Per check: `{ checked, of }`
-for hours, last admission and last trains; a check with `checked = 0` reads "not checked". The line: "Hours checked
-for 5 of 6 stops · last trains not checked". Counts only; no "public"/"local" wording.
+**d. Day feasibility (`days[].feasibility` on the plancard; words `feasibilityLine`, shared/plan-feasibility.ts).**
+`{ stops, hoursChecked, lastEntryChecked, rides, ridesChecked }`; a check with nothing stored reads "not checked"; a day
+with no ride has no last-train clause (no question to answer). Rendered on every day block: slip (one prop at
+`SlipView.tsx:2598`), Trip Card, Workstation, and the versions board's Your plan. Counts only; no tier words.
 
-**e. Profile.** Delete Kyoto's "Last trains around 23:30" and the train/bus `availableHours`; make `availableHours`
-optional in the type.
+**e. Profile.** Delete every market's `availableHours` (unsourced, unread) and the field from the type; delete Kyoto's
+"Last trains around 23:30". One commit.
 
 **f. Tests.** An untagged or unsourced fact never produces a finding; a day with nothing stored says "not checked"; a
-stored `last_admission` earlier than the visit's start flags `closes_before_visit_end`; a visit ending after closing
-flags it; a missed last service flags `last_service_missed` and an absent one reads "not checked"; text-only crawled
-hours are ignored.
+stored `last_admission` earlier than the ARRIVAL flags `after_last_admission`; a visit ENDING after closing flags
+`closes_before_visit_end`; a missed last service flags `last_service_missed` and an absent one is unchecked; text-only
+crawled hours are ignored.
 
-## 4. Questions before build
-1. **Where the day line renders.** In code the "draft card" is the EMPTY board's card (`plan/SlipEmptyStart.tsx`),
-   which exists before a draft. The per-day line fits `DayBlock`, but on the slip it needs one prop passed from
-   `SlipView.tsx:2598` — a file this lane has been told not to touch. Allow a one-prop SlipView edit, or render on the
-   Trip Card and the versions board only for now?
-2. **"Blocks or reorders"** (ruling's test): the free draft's generator does not read findings, so FD-3 flags. Make
-   the free draft reorder around a stored `last_admission` (a generator change), or is a flag enough? Also: the
-   ruling's test reads "`last_admission` earlier than the visit END"; entry is the arrival, so the brief compares
-   last admission with the ARRIVAL and the closing time with the END. Confirm.
-3. **Expert-entered `last_admission`:** the admission rule accepts it with an official source, but there is no
-   expert entry surface. Build one here, or leave it to the expert-content lane?
-4. **Profile spans:** delete the hour spans for Kyoto only, or every market's (all unsourced, all unread)?
-5. **`last_service` fact type:** the ruling names the sub-need; a fact type is needed for the structured value. OK to
-   add `last_service` as the type beside the sub-need?
+## 4. Answers (decision-maker, Oct 10, 2026)
+1. The one-prop `SlipView.tsx:2598` edit is allowed; the line renders on the day block everywhere it appears.
+2. Flag only; no free-draft reorder. Last admission vs ARRIVAL, closing vs visit END — two checks, two findings.
+3. No expert entry screen here. **Dependency recorded for the expert-content lane:** an expert screen to enter
+   `last_admission` with its official source; the admission rule already accepts `origin = expert_nugget`.
+4. Delete the spans for every market, and the Kyoto note — one commit.
+5. `last_service` is a structured fact type beside the sub-need, same admission rule.
+
+Build order as built: types + admission + extraction → findings → re-check → per-day count → day-block line →
+deletions → tests. The duplicate-slug merge (ruling 7) gates only neighbourhood-keyed parts; FD-3 keys nothing by
+neighbourhood.

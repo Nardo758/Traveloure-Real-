@@ -2668,6 +2668,18 @@ This document captures architectural decisions to maintain consistency across co
     on the plan and live local notes in the neighbourhoods of that day's located stops — COUNTS ONLY, no title, place or
     id; a day not computed, or zero, carries no key (§13). FD-5's coverage targets will hide an under-target day.
 
+67. **FEASIBILITY IN THE FREE DRAFT READS ONLY STORED OFFICIAL FACTS, AND A DAY SAYS WHAT IT DID NOT CHECK (decision-maker,
+    Oct 10, 2026 — FD-3 rulings 1–7; ledger `2026-10-10-fd3-feasibility`; brief `docs/planning/briefs/fd-3-feasibility.md`;
+    no migration).** Two structured fact types — `last_admission` and `last_service` (sub-need
+    `transport.local.last_service`) — are admitted by ONE rule, `admitFeasibilityFact` (`shared/feasibility-facts.ts`), in
+    the one writer: an official license, an https source, an official crawled page or an expert citing one, every time
+    printed in the quote; never parsed from free-text hours; tagged public + link_only. The free draft's fetch budget stays
+    zero (A6-3A): the post-draft Places hours lookup is its only live source. Three findings — `after_last_admission`
+    (arrival vs last entry), `closes_before_visit_end` (visit end vs closing) and `last_service_missed` — join the T-3
+    re-check; they flag, never reorder. Every day block draws ONE line (`feasibilityLine`) from `days[].feasibility`:
+    honest counts, "not checked" where nothing is stored. Expert hard constraints never enter a draft (LD 27). Unsourced
+    transport-profile hours and Kyoto's last-train note are deleted.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
