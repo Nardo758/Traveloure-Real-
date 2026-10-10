@@ -51,6 +51,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -248,6 +249,8 @@ test("W1b: that owner really can PATCH and DELETE their own item", async () => {
 // ── W2 ───────────────────────────────────────────────────────────────────────────────────────────
 
 test("W2: a PENDING advisor is refused on every moved gate; an ACCEPTED advisor passes", async () => {
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(ids.advisor);
   const advisorRow = await storage.createTripExpertAdvisor({
     tripId: ids.trip,
     localExpertId: ids.advisor,

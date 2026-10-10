@@ -50,14 +50,14 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   );
   expect(listing?.id, "the fixture listing was written").toBeTruthy();
 
-  // ── Signed out: the start page — Continue opens the guest map straight away (Lane E1, ledger
-  //    `2026-10-08-e1-zero-questions`; sanctioned rewrite of :58-80): no modal, no When, no Who. ──────
+  // ── Signed out: the start page — PlanEntry inline; Start a plan opens the guest map (E3, ledger
+  //    `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :55-59): no pop-up, no When, no Who. ──
   await page.goto("/experiences");
-  await testid(page, "occasion-group-trips").click({ timeout: 20_000 });
-  await testid(page, "option-occasion-travel").click();
-  await testid(page, "city-card-kyoto").click();
-  await testid(page, "button-experiences-continue").click();
+  await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  await testid(page, "plan-entry-group-trips").click();
+  await testid(page, "button-plan-entry-start").click();
   await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
+  await expect(testid(page, "plan-entry"), "the start page opens no pop-up").toHaveCount(0);
 
   // ── The guest map: no plan, the answers, Browse ─────────────────────────────────────────────────
   await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });

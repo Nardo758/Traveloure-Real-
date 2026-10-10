@@ -35,12 +35,10 @@ test("S1 item 2: the legacy lodging card is gone; the panel is the only lodging 
   assert.doesNotMatch(slip, /WhereToStayPanel|SlipAnchorQuestion/);
 });
 
-test("S2 item 4: the AI finish lands on the minted plan first; the form refreshes that slip", () => {
+test("S2 item 4: a plan built with AI lands on its map with Draft it with AI started; the form still refreshes the slip", () => {
+  // E2 ruling 2 / Q1 (a) (sanctioned re-pin): `ai` mints through PlanEntry and lands on `?view=map&draft=ai`.
   const ctx = read("../../contexts/PlanningContext.tsx");
-  const ai = ctx.slice(ctx.indexOf('if (branch === "ai")'), ctx.indexOf('if (branch === "myself")'));
-  // Step 8b-2 (D4 — sanctioned edit): the AI finish lands on the plan's MAP view, through the ONE
-  // landing rule, and still before the form opens over it.
-  assert.match(ai, /if \(plan\.tripId\) setLocation\(planLandingPath\(plan\.tripId, "ai", source\?\.door\)\);\s*setAiOpen\(true\);/);
+  assert.ok(ctx.includes("setLocation(`/plans/${tripId}?view=map&${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);"));
   const form = read("../../components/EnhancedPlanningModal.tsx");
   assert.match(form, /\["plancard", "option-sets", "where-to-stay"\]/);
 });

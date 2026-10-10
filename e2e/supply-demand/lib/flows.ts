@@ -817,8 +817,8 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Demand-journey helpers (Pass 2, Part 2 / D1-D7). Adapted from the lead's own proven driver
-// `docs/audits/journeys/harness/lib.mjs` fillPlanModal — same selectors, same walk shape — so the
-// modal-driving recipe is not re-guessed from scratch for a second harness.
+// `docs/audits/journeys/harness/lib.mjs` fillPlanModal once mirrored the old modal walk; that harness is
+// not run by CI and is listed stale by E2.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 export function futureDateRange(offsetDays = 40, lenDays = 5): { start: string; end: string } {
@@ -831,93 +831,63 @@ export function futureDateRange(offsetDays = 40, lenDays = 5): { start: string; 
 }
 
 /**
- * Walks the ONE planning modal (ruling 33/42/45) from whatever step it opens on to its finish
- * row, filling occasion/destination/dates as each becomes visible. Stops as soon as ANY finish
- * CTA (`planning-option-*`) is visible, WITHOUT clicking one — the caller picks which branch.
+ * Walks PlanEntry (E2, ledger `2026-10-09-e2-plan-entry`): "Plan around…" a DATE (Pick dates, so the
+ * plan carries real dates), the city as a chip, then the occasion (the group default, or a slug
+ * through "More specific"). Stops when Start a plan is visible, WITHOUT clicking it.
  */
-export async function fillPlanModalToFinish(
+export async function fillPlanEntryToStart(
   page: Page,
   destination: string,
   opts: { occasionSlug?: string; offsetDays?: number; lenDays?: number } = {},
 ): Promise<boolean> {
-  const modal = testid(page, 'plan-modal');
-  if (!(await appears(modal, 10_000))) return false;
+  const entry = testid(page, 'plan-entry');
+  if (!(await appears(entry, 10_000))) return false;
   const { start, end } = futureDateRange(opts.offsetDays ?? 40, opts.lenDays ?? 5);
-  const occasionSlug = opts.occasionSlug ?? 'travel';
+  const marketKey = destination.split(',')[0].trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  for (let i = 0; i < 8; i++) {
-    if (await appears(page.locator('[data-testid^="planning-option-"]').first())) break;
+  await testid(page, 'plan-entry-around-date').click().catch(() => {});
+  await testid(page, 'plan-entry-date-pick').click().catch(() => {});
+  await testid(page, 'plan-entry-date-start').fill(start).catch(() => {});
+  await testid(page, 'plan-entry-date-end').fill(end).catch(() => {});
+  const city = testid(page, `plan-entry-city-${marketKey}`).first();
+  if (!(await appears(city, 3000))) return false;
+  await city.click().catch(() => {});
+  await testid(page, 'button-plan-entry-next').click().catch(() => {});
 
-    // Step 8a: the one occasion picker shows its groups first. "See all occasions" lists every
-    // row without this flow having to know which group a slug sits in.
+  if (opts.occasionSlug && opts.occasionSlug !== 'travel') {
+    await testid(page, 'plan-entry-more-specific').click().catch(() => {});
     const seeAll = testid(page, 'occasion-see-all');
-    if (await appears(seeAll, 1000)) await seeAll.click().catch(() => {});
-
-    const preferredOccasion = testid(page, `option-occasion-${occasionSlug}`);
-    if (await appears(preferredOccasion, 1500)) {
-      await preferredOccasion.click().catch(() => {});
-    } else {
-      const anyOccasion = page.locator('[data-testid^="option-occasion-"]').first();
-      if (await appears(anyOccasion, 1000)) await anyOccasion.click().catch(() => {});
-    }
-
-    const dest = testid(page, 'input-etp-destination');
-    if (await appears(dest, 1500)) {
-      await dest.fill(destination).catch(() => {});
-    }
-
-    const sd = testid(page, 'input-etp-start-date');
-    if (await appears(sd, 1500)) {
-      await sd.fill(start).catch(() => {});
-      const ed = testid(page, 'input-etp-end-date');
-      if (await appears(ed, 1500)) await ed.fill(end).catch(() => {});
-    }
-
-    const next = testid(page, 'button-planning-next');
-    if (await appears(next, 1500)) {
-      if (await next.isDisabled().catch(() => false)) {
-        // Occasion step's Next is disabled until an occasion is picked (plan-modal.tsx:2656) —
-        // give the click above one more beat to register before giving up on this step.
-        await page.waitForTimeout(400); // settle-ok: one beat for the occasion click to register; re-checked on the next line
-        if (await next.isDisabled().catch(() => false)) break;
-      }
-      await next.click().catch(() => {});
-      await page.waitForTimeout(500); // settle-ok: a step transition; the loop's next pass CONFIRMS by probing for the finish row / next step
-    } else {
-      break;
-    }
+    if (await appears(seeAll, 1500)) await seeAll.click().catch(() => {});
+    const occ = testid(page, `option-occasion-${opts.occasionSlug}`);
+    if (await appears(occ, 2000)) await occ.click().catch(() => {});
   }
-  return appears(page.locator('[data-testid^="planning-option-"]').first(), 3000);
+  return appears(testid(page, 'button-plan-entry-start'), 3000);
 }
 
 /**
- * Clicks a finish branch (`planning-option-myself` / `-local` / `-ai` / `-occasion`) and waits
- * for the resulting navigation, returning the tripId parsed from the landing URL when one mints
- * (`/plans/:tripId`, `/expert/...?tripId=`, etc. — callers check the shape they expect).
+ * Presses Start a plan and waits for the plan to be created and landed on, returning the tripId
+ * parsed from `/plans/:tripId`, or null when none was created.
  */
-export async function clickPlanFinish(page: Page, branch: 'myself' | 'local' | 'ai' | 'occasion'): Promise<string | null> {
-  const btn = testid(page, `planning-option-${branch}`);
+export async function clickPlanStart(page: Page): Promise<string | null> {
+  const btn = testid(page, 'button-plan-entry-start');
   if (!(await appears(btn, 3000))) return null;
-  await btn.click().catch(() => {});
-  // The finish mutation shows its own in-dialog spinner (`disabled={saving}`) while it mints the
-  // trip server-side, then navigates — a single `waitForLoadState('networkidle')` can resolve
-  // WHILE that save is still in flight (a screenshot caught this live: the modal still showing
-  // its saving overlay 15s later is one thing; the real fix is to poll for the URL to actually
-  // change rather than trust one snapshot of "idle"). Poll up to ~25s.
   const startUrl = page.url();
+  await btn.click().catch(() => {});
+  // The start mints server-side, then navigates — poll for the URL to change rather than trusting
+  // one snapshot of "idle" (up to ~25s).
   await page
-    .waitForURL((u) => u.toString() !== startUrl && (/\/plans\//.test(u.pathname) || /[?&]tripId=/.test(u.search)), { timeout: 25_000 })
+    .waitForURL((u) => u.toString() !== startUrl && /\/plans\/[0-9a-f-]{36}/.test(u.pathname), { timeout: 25_000 })
     .catch(() => {});
   const url = page.url();
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-  const m = url.match(/\/plans\/([a-zA-Z0-9-]+)/) || url.match(/[?&]tripId=([a-zA-Z0-9-]+)/);
+  const m = url.match(/\/plans\/([0-9a-f-]{36})/);
   return m ? m[1] : null;
 }
 
-/** Opens the plan modal from the hero "Plan a trip" button on the given page (usually "/"). */
-export async function openPlanModalFromHero(page: Page): Promise<boolean> {
+/** Opens PlanEntry from the hero's planning button on the given page (usually "/"). */
+export async function openPlanEntryFromHero(page: Page): Promise<boolean> {
   const btn = testid(page, 'button-plan-trip');
   if (!(await appears(btn, 5000))) return false;
   await btn.click().catch(() => {});
-  return await appears(testid(page, 'plan-modal'), 5000);
+  return await appears(testid(page, 'plan-entry'), 5000);
 }

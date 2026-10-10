@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import express from "express";
 import passport from "passport";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 import type { Server } from "http";
 
 delete process.env.REPL_ID;
@@ -129,6 +130,9 @@ before(async () => {
       authProvider: "email",
     },
   ] as any);
+
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(expertId);
 
   // Seed a trip owned by the traveler (admin acts as trip owner for fixture simplicity)
   const [trip] = await db

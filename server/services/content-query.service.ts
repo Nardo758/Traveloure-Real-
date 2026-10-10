@@ -248,6 +248,14 @@ export async function getLocalExpertUsers(): Promise<any[]> {
   return db.select().from(users).where(eq(users.role, "local_expert"));
 }
 
+/** B3 ruling 4: the local experts a RECOMMENDATION may name — routable only (`expert-routability.ts`). */
+export async function getRoutableLocalExpertUsers(): Promise<any[]> {
+  const { routableUserIds } = await import("./expert-routability");
+  const all = await getLocalExpertUsers();
+  const ok = await routableUserIds(all.map((e: any) => String(e.id)));
+  return all.filter((e: any) => ok.has(String(e.id)));
+}
+
 export async function getApprovedExpertForms(): Promise<any[]> {
   return db.select().from(localExpertForms).where(eq(localExpertForms.status, "approved"));
 }

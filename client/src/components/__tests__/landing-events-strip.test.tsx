@@ -77,7 +77,7 @@ describe("city events strip", () => {
     assert.ok(html.includes("In 11 days"));
     assert.ok(html.includes("Kyoto · Gion"));
     assert.ok(html.includes("Kyoto Jazz Weekend"));
-    assert.ok(html.includes("20 Nov – 22 Nov · Hall 1"));
+    assert.ok(html.includes("Nov 20–22 · Hall 1"));
     assert.ok(html.includes("Three nights of jazz in the old town."));
     assert.equal((html.match(/Plan around it/g) ?? []).length, 3);
   });

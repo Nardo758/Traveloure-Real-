@@ -53,3 +53,18 @@ export const HOW_IT_WORKS_STEPS: readonly HowItWorksStep[] = [
     ],
   },
 ];
+
+/**
+ * The HOME page's strip says it in three words (H1, ledger `2026-10-08-h1-home-copy`; decision-maker,
+ * Oct 8, 2026): "1 Pick → 2 Plan → 3 Hand off or book". It is the short form of the four steps above,
+ * which /how-it-works still describes in full; "See how it works →" sits beside it on the strip.
+ */
+export interface HomeHowItWorksStep {
+  n: string;
+  title: string;
+}
+export const HOME_HOW_IT_WORKS_STEPS: readonly HomeHowItWorksStep[] = [
+  { n: "1", title: "Pick" },
+  { n: "2", title: "Plan" },
+  { n: "3", title: "Hand off or book" },
+];

@@ -50,6 +50,7 @@ import {
   COMPARISON_APPLY_TO_CART_ENV,
   isComparisonApplyToCartEnabled,
 } from "../config/comparison-apply-to-cart.config";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -174,6 +175,8 @@ before(async () => {
   } as any);
   tripId = trip.id;
 
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(ids.advisor);
   const advisorRow = await storage.createTripExpertAdvisor({
     tripId,
     localExpertId: ids.advisor,

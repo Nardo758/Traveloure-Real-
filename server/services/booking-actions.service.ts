@@ -15,6 +15,9 @@ import {
 } from "../utils/trip-advisor-status";
 import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
 import { isPlatformConciergeUserId } from "./platform-concierge.service";
+import { AdvisorNotRoutableError, isExpertIdRoutable, isRoutableExpert, publicExpertSql } from "./expert-routability";
+import { isExpertRole } from "@shared/roles";
+import { logger } from "../infrastructure/logger";
 import {
   EXPERT_REVIEW_EXPERT_SHARE_BAND,
   EXPERT_REVIEW_FLAT_BAND,
@@ -591,6 +594,10 @@ export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
     LEFT JOIN review_ratings rr ON rr.local_expert_id = tea.local_expert_id
     WHERE tea.trip_id = ${tripId}
       AND tea.status IN (${sql.join(TRIP_ADVISOR_ACCESS_STATUSES.map((s) => sql`${s}`), sql`, `)})
+      -- B3 ruling 1 (read): a seed-sourced or not-approved expert is never shown on a plan, even
+      -- where a row exists (seed rows are hidden, never deleted). An APPROVED expert whose Identity
+      -- or Connect has lapsed is a real hire and stays.
+      AND ${publicExpertSql(sql`lef.status`, sql`u.email`)}
     GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
              lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
              lef.destinations, lef.hourly_rate, u.profile_image_url, u.handle
@@ -609,7 +616,18 @@ export async function getExistingAdvisorRecord(tripId: string): Promise<{ id: st
   return result.rows[0] as { id: string; status: string };
 }
 
+/**
+ * MAY THIS EXPERT BE PUT ON A PLAN? (B3 ruling 1) — ROUTABLE: approved, Identity verified, Connect
+ * complete, not seed-sourced, not the pool account (`expert-routability.ts`, the predicate every
+ * routing selector reads). Its callers are the advisor rails; the blog byline gate, which needs an
+ * approved application and nothing more, reads `isExpertApplicationApproved` instead.
+ */
 export async function isExpertApproved(expertUserId: string): Promise<boolean> {
+  return isExpertIdRoutable(expertUserId);
+}
+
+/** An APPROVED expert application — the blog byline gate's question (LD 57), not a routing one. */
+export async function isExpertApplicationApproved(expertUserId: string): Promise<boolean> {
   const result = await db.execute(sql`
     SELECT user_id FROM local_expert_forms
     WHERE user_id = ${expertUserId} AND status = 'approved'
@@ -627,6 +645,7 @@ export async function isExpertApproved(expertUserId: string): Promise<boolean> {
  */
 export async function isExpertHireable(expertUserId: string): Promise<boolean> {
   if (await isPlatformConciergeUserId(expertUserId)) return false;
+  // B3 ruling 1: routable, the same answer the one advisor-row author enforces.
   return isExpertApproved(expertUserId);
 }
 
@@ -728,12 +747,60 @@ export interface UpsertTripAdvisorRowInput {
   message?: string | null;
   /** Optional transaction handle; defaults to the pool. */
   tx?: TripAdvisorRowExecutor;
+  /**
+   * B3 ruling 1: the ONLY way past the routability check — the admin's handoff assign override
+   * (`POST /api/admin/handoffs/:id/assign` with `overrideRoutability: true`), logged with the admin.
+   * No other caller passes it.
+   */
+  routabilityOverride?: { adminId: string };
 }
 
 /** `db`, or the handle drizzle hands a `db.transaction(...)` callback. */
 export type TripAdvisorRowExecutor =
   | typeof db
   | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * B3 ruling 1 (ledger `2026-10-09-b3-expert-routability`): NO NEW ADVISOR WHO IS NOT ROUTABLE.
+ *
+ * The check runs inside the one author, so every caller is covered: an EXPERT-family account
+ * (or any account with an expert application) may be put on a plan as a NEW advisor only when
+ * `isRoutableExpert` holds — approved, Identity verified, Connect complete, not seed-sourced
+ * (`SHOW_DEMO_EXPERTS` relaxes only the seed clause, as for every reader). Two things pass:
+ *   · an EXISTING row for the pair — a status move on a real hire (a lapsed Identity/Connect does
+ *     not undo a hire; the ruling keeps it), and
+ *   · the admin's handoff-assign override, which is logged with the admin's id.
+ * A service provider with no expert application is outside the expert predicate and unchanged.
+ */
+async function assertNewAdvisorRoutable(exec: typeof db, input: UpsertTripAdvisorRowInput): Promise<void> {
+  const r = await exec.execute(sql`
+    SELECT u.role, u.email, lef.status AS application_status,
+           lef.identity_verification_status, lef.stripe_connect_status,
+           EXISTS (SELECT 1 FROM trip_expert_advisors t
+                   WHERE t.trip_id = ${input.tripId} AND t.local_expert_id = ${input.localExpertId}) AS has_row
+    FROM users u LEFT JOIN local_expert_forms lef ON lef.user_id = u.id
+    WHERE u.id = ${input.localExpertId}
+    LIMIT 1
+  `);
+  const row = (r.rows?.[0] ?? null) as any;
+  if (!row || row.has_row) return;
+  if (!isExpertRole(row.role) && row.application_status == null) return;
+  const routable = isRoutableExpert({
+    applicationStatus: row.application_status,
+    identityVerificationStatus: row.identity_verification_status,
+    stripeConnectStatus: row.stripe_connect_status,
+    email: row.email,
+  });
+  if (routable) return;
+  if (input.routabilityOverride?.adminId) {
+    logger.warn(
+      { adminId: input.routabilityOverride.adminId, tripId: input.tripId, expertId: input.localExpertId },
+      "[advisor-routability] ADMIN OVERRIDE — a non-routable expert added to a plan (B3 ruling 1)",
+    );
+    return;
+  }
+  throw new AdvisorNotRoutableError(input.localExpertId);
+}
 
 export async function upsertTripAdvisorRow(
   input: UpsertTripAdvisorRowInput,
@@ -746,6 +813,8 @@ export async function upsertTripAdvisorRow(
   // The tx handle exposes the same query-builder surface as `db`; the cast keeps the union from
   // splitting the builder's call signatures without changing which connection runs the statement.
   const exec = (input.tx ?? db) as typeof db;
+
+  await assertNewAdvisorRoutable(exec, input);
 
   const incomingRank = buildTripAdvisorStatusRankSql("excluded.status");
   const storedRank = buildTripAdvisorStatusRankSql("trip_expert_advisors.status");

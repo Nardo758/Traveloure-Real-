@@ -1952,7 +1952,10 @@ export const MIGRATION_FILES = [
   // 359 — trips.stay_pick (ledger 2026-10-09-s1-one-stay; brief s1-one-stay.md ruling 3). One nullable jsonb,
   // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. HELD.
   "359_trips_stay_pick.sql",
-  // 360 is E3's (six occasion blurbs, Track A) and lands from that lane; registry order is authoritative.
+  // 360 — the six seeded occasion descriptions that read "<name> planning experience" (ledger
+  // 2026-10-09-e3-experiences-inline; E3 ruling 2). DATA ONLY: UPDATE by slug, only while the row still holds
+  // the generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 9, 2026.
+  "360_occasion_descriptions.sql",
   // 361 — content-tier tags, columns only (ledger 2026-10-09-fd2-content-tier-tags). Nullable, no
   // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED by the founder, Oct 9, 2026.
   "361_content_tier_tags.sql",

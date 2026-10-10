@@ -656,7 +656,11 @@ router.get('/trips/shared/:token', async (req, res) => {
 router.get('/trip-experts', async (req, res) => {
   try {
     const { destination } = req.query as { destination?: string };
-    const experts = await getApprovedExperts(destination);
+    // B3 ruling 4: a list of experts to hire is a recommendation — ROUTABLE only.
+    const { routableUserIds } = await import('../services/expert-routability');
+    const approved = await getApprovedExperts(destination);
+    const routable = await routableUserIds(approved.map((e: any) => String(e.user_id)));
+    const experts = approved.filter((e: any) => routable.has(String(e.user_id)));
     res.json(experts);
   } catch (error: any) {
     console.error('Get experts error:', error);
