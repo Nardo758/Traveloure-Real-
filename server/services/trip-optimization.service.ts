@@ -68,7 +68,7 @@ class TripOptimizationService {
 
     // Fetch TravelPulse city intelligence for AI context
     try {
-      const cityIntelligence = await travelPulseService.getCityIntelligence(request.destination);
+      const cityIntelligence = await travelPulseService.getCityIntelligence(request.destination, { forDraft: true });
       if (cityIntelligence?.city) {
         const city = cityIntelligence.city;
         travelPulseContext = {

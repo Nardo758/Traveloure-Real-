@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { curatedGemTags } from "@shared/content-tiers";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { localExpertForms, travelPulseHiddenGems, users } from "@shared/schema";
@@ -194,6 +195,7 @@ export async function seedLandingMomentDemo(): Promise<{
         aiGenerated: false,
         aiGeneratedAt: null,
         curatedByExpertId: curatorId,
+        ...curatedGemTags(curatorId), // FD-2
            momentKey: gem.momentKey,
         discoveryStatus: "hidden",
         touristMentions: 0,

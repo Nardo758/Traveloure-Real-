@@ -926,7 +926,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
-      const cityIntelligence = await travelPulseService.getCityIntelligence(destination);
+      const cityIntelligence = await travelPulseService.getCityIntelligence(destination, { forDraft: true });
       
       // Build TravelPulse context for the AI
       let travelPulseContext: any = undefined;

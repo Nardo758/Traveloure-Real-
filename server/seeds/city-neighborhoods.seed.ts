@@ -13,6 +13,7 @@
  * Run: `tsx server/seeds/city-neighborhoods.seed.ts`
  */
 
+import { PUBLIC_REUSABLE_TAGS, TEAM_AUTHOR_LABEL } from "@shared/content-tiers";
 import { db } from "../db";
 import { cityNeighborhoods } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -869,6 +870,10 @@ export async function seedCityNeighborhoods(): Promise<{ inserted: number; skipp
       }
 
       await db.insert(cityNeighborhoods).values({
+        // FD-2 ruling 4: a seeded neighbourhood description is public, written by the team.
+        ...PUBLIC_REUSABLE_TAGS,
+        authorLabel: TEAM_AUTHOR_LABEL,
+        authoredAt: new Date(),
         city: citySeed.city,
         country: citySeed.country,
         name: n.name,

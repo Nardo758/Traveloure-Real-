@@ -17,6 +17,7 @@ import {
   retimeIsFree,
   retimeLine,
   type BadgeKey,
+  type RunCharge,
   type BoardStop,
   type DayDiff,
 } from "@shared/version-board";
@@ -26,13 +27,15 @@ export interface BoardVersion {
   label: string;
   name: string;
   badge: BadgeKey | null;
+  /** Held-batch-1 item 22: the server's strict winner by S1's tiebreak; absent on an older payload ⇒ false. */
+  recommended?: boolean;
   anchor: { name: string; lat: number | null; lng: number | null } | null;
   stops: BoardStop[];
   days: DayDiff[];
 }
 
 export interface VersionsBoardView {
-  run: { comparisonId: string; runId: string | null; runAt: string } | null;
+  run: { comparisonId: string; runId: string | null; runAt: string; charge?: RunCharge | null } | null;
   plan: { stops: BoardStop[] };
   versions: BoardVersion[];
   retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean> };
@@ -295,4 +298,27 @@ export function boardDayDateLabel(dayNumber: number, dateIso: string | null | un
 export function yourPlanSummary(picked: number, totalDays: number): string {
   const fromDraft = Math.max(0, totalDays - picked);
   return `${picked} ${picked === 1 ? "day" : "days"} picked · ${fromDraft} from draft`;
+}
+
+/** Held-batch-1 item 22: the label on the one strictly-winning version (server-decided). */
+export const VERSION_RECOMMENDED_LABEL = "Recommended";
+
+/**
+ * Held-batch-1 item 23: what the run cost, said on the board's header. The server sends `charge` to
+ * the plan's owner only, and NULL when no toll row explains the run — both render NO line (§13,
+ * never "free"). The free full re-run is retired (R-ac): what stays free for 24 h after a paid run is
+ * re-timing a day, so that is what the line offers, and only while the window is open.
+ */
+export function runChargeLine(
+  charge: RunCharge | null | undefined,
+  opts: { windowEndsAt: string | null; now: Date; formatDate: (iso: string) => string; formatTime: (iso: string) => string },
+): string | null {
+  if (!charge) return null;
+  if (charge.basis === "trip_pass") return "Included with your Trip Pass";
+  if (charge.basis === "free_rerun") return "Free re-run";
+  const amount = (charge.amountCents / 100).toFixed(2);
+  const money = charge.currency.toLowerCase() === "usd" ? `$${amount}` : `${charge.currency.toUpperCase()} ${amount}`;
+  const paid = `Paid ${opts.formatDate(charge.at)} · ${money}`;
+  const ends = opts.windowEndsAt ? new Date(opts.windowEndsAt).getTime() : NaN;
+  return Number.isFinite(ends) && opts.now.getTime() < ends ? `${paid} · free re-times until ${opts.formatTime(opts.windowEndsAt!)}` : paid;
 }

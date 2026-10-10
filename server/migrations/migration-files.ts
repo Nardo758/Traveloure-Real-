@@ -1956,6 +1956,16 @@ export const MIGRATION_FILES = [
   // 2026-10-09-e3-experiences-inline; E3 ruling 2). DATA ONLY: UPDATE by slug, only while the row still holds
   // the generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 9, 2026.
   "360_occasion_descriptions.sql",
+  // 361 — content-tier tags, columns only (ledger 2026-10-09-fd2-content-tier-tags). Nullable, no
+  // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED by the founder, Oct 9, 2026.
+  "361_content_tier_tags.sql",
+  // 362 — content-tier tags, backfill only (same ledger). Data only, guarded by source_class IS NULL.
+  // APPROVED by the founder, Oct 9, 2026.
+  "362_content_tier_backfill.sql",
+  // 363 — free_draft_runs (ledger 2026-10-09-fd1-free-draft-cap): a new table born empty, two indexes and a
+  // partial UNIQUE on trip_id (safe: no row exists at creation). No FK. Declared in shared/schema.ts.
+  // APPROVED by the founder, Oct 9, 2026.
+  "363_free_draft_runs.sql",
   // 364 — the three production occasion descriptions 360 missed (anniversary, bachelor-bachelorette,
   // sports-event; anniversary also under the seeder's `anniversary-trip`). Ledger
   // 2026-10-10-m364-occasion-descriptions. DATA ONLY: UPDATE by slug, only while the row still holds the

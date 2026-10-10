@@ -45,7 +45,9 @@ import { deriveCityPatch } from "./utils/service-city";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage, ExpertApplicationExistsError, type BookingStatusNotification } from "./storage";
+import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
+import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
+import { isFreeDraftEligible } from "@shared/content-tiers";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
@@ -1771,6 +1773,9 @@ export async function registerRoutes(
   // A duplicate copy in trips.routes.ts was deleted in the same change.
 
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
+    // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): the claimed free-draft run; released on our failure.
+    let freeDraftRunId: string | null = null;
+    let freeDraftProviderFailed = false;
     try {
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1834,6 +1839,14 @@ export async function registerRoutes(
       if (!draftEligibility.eligible) {
         return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
       }
+
+      // FD-1: claim the free draft BEFORE the model call, against the PLAN OWNER whoever pressed (ruling 5).
+      // A paid-tier plan (`planGetsRoutedLegs` — e.g. an accepted handoff) is not a free draft at all.
+      const freeDraftClaim = await claimFreeDraft({ rail: "trip", tripId: trip.id, countedUserId: trip.userId ?? null });
+      if (freeDraftClaim.kind === "refused") {
+        return res.status(FREE_DRAFT_REFUSAL_STATUS).json(freeDraftRefusalBody(freeDraftClaim));
+      }
+      if (freeDraftClaim.kind === "claimed") freeDraftRunId = freeDraftClaim.runId;
 
       const start = new Date(trip.startDate);
       const end = new Date(trip.endDate);
@@ -1942,6 +1955,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             sourceType: "ai_itinerary",
             userId: callerUserId,
           });
+          if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
           return res.status(failure.status).json(failure.body);
         }
         // A retryable provider failure is still RECORDED (so an outage is visible as failed calls)
@@ -1952,6 +1966,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           userId: callerUserId,
         });
         console.error("AI generation failed, using contextual fallback:", aiErr);
+        // FD-1 ruling 3: the provider failed — the canned fallback is our failure, not a counted draft.
+        freeDraftProviderFailed = true;
         itineraryData = {
           days: Array.from({ length: duration }, (_, i) => ({
             day: i + 1,
@@ -2083,12 +2099,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
       const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
       for (const item of groundedItems) {
-        await db.insert(itineraryItems).values(item as any);
+        // FD-2 ruling 9: stamped from the row's own origin ('ai' over public inputs ⇒ public).
+        await db.insert(itineraryItems).values(stampItemSourceClass(item as Record<string, unknown>) as any);
       }
       enqueuePlanLegRecompute(trip.id); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
+      if (freeDraftRunId) {
+        await (freeDraftProviderFailed ? releaseFreeDraft(freeDraftRunId) : promoteFreeDraft(freeDraftRunId, trip.id))
+          .catch((e) => console.error("[free-draft] settle failed:", e));
+      }
 
       res.status(201).json(itinerary);
     } catch (err: any) {
+      // FD-1 ruling 3: our exception before the draft committed — the run never counts.
+      if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
       if (err?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") {
         return res.status(503).json({
           message: "Our AI is experiencing high demand. Please try again in a moment.",
@@ -12148,6 +12171,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   app.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
+    // FD-1 ruling 4: every quick-start is a free draft (it mints its own plan). Released on our failure.
+    let freeDraftRunId: string | null = null;
     try {
       const parsed = quickStartItinerarySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -12158,7 +12183,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
-      const cityIntelligence = await travelPulseService.getCityIntelligence(destination);
+      const cityIntelligence = await travelPulseService.getCityIntelligence(destination, { forDraft: true });
       
       // Build TravelPulse context for the AI
       let travelPulseContext: any = undefined;
@@ -12173,7 +12198,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           aiMustSeeAttractions: city.aiMustSeeAttractions,
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
-          hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
+          // FD-1 tier filter: quick-start is a FREE draft (FD-2 ruling 5), so it takes public gems only.
+          hiddenGems: cityIntelligence.hiddenGems?.filter((g: any) => isFreeDraftEligible(g)).slice(0, 5).map((g: any) => ({
             // travel_pulse_hidden_gems has no `name` column — the field is placeName
             // (fixed Aug 29 2026: g.name fed the model undefined gem names).
             name: g.placeName,
@@ -12204,6 +12230,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         pacePreference,
         travelPulseContext,
       };
+
+      // FD-1: claim before the model call; the plan does not exist yet, so the requester is counted.
+      const freeDraftClaim = await claimFreeDraft({ rail: "quick_start", tripId: null, countedUserId: userId });
+      if (freeDraftClaim.kind === "refused") {
+        return res.status(FREE_DRAFT_REFUSAL_STATUS).json(freeDraftRefusalBody(freeDraftClaim));
+      }
+      if (freeDraftClaim.kind === "claimed") freeDraftRunId = freeDraftClaim.runId;
 
       const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
         userId,
@@ -12246,12 +12279,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
       const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const qsInsertedItems: any[] = [];
+      const qsUsedLocalGems = (travelPulseContext?.hiddenGems?.length ?? 0) > 0;
+      // FD-1: quick-start's plan now exists — the draft counts against it (promoted once items are written below).
       for (const day of qsDailyItinerary) {
         const activities = Array.isArray(day?.activities) ? day.activities : [];
         const dayNumber = normalizeGeneratedDayNumber(day?.day);
         for (const activity of activities) {
           const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
-          const [inserted] = await db.insert(itineraryItems).values({
+          const [inserted] = await db.insert(itineraryItems).values(stampItemSourceClass({
             tripId: quickTrip.id,
             title: activity.name || activity.title || "Activity",
             description: activity.description || "",
@@ -12265,11 +12300,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             currency: "USD",
             suggestedBy: "ai",
             origin: "ai",
-          }).returning();
+            // FD-2 ruling 9 (conservative): an item produced by a prompt that carried local gems is local.
+          }, { fromLocalInput: qsUsedLocalGems }) as any).returning();
           qsInsertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
         }
       }
 
+      if (freeDraftRunId) await promoteFreeDraft(freeDraftRunId, quickTrip.id).catch((e) => console.error("[free-draft] promote failed:", e));
       res.json({
         ...result,
         id: saved.id,
@@ -12283,6 +12320,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         } : null,
       });
     } catch (error: any) {
+      // FD-1 ruling 3: our failure (provider or exception) — the run never counts (a no-op once promoted).
+      if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
       console.error("Quick start itinerary error:", error);
       res.status(500).json({ message: error.message || "Itinerary generation failed" });
     }
