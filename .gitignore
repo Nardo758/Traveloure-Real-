@@ -11,6 +11,7 @@ vite.config.ts.*
 # Playwright test artifacts
 playwright-report/
 test-results/
+playwright-json/
 .playwright/
 # E2E (deploy harness) generated auth state
 e2e/auth/
