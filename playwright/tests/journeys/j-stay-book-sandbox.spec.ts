@@ -61,14 +61,24 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
 
     // Try hotels in order until the SERVER says one is bookable and prices it (sandbox availability varies).
     let priced = false;
+    const tried: string[] = [];
     for (const h of hotels.slice(0, 8)) {
       const opt = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, { data: { source: { kind: "hotel_cache", hotelCacheId: h.id } } });
-      if (!opt.ok()) continue;
+      if (!opt.ok()) {
+        tried.push(`${h.name}: add option ${opt.status()}`);
+        continue;
+      }
       const optionId = (await opt.json()).option.id as string;
       const chose = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/choose`, { data: { optionId } });
-      if (!chose.ok()) continue;
+      if (!chose.ok()) {
+        tried.push(`${h.name}: choose ${chose.status()}`);
+        continue;
+      }
       const view = await (await api.get(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking`)).json();
-      if (!view.bookable) continue;
+      if (!view.bookable) {
+        tried.push(`${h.name}: not bookable`);
+        continue;
+      }
 
       await page.goto(`${BASE_URL}/plans/${tripId}`);
       await page.getByTestId(`slip-item-name-${itemId}`).first().click();
@@ -78,6 +88,7 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       await book.click();
       const pre = await (await prebook).json();
       if (pre.state !== "prebooked") {
+        tried.push(`${h.name}: ${pre.state}`);
         await expect(page.getByTestId(`stay-book-refusal-${itemId}`)).toBeVisible();
         await page.keyboard.press("Escape");
         continue;
@@ -90,7 +101,7 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       priced = true;
       break;
     }
-    expect(priced, "a Kyoto sandbox hotel priced the plan's dates").toBe(true);
+    expect(priced, `a Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
 
     // Book through our rail (TRANSACTION_ID only — the server builds the body), then cancel at once.
     const booked = await (await api.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking/book`, { data: {} })).json();

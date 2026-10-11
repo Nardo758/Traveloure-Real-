@@ -171,14 +171,21 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       },
       { userId: input.userId ?? null, env: cfg.env, deps: deps.gate },
     );
-    if ("refused" in quoted) return { state: "unavailable" };
+    if ("refused" in quoted) {
+      console.warn(`[liteapi-booking] re-quote ${input.itemId} refused: rates ${quoted.refused}`);
+      return { state: "unavailable" };
+    }
     offerId = offerIdFromRates(quoted.value);
     quotedSsp = sspFromRates(quoted.value);
   } catch (err: any) {
     console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable" };
   }
-  if (!offerId) return { state: "unavailable" };
+  if (!offerId) {
+    // §13: say which refusal it was — LiteAPI answered with no offer for these dates and this party.
+    console.warn(`[liteapi-booking] re-quote ${input.itemId}: no offer for ${checkin}→${checkout}, ${adults} adult(s)`);
+    return { state: "unavailable" };
+  }
 
   let parsed;
   try {
