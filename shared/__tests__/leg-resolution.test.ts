@@ -5,7 +5,9 @@
  * an exact leg, the matrix only for walk|transit and only when it answers, the straight line at the
  * MODE's speed otherwise, "est." exactly on the straight line. L7–L8 pin the §7 agreement check
  * (25%, the disagreeing day NAMED). L9 is the agreement on a fixture plan through the real plan-fit
- * and the real leg rule. L10 is a source-level pin that the retired speeds are gone.
+ * and the real leg rule. L10 is a source-level pin that the retired speeds are gone. L11 (P0-b, ledger
+ * `2026-10-11-p0b-routing-follow-ups`) is the same fixture in a market with no transit in the routing
+ * API: the legs are drives, plan-fit measures beyond-walk stops by drive, and the two still agree.
  *
  * STATED NEGATIVE SPACE (§18d): nothing here calls Google or a database; the Routes and matrix
  * sources are injected. L9 runs on the straight-line tier only (the same tier the kyoto-slice e2e
@@ -21,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { haversineMeters, WALK_METERS_PER_MIN } from "../geo";
 import { defaultLegMode, LEG_MODE_STORED, metersPerMinute, normalizeLegMode, straightLineMinutes } from "../travel-speeds";
-import { perDayAgreement, resolveLeg, unifiedPlanTravel, type LegSources } from "../leg-resolution";
+import { drivePlanTravel, perDayAgreement, resolveLeg, unifiedPlanTravel, type LegSources } from "../leg-resolution";
 import { planFitFor } from "../plan-fit";
 import type { TravelTime } from "../travel-time";
 
@@ -149,4 +151,33 @@ test("L10: the retired speeds are gone from their three homes", () => {
   assert.doesNotMatch(read("server/services/itinerary-intelligence.service.ts"), /walking:\s*5,/);
   assert.doesNotMatch(read("shared/geo.ts"), /WALK_METERS_PER_MIN\s*=\s*80\b/);
   assert.doesNotMatch(read("server/services/anchor-scoring.ts"), /15\s*\*\s*80\b/);
+});
+
+test("L11: no transit in the routing API — drive legs, plan-fit by drive, one number per leg, and they agree", async () => {
+  const stay = { lat: 35.08, lng: 135.76 };
+  const days: Record<number, Array<{ lat: number; lng: number }>> = {
+    1: [{ lat: 35.0935, lng: 135.76 }, { lat: 35.0665, lng: 135.76 }],
+    2: [{ lat: 35.08, lng: 135.7765 }, { lat: 35.08, lng: 135.7435 }],
+  };
+  const items = Object.entries(days).flatMap(([d, pts]) => pts.map((p) => ({ dayNumber: Number(d), ...p })));
+  const drive = drivePlanTravel(stay, days[1][0]);
+  assert.equal(drive.basis, "est", "the matrix holds no drive cells, so the drive measure is always est.");
+  assert.equal(drive.minutes, straightLineMinutes(haversineMeters(stay.lat, stay.lng, days[1][0].lat, days[1][0].lng), "drive"));
+  const asked: string[] = [];
+  const travel = (from: { lat: number; lng: number }, to: { lat: number; lng: number }, mode: "walk" | "transit"): TravelTime => {
+    asked.push(mode);
+    return unifiedPlanTravel(null)(from, to, mode);
+  };
+  const fit = planFitFor({ option: stay, items, travel, centroids: [], walkThresholdMeters: 15 * 80, beyondWalkTravel: drivePlanTravel });
+  assert.equal(fit.scored, true);
+  assert.equal(asked.includes("transit"), false, "no transit time is read for a stop beyond walking distance");
+  const legs: Record<number, number> = {};
+  for (const [d, pts] of Object.entries(days)) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const leg = await resolveLeg({ from: pts[i], to: pts[i + 1], mode: "drive", exact: true }, {});
+      legs[Number(d)] = (legs[Number(d)] ?? 0) + leg.minutes;
+    }
+  }
+  const r = perDayAgreement(legs, (fit as any).minutesByDay);
+  assert.equal(r.agrees, true, `disagreeing day(s): ${r.disagreeing.join(", ")} — ${JSON.stringify(r.days)}`);
 });

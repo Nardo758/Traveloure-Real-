@@ -41,7 +41,7 @@ import { lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLast
 import { isRideMode, type DayFeasibility } from "@shared/plan-feasibility";
 import { parseDayHours } from "@shared/optimizer-lead";
 import { haversineMeters } from "@shared/geo";
-import { ROUTED_WALK_MAX_METERS, defaultRoutedMode, marketHasTransitCoverage } from "@shared/routing-engine";
+import { ROUTED_WALK_MAX_METERS, defaultRoutedMode, marketTransitRouting } from "@shared/routing-engine";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import { storage } from "../storage";
 import { legUnreachableFinding, unreachableStops } from "@shared/leg-reachability";
@@ -210,8 +210,11 @@ async function feasibilityContext(tripId: string, items: FeasibilityItem[], star
     const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
     return own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : points.get(r.id) ?? null;
   };
-  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }> }>)[(market ?? "").toLowerCase()];
-  const transitCoverage = marketHasTransitCoverage(profile?.availableModes);
+  // P0-b: the inferred ride follows the routing API's coverage — in a market whose transit it does
+  // not cover (`apiTransitCoverage: false`) the leg the plan would show is a drive, so no ride is
+  // inferred there (`marketTransitRouting`, the one reading of the flag).
+  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[(market ?? "").toLowerCase()];
+  const transitCoverage = marketTransitRouting(profile).hasTransitCoverage;
   const byId = new Map(timed.map((t) => [t.id, t]));
   const services = facts.lastServices
     .map((s) => ({ ...s, v: parseLastService(s.value) }))

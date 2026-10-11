@@ -65,8 +65,15 @@ export function planFitFor(input: {
   centroids: readonly Centroid[];
   walkThresholdMeters: number;
   minLocated?: number;
+  /**
+   * P0-b (ledger `2026-10-11-p0b-routing-follow-ups`): in a market whose transit the routing API
+   * does not cover (`apiTransitCoverage: false`), a stop beyond walking distance is measured with
+   * the DRIVE time the plan's legs show — never a transit time no leg can display (one number per
+   * leg). Absent ⇒ transit, as before.
+   */
+  beyondWalkTravel?: (from: LatLng, to: LatLng) => Pick<TravelTime, "basis" | "minutes">;
 }): PlanFit {
-  const { option, items, travel, centroids, walkThresholdMeters } = input;
+  const { option, items, travel, centroids, walkThresholdMeters, beyondWalkTravel } = input;
   const minLocated = input.minLocated ?? PLAN_FIT_MIN_LOCATED;
   const located = items.filter((i) => i.lat !== null && i.lng !== null);
   const total = items.length;
@@ -79,7 +86,8 @@ export function planFitFor(input: {
   for (const it of located) {
     const to = { lat: it.lat as number, lng: it.lng as number };
     const meters = haversineMeters(option.lat, option.lng, to.lat, to.lng);
-    const t = travel(option, to, meters <= walkThresholdMeters ? "walk" : "transit");
+    const t =
+      meters <= walkThresholdMeters ? travel(option, to, "walk") : beyondWalkTravel ? beyondWalkTravel(option, to) : travel(option, to, "transit");
     if (t.basis !== "matrix") allMatrix = false;
     const day = it.dayNumber ?? 0;
     byDay.set(day, (byDay.get(day) ?? 0) + t.minutes);

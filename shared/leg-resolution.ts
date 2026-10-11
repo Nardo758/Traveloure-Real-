@@ -86,6 +86,15 @@ export function unifiedPlanTravel(matrix: LegSources["matrix"]): (from: LatLng, 
   };
 }
 
+/**
+ * Plan-fit's beyond-walk measure in a market whose transit the routing API does not cover (P0-b,
+ * ledger `2026-10-11-p0b-routing-follow-ups`): the straight line at the DRIVE speed — the mode the
+ * plan's legs show there — always `basis: "est"` (the matrix holds walk | transit only).
+ */
+export function drivePlanTravel(from: LatLng, to: LatLng): Pick<TravelTime, "basis" | "minutes"> {
+  return { basis: "est", minutes: estimate(from, to, "drive").minutes };
+}
+
 export interface DayAgreement {
   day: number;
   legMinutes: number;
