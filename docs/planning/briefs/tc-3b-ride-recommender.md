@@ -52,3 +52,10 @@ Walking range 1,200 m; 400 m for limited mobility.
 - Eizan has no seeded departures, so it is never offered.
 - Pass, payment and luggage filtering waits for a later lane that reads 372's `notes.filters`.
 - No UI. TC-3c draws "A better way there" on the LegRow and the swap card (Arashiyama only).
+
+## TC-3c minimal (stacked PR) — "A better way there"
+
+Ledger `2026-10-11-tc3c-better-way-line`. Under a routed leg, `RideSwapLine` (`client/src/components/plan/RideSwapLine.tsx`,
+mounted by `useSlipLegs`) draws the server's suggestion for exactly that pair and opens the swap card. Swap = the
+existing ride route; "Not this time" = the dismiss. Copy: `client/src/lib/ride-suggestions.ts`. "Arashiyama only"
+holds by data (only Sagano and Hozugawa have departures), so no client-side corridor rule was added.
