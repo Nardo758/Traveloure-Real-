@@ -1,5 +1,5 @@
 /**
- * V-1 (R438; ledger `2026-10-11-v1-version-sanity`): the versions board's client half.
+ * V-1 (ledger `2026-10-11-v1-version-sanity`): the versions board's client half.
  *
  *   W1 the free re-time window names its day — "today", "tomorrow", else the date — never a time alone
  *   W2 a Trip Pass holder's re-time is free past the per-version count, and the line shows no count

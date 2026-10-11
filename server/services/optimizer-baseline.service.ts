@@ -192,7 +192,7 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
   const fixedCommitments: FixedCommitment[] = [];
   let expertProtected = 0;
 
-  // V-1 (R438): a stop is located the way the slip locates it — its own row point only when
+  // V-1: a stop is located the way the slip locates it — its own row point only when
   // `rowCoordinatesTrusted` (an AI stop whose location is only an area carries a ward/city centroid,
   // never a place), then the linked listing's point (our own durable data, authoritative for a
   // linked stop), then Google's cached `location` fact. The fact point is read only when some stop

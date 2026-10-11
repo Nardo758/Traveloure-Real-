@@ -1,5 +1,5 @@
 /**
- * V-1 (R438; ledger `2026-10-11-v1-version-sanity`) against a real database.
+ * V-1 (ledger `2026-10-11-v1-version-sanity`) against a real database.
  *
  *   L1 versionSanityFlags: untimed stops; two dinners on a day (lunch never a dinner, an unlabelled
  *      20:00 restaurant is one); a start after the latest-start threshold — flags only, nothing changed

@@ -29,9 +29,9 @@ export interface BoardVersion {
   badge: BadgeKey | null;
   /** Held-batch-1 item 22: the server's strict winner by S1's tiebreak; absent on an older payload ⇒ false. */
   recommended?: boolean;
-  /** V-1 (R438): `type` is the stored anchor kind (hotel | neighborhood | activity); absent/null on an older payload. */
+  /** V-1: `type` is the stored anchor kind (hotel | neighborhood | activity); absent/null on an older payload. */
   anchor: { name: string; type?: string | null; lat: number | null; lng: number | null } | null;
-  /** V-1 (R438): the version's sanity flags from its run; absent on an older payload ⇒ none. */
+  /** V-1: the version's sanity flags from its run; absent on an older payload ⇒ none. */
   flags?: VersionFlag[];
   stops: BoardStop[];
   days: DayDiff[];
@@ -182,7 +182,7 @@ export function retimeGate(
 ): { free: boolean; remaining: number; line: string } {
   const key = dayRetimeKey(view, dayNumber);
   const used = view.retimes.used[key] ?? 0;
-  // V-1 (R438): a Trip Pass holder's re-times are unlimited inside the window — the server says so.
+  // V-1: a Trip Pass holder's re-times are unlimited inside the window — the server says so.
   const unlimited = view.retimes.unlimited === true;
   const free = retimeIsFree({ runAt: view.run?.runAt ?? null, now, used, limit: view.retimes.limit, unlimited });
   const remaining = Math.max(0, view.retimes.limit - used);
@@ -337,7 +337,7 @@ export function runChargeLine(
 }
 
 /**
- * V-1 (R438): when the free re-time window closes, with its day — the window is 24 h, so a time alone
+ * V-1: when the free re-time window closes, with its day — the window is 24 h, so a time alone
  * is ambiguous. "3:00 PM today", "3:00 PM tomorrow", else the date ("Oct 5, 3:00 PM"). Days are the
  * viewer's own calendar days.
  */
@@ -355,7 +355,7 @@ export function windowEndLabel(
   return `${fmt.formatDate(iso)}, ${time}`;
 }
 
-/** V-1 (R438): the version's sanity flags as one line each — flag only, nothing was changed. */
+/** V-1: the version's sanity flags as one line each — flag only, nothing was changed. */
 export function versionFlagLines(flags: readonly VersionFlag[] | undefined): string[] {
   return (flags ?? []).map((f) => {
     const names = f.stopNames.join(", ");
@@ -365,12 +365,12 @@ export function versionFlagLines(flags: readonly VersionFlag[] | undefined): str
   });
 }
 
-/** V-1 (R438): only a hotel anchor is a place to stay; a neighbourhood or an activity is a venue. */
+/** V-1: only a hotel anchor is a place to stay; a neighbourhood or an activity is a venue. */
 export function versionAnchorIsStay(anchor: BoardVersion["anchor"] | null | undefined): boolean {
   return !!anchor && anchor.type === "hotel";
 }
 
-/** V-1 (R438): the map's anchor kind from the stored type — hotel → stay, anything else → venue. */
+/** V-1: the map's anchor kind from the stored type — hotel → stay, anything else → venue. */
 export function versionMapAnchorKind(anchor: BoardVersion["anchor"] | null | undefined): "stay" | "venue" {
   return versionAnchorIsStay(anchor) ? "stay" : "venue";
 }

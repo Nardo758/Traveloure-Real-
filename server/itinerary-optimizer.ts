@@ -175,7 +175,7 @@ export interface ItineraryItem {
    *  computation has something real to run on. */
   latitude?: number;
   longitude?: number;
-  /** V-1 (R438): the stop's Google Places `location` fact, set ONLY when it has no durable point
+  /** V-1: the stop's Google Places `location` fact, set ONLY when it has no durable point
    *  (`latitude`/`longitude` stay unset). IN MEMORY FOR THE RUN ONLY (LD 57): it may score an anchor,
    *  but it is never written onto a version stop, a plan item or an anchor — such a stop saves with
    *  NULL coordinates and the board locates it at read time through `sourceItemId`. */
@@ -985,7 +985,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
           const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
           const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
           const durable = Number.isFinite(lat) && Number.isFinite(lng);
-          // V-1 (R438): a stop only Google locates still counts when scoring the other anchors, but
+          // V-1: a stop only Google locates still counts when scoring the other anchors, but
           // is never an anchor itself (its point would be saved on the version — LD 57).
           const point = durable ? { lat, lng } : it.placesPoint ?? null;
           return {
@@ -1610,7 +1610,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         geocodeBudget,
       );
 
-      // V-1 (R438): the version's sanity checks, after coordinates resolve. FLAG ONLY — C1 holds, so
+      // V-1: the version's sanity checks, after coordinates resolve. FLAG ONLY — C1 holds, so
       // nothing is moved, dropped or re-timed here; each flag type becomes one metric row below.
       const sanityFlags = versionSanityFlags(reorderedItems, {
         dinnerFromMinutes: optimizerDinnerFromMinutes(),
@@ -1908,7 +1908,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         });
       }
 
-      // V-1 (R438): one row per sanity flag type — the run summary the board reads.
+      // V-1: one row per sanity flag type — the run summary the board reads.
       metricsToInsert.push(...sanityMetricRows(newVariant.id, sanityFlags));
 
       // Batch-insert all metrics in one round-trip

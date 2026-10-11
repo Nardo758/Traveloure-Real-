@@ -200,7 +200,7 @@ export function VersionsBoard({
     label: v.label,
     stops: v.stops,
     days: v.days,
-    // V-1 (R438): the stored anchor kind — only a hotel is a stay; a neighbourhood or activity is a venue.
+    // V-1: the stored anchor kind — only a hotel is a stay; a neighbourhood or activity is a venue.
     anchor: v.anchor ? { kind: versionMapAnchorKind(v.anchor), name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
   }));
   const cards = chooseCards(view);
@@ -237,7 +237,7 @@ export function VersionsBoard({
   const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): the same per-day line the slip's DayBlock draws, on Your plan.
   const feasibilityOf = new Map(sortedDays.map((d) => [d.dayNum, feasibilityLine(d.feasibility)] as const));
-  // V-1 (R438): "built around one place to stay" only when every version's anchor is a hotel.
+  // V-1: "built around one place to stay" only when every version's anchor is a hotel.
   const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name && versionAnchorIsStay(v.anchor));
   const stayAnchor = stay && versionAnchorIsStay(stay.anchor) ? stay.anchor : null;
   // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
@@ -379,7 +379,7 @@ export function VersionsBoard({
                     </span>
                   ))}
                 </div>
-                {/* V-1 (R438): the run's sanity flags — said, never acted on (C1). */}
+                {/* V-1: the run's sanity flags — said, never acted on (C1). */}
                 {versionFlagLines(v?.flags).length > 0 ? (
                   <ul className="space-y-1 text-xs text-[color:var(--coral-text)]" data-testid={`versions-flags-${c.label}`}>
                     {versionFlagLines(v?.flags).map((line) => (

@@ -1,5 +1,5 @@
 /**
- * V-1 (R438): which trip stops may be an ACTIVITY anchor.
+ * V-1: which trip stops may be an ACTIVITY anchor.
  *   A dining stop is scored against but never offered — a restaurant is not a place to build days around.
  *   A stop located only by an in-memory Google point (LD 57) is scored against but never an anchor,
  *   whose point is saved on the version.
