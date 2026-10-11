@@ -67,6 +67,7 @@ function fakes(opts: { env?: "sandbox" | "production"; prebook?: any; book?: () 
 const q = (k: string, user = "owner") => ({ tripId: id("trip"), itemId: id(k), userId: id(user) });
 const row = async (itemKey: string) => ((await db.execute(sql`SELECT * FROM liteapi_bookings WHERE itinerary_item_id = ${id(itemKey)} ORDER BY created_at DESC LIMIT 1`)) as any).rows[0];
 const itemStatus = async (k: string) => ((await db.execute(sql`SELECT routing_status FROM itinerary_items WHERE id = ${id(k)}`)) as any).rows[0].routing_status;
+const itemCode = async (k: string) => ((await db.execute(sql`SELECT confirmation_number FROM itinerary_items WHERE id = ${id(k)}`)) as any).rows[0].confirmation_number;
 
 before(async () => {
   const host = new URL(process.env.DATABASE_URL ?? "postgres://localhost").hostname.toLowerCase();
@@ -115,7 +116,11 @@ test("B1 not_found for a stranger and a non-LiteAPI stay; production ⇒ booking
   assert.deepEqual(await bookStay(q("s1", "stranger"), f.deps), { state: "not_found" });
   assert.deepEqual(await cancelStay(q("s1", "stranger"), f.deps), { state: "not_found" });
   assert.equal(await stayBookingView(q("s1", "stranger")), null);
+  // d-3b: "Book" draws only on a chosen LiteAPI stay with booking on (sandbox).
+  assert.equal(((await stayBookingView(q("s1"), f.deps)) as any).bookable, true);
+  assert.equal(((await stayBookingView(q("notlite"), f.deps)) as any).bookable, false);
   const p = fakes({ env: "production" });
+  assert.equal(((await stayBookingView(q("s1"), p.deps)) as any).bookable, false);
   assert.deepEqual(await prebookStay(q("s1"), p.deps), { state: "booking_unavailable" });
   assert.deepEqual(await bookStay(q("s1"), p.deps), { state: "booking_unavailable" });
   assert.equal(f.calls.rates.length + p.calls.rates.length + f.calls.prebook.length + p.calls.prebook.length, 0);
@@ -159,6 +164,7 @@ test("B4/B5 book: session holder, TRANSACTION_ID, one confirmed transaction with
   assert.equal(r.commission_cents, 3325);
   assert.equal(r.processing_fee_cents, 150);
   assert.equal(await itemStatus("s1"), "purchased");
+  assert.equal(await itemCode("s1"), "HC-42", "d-3b: the code rides the item's existing confirmation_number");
   const mails: any[] = ((await db.execute(sql`SELECT * FROM email_outbox WHERE metadata->>'bookingId' = ${r.id}`)) as any).rows;
   assert.equal(mails.length, 1);
   assert.equal(mails[0].metadata.eventKey, `liteapi_voucher:${r.id}`);
@@ -181,6 +187,7 @@ test("B6 cancel: claim, then CANCELLED ⇒ cancelled, item back in planning, no 
   assert.equal(r.status, "cancelled");
   assert.ok(r.cancelled_at);
   assert.equal(await itemStatus("s1"), "in_planning");
+  assert.equal(await itemCode("s1"), null, "d-3b: the code this booking wrote is cleared");
   assert.deepEqual(await cancelStay(q("s1"), f.deps), { state: "not_confirmed" });
   const refunds = ((await db.execute(sql`SELECT count(*)::int AS n FROM refunds WHERE reason LIKE ${`%${r.id}%`}`).catch(() => ({ rows: [{ n: 0 }] }))) as any).rows[0].n;
   assert.equal(refunds, 0);

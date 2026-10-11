@@ -119,8 +119,3 @@ export function bookIsConfirmed(f: BookFacts): boolean {
 export function bookingStatusOf(body: any): string | null {
   return str(body?.data?.status)?.toUpperCase() ?? null;
 }
-
-/** The item row's booking line once confirmed (S1-d-3 ruling 3). No code ⇒ no line (§13). */
-export function liteapiBookedLine(code: string | null | undefined): string | null {
-  return str(code) ? `Booked · ${str(code)}` : null;
-}

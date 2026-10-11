@@ -14,7 +14,6 @@ import {
   LITEAPI_PAYMENT_METHOD,
   bookIsConfirmed,
   bookingStatusOf,
-  liteapiBookedLine,
   offerIdFromRates,
   parseBook,
   parsePrebook,
@@ -66,14 +65,11 @@ test("LB3 book", () => {
   assert.equal(parseBook({ data: {} }), null);
 });
 
-test("LB4 confirmed and the booked line", () => {
+test("LB4 confirmed and the status read", () => {
   assert.equal(bookIsConfirmed(parseBook({ data: { bookingId: "b", status: "CONFIRMED" } })!), true);
   assert.equal(bookIsConfirmed(parseBook({ data: { bookingId: "b", status: "PENDING" } })!), false);
   assert.equal(bookingStatusOf({ data: { status: "cancelled" } }), "CANCELLED");
   assert.equal(bookingStatusOf({}), null);
-  assert.equal(liteapiBookedLine("HC-42"), "Booked · HC-42");
-  assert.equal(liteapiBookedLine(null), null);
-  assert.equal(liteapiBookedLine("  "), null);
 });
 
 test("LB5 the one payment method and the live set", () => {

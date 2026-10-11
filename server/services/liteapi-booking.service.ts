@@ -75,7 +75,7 @@ type Refusal =
   | "not_confirmed";
 
 export type PrebookResult =
-  | { state: "prebooked"; bookingId: string; amountCents: number; currency: string; transactionId: string; secretKey: string; checkin: string; checkout: string; adults: number }
+  | { state: "prebooked"; bookingId: string; amountCents: number; currency: string; transactionId: string; secretKey: string; checkin: string; checkout: string; adults: number; env: string }
   | { state: Refusal };
 
 export type BookResult =
@@ -214,7 +214,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       cancellationPolicy: (f.cancellationPolicy ?? null) as any,
     })
     .returning({ id: liteapiBookings.id });
-  return { state: "prebooked", bookingId: row.id, amountCents: f.amountCents, currency: f.currency, transactionId: f.transactionId, secretKey: f.secretKey, checkin, checkout, adults };
+  // `env` is the Payment SDK's public key ("sandbox" | "live") — the page never decides it (d-3b).
+  return { state: "prebooked", bookingId: row.id, amountCents: f.amountCents, currency: f.currency, transactionId: f.transactionId, secretKey: f.secretKey, checkin, checkout, adults, env: cfg.env };
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -318,7 +319,9 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
     if (!done) return;
     await tx
       .update(itineraryItems)
-      .set({ routingStatus: "purchased", updatedAt: new Date() } as any)
+      // d-3b: the hotel's code rides the item's existing `confirmation_number`, so the slip's ONE booking line
+      // (`slipItemBookingLine`) reads "booked · #<code>" with no plan-card change (ruling 4).
+      .set({ routingStatus: "purchased", ...(facts.hotelConfirmationCode ? { confirmationNumber: facts.hotelConfirmationCode } : {}), updatedAt: new Date() } as any)
       .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), sql`routing_status <> 'purchased'`));
     await tx.insert(emailOutbox).values(
       voucherRow({ toEmail: holder.email || null, bookingId: pre.id, hotelName: stay.hotelName, code: facts.hotelConfirmationCode, checkin: String(pre.checkin), checkout: String(pre.checkout), adults: pre.adults }) as any,
@@ -372,21 +375,31 @@ export async function cancelStay(input: { tripId: string; itemId: string; userId
       .update(itineraryItems)
       .set({ routingStatus: "in_planning", updatedAt: new Date() } as any)
       .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), sql`routing_status = 'purchased'`, sql`booking_id IS NULL`));
+    // The code this booking wrote is cleared — only that code, never one another rail put there.
+    if (row.hotelConfirmationCode) {
+      await tx
+        .update(itineraryItems)
+        .set({ confirmationNumber: null, updatedAt: new Date() } as any)
+        .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), eq(itineraryItems.confirmationNumber, row.hotelConfirmationCode)));
+    }
   });
   return { state: "cancelled", bookingId: row.id };
 }
 
 /** The owner's read of the item's latest booking — status, code, price as booked. Nothing secret. */
-export async function stayBookingView(input: { tripId: string; itemId: string; userId: string | null | undefined }) {
+export async function stayBookingView(input: { tripId: string; itemId: string; userId: string | null | undefined }, deps: Pick<StayBookingDeps, "config"> = defaultStayBookingDeps) {
   if (!(await ownerOf(input.tripId, input.userId))) return null;
+  // d-3b: whether "Book" draws — booking is on (sandbox only) AND the item resolves to a chosen LiteAPI stay.
+  const bookable = liteapiBookingEnabled(deps.config()) && (await resolveChosenLiteapiStay(input.tripId, input.itemId)) !== null;
   const [row] = await db
     .select()
     .from(liteapiBookings)
     .where(and(eq(liteapiBookings.tripId, input.tripId), eq(liteapiBookings.itineraryItemId, input.itemId)))
     .orderBy(desc(liteapiBookings.createdAt))
     .limit(1);
-  if (!row) return { booking: null };
+  if (!row) return { bookable, booking: null };
   return {
+    bookable,
     booking: {
       id: row.id,
       status: row.status,
