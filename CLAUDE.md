@@ -2679,14 +2679,12 @@ This document captures architectural decisions to maintain consistency across co
     optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
     is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
     default card shows "See rates" and no price; the item row and booking are d-3.
-    **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
-    ledger `2026-10-10-s1-d3a-liteapi-booking`; brief `docs/planning/briefs/s1-d3-liteapi-booking.md`; migration
-    371, APPROVED by Leon Oct 11, 2026 — "Migration 371 SQL approved — Leon" on #1402; FOUNDER WORDING REVIEW).** Nuitée is merchant of record:
-    its Payment SDK takes the card and we send only `payment.method = TRANSACTION_ID`
-    (`scripts/check-liteapi-payment-method.cjs`). One `liteapi_bookings` row per prebook, written before the SDK
-    opens; owner-only; the offer is re-quoted server-side and never taken from the browser; confirmed flips the
-    item to `purchased` and inserts the voucher in one transaction; cancel is a `confirmed → cancelling` claim with
-    no refund row; the daily sync records LiteAPI's status and never books. Sandbox only (`liteapiBookingEnabled`).
+    **AMENDED — S1-d-3a: WORDING HELD FOR FOUNDER REVIEW (ledger `2026-10-11-ld64-d3a-wording-held`).** The
+    S1-d-3a amendment text merged with R430 while still marked FOUNDER WORDING REVIEW and is withdrawn here
+    until Leon approves its wording — it stated a commercial position (who is merchant of record) as settled
+    text. Not withdrawn: migration 371 (approved — "Migration 371 SQL approved — Leon" on #1402), the code on
+    `main` (sandbox only, `liteapiBookingEnabled`), and the build record in ledger
+    `2026-10-10-s1-d3a-liteapi-booking` and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
