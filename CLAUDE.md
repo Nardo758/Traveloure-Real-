@@ -3348,6 +3348,25 @@ Five incidents, two of which reached production, justify this rule. The sixth (2
 procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md` (ratified Sep 6,
 2026); a session reads both files.**
 
+### Recording approvals
+
+An approval reference records what a named person approved, where they said it, and when. It carries no
+authority beyond that.
+
+- **Placement.** The reference sits immediately beside the artifact approved — the migration, the SQL block,
+  the specific clause. Never in a heading, a PR title, a section title, or the header of an amendment. A
+  citation in a heading reads as approving everything under it.
+- **Scope.** Name the artifact, not the container. "Migration 369 SQL approved by Leon" is correct.
+  "Approved by Leon" and "#1405 — approved by Leon" are not: both read as approval of the entire PR.
+- **Form.** `<artifact> approved by <name> — comment <HH:MM>Z on #<PR>`
+- **Derivation.** An approval reference may only be written where that person actually approved that
+  artifact. It is never inferred, extended to adjacent content, or carried from one PR to another. Content
+  that came from rulings in conversation is cited to those rulings, not to a PR comment.
+- **Self-authored text.** A heading or line a session writes on its own initiative does not take an approval
+  reference. If provenance is needed, say the session wrote it.
+- **Blocked permission checks.** A permission check that fires is a stop. Ask, every time. An approval granted
+  on one PR is not permission on the next, and a prior waiver is not precedent.
+
 ## Service Model: Canonical Table
 
 ### Decision: `provider_services` is the canonical service source (NOT `expert_service_offerings`)
