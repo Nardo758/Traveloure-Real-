@@ -48,7 +48,7 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
     expect(party.ok(), await party.text()).toBeTruthy();
 
     // The stay item, its option set, and a chosen LiteAPI hotel (the job ran the Kyoto static sync first).
-    const item = await api.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: { title: "Hotel", dayNumber: 1, type: "accommodation" } });
+    const item = await api.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: { title: "Hotel", dayNumber: 1, itemType: "accommodation" } });
     expect(item.status(), await item.text()).toBe(201);
     const itemId = (await item.json()).id as string;
     const set = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, { data: { itineraryItemId: itemId, categoryKey: "accommodation", label: "Where to stay" } });

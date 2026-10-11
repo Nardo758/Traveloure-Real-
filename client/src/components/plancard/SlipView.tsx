@@ -832,7 +832,9 @@ function SlipDayItem({
   // Step 6 R-ap: the stop's ItemSheet — title tap, ⋯ → Details. Its photo is read only while open.
   const [sheetOpen, setSheetOpen] = useState(false);
   // S1-d-3b (ledger `2026-10-11-s1-d3b-stay-book-ui`): a stay's "Book" — read only when the owner opens the sheet.
-  const { data: stayRead } = useStayBooking(tripId, a.id, sheetOpen && isOwner && isLodgingItem({ type: a.type, title: a.name }));
+  // The SERVER decides which items are bookable stays (`bookable`: the item's chosen option set → a LiteAPI hotel);
+  // the page never guesses from the item's name or type, which a chosen hotel's name need not reveal.
+  const { data: stayRead } = useStayBooking(tripId, a.id, sheetOpen && isOwner);
   const stayBook = showsStayBook({ isOwner, read: stayRead }) && !a.booking?.id;
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);

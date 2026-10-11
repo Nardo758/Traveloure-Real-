@@ -79,7 +79,7 @@ export const STAY_BOOK_REFUSALS: Record<string, string> = {
   not_confirmed: "There is no confirmed booking to cancel.",
   failed: "The hotel didn't accept the booking. You have not been booked.",
   pending: "We're still waiting for the hotel's answer. Check back shortly — nothing more is needed from you.",
-  cancel_refused: "The booking couldn't be cancelled. It is still booked.",
+  cancel_refused: "The booking couldn't be canceled. It is still booked.",
 };
 
 export function stayRefusalText(state: string): string {
