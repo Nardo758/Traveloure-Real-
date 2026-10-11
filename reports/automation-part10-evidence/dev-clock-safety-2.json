@@ -1,0 +1,66 @@
+{
+  "loop": 2,
+  "scenarioId": "bb881a7b-b025-4e51-ac5f-9749e4d53d7f",
+  "blockedFamilies": 10,
+  "held": {
+    "total": 5,
+    "rows": [
+      {
+        "id": 42,
+        "emailType": "cart_reminder_1h",
+        "status": "dead",
+        "phase": "intent",
+        "ageSeconds": 0.164382,
+        "lastError": null,
+        "providerMessageId": null
+      },
+      {
+        "id": 43,
+        "emailType": "cart_reminder_1h",
+        "status": "processing",
+        "phase": "intent",
+        "ageSeconds": 0.147341,
+        "lastError": null,
+        "providerMessageId": null
+      },
+      {
+        "id": 44,
+        "emailType": "cart_reminder_1h",
+        "status": "failed",
+        "phase": "intent",
+        "ageSeconds": 0.095655,
+        "lastError": null,
+        "providerMessageId": null
+      },
+      {
+        "id": 45,
+        "emailType": "cart_item_changed",
+        "status": "pending",
+        "phase": "malformed",
+        "ageSeconds": 0.063179,
+        "lastError": null,
+        "providerMessageId": null
+      },
+      {
+        "id": 46,
+        "emailType": "cart_item_changed",
+        "status": "pending",
+        "phase": "not_invoked",
+        "ageSeconds": 0.056416,
+        "lastError": null,
+        "providerMessageId": null
+      }
+    ]
+  },
+  "singleClaimHeld": true,
+  "immediateHeld": true,
+  "insertFailureFallbackHeld": true,
+  "mixedRecipientsHeld": true,
+  "approvedMockSends": 2,
+  "missingSettingHeld": true,
+  "recipientChangedAfterClaimHeld": true,
+  "reportQueryFailureVisible": true,
+  "malformedClaimBlocked": true,
+  "realProviderCalls": 0,
+  "status": "CLEAN"
+}

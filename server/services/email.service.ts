@@ -108,6 +108,22 @@ export class EmailSendCancelled extends Error {
   }
 }
 
+/** Exact development recipients only. Production must not read QA settings. */
+export function developmentEmailRecipients(env: NodeJS.ProcessEnv = process.env): string[] | undefined {
+  if (env.NODE_ENV !== "development" || env.REPLIT_DEPLOYMENT || env.ENVIRONMENT === "production") return undefined;
+  const values = [env.SIGNUP_QA_TEST_INBOX, env.ITINERARY_OUTCOME_TEST_EMAIL];
+  if (!values.every(value => typeof value === "string" && /^[^@\s,<>]+@[^@\s,<>]+\.[^@\s,<>]+$/.test(value))) return [];
+  return Array.from(new Set(values.map(value => value!.toLowerCase())));
+}
+
+export function developmentRecipientAllowed(to: unknown, env: NodeJS.ProcessEnv = process.env): boolean {
+  const allowed = developmentEmailRecipients(env);
+  if (allowed === undefined) return true;
+  const values = Array.isArray(to) ? to : typeof to === "string" ? to.split(",") : [];
+  return values.length > 0 && values.every(value => typeof value === "string" &&
+    allowed.includes(value.trim().toLowerCase()));
+}
+
 /** Same boundary for the SDK adapter and isolated synthetic transport proofs. */
 export async function atEmailProviderHandoff<T>(
   guard: SendEmailParams["beforeProviderSend"], invoke: () => Promise<T>,
@@ -128,6 +144,9 @@ export async function atEmailProviderHandoff<T>(
  * it never throws into the caller.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  if (!developmentRecipientAllowed(params.to)) {
+    return { ok: false, error: "development_recipient_not_allowed", cancelReason: "development_recipient_not_allowed" };
+  }
   // Admin-controlled kill switch (/admin/system → "Email Notifications").
   // Gates all system notification emails sent through this generic sender.
   // Auth-critical emails (password reset, email verification) call Resend
@@ -159,10 +178,18 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   }
 
   try {
-    const client = createClient(apiKey, params.beforeProviderSend);
+    // Freeze the intended payload logically by copying recipient arrays. A
+    // caller's asynchronous verification must not mutate the SDK recipient.
+    const recipient = Array.isArray(params.to) ? params.to.slice() : params.to;
+    const client = createClient(apiKey, async () => {
+      const decision = params.beforeProviderSend ? await params.beforeProviderSend() : { eligible: true };
+      if (decision.eligible !== true) return decision;
+      if (!developmentRecipientAllowed(recipient)) return { eligible: false, reason: "development_recipient_not_allowed" };
+      return decision;
+    });
     const payload = {
       from,
-      to: params.to,
+      to: recipient,
       subject: params.subject,
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
@@ -1202,6 +1229,23 @@ interface AdminDigestParams {
   reconciliationMismatches?: ReconciliationMismatch[];
   /** Emails that exhausted their retries (board #1566). Absent or total 0 ⇒ the section is omitted. */
   deadEmails?: DigestDeadEmails;
+  uncertainEmails?: DigestUncertainEmails;
+}
+
+export interface DigestUncertainEmails {
+  total: number;
+  rows: { id: number; emailType: string; status: string; phase: string; ageSeconds: number;
+    lastError: string | null; providerMessageId: string | null }[];
+}
+
+/** Pure, address-free report; never implies non-delivery or recommends a retry. */
+export function buildUncertainEmailDigestSection(held: DigestUncertainEmails | undefined): string {
+  if (!held?.total) return "";
+  return `<h3>Uncertain / held provider attempts (${held.total})</h3>
+    <p>Provider outcome uncertain; automatic resend blocked. Reconciliation requires separate approval.</p>
+    <ul>${held.rows.map(row => `<li>#${row.id} ${escHtml(row.emailType)}:
+      ${escHtml(row.status)} / ${escHtml(row.phase)}; age ${Math.floor(row.ageSeconds)}s;
+      receipt ${escHtml(row.providerMessageId ?? "unknown")}; ${escHtml(row.lastError ?? "")}</li>`).join("")}</ul>`;
 }
 
 export interface DigestDeadEmails {
@@ -1232,7 +1276,7 @@ export function buildDeadEmailDigestSection(dead: DigestDeadEmails | undefined):
   const more = dead.total > dead.rows.length ? `<p style="color:#6B7280;font-size:12px">Showing the ${dead.rows.length} most recent of ${dead.total}.</p>` : "";
   return `
   <h3 style="color:#B91C1C;margin-top:24px">✉ Undelivered Emails (${dead.total}${dead.newInLast24h > 0 ? `, ${dead.newInLast24h} new today` : ""})</h3>
-  <p style="color:#6B7280;font-size:13px">These emails failed every retry and were never delivered — the recipient does not have them. Each stays listed here until it is retried with <code>POST /api/admin/email-outbox/&lt;id&gt;/retry</code>.</p>
+  <p style="color:#6B7280;font-size:13px">These rows exhausted retries. This status alone does not prove non-delivery. Review the provider evidence before any retry; uncertain attempts remain fenced and require separately approved reconciliation.</p>
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
     <thead>
       <tr style="background:#FEE2E2">
@@ -1386,6 +1430,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   ` : ""}
 
   ${buildDeadEmailDigestSection(params.deadEmails)}
+  ${buildUncertainEmailDigestSection(params.uncertainEmails)}
 
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>

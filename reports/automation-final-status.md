@@ -289,3 +289,26 @@ future invocation times are not scheduled; UNKNOWN rails and all prior-step/cap
 guards remain active.
 
 **DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**
+
+## Approved development clock/drain safeguards — latest execution
+
+See `automation-dev-clock-safety-accepted.md` and `real-clock-ledger.md`.
+Owned nullable-heartbeat correction applied; public unchanged. Exactly one
+non-sending sweep ran at `2026-10-11T13:02:33.726Z`: one candidate, zero enqueued,
+zero duplicates; reminder skipped incomplete quiet-hour preferences, item-change
+skipped UNKNOWN rail. No receipt, no future schedule. Initial erroneous heartbeat
+summary corrected only in the owned namespace, preserving completion time and
+without rerunning the sweep.
+
+| Current blocker | Status / evidence | Required approval/action |
+|---|---|---|
+| Dev recipient guard and uncertainty visibility | Implemented; two clean isolated loops, address-free report | No normal-app restart authorized; direct senders remain separate |
+| Clock preference completeness | quietStart/quietEnd absent; timezone remains Asia/Kolkata | Separate fixture decision; no automatic data correction |
+| Clock prior-step / real delivery | WAITING, zero outbox/receipt, actual 1h cadence missed | Separate real QA delivery/chronological proof authorization |
+| Explicit new test CI wiring | Guards 77/78: two orphan unit suites | Founder approval for build.yml verification-only extension |
+| Stale signup literal-name test | Golden 141/143: child assertion and parent fail | Approve production-no-read replacement and stronger mocked SDK proof |
+| Typecheck full-text identity | 117, same file/code multiset, no touched-module diagnostics; textual type ordering differs | Reported transparently; baseline not raised, not globally clean |
+| UNKNOWN rails / main conflict / held migration / real-provider proof | Remain open and held | Existing separate approvals; no implementation implied |
+
+**DEV-CLOSED WITH BLOCKERS. RELEASE HELD.** No global/production change,
+merge, registered migration, flag, real email, restart or new Part.

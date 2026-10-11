@@ -49,6 +49,8 @@ import { isCartReminder, isCartReminderFamily, buildCartReminderEmail, type Cart
 import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
+  developmentEmailRecipients,
+  developmentRecipientAllowed,
   type BookingAlertParams,
   type BookingConfirmationParams,
   type SendEmailParams,
@@ -223,6 +225,7 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
   }
   const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
   const lease      = new Date(Date.now() + LEASE_MS);
+  const devBlocked = !developmentRecipientAllowed(params.to);
 
   let outboxId: number | null = null;
 
@@ -236,8 +239,9 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
         replyTo:      params.replyTo,
         // Born as 'processing' with a lease so the drain cannot concurrently
         // claim and send this row before immediate delivery completes.
-        status:       "processing",
-        retryAfter:   lease,
+        status:       devBlocked ? "pending" : "processing",
+        retryAfter:   devBlocked ? null : lease,
+        lastError:    devBlocked ? "development_recipient_not_allowed" : null,
         attemptCount: 0,
         maxAttempts:  6,
         metadata:     params.metadata ?? {},
@@ -327,10 +331,36 @@ export async function enqueueEmail(params: EnqueueEmailParams): Promise<number |
  */
 export interface DrainOutboxResult {
   drained: number;
+  blockedRecipients?: number;
   error?: string;
 }
 
+// A malformed "not_invoked" marker is not proof of non-invocation. Harden only
+// the approved development drain; production claim behavior remains unchanged.
+function developmentAttemptGate(enabled: boolean) {
+  return !enabled ? sql`TRUE` : sql`(
+    email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
+    OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt')
+    OR (metadata->'commerceDeliveryAttempt'->>'version'='1'
+      AND metadata->'commerceDeliveryAttempt'->>'phase'='not_invoked'
+      AND metadata->'commerceDeliveryAttempt'->>'ownerToken' ~ '^[a-f0-9-]{36}$'
+      AND metadata->'commerceDeliveryAttempt'->>'payloadDigest' ~ '^[a-f0-9]{64}$'
+      AND metadata->'commerceDeliveryAttempt'->>'key'='cart-reminder-' || id::text))`;
+}
+
 async function drainOutboxImpl(): Promise<DrainOutboxResult> {
+  const allowed = developmentEmailRecipients();
+  const recipientGate = allowed === undefined ? sql`TRUE` : sql`
+    NOT EXISTS (SELECT 1 FROM unnest(regexp_split_to_array(lower(trim(to_email)), '\\s*,\\s*')) AS r(address)
+      WHERE NOT (r.address = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(allowed)}::jsonb)))))`;
+  let blockedRecipients = 0;
+  if (allowed !== undefined) {
+    const counts = await db.execute(sql`SELECT count(*)::int AS count FROM email_outbox
+      WHERE status IN ('pending','failed','processing') AND NOT (${recipientGate})`);
+    blockedRecipients = Number(counts.rows[0]?.count ?? 0);
+    if (blockedRecipients) logger.warn({ blockedRecipients, reason: "development_recipient_not_allowed" },
+      "[email-outbox] development recipient holds");
+  }
   type ClaimedRow = {
     id:            number;
     to_email:      string;
@@ -361,6 +391,8 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
           status = 'processing'
           AND retry_after < NOW() - INTERVAL '1 minute'
         ))
+        AND (${recipientGate})
+        AND (${developmentAttemptGate(allowed !== undefined)})
         AND (email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
           OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt')
           OR (metadata->'commerceDeliveryAttempt'->>'version'='1'
@@ -384,7 +416,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     return { drained: 0, error: "failed to claim rows" };
   }
 
-  if (claimed.length === 0) return { drained: 0 };
+  if (claimed.length === 0) return allowed === undefined ? { drained: 0 } : { drained: 0, blockedRecipients };
   logger.info({ count: claimed.length }, "[email-outbox] drainOutbox: processing claimed rows");
 
   for (const row of claimed) {
@@ -403,16 +435,22 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     });
   }
 
-  return { drained: claimed.length };
+  return allowed === undefined ? { drained: claimed.length } : { drained: claimed.length, blockedRecipients };
 }
 
 /** Claim one committed, due notice; competing drains share the same lease guard. */
 export async function deliverQueuedEmail(outboxId: number): Promise<void> {
   try {
+    const allowed = developmentEmailRecipients();
+    const recipientGate = allowed === undefined ? sql`TRUE` : sql`
+      NOT EXISTS (SELECT 1 FROM unnest(regexp_split_to_array(lower(trim(to_email)), '\\s*,\\s*')) AS r(address)
+        WHERE NOT (r.address = ANY(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(allowed)}::jsonb)))))`;
     const result = await db.execute(sql`
       UPDATE email_outbox SET status = 'processing',
         retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
       WHERE id = ${outboxId} AND status IN ('pending', 'failed')
+        AND (${recipientGate})
+        AND (${developmentAttemptGate(allowed !== undefined)})
         AND (retry_after IS NULL OR retry_after <= NOW())
         AND (email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
           OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt')
@@ -478,6 +516,20 @@ async function attemptDelivery(
   params: SendEmailParams,
   current: { attemptCount: number; maxAttempts: number; emailType?: string }
 ): Promise<void> {
+  // Covers immediate fallback and test transports too, before attempts/intent.
+  let permitted = developmentRecipientAllowed(params.to);
+  if (permitted && developmentEmailRecipients() !== undefined && outboxId !== null) {
+    const live = (await db.execute(sql`SELECT to_email FROM email_outbox WHERE id=${outboxId}`)).rows[0];
+    const original = Array.isArray(params.to) ? params.to.join(", ") : params.to;
+    permitted = !!live && live.to_email === original && developmentRecipientAllowed(live.to_email);
+  }
+  if (!permitted) {
+    if (outboxId !== null) await db.update(emailOutbox).set({
+      status: "pending", retryAfter: null, lastError: "development_recipient_not_allowed", updatedAt: new Date(),
+    }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
+    logger.warn({ outboxId, reason: "development_recipient_not_allowed" }, "[email-outbox] delivery held before transport");
+    return;
+  }
   const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
   const maxAttempts  = current.maxAttempts;
   const toStr        = Array.isArray(params.to) ? params.to.join(", ") : params.to;
@@ -700,6 +752,32 @@ export async function loadDeadEmailSummary(limit = 25): Promise<DeadEmailSummary
       deadAt: new Date(r.updated_at).toISOString(),
     })),
   };
+}
+
+/** Status-independent, address-free operational report. Query errors propagate. */
+export async function loadUncertainEmailSummary(limit = 25): Promise<import("./email.service").DigestUncertainEmails> {
+  const held = sql`email_type IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
+    AND coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt'
+    AND NOT (jsonb_typeof(metadata->'commerceDeliveryAttempt')='object'
+      AND coalesce(metadata->'commerceDeliveryAttempt'->>'version','')='1'
+      AND coalesce(metadata->'commerceDeliveryAttempt'->>'ownerToken','') ~ '^[a-f0-9-]{36}$'
+      AND coalesce(metadata->'commerceDeliveryAttempt'->>'payloadDigest','') ~ '^[a-f0-9]{64}$'
+      AND metadata->'commerceDeliveryAttempt'->>'key' = 'cart-reminder-' || id::text
+      AND (coalesce(metadata->'commerceDeliveryAttempt'->>'phase','')='not_invoked'
+        OR (metadata->'commerceDeliveryAttempt'->>'phase'='accepted'
+          AND status='sent' AND coalesce(resend_id,'')<>'')))`;
+  const counts = await db.execute(sql`SELECT count(*)::int AS count FROM email_outbox WHERE ${held}`);
+  const rows = await db.execute(sql`SELECT id,email_type,status,last_error,resend_id,
+    coalesce(metadata->'commerceDeliveryAttempt'->>'phase','malformed') AS phase,
+    extract(epoch FROM now()-created_at) AS age_seconds
+    FROM email_outbox WHERE ${held} ORDER BY created_at,id LIMIT ${Math.max(1, Math.min(100, Math.trunc(limit) || 25))}`);
+  return { total: Number(counts.rows[0]?.count ?? 0), rows: rows.rows.map(row => ({
+    id: Number(row.id), emailType: String(row.email_type), status: String(row.status),
+    phase: ["intent","uncertain","accepted","not_invoked"].includes(String(row.phase)) ? String(row.phase) : "malformed",
+    ageSeconds: Math.max(0, Number(row.age_seconds)),
+    lastError: row.last_error ? (/^[a-z0-9_]{1,80}$/.test(String(row.last_error)) ? String(row.last_error) : "details_held_for_review") : null,
+    providerMessageId: typeof row.resend_id === "string" ? row.resend_id : null,
+  })) };
 }
 
 // ── Provider booking alert ────────────────────────────────────────────────────

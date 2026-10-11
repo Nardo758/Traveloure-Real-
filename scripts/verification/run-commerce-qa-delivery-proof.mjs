@@ -22,10 +22,10 @@ export function validateInvocation(env, args) {
       !env.REPLIT_DEV_DOMAIN || env.ENVIRONMENT === "production") fail("PRODUCTION_OR_UNKNOWN_ENVIRONMENT");
   if (env.COMMERCE_QA_DELIVERY_PROOF !== "1") fail("PROOF_OFF");
   if (!args.includes("--isolated-db") ||
-      args.filter(arg => ["--deliver-qa", "--dry-run", "--real-clock-start"].includes(arg)).length !== 1 ||
+      args.filter(arg => ["--deliver-qa", "--dry-run", "--real-clock-start", "--real-clock-sweep"].includes(arg)).length !== 1 ||
       new Set(args).size !== args.length ||
-      args.some(arg => !["--isolated-db", "--deliver-qa", "--dry-run", "--item-copy-only", "--real-clock-start"].includes(arg)) ||
-      (args.includes("--real-clock-start") && args.includes("--item-copy-only"))) fail("EXPLICIT_PERMISSION_REQUIRED");
+      args.some(arg => !["--isolated-db", "--deliver-qa", "--dry-run", "--item-copy-only", "--real-clock-start", "--real-clock-sweep"].includes(arg)) ||
+      ((args.includes("--real-clock-start") || args.includes("--real-clock-sweep")) && args.includes("--item-copy-only"))) fail("EXPLICIT_PERMISSION_REQUIRED");
   if (!/^[a-f0-9]{32}$/.test(env.MESSAGING_DEV_FINGERPRINT ?? "")) fail("FINGERPRINT_REQUIRED");
 }
 export function validateEnvelope(request, context) {
@@ -67,6 +67,41 @@ export function describeRecordedAvailability(item) {
 
 export async function main(args = process.argv.slice(2), env = process.env) {
   validateInvocation(env, args);
+  if (args.includes("--real-clock-sweep")) {
+    const ledger = "reports/real-clock-ledger.md";
+    const existing = fs.readFileSync(ledger, "utf8");
+    const records = [...existing.matchAll(/```json\n([\s\S]*?)\n```/g)].map(match => JSON.parse(match[1]));
+    const artifact = records.find(record => record.runId === "d5dcaccc-abdb-401a-b3ab-1a72d24ec98a");
+    if (!artifact || !namespace.test(artifact.schema) || artifact.realTransport !== false ||
+        artifact.providerCallsBlocked !== true) fail("APPROVED_RETAINED_SCENARIO_REQUIRED");
+    const binding = { ...artifact, token: crypto.randomBytes(32).toString("hex"),
+      loop: 1, port: 1, sweepOnly: true };
+    let output = "";
+    const owner = spawn(process.execPath, [
+      "scripts/verification/run-messaging-gate.mjs", "--isolated-db",
+      "--qa-proof-channel", "--real-clock-sweep",
+      "server/routes/__tests__/commerce-real-clock-sweep.db.test.ts",
+    ], { env: { ...env, COMMERCE_QA_PROOF_RUN_ID: JSON.stringify(binding) },
+      stdio: ["ignore", "pipe", "pipe", "ipc"] });
+    owner.stdout.on("data", bytes => { output += bytes.toString(); });
+    owner.stderr.on("data", () => {});
+    const code = await new Promise((resolve, reject) => {
+      owner.once("error", reject); owner.once("exit", resolve);
+    });
+    let observation;
+    for (const line of output.split("\n")) {
+      const match = line.match(/COMMERCE_REAL_CLOCK_SWEEP=(\{.*\})$/);
+      if (match) observation = JSON.parse(match[1]);
+    }
+    if (code !== 0 || observation?.runId !== artifact.runId ||
+        observation.providerCallsBlocked !== true) fail("OWNED_NON_SENDING_SWEEP_FAILED");
+    fs.writeFileSync(ledger, existing + `\n### Approved overdue non-sending sweep\n\n` +
+      "Actual invocation only; no future scheduling, backdating, delivery or next-day certification.\n\n" +
+      `\`\`\`json\n${JSON.stringify(observation, null, 2)}\n\`\`\`\n\n` +
+      "**WAITING. NEXT-DAY PROVEN: NO. RELEASE HELD.**\n");
+    console.log(JSON.stringify(observation));
+    return observation;
+  }
   if (args.includes("--real-clock-start")) {
     // No Resend import, HTTP handoff server, provider credential or real email.
     if (!env.SIGNUP_QA_TEST_INBOX || !env.ITINERARY_OUTCOME_TEST_EMAIL) fail("APPROVED_DEVELOPMENT_SETTINGS_REQUIRED");

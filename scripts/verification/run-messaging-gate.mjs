@@ -14,14 +14,16 @@ const dbMode = args.includes("--isolated-db");
 const httpHarness = args.includes("--http-harness");
 const qaProofChannel = args.includes("--qa-proof-channel");
 const realClockStart = args.includes("--real-clock-start");
-const testFiles = args.filter((arg) => !["--isolated-db", "--http-harness", "--qa-proof-channel", "--real-clock-start"].includes(arg));
-if (realClockStart && !qaProofChannel) throw new Error("Real-clock retention requires the private QA owner");
+const realClockSweep = args.includes("--real-clock-sweep");
+const testFiles = args.filter((arg) => !["--isolated-db", "--http-harness", "--qa-proof-channel", "--real-clock-start", "--real-clock-sweep"].includes(arg));
+if ((realClockStart || realClockSweep) && !qaProofChannel) throw new Error("Real-clock retention requires the private QA owner");
 let proofBinding;
 if (qaProofChannel) {
   if (!dbMode || httpHarness || process.env.NODE_ENV !== "development" || process.env.REPLIT_DEPLOYMENT ||
       !process.env.REPLIT_DEV_DOMAIN || process.env.ENVIRONMENT === "production" ||
       process.env.COMMERCE_QA_DELIVERY_PROOF !== "1" || !process.send ||
-      testFiles.length !== 1 || testFiles[0] !== (realClockStart
+      testFiles.length !== 1 || testFiles[0] !== (realClockSweep
+        ? "server/routes/__tests__/commerce-real-clock-sweep.db.test.ts" : realClockStart
         ? "server/routes/__tests__/commerce-real-clock-start.db.test.ts"
         : "server/routes/__tests__/commerce-real-delivery-proof.db.test.ts")) {
     throw new Error("Private QA proof channel is not authorized");
@@ -34,6 +36,13 @@ if (qaProofChannel) {
   }
   if (realClockStart && (proofBinding.startOnly !== true || proofBinding.loop !== 1)) {
     throw new Error("Explicit non-sending start binding required");
+  }
+  if (realClockSweep && (realClockStart || proofBinding.sweepOnly !== true ||
+      proofBinding.loop !== 1 || !/^automation_msg_[a-f0-9]{16}$/.test(proofBinding.schema ?? "") ||
+      !/^[a-f0-9-]{36}$/.test(proofBinding.cartId ?? "") ||
+      !/^[a-f0-9-]{36}$/.test(proofBinding.sequenceId ?? "") ||
+      !Number.isFinite(Date.parse(proofBinding.startTime)))) {
+    throw new Error("Explicit owned non-sending sweep binding required");
   }
 }
 if (httpHarness && !dbMode) {
@@ -57,7 +66,7 @@ Object.assign(env, {
   DATABASE_URL: "postgresql://skip:skip@127.0.0.1:1/skip",
 });
 const q = (name) => `"${name.replaceAll('"', '""')}"`;
-const schema = `automation_msg_${crypto.randomBytes(8).toString("hex")}`;
+const schema = realClockSweep ? proofBinding.schema : `automation_msg_${crypto.randomBytes(8).toString("hex")}`;
 let pool;
 let schemaCreated = false;
 let child;
@@ -172,6 +181,25 @@ try {
       throw new Error("Refusing fixture DDL: database is not the independently verified development target");
     }
     console.log("DEVELOPMENT_TARGET_MATCH=true");
+    if (realClockSweep) {
+      // Exact retained ownership before even the approved private DDL. No public
+      // fallback, copied data, changed stamp/timezone or fabricated step history.
+      const owned = await pool.query(`SELECT c.id FROM ${q(schema)}.cart_items c
+        JOIN ${q(schema)}.users u ON u.id=c.user_id
+        JOIN ${q(schema)}.itinerary_items i ON i.id=c.itinerary_item_id
+        JOIN ${q(schema)}.trips t ON t.id=i.trip_id
+        WHERE c.id=$1 AND u.preferences->>'commerceQaProofRun'=$2
+          AND u.email ~ '^[^@[:space:]]+@traveloure-qa\\.test$'
+          AND t.user_id=u.id
+          AND c.content_meta #>> '{_cart_automation,activity,sequence_id}'=$3
+          AND c.content_meta #>> '{_cart_automation,activity,at_ms}'=$4
+          AND (SELECT count(*) FROM ${q(schema)}.cart_items)=1`,
+        [proofBinding.cartId, proofBinding.runId, proofBinding.sequenceId,
+          String(Date.parse(proofBinding.startTime))]);
+      if (owned.rowCount !== 1) throw new Error("Refusing unowned or drifted retained fixture");
+      await pool.query(`ALTER TABLE ${q(schema)}.job_heartbeats ALTER COLUMN last_success_at DROP NOT NULL`);
+      console.log("OWNED_ONLY_NULLABLE_HEARTBEAT=true");
+    } else {
     const tables = await pool.query(
       "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename",
     );
@@ -232,6 +260,8 @@ try {
     } finally {
       client.release();
     }
+    console.log(`ISOLATED_EMPTY_SCHEMA_READY=true tables=${tables.rows.length} foreignKeys=${foreignKeys.rows.length}`);
+    }
     const isolatedUrl = new URL(process.env.DATABASE_URL);
     isolatedUrl.searchParams.set("options", `-c search_path=${schema}`);
     isolatedUrl.searchParams.set("application_name", "automation-messaging-verification");
@@ -245,7 +275,6 @@ try {
     } finally {
       await isolatedPool.end();
     }
-    console.log(`ISOLATED_EMPTY_SCHEMA_READY=true tables=${tables.rows.length} foreignKeys=${foreignKeys.rows.length}`);
     if (qaProofChannel) {
       env.COMMERCE_QA_DELIVERY_PROOF = "1";
       env.COMMERCE_QA_PROOF_RUN_ID = JSON.stringify({ ...proofBinding, schema });
@@ -302,6 +331,7 @@ try {
     if (remaining.rowCount !== 0) throw new Error("Fixture schema cleanup did not complete");
     console.log("ISOLATED_SCHEMA_REMOVED=true");
   }
+  if (realClockSweep) console.log("OWNED_REAL_CLOCK_SCHEMA_RETAINED=true; PROVIDER_CHANNEL_OFF=true");
   if (pool) await pool.end();
   process.removeListener("SIGINT", onSignal);
   process.removeListener("SIGTERM", onSignal);

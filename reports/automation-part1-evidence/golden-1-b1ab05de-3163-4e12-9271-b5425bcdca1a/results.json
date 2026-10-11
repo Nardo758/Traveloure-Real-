@@ -1,0 +1,1102 @@
+{
+  "runId": "b1ab05de-3163-4e12-9271-b5425bcdca1a",
+  "loop": "1",
+  "checkedAt": "2026-10-11T13:08:12.936Z",
+  "isolated": false,
+  "results": [
+    {
+      "stage": "scripts/check-test-files-wired.cjs --self-test",
+      "startedAt": "2026-10-11T13:06:53.052Z",
+      "exitCode": 0,
+      "durationMs": 235.93812199999996,
+      "tests": [
+        {
+          "name": "scripts/check-test-files-wired.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 235.908976,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-test-files-wired.cjs",
+      "startedAt": "2026-10-11T13:06:53.291Z",
+      "exitCode": 1,
+      "durationMs": 2646.834378,
+      "tests": [
+        {
+          "name": "scripts/check-test-files-wired.cjs",
+          "status": "FAIL",
+          "durationMs": 2646.82678,
+          "reason": "NO_TESTS_OR_FRAMEWORK_FAILURE"
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-workstation-retired.cjs --self-test",
+      "startedAt": "2026-10-11T13:06:55.939Z",
+      "exitCode": 0,
+      "durationMs": 124.12404900000001,
+      "tests": [
+        {
+          "name": "scripts/check-workstation-retired.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 124.11078700000007,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-workstation-retired.cjs",
+      "startedAt": "2026-10-11T13:06:56.063Z",
+      "exitCode": 0,
+      "durationMs": 202.3109840000002,
+      "tests": [
+        {
+          "name": "scripts/check-workstation-retired.cjs",
+          "status": "PASS",
+          "durationMs": 202.30119700000023,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-workstation-retired.cjs --bundle",
+      "startedAt": "2026-10-11T13:06:56.265Z",
+      "exitCode": 0,
+      "durationMs": 3717.2777499999997,
+      "tests": [
+        {
+          "name": "scripts/check-workstation-retired.cjs --bundle",
+          "status": "PASS",
+          "durationMs": 3717.2696739999997,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-tripless-cart-writers.cjs --self-test",
+      "startedAt": "2026-10-11T13:06:59.983Z",
+      "exitCode": 0,
+      "durationMs": 103.07827600000019,
+      "tests": [
+        {
+          "name": "scripts/check-tripless-cart-writers.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 103.07034199999998,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-tripless-cart-writers.cjs",
+      "startedAt": "2026-10-11T13:07:00.086Z",
+      "exitCode": 0,
+      "durationMs": 836.1832079999995,
+      "tests": [
+        {
+          "name": "scripts/check-tripless-cart-writers.cjs",
+          "status": "PASS",
+          "durationMs": 836.1751569999997,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-tripless-cart-writers.cjs --bundle",
+      "startedAt": "2026-10-11T13:07:00.922Z",
+      "exitCode": 0,
+      "durationMs": 104.59587900000133,
+      "tests": [
+        {
+          "name": "scripts/check-tripless-cart-writers.cjs --bundle",
+          "status": "PASS",
+          "durationMs": 104.58750600000076,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-us-spelling.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:01.027Z",
+      "exitCode": 0,
+      "durationMs": 708.6821629999995,
+      "tests": [
+        {
+          "name": "scripts/check-us-spelling.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 708.674887000001,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-us-spelling.cjs",
+      "startedAt": "2026-10-11T13:07:01.736Z",
+      "exitCode": 0,
+      "durationMs": 1807.9595020000015,
+      "tests": [
+        {
+          "name": "scripts/check-us-spelling.cjs",
+          "status": "PASS",
+          "durationMs": 1807.9515280000014,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-unlimited-runs.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:03.545Z",
+      "exitCode": 0,
+      "durationMs": 248.31916900000033,
+      "tests": [
+        {
+          "name": "scripts/check-unlimited-runs.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 248.28463600000032,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-unlimited-runs.cjs",
+      "startedAt": "2026-10-11T13:07:03.793Z",
+      "exitCode": 0,
+      "durationMs": 1629.4086719999996,
+      "tests": [
+        {
+          "name": "scripts/check-unlimited-runs.cjs",
+          "status": "PASS",
+          "durationMs": 1629.394655,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-money-endpoints.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:05.423Z",
+      "exitCode": 0,
+      "durationMs": 193.9930059999988,
+      "tests": [
+        {
+          "name": "scripts/check-money-endpoints.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 193.98436000000038,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-money-endpoints.cjs",
+      "startedAt": "2026-10-11T13:07:05.617Z",
+      "exitCode": 0,
+      "durationMs": 1465.0176220000012,
+      "tests": [
+        {
+          "name": "scripts/check-money-endpoints.cjs",
+          "status": "PASS",
+          "durationMs": 1465.009048,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-claims-only-user-lookups.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:07.083Z",
+      "exitCode": 0,
+      "durationMs": 38.46571400000175,
+      "tests": [
+        {
+          "name": "scripts/check-claims-only-user-lookups.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 38.45867800000087,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-claims-only-user-lookups.cjs",
+      "startedAt": "2026-10-11T13:07:07.121Z",
+      "exitCode": 0,
+      "durationMs": 416.51497800000107,
+      "tests": [
+        {
+          "name": "scripts/check-claims-only-user-lookups.cjs",
+          "status": "PASS",
+          "durationMs": 416.5096389999999,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-trip-card-honesty.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:07.538Z",
+      "exitCode": 0,
+      "durationMs": 30.556087000000844,
+      "tests": [
+        {
+          "name": "scripts/check-trip-card-honesty.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 30.549635999999737,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-trip-card-honesty.cjs",
+      "startedAt": "2026-10-11T13:07:07.569Z",
+      "exitCode": 0,
+      "durationMs": 1886.1967120000008,
+      "tests": [
+        {
+          "name": "scripts/check-trip-card-honesty.cjs",
+          "status": "PASS",
+          "durationMs": 1886.187933000001,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-planning-entry.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:09.455Z",
+      "exitCode": 0,
+      "durationMs": 40.812260999999125,
+      "tests": [
+        {
+          "name": "scripts/check-planning-entry.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 40.80460099999982,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-planning-entry.cjs",
+      "startedAt": "2026-10-11T13:07:09.496Z",
+      "exitCode": 0,
+      "durationMs": 42.37706099999923,
+      "tests": [
+        {
+          "name": "scripts/check-planning-entry.cjs",
+          "status": "PASS",
+          "durationMs": 42.37089500000002,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-conflict-markers.cjs --self-test",
+      "startedAt": "2026-10-11T13:07:09.539Z",
+      "exitCode": 0,
+      "durationMs": 29.079991000002337,
+      "tests": [
+        {
+          "name": "scripts/check-conflict-markers.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 29.073763000000326,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-conflict-markers.cjs",
+      "startedAt": "2026-10-11T13:07:09.568Z",
+      "exitCode": 0,
+      "durationMs": 57442.83169300001,
+      "tests": [
+        {
+          "name": "scripts/check-conflict-markers.cjs",
+          "status": "PASS",
+          "durationMs": 57442.81765600001,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-e2e-helper-waits.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:07.011Z",
+      "exitCode": 0,
+      "durationMs": 68.22688899999775,
+      "tests": [
+        {
+          "name": "scripts/check-e2e-helper-waits.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 68.22010900000168,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-e2e-helper-waits.cjs",
+      "startedAt": "2026-10-11T13:08:07.080Z",
+      "exitCode": 0,
+      "durationMs": 42.546881999995094,
+      "tests": [
+        {
+          "name": "scripts/check-e2e-helper-waits.cjs",
+          "status": "PASS",
+          "durationMs": 42.53332000000228,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-item-removed-logging.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:07.123Z",
+      "exitCode": 0,
+      "durationMs": 47.43604299999424,
+      "tests": [
+        {
+          "name": "scripts/check-item-removed-logging.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 47.429369999998016,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-item-removed-logging.cjs",
+      "startedAt": "2026-10-11T13:08:07.170Z",
+      "exitCode": 0,
+      "durationMs": 164.63933299999917,
+      "tests": [
+        {
+          "name": "scripts/check-item-removed-logging.cjs",
+          "status": "PASS",
+          "durationMs": 164.6309900000051,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-itinerary-rebuild-guard.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:07.335Z",
+      "exitCode": 0,
+      "durationMs": 36.019419000003836,
+      "tests": [
+        {
+          "name": "scripts/check-itinerary-rebuild-guard.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 36.01113400000031,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-itinerary-rebuild-guard.cjs",
+      "startedAt": "2026-10-11T13:08:07.372Z",
+      "exitCode": 0,
+      "durationMs": 179.53143300001102,
+      "tests": [
+        {
+          "name": "scripts/check-itinerary-rebuild-guard.cjs",
+          "status": "PASS",
+          "durationMs": 179.52272300000186,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-traveler-fee-coverage.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:07.551Z",
+      "exitCode": 0,
+      "durationMs": 28.734182000000146,
+      "tests": [
+        {
+          "name": "scripts/check-traveler-fee-coverage.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 28.730750999995507,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-traveler-fee-coverage.cjs",
+      "startedAt": "2026-10-11T13:08:07.580Z",
+      "exitCode": 0,
+      "durationMs": 35.957620999994106,
+      "tests": [
+        {
+          "name": "scripts/check-traveler-fee-coverage.cjs",
+          "status": "PASS",
+          "durationMs": 35.95590599998832,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-unmounted-routers.cjs",
+      "startedAt": "2026-10-11T13:08:07.616Z",
+      "exitCode": 0,
+      "durationMs": 883.8179970000056,
+      "tests": [
+        {
+          "name": "scripts/check-unmounted-routers.cjs",
+          "status": "PASS",
+          "durationMs": 883.8155300000071,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-trip-mint-owner-access.cjs",
+      "startedAt": "2026-10-11T13:08:08.500Z",
+      "exitCode": 0,
+      "durationMs": 391.42308800001047,
+      "tests": [
+        {
+          "name": "scripts/check-trip-mint-owner-access.cjs",
+          "status": "PASS",
+          "durationMs": 391.4188310000027,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-decision-guards.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:08.892Z",
+      "exitCode": 0,
+      "durationMs": 39.5337370000052,
+      "tests": [
+        {
+          "name": "scripts/check-decision-guards.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 39.53161199999158,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-decision-guards.cjs",
+      "startedAt": "2026-10-11T13:08:08.932Z",
+      "exitCode": 0,
+      "durationMs": 86.79905700001109,
+      "tests": [
+        {
+          "name": "scripts/check-decision-guards.cjs",
+          "status": "PASS",
+          "durationMs": 86.79710400001204,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-decision-guards.cjs --require-assigned",
+      "startedAt": "2026-10-11T13:08:09.019Z",
+      "exitCode": 0,
+      "durationMs": 87.14487600000575,
+      "tests": [
+        {
+          "name": "scripts/check-decision-guards.cjs --require-assigned",
+          "status": "PASS",
+          "durationMs": 87.14303999999538,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-ledger-union-merge.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.106Z",
+      "exitCode": 0,
+      "durationMs": 253.4063429999951,
+      "tests": [
+        {
+          "name": "scripts/check-ledger-union-merge.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 253.40413900000567,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-ledger-union-merge.cjs",
+      "startedAt": "2026-10-11T13:08:09.360Z",
+      "exitCode": 0,
+      "durationMs": 34.67716199999268,
+      "tests": [
+        {
+          "name": "scripts/check-ledger-union-merge.cjs",
+          "status": "PASS",
+          "durationMs": 34.67495999998937,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-coverage-matrix.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.394Z",
+      "exitCode": 0,
+      "durationMs": 30.526694000000134,
+      "tests": [
+        {
+          "name": "scripts/check-coverage-matrix.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 30.524338999995962,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-coverage-matrix.cjs",
+      "startedAt": "2026-10-11T13:08:09.425Z",
+      "exitCode": 0,
+      "durationMs": 80.95946899999399,
+      "tests": [
+        {
+          "name": "scripts/check-coverage-matrix.cjs",
+          "status": "PASS",
+          "durationMs": 80.9572349999944,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-env-allowlist.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.506Z",
+      "exitCode": 0,
+      "durationMs": 30.437462000001688,
+      "tests": [
+        {
+          "name": "scripts/check-env-allowlist.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 30.435561999998754,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-env-allowlist.cjs",
+      "startedAt": "2026-10-11T13:08:09.537Z",
+      "exitCode": 0,
+      "durationMs": 53.63074200000847,
+      "tests": [
+        {
+          "name": "scripts/check-env-allowlist.cjs",
+          "status": "PASS",
+          "durationMs": 53.629117000004044,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-omit-schema-ratchet.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.590Z",
+      "exitCode": 0,
+      "durationMs": 31.499471000002814,
+      "tests": [
+        {
+          "name": "scripts/check-omit-schema-ratchet.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 31.495900000008987,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-omit-schema-ratchet.cjs",
+      "startedAt": "2026-10-11T13:08:09.623Z",
+      "exitCode": 0,
+      "durationMs": 39.13761800000793,
+      "tests": [
+        {
+          "name": "scripts/check-omit-schema-ratchet.cjs",
+          "status": "PASS",
+          "durationMs": 39.08085199999914,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-migration-indexes-declared.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.662Z",
+      "exitCode": 0,
+      "durationMs": 38.60936600000423,
+      "tests": [
+        {
+          "name": "scripts/check-migration-indexes-declared.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 38.60768800000369,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-migration-indexes-declared.cjs",
+      "startedAt": "2026-10-11T13:08:09.701Z",
+      "exitCode": 0,
+      "durationMs": 74.9722369999945,
+      "tests": [
+        {
+          "name": "scripts/check-migration-indexes-declared.cjs",
+          "status": "PASS",
+          "durationMs": 74.97032399999443,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-demand-rollup.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.776Z",
+      "exitCode": 0,
+      "durationMs": 29.108162000004086,
+      "tests": [
+        {
+          "name": "scripts/check-demand-rollup.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 29.10644200000388,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-demand-rollup.cjs",
+      "startedAt": "2026-10-11T13:08:09.805Z",
+      "exitCode": 0,
+      "durationMs": 34.02651999999944,
+      "tests": [
+        {
+          "name": "scripts/check-demand-rollup.cjs",
+          "status": "PASS",
+          "durationMs": 34.02465700000175,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-coords-preservation.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:09.839Z",
+      "exitCode": 0,
+      "durationMs": 34.87513499999477,
+      "tests": [
+        {
+          "name": "scripts/check-coords-preservation.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 34.87375400000019,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-coords-preservation.cjs",
+      "startedAt": "2026-10-11T13:08:09.874Z",
+      "exitCode": 0,
+      "durationMs": 32.70739500000491,
+      "tests": [
+        {
+          "name": "scripts/check-coords-preservation.cjs",
+          "status": "PASS",
+          "durationMs": 32.70591299999796,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-linkage-preservation.cjs",
+      "startedAt": "2026-10-11T13:08:09.907Z",
+      "exitCode": 0,
+      "durationMs": 286.1712780000089,
+      "tests": [
+        {
+          "name": "scripts/check-linkage-preservation.cjs",
+          "status": "PASS",
+          "durationMs": 286.1683100000082,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-artifact-deploy-guard.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.193Z",
+      "exitCode": 0,
+      "durationMs": 32.08132800000021,
+      "tests": [
+        {
+          "name": "scripts/check-artifact-deploy-guard.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 32.07849400000123,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-artifact-deploy-guard.cjs",
+      "startedAt": "2026-10-11T13:08:10.226Z",
+      "exitCode": 0,
+      "durationMs": 58.081446999989566,
+      "tests": [
+        {
+          "name": "scripts/check-artifact-deploy-guard.cjs",
+          "status": "PASS",
+          "durationMs": 58.07964599999832,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-duplicate-migration-prefixes.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.284Z",
+      "exitCode": 0,
+      "durationMs": 30.10964399999648,
+      "tests": [
+        {
+          "name": "scripts/check-duplicate-migration-prefixes.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 30.10780800000066,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-duplicate-migration-prefixes.cjs",
+      "startedAt": "2026-10-11T13:08:10.314Z",
+      "exitCode": 0,
+      "durationMs": 32.98387599999842,
+      "tests": [
+        {
+          "name": "scripts/check-duplicate-migration-prefixes.cjs",
+          "status": "PASS",
+          "durationMs": 32.98217000000295,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-category-reachability.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.347Z",
+      "exitCode": 0,
+      "durationMs": 44.35942600000999,
+      "tests": [
+        {
+          "name": "scripts/check-category-reachability.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 44.35798800000339,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-category-reachability.cjs",
+      "startedAt": "2026-10-11T13:08:10.392Z",
+      "exitCode": 0,
+      "durationMs": 99.9451270000136,
+      "tests": [
+        {
+          "name": "scripts/check-category-reachability.cjs",
+          "status": "PASS",
+          "durationMs": 99.94325300000492,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-roles-needed-reachability.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.492Z",
+      "exitCode": 0,
+      "durationMs": 53.90988099999959,
+      "tests": [
+        {
+          "name": "scripts/check-roles-needed-reachability.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 53.907827000002726,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-roles-needed-reachability.cjs",
+      "startedAt": "2026-10-11T13:08:10.546Z",
+      "exitCode": 0,
+      "durationMs": 39.48118200000317,
+      "tests": [
+        {
+          "name": "scripts/check-roles-needed-reachability.cjs",
+          "status": "PASS",
+          "durationMs": 39.47919300000649,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-page-hex.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.585Z",
+      "exitCode": 0,
+      "durationMs": 33.33937099999457,
+      "tests": [
+        {
+          "name": "scripts/check-page-hex.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 33.33755199999723,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-page-hex.cjs",
+      "startedAt": "2026-10-11T13:08:10.619Z",
+      "exitCode": 0,
+      "durationMs": 232.41353799999342,
+      "tests": [
+        {
+          "name": "scripts/check-page-hex.cjs",
+          "status": "PASS",
+          "durationMs": 232.41140700000688,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-earn-planner-keys.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.852Z",
+      "exitCode": 0,
+      "durationMs": 32.01755499999854,
+      "tests": [
+        {
+          "name": "scripts/check-earn-planner-keys.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 32.01605200000631,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-earn-planner-keys.cjs",
+      "startedAt": "2026-10-11T13:08:10.884Z",
+      "exitCode": 0,
+      "durationMs": 59.94077499999548,
+      "tests": [
+        {
+          "name": "scripts/check-earn-planner-keys.cjs",
+          "status": "PASS",
+          "durationMs": 59.938927999988664,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-trip-route-shadows.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:10.944Z",
+      "exitCode": 0,
+      "durationMs": 28.98135000000184,
+      "tests": [
+        {
+          "name": "scripts/check-trip-route-shadows.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 28.979142999989563,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-trip-route-shadows.cjs",
+      "startedAt": "2026-10-11T13:08:10.973Z",
+      "exitCode": 0,
+      "durationMs": 42.03722499999276,
+      "tests": [
+        {
+          "name": "scripts/check-trip-route-shadows.cjs",
+          "status": "PASS",
+          "durationMs": 42.03552900000068,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-privileged-field-completeness.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:11.015Z",
+      "exitCode": 0,
+      "durationMs": 31.794888999997056,
+      "tests": [
+        {
+          "name": "scripts/check-privileged-field-completeness.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 31.79275599999528,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-privileged-field-completeness.cjs",
+      "startedAt": "2026-10-11T13:08:11.047Z",
+      "exitCode": 0,
+      "durationMs": 183.30409600000712,
+      "tests": [
+        {
+          "name": "scripts/check-privileged-field-completeness.cjs",
+          "status": "PASS",
+          "durationMs": 183.30205500000739,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-advisor-row-author.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:11.231Z",
+      "exitCode": 0,
+      "durationMs": 28.590060000002268,
+      "tests": [
+        {
+          "name": "scripts/check-advisor-row-author.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 28.588445999994292,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-advisor-row-author.cjs",
+      "startedAt": "2026-10-11T13:08:11.259Z",
+      "exitCode": 0,
+      "durationMs": 183.9634839999926,
+      "tests": [
+        {
+          "name": "scripts/check-advisor-row-author.cjs",
+          "status": "PASS",
+          "durationMs": 183.95913800000562,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-preferences-writer.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:11.444Z",
+      "exitCode": 0,
+      "durationMs": 35.39932000001136,
+      "tests": [
+        {
+          "name": "scripts/check-preferences-writer.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 35.397558000011486,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-preferences-writer.cjs",
+      "startedAt": "2026-10-11T13:08:11.479Z",
+      "exitCode": 0,
+      "durationMs": 168.9080729999987,
+      "tests": [
+        {
+          "name": "scripts/check-preferences-writer.cjs",
+          "status": "PASS",
+          "durationMs": 168.90546999999788,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-query-userid-reads.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:11.648Z",
+      "exitCode": 0,
+      "durationMs": 31.73718799999915,
+      "tests": [
+        {
+          "name": "scripts/check-query-userid-reads.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 31.735547000003862,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-query-userid-reads.cjs",
+      "startedAt": "2026-10-11T13:08:11.680Z",
+      "exitCode": 0,
+      "durationMs": 116.54737700000987,
+      "tests": [
+        {
+          "name": "scripts/check-query-userid-reads.cjs",
+          "status": "PASS",
+          "durationMs": 116.54510400000436,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-public-user-id.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:11.797Z",
+      "exitCode": 0,
+      "durationMs": 40.74149000000034,
+      "tests": [
+        {
+          "name": "scripts/check-public-user-id.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 40.7396560000052,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-public-user-id.cjs",
+      "startedAt": "2026-10-11T13:08:11.838Z",
+      "exitCode": 0,
+      "durationMs": 777.8463889999985,
+      "tests": [
+        {
+          "name": "scripts/check-public-user-id.cjs",
+          "status": "PASS",
+          "durationMs": 777.8430729999964,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-ai-draft-eligibility.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:12.616Z",
+      "exitCode": 0,
+      "durationMs": 29.721550999995088,
+      "tests": [
+        {
+          "name": "scripts/check-ai-draft-eligibility.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 29.719515999997384,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-ai-draft-eligibility.cjs",
+      "startedAt": "2026-10-11T13:08:12.646Z",
+      "exitCode": 0,
+      "durationMs": 213.2379479999945,
+      "tests": [
+        {
+          "name": "scripts/check-ai-draft-eligibility.cjs",
+          "status": "PASS",
+          "durationMs": 213.2358649999951,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-doc-band-keys.cjs --self-test",
+      "startedAt": "2026-10-11T13:08:12.859Z",
+      "exitCode": 0,
+      "durationMs": 34.71103299999959,
+      "tests": [
+        {
+          "name": "scripts/check-doc-band-keys.cjs --self-test",
+          "status": "PASS",
+          "durationMs": 34.709218999996665,
+          "reason": null
+        }
+      ]
+    },
+    {
+      "stage": "scripts/check-doc-band-keys.cjs",
+      "startedAt": "2026-10-11T13:08:12.894Z",
+      "exitCode": 0,
+      "durationMs": 41.55026299999736,
+      "tests": [
+        {
+          "name": "scripts/check-doc-band-keys.cjs",
+          "status": "PASS",
+          "durationMs": 41.54856999999902,
+          "reason": null
+        }
+      ]
+    }
+  ],
+  "passing": 77,
+  "failing": 1
+}

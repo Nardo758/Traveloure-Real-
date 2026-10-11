@@ -130,3 +130,72 @@ No timer, restart, application flag, real email or owned/public DDL was changed.
 
 Retained owned development fixture; no provider initialized, email sent, or job scheduled.
 Check live cart/sequence/account/recipient/consent/timezone, readable payment rails and UNKNOWN holds, quiet hours, daily cap, actual preceding 1h delivery history and a matching delivered receipt after the real 1d due time. The preceding step is NOT fabricated; future delivery needs separate authorization.
+
+### Approved overdue non-sending sweep
+
+Actual invocation only; no future scheduling, backdating, delivery or next-day certification.
+
+```json
+{
+  "runId": "d5dcaccc-abdb-401a-b3ab-1a72d24ec98a",
+  "invokedAt": "2026-10-11T13:02:33.726Z",
+  "observedAt": "2026-10-11T13:02:35.509Z",
+  "counts": {
+    "candidates": 1,
+    "enqueued": 0,
+    "duplicates": 0,
+    "skipped": 1,
+    "skipReasons": {
+      "unknown_timezone_or_preferences": 1
+    },
+    "itemChanges": {
+      "enqueued": 0,
+      "duplicates": 0,
+      "skipped": 1,
+      "skipReasons": {
+        "payment_rail_unknown": 1
+      }
+    }
+  },
+  "heartbeat": {
+    "last_success_at": "2026-10-11 13:02:35.315",
+    "last_result": {
+      "ok": false,
+      "skipped": false
+    }
+  },
+  "outbox": [],
+  "uncertainAttempts": {
+    "total": 0,
+    "rows": []
+  },
+  "providerCallsBlocked": true,
+  "receiptId": null,
+  "status": "WAITING"
+}
+```
+
+**WAITING. NEXT-DAY PROVEN: NO. RELEASE HELD.**
+
+### Correction and actual eligibility findings after the overdue invocation
+
+- Exactly one sweep executed, at `2026-10-11T13:02:33.726Z`.
+- Its initial owner call omitted `ok: true` from `recordJobSuccess`, so the
+  completion stamp existed but its summary incorrectly contained `ok: false`.
+  This was a runner bug, not a candidate-query failure.
+- Corrected only the owned heartbeat summary to `{"ok":true,"skipped":false}`,
+  using the verified development fingerprint, exact run ownership and exact
+  existing completion stamp `2026-10-11T13:02:35.315Z`.
+  No sweep rerun, timestamp movement or public-table mutation occurred.
+- Fixed runner passes `ok: true`; two fresh loops now assert first-failure/null
+  success stamp, successful summary and subsequent failed summary.
+- Live stored marketing preference names: `timeZone=Asia/Kolkata`, `enabled=true`;
+  **quietStart absent; quietEnd absent**. The shared preference parser requires
+  both. That explains `unknown_timezone_or_preferences` despite a valid timezone.
+  No preference, consent, timezone, activity stamp or prior-step history changed.
+- Item-change remains blocked by `payment_rail_unknown`.
+- Public development pending/failed/processing rows: zero. Owned outbox rows: zero.
+- Owned heartbeat `last_success_at` is nullable now; public remains NOT NULL.
+- Future due slots remain unscheduled. The missing preference fields, missing
+  actual prior-step delivery and UNKNOWN rails remain blockers.
+- Receipt: none. **WAITING. NEXT-DAY PROVEN: NO. RELEASE HELD.**

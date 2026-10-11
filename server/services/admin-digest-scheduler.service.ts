@@ -8,18 +8,18 @@
  *   c) Stripe events visible in the API that never arrived at the webhook endpoint
  *      (gap detection: compares Stripe's last-100 events against webhook_events table)
  *   d) Reconciliation mismatches recorded in the last 24 hours
- *   e) Emails that exhausted every retry and were never delivered (board #1566)
+ *   e) Exhausted retries, and development provider attempts requiring reconciliation
  *
  * Recipients: ADMIN_EMAIL env var (falls back to no-op if unset).
  * Email: sent via Resend through email.service.ts.
  */
 
-import { loadDeadEmailSummary, type DeadEmailSummary } from "./email-outbox.service";
+import { loadDeadEmailSummary, loadUncertainEmailSummary, type DeadEmailSummary } from "./email-outbox.service";
 import Stripe from "stripe";
 import { db } from "../db";
 import { adminNotifications, users, webhookEvents } from "@shared/schema";
 import { eq, and, sql, gte, inArray } from "drizzle-orm";
-import { sendAdminDigestEmail } from "./email.service";
+import { sendAdminDigestEmail, type DigestUncertainEmails } from "./email.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
@@ -168,10 +168,12 @@ class AdminDigestSchedulerService {
       // ── Section E: emails that exhausted every retry (board #1566) ──────────
       // Every row CURRENTLY dead, not only today's: it keeps appearing until someone retries it.
       let deadEmails: DeadEmailSummary | undefined;
+      let uncertainEmails: DigestUncertainEmails | undefined;
       try {
         deadEmails = await loadDeadEmailSummary();
+        if (process.env.NODE_ENV === "development") uncertainEmails = await loadUncertainEmailSummary();
       } catch (err) {
-        console.error("[AdminDigest] Failed to load dead outbox emails:", err);
+        console.error("[AdminDigest] Failed to load dead/uncertain outbox emails:", err);
       }
 
       // ── Send digest if anything needs attention ─────────────────────────────
@@ -180,7 +182,8 @@ class AdminDigestSchedulerService {
         expertsWithoutPayout.length === 0 &&
         missedWebhooks.length === 0 &&
         reconciliationMismatches.length === 0 &&
-        (deadEmails?.total ?? 0) === 0
+        (deadEmails?.total ?? 0) === 0 &&
+        (uncertainEmails?.total ?? 0) === 0
       ) {
         console.log("[AdminDigest] Nothing to report — skipping email");
         return;
@@ -193,6 +196,7 @@ class AdminDigestSchedulerService {
         missedWebhooks,
         reconciliationMismatches: reconciliationMismatches as any,
         deadEmails,
+        uncertainEmails,
       });
 
       console.log(
