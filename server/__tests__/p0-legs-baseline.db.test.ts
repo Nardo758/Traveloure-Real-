@@ -16,6 +16,7 @@
  *   L10 P0-b acceptance: 2 located stops + 1 unlocated + a legacy drive leg on the unlocated pair ⇒ the plan
  *      shows 0 unsourced legs and 1 routed leg; the legacy row is retired (superseded, not deleted) and the
  *      unlocated stop is the one gap the slip names (its line is pinned by G6)
+ *   L11 P0-b items 1 and 10, pure: the skip reason the plancard reports, and a start-only PATCH's end time
  *
  * The fixtures sit in Edinburgh (a market whose routing API answers transit) so L2/L8 can still ask transit;
  * the zone stays Asia/Tokyo because L4 asserts its UTC instant. Kyoto's own behaviour is L9.
@@ -43,6 +44,8 @@ const { generateTripTransportLegs } = await import("../services/trip-transport-l
 const { TRANSIT_UNAVAILABLE_REASON, TRANSIT_API_UNCOVERED_REASON } = await import("@shared/routing-engine");
 const { routedFactsOf } = await import("../services/routing/plan-legs");
 const { assembleTripPlan } = await import("../services/trip-plan.service");
+const { planLegsSkipReason } = await import("../services/routing/plan-legs");
+const { endTimeFromDuration } = await import("../routes/trips.routes");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const K = crypto.randomInt(0, 100_000) / 1e4;
@@ -281,4 +284,18 @@ test("L10: 2 located + 1 unlocated + a legacy leg on the unlocated pair ⇒ 0 un
   const shown = (plan.days ?? []).flatMap((d: any) => d.transports ?? []);
   assert.equal(shown.filter((l: any) => !l.routed).length, 0, "no unsourced leg shows on a routed plan");
   assert.equal(shown.filter((l: any) => l.routed).length, 1, "the one routed leg bridges a→c");
+});
+
+test("L11: the skip reason names the first gate that stops the run; a start-only edit moves the end by the item's own minutes", () => {
+  const on = { engineOn: true, qualifies: true, tripExists: true, datesConfirmed: true };
+  assert.equal(planLegsSkipReason(on), null);
+  assert.equal(planLegsSkipReason({ ...on, engineOn: false, qualifies: false }), "engine_off");
+  assert.equal(planLegsSkipReason({ ...on, qualifies: false }), "free_plan");
+  assert.equal(planLegsSkipReason({ ...on, tripExists: false }), "no_trip");
+  assert.equal(planLegsSkipReason({ ...on, datesConfirmed: false }), "dates_not_confirmed");
+  assert.equal(endTimeFromDuration("09:30", 90), "11:00");
+  assert.equal(endTimeFromDuration("23:30", 45), null, "never wraps past midnight");
+  assert.equal(endTimeFromDuration("09:30", null), null, "no stated minutes ⇒ no end invented");
+  assert.equal(endTimeFromDuration("09:30", 0), null);
+  assert.equal(endTimeFromDuration("not a time", 30), null);
 });
