@@ -36,6 +36,8 @@ export interface LegsDayofResult {
   legsChecked: number;
   legsChanged: number;
   legsNotified: number;
+  /** P0 ruling 6: desired pairs that show no leg (counted, never written). Present only when > 0. */
+  legsMissing?: number;
   failed: number;
   error?: string;
 }
@@ -129,6 +131,8 @@ export async function runLegsDayofRecheck(now: Date = new Date(), deps: LegsDayo
       result.legsChecked += r.checked;
       result.legsChanged += r.changed + r.broken;
       result.legsNotified += r.notified;
+      // P0 ruling 6: pairs with no leg are counted, never written; present only when > 0.
+      if (r.missing) result.legsMissing = (result.legsMissing ?? 0) + r.missing;
     } catch (err) {
       result.failed += 1;
       console.error(`[legs-dayof-recheck] plan ${c.id} failed:`, (err as Error)?.message ?? err);

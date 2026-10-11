@@ -20,6 +20,7 @@
  */
 import { haversineMeters } from "./geo";
 import { mentionsLodging } from "./ai-place-text";
+import type { StayLink } from "./stay-link";
 
 /**
  * Smoke 9 S9-2 amendment (ledger `2026-10-04-smoke9-addendum`): is this item a place to stay? An
@@ -169,26 +170,30 @@ export interface StayHotel {
    * `platform` (surface step 3, R-o): a stay LISTED ON TRAVELOURE — an approved, active
    * `provider_services` row in the accommodation category — badged "Traveloure stay".
    * `hotel_cache` / `affiliate`: partner inventory, booked via the concierge or a deep link.
+   * `liteapi` (S1-d-1): a `hotel_cache` row whose provider is LiteAPI — derived from the provider by
+   * `stayKindForCacheProvider` (shared/liteapi.ts), never a column. No badge; the Maps link.
    */
-  kind: "platform" | "hotel_cache" | "affiliate";
+  kind: "platform" | "hotel_cache" | "affiliate" | "liteapi";
   id: string;
   name: string;
   starRating: number | null;
   /** Step 6 R-aq: the option card's thumbnail — a platform listing's own image only; absent ⇒ none. */
   photo?: { source: "ours"; url: string; licence: null; attribution: string; sourceUrl: null } | null;
+  /**
+   * FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the stay card's ONE link — on the S1 `stay` block
+   * only. `own` = the provider's own site; `google` = Google's website for the hotel; `maps` = "View on
+   * Google Maps". `google`/`maps` carry the "Google Maps" attribution wherever drawn. Absent ⇒ no link.
+   */
+  stayLink?: StayLink;
 }
 
 /** R-o: the badge a platform-listed stay carries. */
 export const PLATFORM_STAY_BADGE = "Traveloure stay";
 
-/**
- * R-o (surface step 3). Pure and STABLE: within one plan-fit band — the stays of ONE ranked
- * neighbourhood, which share that neighbourhood's fit — platform-listed stays come before partner
- * stays; each group keeps the order it arrived in (distance, then name). Never re-ranks across bands.
- */
-export function orderStaysByOrigin<H extends Pick<StayHotel, "kind">>(stays: readonly H[]): H[] {
-  return [...stays.filter((h) => h.kind === "platform"), ...stays.filter((h) => h.kind !== "platform")];
-}
+// S1-b (decision-maker, Oct 10, 2026; ledger `2026-10-10-s1b-provider-stays`): R-o's `orderStaysByOrigin`
+// (platform-listed stays first within a neighbourhood) is DELETED — "no boost for being a provider". A
+// neighbourhood's stays keep the order `hotelsByNeighborhood` gives them, which never reads `kind`; the badge
+// above stays. Do not re-add a kind-based sort here or in a reader.
 
 /** The top option's note when it tied on day-count and won on total distance (surface step 3). */
 export const STAY_TIE_BREAK_NOTE = "shortest overall distance to your stops (est.)";
@@ -330,7 +335,40 @@ export interface WhereToStayView {
    * the ranking has rows.
    */
   unranked?: "no_neighborhoods" | "no_located_items";
+  /**
+   * S1 "one stay on the plan" (ledger `2026-10-09-s1-one-stay`; brief s1-one-stay.md). Present on an
+   * eligible view. FREE: the top 3 hotels by straight line within the top neighbourhoods. ROUTED (the plan
+   * passes `planGetsRoutedLegs`): the ONE stay Optimize's routed scoring picked, READ from `trips.stay_pick`
+   * — never computed on read. Never ranked by price or commission, either tier.
+   */
+  stay?: WhereToStayStay;
 }
+
+/**
+ * FU-S1-3: "close on N of M days" for one stay — `closeDays` of `locatedDays` (days with at least one located
+ * stop on the plan's dates), by routed minutes on a paid plan or straight line on a free plan. Computed by
+ * the server only (`shared/stay-pick.ts` `stayDayCloseness`); null = unknown (§13, never zero-filled).
+ */
+export type { StayCloseness } from "./stay-pick";
+import type { StayCloseness } from "./stay-pick";
+
+export type WhereToStayStay =
+  /** FU-S1-3: `closeness` is optional on the wire — absent means the payload predates it, which every reader
+   *  treats exactly like null (no closeness line, §13). The server always sets it. */
+  | { tier: "straight_line"; hotels: Array<StayHotel & { closeness?: StayCloseness | null }> }
+  | {
+      tier: "routed";
+      /** The picked hotel, or null when nothing has been scored yet or it has left our inventory (§13). */
+      pick: StayHotel | null;
+      /** Hotels scored by routed time / hotels in the plan's neighbourhoods. Null before any pick. */
+      scoredCount: number | null;
+      candidateCount: number | null;
+      /** A re-score replaced an earlier, different pick and the card has not shown it yet. */
+      changed: boolean;
+      computedAt: string | null;
+      /** FU-S1-3: the pick's routed closeness; null before any pick, or on a pick stored before FU-S1-3. */
+      closeness?: StayCloseness | null;
+    };
 
 /**
  * Smoke 8 item 1 — WHERE the lodging surface draws, from the server's view alone (§18 rule 1; the

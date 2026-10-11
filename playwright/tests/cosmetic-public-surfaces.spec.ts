@@ -89,7 +89,9 @@ test.describe('Lane B — mobile planner', () => {
     test(`B1 /experiences/${slug} @390px: the start page, occasion picked, no horizontal scroll`, async ({ page }) => {
       await page.setViewportSize(MOBILE);
       await settle(page, `/experiences/${slug}`);
-      await expect(page.getByRole('heading', { name: /What are you planning\?/i })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole('heading', { name: /Plan around…/i })).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('city-card-kyoto').click();
+      await page.getByTestId('plan-entry-more-specific').click();
       await expect(page.getByTestId(`option-occasion-${slug}`)).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
       expect(await page.locator('[data-panel-group]').count()).toBe(0);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

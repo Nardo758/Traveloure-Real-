@@ -22,6 +22,10 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 // LD 43(d): mount 1 of 2 — the Trip Pass purchase success state. Soft, dismissible, never
 // blocking, and it renders only on a KNOWN-EMPTY vault (the component decides, not this file).
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
+// The run phrase lives in `@/lib/trip-pass-runs-copy` so /pricing reads the same words without
+// importing this card (ledger `2026-10-08-trip-pass-five-runs`); re-exported for existing importers.
+import { tripPassRunsPhrase } from "@/lib/trip-pass-runs-copy";
+export { tripPassRunsPhrase };
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -30,7 +34,10 @@ interface TripPassStatus {
   priceCents: number;
   planName: string;
   grantedAt?: string;
+  /** The runs the pass covers on this trip (R-ac), from the server's own config. */
+  runsPerTrip?: number;
 }
+
 
 export function TripPassCard({
   tripId,
@@ -164,7 +171,9 @@ export function TripPassCard({
               server actually enforces (optimizer_run, ai_task, traveler_service_fee). The pass
               still RECORDS the revision allowance in allowances_snapshot; it simply no longer
               promises it. trip-pass-copy.test.ts fails if this is re-added. */}
-          {" "}· unlimited optimizer runs + AI tasks · service fee waived
+          {/* Ruling 3 (ledger `2026-10-08-slip-main-rail`): the run allowance is the server's number
+              (R-ac). With no number the phrase names no count — never "unlimited", which it is not. */}
+          {" "}· {tripPassRunsPhrase(status.runsPerTrip)} + AI tasks · service fee waived
         </p>
         <DatesGate trip={trip ?? { id: tripId }} action="The Trip Pass" testId="trip-pass-dates-gate">
           {(guard) => (

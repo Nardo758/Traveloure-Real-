@@ -24,6 +24,7 @@ import { TransportSection } from "./TransportSection";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
+import { tripCardEyebrow } from "@/lib/trip-card-eyebrow";
 import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
 import { planMapAnchor } from "@/lib/map-scene";
@@ -308,6 +309,7 @@ function PlanCardSummary({
           statusLabel={statusLabel}
           metrics={{ days: numDays, activities: totalActivities, legs: totalLegs, transitTime: formatMinutes(totalMinutes) }}
           testId={`plancard-header-${trip.id}`}
+          eyebrow={tripCardEyebrow(plancardData?.trip?.finalVersion, !!plancardData?.trip?.finalizedAt)}
           badges={pendingExpertRequest ? (
             <span
               className="inline-flex items-center gap-1 rounded-md bg-white/10 text-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
@@ -1154,7 +1156,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           // same Maps action (plus Message/Get-help + Share) at mobile widths.
           <div className="hidden sm:flex px-3 sm:px-5 pb-4 pt-2 gap-2">
             {/* Mobile-lens audit #9: the "View Itinerary" button that used to sit here linked to
-                /itinerary/:id, which redirects straight back to this same /trip/:id?tab=itinerary
+                /itinerary/:id, which redirects straight back to this same /trip/:id
                 page — a no-op button. Removed rather than repointed: this full-stage card IS the
                 itinerary view, so there's nothing additive to send the traveler to from here. */}
             <Button

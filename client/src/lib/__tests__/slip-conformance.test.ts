@@ -159,19 +159,15 @@ const ALLOWED_ADDITIONS = {
   // A3b · comparisons on the slip (ledger `2026-09-29-a3b-option-sets-slip`): the open sets sit
   // above the days (golden path Step 2); the controls themselves live in SlipOptionSets.tsx.
   "slip-option-sets": "A3b — the plan's open comparisons and the lodging entry, above the day list",
-  "slip-anchor-state": "A1 — the header line: where you'll stay / what the plan is built around",
   "slip-occasion-name": "A1 — the B1 header eyebrow: the occasion's OWN name, never the group (R127)",
   // 1 · the two-column relayout and the merged view bar
-  "slip-columns": "1 — the plan column + the fixed rail track",
+  "slip-columns": "1 — the plan column (Main-rail: one centered column; the rail track is gone, ruling 7)",
   "slip-viewbar": "1 — the status counts and the List | Map toggle, merged into one row",
   // 3 · the rail's Expert card
   "slip-rail-expert": "3 — the Expert card itself",
   "slip-rail-expert-name": "3 — the advisor's name",
   "slip-rail-expert-standing": "3 — pending / advising, from the ONE shared sentence",
   "slip-rail-expert-storefront": "3 — /s/<handle>, and ONLY when a handle exists (§13, LD 40)",
-  "slip-rail-expert-message-note": "3 — says out loud that Message lives once, in Build",
-  // 6 · the Plan card's stops row
-  "slip-plan-stops": "6 — Stops & timezone, a DOOR of the ONE planning modal (LD 33/34)",
   // 1 (continued) · ledger `2026-09-06-role-chips-filter`. The merged bar rendered only when the
   // plan already held rows, so a FRESH plan had no view bar and therefore no List | Map toggle at
   // all — the canvas draws that row with "Nothing added yet" beside the toggle. This is the
@@ -234,6 +230,17 @@ const ALLOWED_ADDITIONS = {
   "slip-meta-zone": "Empty board — the plan's zone in the subline, e.g. 'JST' (ruling 3; no handler)",
   "slip-meta-chips": "Empty board — the owner's 'Set your dates' / 'Who's coming?' chips row (no handler of its own)",
   "slip-empty-board": "Empty board — the owner's empty-plan start: anchor question, draft card, other ways in (no handler of its own)",
+  // Slip conformance, Main board (rail; ledger `2026-10-08-slip-main-rail`, ruling 3): the rail
+  // dissolves into the plan column, the ⋯ plan menu and the sticky bottom bar. Containers carry no
+  // handler of their own; the one new control is "Send feedback", the SAME tap in a dialog.
+  "slip-plan-menu": "Main-rail — the ⋯ plan menu: Share, PDF, calendar, Browse services, Send feedback (no handler of its own)",
+  "slip-action-feedback": "Main-rail — 'Send feedback' (ruling 3: Feedback → ⋯ menu) opens the SAME post-draft FeedbackTap",
+  "slip-bottom-bar": "Main-rail — the sticky bottom bar: Ask AI (secondary) · Finalize (primary) (no handler of its own)",
+  "slip-bottom-bar-space": "Main-rail — the spacer that holds the fixed bar's height at the end of the column (no handler)",
+  "slip-bar-finish": "Main-rail — the Finish controls in the bar layout (same testids, same mutations; no handler of its own)",
+  "slip-plan-panel": "Main-rail — what the rail still says, inside the column: Expert, engagement, plan extras (no handler)",
+  "slip-plan-extras": "Main-rail — organize-into-events and the budget, drawn bare (no handler of its own)",
+  "slip-trip-pass-offer": "Main-rail — ruling 3: the Trip Pass offered under the optimizer card after the first run (no handler of its own)",
   "slip-days-expand-all": "Main board (rows) — Expand all / Collapse all: opens or closes every day through the same day-open state each day's own toggle writes",
 } as const;
 
@@ -260,13 +267,6 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
       "E1 ruling 7 — Optimize goes through the dates gate before the build-around step; the in-flight " +
       "early return is unchanged and the run reads the window the gate handed over.",
   },
-  "slip-action-hire-expert": {
-    to: ["onClick:() => openHandoffChooser({})"],
-    reason:
-      "R323 (step 7b, surface spec §12/§10 — ledger R323) — \"Hand off to a local expert\" now opens " +
-      "the ONE handoff chooser (Polish my plan · Book these for me · Plan it all); the pick-an-expert " +
-      "dialog it opened is retired. A deliberate ruling, not a relayout.",
-  },
   "slip-action-finalize-plan": {
     to: ["onClick:refinalize"],
     reason:
@@ -285,6 +285,23 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
 };
 
 const ALLOWED_REMOVALS = {
+  "trip-pass-covered-label":
+    "Main-rail (ruling 3; ledger `2026-10-08-slip-main-rail`) — \"Included in your Trip Pass\" is no longer " +
+    "a label under the card: it is the Optimize button's own state, \"Optimize · included · N runs left\" " +
+    "(`optimizeBoardCtaLabel`, from the fee's server-sent `tripPassRuns`). It carried no handler.",
+  "slip-rail-trip-pass":
+    "Main-rail (ruling 3; ledger `2026-10-08-slip-main-rail`) — the Build card's standing Trip Pass slot. " +
+    "The SAME `TripPassCard` is offered under the optimizer card once the plan has had a run " +
+    "(`slip-trip-pass-offer`), never as a standing card.",
+  "slip-rail":
+    "Main-rail (rulings 3 and 7; ledger `2026-10-08-slip-main-rail`) — the rail container itself. The " +
+    "boards draw no rail at any width; each of its controls kept one home (the plan panel, the ⋯ plan " +
+    "menu, the bottom bar, the optimizer card), pinned by this inventory and by section 1.",
+  "slip-action-hire-expert":
+    "Main-rail (ruling 3; ledger `2026-10-08-slip-main-rail`) — not removed from the page: the hire " +
+    "door is the optimizer card's \"Local expert\" button (`components/plan/OptimizerLead.tsx`, outside " +
+    "this inventory's file set), where the Main board draws it, carrying the SAME testid and the SAME " +
+    "handler (`openHandoffChooser({})`, R323). The Build card that held it is gone.",
   "button-toggle-slip-contracts":
     "surface step 2 (ledger `2026-10-03-surface-step2-tools-tray`) — the contract board left the rail's " +
     "Plan card for the slip's tools tray: the SAME `VendorContractBoard`, opened by the manifest's " +
@@ -371,61 +388,66 @@ describe("0 — the relayout lost nothing and re-wired nothing", () => {
   });
 });
 
-// ── 1 · RAIL PLACEMENT AND ORDER ──────────────────────────────────────────────────────────────
+// ── 1 · ONE COLUMN, NO RAIL (Main-rail; rulings 3 and 7, ledger `2026-10-08-slip-main-rail`) ──
+//
+// SANCTIONED REWRITE (decision-maker, Oct 8, 2026): this section pinned the Sep 6 relayout — a fixed
+// 320px rail beside the plan, four cards Build · Plan · Share · Finish. Rulings 3 and 7 replace that
+// layout: one centered column at most 680px wide, no rail at any width, the rail's pieces each given
+// one home. The pins below hold the NEW homes; every testid the old ones held is still asserted.
 
-describe("1 — the rail is a fixed right column, and its cards run Build → Plan → Share → Finish", () => {
-  it("mounts beside the day list at lg, stacking above it below lg", () => {
-    // The canvas `page()` is a flex row; `rail()` is `width: 320px; flex-shrink: 0`. In Tailwind
-    // that is `lg:w-80` + `lg:shrink-0` on the rail's own track, inside a `lg:flex-row` container.
-    assert.match(viewCode, /data-testid="slip-columns"/, "the two-column container exists");
-    assert.match(viewCode, /lg:flex-row/, "it becomes a row at lg");
-    assert.match(viewCode, /lg:w-80/, "the rail track is the canvas's fixed 320px");
-    assert.match(viewCode, /lg:shrink-0/, "and it never shrinks — the Trip Pass wrap this fixes");
-    // Below lg the rail is FIRST on screen (the artboard's order) while the DOM order is unchanged,
-    // so the reading order of the two regions does not flip with the breakpoint.
-    assert.match(viewCode, /order-1 lg:order-2/, "the rail draws above the list below lg");
-    assert.match(viewCode, /order-2 lg:order-1/, "and the plan column below it");
-    // A1 (ledger `2026-09-29-a1-trips-frame`): a Trip reads list-first on a phone, so its anchor
-    // question is first on screen; `lg` is unchanged for every group.
-    assert.match(viewCode, /tripsAnchor \? "order-1 lg:order-1" : "order-2 lg:order-1"/, "a Trip's plan column is first below lg");
-    assert.match(viewCode, /tripsAnchor \? "order-2 lg:order-2 mt-5 lg:mt-0" : "order-1 lg:order-2 mb-5"/, "and its rail follows it");
+describe("1 — one centered column; the rail's pieces each have one home", () => {
+  it("the slip is one column at most 680px wide, and the map view keeps its own width", () => {
+    assert.match(viewCode, /data-testid="slip-columns"/, "the plan column container is still addressable");
+    assert.match(viewCode, /slipView === "map" \? "max-w-6xl" : "max-w-\[680px\]"/, "ruling 7: 680px, map unchanged");
+    assert.doesNotMatch(viewCode, /lg:flex-row/, "no second column at lg");
+    assert.doesNotMatch(viewCode, /lg:w-80/, "no 320px rail track");
   });
 
-  it("the rail is ONE column at lg — the canvas's single 320px track", () => {
-    assert.match(railCode, /lg:grid-cols-1/, "one card per row inside the rail track");
-    assert.match(railCode, /data-testid="slip-rail"/, "the rail itself stays addressable");
+  it("the rail is gone; its pieces are the plan panel, the ⋯ plan menu and the bottom bar", () => {
+    assert.doesNotMatch(railCode, /data-testid="slip-rail"/, "no rail container");
+    assert.match(railCode, /data-testid="slip-plan-panel"/);
+    assert.match(railCode, /data-testid="slip-plan-menu"/);
+    assert.match(railCode, /data-testid="slip-bottom-bar"/);
+    assert.match(viewCode, /<SlipPlanMenu\b/, "the header mounts the menu");
+    assert.match(viewCode, /<SlipBottomBar\b/, "the column ends in the bar");
+    // The bar's two actions: Ask AI secondary, Finalize primary — the existing components, bar layout.
+    const bar = functionBody(railCode, "export function SlipBottomBar(");
+    assert.match(bar, /<AskAiDrawer[^>]*layout="bar"/);
+    assert.match(bar, /<FinishCard[^>]*layout="bar"/);
+    // Share, PDF, calendar, Browse and feedback are menu entries with their old testids.
+    const menu = functionBody(railCode, "export function SlipPlanMenu(");
+    for (const id of ["slip-action-share", "slip-action-pdf", "slip-action-calendar", "slip-browse-services", "slip-action-feedback"]) {
+      assert.match(menu, new RegExp(`data-testid="${id}"`), `${id} lives in the menu`);
+    }
+    // LD 45 (5): the Coordination card is KEPT (decision-maker, Oct 8, 2026) — inline, in the Handoff
+    // banner's slot above the day cards, owner only, rendered only with an engagement; not in a rail.
+    const plan = functionBody(railCode, "export function SlipRail(");
+    assert.doesNotMatch(plan, /<CoordinationCard\b/, "not in the plan panel");
+    const banner = viewCode.indexOf("<HandoffBanner");
+    const coord = viewCode.indexOf("<CoordinationCard");
+    assert.ok(banner > 0 && coord > banner, "directly after the Handoff banner");
+    assert.ok(coord < viewCode.indexOf("<DayBlock"), "above the day cards");
+    const card = functionBody(railCode, "export function CoordinationCard(");
+    assert.match(card, /isOwner \? engagementsForPlan\(data, tripId\) : \[\]/, "owner only");
+    assert.match(card, /if \(engagements\.length === 0\) return null;/, "nothing without an engagement");
+    assert.match(card, /href="\/my-events"/);
   });
 
-  it("the four cards render in the ruling's order, and the module still names that order", () => {
-    // The module is the ONE statement of the order (§18 rule 1); this asserts the SHIPPED mounts
-    // agree with it rather than restating a list of four names here.
-    assert.deepEqual([...SLIP_RAIL_CARDS], ["build", "plan", "share", "finish"]);
-    const mountOrder = [...railCode.matchAll(/<(Build|Plan|Share|Finish)Card\b/g)].map((m) =>
-      m[1].toLowerCase(),
-    );
-    assert.deepEqual(
-      mountOrder,
-      [...SLIP_RAIL_CARDS],
-      "the mounts must run in the order the module declares — it was Build · Finish · Plan · Share",
-    );
-  });
-
-  it("the Trip Pass card keeps its ONE home in Build, and stacks rather than wrapping", () => {
-    assert.match(railCode, /data-testid="slip-rail-trip-pass"/, "the testid CI pins is kept");
+  it("the Trip Pass is offered under the optimizer card after the first run, never as a standing card", () => {
     assert.equal((railCode.match(/<TripPassCard/g) ?? []).length, 1, "one mount, one purchase rail");
+    assert.match(railCode, /data-testid="slip-trip-pass-offer"/);
+    assert.match(railCode, /hasRun \? \(/, "gated on the plan having had a run");
+    assert.match(railCode, /lastOptimizedAt/, "read from the plan's own lastOptimizedAt");
     const pass = stripComments(readClient("components/plancard/TripPassCard.tsx"));
-    // The offer section is a COLUMN now: the three-across flex-wrap row is what wrapped the price
-    // line a word at a time inside a 320px rail.
-    // Sliced to the OFFER section specifically — the active-state section is declared first in the
-    // file, and a pin that grabbed it would be about a card that draws no price at all.
     const offerId = pass.indexOf('data-testid="trip-pass-card-offer"');
     assert.ok(offerId > 0, "the offer section is still addressable");
-    const offer = pass.slice(pass.lastIndexOf("<section", offerId), pass.indexOf("</section>", offerId));
-    assert.match(offer, /flex flex-col/, "the offer stacks rather than wrapping three-across");
     assert.match(pass, /data-testid="trip-pass-price"/, "the price testid is kept");
     assert.match(pass, /data-testid="button-buy-trip-pass"/, "and the buy control's");
     // §14 — the price is still the server's own row, never a literal on this surface.
     assert.match(pass, /status\.priceCents/);
+    // Ruling 3: "5 runs", from the server, never "unlimited".
+    assert.match(pass, /status\.runsPerTrip/);
+    assert.doesNotMatch(pass, /unlimited/);
   });
 
   it("the viewbar is ONE row: the status counts and the List | Map toggle together", () => {
@@ -655,7 +677,8 @@ describe("3 — the rail names the person on the plan, from the SAME read the Bu
   it("ONE advisor read for the whole rail — not one per card", () => {
     const advisorReads = railCode.match(/expert-advisor/g) ?? [];
     assert.equal(advisorReads.length, 1, "exactly one query key for the advisor row");
-    assert.match(railCode, /const \{ data: advisorData \}/, "resolved at the rail's own level");
+    // Main-rail: the ONE read is a hook (`useSlipAdvisor`), shared by the plan panel and nothing else.
+    assert.match(railCode, /export function useSlipAdvisor\(/, "resolved once, in one hook");
     assert.match(railCode, /expertState=\{expertState\}/, "and handed to the cards that need it");
   });
 
@@ -690,12 +713,14 @@ describe("3 — the rail names the person on the plan, from the SAME read the Bu
     assert.doesNotMatch(card, /userId|user_id|expertUserId/);
   });
 
-  it("no advisor ⇒ no card; and the Message control still lives once, in Build", () => {
+  it("no advisor ⇒ no card; and the Message control lives once, in the Expert card", () => {
     const card = functionBody(railCode, "function ExpertCard(");
     assert.match(card, /if \(expertState\.kind !== "message"\) return null;/);
     assert.equal(slipExpertRailState(null).kind, "hire", "no advisor is the hire state, not a card");
-    assert.doesNotMatch(card, /slip-action-message-expert/, "the card offers no second message rail");
-    assert.match(railCode, /testId="slip-action-message-expert"/, "which still exists, in Build");
+    // Main-rail: the Build card is gone, so the ONE message control is handed INTO the card that
+    // portrays the person it messages (the Handoff board's placement).
+    assert.match(card, /\{messageControl\}/, "the card renders the one message control it is given");
+    assert.equal((railCode.match(/testId="slip-action-message-expert"/g) ?? []).length, 1, "exactly one message control");
   });
 });
 
@@ -777,19 +802,17 @@ describe("6 — Stops & timezone opens the ONE modal and restates neither line",
     assert.equal(slipPlanMetaLine(null, null), null);
   });
 
-  it("the row is a DOOR of the one planning modal, never a second stop writer (LD 33/34)", () => {
-    assert.match(railCode, /(data-)?[tT]est[iI]d="slip-plan-stops"/);
-    assert.match(railCode, /Stops & timezone/);
-    assert.match(railCode, /usePlanning\(\)/, "the ONE opener");
-    assert.match(railCode, /onClick=\{\(\) => openPlanModal\(\)\}/);
-    // Locked Decision 34's one client writer, one editing surface.
+  it("ruling 3: Stops & timezone is the HEADER's stops line, a door of the one planning modal (LD 33/34)", () => {
+    // Main-rail (sanctioned rewrite): the rail's row is gone; the header's stops line and its
+    // owner-only Edit are the one door, and the zone is the header subline and the Travel party sheet.
+    assert.doesNotMatch(railCode, /(data-)?[tT]est[iI]d="slip-plan-stops"/, "no second door in the plan panel");
+    assert.match(viewCode, /onEditStops=\{\(\) => openPlanModal\(\)\}/, "the header opens the ONE planning modal");
+    assert.match(viewCode, /zoneLine=\{zoneLine\}/, "the zone line reaches the tray's Travel party sheet");
+    // Neither file writes stops itself — one client writer, one editing surface (LD 34).
     assert.doesNotMatch(railCode, /savePlanStops/);
     assert.doesNotMatch(railCode, /\/destinations/);
-    // The lines arrive as props; the rail calls only the composer (§18 rule 1).
-    assert.match(railCode, /slipPlanMetaLine\(stopsLine, zoneLine\)/);
     assert.doesNotMatch(railCode, /slipStopsLine\(/);
     assert.doesNotMatch(railCode, /slipZoneLine\(/);
-    // And SlipView resolves them ONCE, for the header and the rail both.
     assert.equal((viewCode.match(/slipStopsLine\(/g) ?? []).length, 1);
     assert.equal((viewCode.match(/slipZoneLine\(/g) ?? []).length, 1);
   });

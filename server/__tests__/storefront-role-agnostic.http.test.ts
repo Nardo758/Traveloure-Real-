@@ -91,13 +91,18 @@ async function createApprovedService(ownerId: string, label: string) {
   return id;
 }
 
+// Each listing is born one second after the last, so a ranking tie broken by "newest first" has
+// one answer. Left to the database clock, back-to-back inserts can share a millisecond, and the
+// ranker then falls back to comparing random ids (sanctioned, ledger `2026-10-10-ss2a-spec-columns`).
+let listingSeq = 0;
 async function createListing(ownerId: string, name: string, price: string, showPrice = true) {
   const id = crypto.randomUUID();
+  listingSeq += 1;
   await pool.query(
     `INSERT INTO provider_services
-      (id, user_id, service_name, price, show_price, status, approval_status, delivery_method)
-     VALUES ($1, $2, $3, $4, $5, 'active', 'approved', 'pdf')`,
-    [id, ownerId, name, price, showPrice],
+      (id, user_id, service_name, price, show_price, status, approval_status, delivery_method, created_at)
+     VALUES ($1, $2, $3, $4, $5, 'active', 'approved', 'pdf', NOW() - INTERVAL '1 hour' + make_interval(secs => $6::int))`,
+    [id, ownerId, name, price, showPrice, listingSeq],
   );
   createdServiceIds.push(id);
   return id;

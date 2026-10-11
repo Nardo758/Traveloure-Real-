@@ -108,21 +108,14 @@
       "terms": "利用規約"
     }
   },
-  "closing": {
-    "startMyPlan": "プランを始める",
-    "meetTheLocals": "地元の人に会う",
-    "seePricing": "料金を見る",
-    "headline": "理由と場所はあなたが知っている。方法は地元の人が知っている。"
-  },
   "hero": {
     "headline": "どんな体験も。どこでも。地元の人のようにプランニング。",
-    "subhead": "目的と、世界のどこで過ごしたいかを教えてください。私たちがそれに合わせてプランを作り、現地に住む人が残りを引き受けます。",
-    "startPlanning": "プランニングを始める",
+    "subhead": "目的と都市を教えてください。私たちがそれに合わせてプランを作り、現地に住む人が残りを引き受けます。",
+    "startAPlan": "プランを始める",
     "beginPrompt": "どこから始めますか？",
     "beginBrowse": "探す",
     "beginFindHelp": "相談する",
     "billboard": {
-      "startThisPlan": "このプランを始める",
       "planWith": "@{{handle}}とプランする",
       "viewListing": "掲載を見る",
       "planAroundGem": "このスポットを軸にプランする",

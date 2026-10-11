@@ -5,7 +5,7 @@
  *       `OCCASION_GROUP_LABELS` (one source): the labels in order, each linking to
  *       `/experiences?group=<key>`; no leaf renders a raw key (R127). The mobile nav reads the same
  *       config, so it carries the same five.
- *   G2  `?group=` pre-picks only an EXACT key: `moments` → One evening; `xyz`, `Moments`, empty → none.
+ *   G2  `?group=` pre-picks only an EXACT key: `moments` → A moment; `xyz`, `Moments`, empty → none.
  *   G3  the picker opens on that group's tab; with no group, no tab is pressed.
  *   G4  the start page reads `?group=` through the one helper and hands it to the picker.
  *
@@ -57,7 +57,7 @@ describe("the nav's Experiences menu", () => {
   it("G2 ?group= pre-picks an exact key only", () => {
     const g = preselectedGroup(new URLSearchParams("group=moments"));
     assert.equal(g, "moments");
-    assert.equal(OCCASION_GROUP_LABELS[g!], "One evening");
+    assert.equal(OCCASION_GROUP_LABELS[g!], "A moment");
     assert.equal(preselectedGroup(new URLSearchParams("group=xyz")), null);
     assert.equal(preselectedGroup(new URLSearchParams("group=Moments")), null);
     assert.equal(preselectedGroup(new URLSearchParams("group=")), null);
@@ -69,7 +69,7 @@ describe("the nav's Experiences menu", () => {
       renderToString(React.createElement(OccasionPicker as any, { occasions: CATALOG, value: "", onPick: () => {}, initialGroup }));
     const picked = render("moments");
     assert.match(picked, /aria-pressed="true"[^>]*data-testid="occasion-group-moments"|data-testid="occasion-group-moments"[^>]*aria-pressed="true"/);
-    assert.ok(picked.includes("Date Night"), "the One evening tab lists its occasions");
+    assert.ok(picked.includes("Date Night"), "the A moment tab lists its occasions");
     const none = render(null);
     assert.doesNotMatch(none, /aria-pressed="true"[^>]*data-testid="occasion-group-/);
     assert.ok(!none.includes("Date Night"), "no tab ⇒ no occasions listed");
@@ -77,7 +77,8 @@ describe("the nav's Experiences menu", () => {
 
   it("G4 the start page reads ?group= through the one helper", () => {
     const page = read("client/src/pages/experiences.tsx");
-    assert.match(page, /preselectedGroup\(new URLSearchParams\(searchString\)\)/);
-    assert.match(page, /initialGroup=\{preselectGroup\}/);
+    // E3 (sanctioned): the page hands ?group= to PlanEntry inline as its starting `group`.
+    assert.match(page, /const group = preselectedGroup\(params\);/);
+    assert.match(page, /\.\.\.\(group \? \{ group \} : \{\}\)/);
   });
 });

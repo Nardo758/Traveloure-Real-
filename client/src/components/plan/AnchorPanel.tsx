@@ -7,7 +7,8 @@
  *                         "Add places I'm considering" / "I've got lodging sorted" / "Skip for now".
  *                         A schedule-first Trip (M7, `fixed_item`) asks what is fixed instead.
  *   DRAFTED, options      the ranked neighbourhoods (stored per draft), each with its one-liner (R-x)
- *                         and its stays — platform-listed first, badged "Traveloure stay" (R-o). When
+ *                         and its stays — in their kind-blind order, Traveloure stays badged "Traveloure stay"
+ *                         (R-o; its platform-first sort deleted by S1-b). When
  *                         the top two tie on day-count, the top one says why it leads; the rest say
  *                         nothing.
  *   DRAFTED, collapsed    R-y: no option has a stay ⇒ one line, "Best area for these days: <top> ·
@@ -25,9 +26,27 @@
  */
 import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
-import { useState, type ReactNode } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { BedDouble, ChevronRight, MapPin } from "lucide-react";
+import {
+  GOOGLE_MAPS_ATTRIBUTION,
+  STAY_CHANGED_LINE,
+  STAY_HERE_LABEL,
+  STAY_PICK_SUBTITLE,
+  STAY_PICK_TITLE,
+  STAY_STRAIGHT_LINE_SUBTITLE,
+  STAY_STRAIGHT_LINE_TITLE,
+  STAY_SWAP_LEAD,
+  stayCardModel,
+  stayClosenessLine,
+  stayCardLink,
+  STAY_RATES_LOADING,
+  STAY_RATES_SEE,
+  stayRatesLines,
+  type StayRatesView,
+} from "@/lib/stay-card";
+import type { StayLink } from "@shared/stay-link";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { BedDouble, ChevronRight, ExternalLink, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -68,6 +87,8 @@ type Bind =
   | { kind: "skip" };
 
 export interface AnchorPanelViewProps {
+  /** S1-b: the plan this panel belongs to — a Traveloure stay's "See rooms" carries it to the listing page. */
+  tripId?: string | null;
   /** `empty` before a draft exists; `drafted` once the server ranks neighbourhoods; `chooser` in the tray. */
   stage: "empty" | "drafted" | "chooser" | "change";
   /**
@@ -85,6 +106,8 @@ export interface AnchorPanelViewProps {
   /** When the occasion did not say whether it has a schedule (`TripsAnchor.fromFallback`). */
   fromFallback?: boolean;
   view?: WhereToStayView | null;
+  /** FU-S1-2: the routed pick's link once its card is shown (`GET …/stay-pick/link`); null = not fetched / none. */
+  openedStayLink?: StayLink | null;
   canChoose: boolean;
   busy?: boolean;
   /** The existing comparison starter, labelled "Add places I'm considering". */
@@ -92,6 +115,9 @@ export interface AnchorPanelViewProps {
   /** The existing day-1 add control, for a fixed-item anchor. */
   addFixedControl?: ReactNode;
   onStayHere?: (hotel: StayHotel) => void;
+  /** S1-d-2: live rates per LiteAPI stay id, once its "See rates" was tapped; absent ⇒ not asked. */
+  stayRates?: Record<string, StayRatesView>;
+  onSeeRates?: (hotel: StayHotel) => void;
   onOwn?: (answer: { hotelName: string | null; neighborhoodSlug: string | null }) => void;
   onSkip?: () => void;
   bound?: { name: string } | null;
@@ -151,6 +177,184 @@ function OwnForm({
   );
 }
 
+/**
+ * S1 "one stay on the plan" (Locked Decision 64): the server's `stay` block as a board card. A
+ * routed plan shows its ONE pick with "scored N of M nearby"; a free plan shows up to three stays
+ * closest by straight line. "Stay here" binds through the SAME `stay_here` answer the ranked list
+ * uses; the swap is the existing "Add places I'm considering" starter. The link slot is `stayCardLink`:
+ * a Traveloure stay's "See rooms" (its listing page, with the plan; no attribution — S1-b), otherwise
+ * FU-S1-2's link with "Google Maps" beside it whenever it came from Google. Words:
+ * `@/lib/stay-card`. No price, no commission (ruling 5) — the payload carries neither.
+ */
+export function StayPickCard({
+  view,
+  tripId,
+  openedStayLink,
+  canChoose,
+  busy,
+  onStayHere,
+  swapControl,
+  stayRates,
+  onSeeRates,
+}: {
+  view: WhereToStayView;
+  /** S1-b: the plan a Traveloure stay's "See rooms" carries to its listing page. */
+  tripId?: string | null;
+  openedStayLink?: StayLink | null;
+  canChoose: boolean;
+  busy: boolean;
+  onStayHere?: (hotel: StayHotel) => void;
+  swapControl?: ReactNode;
+  stayRates?: Record<string, StayRatesView>;
+  onSeeRates?: (hotel: StayHotel) => void;
+}) {
+  const model = stayCardModel(view.stay);
+  if (!model) return null;
+  const routed = model.tier === "routed";
+  return (
+    <section
+      className="space-y-2 rounded-[var(--slip-radius-card,12px)] border border-[color:var(--slip-teal,#2E8B8B)] bg-[color:var(--slip-card,#fff)] p-3"
+      data-testid="stay-pick-card"
+      data-stay-tier={model.tier}
+    >
+      <div>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink,#1F6F6F)]" data-testid="stay-pick-title">
+          {routed ? STAY_PICK_TITLE : STAY_STRAIGHT_LINE_TITLE}
+        </p>
+        <p className="text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-subtitle">
+          {routed ? STAY_PICK_SUBTITLE : STAY_STRAIGHT_LINE_SUBTITLE}
+        </p>
+        {model.scoredLine ? (
+          <p className="text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-scored">
+            {model.scoredLine}
+          </p>
+        ) : null}
+        {model.changed ? (
+          <p className="text-xs font-semibold text-[color:var(--slip-ink,#1A1A18)]" data-testid="stay-pick-changed">
+            {STAY_CHANGED_LINE}
+          </p>
+        ) : null}
+      </div>
+      <ul className="space-y-2">
+        {model.hotels.map((h) => (
+          <li key={`${h.kind}-${h.id}`} className="flex flex-wrap items-center justify-between gap-2" data-testid={`stay-pick-hotel-${h.kind}-${h.id}`}>
+            <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm text-foreground">
+              {h.photo ? <PlacePhoto photo={h.photo} size="thumb" testId={`stay-pick-photo-${h.id}`} /> : <BedDouble className="h-4 w-4" aria-hidden="true" />}
+              <span className="font-semibold">{h.name}</span>
+              {h.starRating ? <span className="text-xs text-[color:var(--slip-muted,#5B6B7A)]">· {h.starRating}★</span> : null}
+              {h.kind === "platform" ? (
+                <span className="rounded border border-border px-1.5 text-[11px] text-[color:var(--slip-muted,#5B6B7A)]">{PLATFORM_STAY_BADGE}</span>
+              ) : null}
+            </span>
+            {stayClosenessLine(h.closeness) ? (
+              // R394: S1's own per-day closeness, display only — the card computes nothing.
+              <span className="basis-full text-xs font-semibold text-[color:var(--slip-teal-ink,#1F6F6F)]" data-testid={`stay-pick-closeness-${h.id}`}>
+                {stayClosenessLine(h.closeness)}
+              </span>
+            ) : null}
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {(() => {
+                // S1-b: a Traveloure stay opens its listing page with the plan ("See rooms"), unattributed.
+                // FU-S1-2 otherwise: the routed pick prefers the link fetched when its card was shown.
+                const lk = stayCardLink(h, { tripId, city: view.city, openedStayLink: routed ? openedStayLink : null });
+                if (!lk.external) {
+                  return (
+                    // An in-app page, same tab — a plain anchor like the panel's own Compare link.
+                    <a
+                      href={lk.href}
+                      className="inline-flex min-h-[32px] items-center gap-1 whitespace-nowrap text-xs font-semibold underline underline-offset-2"
+                      data-testid={`stay-pick-rooms-${h.id}`}
+                      data-link-kind={lk.kind}
+                    >
+                      {lk.label}
+                    </a>
+                  );
+                }
+                return (
+                  <span className="flex flex-wrap items-center gap-x-1 text-xs">
+                    <a
+                      href={lk.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-[32px] items-center gap-1 whitespace-nowrap font-semibold underline underline-offset-2"
+                      data-testid={`stay-pick-map-${h.kind}-${h.id}`}
+                      data-link-kind={lk.kind}
+                    >
+                      {lk.label} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                    </a>
+                    {lk.attributed ? (
+                      <span className="whitespace-nowrap text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-pick-map-attribution-${h.id}`}>
+                        · {GOOGLE_MAPS_ATTRIBUTION}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              })()}
+              {canChoose ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-[40px] shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60"
+                  onClick={() => onStayHere?.(h)}
+                  disabled={busy}
+                  data-testid={`stay-pick-stay-${h.kind}-${h.id}`}
+                >
+                  {STAY_HERE_LABEL}
+                </button>
+              ) : null}
+            </span>
+            {h.kind === "liteapi" ? <StayRatesRow hotel={h} view={stayRates?.[h.id]} onSeeRates={onSeeRates} /> : null}
+          </li>
+        ))}
+      </ul>
+      {canChoose && swapControl ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-swap">
+          <span>{STAY_SWAP_LEAD}</span>
+          {swapControl}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * S1-d-2: a LiteAPI stay's "See rates" control and, after the tap, its live rate. Before the tap there is
+ * NO price text on the card (SC3/SC7). Test ids carry the `stay-rates-` prefix so the card's other counts
+ * (SC5, SC6, CL4) are untouched. The panel reads the server's answer and computes nothing.
+ */
+function StayRatesRow({ hotel, view, onSeeRates }: { hotel: StayHotel; view?: StayRatesView; onSeeRates?: (h: StayHotel) => void }) {
+  if (!view) {
+    return (
+      <span className="basis-full">
+        <button type="button" className={quiet} onClick={() => onSeeRates?.(hotel)} data-testid={`stay-rates-open-${hotel.id}`}>
+          {STAY_RATES_SEE}
+        </button>
+      </span>
+    );
+  }
+  const lines = stayRatesLines(view);
+  return (
+    <div className="basis-full rounded-md border border-border bg-muted/20 px-3 py-2 text-xs" data-testid={`stay-rates-panel-${hotel.id}`} data-rates-state={view.state}>
+      {!lines ? (
+        <p className="text-[color:var(--slip-muted,#5B6B7A)]">{STAY_RATES_LOADING}</p>
+      ) : lines.kind === "message" ? (
+        <p className="text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-rates-message-${hotel.id}`}>{lines.text}</p>
+      ) : (
+        <div className="space-y-0.5">
+          <p className="text-sm font-semibold text-foreground" data-testid={`stay-rates-price-${hotel.id}`}>
+            {lines.price} <span className="font-normal text-[color:var(--slip-muted,#5B6B7A)]">{lines.party}</span>
+          </p>
+          {lines.board ? <p data-testid={`stay-rates-board-${hotel.id}`}>{lines.board}</p> : null}
+          {lines.cancellation ? <p data-testid={`stay-rates-cancel-${hotel.id}`}>{lines.cancellation}</p> : null}
+          {lines.payAtProperty.map((t, i) => (
+            <p key={i} data-testid={`stay-rates-property-${hotel.id}-${i}`}>{t}</p>
+          ))}
+          {lines.childrenNote ? <p className="text-[color:var(--slip-muted,#5B6B7A)]">{lines.childrenNote}</p> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RankedList({
   view,
   canChoose,
@@ -162,6 +366,10 @@ function RankedList({
   busy: boolean;
   onStayHere?: (hotel: StayHotel) => void;
 }) {
+  // Item 2 (ledger `2026-10-10-no-stays-no-promise`): a market with ZERO rankable stays near any of these
+  // neighbourhoods shows the neighbourhoods and no stays block at all — never "Hotels coming soon", which
+  // promises supply nobody has scheduled (§13). The decision is the panel's own `anchorPanelMode`.
+  const showStays = anchorPanelMode(view.neighborhoods) === "options";
   return (
         <ol className="space-y-3">
           {view.neighborhoods.map((n, i) => (
@@ -184,7 +392,7 @@ function RankedList({
                   {n.oneLiner.text}
                 </p>
               ) : null}
-              {n.hotels.length === 0 ? (
+              {!showStays ? null : n.hotels.length === 0 ? (
                 <p className="pl-5 text-xs text-muted-foreground italic" data-testid={`where-to-stay-coming-soon-${n.slug}`}>
                   {HOTELS_COMING_SOON}
                 </p>
@@ -315,6 +523,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
             {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
           </p>
         </div>
+        {view?.eligible ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} stayRates={props.stayRates} onSeeRates={props.onSeeRates} /> : null}
         {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
         {canChoose ? (
           <div className="space-y-2 border-t border-border pt-3">
@@ -347,7 +556,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         data-anchor-kind={anchorKind}
         data-anchor-panel="empty"
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink)]">
           {fixed ? (
             ANCHOR_PANEL_START_HERE
           ) : (
@@ -425,6 +634,8 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         </p>
       </div>
 
+      <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} stayRates={props.stayRates} onSeeRates={props.onSeeRates} />
+
       {mode === "unranked" ? (
         view.unranked === "no_located_items" ? (
           <p className="text-sm text-muted-foreground" data-testid="where-to-stay-no-located-items">
@@ -458,7 +669,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
 
 /** The container: wires the three answers to `POST /api/trips/:tripId/where-to-stay` and the free re-anchor. */
 export function AnchorPanel(
-  props: Omit<AnchorPanelViewProps, "busy" | "bound" | "onStayHere" | "onOwn" | "onSkip" | "onReanchor" | "onDismissReanchor" | "onReopen" | "compareHref"> & { tripId: string },
+  props: Omit<AnchorPanelViewProps, "busy" | "bound" | "onStayHere" | "onOwn" | "onSkip" | "onReanchor" | "onDismissReanchor" | "onReopen" | "compareHref" | "stayRates" | "onSeeRates"> & { tripId: string },
 ) {
   const { tripId } = props;
   const { toast } = useToast();
@@ -486,6 +697,38 @@ export function AnchorPanel(
     onSuccess: () => refresh(),
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't reopen where you're staying", description: e?.message }),
   });
+  // S1: a re-scored pick is shown once, then the card tells the server it was seen (the ONE read,
+  // `POST /api/trips/:tripId/stay-pick/seen`; owner or managing assistant — `canChoose`).
+  const seenSent = useRef<string | null>(null);
+  const stay = props.view?.stay;
+  const changedAt = stay && stay.tier === "routed" && stay.changed && stay.pick ? stay.computedAt ?? "changed" : null;
+  useEffect(() => {
+    if (!changedAt || !props.canChoose || seenSent.current === changedAt) return;
+    seenSent.current = changedAt;
+    void apiRequest("POST", `/api/trips/${tripId}/stay-pick/seen`, {}).catch(() => {
+      seenSent.current = null;
+    });
+  }, [changedAt, props.canChoose, tripId]);
+  // FU-S1-2 (R393): the routed pick's card is shown ⇒ fetch its link ONCE per pick (`computedAt`) — at most
+  // one Google Details call server-side, never stored. A free plan has no pick and never asks.
+  const pickedAt = stay && stay.tier === "routed" && stay.pick ? stay.computedAt ?? "pick" : null;
+  const { data: openedLink } = useQuery<{ stayLink: StayLink | null }>({
+    queryKey: [`/api/trips/${tripId}/stay-pick/link`, pickedAt],
+    queryFn: async () => (await apiRequest("GET", `/api/trips/${tripId}/stay-pick/link`)).json(),
+    enabled: !!pickedAt && !!props.view?.eligible,
+    staleTime: Infinity,
+    retry: false,
+  });
+  // S1-d-2: "See rates" on a LiteAPI stay asks the server ONCE per tap (a live call, never stored). Any
+  // failure reads as "Rates unavailable right now" — never an error toast.
+  const [stayRates, setStayRates] = useState<Record<string, StayRatesView>>({});
+  const seeRates = (h: StayHotel) => {
+    setStayRates((m) => ({ ...m, [h.id]: { state: "loading" } }));
+    void apiRequest("GET", `/api/trips/${tripId}/stays/${encodeURIComponent(h.id)}/rates`)
+      .then((r) => r.json())
+      .then((v: StayRatesView) => setStayRates((m) => ({ ...m, [h.id]: v && typeof v === "object" && "state" in v ? v : { state: "unavailable" } })))
+      .catch(() => setStayRates((m) => ({ ...m, [h.id]: { state: "unavailable" } })));
+  };
   const reanchor = useMutation({
     mutationFn: async (itemId: string) => (await apiRequest("POST", `/api/trips/${tripId}/anchor/promote`, { itemId })).json(),
     onSuccess: () => {
@@ -497,6 +740,9 @@ export function AnchorPanel(
   return (
     <AnchorPanelView
       {...props}
+      openedStayLink={openedLink?.stayLink ?? null}
+      stayRates={stayRates}
+      onSeeRates={seeRates}
       busy={bind.isPending || reanchor.isPending || reopen.isPending}
       compareHref={props.lodgingSet ? `/plans/${tripId}/compare/${props.lodgingSet.id}` : null}
       onReopen={() => props.lodgingSet && reopen.mutate(props.lodgingSet.id)}

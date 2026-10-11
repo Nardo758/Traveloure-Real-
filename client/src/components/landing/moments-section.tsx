@@ -10,13 +10,17 @@
  * ticks and hides its dots). Attribution mirrors the upsell session posture (a per-session token,
  * no PII): a slide ≥2s visible = one impression; tab/dot/cta = clicks. The CTA prefills the AI
  * chooser with the coarse experienceType AND the fine momentKey (2026-09-01-moment-key).
+ *
+ * H1 (ledger `2026-10-08-h1-home-copy`): a story is eyebrow + one-line headline + 2 points; the CTA
+ * reads "Start a plan" on the coral fill; the "built by @handle" byline and the "Planning your own?"
+ * note are gone. Photo credits — an expert's @handle among them — stay, because they credit a photo.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { SectionHeader, OpenSection } from "./section-header";
 import { useRotation } from "@/hooks/use-rotation";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -246,7 +250,7 @@ export function MomentsSection() {
               <button
                 type="button"
                 className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold text-white"
-                style={{ background: "var(--earn-coral-ink)" }}
+                style={{ background: "var(--coral-fill)" }}
                 data-testid="moment-cta"
                 onClick={() => {
                   postEvent(moment.key, "cta", active);
@@ -259,18 +263,8 @@ export function MomentsSection() {
                   });
                 }}
               >
-                Plan this moment
+                {START_PLAN_LABEL}
               </button>
-              {moment.builder && (
-                <span
-                  className="text-[11px]"
-                  style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
-                  data-testid="moment-builder"
-                >
-                  built by @{moment.builder.handle}
-                  {moment.builder.reviews > 0 ? ` · ${moment.builder.reviews} review${moment.builder.reviews === 1 ? "" : "s"}` : ""}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -328,47 +322,6 @@ export function MomentsSection() {
           })}
         </div>
 
-        {/*
-          "Planning your own?" — the Event-Planner disambiguation (ledger
-          `2026-09-04-wedding-landing-moment`; artboard docs/design/wedding-flow/Main.dc.html).
-
-          It lives INSIDE MomentsSection and nowhere else, because its copy points at "Plan this
-          moment" — the CTA on the card immediately above. In the empty-state fallback
-          (moments-slot.tsx renders ExperiencesRail when the live set is empty) that CTA does not
-          exist, so neither does this note; there is nothing here to lift into the rail.
-
-          "Plan this moment" below is TEXT, not a control: the section already has exactly one
-          planning opener (the CTA above, `usePlanning().open`), and a second one here would be a
-          second entry into the same chooser (ruling 2026-08-28-single-planning-entry). Only the
-          "Event Planner" phrase is a link, to the existing supply-side fork at /start/events.
-        */}
-        <div
-          className="mt-1.5 flex flex-wrap items-center gap-3 rounded-[12px] border px-4 py-3 text-[13px]"
-          style={{
-            borderColor: "var(--earn-border)",
-            background: "var(--earn-card)",
-            color: "var(--earn-muted)",
-          }}
-          data-testid="moments-planning-callout"
-        >
-          <span
-            className="whitespace-nowrap text-[10.5px] uppercase tracking-[0.1em]"
-            style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}
-          >
-            Planning your own?
-          </span>
-          <span className="min-w-0">
-            The Earn page's{" "}
-            <Link href="/start/events" className="underline underline-offset-2" data-testid="link-event-planner-track">
-              "Event Planner"
-            </Link>{" "}
-            track is for people who <em>sell</em> event services. Couples start here:{" "}
-            <span className="font-semibold" style={{ color: "var(--earn-coral-ink)" }}>
-              Plan this moment
-            </span>{" "}
-            opens your plan with the occasion already set.
-          </span>
-        </div>
       </OpenSection>
     </div>
   );

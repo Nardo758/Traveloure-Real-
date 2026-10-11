@@ -4,6 +4,7 @@ import { Users, Share2, Download, CheckCircle2, RefreshCw, CalendarPlus, FileTex
 import { Link } from "wouter";
 import { computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { PlanCardHeader } from "./PlanCardHeader";
+import { tripCardEyebrow } from "@/lib/trip-card-eyebrow";
 import { parseCalendarDate } from "@/lib/calendar-date";
 import { slipZoneLine } from "@/lib/slip-meta";
 import { slipCalendarPath, slipPdfPath } from "@/lib/slip-rail";
@@ -263,6 +264,7 @@ export function HeroSection({
         transitTime: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-",
       }}
       testId={`plancard-hero-${trip.id}`}
+      eyebrow={tripCardEyebrow(finalVersion, !revising)}
       // Locked Decision 30: the zone line is the slip header's OWN spelling; NULL ⇒ no line.
       zoneLine={slipZoneLine(timezone)}
       // The party, through the ONE label derivation. A count of exactly 1 is NOT shown: on rows

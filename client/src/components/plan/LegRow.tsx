@@ -19,7 +19,7 @@
  */
 import { useEffect, useState } from "react";
 import { Bike, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
-import { routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
+import { NO_TRANSIT_DRIVE_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
 import { Link } from "wouter";
 import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@shared/airport-leg";
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
@@ -327,6 +327,8 @@ export interface RoutedLegRowProps {
   route: RouteAnswer;
   timeZone: string | null;
   onOpen?: (() => void) | null;
+  /** P0 ruling 2: a drive shown because transit had no route — said on the row. */
+  transitUnavailable?: boolean;
 }
 
 /**
@@ -356,12 +358,19 @@ export function LegRow(props: LegRowProps) {
 
 const ROUTED_MODE_ICON: Readonly<Record<RoutingMode, typeof Car>> = { walk: Footprints, cycle: Bike, transit: TrainFront, drive: Car };
 
-function RoutedLegRow({ legId, mode, route, timeZone, onOpen }: RoutedLegRowProps) {
+function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable }: RoutedLegRowProps) {
   const Icon = ROUTED_MODE_ICON[mode] ?? Car;
   const body = (
     <>
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-      <span data-testid={`slip-leg-routed-line-${legId}`}>{routedLegLine({ mode, route }, timeZone)}</span>
+      <span>
+        {transitUnavailable ? (
+          <span className="font-medium" data-testid={`slip-leg-no-transit-${legId}`}>
+            {NO_TRANSIT_DRIVE_NOTE} ·{" "}
+          </span>
+        ) : null}
+        <span data-testid={`slip-leg-routed-line-${legId}`}>{routedLegLine({ mode, route }, timeZone)}</span>
+      </span>
     </>
   );
   const cls = "ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5";

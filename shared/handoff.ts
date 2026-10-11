@@ -168,3 +168,52 @@ export const HANDOFF_EVENTS = {
   suggestionAccepted: "handoff_suggestion_accepted",
   approved: "handoff_approved",
 } as const;
+
+/** Pure. Readable words for an edit's changed fields — never a raw column name on a row. */
+const SUGGESTION_FIELD_WORD: Record<string, string> = {
+  title: "name",
+  startTime: "time",
+  endTime: "end time",
+  dayNumber: "day",
+  location: "place",
+  latitude: "place",
+  longitude: "place",
+  notes: "notes",
+  description: "description",
+  estimatedCost: "cost",
+  category: "type",
+};
+
+/**
+ * Pure. The one-line summary a row renders for a suggestion (never a raw payload dump). Served by
+ * `GET /api/trips/:tripId/expert-suggestions` and read by every surface that shows a suggestion.
+ * An edit that only moves a stop says where to ("Move to 15:30", "Move to day 2 at 15:30").
+ */
+export function suggestionSummary(row: { kind: string; payload: any }): string {
+  const p = row.payload ?? {};
+  switch (row.kind) {
+    case "add":
+      return `Add “${p.item?.title ?? "a stop"}”${p.item?.dayNumber ? ` to day ${p.item.dayNumber}` : ""}`;
+    case "edit": {
+      const updates = p.updates ?? {};
+      const keys = Object.keys(updates);
+      if (!keys.length) return "Edit this stop";
+      const time = typeof updates.startTime === "string" && /^\d{1,2}:\d{2}/.test(updates.startTime) ? updates.startTime.slice(0, 5) : null;
+      const day = Number.isInteger(updates.dayNumber) && updates.dayNumber > 0 ? updates.dayNumber : null;
+      const movesOnly = keys.every((k) => k === "startTime" || k === "dayNumber" || k === "endTime");
+      if (movesOnly && (time || day)) {
+        return `Move to ${[day ? `day ${day}` : null, time ? (day ? `at ${time}` : time) : null].filter(Boolean).join(" ")}`;
+      }
+      const words = Array.from(new Set(keys.map((k) => SUGGESTION_FIELD_WORD[k] ?? "details")));
+      return `Change the ${words.join(", ")}`;
+    }
+    case "remove":
+      return `Remove “${p.title ?? "this stop"}”`;
+    case "move":
+      return `Reorder day ${p.dayNumber}`;
+    case "leg":
+      return p.remove ? `Remove the leg ${p.label ?? ""}`.trim() : `Change the leg ${p.label ?? ""}`.trim();
+    default:
+      return "A suggestion";
+  }
+}

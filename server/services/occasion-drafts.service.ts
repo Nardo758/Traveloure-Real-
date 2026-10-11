@@ -289,7 +289,7 @@ async function buildDraftSlip(input: {
   // Resident mode: pull the member's own home-city gems as generation context.
   let travelPulseContext: any = undefined;
   try {
-    const cityIntelligence = await travelPulseService.getCityIntelligence(input.homeCity);
+    const cityIntelligence = await travelPulseService.getCityIntelligence(input.homeCity, { forDraft: true });
     if (cityIntelligence) {
       const city = cityIntelligence.city;
       travelPulseContext = {
@@ -334,6 +334,8 @@ async function buildDraftSlip(input: {
   const title = input.label?.trim() || normalized.title || `${template.defaultLabel} in ${input.homeCity}`;
 
   const snapshot = await saveGeneratedItinerarySnapshot({
+    // FD-2 ruling 9: the Plus occasion draft is paid tier; when local gems fed the prompt, its items are local.
+    fromLocalInput: (travelPulseContext?.hiddenGems?.length ?? 0) > 0,
     userId: input.userId,
     tripId: null,
     trip: {

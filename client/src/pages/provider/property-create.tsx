@@ -17,6 +17,13 @@ import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { LocationPointPicker, type LocationPoint } from "@/components/backoffice/location-point-picker";
+import { NeighborhoodPicker, useAllNeighborhoods } from "@/components/NeighborhoodPicker";
+import {
+  NO_NEIGHBORHOOD_LISTED,
+  NOT_IN_STAYS_NOTICE,
+  neighborhoodAnswered,
+  suggestNeighborhoodFromPin,
+} from "@/lib/property-neighborhood";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -113,6 +120,12 @@ export default function PropertyCreate() {
   const [propDescription, setPropDescription] = useState("");
   const [propLocation, setPropLocation] = useState("");
   const [propPoint, setPropPoint] = useState<LocationPoint | null>(null);
+  // PB-1 / R2: the neighbourhood is required — a pick, or the honest "not listed yet". The
+  // server derives the city from it (deriveCityPatch), so it is what puts the property in stays.
+  const [propNeighborhood, setPropNeighborhood] = useState("");
+  const [propNeighborhoodUnlisted, setPropNeighborhoodUnlisted] = useState(false);
+  // "pin" = filled from the confirmed pin and not yet touched by the provider; "provider" = their pick.
+  const [propNeighborhoodSource, setPropNeighborhoodSource] = useState<"pin" | "provider" | null>(null);
   const [propCheckIn, setPropCheckIn] = useState("");
   const [propCheckOut, setPropCheckOut] = useState("");
   const [propMinStay, setPropMinStay] = useState("");
@@ -140,6 +153,9 @@ export default function PropertyCreate() {
         setPropCancellation(isTier(d.propCancellation) ? d.propCancellation : "");
         setPropDescription(d.propDescription ?? ""); setPropLocation(d.propLocation ?? "");
         setPropPoint(d.propPoint ?? null); setPropCheckIn(d.propCheckIn ?? "");
+        setPropNeighborhood(typeof d.propNeighborhood === "string" ? d.propNeighborhood : "");
+        setPropNeighborhoodUnlisted(d.propNeighborhoodUnlisted === true);
+        setPropNeighborhoodSource(d.propNeighborhoodSource === "pin" || d.propNeighborhoodSource === "provider" ? d.propNeighborhoodSource : null);
         setPropCheckOut(d.propCheckOut ?? ""); setPropMinStay(d.propMinStay ?? "");
         setPropHouseRules(d.propHouseRules ?? ""); setAmenities(d.amenities ?? ["Wi-Fi", "Kitchen", "Air conditioning"]);
         setRoomDrafts(d.roomDrafts?.length ? d.roomDrafts : [{ key: "r0", roomName: "", price: "", units: "" }]);
@@ -156,13 +172,15 @@ export default function PropertyCreate() {
       try {
         window.localStorage.setItem(draftKey, JSON.stringify({
           step, propName, propCancellation, propDescription, propLocation, propPoint,
+          propNeighborhood, propNeighborhoodUnlisted, propNeighborhoodSource,
           propCheckIn, propCheckOut, propMinStay, propHouseRules, amenities, roomDrafts,
         }));
         setDraftStatus("saved");
       } catch { setDraftStatus("saved"); }
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [step, propName, propCancellation, propDescription, propLocation, propPoint, propCheckIn,
+  }, [step, propName, propCancellation, propDescription, propLocation, propPoint,
+    propNeighborhood, propNeighborhoodUnlisted, propNeighborhoodSource, propCheckIn,
     propCheckOut, propMinStay, propHouseRules, amenities, roomDrafts]);
 
   function addPhotos(files: FileList | null, roomKey?: string) {
@@ -174,7 +192,23 @@ export default function PropertyCreate() {
   }
 
   /* ── validation ── */
-  const step1Valid = propName.trim().length > 0;
+  const { data: allNeighborhoods = [], isSuccess: neighborhoodsLoaded } = useAllNeighborhoods();
+  const neighborhoodOk = neighborhoodAnswered(
+    propNeighborhood, propNeighborhoodUnlisted, neighborhoodsLoaded ? allNeighborhoods.length : -1,
+  );
+  const step1Valid = propName.trim().length > 0 && neighborhoodOk;
+
+  // R2 (b): a confirmed pin PRE-FILLS the pick through the ONE radius-limited placement rule.
+  // Only while the provider has not chosen themselves; a pin outside every radius suggests nothing.
+  const pinKey = propPoint ? `${propPoint.lat},${propPoint.lng}` : "";
+  useEffect(() => {
+    if (!draftHydrated.current || !neighborhoodsLoaded) return;
+    if (propNeighborhoodSource === "provider" || propNeighborhoodUnlisted) return;
+    const suggested = suggestNeighborhoodFromPin(propPoint, allNeighborhoods);
+    setPropNeighborhood(suggested ?? "");
+    setPropNeighborhoodSource(suggested ? "pin" : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinKey, neighborhoodsLoaded]);
   const roomsValid =
     roomDrafts.length > 0 &&
     roomDrafts.every((r) => {
@@ -218,6 +252,8 @@ export default function PropertyCreate() {
         description: propDescription.trim() || undefined,
         location: propLocation.trim() || undefined,
         ...(propPoint ? { locationPoint: propPoint } : {}),
+        // R1: no categoryId — the server sets accommodation for a property by construction.
+        ...(propNeighborhood && !propNeighborhoodUnlisted ? { neighborhood: propNeighborhood } : {}),
         cancellationPolicyType: propCancellation || undefined,
         checkInTime: propCheckIn.trim() || undefined,
         checkOutTime: propCheckOut.trim() || undefined,
@@ -425,6 +461,49 @@ export default function PropertyCreate() {
                 helpText="Confirming a pin places this property — and its rooms — accurately on planning maps."
                 idPrefix="property-create-location"
               />
+
+              {/* PB-1 / R2: the neighbourhood — required; a confirmed pin pre-fills it */}
+              <div style={{ marginTop: 16 }} data-testid="property-neighborhood-step">
+                <label style={lbl()}>Neighborhood</label>
+                <div style={{ ...help(), marginTop: 0, marginBottom: 8 }}>
+                  The neighborhood places this property — and its rooms — in its city's stays. Search by neighborhood or city.
+                </div>
+                {propNeighborhoodSource === "pin" && propNeighborhood && (
+                  <div style={{ fontSize: 12, color: MUT, marginBottom: 6 }} data-testid="text-neighborhood-from-pin">
+                    Suggested from your pin — confirm it, or pick another.
+                  </div>
+                )}
+                {!propNeighborhoodUnlisted && (
+                  <NeighborhoodPicker
+                    neighborhoods={allNeighborhoods}
+                    value={propNeighborhood}
+                    onChange={(slug) => { setPropNeighborhood(slug); setPropNeighborhoodSource("provider"); }}
+                    emptyText="No neighborhood listed yet."
+                  />
+                )}
+                {allNeighborhoods.length > 0 && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: INK, marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={propNeighborhoodUnlisted}
+                      onChange={(e) => {
+                        setPropNeighborhoodUnlisted(e.target.checked);
+                        if (e.target.checked) { setPropNeighborhood(""); setPropNeighborhoodSource("provider"); }
+                      }}
+                      data-testid="checkbox-neighborhood-unlisted"
+                    />
+                    {NO_NEIGHBORHOOD_LISTED}
+                  </label>
+                )}
+                {neighborhoodsLoaded && (propNeighborhoodUnlisted || allNeighborhoods.length === 0) && (
+                  <div
+                    style={{ marginTop: 8, padding: "8px 12px", fontSize: 12, color: WARN_INK, background: WARN_BG, border: `1px solid ${WARN_LINE}`, borderRadius: 6 }}
+                    data-testid="notice-not-in-stays"
+                  >
+                    {NOT_IN_STAYS_NOTICE}
+                  </div>
+                )}
+              </div>
 
               {/* divider */}
               <div style={{ height: 1, background: HAIR, margin: "22px 0 16px" }} />
@@ -686,6 +765,11 @@ export default function PropertyCreate() {
               <SumRow k="Property" v={propName.trim() || "—"} />
               <SumRow k="Rooms" v={`${roomDrafts.length} — each one bookable on its own`} />
               <SumRow k="Cancellation" v={propCancellation ? cancellationTierLabel(propCancellation, "check-in") : UNDECLARED_TIER_LABEL} />
+              <SumRow k="Neighborhood" v={
+                propNeighborhood && !propNeighborhoodUnlisted
+                  ? (() => { const n = allNeighborhoods.find((x) => x.slug === propNeighborhood); return n ? `${n.name} · ${n.city}` : propNeighborhood; })()
+                  : <span style={{ color: WARN_INK }} data-testid="review-not-in-stays">{NOT_IN_STAYS_NOTICE}</span>
+              } />
               <SumRow k="Location" v={
                 propPoint
                   ? (propLocation.trim() ? `Pin placed · ${propLocation.trim()}` : "Pin placed")

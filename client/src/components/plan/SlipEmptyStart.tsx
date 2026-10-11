@@ -35,7 +35,7 @@ export function planCityName(destination: string | null | undefined): string | n
 
 export const EMPTY_FOOTNOTE_NOTHING_CHARGED = "Nothing is booked or charged until you say so.";
 export const EMPTY_FOOTNOTE_PLACES = "Facts on places come from Google Maps and show when they were checked.";
-export const EMPTY_BROWSE_DETAIL = "Activities, dining, places to stay and local hosts";
+export const EMPTY_BROWSE_DETAIL = "Places and hosts near your stops";
 export const EMPTY_HANDOFF_DETAIL = "An expert plans it with you · fee shown before you commit";
 
 /** The draft card's sentence, built from what this press will really do (§13). */
@@ -86,11 +86,14 @@ export function SlipEmptyStart({
           onClick={() => draft.mutate()}
           disabled={!!draft.disabledReason || draft.isPending}
           title={draft.disabledReason ?? undefined}
-          data-testid="slip-empty-draft"
+          // Main-rail (ledger `2026-10-08-slip-main-rail`): with the rail gone this IS the slip's one
+          // AI action on an empty plan, so it carries that action's testid; the map band's
+          // `SlipDraftAiRow` is the other placement, and exactly one renders per view.
+          data-testid="slip-action-draft-ai"
         >
           {draft.isPending ? "Drafting…" : "Draft it with AI · free"}
         </button>
-        {draft.datesDialog}
+        {draft.datesPanel}
       </section>
 
       <div className="space-y-2">
@@ -124,7 +127,7 @@ export function SlipEmptyStart({
         </button>
       </div>
 
-      <p className="px-1 text-xs leading-normal text-[color:var(--slip-faint)]" data-testid="slip-empty-footnote">
+      <p className="px-1 text-xs leading-normal text-[color:var(--slip-muted)]" data-testid="slip-empty-footnote">
         {EMPTY_FOOTNOTE_NOTHING_CHARGED}
         {placesFactsOn ? ` ${EMPTY_FOOTNOTE_PLACES}` : ""}
       </p>

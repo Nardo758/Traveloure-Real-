@@ -110,15 +110,15 @@ test("P7: the signature sees every answer and ignores surrounding whitespace", (
 });
 
 test("P8: Continue lands on the first missing basic, in flow order, among the visible steps", () => {
-  const all = ["occasion", "where", "when", "who", "events"] as const;
-  assert.equal(resumeStep(all, { occasion: false, where: true, when: true }), "occasion");
-  assert.equal(resumeStep(all, { occasion: true, where: false, when: true }), "where");
-  assert.equal(resumeStep(all, { occasion: true, where: true, when: false }), "when");
-  assert.equal(resumeStep(all, { occasion: true, where: true, when: true }), "events");
+  // E2: the Occasion step left the window (sanctioned).
+  const all = ["where", "when", "who", "events"] as const;
+  assert.equal(resumeStep(all, { where: false, when: true }), "where");
+  assert.equal(resumeStep(all, { where: true, when: false }), "when");
+  assert.equal(resumeStep(all, { where: true, when: true }), "events");
 });
 
 test("P9: a step the modal does not show is never a Continue target", () => {
-  assert.equal(resumeStep(["where", "when", "who"], { occasion: false, where: true, when: true }), "who");
+  assert.equal(resumeStep(["when", "who"], { where: false, when: true }), "who");
 });
 
 const modal = readFileSync(new URL("../../components/trip/plan-modal.tsx", import.meta.url), "utf8");
@@ -128,17 +128,5 @@ test("W1: the Dialog closes through the ONE dismiss handler", () => {
   assert.doesNotMatch(modal, /<Dialog open=\{open\} onOpenChange=\{onOpenChange\}>/);
 });
 
-test("W2: a dismiss reaches commitPlan with NO trip id (it creates nothing — RC-1)", () => {
-  const body = modal.slice(modal.indexOf("const handleDialogOpenChange"), modal.indexOf("const currentAnswers"));
-  assert.ok(body.length > 0);
-  assert.match(body, /holdsDraftOnDismiss\(/);
-  assert.match(body, /commitPlan\(\)/, "commitPlan is called with no bound or kept id");
-  assert.doesNotMatch(body, /mintThisPlan|mintPlan|mintTripSlip|apiRequest/, "a dismiss never mints or posts");
-});
-
-test("W3: the prompt clears through the same reset Clear plan uses, and says only city and dates", () => {
-  assert.match(modal, /const clearAll = \(\) => \{\s*resetPlan\(\);\s*onOpenChange\(false\);/);
-  assert.match(modal, /onClick=\{resetPlan\}\s*data-testid="button-plan-resume-clear"/);
-  const banner = modal.slice(modal.indexOf('data-testid="plan-modal-resume"'), modal.indexOf("button-plan-resume-clear"));
-  assert.doesNotMatch(banner, /adults|kids|travelers|partyTotal/, "no party size on the prompt (RC-12)");
-});
+// W2/W3 deleted with E2 (sanctioned): the resume banner and the dismiss-holds-a-draft path left the
+// edit window, which creates nothing and writes nothing on a dismiss.

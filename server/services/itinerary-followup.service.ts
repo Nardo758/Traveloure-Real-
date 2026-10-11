@@ -116,16 +116,20 @@ export async function followupPersonalization(tx: Tx, itineraryId: string, desti
         AND s.approval_status = 'approved' AND s.status = 'active'
     ) AS bookable
   `);
+  // B3 ruling 4: an email naming an expert is a recommendation — ROUTABLE only (the same SQL the
+  // routing scorer reads, over aliases `lef`/`u`), never a seed or Pending account.
+  const { routableExpertFilterSql } = await import("./expert-routability");
+  const routableClause = destination ? await routableExpertFilterSql() : null;
   const expert = destination ? await tx.execute(sql`
-    SELECT COALESCE(NULLIF(f.display_name, ''), NULLIF(f.first_name, ''), NULLIF(u.first_name, '')) AS name
-    FROM local_expert_forms f JOIN users u ON u.id = f.user_id
-    WHERE f.status = 'approved' AND lower(trim(f.city)) = lower(trim(${destination}))
+    SELECT COALESCE(NULLIF(lef.display_name, ''), NULLIF(lef.first_name, ''), NULLIF(u.first_name, '')) AS name
+    FROM local_expert_forms lef JOIN users u ON u.id = lef.user_id
+    WHERE lef.status = 'approved' AND lower(trim(lef.city)) = lower(trim(${destination})) AND ${routableClause}
       AND u.role IN ('expert','local_expert','travel_expert')
       AND COALESCE(u.is_deleted, false) = false AND COALESCE(u.is_suspended, false) = false
-      AND f.accepts_new_handoffs = true
+      AND lef.accepts_new_handoffs = true
       AND (SELECT count(*) FROM expert_handoffs h WHERE h.expert_id = u.id
-        AND h.status NOT IN ('completed','cancelled','canceled','declined','rejected')) < f.max_concurrent_handoffs
-    ORDER BY f.id LIMIT 1
+        AND h.status NOT IN ('completed','cancelled','canceled','declined','rejected')) < lef.max_concurrent_handoffs
+    ORDER BY lef.id LIMIT 1
   `) : null;
   return { bookable: Boolean((items.rows[0] as { bookable: boolean }).bookable),
     expertName: (expert?.rows[0] as { name?: string } | undefined)?.name ?? null };

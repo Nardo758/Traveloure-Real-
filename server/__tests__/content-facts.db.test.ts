@@ -209,6 +209,14 @@ test("C5: no Places fact reaches a public route", async () => {
     // neighbourhood one-liner — a REGISTRY `neighbourhood` description fact (origin <> places_api), read
     // only inside `loadWhereToStay`, behind the plan's own read gate (`planRole(…, "read")`).
     "server/services/where-to-stay.service.ts",
+    // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the stay card's link reads ONE place ID an earlier
+    // answer resolved (`knownPlaceIdForQuery`) — an ID, never a fact's content — only inside
+    // `loadWhereToStay`, behind the plan's own read gate. The live Google answer it fetches is never stored.
+    "server/services/stay-link.service.ts",
+    // SS-1b (ledger `2026-10-10-ss1b-official-refresh`): the market-level official refresh WRITES through the
+    // one writer and READS only the last `fetched_at` of its OWN `official_refresh` rows (to decide a target is
+    // due). No Places row, no fact content, no route — an internal-secret job.
+    "server/jobs/officialRefresh.ts",
     // Surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`): the OptimizerLead's findings
     // read the plan's hours and location facts — only inside `GET /api/optimization-preview`, behind
     // `authorizeTripLogistics`; only kinds and counts leave it.

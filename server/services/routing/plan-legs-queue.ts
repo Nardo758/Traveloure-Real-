@@ -37,7 +37,12 @@ export function runNow(tripId: string): Promise<unknown> {
     .catch(() => undefined)
     .then(async () => {
       const { computePlanLegs } = await import("./plan-legs-engine.service");
-      return computePlanLegs(tripId);
+      const legs = await computePlanLegs(tripId);
+      // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): after the debounced recompute, re-pick the plan's
+      // stay — it re-scores only when the stops changed (`stopsHash`) and only on a routed plan.
+      const { scheduleStayPick } = await import("../stay-pick.service");
+      void scheduleStayPick(tripId);
+      return legs;
     })
     .catch((err: any) => {
       console.error(`[routing] leg recompute failed for ${tripId}:`, err?.message ?? err);

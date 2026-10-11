@@ -1,0 +1,161 @@
+# S1 — one stay on the plan (brief, rev 1)
+
+Ledger `2026-10-09-s1-one-stay` (numbered at merge). Decision-maker rulings of Oct 9, 2026. This file is the brief:
+the two definitions, the six rulings, the Phase 0 findings they were made against, and what the server half built.
+
+## Definitions
+
+- **S1 — "one stay on the plan".** The plan's Where-to-stay surface shows ONE stay, picked by Optimize's routed
+  drive-time and reachability against the plan's located stops. **Never by price or commission.**
+- **9a-ii — self-hosted OSRM as a `RoutingAdapter` provider for walk and drive.** Approved Oct 9, 2026, queued in
+  Logistics after the board PRs. **When 9a-ii is live, S1's prune and budget are removed** (rulings 1–2 below are
+  temporary because Google bills per element; a self-hosted router does not).
+
+## Rulings (decision-maker, Oct 9, 2026)
+
+1. **Score.** One Route Matrix request per hotel → every located stop on the plan's dates. Keep "closest on most
+   days, then least total time".
+2. **Budget counts ELEMENTS** (what Google bills and the cap measures).
+   - **Free:** the top 3 hotels by straight line within the top neighbourhoods.
+   - **Paid** (`planGetsRoutedLegs` true): hotels in the plan's neighbourhoods, in straight-line order, scored until
+     150 elements are spent. The pick comes only from scored hotels, and the payload carries scored/total.
+   - The calls count against `MAPS_ROUTE_MATRIX_DAILY_CAP` like any other call.
+3. **Storage:** migration 359, additive and nullable — `ALTER TABLE trips ADD COLUMN IF NOT EXISTS stay_pick jsonb;` —
+   holding `{hotelId, scoredCount, candidateCount, stopsHash, computedAt, tier}`. APPROVED by the founder,
+   Oct 9, 2026.
+   - **Compute** at Optimize finish, Trip Pass purchase, handoff accept, and on the post-debounce stops refetch when
+     `stopsHash` changes. **Never on read.**
+   - A re-score replaces the pick and sets a `changed` flag that the card reads once.
+4. **Tier test:** `planGetsRoutedLegs` replaces `hasPaidOptimizerRun`.
+5. **Rank-input test:** no price or commission field is reachable from the scorer, on either tier.
+6. **Lane split:** this lane builds the server half and the payload. The card belongs to the Conformance lane's
+   Compare PR: its copy, "scored N of M nearby", "View on hotel's site" (to the hotel's own domain), and the swap via
+   "Add places I'm considering". This lane does not touch `SlipView`/`SlipRail`.
+
+## Phase 0 findings (read-only, on `main` at `d1b9720`, R383)
+
+- **Neighbourhoods** are ranked and cut to the top 3 (`WHERE_TO_STAY_TOP`, `shared/where-to-stay.ts:75`). The
+  ranker is `rankStayNeighborhoods`: most days closest, then least total straight-line distance.
+- **Hotels** are bucketed into their nearest neighbourhood and cut to 3 each by straight line to the centroid
+  (`hotelsByNeighborhood`, `shared/where-to-stay.ts:226`). **No hotel was ever scored by routed time.**
+- **The paid matrix path** ranked neighbourhoods from the launch-city travel-time matrix only after a PAID
+  optimizer run (`hasPaidOptimizerRun`, `server/services/where-to-stay.service.ts`). That test missed Trip Pass,
+  handoff and Ready Made plans.
+- **The paid predicate already exists:** `planGetsRoutedLegs` (`shared/plan-routed-legs.ts`), loaded by
+  `tripGetsRoutedLegs`. It is true for a finished Optimize run, an active Trip Pass, an accepted / delivered /
+  approved handoff, or a Ready Made copy.
+- **The matrix caller:** `route_matrix` in `shared/maps-billing.ts`. Its cap counts ELEMENTS
+  (`MAPS_ROUTE_MATRIX_DAILY_CAP`, default 10,000). `gatedRouteMatrixFetch()` already sends a request through the
+  gate with its element count and throws when refused.
+- **The hotel inventory** (`cityHotels`): platform accommodation listings, `hotel_cache` and affiliate lodging,
+  located rows only. It selects no price or commission column.
+- **Triggers that already exist:** Trip Pass grant (`trip-entitlement.service.ts`) and handoff accept
+  (`handoff.service.ts`) both queue the debounced leg recompute (`plan-legs-queue.ts`). Optimize runs start in
+  the background in `server/routes.ts`, at both the create and the regenerate entry points.
+
+## What was built (server half)
+
+| Piece | Where |
+|---|---|
+| Pure rules: candidate shape (5 keys, no money field), allowlist projector, straight-line order, free top 3, element budget (whole hotels only), the ONE ranker (reachability → closest days → total → name), stops fingerprint, stored-pick reader and `changed` rule | `shared/stay-pick.ts` |
+| The ONE writer of `trips.stay_pick`: loads the stops on the plan's dates; candidates in the plan's neighbourhoods (each stop's nearest centroid); one DRIVE matrix request per hotel through `gatedRouteMatrixFetch`; stops on a refused or failed call; ranks the scored; writes. Serialised per plan in-process. | `server/services/stay-pick.service.ts` |
+| Read: `stay` block on `GET /api/trips/:tripId/where-to-stay`; tier from `tripGetsRoutedLegs` (ruling 4); no Maps call | `server/services/where-to-stay.service.ts`, type in `shared/where-to-stay.ts` |
+| The card's one read: `POST /api/trips/:tripId/stay-pick/seen` (owner or managing assistant; one 404 otherwise) | `server/routes/plan-option-sets.routes.ts` |
+| Triggers | `server/routes.ts` (both Optimize entry points), `trip-entitlement.service.ts`, `handoff.service.ts`, `routing/plan-legs-queue.ts` |
+| Migration 359 (approved Oct 9, 2026) and its declaration | `server/migrations/359_trips_stay_pick.sql`, `shared/schema.ts` (omitted from `insertTripSchema`, stripped in `storage.updateTrip`) |
+
+### The payload (for the Conformance lane's Compare PR)
+
+`GET /api/trips/:tripId/where-to-stay` gains `stay` on an eligible view:
+
+```ts
+type WhereToStayStay =
+  | { tier: "straight_line"; hotels: StayHotel[] }            // free plan: up to 3
+  | {
+      tier: "routed";                                         // planGetsRoutedLegs
+      pick: StayHotel | null;                                 // null before any pick, or the hotel left our inventory
+      scoredCount: number | null;                             // "scored N …"
+      candidateCount: number | null;                          // "… of M nearby"
+      changed: boolean;                                       // show once, then POST …/stay-pick/seen
+      computedAt: string | null;
+    };
+// StayHotel = { kind: "platform" | "hotel_cache" | "affiliate"; id; name; starRating; photo? } — no coordinates, no price.
+```
+
+**FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`):** each `StayHotel` in `stay` may carry
+`stayLink: { kind: "own" | "google" | "maps"; url: string }` — the card's ONE link. On the list it is `own` (the
+provider's site) or `maps` ("View on Google Maps", built with no API call). When the PICKED stay's card is opened,
+call `GET /api/trips/:tripId/stay-pick/link` → `{ stayLink }`: the hotel's own site where Google knows one ("View on
+hotel's site"), else Google Maps. `google` and `maps` must be drawn with the "Google Maps" attribution. Absent ⇒ no link.
+
+Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ kind: "stay_here", hotel: { kind, id } }`.
+
+## Interpretations taken (said here so they can be overruled)
+
+- **"The plan's neighbourhoods"** means the neighbourhood nearest each located stop. A city with no neighbourhood
+  rows has none to filter by, so every located hotel in the city is a candidate. They are still in straight-line
+  order and still under the budget.
+- **Straight-line order** is the same ranker over metres: the closest days by straight line, then total distance.
+- **A hotel is scored whole or not at all.** A half-scored hotel would be ranked on a subset of the stops, so
+  scoring stops at the first hotel whose stops no longer fit the budget. Example: 7 stops → 21 hotels = 147 elements.
+- **Reachability first.** A hotel with an unreachable stop ranks behind every fully reachable one.
+- **`hotelKind` is stored beside `hotelId`.** Ids are only unique within a kind (platform, `hotel_cache`,
+  affiliate), so this extends the ruled shape by one field.
+- **Nothing scored keeps the earlier pick** (a cap-paused day never erases an answer). Its `stopsHash` stays old,
+  so the next trigger tries again.
+- **The free list uses the same date filter** as the paid scorer: stops on the plan's dates only.
+
+## Recorded, not fixed
+
+- **Cost record — FIXED by FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`):** each stay-pick request now
+  records its dollars on its own `route_matrix` gate row (`metadata.purpose = 'stay_pick'`, `ref` = the plan) at the
+  Essentials list price, and its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP`.
+- **Cross-instance overlap:** two server instances can score the same plan at once. Each run stays inside the
+  budget, and the later write wins.
+- **The debounced trigger** runs only while `TRAVEL_TIME_SERVICE_ENABLED` is on (the queue's own switch). The other
+  three triggers do not depend on it.
+- **Wider matrix ranking:** ruling 4 also widens the neighbourhood ranking's matrix path from "paid run" to every
+  `planGetsRoutedLegs` plan (Trip Pass, handoff, Ready Made).
+
+## Removal condition
+
+When 9a-ii is live, delete `STAY_PICK_ELEMENT_BUDGET`, `planStayScoring` and the straight-line prune: every
+candidate is scored through the self-hosted adapter, and `scoredCount` equals `candidateCount`.
+
+## FU-S1-3 — per-day closeness (decision-maker ruling, Oct 9, 2026)
+
+The Compare/stay card's "Close to N of M days" is display only, read from this payload:
+
+- A day is **close** when the stay is within the threshold of **every** located stop that day — routed
+  minutes on a paid plan (`STAY_CLOSE_ROUTED_MINUTES`, default 20), straight-line km on a free plan
+  (`STAY_CLOSE_STRAIGHT_KM`, default 1.5, labelled straight-line). **M** = days with at least one located stop
+  on the plan's dates. Thresholds live in `server/config/stay-closeness.config.ts`, read by name.
+- **Routed:** the one writer stores `closeness` on `trips.stay_pick` from the matrix row the ranking already
+  fetched — no extra request. A pick stored before FU-S1-3 reads `closeness: null` until its next re-score.
+- **Free:** each listed stay carries `closeness`, computed at read time by straight line (no Maps call).
+- Payload: `stay.closeness` (routed) and `stay.hotels[].closeness` (free), each
+  `{ closeDays, locatedDays, basis: "routed" | "straight_line" } | null`. Null means unknown, never zero.
+
+## S1-b — Traveloure stays on the card (decision-maker rulings, Oct 10, 2026)
+
+Ledger `2026-10-10-s1b-provider-stays`. Small: the boost removal, the button, the attribution.
+
+**Confirmed facts (Phase 0, carried in):**
+- `cityHotels` is the ONE shared candidate pool. Every kind of stay goes through the same `rankStays`.
+- `rankStays` never reads price or commission.
+- `hotel_cache` is Amadeus / Booking.com data, not Google. "Google" enters only through a Google Maps or Google website link.
+
+**The three kinds of stay:**
+- `platform`: listed on Traveloure. It carries the "Traveloure stay" badge.
+- `hotel_cache`: Amadeus / Booking.com data.
+- `affiliate`: a partner product. It is not a Traveloure stay and never gets the badge.
+- `liteapi` (added by S1-d-1, R408, after these rulings): LiteAPI static content. It is not a Traveloure stay, so it is treated like `hotel_cache`: the attributed Google link, never "See rooms" or the badge.
+
+**Rulings:**
+1. **No boost for being a provider.** R-o is amended: `orderStaysByOrigin`, which put Traveloure stays first within a neighbourhood, is deleted. "`rankStays` only" means **no kind-based ordering anywhere** (clarified by the decision-maker, Oct 10, 2026). It does not mean re-sorting the neighbourhood lists: a neighbourhood's stays keep `hotelsByNeighborhood`'s existing order, which never reads `kind` (distance to the neighbourhood, then name), and that order stands untouched. The S1 card's own candidates stay ordered by `rankStays`. The badge stays.
+2. **The pool is unchanged.** A stay counts when it is approved, active, in the `accommodation` category, in the plan's city and pinned.
+3. **"See rooms" for a Traveloure stay.** The card's link opens the listing's own page carrying the plan's id (`/services/:id?tripId=`). That page adds a room to the plan with dates, and checkout runs from the plan. There is no new booking rail. The label is "See rooms", never "Book", because the card shows no price.
+   - **AMENDMENT TO R393 (FU-S1-2), `platform` stays only** (decision-maker, Oct 10, 2026). The card's link for a Traveloure stay is "See rooms", replacing R393's `own` provider-site link. The listing page is Traveloure's booking surface for provider stays, and it may carry the provider's own site link itself. Non-platform stays keep R393 exactly: a `google` link keeps "View on hotel's site" (attributed), and `maps` keeps "View on map" (attributed).
+4. **Partner stays keep Google's link.** `hotel_cache` and `affiliate` stays keep FU-S1-2's link: "View on map" or the hotel's site, with "Google Maps" beside it whenever it came from Google.
+
+**HELD (a builder gap, not a stay-card gap):** the property builder must write `category='accommodation'` and a city or neighbourhood. Until then, property-builder listings don't reach the stay card. The stay rule is not widened to `product_shape` in this lane.

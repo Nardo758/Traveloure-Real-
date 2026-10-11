@@ -318,13 +318,14 @@ test('S2: Expert E applies, publishes an offering, and is admin-approved', async
           class: 'SPEC_DIVERGENCE',
           severity: 'P3',
           known: null,
-          title: "seeded step: local_expert_forms.identity_verification_status='verified' (HELD:stripe)",
+          title: "seeded step: local_expert_forms.identity_verification_status='verified' + stripe_connect_status='complete' (HELD:stripe)",
           expected: 'n/a — documented R-1 fallback, same class of write as S1\'s provider identity/business ' +
             'verification seed (P2-S1-3): no non-Stripe path exists to verify EITHER role\'s identity in this ' +
             'environment, so this is not a second, separate product gap — it is the expert-side instance of ' +
             'the same one.',
           actual:
-            `UPDATE local_expert_forms SET identity_verification_status='verified', identity_verified_at=NOW() ` +
+            `UPDATE local_expert_forms SET identity_verification_status='verified', identity_verified_at=NOW(), ` +
+            `stripe_connect_status='complete' ` +
             `WHERE user_id=${expertUser.id}. Reproduced the production auto-activation sweep verbatim ` +
             `(activateVerificationHeldListings, server/services/publish-verification.service.ts): ` +
             `UPDATE provider_services SET status='active' WHERE approval_status='approved' AND status='draft' — ` +

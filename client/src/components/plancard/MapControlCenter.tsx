@@ -54,6 +54,9 @@ import {
 import { SceneMapGoogle } from "./map/SceneMapGoogle";
 import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
 import type { SceneLeg } from "./map/scene-legs";
+import { usePlanRowLook } from "@/components/plan/row-look";
+import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } from "@/lib/map-days";
+import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 
 const MAPS_API_KEY = MAPS_BROWSER_KEY;
@@ -102,6 +105,8 @@ export interface MapControlCenterProps {
   /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
   versionKey?: string;
   onVersionChange?: (key: string) => void;
+  /** Held-batch-1 item 9: the run's versions board ("Compare →" on the board's stops sheet). Absent ⇒ no link (§13). */
+  compareHref?: string | null;
   /**
    * R322 (step 7a, R-bh): the Workstation's open Add-panel drawer — its own already-filtered,
    * already-located results (`useMapCandidates`). Drawn as hollow browse markers and rows, with the
@@ -147,6 +152,7 @@ export function MapControlCenter({
   showTravelMinutes = false,
   versionKey: versionKeyControlled,
   onVersionChange,
+  compareHref = null,
   candidates = null,
   onAddCandidate,
   layout = "stacked",
@@ -329,7 +335,13 @@ export function MapControlCenter({
     setSelectedId(null);
   }, [selectedDay, versionKey]);
 
+  // The Map board's look (slip conformance; ledger `2026-10-08-slip-map-board`) — the slip provides
+  // it; the Workstation, the Trip Card, the guest map, the versions board and the itinerary view read
+  // the default and render exactly as before.
+  const board = usePlanRowLook() === "board";
   if (!day) return null;
+  const movedCount = scene.list.filter((st) => st.state === "moved").length;
+  const versionLabel = versionKey === "draft" ? "Draft" : versions?.find((v) => v.key === versionKey)?.label ? `Version ${versions!.find((v) => v.key === versionKey)!.label}` : null;
 
   const canvasHeight = compact ? "h-[360px]" : "h-[420px]";
   const split = layout === "split";
@@ -357,28 +369,42 @@ export function MapControlCenter({
               type="button"
               onClick={() => onSelectDay(i)}
               aria-pressed={selectedDay === i}
-              className={`px-3 py-1 rounded-full text-xs font-semibold border ${selectedDay === i ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+              className={
+                board
+                  ? `h-9 rounded-full border px-4 text-sm font-semibold ${selectedDay === i ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] text-white" : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"}`
+                  : `px-3 py-1 rounded-full text-xs font-semibold border ${selectedDay === i ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`
+              }
               data-testid={`map-day-btn-${d.dayNum}-${tripId}`}
             >
-              Day {d.dayNum}
+              {board ? mapDayChipLabel(d, selectedDay === i) : `Day ${d.dayNum}`}
             </button>
           ))}
         </div>
         {versions?.length ? (
-          <div className="flex gap-1 rounded-full border border-border p-0.5" role="group" aria-label="Version" data-testid={`map-version-toggle-${tripId}`}>
+          <div className={board ? "flex items-center gap-1 rounded-full bg-[color:var(--slip-wash)] p-[3px]" : "flex gap-1 rounded-full border border-border p-0.5"} role="group" aria-label="Version" data-testid={`map-version-toggle-${tripId}`}>
+            {board ? <span className="px-2 text-xs text-[color:var(--slip-muted)]">Showing</span> : null}
             {[{ key: "draft", label: "Draft" }, ...versions.map((v) => ({ key: v.key, label: v.label }))].map((v) => (
               <button
                 key={v.key}
                 type="button"
                 aria-pressed={versionKey === v.key}
                 onClick={() => setVersionKey(v.key)}
-                className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${versionKey === v.key ? "bg-foreground text-background" : "text-muted-foreground"}`}
+                className={
+                  board
+                    ? `h-8 rounded-full px-3 text-[13px] font-semibold ${versionKey === v.key ? "bg-[color:var(--slip-card)] text-[color:var(--slip-ink)] shadow-sm" : "text-[color:var(--slip-muted)]"}`
+                    : `px-2.5 py-0.5 rounded-full text-xs font-semibold ${versionKey === v.key ? "bg-foreground text-background" : "text-muted-foreground"}`
+                }
                 data-testid={`map-version-${v.key === "draft" ? "draft" : v.label}`}
               >
                 {v.label}
               </button>
             ))}
           </div>
+        ) : null}
+        {board && versions?.length && mapMovedLine(movedCount) ? (
+          <span className="text-xs font-medium text-[color:var(--slip-gold-ink)]" data-testid="map-moved-line">
+            {mapMovedLine(movedCount)}
+          </span>
         ) : null}
         {guest ? null : (
         <div className="ml-auto flex items-center gap-1" data-testid={`layer-controls-${tripId}`}>
@@ -450,6 +476,27 @@ export function MapControlCenter({
           </p>
         ) : null}
       </div>
+      {/* The Map board's legend — only the marks this map actually draws. */}
+      {board && !guest ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-[color:var(--slip-muted)]" data-testid="map-legend">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[color:var(--slip-navy)] text-[9px] font-bold text-white">1</span>
+            stop, in order
+          </span>
+          {movedCount > 0 ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-full bg-[color:var(--slip-gold)]" />
+              moved in this version
+            </span>
+          ) : null}
+          {scene.anchor ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm bg-[color:var(--slip-teal)]" />
+              where you stay
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       </div>
 
@@ -462,9 +509,23 @@ export function MapControlCenter({
         {showPlanRail ? (
         <>
         {split ? (
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="map-your-plan-title">
-            Your plan · Day {dayNumber}
-          </p>
+          board ? (
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="slip-display text-lg font-semibold text-[color:var(--slip-ink)]" data-testid="map-your-plan-title">
+                {mapSheetTitle({ dayNum: dayNumber, dateIso: (day as any)?.dateIso ?? null, versionLabel: versions?.length ? versionLabel : null })}
+              </p>
+              {/* Held-batch-1 item 9: the board's "Compare →" — the run's versions board, only when a run exists. */}
+              {versions?.length && compareHref ? (
+                <Link href={compareHref} className="text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline" data-testid="map-compare-link">
+                  {MAP_COMPARE_LINK_LABEL}
+                </Link>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="map-your-plan-title">
+              Your plan · Day {dayNumber}
+            </p>
+          )
         ) : null}
         {split && planEmptyNote ? (
           <p className="text-xs text-muted-foreground" data-testid="map-your-plan-empty">
@@ -478,11 +539,23 @@ export function MapControlCenter({
                 type="button"
                 onClick={() => setSelectedId(s.located ? s.id : null)}
                 aria-selected={selectedId === s.id}
-                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${selectedId === s.id ? "bg-muted" : "hover:bg-muted/50"}`}
+                className={
+                  board
+                    ? `flex w-full items-center gap-3 rounded-[10px] px-2 py-2 text-left text-[15px] ${selectedId === s.id ? "bg-[color:var(--slip-wash)]" : "hover:bg-[color:var(--slip-ground)]"}`
+                    : `flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${selectedId === s.id ? "bg-muted" : "hover:bg-muted/50"}`
+                }
                 data-testid={`map-sheet-stop-${s.id}`}
                 data-pin-state={s.state}
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-[10px] font-bold text-background">{s.n}</span>
+                <span
+                  className={
+                    board
+                      ? `inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${s.state === "moved" ? "bg-[color:var(--slip-gold)] text-[color:var(--slip-ink)]" : "bg-[color:var(--slip-navy)] text-white"}`
+                      : "inline-flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-[10px] font-bold text-background"
+                  }
+                >
+                  {s.n}
+                </span>
                 <span className="min-w-0 flex-1 truncate">{s.name}</span>
                 {s.state === "moved" ? <span className="text-[10px] font-semibold text-amber-700">moved</span> : null}
                 {s.state === "added" ? <span className="text-[10px] font-semibold text-teal-700">new</span> : null}

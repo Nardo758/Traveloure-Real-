@@ -66,6 +66,7 @@ test("M6: /api/health carries the state on its ok branch and a failed read is nu
   // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`) added the trend-score age beside the
   // migration state on the same ok branch; its read is caught too, so it can never fail the probe.
   // Step 9c D6 (ledger `2026-10-07-step9c-leg-options`; sanctioned): `mapsCaps` sits beside the flags and egress.
-  assert.match(block, /status: "ok", db: true, timestamp: new Date\(\)\.toISOString\(\), build, flags, egress, mapsCaps, migrations, trendScores \}/);
+  // Item 3 (ledger `2026-10-10-health-hotel-supply`; sanctioned): `supply` follows the trend-score age.
+  assert.match(block, /status: "ok", db: true, timestamp: new Date\(\)\.toISOString\(\), build, flags, egress, mapsCaps, migrations, trendScores, supply \}/);
   assert.match(block, /FROM trend_scores`\)[\s\S]*?\.catch\(\(\) => null\)/);
 });

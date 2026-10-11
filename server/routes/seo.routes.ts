@@ -23,6 +23,7 @@ import { users, providerServices, readyMadeTrips } from "@shared/schema";
 import { transformDevHtml } from "../vite-dev-html";
 import { injectIntoHead } from "../utils/html-head";
 import { PUBLISHED_HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-article-slugs";
+import { EXPERIENCES_PAGE_DESCRIPTION } from "@shared/operating-markets";
 import { blogIndexRobots, blogPostRobots, publishedBlogSitemapEntries } from "../services/blog-seo.service";
 
 const router = Router();
@@ -150,9 +151,9 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
       "Meet verified local experts who plan, optimize, and book your trip — from Kyoto temple walks to Paris food tours.",
   },
   "/experiences": {
-    title: "Curated Travel Experiences | Traveloure",
-    description:
-      "Explore expert-built travel experiences and ready-made trip plans you can make your own.",
+    title: "Plan around a place, a date or an event | Traveloure",
+    // E3 ruling 4: the page's own description, one spelling (`shared/operating-markets.ts`).
+    description: EXPERIENCES_PAGE_DESCRIPTION,
   },
   "/pricing": {
     title: "Pricing | Traveloure",

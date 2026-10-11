@@ -59,7 +59,7 @@ export function MomentAnchorCard({
       </h2>
       {item.location?.trim() ? <p className="text-[13px] text-[color:var(--slip-muted)]">{item.location.trim()}</p> : null}
       {factsLine ? (
-        <p className="text-xs font-medium text-[color:var(--slip-teal)]" data-testid="slip-moment-anchor-facts">
+        <p className="text-xs font-medium text-[color:var(--slip-teal-ink)]" data-testid="slip-moment-anchor-facts">
           {factsLine.sourceUrl ? (
             <a href={factsLine.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
               {factsLine.text}

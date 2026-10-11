@@ -1,0 +1,11 @@
+-- 359 — trips.stay_pick (ledger `2026-10-09-s1-one-stay`; brief docs/planning/briefs/s1-one-stay.md, ruling 3).
+-- SQL as given by the decision-maker, APPROVED by the founder, Oct 9, 2026. ADDITIVE ONLY. No function, trigger,
+-- CREATE OR REPLACE or DO block. IF NOT EXISTS, so a second run is a no-op. Declared in shared/schema.ts
+-- (deploy-push durability rule).
+--
+-- trips.stay_pick — S1 "one stay on the plan": the ONE stay a paid plan's routed scoring picked, as
+--   { hotelId, hotelKind, scoredCount, candidateCount, stopsHash, computedAt, tier, changed }.
+--   NULL = never picked (a free plan, or nothing could be scored) — never "no stay fits" (§13).
+--   Written ONLY by server/services/stay-pick.service.ts; never client-settable (§19); never computed on read.
+-- Nullable, no DEFAULT / CHECK / index / FK, no backfill.
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS stay_pick jsonb;

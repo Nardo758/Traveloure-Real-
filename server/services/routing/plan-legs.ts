@@ -13,6 +13,8 @@
  * No I/O.
  */
 import {
+  DEFAULT_LEG_DEPARTURE_WALL_CLOCK,
+  TRANSIT_UNAVAILABLE_REASON,
   defaultRoutedMode,
   routeLegKey,
   routeHourBucket,
@@ -20,12 +22,38 @@ import {
   type RoutingMode,
 } from "@shared/routing-engine";
 import { normalizeLegMode } from "@shared/travel-speeds";
+import { addCalendarDays, calendarDayOf } from "@shared/plan-timing";
+
+/**
+ * P0 legs ruling 3 (ledger `2026-10-10-p0-legs-baseline`): the wall clock a routing call departs at —
+ * the leg's own, else a fixed local 10:00 on its trip day (never server-now). The hour bucket is read
+ * from the leg's OWN wall clock elsewhere, so a leg with no time keeps its own bucket.
+ */
+export function legDepartureWallClock(wallClock: string | null | undefined): string {
+  return wallClock || DEFAULT_LEG_DEPARTURE_WALL_CLOCK;
+}
+
+/**
+ * P0 legs ruling 3: is this trip day already over in the plan's zone (UTC when it has none)? A past day
+ * is never routed: its legs are frozen — nothing asked, nothing recomputed, nothing deleted. No start
+ * date ⇒ not past (the caller's own dates gate decides).
+ */
+export function planDayIsPast(tripStart: string | null | undefined, dayNumber: number, timezone: string | null | undefined, now: Date): boolean {
+  const day = addCalendarDays(tripStart ? String(tripStart).slice(0, 10) : null, dayNumber - 1);
+  if (!day) return false;
+  return day < calendarDayOf(now, timezone);
+}
 
 export interface PlanStop {
   id: string;
   name: string;
   dayNumber: number;
   point: RoutePoint | null;
+  /**
+   * TC-3a (migration 368): a ride item's exit pin. When present, the leg LEAVING this stop starts here;
+   * the leg arriving at it still ends at `point` (the boarding pin). Absent on every other stop.
+   */
+  exitPoint?: RoutePoint | null;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
@@ -37,6 +65,8 @@ export interface DesiredLeg {
   legOrder: number;
   from: PlanStop & { point: RoutePoint };
   to: PlanStop & { point: RoutePoint };
+  /** Where the leg starts: the from-stop's exit pin when it has one (a ride), else its own point (TC-3a). */
+  origin: RoutePoint;
   mode: RoutingMode;
   /** The departure's local wall clock, or null when the plan does not say. */
   wallClock: string | null;
@@ -82,7 +112,7 @@ export function departureWallClock(stop: Pick<PlanStop, "startTime" | "endTime" 
 
 export interface DesiredLegsResult {
   legs: DesiredLeg[];
-  /** Pairs with a stop that has no point (§13) — reported, never bridged. */
+  /** Adjacent pairs with a stop that has no point (§13) — reported; the located stops either side are still connected. */
   skipped: Array<{ dayNumber: number; fromItemId: string; toItemId: string; reason: "missing_coordinates" }>;
 }
 
@@ -128,7 +158,9 @@ export function desiredPlanLegs(
       return;
     }
     const pairKey = legPairKey(dayNumber, from.id, to.id);
-    const mode = opts.selectedMode?.(pairKey) ?? defaultRoutedMode(from.point, to.point, opts.hasTransitCoverage);
+    // TC-3a: a ride leaves the traveler at its exit pin, so the next leg is routed from there.
+    const origin = from.exitPoint ?? from.point;
+    const mode = opts.selectedMode?.(pairKey) ?? defaultRoutedMode(origin, to.point, opts.hasTransitCoverage);
     const hourBucket = routeHourBucket(wallClock);
     legs.push({
       pairKey,
@@ -136,10 +168,11 @@ export function desiredPlanLegs(
       legOrder,
       from: from as PlanStop & { point: RoutePoint },
       to: to as PlanStop & { point: RoutePoint },
+      origin,
       mode,
       wallClock,
       hourBucket,
-      legKey: routeLegKey(from.point, to.point, mode, hourBucket),
+      legKey: routeLegKey(origin, to.point, mode, hourBucket),
     });
   };
   for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
@@ -149,7 +182,17 @@ export function desiredPlanLegs(
       // Out of the stay to the day's first located stop; the hour is when that stop starts.
       add(dayNumber, 0, { ...opts.stay, dayNumber }, located[0], hhmm(located[0].startTime));
     }
-    for (let i = 0; i < day.length - 1; i++) add(dayNumber, i + 1, day[i], day[i + 1], departureWallClock(day[i]));
+    // P0 legs ruling 1 (ledger `2026-10-10-p0-legs-baseline`): a stop with no point is REPORTED for
+    // each adjacent pair it breaks, and the located stops either side of it are still connected — an
+    // unlocated stop never leaves a gap with no leg. The bridge's order is the from-stop's position.
+    for (let i = 0; i < day.length - 1; i++) {
+      if (!day[i].point || !day[i + 1].point) {
+        skipped.push({ dayNumber, fromItemId: day[i].id, toItemId: day[i + 1].id, reason: "missing_coordinates" });
+      }
+    }
+    for (let j = 0; j < located.length - 1; j++) {
+      add(dayNumber, day.indexOf(located[j]) + 1, located[j], located[j + 1], departureWallClock(located[j]));
+    }
     if (opts.stay && located.length) {
       const last = located[located.length - 1];
       add(dayNumber, day.length, last, { ...opts.stay, dayNumber }, departureWallClock(last));
@@ -223,7 +266,7 @@ export function routedFactsOf(leg: {
   source?: string | null;
   calculatedAt?: Date | string | null;
   alternativeModes?: unknown;
-}): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } } | null {
+}): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true } | null {
   if (!leg.source || !leg.calculatedAt) return null;
   const at = new Date(leg.calculatedAt as any);
   if (Number.isNaN(at.getTime())) return null;
@@ -233,6 +276,8 @@ export function routedFactsOf(leg: {
     line: typeof alt?.line === "string" && alt.line ? alt.line : null,
     fare,
     provenance: { source: leg.source, checkedAt: at.toISOString() },
+    // P0 ruling 2: present only on a drive the engine fell back to because transit had no route.
+    ...(alt?.reason === TRANSIT_UNAVAILABLE_REASON ? { transitUnavailable: true as const } : {}),
   };
 }
 

@@ -12,6 +12,7 @@
  * ROW — the attribution comes from the rail, never from a request body.
  */
 
+import { curatedGemTags, gemVerificationTags } from "@shared/content-tiers";
 import { and, asc, eq, isNull, or } from "drizzle-orm";
 import { db } from "../db";
 import { localKnowledgeNuggets, travelPulseHiddenGems, users } from "@shared/schema";
@@ -146,6 +147,8 @@ export async function approveGemCandidate(opts: {
       curatedByExpertId: nugget.expertUserId,
       momentKey,
       aiGenerated: false,
+      // FD-2: an expert's promoted nugget is local, authored and verified by that expert.
+      ...curatedGemTags(nugget.expertUserId),
     })
     .returning();
 
@@ -185,4 +188,24 @@ export async function rejectGemCandidate(opts: {
     .returning();
   if (!updated) return { ok: false, status: 409, message: "Candidate is not awaiting review" };
   return { ok: true, candidate: updated };
+}
+
+/**
+ * FD-2 ruling 3 (ledger `2026-10-09-fd2-content-tier-tags`): a person verifies an UNTAGGED gem (an AI-written
+ * one stays untagged, and out of every draft, until this). The verifier becomes its author: `verified_by` is
+ * the session's admin, `verified_at` now, and the gem is `local` / `reusable` with NO "Traveloure team" label.
+ * ONE atomic conditional (§15) — `WHERE source_class IS NULL` — so a second press, or a tagged gem, changes
+ * nothing. 404 for no such gem; 409 for a gem that is already tagged.
+ */
+export async function verifyGem(opts: { gemId: string; verifierUserId: string }): Promise<
+  { ok: true; gem: typeof travelPulseHiddenGems.$inferSelect } | { ok: false; status: 404 | 409; message: string }
+> {
+  const [gem] = await db
+    .update(travelPulseHiddenGems)
+    .set({ ...gemVerificationTags(opts.verifierUserId), lastUpdated: new Date() })
+    .where(and(eq(travelPulseHiddenGems.id, opts.gemId), isNull(travelPulseHiddenGems.sourceClass)))
+    .returning();
+  if (gem) return { ok: true, gem };
+  const [exists] = await db.select({ id: travelPulseHiddenGems.id }).from(travelPulseHiddenGems).where(eq(travelPulseHiddenGems.id, opts.gemId)).limit(1);
+  return exists ? { ok: false, status: 409, message: "This gem is already verified" } : { ok: false, status: 404, message: "Gem not found" };
 }

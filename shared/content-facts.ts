@@ -39,6 +39,9 @@ export const CONTENT_SUB_NEEDS = {
   "transport.intercity.bus": "transport.intercity",
   "transport.intercity.ferry": "transport.intercity",
   "transport.local.fares": "transport.local",
+  // FD-3 ruling 3 (ledger `2026-10-10-fd3-feasibility`): an operator's last departure per line or station,
+  // from a registered official operator source. Its fact type is `last_service` (shared/feasibility-facts.ts).
+  "transport.local.last_service": "transport.local",
 } as const satisfies Record<string, ContentNeed>;
 export type ContentSubNeed = keyof typeof CONTENT_SUB_NEEDS;
 /** A value a `covers` / `does_not_cover` entry may hold: a need or a named sub-need. */
@@ -138,6 +141,10 @@ export const FACT_TYPES = [
   // names + author attributions) — never an image. Same place-ID key and TTL as the other Places facts;
   // the photo resolver reads them, and only the Place Photo media call is made per render.
   "photo_ref",
+  // FD-3 (ledger `2026-10-10-fd3-feasibility`): two STRUCTURED operational facts, admitted only through
+  // `admitFeasibilityFact` (shared/feasibility-facts.ts) — an official source required, never parsed from text.
+  "last_admission",
+  "last_service",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 
@@ -150,8 +157,22 @@ export const FACT_ORIGINS = [
   "places_api",
   "crawled",
   "traveler_note",
+  // SS-1b ruling 1 (ledger `2026-10-10-ss1b-official-refresh`): a fact the market-level refresh read off an
+  // official source's own page on a schedule, outside any plan. Read exactly as an official crawl is
+  // (`isPageReadOrigin`); the difference is only WHO fetched it and on what clock.
+  "official_refresh",
 ] as const;
 export type FactOrigin = (typeof FACT_ORIGINS)[number];
+
+/**
+ * SS-1b: the origins whose fact was READ OFF A SOURCE'S PAGE — the per-plan crawl and the market-level
+ * official refresh. Every rule that treats a page-read fact (tier, publishability, tagging, feasibility
+ * admission, the cross-plan read) asks this ONE predicate, so the two can never disagree (§18 rule 1).
+ */
+export const PAGE_READ_ORIGINS = ["crawled", "official_refresh"] as const;
+export function isPageReadOrigin(origin: string | null | undefined): boolean {
+  return (PAGE_READ_ORIGINS as readonly string[]).includes(origin ?? "");
+}
 
 export const LICENSE_CLASSES = ["official", "editorial", "partner", "restricted"] as const;
 export type LicenseClass = (typeof LICENSE_CLASSES)[number];
@@ -175,6 +196,7 @@ const ORIGIN_TIER: Record<FactOrigin, number> = {
   expert_nugget: 1,
   places_api: 2,
   crawled: 3,
+  official_refresh: 3,
   traveler_note: 4,
 };
 
@@ -211,7 +233,7 @@ export const PUBLIC_OK_FACT_TYPES = ["hours", "closure", "ticketing_rule", "tran
  * `public_ok` at terms check, of an operational fact type. Every condition is required; NULL is no.
  */
 export function isOfficialPublicFact(fact: FactLike): boolean {
-  if (fact.origin !== "crawled") return false;
+  if (!isPageReadOrigin(fact.origin)) return false;
   if (fact.license === "partner" || fact.license === "restricted") return false;
   if (fact.sourceLicenseClass !== "official" || fact.sourcePublicOk !== true) return false;
   return (PUBLIC_OK_FACT_TYPES as readonly string[]).includes(fact.factType ?? "");
@@ -238,7 +260,7 @@ export function isPublishable(fact: FactLike): boolean {
   const origin = fact.origin ?? "";
   if (fact.license === "partner" || fact.license === "restricted") return false;
   if (origin === "expert_nugget") return fact.verifiedAt != null && String(fact.verifiedAt) !== "";
-  if (origin === "crawled") return isOfficialPublicFact(fact);
+  if (isPageReadOrigin(origin)) return isOfficialPublicFact(fact);
   return PLATFORM_OWNED.has(origin);
 }
 
@@ -271,7 +293,7 @@ export function factProvenanceLine(fact: FactLike & { sourceName?: string | null
         ? "A local expert"
         : fact.origin === "traveler_note"
           ? "Your note"
-          : fact.origin === "crawled"
+          : isPageReadOrigin(fact.origin)
             ? "Web source"
             : "Traveloure");
   const at = toMs(fact.fetchedAt);
@@ -336,6 +358,8 @@ export function canActivateSource(src: { termsCheckedAt?: Date | string | null; 
  * republish Google data under our name. A traveler's own note is theirs, not a source to verify.
  */
 export function isConfirmableFact(f: { origin?: string | null; license?: string | null; verifiedAt?: Date | string | null }): boolean {
+  // SS-1b: an `official_refresh` fact is NOT confirmable — it is re-read from the official page on its own
+  // interval and carries `verified_at`, so turning it into a nugget would freeze a fact the refresh keeps current.
   if (f.origin !== "crawled") return false;
   if (f.license === "partner" || f.license === "restricted") return false;
   return f.verifiedAt == null || String(f.verifiedAt) === "";

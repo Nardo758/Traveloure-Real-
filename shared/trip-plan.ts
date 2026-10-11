@@ -542,6 +542,8 @@ export interface TripPlanLegRouted {
   line: string | null;
   fare: { amount: number; currency: string } | null;
   provenance: { source: string; checkedAt: string };
+  /** P0 ruling 2: present only on a drive the engine fell back to because transit had no route. */
+  transitUnavailable?: true;
 }
 
 export interface TripPlanDay {
@@ -561,6 +563,17 @@ export interface TripPlanDay {
   /** Derived day headline; the `teaser` level's `title`. */
   label: string;
   activities: TripPlanActivity[];
+  /**
+   * OPTIONAL (FD-1, ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan, the COUNT of local picks and local
+   * notes the paid tier would add around this day. Counts only. ABSENT when not computed or zero (§13).
+   */
+  localTeaser?: { localPicks: number; localNotes: number };
+  /**
+   * OPTIONAL (FD-3, ledger `2026-10-10-fd3-feasibility`): what the day's feasibility checks could read — stops
+   * whose hours / last entry are known, rides whose last departure is stored. Counts only; the words are
+   * `feasibilityLine` (shared/plan-feasibility.ts). ABSENT when not computed.
+   */
+  feasibility?: import("./plan-feasibility").DayFeasibility;
   /** LEGACY placement of this day's legs; the same objects also appear in `TripPlan.legs`. */
   transports: TripPlanLeg[];
 }

@@ -324,7 +324,12 @@ export async function generateTripTransportLegs(
   if (opts.via !== "travel_time_service") {
     const { routingAdapter } = await import("./routing/index");
     const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
-    if (routingAdapter() && (await tripGetsRoutedLegs(tripId))) return activateTripTransport(tripId);
+    if (await tripGetsRoutedLegs(tripId)) {
+      if (routingAdapter()) return activateTripTransport(tripId);
+      // P0 ruling 4 (ledger `2026-10-10-p0-legs-baseline`): with the engine OFF, a routed plan gets
+      // nothing written — the legacy driving writer below serves non-qualifying plans only.
+      return { created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [] };
+    }
   }
   const destination = trip.destination || "";
   const viaService = opts.via === "travel_time_service";

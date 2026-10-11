@@ -49,6 +49,10 @@ This document captures architectural decisions to maintain consistency across co
    `RESOLVER_FEE_BAND_REQUIREMENTS` also declares it with its fallback, so the screen states what turning
    it off does instead of "not declared". Pinned for every band a migration seeds from 354 on
    (`fee-band-admin-guards` D8). A band the screen can't see or explain fails the ruling.
+   **TC-0 (ledger `2026-10-10-tc0-transport-commission-band`, migration 367, approved):** the transport platform
+   commission is the `transport_platform_commission` band (10%) and the route-search partners' margin is ONE
+   `affiliate_transport_margin` band (6%), each with fallback 0; the dormant `booking_fee_configs` reads and
+   the 10% / per-partner literals are gone.
    **Migration 339** (ledger `2026-10-03-beta-flat-band-insert`) inserts the `beta_flat` row when it
    is missing — 051 stamped 001–050 without running them, so production never received 033's seed
    and 338's UPDATE matched nothing — then repeats 338's guarded reactivation and policy upsert.
@@ -556,13 +560,32 @@ This document captures architectural decisions to maintain consistency across co
     show the inline dates panel when the dates are unconfirmed and continue once they are set; leg
     compute skips such a plan. Steps 2 and 3 are still never skipped INSIDE the modal. **Every other
     door keeps the modal unchanged** (they move in a later lane, PP-1/PP-2).
+    **AMENDED — ONE PlanEntry STARTS EVERY NEW PLAN; THE MODAL ONLY EDITS (decision-maker, Oct 9, 2026 —
+    E2 rulings 1–7, ledger `2026-10-09-e2-plan-entry`; supersedes the step list and the finish below for a
+    NEW plan).** A door that starts a new plan opens `PlanEntry` — "Plan around…" a place · a date · an
+    event → the occasion (five group chips, each with one seeded default occasion; "More specific" for the
+    rest) → Start a plan → the plan. Nothing before the plan asks When, Who, a name or a way to build; those
+    are chips on the plan (E1). A door that chose a way to build continues ON the plan (`ai` →
+    `?view=map&draft=ai`, `local` → the expert door). `PlanModal` survives ONLY as the edit window over the
+    BOUND plan (Where · When · Who · What's happening, Save) — no Occasion step, chooser, Clear or name. The
+    single opener (`usePlanning().open`) and `check-planning-entry.cjs` stand; the guard now also holds the
+    PlanEntry/edit-window split. `/experiences` moves onto PlanEntry in E3.
+    **AMENDED — THE START PAGE IS PlanEntry INLINE (decision-maker, Oct 9, 2026 — E3 rulings 1–4, ledger
+    `2026-10-09-e3-experiences-inline`; supersedes Lane E1's zero-question Continue above).** `/experiences`
+    mounts `PlanEntryPanel` inline — the same steps as the pop-up, its Place picker the page's own world map
+    and eight city cards — and Start a plan (sticky at phone width) runs the provider's ONE start
+    (`usePlanning().start`, the pop-up's mint): a guest's PlanEntry sign-in record, a picked date stamps
+    confirmed dates. Lane E1's `mintStartPagePlan` / `startPageGuestRecord` / start-page replay are DELETED
+    (§18c). Deep links seed the panel and never start a plan — a visit writes nothing; a city and an
+    occasion land on Step 2 with Start a plan ready; `?group=` seeds the group. A door slug the catalog
+    does not carry is dropped, never minted (§13).
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
     shows only that one CTA. Each branch's downstream behaviour is unchanged, sign-in gates
     included; the Plus `occasion` branch stays reachable as a fourth finish CTA, and stays HIDDEN
-    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — Lane E1 above: its
-    Continue is the `myself` landing on the map, through the zero-question mint.)
+    while `PLUS_SALES_ENABLED` is off. (The start page has no finish to choose — its Start a plan is
+    PlanEntry's, E3 above.)
     **HELD / NOT BUILT, deliberately:** step 2 stays ONE destination — the Step2Where "add another
     stop" control is OMITTED, not disabled, because ordered stops need a `trip_destinations` table
     that does not exist (`WEDDING_FLOW_BUILD_SEQUENCE.md` §0 F4); the Step4Variants corporate
@@ -1527,6 +1550,8 @@ This document captures architectural decisions to maintain consistency across co
     SPA catch-alls, which were answering Stripe's verification fetch with the SPA's 200-HTML "404
     – Lost at Sea?" page — the file itself remains an operator drop-in, and the dashboard
     registration remains the operator step this clause rules it to be.**
+    **AMENDED — LITEAPI HOTEL BOOKINGS (ledger `2026-10-11-ld64-d3a-wording-held`).** (c)'s "affiliate purchases
+    never see wallets" holds for them: "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 44. **THE PLATFORM'S BOOKING AGENT IS THE AI COPILOT FIRST; A HUMAN OR A PARTNER API MAKES THE
     PURCHASE; BROWSER CONTROL IS READ-ONLY (decision-maker ratified Sep 5, 2026, evening — ledger
@@ -1675,6 +1700,8 @@ This document captures architectural decisions to maintain consistency across co
     `itinerary_items` row atomically, keyed on `itinerary_item_id` + `trip_id`, and never a second
     item; the unlinked legacy create is kept byte-for-byte, and the `origin` question above stays
     open — this lane does not decide it.
+    **AMENDED — LITEAPI IS PHASE 2's FIRST PARTNER (ledger `2026-10-11-ld64-d3a-wording-held`), closing the
+    seventh open question above:** "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
     OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows
@@ -2425,6 +2452,23 @@ This document captures architectural decisions to maintain consistency across co
     at Local Izakaya" gets no fact rather than some izakaya's hours. `PLACES_LOOKUPS_PER_DRAFT` stays a
     COST cap on BILLED lookups (a cache reuse no longer spends it), spent round-robin across the plan's
     days (`lookupOrder`) instead of in plan order.
+    **AMENDED — THE PLAN IS THE TRAVELER'S RECORD FROM CREATION (decision-maker Leon Dixon, Oct 9, 2026;
+    verbatim):** "LD 57 (amended Oct 9 2026): a plan is the traveler's own record from the moment it is
+    created; purchase strengthens but does not create that ownership. Place facts stored on a plan item
+    (hours, address, access route, last admission) with 'checked on <date>' provenance are the traveler's
+    record, displayed to that traveler, and are kept for 30 days as ruled. Nothing beyond place IDs and
+    coordinates is stored from Places outside a plan; Google durations are never cached across plans; Google
+    photos are never stored."
+    **AMENDED — A MARKET-LEVEL OFFICIAL REFRESH (decision-maker SS-1 ruling 1, Oct 10, 2026; ledger
+    `2026-10-10-ss1b-official-refresh`; no migration — wording APPROVED by Leon, Oct 10, 2026).** A second, bounded spend path
+    beside A6-3A: a scheduled job reads each active, official, terms-checked source that states
+    `refresh_interval_days` and `cost_ceiling_cents_per_day`, on that interval and within that ceiling, OUTSIDE ANY
+    PLAN, fetching only the targets in `server/config/content-source-targets.config.ts`. Its facts are
+    `official_refresh` — source id, official URL, verbatim quote, `verified_at`, `expires_at = verified_at +
+    interval` — read exactly as an official crawl (`isPageReadOrigin`). The free draft's budget stays 0; it reads
+    what the refresh stored. A station's point comes from the OSM node its anchor names (`{ stationSlug, osmNodeId }`),
+    resolved once through the city-event venue path (LD 59) and stored with "© OpenStreetMap contributors" — never
+    from Places; a station OSM does not confirm is stored unplaced, never guessed.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
@@ -2533,7 +2577,20 @@ This document captures architectural decisions to maintain consistency across co
     `SHOW_DEMO_EXPERTS=1` relaxes ONLY the seed-domain clause, for every reader alike — approval, Identity and
     Connect are never relaxed, and the pool account never passes. CI sets it in `ci-db-setup` for its seeded
     fixtures (the Kyoto door fixture lives on `traveloure-qa.test` and refuses NODE_ENV=production); production
-    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
+    never sets it, and `/api/health` reports it so that can be verified. The routing status word is `proposed`.
+    **AMENDED BY B3 (decision-maker, Oct 9, 2026 — rulings 1–4; ledger `2026-10-09-b3-expert-routability`).**
+    The predicate now also guards every WRITE that puts an expert on a plan and every remaining read that
+    names one: the ONE advisor author `upsertTripAdvisorRow` refuses a NEW advisor who is not routable
+    (`expert_not_routable`; an existing row may still move — a lapsed Identity/Connect does not undo a real
+    hire), and so do `isExpertHireable`/`isExpertApproved`, the storefront request rail and the admin handoff
+    assign, whose ONLY way past is `overrideRoutability: true`, written to the admin audit log. Reads: the
+    plan's advisor list and "delivered by" name drop seed-sourced and not-approved experts (an approved
+    expert whose verification lapsed stays); `/api/grok/match-experts`, `/api/trip-experts`, the follow-up
+    email and the neighbourhood `localExpert` are routable only; `GET /api/experts/:id` and expert
+    storefronts are one 404 for seed or unapproved, and an approved-but-unroutable storefront keeps its page
+    with `bookingOpen: false` (no request/book door). Seed rows are hidden, never deleted; the demo seeders
+    that create experts refuse a non-development `DATABASE_URL` (localhost, a unix socket, `helium`, or
+    `DEMO_SEED_DATABASE_HOSTS` — development only), failing closed. **(b) A RELEASED HOLD IS NOT A REFUND:** the `charge.refunded` webhook records nothing for a charge
     with `captured: false`; 355 marks the rows it already wrote `voided_uncaptured` (never deleted). **(c)** The
     expert is NAMED to the traveler only after ACCEPT (`handoffExpertDisclosed`); the banner names the city
     ("Kyoto"). **(d)** A traveler's withdraw cancels the hold with `requested_by_customer`, only the 48 h timer with
@@ -2580,6 +2637,143 @@ This document captures architectural decisions to maintain consistency across co
     code in `server/data/iata-airports.json` (a typed airport name has none and keeps the fixed buffer); the
     engine routes airport ↔ stay legs, and the buffer check adds the routed leg's minutes. `leg-google-coords`
     queues one recompute after deleting engine legs on a plan that still qualifies and has not ended.
+    **AMENDED BY P0 (decision-maker rulings 1–7, Oct 10, 2026 — ledger `2026-10-10-p0-legs-baseline`; no
+    migration).** An unlocated stop is reported and BRIDGED (consecutive located stops are connected). A
+    default-transit `no_route` is asked ONCE as a drive, stored with `alternative_modes[0].reason=
+    'transit_unavailable'` and shown "No transit found — drive shown"; transit and drive both without a
+    route ⇒ no leg (E8 kept — never a stale leg) and a "no route found" count on the FD-3 day line. No time
+    of day ⇒ 10:00 local on the trip day, never server-now; a past day is never routed. With the engine off
+    a routed plan gets NOTHING written — the legacy "driving" writer is retired for routed plans. A
+    confirmed `source IS NULL` leg is re-routed on the plan's first engine run, keeps `confirmed`, and its
+    legacy row is superseded (`proposal_status` NULL, `origin='superseded'`), never deleted; the mode change
+    is logged (behaviour pins E9/E10 amended accordingly — sanctioned; a confirmed ENGINE leg is still never
+    recomputed). The marker now lives in `superseded_at` (migration 368, TC-3a — the held follow-up is closed;
+    `origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
+    is set by Leon in Deployments after the deploy carrying P0.
+
+64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
+    ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**
+    A paid plan (`planGetsRoutedLegs`, which replaced the paid-optimizer-run test) gets ONE stay. It is picked by
+    one Route Matrix request per hotel → every located stop on the plan's dates (DRIVE), ranked by reachability,
+    then closest on most days, then least total time. Candidates are hotels in the plan's neighbourhoods, scored
+    in straight-line order until 150 ELEMENTS are spent, against `MAPS_ROUTE_MATRIX_DAILY_CAP`; the pick comes only
+    from scored hotels. A free plan gets the top 3 by straight line, and no Maps call. Candidates carry five keys
+    (`shared/stay-pick.ts`) and no money field. `trips.stay_pick` (jsonb, nullable, no DEFAULT/CHECK/index/FK,
+    declared in `shared/schema.ts`, omitted from `insertTripSchema`) has ONE writer, `stay-pick.service.ts`. It is
+    computed at Optimize finish, Trip Pass grant, handoff accept and the debounced stops recompute when
+    `stopsHash` changed — **never on read**. A re-score replaces the pick and sets `changed`; the card clears it
+    once. **9a-ii** = self-hosted OSRM as a `RoutingAdapter` provider for walk and drive; when it is live, the
+    straight-line prune and the element budget are removed. The card is the Conformance lane's.
+    **AMENDED — S1-d-1, LITEAPI JOINS THE POOL AS STATIC CONTENT ONLY (decision-maker, Oct 10, 2026 — ledger
+    `2026-10-10-s1-d1-liteapi`; brief `docs/planning/briefs/s1-d1-liteapi.md`; migration 365, APPROVED by
+    Leon Oct 10, 2026).** LiteAPI hotels are `hotel_cache` rows with `provider='liteapi'`, written ONLY by the nightly
+    Kyoto sync (`liteapi-sync.service.ts`; incremental on `lastUpdatedAt`; `LITEAPI_ENV` on every row's
+    `raw_data.provenance`). Static content is stored with no retention cap; images are hot-linked, never copied;
+    reviews and sentiment are never stored; rates are never stored (`hotel_offer_cache` is not used for them).
+    Their stay kind `liteapi` is DERIVED from the provider (`stayKindForCacheProvider`), never a column, and the
+    ranking still reads no money field. 365 adds six nullable columns and a UNIQUE (provider, provider_hotel_id),
+    empty at creation. **The expiry sweep never deletes a LiteAPI row, nor any row a `plan_options` row or a
+    `trips.stay_pick` references** (`hotel-cache-retention.ts`). "See rates", the SSP guard and the margin bands
+    are S1-d-2.
+    **AMENDED — S1-d-2, LIVE RATES ON THE CARD, NEVER STORED (decision-maker, Oct 10, 2026 — ledger
+    `2026-10-10-s1-d2-liteapi-rates`; brief `docs/planning/briefs/s1-d2-liteapi-rates.md`; migration 366, HELD
+    until "Migration 366 SQL approved — Leon" is on its PR).** `GET /api/trips/:tripId/stays/:stayId/rates` asks
+    LiteAPI live for one stay (`maxRatesPerHotel: 1`) behind the plan read gate and stores nothing. The public
+    price is the retail total with the `hotel_margin_public` margin, floored at the SSP; both margin bands are
+    optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
+    is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
+    default card shows "See rates" and no price; the item row and booking are d-3.
+    **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
+    ledger `2026-10-10-s1-d3a-liteapi-booking`, wording ledger `2026-10-11-ld64-d3a-wording-held`).** In Leon's words:
+    "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
+    The rail itself is recorded in the d-3a ledger row and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`;
+    migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
+    (`liteapiBookingEnabled`).
+
+65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
+    FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
+    migrations 361 (columns) and 362 (backfill), APPROVED by the founder Oct 9, 2026).** Nine tables carry
+    `source_class` (`public` | `local`) and most carry `reuse_class` (`display_in_plan` | `link_only` | `internal` |
+    `reusable`), beside the UNCHANGED `license` / `license_class` (ruling 1; fixed mapping restricted→display_in_plan,
+    official→link_only, editorial→link_only, partner→internal). All nullable, no DEFAULT/CHECK/index/FK, declared in
+    `shared/schema.ts`; value sets and every rule ONCE in `shared/content-tiers.ts`. **NULL source_class = UNTAGGED and
+    never reaches a draft** — an AI-written gem stays untagged until a person verifies it (`POST /api/admin/gems/:id/verify`,
+    ruling 3), and verification makes the VERIFIER its author, never "Traveloure team". Official-source facts and city
+    events are `public` + `link_only` (ruling 2); neighbourhood descriptions `public` (ruling 4). Every writer stamps at
+    insert; **`itinerary_items.source_class` is server-stamped (`stampItemSourceClass`), stripped from every body and
+    update, never client-settable (ruling 9)** — an item a local input produced (expert work, a gem, a Ready Made copy,
+    an expert-recommended option, a prompt that carried local gems) is `local`; an unknown origin stays NULL. AI drafts
+    read gems only through `getDraftEligibleGems` (tagged, and a local row past `expires_at` hidden — ruling 8); nothing
+    is deleted and no status column exists; `content-expiry-census` (daily) only counts. Night-scene is not tagged (ruling
+    7). Quick-start is a free draft and the Plus occasion draft is paid (ruling 5) — the cap and tier filter are FD-1.
+
+66. **THE FREE DRAFT IS CAPPED, AND A FREE PLAN IS SHOWN WHAT LOCAL WOULD ADD AS COUNTS ONLY (decision-maker, Oct 9,
+    2026 — FD-1 rulings 1–5; ledger `2026-10-09-fd1-free-draft-cap`; brief `docs/planning/briefs/fd-1-free-draft-cap.md`;
+    migration 363, APPROVED by the founder Oct 9, 2026).** `free_draft_runs` (new table born empty; partial UNIQUE on
+    `trip_id` where `status <> 'released'`, safe because the table is new; NO FK to trips, so deleting a plan never
+    refunds a draft; declared in `shared/schema.ts`) has ONE writer, `server/services/free-draft-cap.service.ts`. The
+    free drafts are the slip draft, the trip draft and quick-start (every quick-start counts); the Plus occasion draft
+    is paid. **3 per 30 days per PLAN OWNER, one per plan** (config, `server/config/free-draft.config.ts`), CLAIMED under
+    a per-owner advisory lock BEFORE the model call (§15b), promoted to `drafted` when the draft commits and `released`
+    when it fails on OUR side (provider error, our exception, the canned fallback) — a released run never counts; a
+    crash after the model call returns may count (recorded). A **paid-tier plan** (`planGetsRoutedLegs`, e.g. an accepted
+    handoff) is not a free draft at all; **QA accounts** (`QA_ACCOUNT_EMAIL_DOMAIN`) are exempt and make no row. A refusal
+    is 429 with the server's numbers; `GET /api/me/free-drafts` serves them and the §6 sentence. **Guests** count only on
+    the SERVER guest record E2/E3 introduce — never a browser-made id. Quick-start takes public gems only. **The teaser**
+    is `days[].localTeaser = { localPicks, localNotes }` on a FREE plan's plancard: draft-eligible local gems not already
+    on the plan and live local notes in the neighbourhoods of that day's located stops — COUNTS ONLY, no title, place or
+    id; a day not computed, or zero, carries no key (§13). FD-5's coverage targets will hide an under-target day.
+    **AMENDED BY FD-5 (decision-maker rulings 1–7, Oct 10, 2026; numbers Leon's; ledger `2026-10-10-fd5-coverage-targets`;
+    no migration — FOUNDER WORDING REVIEW).** The teaser is gated per neighbourhood by config targets
+    (`server/config/coverage-targets.config.ts`; Kyoto: peak 5 picks / 3 notes, weekday 3 / 2): a day counts only the
+    neighbourhoods at or above their own target for its day type (`peak` = a weekend, a season at or above
+    `COVERAGE_PEAK_MULTIPLIER`, or unconfirmed dates), never summed; none ⇒ nothing. Only the teaser's own counts gate;
+    official-fact targets are census-reported (`scripts/report-coverage-census.cjs`). The day block draws it beside the
+    feasibility line, nothing on zero.
+
+67. **FEASIBILITY IN THE FREE DRAFT READS ONLY STORED OFFICIAL FACTS, AND A DAY SAYS WHAT IT DID NOT CHECK (decision-maker,
+    Oct 10, 2026 — FD-3 rulings 1–7; ledger `2026-10-10-fd3-feasibility`; brief `docs/planning/briefs/fd-3-feasibility.md`;
+    no migration).** Two structured fact types — `last_admission` and `last_service` (sub-need
+    `transport.local.last_service`) — are admitted by ONE rule, `admitFeasibilityFact` (`shared/feasibility-facts.ts`), in
+    the one writer: an official license, an https source, an official crawled page or an expert citing one, every time
+    printed in the quote; never parsed from free-text hours; tagged public + link_only. The free draft's fetch budget stays
+    zero (A6-3A): the post-draft Places hours lookup is its only live source. Three findings — `after_last_admission`
+    (arrival vs last entry), `closes_before_visit_end` (visit end vs closing) and `last_service_missed` — join the T-3
+    re-check; they flag, never reorder; a last-train finding on a ride inferred by the engine's default-mode rule reads
+    "may leave", and it under-reports until every operator is registered. Official crawled facts are read across plans
+    for the same place; Google hours never are (LD 57). Every day block draws ONE line (`feasibilityLine`) from `days[].feasibility`:
+    honest counts, "not checked" where nothing is stored. Expert hard constraints never enter a draft (LD 27). Unsourced
+    transport-profile hours and Kyoto's last-train note are deleted.
+
+68. **A RIDE IS A PLAN ITEM; IT LOCKS ON INSERT AND SUPERSEDES THE LEG IT REPLACES WITHOUT DELETING IT (decision-maker,
+    Oct 10, 2026 — TC-3 brief rev 1, lane TC-3a; ledger `2026-10-11-tc3a-ride-item`; brief
+    `docs/planning/briefs/tc-3a-ride-item.md`; migration 368, APPROVED by Leon Oct 10, 2026).** A ride is an ordinary `itinerary_items` row:
+    `item_type='transport'` with `provider_service_id` set to a transport CATALOG row — a `provider_services` row that has
+    a `service_transport_facts` row (weather rule + routed-fallback mode, luggage, pass validity, payment constraints,
+    official link, `official_source` REQUIRED, `verified_at`, booking window, OSM attribution; one per service), approved
+    and active. Boarding pin = the item's own point; exit pin = the new nullable `itinerary_items.exit_latitude`/
+    `exit_longitude`, both from the service's `service_route_points` (first and last), written ONLY by
+    `ride-item.service.ts` (insert schema omits them, storage strips them). The legs engine routes the leg AFTER a ride
+    from its exit pin (`DesiredLeg.origin`); pair diff and debounce unchanged. The schedule is the catalog's (a slot that
+    day, else `earliest_start_time`; end = + `duration_minutes`, never guessed). Born LOCKED (LD 61) — Optimize keeps it
+    fixed and no rebuild deletes it. Inserted between A and C (owner only, `POST /api/trips/:tripId/rides`), it
+    supersedes any confirmed A→C leg: `proposal_status` NULL + the new `transport_legs.superseded_at` +
+    `superseded_by_item_id`; removing the ride (the ordinary item delete) restores exactly those legs. P0's interim
+    `origin='superseded'` marker moved to `superseded_at` (held follow-up closed). The catalog seed (migration 369 —
+    Sagano Romantic Train, Hozugawa boat, Eizan Kirara) waits on Chrome's official reads; an unverified field stays
+    NULL and the row stays inactive.
+    **AMENDED — THE SEED (decision-maker rulings 1–4, Oct 11, 2026; ledger `2026-10-11-tc3-ride-seed`; migration
+    369).** 369 (Migration 369 SQL approved by Leon — comment 00:42Z on #1405) adds `service_transport_facts.fact_sources` (field →
+    {url, quote}) and `notes` (facts no column carries), jsonb, nullable, no DEFAULT — and seeds five directional rides
+    (Sagano down/up, Hozugawa, Eizan Kirara down/up) under the reserved "Traveloure Transport" account (no login, no
+    handle). Every value comes from the committed official read (`docs/planning/briefs/tc-3-reads/`) and names its row
+    in `fact_sources` — no entry, no value; NOT ON SITE stays NULL. Fares live in `notes.fare` as JPY (`price` stays
+    NULL: the column has no currency). Coordinates come ONLY from OSM node ids read by Chrome and seeded with the row,
+    never a boot-time resolve: each route point stores its node (new nullable `service_route_points.osm_node_id`) and
+    a `fact_sources` entry naming the node URL, with `osm_attribution = true`. Rides seed located and active,
+    approved, `booking_mode='hidden'` (never a cart line), and never in browse: `notRideListingSql` /
+    `withoutRideListings` (`server/services/ride-listings.ts`) gate the four public list readers. The refresh interval
+    is set in `/admin/content-sources`, never on the ride row.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
@@ -3157,6 +3351,29 @@ Five incidents, two of which reached production, justify this rule. The sixth (2
 **The way of working — roles per model, lane briefs, the serial landing procedure, the publish
 procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md` (ratified Sep 6,
 2026); a session reads both files.**
+
+### Recording approvals
+
+An approval reference records what a named person approved, where they said it, and when. It carries no
+authority beyond that.
+
+- **Placement.** The reference sits immediately beside the artifact approved — the migration, the SQL block,
+  the specific clause. Never in a heading, a PR title, a section title, or the header of an amendment. A
+  citation in a heading reads as approving everything under it.
+- **Scope.** Name the artifact, not the container. "Migration 369 SQL approved by Leon" is correct.
+  "Approved by Leon" and "#1405 — approved by Leon" are not: both read as approval of the entire PR.
+- **Form.** `<artifact> approved by <name> — comment <HH:MM>Z on #<PR>`
+- **Derivation.** An approval reference may only be written where that person actually approved that
+  artifact. It is never inferred, extended to adjacent content, or carried from one PR to another. Content
+  that came from rulings in conversation is cited to those rulings, not to a PR comment.
+- **Self-authored text.** A heading or line a session writes on its own initiative does not take an approval
+  reference. If provenance is needed, say the session wrote it.
+- **Blocked permission checks.** A permission check that fires is a stop. Ask, every time. An approval granted
+  on one PR is not permission on the next, and a prior waiver is not precedent.
+- **Founder wording review is a merge gate (decision-maker, Oct 11, 2026 — ledger
+  `2026-10-11-ld64-d3a-wording-held`).** A PR carrying a FOUNDER WORDING REVIEW block does not merge until
+  Leon's "wording approved" comment is on it, whatever its queue number says: it is skipped and re-queued.
+  A migration approval on the same PR does not clear it.
 
 ## Service Model: Canonical Table
 

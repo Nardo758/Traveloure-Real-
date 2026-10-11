@@ -82,16 +82,3 @@ export const CITY_PHOTOS: Readonly<Record<string, CityPhoto>> = {
 export function cityPhotoFor(marketKey: string): CityPhoto | null {
   return CITY_PHOTOS[marketKey] ?? null;
 }
-
-/**
- * Continue enables only with BOTH answers: an occasion the catalog resolved, and one of the eight cities.
- * An occasion slug the catalog does not carry is not an answer (§13, LD 33's skip-on-the-row rule).
- */
-export function canContinue(
-  occasionSlug: string,
-  occasions: ReadonlyArray<{ slug: string }> | null | undefined,
-  marketKey: string | null | undefined,
-): boolean {
-  if (!occasionSlug || !(occasions ?? []).some((o) => o.slug === occasionSlug)) return false;
-  return !!marketKey && OPERATING_MARKETS.some((m) => m.marketKey === marketKey);
-}

@@ -9,30 +9,9 @@ import { test, expect, authFile } from '../fixtures/roles';
 
 const SELECTORS = {
   navLogo: '[data-testid="link-logo"]',
-  planningModalTrigger: '[data-testid="button-plan-trip"], [data-testid="hero-search-btn"]',
-  destinationInput: '[data-testid="input-destination"]',
-  addDestinationBtn: '[data-testid="button-add-destination"]',
-  startDateInput: '[data-testid="input-start-date"]',
-  endDateInput: '[data-testid="input-end-date"]',
-  generateBtn: '[data-testid="button-generate-itinerary"]',
   expertMatchCard: '[data-testid^="card-expert-match-"]',
   tripCard: '[data-testid^="trip-card-"]',
 } as const;
-
-const filterJsErrors = (errs: string[]) =>
-  errs.filter(
-    (e) =>
-      !e.includes('Failed to load resource') &&
-      !e.includes('ERR_') &&
-      !e.includes('net::') &&
-      !e.includes('[vite]') &&
-      !e.includes('vite-hmr') &&
-      !e.includes('Vite server') &&
-      !e.includes('WebSocket') &&
-      !e.includes('Warning:') &&
-      !e.includes('ResizeObserver') &&
-      !e.includes('Non-Error'),
-  );
 
 /** Wait for the nav logo with a generous cold-start budget. */
 async function waitForNav(page) {
@@ -49,116 +28,14 @@ async function countVisible(page, selector: string, ms = 5_000): Promise<number>
   }
 }
 
-// ─── Flow 2A: AI itinerary generation ────────────────────────────────────
-
-test.describe('Journey 2A — AI itinerary generation flow', () => {
-  test.use({ storageState: authFile('traveler') });
-
-  test('EnhancedPlanningModal generates itinerary and redirects to comparison or trip', async ({ page, consoleErrors }) => {
-    test.setTimeout(120_000); // AI generation can take 35-40 s
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await waitForNav(page);
-
-    // Check the planning modal trigger exists before trying to open it.
-    const triggerCount = await countVisible(page, SELECTORS.planningModalTrigger, 10_000);
-    if (triggerCount === 0) {
-      console.log('Journey 2A: planning trigger not found — skipping');
-      test.skip();
-      return;
-    }
-
-    const trigger = page.locator(SELECTORS.planningModalTrigger).first();
-    await trigger.click();
-
-    const destInput = page.locator(SELECTORS.destinationInput);
-    if (!(await destInput.isVisible().catch(() => false))) {
-      console.log('Journey 2A: destination input not visible — skipping');
-      test.skip();
-      return;
-    }
-
-    await destInput.fill('Tokyo, Japan');
-
-    const addBtn = page.locator(SELECTORS.addDestinationBtn);
-    if (await addBtn.isVisible().catch(() => false)) await addBtn.click();
-
-    const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth() + 1, 10);
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 15);
-    const fmt = (d: Date) => d.toISOString().split('T')[0];
-
-    const startInput = page.locator(SELECTORS.startDateInput);
-    const endInput = page.locator(SELECTORS.endDateInput);
-    if (await startInput.isVisible().catch(() => false)) await startInput.fill(fmt(start));
-    if (await endInput.isVisible().catch(() => false)) await endInput.fill(fmt(end));
-
-    // Arm the response interceptor BEFORE clicking so the promise is racing
-    // from the moment the request fires.  waitForResponse resolves with the
-    // first matching response regardless of whether the redirect has happened.
-    // The EnhancedPlanningModal POSTs the REAL Grok generator at /api/ai/generate-itinerary.
-    // (Was matching /api/trips/generate-itinerary — a path the modal never fires, so this
-    //  promise could never resolve and the test silently skipped via the catch below. The
-    //  hardcoded stub that owned that path was deleted in Lane 2a.)
-    // A5 (ledger `2026-09-29-a5-draft-open-set`): a Trip plan with no place to stay first answers
-    // 409 anchor_needed ("Where are you staying?"). The DRAFT's response is the one that is not the
-    // question, so the matcher waits past the 409.
-    const generateResponsePromise = page.waitForResponse(
-      (resp) =>
-        resp.url().includes('/api/ai/generate-itinerary') && resp.request().method() === 'POST' && resp.status() !== 409,
-      { timeout: 60_000 },
-    );
-
-    await page.click(SELECTORS.generateBtn);
-    // Smoke 4 item 5: the draft is never preceded by a hotel question (ledger `2026-10-02-smoke4-draft-fixes`).
-    // The redirect only happens when the AI service responds successfully.
-    // If XAI_API_KEY is absent in the deployed app the endpoint may error or
-    // stay on the loading state.  Catch the timeout and skip so the CI gate
-    // stays green rather than burning 60 s and then failing.
-    let generateResponse: Awaited<typeof generateResponsePromise> | null = null;
-    try {
-      await page.waitForURL(/\/plans\/|\/trip\//, { timeout: 60_000 });
-      generateResponse = await generateResponsePromise;
-    } catch {
-      const isErrorPage = await page
-        .locator('text=/error|unavailable|failed|unable to generate/i')
-        .isVisible()
-        .catch(() => false);
-      console.log(
-        `Journey 2A: redirect did not occur — isErrorPage=${isErrorPage}` +
-        ` (AI key likely absent in deployed app — skipping)`,
-      );
-      test.skip();
-      return;
-    }
-
-    // ── Smoke-assert the real Grok generate response shape ───────────────
-    // Catches regressions in the /api/ai/generate-itinerary route (missing fields,
-    // wrong status) independently of whatever the UI renders after the redirect.
-    // The route returns 200 with the AutonomousItineraryResult spread onto the body:
-    //   { success, tripId, status:'generated', dailyItinerary:[{day,activities}], ... }
-    // B3/B6 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): no comparisonId — a free draft
-    // creates no comparison and starts no optimizer run; the redirect target is the plan.
-    // NOTE: this is the Grok shape (dailyItinerary), NOT the deleted stub's
-    // { itinerary:{ itineraryData:{ days } } } — asserting the wrong shape is how a
-    // rerouted gate silently stops firing (see the matcher fix above).
-    expect(generateResponse, 'generate-itinerary response was captured').not.toBeNull();
-    expect(generateResponse!.status(), 'generate-itinerary HTTP status').toBe(200);
-
-    const body = await generateResponse!.json();
-    expect(body, 'response body is an object').toBeTruthy();
-    expect(body.tripId, 'tripId is present').toBeTruthy();
-    expect(body.comparisonId, 'a free draft creates no comparison').toBeUndefined();
-    expect(body.status, 'status field').toBe('generated');
-    expect(Array.isArray(body.dailyItinerary), 'dailyItinerary is an array').toBe(true);
-    expect(body.dailyItinerary.length, 'at least one day returned').toBeGreaterThan(0);
-    const day1 = body.dailyItinerary[0];
-    expect(typeof day1.day, 'day.day is a number').toBe('number');
-    expect(Array.isArray(day1.activities), 'day.activities is an array').toBe(true);
-    expect(day1.activities.length, 'at least one activity on day 1').toBeGreaterThan(0);
-
-    expect(filterJsErrors(consoleErrors), 'no JS errors in Journey 2A').toHaveLength(0);
-  });
-});
+// ─── Flow 2A: RETIRED (SS-2 A, ledger `2026-10-10-ss2a-spec-columns`) ──────────
+// 2A drove EnhancedPlanningModal, which nothing mounts (LD 33: one planning modal), and
+// self-skipped on every run. What it meant to cover is pinned elsewhere, on PR gates:
+//   • the free draft on an empty slip (LD 41 (b)) — playwright/tests/slip-rail-actions.spec.ts
+//     A5 (slip-rail-actions-gate) and e2e/supply-demand/d4-ai-draft.spec.ts D4, which presses
+//     Draft with the AI stub (supply-demand-e2e);
+//   • the one planning entry (LD 33) — playwright/tests/planning-entry.spec.ts :63 and :241
+//     (unwired-spec-gate).
 
 // ─── Flow 2C: Expert match in discover ───────────────────────────────────
 

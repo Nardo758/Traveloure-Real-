@@ -260,7 +260,7 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
     { icon: <Mail style={{ width: 13, height: 13 }} />, label: "Contact email", value: profile.travelerEmail || "Not on file" },
     { icon: <MapPin style={{ width: 13, height: 13 }} />, label: "Destination", value: profile.destination },
     { icon: <CalendarDays style={{ width: 13, height: 13 }} />, label: "Travel dates", value: `${formatDateLocal(profile.startDate)} → ${formatDateLocal(profile.endDate)}` },
-    { icon: <Users style={{ width: 13, height: 13 }} />, label: "Travellers", value: profile.numberOfTravelers ? `${profile.numberOfTravelers} person${profile.numberOfTravelers > 1 ? "s" : ""}` : "1 person" },
+    { icon: <Users style={{ width: 13, height: 13 }} />, label: "Travelers", value: profile.numberOfTravelers ? `${profile.numberOfTravelers} person${profile.numberOfTravelers > 1 ? "s" : ""}` : "1 person" },
     { icon: <CreditCard style={{ width: 13, height: 13 }} />, label: "Passport / ID", value: "Not on file" },
   ] : [];
 

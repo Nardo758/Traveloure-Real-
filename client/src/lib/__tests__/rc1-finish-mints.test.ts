@@ -57,39 +57,39 @@ test("R5: D12 — an incomplete answer is never minted; no mint invents a destin
 const read = (rel: string) =>
   readFileSync(new URL(rel, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
 
-test("R6: the modal's Save decides through `saveMintsPlan` and mints through the ONE mint step", () => {
-  const src = read("../../components/trip/plan-modal.tsx");
-  const save = src.slice(src.indexOf("const save = async"), src.indexOf("const finish = async"));
-  assert.ok(save.includes("saveMintsPlan("), "Save must ask the one predicate");
-  assert.ok(save.includes("mintThisPlan()"), "Save must mint through the shared step");
-  assert.ok(save.includes("commitPlan(bound)"), "the minted id must reach the commit");
+// E2 (ledger `2026-10-09-e2-plan-entry`; sanctioned retarget of R6–R10): a NEW plan is created by
+// PlanEntry's Start a plan, through the provider's ONE start; the edit window creates nothing.
+test("R6: PlanEntry's Start a plan mints through the ONE mint step, after releasing the pen", () => {
+  const ctx = read("../../contexts/PlanningContext.tsx");
+  const start = ctx.slice(ctx.indexOf("const startFromEntry = useCallback"), ctx.indexOf("// ── Step 8b-2 (D3)"));
+  assert.ok(start.includes("await releasePendingEventsPen();"), "the pen is released first");
+  assert.ok(start.indexOf("releasePendingEventsPen") < start.indexOf("mintTripSlip("), "…before the mint");
+  assert.ok(start.includes("mintTripSlip("), "the ONE traveler-owned client mint door");
 });
 
-test("R7: the finish and Save share ONE mint step — no second pen release or mint body", () => {
-  const src = read("../../components/trip/plan-modal.tsx");
-  assert.equal(src.split("releasePendingEventsPen()").length - 1, 1, "one pen release");
-  assert.equal(src.split("mintPlan({").length - 1, 1, "one mint body");
+test("R7: ONE pen release and ONE mint body for a new plan", () => {
+  const ctx = read("../../contexts/PlanningContext.tsx");
+  assert.equal(ctx.split("releasePendingEventsPen()").length - 1, 1, "one pen release");
+  assert.equal(ctx.split("mintTripSlip(").length - 1, 1, "one mint body");
+  const modal = read("../../components/trip/plan-modal.tsx");
+  assert.ok(!/mintPlan\(|mintTripSlip\(|releasePendingEventsPen\(/.test(modal), "the edit window mints nothing");
 });
 
 test("R8: a door that NAMES a plan is never minted a second one", () => {
-  const src = read("../../components/trip/plan-modal.tsx");
-  const finish = src.slice(src.indexOf("const finish = async"));
-  assert.ok(finish.includes("!source?.tripId"), "the finish's mint gate must honour source.tripId");
-  assert.ok(src.includes("getTripContext().tripId || source?.tripId"), "Save must treat source.tripId as bound");
-});
-
-test("R9: the minted plan reaches the AI generation request", () => {
   const ctx = read("../../contexts/PlanningContext.tsx");
-  assert.ok(ctx.includes("tripId={committed?.tripId}"), "the opener must hand the AI form the minted plan");
-  const ai = read("../../components/EnhancedPlanningModal.tsx");
-  assert.ok(/tripId:\s*tripId\s*\|\|\s*undefined/.test(ai), "the AI form must send it to /api/ai/generate-itinerary");
+  assert.ok(ctx.includes("if (next?.tripId && next.branch && !next.newPlan) {"), "a named plan + a way to build continues on it");
+  assert.ok(ctx.includes("const bound = !!(getTripContext().tripId || next?.tripId);"), "a named plan opens the edit window");
 });
 
-test("R10: §13 — Save never mints in an unconfirmed home-city SUGGESTION", () => {
-  const src = read("../../components/trip/plan-modal.tsx");
-  const save = src.slice(src.indexOf("const save = async"), src.indexOf("const finish = async"));
-  assert.ok(
-    /destination:\s*destinationSuggested\s*\?\s*""\s*:\s*destination/.test(save),
-    "a suggested destination must read as unanswered to saveMintsPlan",
-  );
+test("R9: the minted plan lands with Draft it with AI started (`?draft=ai`)", () => {
+  const ctx = read("../../contexts/PlanningContext.tsx");
+  assert.ok(ctx.includes("setLocation(`/plans/${tripId}?view=map&${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);"));
+  const hook = read("../../components/plan/useSlipFreeDraft.tsx");
+  assert.ok(/asksToStartDraft\(window\.location\.search\)/.test(hook), "the hook reads the request once");
+});
+
+test("R10: §13 — Start a plan mints only in a city the traveler chose", () => {
+  const entry = read("../../components/plan/PlanEntry.tsx");
+  assert.ok(entry.includes("destination: planEntryDestination(m),"), "the destination is the chosen market");
+  assert.ok(entry.includes("if (!canStartPlan(state) || starting || !state.market) return;"));
 });

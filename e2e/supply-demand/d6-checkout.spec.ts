@@ -87,7 +87,7 @@ test('D6: checkout — HELD:stripe; the quote leg runs only if a custom_quote fi
   await shot(page, 'D6', '02', 'after-request-quote');
 
   const quoteRow = await q(
-    `SELECT id, status FROM service_quotes WHERE provider_service_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    `SELECT id, status FROM service_quotes WHERE service_id = $1 ORDER BY created_at DESC LIMIT 1`,
     [listing.id],
   );
   if (quoteRow.length === 0) {
@@ -110,11 +110,14 @@ test('D6: checkout — HELD:stripe; the quote leg runs only if a custom_quote fi
   const quoteId = quoteRow[0].id;
 
   // ── Owner issues the quote via SellerQuotesPanel ──
-  const ownerRow = await q(`SELECT email FROM users WHERE id = $1`, [listing.user_id]);
+  // SS-2 A (sanctioned): the quote is issued from the OWNER's own Catalog — an expert's listing
+  // from /expert/catalog, a provider's from /provider/services. Both mount SellerQuotesPanel.
+  const ownerRow = await q(`SELECT email, role FROM users WHERE id = $1`, [listing.user_id]);
   const ownerEmail = ownerRow[0]?.email;
+  const ownerCatalog = ownerRow[0]?.role === 'service_provider' ? '/provider/services' : '/expert/catalog';
   if (ownerEmail) {
     await loginViaUi(page, ownerEmail, E2E_PASSWORD);
-    await page.goto('/provider/services');
+    await page.goto(ownerCatalog);
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
     const openIssue = testid(page, `button-open-issue-${quoteId}`);
     if (await appears(openIssue, 6000)) {

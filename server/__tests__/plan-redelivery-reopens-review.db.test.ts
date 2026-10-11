@@ -19,6 +19,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -58,6 +59,8 @@ before(async () => {
     VALUES (${ids.owner}, ${`prr-${RUN}-owner@t.test`}, 'PRR', 'Owner', 'traveler')`);
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.expert}, ${`prr-${RUN}-expert@t.test`}, 'PRR', 'Expert', 'local_expert')`);
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  await insertRoutableExpertForm(ids.expert);
   for (const t of [ids.tripA, ids.tripB, ids.tripC]) {
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
       VALUES (${t}, ${ids.owner}, 'PRR fixture', 'Lisbon', CURRENT_DATE + 10, CURRENT_DATE + 15)`);

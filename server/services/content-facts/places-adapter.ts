@@ -68,6 +68,9 @@ export const PLACES_PHOTO_REFS_MAX = 3;
 
 // R321: the area and address-line rules moved to `@shared/place-address` (CJK dropped, wards canonical).
 export { PLACES_AREA_COMPONENT_TYPES, placesAreaText, placesAddressLine } from "@shared/place-address";
+/** FU-S1-2: the stay card link's Details mask — Enterprise (`websiteUri`), nothing from Atmosphere. */
+export const STAY_LINK_FIELDS = ["displayName", "websiteUri", "googleMapsUri"] as const;
+
 /** Atmosphere-tier fields — named so a test can prove the default asks none of them. */
 export const PLACES_ATMOSPHERE_FIELDS = [
   "reservable",
@@ -191,6 +194,25 @@ export class PlacesAdapter implements SourceAdapter {
     // The cost column follows the call's own SKU tier, and the tier rides each draft for the log.
     const cost = mask.sku === "details_enterprise_atmosphere" ? placesDetailsAtmosphereCostCents() : placesDetailsCostCents();
     return this.draftsFrom(await res.json(), req, text, cost).map((d) => ({ ...d, sku: mask.sku }));
+  }
+
+  /**
+   * FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the stay card's link, by place ID — a Details call
+   * asking `STAY_LINK_FIELDS` only. The answer is RETURNED, never drafted into facts and never stored
+   * (Google's terms: no column, no cache row). `websiteUri` is an Enterprise field — the same tier the
+   * facts Details call already bills at; `displayName` and `googleMapsUri` sit below it.
+   */
+  async fetchStayLinkByPlaceId(placeId: string): Promise<{ name: string | null; websiteUri: string | null; googleMapsUri: string | null }> {
+    const key = this.apiKey();
+    if (!this.enabled() || !key) return { name: null, websiteUri: null, googleMapsUri: null };
+    const res = await this.fetchImpl(`${DETAILS_ENDPOINT}${encodeURIComponent(placeId)}?languageCode=en`, {
+      method: "GET",
+      headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": STAY_LINK_FIELDS.join(",") },
+    });
+    if (!res.ok) throw new Error(`[places] details (stay link) answered ${res.status}`);
+    const p = await res.json();
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+    return { name: str(p?.displayName?.text), websiteUri: str(p?.websiteUri), googleMapsUri: str(p?.googleMapsUri) };
   }
 
   private draftsFrom(p: any, req: FetchRequest, text: string, cost: number): FactDraft[] {

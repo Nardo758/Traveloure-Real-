@@ -42,10 +42,13 @@ import { adminRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./midd
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
 import { deriveCityPatch } from "./utils/service-city";
+import { accommodationCategoryId, isPropertyProductShape } from "./utils/property-category";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage, ExpertApplicationExistsError, type BookingStatusNotification } from "./storage";
+import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
+import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
+import { isFreeDraftEligible } from "@shared/content-tiers";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
@@ -389,6 +392,12 @@ import { isManagingEaForTrip } from "./services/ea-plan-delegate.service";
 import { sanitizeInput } from "./utils/sanitize";
 import { locationQueryMatches } from "@shared/location-match";
 import { refuseIfComparisonApplyToCartDisabled } from "./config/comparison-apply-to-cart.config";
+
+/** S1 (ledger `2026-10-09-s1-one-stay`): the stay pick after an Optimize run. Lazy; never throws (§15b). */
+function scheduleStayPickLazy(tripId: string | null | undefined): void {
+  if (!tripId) return;
+  void import("./services/stay-pick.service").then((m) => m.scheduleStayPick(tripId)).catch(() => undefined);
+}
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -1765,6 +1774,9 @@ export async function registerRoutes(
   // A duplicate copy in trips.routes.ts was deleted in the same change.
 
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
+    // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): the claimed free-draft run; released on our failure.
+    let freeDraftRunId: string | null = null;
+    let freeDraftProviderFailed = false;
     try {
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1828,6 +1840,14 @@ export async function registerRoutes(
       if (!draftEligibility.eligible) {
         return res.status(AI_DRAFT_REFUSAL_STATUS).json(aiDraftRefusalBody(draftEligibility));
       }
+
+      // FD-1: claim the free draft BEFORE the model call, against the PLAN OWNER whoever pressed (ruling 5).
+      // A paid-tier plan (`planGetsRoutedLegs` — e.g. an accepted handoff) is not a free draft at all.
+      const freeDraftClaim = await claimFreeDraft({ rail: "trip", tripId: trip.id, countedUserId: trip.userId ?? null });
+      if (freeDraftClaim.kind === "refused") {
+        return res.status(FREE_DRAFT_REFUSAL_STATUS).json(freeDraftRefusalBody(freeDraftClaim));
+      }
+      if (freeDraftClaim.kind === "claimed") freeDraftRunId = freeDraftClaim.runId;
 
       const start = new Date(trip.startDate);
       const end = new Date(trip.endDate);
@@ -1936,6 +1956,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             sourceType: "ai_itinerary",
             userId: callerUserId,
           });
+          if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
           return res.status(failure.status).json(failure.body);
         }
         // A retryable provider failure is still RECORDED (so an outage is visible as failed calls)
@@ -1946,6 +1967,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           userId: callerUserId,
         });
         console.error("AI generation failed, using contextual fallback:", aiErr);
+        // FD-1 ruling 3: the provider failed — the canned fallback is our failure, not a counted draft.
+        freeDraftProviderFailed = true;
         itineraryData = {
           days: Array.from({ length: duration }, (_, i) => ({
             day: i + 1,
@@ -2077,12 +2100,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
       const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
       for (const item of groundedItems) {
-        await db.insert(itineraryItems).values(item as any);
+        // FD-2 ruling 9: stamped from the row's own origin ('ai' over public inputs ⇒ public).
+        await db.insert(itineraryItems).values(stampItemSourceClass(item as Record<string, unknown>) as any);
       }
       enqueuePlanLegRecompute(trip.id); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
+      if (freeDraftRunId) {
+        await (freeDraftProviderFailed ? releaseFreeDraft(freeDraftRunId) : promoteFreeDraft(freeDraftRunId, trip.id))
+          .catch((e) => console.error("[free-draft] settle failed:", e));
+      }
 
       res.status(201).json(itinerary);
     } catch (err: any) {
+      // FD-1 ruling 3: our exception before the draft committed — the run never counts.
+      if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
       if (err?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") {
         return res.status(503).json({
           message: "Our AI is experiencing high demand. Please try again in a moment.",
@@ -2148,6 +2178,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             message: PRICELESS_LISTING_REFUSAL.message,
             reason: PRICELESS_LISTING_REFUSAL.reason,
           });
+        }
+
+        // B3 ruling 1 (ledger `2026-10-09-b3-expert-routability`): the storefront request rail
+        // books an EXPERT only when that expert is routable — approved, Identity verified, Connect
+        // complete, not seed-sourced. Refused BEFORE any row is written, so a non-routable expert
+        // never gains a booking or a plan (the advisor author refuses the plan half too). A service
+        // provider's listing is outside the expert predicate and is unchanged.
+        {
+          const { requestRailOwnerAllowed } = await import("./services/expert-routability");
+          if (!(await requestRailOwnerAllowed(service.userId))) {
+            return res.status(409).json({
+              code: "expert_not_routable",
+              message: "This expert isn't taking requests yet.",
+            });
+          }
         }
 
         // Derive provider and pricing server-side — never trust client input.
@@ -3259,7 +3304,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // the flag clears. Read-only — no provider_services row is touched.
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const { withoutConciergePoolListings } = await import("./services/expert-routability");
-    const live = await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId);
+    // TC-3 catalog rides surface only as rides, never in this browse (ledger `2026-10-11-tc3-ride-seed`).
+    const { withoutRideListings } = await import("./services/ride-listings");
+    const live = await withoutRideListings(
+      await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
+      (s) => s.id,
+    );
     // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
     // getAllProviderServices() is shared with admin (which legitimately needs the full row),
@@ -4124,6 +4174,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Sanitize provider-authored free-text fields to strip HTML injection vectors before
       // they reach the database, emails, or AI prompts (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
+      // PB-1 R1 (ledger `2026-10-10-pb1-property-category-city`): a property or room is lodging by
+      // construction — its category is server-set to `accommodation`, never the body's, on this rail too.
+      if (isPropertyProductShape((input as any).productShape)) {
+        (input as any).categoryId = await accommodationCategoryId();
+      }
 
       // Save-as-Draft is a pick, not `approvalStatus` (that column stays omitted, §19).
       // An explicit draft is born `draft` and skips every publish/review gate. Anything else
@@ -5579,6 +5634,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     const expert = experts.find(e => e.id === req.params.id);
     if (!expert) {
       return res.status(404).json({ message: "Expert not found" });
+    }
+    // B3 ruling 4: the same public-account rule the storefront applies — a seed-sourced or
+    // not-approved expert is one 404 (LD 40: "no such thing" and "not shown" are the same answer).
+    {
+      const { isPublicExpertProfileId } = await import("./services/expert-routability");
+      if (!(await isPublicExpertProfileId(req.params.id))) {
+        return res.status(404).json({ message: "Expert not found" });
+      }
     }
     // The ONE earner-rating rule (board task #1665), already on the row from
     // `getExpertsWithProfiles`, under the names the profile reads (same as the list route).
@@ -10396,7 +10459,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           resolvedPinnedAnchor,
           await openSetSlotsForRun(tripId, baselineItems, resolvedPinnedAnchor),
           runRecordFor(runAuth, { tripId: tripId ?? null, comparisonId: comparison.id, createdBy: userId, tollRunId: createToll.tollRunId }),
-        ).catch((err) => console.error("Background optimization error:", err));
+        )
+          // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): Optimize finished — pick the plan's stay.
+          .then(() => scheduleStayPickLazy(tripId))
+          .catch((err) => console.error("Background optimization error:", err));
       }
 
       // `runBasis` rides on the response so the surface can say WHY the run was free (LD 41):
@@ -10770,7 +10836,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         resolvedPinnedAnchor,
         await openSetSlotsForRun(comparison.tripId, baselineItems, resolvedPinnedAnchor),
         runRecordFor(runAuth, { tripId: comparison.tripId ?? null, comparisonId, createdBy: userId, tollRunId: genToll.tollRunId }),
-      ).catch((err) => console.error("Background optimization error:", err));
+      )
+        // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): Optimize finished — pick the plan's stay.
+        .then(() => scheduleStayPickLazy(comparison.tripId))
+        .catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
       console.error("Error starting optimization:", error);
@@ -12113,6 +12182,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   app.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
+    // FD-1 ruling 4: every quick-start is a free draft (it mints its own plan). Released on our failure.
+    let freeDraftRunId: string | null = null;
     try {
       const parsed = quickStartItinerarySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -12123,7 +12194,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
-      const cityIntelligence = await travelPulseService.getCityIntelligence(destination);
+      const cityIntelligence = await travelPulseService.getCityIntelligence(destination, { forDraft: true });
       
       // Build TravelPulse context for the AI
       let travelPulseContext: any = undefined;
@@ -12138,7 +12209,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           aiMustSeeAttractions: city.aiMustSeeAttractions,
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
-          hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
+          // FD-1 tier filter: quick-start is a FREE draft (FD-2 ruling 5), so it takes public gems only.
+          hiddenGems: cityIntelligence.hiddenGems?.filter((g: any) => isFreeDraftEligible(g)).slice(0, 5).map((g: any) => ({
             // travel_pulse_hidden_gems has no `name` column — the field is placeName
             // (fixed Aug 29 2026: g.name fed the model undefined gem names).
             name: g.placeName,
@@ -12169,6 +12241,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         pacePreference,
         travelPulseContext,
       };
+
+      // FD-1: claim before the model call; the plan does not exist yet, so the requester is counted.
+      const freeDraftClaim = await claimFreeDraft({ rail: "quick_start", tripId: null, countedUserId: userId });
+      if (freeDraftClaim.kind === "refused") {
+        return res.status(FREE_DRAFT_REFUSAL_STATUS).json(freeDraftRefusalBody(freeDraftClaim));
+      }
+      if (freeDraftClaim.kind === "claimed") freeDraftRunId = freeDraftClaim.runId;
 
       const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
         userId,
@@ -12211,12 +12290,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
       const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const qsInsertedItems: any[] = [];
+      const qsUsedLocalGems = (travelPulseContext?.hiddenGems?.length ?? 0) > 0;
+      // FD-1: quick-start's plan now exists — the draft counts against it (promoted once items are written below).
       for (const day of qsDailyItinerary) {
         const activities = Array.isArray(day?.activities) ? day.activities : [];
         const dayNumber = normalizeGeneratedDayNumber(day?.day);
         for (const activity of activities) {
           const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
-          const [inserted] = await db.insert(itineraryItems).values({
+          const [inserted] = await db.insert(itineraryItems).values(stampItemSourceClass({
             tripId: quickTrip.id,
             title: activity.name || activity.title || "Activity",
             description: activity.description || "",
@@ -12230,11 +12311,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             currency: "USD",
             suggestedBy: "ai",
             origin: "ai",
-          }).returning();
+            // FD-2 ruling 9 (conservative): an item produced by a prompt that carried local gems is local.
+          }, { fromLocalInput: qsUsedLocalGems }) as any).returning();
           qsInsertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
         }
       }
 
+      if (freeDraftRunId) await promoteFreeDraft(freeDraftRunId, quickTrip.id).catch((e) => console.error("[free-draft] promote failed:", e));
       res.json({
         ...result,
         id: saved.id,
@@ -12248,6 +12331,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         } : null,
       });
     } catch (error: any) {
+      // FD-1 ruling 3: our failure (provider or exception) — the run never counts (a no-op once promoted).
+      if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
       console.error("Quick start itinerary error:", error);
       res.status(500).json({ message: error.message || "Itinerary generation failed" });
     }
@@ -13534,110 +13619,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.json({ tripScoped: true, routedLegs: false, created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [], legs: [] });
       }
 
-      // A8 (R228): behind the flag, activate-transport takes its stops from the PLAN'S ITEMS and
-      // resolves every leg through the routing engine (step 9a; the same step Finalize runs). With the
-      // flag off, the variant path below is unchanged — for a qualifying plan only.
-      if (travelTimeServiceEnabled()) {
-        const result = await activateTripTransport(tripId);
-        const legs = await getTripTransportLegs(tripId, { includeProposed: true });
-        return res.json({ tripScoped: true, ...result, legs });
+      // A8 (R228): activate-transport takes its stops from the PLAN'S ITEMS and resolves every leg
+      // through the routing engine (step 9a; the same step Finalize runs).
+      // P0 ruling 4 (ledger `2026-10-10-p0-legs-baseline`): with the engine OFF, a routed plan gets
+      // NOTHING written — the legacy variant writer (every leg "driving", no source) is retired for
+      // routed plans and its code is deleted (§18c). The response says the engine is off; never a guess.
+      if (!travelTimeServiceEnabled()) {
+        return res.json({ tripScoped: true, routedLegs: true, engineOff: true, created: 0, keptConfirmed: 0, replacedProposed: 0, skipped: [], scheduleUnresolved: [], legs: [] });
       }
-
-      const [genItinerary] = await db
-        .select()
-        .from(generatedItineraries)
-        .where(eq(generatedItineraries.tripId, tripId));
-      if (!genItinerary?.itineraryData) {
-        return res.status(404).json({ error: "No generated itinerary found for this trip" });
-      }
-
-      let [comparison] = await db
-        .select()
-        .from(itineraryComparisons)
-        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
-
-      if (!comparison) {
-        const [created] = await db.insert(itineraryComparisons).values({
-          userId,
-          tripId,
-          title: trip.title || trip.destination || "My Trip",
-          destination: trip.destination,
-          status: "active",
-        }).returning();
-        comparison = created;
-      }
-
-      let [variant] = await db
-        .select()
-        .from(itineraryVariants)
-        .where(and(
-          eq(itineraryVariants.comparisonId, comparison.id),
-          eq(itineraryVariants.source, "ai")
-        ));
-
-      if (!variant) {
-        const [created] = await db.insert(itineraryVariants).values({
-          comparisonId: comparison.id,
-          name: "AI Generated",
-          source: "ai",
-          status: "active",
-        }).returning();
-        variant = created;
-      }
-
-      const data: any = genItinerary.itineraryData;
-      const daysData: any[] = data?.days || data?.dailyItinerary || [];
-
-      const activities: import("./services/transport-leg-calculator").ActivityLocation[] = [];
-      for (const day of daysData) {
-        const dayNum: number = day.day || day.dayNumber || 1;
-        const dayActs: any[] = day.activities || [];
-        dayActs.forEach((act: any, idx: number) => {
-          if (act.lat && act.lng) {
-            activities.push({
-              id: act.id || `day${dayNum}-act${idx}`,
-              name: act.title || act.name || "Activity",
-              lat: parseFloat(act.lat),
-              lng: parseFloat(act.lng),
-              scheduledTime: act.time || act.startTime || `${9 + idx}:00`,
-              dayNumber: dayNum,
-              order: idx,
-            });
-          }
-        });
-      }
-
-      if (activities.length < 2) {
-        return res.json({ variantId: variant.id, legs: [], message: "Not enough geolocated activities to calculate transport" });
-      }
-
-      await calculateTransportLegs(variant.id, activities, trip.destination || "", {});
-
-      const savedLegs = await db
-        .select()
-        .from(transportLegs)
-        .where(eq(transportLegs.variantId, variant.id));
-
-      return res.json({
-        variantId: variant.id,
-        legs: savedLegs.map(leg => ({
-          id: leg.id,
-          legOrder: leg.legOrder,
-          dayNumber: leg.dayNumber,
-          fromName: leg.fromName,
-          toName: leg.toName,
-          fromLat: leg.fromLat,
-          fromLng: leg.fromLng,
-          toLat: leg.toLat,
-          toLng: leg.toLng,
-          recommendedMode: leg.recommendedMode,
-          userSelectedMode: leg.userSelectedMode,
-          distanceDisplay: leg.distanceDisplay,
-          estimatedDurationMinutes: leg.estimatedDurationMinutes,
-          estimatedCostUsd: leg.estimatedCostUsd,
-          alternativeModes: leg.alternativeModes || [],
-        })),
-      });
+      const result = await activateTripTransport(tripId);
+      const legs = await getTripTransportLegs(tripId, { includeProposed: true });
+      return res.json({ tripScoped: true, ...result, legs });
     } catch (err: any) {
       console.error("Activate transport error:", err);
       res.status(500).json({ error: "Failed to activate transport" });

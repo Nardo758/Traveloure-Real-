@@ -4,6 +4,7 @@
  * Routes → this service (or storage) → db. No raw db calls in route handlers.
  */
 
+import { expertNuggetTags } from "@shared/content-tiers";
 import { db } from "../db";
 import { eq, and, desc, asc, like, sql, isNull } from "drizzle-orm";
 import {
@@ -505,7 +506,8 @@ export async function createLocalKnowledgeNugget(values: Record<string, any>): P
     webGapCheckedAt: _wgc,
     ...safe
   } = values;
-  const [row] = await db.insert(localKnowledgeNuggets).values(safe as any).returning();
+  // FD-2: the tags are stamped here, never taken from the body (the insert schema is a pick list).
+  const [row] = await db.insert(localKnowledgeNuggets).values({ ...(safe as any), ...expertNuggetTags() }).returning();
   return row;
 }
 

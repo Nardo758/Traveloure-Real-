@@ -66,8 +66,8 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
         </p>
         <p className="line-clamp-2 text-[11px]" style={{ color: "var(--earn-muted)" }}>
           {demandCount && demandCount > 0
-            ? `${demandCount} traveller${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
-            : `Be the first to offer ${offeringLabel.toLowerCase()} for travellers in ${neighborhoodName}`}
+            ? `${demandCount} traveler${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
+            : `Be the first to offer ${offeringLabel.toLowerCase()} for travelers in ${neighborhoodName}`}
         </p>
         {/* C5 (cosmetic-public-surfaces dispatch, ruled): /earn is the specific target for a
             recruitment card's "More info" — /how-it-works was generic and unrelated to earning. */}

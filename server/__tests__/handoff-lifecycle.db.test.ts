@@ -31,6 +31,7 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 process.env.STRIPE_SECRET_KEY ||= "sk_test_handoff_lifecycle";
 const handoff = await import("../services/handoff.service");
@@ -137,6 +138,8 @@ before(async () => {
   for (const id of [ids.owner, ids.expert, ids.author]) {
     await db.execute(sql`INSERT INTO users (id, email, first_name, last_name) VALUES (${id}, ${`${id}@t.test`}, 'Ho', ${id.split("-").pop()})`);
   }
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  for (const id of [ids.expert, ids.author]) await insertRoutableExpertForm(id);
   for (const t of [ids.trip, ids.trip2, ids.trip3]) {
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
       VALUES (${t}, ${ids.owner}, 'Kyoto days', 'Kyoto, Japan', '2027-05-01', '2027-05-03')`);

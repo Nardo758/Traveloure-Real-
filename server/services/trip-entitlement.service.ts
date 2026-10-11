@@ -6,7 +6,8 @@
  * resolvers return for uncovered trips, and it never touches commissions.
  *
  * Coverage semantics (ruling): an ACTIVE pass on a trip grants
- *   - optimizer_run          unlimited (no per-run charge)
+ *   - optimizer_run          up to `TRIP_PASS_RUNS_PER_TRIP` full runs (default 5, R-ac); past the
+ *                            cap the run is charged like any other (no per-run charge until then)
  *   - ai_task                unlimited. NO LONGER A NO-OP: this comment used to say "no charge
  *                            surface exists", which stopped being true when the AI proposal APPLY
  *                            became the charge point (ledger `2026-09-15-d20-d21-proposal-charge`,
@@ -185,6 +186,8 @@ export async function grantTripPass(input: {
   if (inserted[0]) {
     // A Trip Pass unlocks routed legs (spec §14.3; step 9a ruling 2, ledger 2026-10-07-step9a-routing-engine).
     enqueuePlanLegRecompute(input.tripId);
+    // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): a Trip Pass makes the plan routed — pick its stay.
+    void import("./stay-pick.service").then((m) => m.scheduleStayPick(input.tripId)).catch(() => undefined);
     return { entitlement: inserted[0], created: true };
   }
 

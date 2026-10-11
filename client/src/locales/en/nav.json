@@ -11,13 +11,13 @@
   "joinAsPartnerMobile": "Join as a Partner",
   "partner": {
     "tripPlanner": "Trip Planner",
-    "tripPlannerDesc": "Help travellers design itineraries & craft unforgettable journeys",
+    "tripPlannerDesc": "Help travelers design itineraries & craft unforgettable journeys",
     "localExpert": "Local Expert",
     "localExpertDesc": "Turn your city knowledge into consultations & local guides",
     "eventPlanner": "Event Planner",
     "eventPlannerDesc": "Coordinate weddings, proposals & group celebrations for clients",
     "serviceProvider": "Service Provider",
-    "serviceProviderDesc": "Offer venues, transport & speciality services",
+    "serviceProviderDesc": "Offer venues, transport & specialty services",
     "executiveAssistant": "Executive Assistant",
     "executiveAssistantDesc": "Manage travel & events for high-net-worth clients"
   },
@@ -108,21 +108,14 @@
       "terms": "Terms"
     }
   },
-  "closing": {
-    "startMyPlan": "Start my plan",
-    "meetTheLocals": "Meet the locals",
-    "seePricing": "See pricing",
-    "headline": "You know the why and the where. They know the how."
-  },
   "hero": {
     "headline": "Any experience. Anywhere. Planned like a local.",
-    "subhead": "Tell us the occasion and where in the world you want it. We build the plan around it, and someone who lives there does the rest.",
-    "startPlanning": "Start planning",
+    "subhead": "Tell us the occasion and the city. We build the plan around it, and someone who lives there does the rest.",
+    "startAPlan": "Start a plan",
     "beginPrompt": "Where do you want to begin?",
     "beginBrowse": "Browse",
     "beginFindHelp": "Find help",
     "billboard": {
-      "startThisPlan": "Start this plan",
       "planWith": "Plan with @{{handle}}",
       "viewListing": "View listing",
       "planAroundGem": "Plan around this gem",

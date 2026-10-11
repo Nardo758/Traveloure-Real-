@@ -64,8 +64,9 @@ describe("plan-compare words", () => {
     assert.equal(easierLine(1), "1 place would make your days easier");
     assert.equal(easierLine(2), "2 places would make your days easier");
     assert.deepEqual([1, 2, 3].map(optionLetter), ["A", "B", "C"]);
-    assert.equal(compareTitle(3), "Compare 3 places");
-    assert.equal(compareTitle(1), "Compare 1 place");
+    // Copy pin (held-batch-1 item 17, board copy ruled Oct 9, 2026).
+    assert.equal(compareTitle(3), "Which one fits your days?");
+    assert.equal(compareTitle(1), "Which one fits your days?");
     assert.equal(compareFootLine("open", null, 3), "Not chosen yet — your plan keeps all 3 open.");
     assert.equal(compareFootLine("chosen", "Ryokan B", 3), "You chose Ryokan B. You can change your mind until you book.");
     assert.doesNotMatch(compareFootLine("open", null, 3), /paid|run|version/i);

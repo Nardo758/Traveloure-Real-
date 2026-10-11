@@ -123,6 +123,27 @@ jobs:
       # Regenerate / Optimize apply / Optimize input / the Moment default all honour a lock. K1–K7.
       - name: Item locks — Keep this, never moved or removed by a machine
         run: npx tsx --test --test-force-exit server/__tests__/item-locks.db.test.ts
+      # FD-2 (ledger `2026-10-09-fd2-content-tier-tags`, migrations 361/362): content-tier tags — the item stamp
+      # ignores a client value (ruling 9), the 362 backfill, the draft gem gate, gem verification, the census. D1–D8.
+      - name: FD-2 content tiers — tags, backfill, draft gate, verification, census
+        run: npx tsx --test --test-force-exit server/__tests__/content-tiers.db.test.ts
+      # FD-1 (ledger `2026-10-09-fd1-free-draft-cap`, migration 363): the free-draft cap — 3/30 days, one per plan,
+      # our failures never count, paid tier and QA exempt, the parallel-claim guard — and the count-only teaser. F1–F9.
+      - name: FD-1 free-draft cap and teaser — claim, release, one per plan, QA, race, counts-only teaser
+        run: npx tsx --test --test-force-exit server/__tests__/free-draft-cap.db.test.ts
+      # FD-3 (ledger `2026-10-10-fd3-feasibility`): the feasibility checks — unsourced facts refused, official
+      # hours over Places, last entry vs arrival, closing vs visit end, the last ride, the day counts. G1–G7.
+      - name: FD-3 feasibility — admission, last entry, visit end, last ride, day counts
+        run: npx tsx --test --test-force-exit server/__tests__/fd3-feasibility.db.test.ts
+      # FD-5 (ledger `2026-10-10-fd5-coverage-targets`): the coverage gate on the teaser — weekday at target speaks,
+      # Saturday / momiji / unconfirmed dates gate as peak, an untargeted market is ungated; the nightly census line.
+      - name: FD-5 coverage gate — teaser per neighbourhood and day type, census line
+        run: npx tsx --test --test-force-exit server/__tests__/fd5-coverage-gate.db.test.ts
+      # SS-1b (ledger `2026-10-10-ss1b-official-refresh`): the market-level official refresh — read once per
+      # interval, within the ceiling, ineligible sources skipped, unsourced never written; a station placed ONCE by
+      # its OpenStreetMap node with attribution (the city-event venue path), no coordinate guessed.
+      - name: SS-1b official refresh — interval, ceiling, provenance, refusals, OSM station point
+        run: npx tsx --test --test-force-exit server/__tests__/official-refresh.db.test.ts server/services/__tests__/osm-node-lookup.test.ts
       # Ledger `2026-10-03-build-around-places`: build-around reads Google's live location fact and
       # stores no coordinate (LD 57); the option reader resolves it. B1–B4.
       - name: Build-around on a Google-located item — read, never copied
@@ -131,6 +152,8 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/content-facts.db.test.ts
       - name: R313 leg Google coords — refresh a live point, clear past the max age, expired fact never a pin
         run: npx tsx --test --test-force-exit server/__tests__/leg-google-coords-refresh.db.test.ts
+      - name: T-48h nudge — "starts soon" only for chosen dates and a start ahead (ledger 2026-10-08-nudge-needs-real-dates)
+        run: npx tsx --test --test-force-exit server/__tests__/trip-card-handover-nudge.db.test.ts
       - name: A6 Tavily extract — free path cannot call it, caps, 300-char quotes, own host only
         run: npx tsx --test --test-force-exit server/__tests__/tavily-extract.db.test.ts
       - name: A6 expert confirm — crawled fact to verified nugget, once, never a Places fact

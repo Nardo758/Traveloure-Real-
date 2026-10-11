@@ -34,7 +34,7 @@ test("S1: needCovers is one level, parent → child only", () => {
   assert.equal(needCovers("transport.local", "transport.intercity.rail"), false);
   assert.equal(needCovers("everything else", "dining"), false);
   assert.equal(needCovers("dining", "tip"), false);
-  assert.deepEqual(subNeedsOf("transport.local"), ["transport.local.fares"]);
+  assert.deepEqual(subNeedsOf("transport.local"), ["transport.local.fares", "transport.local.last_service"]);
 });
 
 test("S2: standings — partial, excludes, covers, and a rail-only source", () => {

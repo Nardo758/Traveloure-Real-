@@ -20,6 +20,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 // concierge-fee expert-share re-split is skipped when the listing owner is not a person.
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
+import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
@@ -156,6 +157,8 @@ import {
   // D-18 (migration 297): the announcement marker's one stamp site lives here.
   readyMadePurchases,
 } from "@shared/schema";
+import { stampItemSourceClass, PUBLIC_REUSABLE_TAGS } from "@shared/content-tiers";
+export { stampItemSourceClass };
 import { stripServerAuthoredBookingDetails } from "@shared/booking-details-admission";
 // D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): the purchase writer's §15
 // from-list and its target type come from the ONE vocabulary module — never restated here.
@@ -1082,7 +1085,7 @@ export interface IStorage {
 
   getItineraryItems(tripId: string): Promise<any[]>;
 
-  createItineraryItem(item: any): Promise<any>;
+  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean }): Promise<any>;
   createPendingBillboardGemItemIfAbsent(
     item: InsertItineraryItem & { tripId: string },
     gemId: string,
@@ -1496,6 +1499,12 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
     quantity: _qty,
     // R-ah (migration 342): the lock is written only by the owner's lock rail and the Moment default.
     lockedAt: _locked,
+    // FD-2 ruling 9 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): source_class is stamped by
+    // the server at create (`stampItemSourceClass`) and is never client-settable.
+    sourceClass: _sourceClass,
+    // TC-3a (migration 368): a ride's exit pin is written only by the ride service, never by a generic write.
+    exitLatitude: _exitLat,
+    exitLongitude: _exitLng,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
@@ -1689,8 +1698,10 @@ export class DatabaseStorage implements IStorage {
      * a placeholder", which nothing true could have happened to make so: once a traveler has
      * answered, a later answer is still an answer.
      */
-    const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, ...safeUpdates } = updates as
-      Partial<InsertTrip> & { datesConfirmedAt?: unknown };
+    // Ledger `2026-10-09-s1-one-stay`: `stay_pick` has ONE writer (stay-pick.service.ts); stripped here too,
+    // for the same `as any` reason as `datesConfirmedAt` (§19 layer 2).
+    const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, stayPick: _clientSuppliedStayPick, ...safeUpdates } = updates as
+      Partial<InsertTrip> & { datesConfirmedAt?: unknown; stayPick?: unknown };
     if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
       derived.datesConfirmedAt = new Date();
     }
@@ -3201,6 +3212,8 @@ export class DatabaseStorage implements IStorage {
       eq(providerServices.approvalStatus, "approved"),
       // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
       await notConciergePoolListingSql(providerServices.userId),
+      // TC-3 catalog rides surface only as rides, never in browse (ledger `2026-10-11-tc3-ride-seed`).
+      notRideListingSql(providerServices.id),
     ];
     if (categoryId) {
       conditions.push(eq(providerServices.categoryId, categoryId));
@@ -4063,7 +4076,8 @@ export class DatabaseStorage implements IStorage {
     // Price/rating filters now run in SQL (decimal columns compare numerically), not Node.
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const notPool = await notConciergePoolListingSql(providerServices.userId);
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool];
+    // TC-3 catalog rides surface only as rides, never in search (ledger `2026-10-11-tc3-ride-seed`).
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id)];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
@@ -4153,6 +4167,7 @@ export class DatabaseStorage implements IStorage {
             eq(providerServices.status, "active"),
             eq(providerServices.approvalStatus, "approved"),
             notPool,
+            notRideListingSql(providerServices.id),
             sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) > 0.2`,
           ))
           .orderBy(sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) DESC`)
@@ -5805,7 +5820,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDestinationSeason(season: InsertDestinationSeason): Promise<DestinationSeason> {
-    const [newSeason] = await db.insert(destinationSeasons).values(season).returning();
+    const [newSeason] = await db.insert(destinationSeasons).values({ ...season, ...PUBLIC_REUSABLE_TAGS }).returning();
     return newSeason;
   }
 
@@ -8055,8 +8070,11 @@ export class DatabaseStorage implements IStorage {
   // of these two methods, so stripping here costs it nothing. `bookingStatus` is deliberately NOT
   // stripped — `content.routes.ts`'s affiliate-booking-confirm flow is a real, legitimate direct
   // caller that sets it at create time (see the schema comment).
-  async createItineraryItem(item: InsertItineraryItem & { tripId: string }): Promise<ItineraryItem> {
-    const safeItem = stripItineraryItemRoutingFields(item as Record<string, unknown>);
+  async createItineraryItem(
+    item: InsertItineraryItem & { tripId: string },
+    opts: { fromLocalInput?: boolean } = {},
+  ): Promise<ItineraryItem> {
+    const safeItem = stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts);
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
@@ -8067,10 +8085,10 @@ export class DatabaseStorage implements IStorage {
     gemId: string,
   ): Promise<{ item: ItineraryItem; created: boolean }> {
     const marker = pendingPlanItemMarker(gemId);
-    const safeItem = stripItineraryItemRoutingFields({
+    const safeItem = stampItemSourceClass(stripItineraryItemRoutingFields({
       ...item,
       notes: marker,
-    } as Record<string, unknown>);
+    } as Record<string, unknown>), { fromLocalInput: true });
     return db.transaction(async (tx) => {
       // Serialize retries for this exact trip/source pair. This avoids the GET-then-POST race
       // without changing the itinerary schema or affecting unrelated item writes.
@@ -8153,6 +8171,14 @@ export class DatabaseStorage implements IStorage {
             `[ItineraryItems] cascade-deleted ${cascaded.length} trip-scoped transport leg(s) referencing deleted item ${id} (trip ${item.tripId})`,
           );
         }
+
+        // TC-3a (migration 368): removing a ride restores exactly the legs it superseded — they were kept,
+        // hidden, never deleted. Matched by the ride's id only, so a leg the engine superseded (P0 ruling 7,
+        // ride link NULL) is never brought back.
+        await tx
+          .update(transportLegs)
+          .set({ proposalStatus: "confirmed", supersededAt: null, supersededByItemId: null, updatedAt: new Date() })
+          .where(and(eq(transportLegs.tripId, item.tripId), eq(transportLegs.supersededByItemId, id)));
 
         // R15: same-transaction removal signal. Skipped only when the item did not exist (no
         // tripId ⇒ nothing was removed ⇒ no phantom row, §13).

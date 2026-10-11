@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { NeighborhoodPicker, useAllNeighborhoods } from "@/components/NeighborhoodPicker";
 import { ListingReviewFeedback } from "@/components/ListingReviewFeedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -939,28 +940,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: !!formData.categoryId,
   });
 
-  // Fetch all pages of neighborhoods sequentially (reference catalog may exceed 200-row page).
-  const { data: allNeighborhoods = [] } = useQuery<Array<{ id: string; city: string; country: string; name: string; slug: string }>>({
-    queryKey: ["/api/city-neighborhoods", "all"],
-    staleTime: 10 * 60_000,
-    queryFn: async () => {
-      const PAGE = 200;
-      let all: Array<{ id: string; city: string; country: string; name: string; slug: string }> = [];
-      let offset = 0;
-      for (;;) {
-        const res = await fetch(`/api/city-neighborhoods?limit=${PAGE}&offset=${offset}`);
-        const json = await res.json() as { data: Array<{ id: string; city: string; country: string; name: string; slug: string }>; hasMore: boolean };
-        all = all.concat(json.data);
-        if (!json.hasMore) break;
-        offset += PAGE;
-      }
-      return all;
-    },
-  });
-  // Ruling 112 Q1: the global 20-city checkbox wall is retired for a single searchable pick —
-  // this is its filter text. One neighborhood, because the column is one neighborhood (the old
-  // multi-select silently dropped every pick after the first — Run-2 finding R7).
-  const [neighborhoodQuery, setNeighborhoodQuery] = useState("");
+  // The ONE neighbourhood pick and its fetch live in NeighborhoodPicker (shared with the
+  // property builder — ledger `2026-10-10-pb1-property-category-city`). Ruling 112 Q1: a single
+  // searchable pick, one neighborhood, because the column is one neighborhood.
+  const { data: allNeighborhoods = [] } = useAllNeighborhoods();
 
   // Fetch the selected category's categoryKey so we can load its dynamic fields
   const selectedCategoryKey = (categories as ServiceCategory[]).find((c) => c.id === formData.categoryId)?.categoryKey ?? null;
@@ -1940,89 +1923,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <div>
               <Label>{label}</Label>
               <p className="text-xs text-muted-foreground mt-1 mb-2">{help}</p>
-              {allNeighborhoods.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No neighborhoods available.</p>
-              ) : (
-                <>
-                  {formData.neighborhood && (() => {
-                    const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
-                    return (
-                      <div className="flex items-center gap-2 mb-2" data-testid="chip-selected-neighborhood">
-                        <Badge variant="secondary" className="rounded-full px-3">
-                          {sel ? `${sel.name} · ${sel.city}` : formData.neighborhood}
-                        </Badge>
-                        <button
-                          type="button"
-                          className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground"
-                          onClick={() => set("neighborhood", "")}
-                          data-testid="button-clear-neighborhood"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    );
-                  })()}
-                  <Input
-                    value={neighborhoodQuery}
-                    onChange={(e) => setNeighborhoodQuery(e.target.value)}
-                    placeholder="Search neighborhoods or cities…"
-                    className="mb-2"
-                    data-testid="input-neighborhood-search"
-                  />
-                  <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1">
-                    {(() => {
-                      const q = neighborhoodQuery.trim().toLowerCase();
-                      const filtered = q
-                        ? allNeighborhoods.filter(
-                            (n) =>
-                              n.name.toLowerCase().includes(q) ||
-                              n.city.toLowerCase().includes(q) ||
-                              n.country.toLowerCase().includes(q),
-                          )
-                        : allNeighborhoods;
-                      if (filtered.length === 0) {
-                        return (
-                          <p className="text-xs text-muted-foreground px-1 py-2" data-testid="text-no-neighborhood-match">
-                            Nothing matches "{neighborhoodQuery}".
-                          </p>
-                        );
-                      }
-                      return Object.entries(
-                        filtered.reduce<Record<string, typeof allNeighborhoods>>((acc, n) => {
-                          const key = `${n.city}, ${n.country}`;
-                          if (!acc[key]) acc[key] = [];
-                          acc[key].push(n);
-                          return acc;
-                        }, {}),
-                      ).map(([cityLabel, items]) => (
-                        <div key={cityLabel}>
-                          <p className="text-xs font-semibold text-muted-foreground px-1 py-0.5 uppercase tracking-wide">
-                            {cityLabel}
-                          </p>
-                          {items.map((n) => {
-                            const selected = formData.neighborhood === n.slug;
-                            return (
-                              <button
-                                key={n.slug}
-                                type="button"
-                                onClick={() => set("neighborhood", selected ? "" : n.slug)}
-                                className={`flex w-full items-center gap-2 px-2 py-1 rounded text-left text-sm hover:bg-accent ${selected ? "bg-accent font-medium" : ""}`}
-                                data-testid={`option-neighborhood-${n.slug}`}
-                                aria-pressed={selected}
-                              >
-                                <span className="flex-1">{n.name}</span>
-                                {selected && (
-                                  <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4">selected</Badge>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </>
-              )}
+              <NeighborhoodPicker
+                neighborhoods={allNeighborhoods}
+                value={formData.neighborhood}
+                onChange={(slug) => set("neighborhood", slug)}
+              />
             </div>
   );
 

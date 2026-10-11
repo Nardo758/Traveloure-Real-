@@ -15,6 +15,7 @@
  */
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { tripPassPricingLine, tripPassRunsPhrase } from "@/lib/trip-pass-runs-copy";
 import { Link, useLocation } from "wouter";
 import {
   Palmtree,
@@ -56,6 +57,8 @@ interface PricingPlanRow {
   priceCents: number;
   interval: string;
   betaFreeUntil?: string | null;
+  /** Trip Pass only: the optimizer runs one pass covers (R-ac), from `TRIP_PASS_RUNS_PER_TRIP`. */
+  runsPerTrip?: number | null;
 }
 
 interface PricingBundle {
@@ -306,7 +309,7 @@ export default function PricingPage() {
       icon: Palmtree,
       highlighted: true,
       checklist: [
-        "Unlimited AI runs & tasks on that trip",
+        tripPassPricingLine(pricing.tripPass.runsPerTrip),
         // "One revision from a local expert" WAS HERE AND IS DELIBERATELY GONE (ledger
         // `2026-09-21-trip-pass-revision-claim`). Locked Decision 41 (f) records `expert_revision`
         // as an entitlement with NO consumption or charge site, and instructs: "until that lane
@@ -365,7 +368,7 @@ export default function PricingPage() {
     <div className="min-h-screen bg-[var(--earn-ground)] text-[color:var(--earn-ink)]">
       <SEOHead
         title="Pricing | Traveloure"
-        description="Plan it yourself for free, pay per use with AI, get a Trip Pass for unlimited runs, or hand it to a local expert. Transparent pricing, no membership required."
+        description={`Plan it yourself for free, pay per use with AI, get a Trip Pass for ${tripPassRunsPhrase(pricing.tripPass.runsPerTrip)} and unlimited AI tasks, or hand it to a local expert. Transparent pricing, no membership required.`}
       />
 
       {membershipReturn === "cancelled" && (

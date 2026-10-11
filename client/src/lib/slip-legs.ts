@@ -28,7 +28,7 @@ type SlipLeg = {
   estimatedDurationMinutes?: number;
   durationMin?: number;
   distanceMeters?: number | null;
-  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string } };
+  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true };
   routedOptions?: LegOptionView[];
   routedOptionsChecked?: true;
   /** Step 9c D8: set only once a provider-confirmed host pickup exists (no column yet — never today). */
@@ -40,6 +40,8 @@ export interface RoutedLegView {
   legId: string;
   mode: RoutingMode;
   route: RouteAnswer;
+  /** P0 ruling 2: a drive shown because transit had no route — the row says so. */
+  transitUnavailable?: true;
 }
 
 /** Step 9c: what sits between two slip rows — a routed leg (with its options), or a minutes-only one. */
@@ -55,6 +57,27 @@ export type SlipLegView =
   | { kind: "unrouted"; legId: string; mode: RoutingMode | null; minutes: number };
 
 export function slipLegBetween(days: readonly SlipDay[] | null | undefined, prevId: string, nextId: string): SlipLegView | null {
+  const exact = legForPair(days, prevId, nextId);
+  if (exact !== undefined) return exact;
+  // P0 ruling 1 (ledger `2026-10-10-p0-legs-baseline`): the server bridges an unlocated stop — the leg
+  // runs from the last LOCATED row before it to the next located one. With no leg of its own into
+  // `nextId`, the slot before `nextId` draws the bridge that arrives there from an earlier row that day.
+  for (const d of days ?? []) {
+    const ids = (d.activities ?? []).map((a) => a.id);
+    const at = ids.indexOf(nextId);
+    if (at < 0 || ids[at - 1] !== prevId) continue;
+    const earlier = new Set(ids.slice(0, at - 1));
+    for (const l of d.transports ?? []) {
+      const from = l.fromActivityId ?? l.from;
+      const to = l.toActivityId ?? l.to;
+      if (to === nextId && from && earlier.has(from)) return legForPair([{ ...d, transports: [l] }], from, nextId) ?? null;
+    }
+  }
+  return null;
+}
+
+/** The leg shown for exactly this pair; `undefined` when the plan shows none for it. */
+function legForPair(days: readonly SlipDay[] | null | undefined, prevId: string, nextId: string): SlipLegView | null | undefined {
   for (const d of days ?? []) {
     for (const l of d.transports ?? []) {
       const from = l.fromActivityId ?? l.from;
@@ -78,7 +101,7 @@ export function slipLegBetween(days: readonly SlipDay[] | null | undefined, prev
       return { kind: "unrouted", legId: l.id, mode: normalizeLegMode(l.userSelectedMode ?? l.recommendedMode ?? l.mode ?? null), minutes: Math.round(minutes) };
     }
   }
-  return null;
+  return undefined;
 }
 
 /** "18 min · walk" — a shown leg with no routed facts (an expert's own minutes): no source line, no fare. */
@@ -100,6 +123,7 @@ export function routedLegBetween(days: readonly SlipDay[] | null | undefined, pr
         legId: l.id,
         mode,
         route: { durationMin: minutes, distanceM: Number(l.distanceMeters ?? 0), line: l.routed.line, fare: l.routed.fare, provenance: l.routed.provenance },
+        ...(l.routed.transitUnavailable ? { transitUnavailable: true as const } : {}),
       };
     }
   }

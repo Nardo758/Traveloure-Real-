@@ -686,6 +686,9 @@ router.post(
       const [listing] = await tx
         .insert(readyMadeTrips)
         .values({
+          // FD-2: an expert-authored Ready Made is local and ours (ledger 2026-10-09-fd2-content-tier-tags).
+          sourceClass: "local",
+          reuseClass: "reusable",
           authorId: expertId,
           sourceTripId: trip.id,
           market: city,

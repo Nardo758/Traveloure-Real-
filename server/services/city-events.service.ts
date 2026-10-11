@@ -145,6 +145,10 @@ export function buildCityEventRow(
       billedArtists: entry.billedArtists?.trim() || null,
       blurb: entry.blurb?.trim() || null,
       imagePath: entry.imagePath?.trim() || null,
+      // FD-2 (ledger `2026-10-09-fd2-content-tier-tags`): a public event, link-only (rulings 1/2) — the
+      // same pair migration 362 backfills, so the free draft keeps its events list.
+      sourceClass: "public",
+      reuseClass: "link_only",
     },
   };
 }

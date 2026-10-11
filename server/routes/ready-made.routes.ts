@@ -196,8 +196,8 @@ router.post("/api/expert/ready-made/from-trip/:tripId", isAuthenticated, async (
 
     const newId = crypto.randomUUID();
     const inserted = await db.execute(sql`
-      INSERT INTO ready_made_trips (id, author_id, source_trip_id, market, title, duration_days, status)
-      SELECT ${newId}, ${userId}, ${tripId}, ${market}, ${title}, ${durationDays}, 'draft'
+      INSERT INTO ready_made_trips (id, author_id, source_trip_id, market, title, duration_days, status, source_class, reuse_class)
+      SELECT ${newId}, ${userId}, ${tripId}, ${market}, ${title}, ${durationDays}, 'draft', 'local', 'reusable'
       WHERE NOT EXISTS (SELECT 1 FROM ready_made_trips WHERE source_trip_id = ${tripId})
       RETURNING id
     `);

@@ -187,12 +187,15 @@ export function doorStartsNewPlan(
   return !!source.door && (DOORS_THAT_START_A_NEW_PLAN as readonly string[]).includes(source.door);
 }
 
-/** The five ratified steps, in flow order. `where` is step 2 — the artboard filename hides it. */
-export type PlanStepId = "occasion" | "where" | "when" | "who" | "events";
+/**
+ * The EDIT WINDOW's steps, in flow order (E2, ledger `2026-10-09-e2-plan-entry`; ruling 1). The
+ * Occasion step left this window with E2: a NEW plan's occasion is answered in PlanEntry, and a
+ * bound plan's occasion is not re-asked here. The window edits the plan that exists.
+ */
+export type PlanStepId = "where" | "when" | "who" | "events";
 
 /** Flow order, and the ONLY place it is written down. */
 export const PLAN_STEP_ORDER: readonly PlanStepId[] = [
-  "occasion",
   "where",
   "when",
   "who",
@@ -201,81 +204,30 @@ export const PLAN_STEP_ORDER: readonly PlanStepId[] = [
 
 /** The rail's label for each step — the artboards' own words. */
 export const PLAN_STEP_LABELS: Record<PlanStepId, string> = {
-  occasion: "Occasion",
   where: "Where",
   when: "When",
   who: "Who",
   events: "What's happening",
 };
 
-/**
- * The subset of `PlanningSource` this decision reads. Declared structurally rather than imported
- * so this module stays pure data + pure functions and cannot pull the provider (and its React
- * tree) into a unit test.
- */
-export interface PlanStepsSource {
-  /** A seeded `experience_types` slug the door already answered. */
-  experienceSlug?: string;
-  /** One of the five FROZEN coarse keys (ruling `2026-09-01-moment-key`). */
-  experienceType?: string;
-  city?: string;
-  destination?: string;
-  /** Deep-open: decides the FINISH, never the steps (rule 6). */
-  branch?: string;
-  /** The plan the door is about. */
-  tripId?: string;
-  // `focusStep` is DELETED with Lane E1 (ledger `2026-10-08-e1-zero-questions`; §18c): step 8 D1's
-  // `"when"` (the experiences door opens no modal now) and RC-12's `"who"` (ledger
-  // `2026-09-25-rc12-party-size` — the slip's "Who's coming?" is an inline panel now) had no caller.
-}
-
-/** The subset of the held `TripContext` this decision reads. */
-export interface PlanStepsContext {
-  experienceSlug?: string;
-  experienceType?: string;
-}
-
 export interface PlanSteps {
-  /** The step the modal opens on. Always a member of `visibleSteps`. */
+  /** The step the window opens on — always Where, the first basic. */
   startStep: PlanStepId;
   /** The steps the rail shows, in flow order. Never empty; always contains `where` and `when`. */
   visibleSteps: PlanStepId[];
 }
 
-/** Does this source/context NAME an occasion at all? A blank string names nothing. */
-function namesOccasion(o: PlanStepsSource | PlanStepsContext | null | undefined): boolean {
-  if (!o) return false;
-  for (const v of [o.experienceSlug, o.experienceType]) {
-    if (typeof v === "string" && v.trim().length > 0) return true;
-  }
-  return false;
-}
-
 /**
- * Which steps this door shows, and which one it opens on.
+ * Which steps the edit window shows for this plan's occasion. Step 5 is the occasion's own answer;
+ * NOT SET ⇒ not shown (§13). Where and When are never skipped; Who is always shown (skippable).
  *
- * @param source   the door's own context (`PlanningSource`), or null for a door that carries none.
- * @param occasion the RESOLVED `experience_types` row for whatever occasion the door or the held
- *                 plan names — `null` when nothing names one, or when what they name resolves to
- *                 no row (rule 2). The caller resolves it with `findOccasionByKey`.
- * @param context  the plan already held in trip context. Supplies the occasion identity when the
- *                 door carries none (the Trip Strip's Edit button, a returning traveler).
+ * @param occasion the RESOLVED `experience_types` row for the bound plan, or null.
  */
-export function resolvePlanSteps(
-  source?: PlanStepsSource | null,
-  occasion?: OccasionSwitchRow | null,
-  context?: PlanStepsContext | null,
-): PlanSteps {
-  // Rule 3: the schedule step is the occasion's own answer; NOT SET ⇒ not shown (§13).
+export function resolvePlanSteps(occasion?: OccasionSwitchRow | null): PlanSteps {
   const visibleSteps: PlanStepId[] = PLAN_STEP_ORDER.filter(
     (s) => s !== "events" || showsSchedule(occasion),
   );
-
-  // Rules 1 + 2. A row alone is not enough: something must have NAMED it, or this is a row the
-  // caller resolved by some other route and the traveler was never asked.
-  const answered = Boolean(occasion) && (namesOccasion(source) || namesOccasion(context));
-
-  return { startStep: answered ? "where" : "occasion", visibleSteps };
+  return { startStep: "where", visibleSteps };
 }
 
 /** The step after `current` among `visible`, or null when `current` is the last visible step. */

@@ -125,6 +125,12 @@ jobs:
         run: |
           node scripts/check-us-spelling.cjs --self-test
           node scripts/check-us-spelling.cjs
+      # Ledger 2026-10-08-trip-pass-five-runs: a Trip Pass covers a capped number of optimizer runs, so
+      # no client string or locale value says "unlimited" followed within 20 characters by "run".
+      - name: Unlimited-runs copy guard — self-test, source
+        run: |
+          node scripts/check-unlimited-runs.cjs --self-test
+          node scripts/check-unlimited-runs.cjs
 
       # 2026-09-05-well-known-static (CLAUDE.md Locked Decision 43(e)): Stripe verifies an Apple
       # Pay domain by fetching /.well-known/apple-developer-merchantid-domain-association, and the
@@ -153,6 +159,12 @@ jobs:
       # pin that no third expression of the class exists anywhere under server/.
       - name: Expert-work protection pin (LD 42 D3/D4)
         run: npx tsx --test server/__tests__/expert-work-protected.test.ts
+
+      # 2026-10-09-e3-experiences-inline (E3 ruling 2): the six seeded occasion descriptions. The
+      # seeder's sentences and migration 360's are the same text; 360 is data only and touches a row
+      # only while it still holds the generated "<name> planning experience" placeholder.
+      - name: Occasion descriptions pin (E3)
+        run: npx tsx --test server/__tests__/occasion-descriptions.test.ts
 
       # 2026-09-06-optimizer-run-predicate (CLAUDE.md Locked Decision 42 D17): the optimizer run —
       # paid, free re-run, or Trip Pass — REWRITES the plan's items, so all four run gates
@@ -524,6 +536,10 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
         run: npx tsx --test shared/__tests__/listing-save-intent.test.ts
+      # PB-1 (ledger `2026-10-10-pb1-property-category-city`): the property builder's neighbourhood
+      # pre-fill is the ONE radius-limited placement rule, and the answer is required.
+      - name: Property neighbourhood pre-fill pin
+        run: npx tsx --test client/src/lib/__tests__/property-neighborhood.test.ts
       - name: Bundle component + settlement copy pin
         run: npx tsx --test client/src/lib/__tests__/bundle-component-state-copy.test.ts
       - name: API refusal parse pin
@@ -3087,7 +3103,7 @@ jobs:
       # (a per-file job is a ledger-named record of why that pin exists and stays
       # exactly where it is).
       - name: server/services/__tests__ (node:test suites)
-        run: npx tsx --test --test-concurrency=1 --test-force-exit server/services/__tests__/activity-schedule.test.ts server/services/__tests__/background-job-runner.test.ts server/services/__tests__/blog-event-guide.db.test.ts server/services/__tests__/blog-official-facts.db.test.ts server/services/__tests__/blog-series-follow.db.test.ts server/services/__tests__/blog-race-weekend.db.test.ts server/services/__tests__/booking-verification.db.test.ts server/services/__tests__/booking-verification.test.ts server/services/__tests__/cancellation-policy.test.ts server/services/__tests__/commission-phase1.test.ts server/services/__tests__/beta-rollout-fees.test.ts server/services/__tests__/experience-cart-band.db.test.ts server/services/__tests__/expert-split-band.db.test.ts server/services/__tests__/expertise-scoring.test.ts server/services/__tests__/content-facts-engine.test.ts server/services/__tests__/free-draft-event.test.ts server/services/__tests__/gem-teaser.test.ts server/services/__tests__/golf-presets.test.ts server/services/__tests__/landing-billboard-override.test.ts server/services/__tests__/landing-hero.test.ts server/services/__tests__/landing-moments-photo-selection.test.ts server/services/__tests__/location-view-neighbourhood-match.test.ts server/services/__tests__/map-export-escaping.test.ts server/services/__tests__/occasion-schedule.test.ts server/services/__tests__/provider-health.test.ts server/services/__tests__/runtime-flags.test.ts server/services/__tests__/ready-made-clone-routing.test.ts server/services/__tests__/startup-delay.test.ts server/services/__tests__/stripe-dispute.service.db.test.ts server/services/__tests__/trailhead-crosswalk.test.ts server/services/__tests__/trailhead-derived-targets.test.ts server/services/__tests__/itinerary-followup-email.test.ts server/services/__tests__/itinerary-outcome-email.test.ts server/services/__tests__/transport-leg-calculator.test.ts server/services/__tests__/traveler-profile.service.test.ts server/services/__tests__/travelpulse-weekly.db.test.ts server/services/__tests__/trip-mint-entry.test.ts server/services/__tests__/upcoming-loader.db.test.ts server/services/__tests__/upcoming.test.ts server/services/__tests__/upsell-engine.test.ts server/services/__tests__/upsell-query-any-array.test.ts server/services/__tests__/wedding-presets.test.ts
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/services/__tests__/activity-schedule.test.ts server/services/__tests__/background-job-runner.test.ts server/services/__tests__/blog-event-guide.db.test.ts server/services/__tests__/blog-official-facts.db.test.ts server/services/__tests__/blog-series-follow.db.test.ts server/services/__tests__/blog-race-weekend.db.test.ts server/services/__tests__/booking-verification.db.test.ts server/services/__tests__/booking-verification.test.ts server/services/__tests__/cancellation-policy.test.ts server/services/__tests__/commission-phase1.test.ts server/services/__tests__/beta-rollout-fees.test.ts server/services/__tests__/experience-cart-band.db.test.ts server/services/__tests__/expert-split-band.db.test.ts server/services/__tests__/expertise-scoring.test.ts server/services/__tests__/content-facts-engine.test.ts server/services/__tests__/free-draft-event.test.ts server/services/__tests__/gem-teaser.test.ts server/services/__tests__/golf-presets.test.ts server/services/__tests__/landing-billboard-override.test.ts server/services/__tests__/landing-hero.test.ts server/services/__tests__/landing-moments-photo-selection.test.ts server/services/__tests__/location-view-neighbourhood-match.test.ts server/services/__tests__/map-export-escaping.test.ts server/services/__tests__/occasion-schedule.test.ts server/services/__tests__/provider-health.test.ts server/services/__tests__/runtime-flags.test.ts server/services/__tests__/hotel-supply.test.ts server/services/__tests__/liteapi.test.ts server/services/__tests__/liteapi-rates-gate.test.ts server/services/__tests__/ready-made-clone-routing.test.ts server/services/__tests__/startup-delay.test.ts server/services/__tests__/stripe-dispute.service.db.test.ts server/services/__tests__/trailhead-crosswalk.test.ts server/services/__tests__/trailhead-derived-targets.test.ts server/services/__tests__/itinerary-followup-email.test.ts server/services/__tests__/itinerary-outcome-email.test.ts server/services/__tests__/transport-leg-calculator.test.ts server/services/__tests__/traveler-profile.service.test.ts server/services/__tests__/travelpulse-weekly.db.test.ts server/services/__tests__/trip-mint-entry.test.ts server/services/__tests__/upcoming-loader.db.test.ts server/services/__tests__/upcoming.test.ts server/services/__tests__/upsell-engine.test.ts server/services/__tests__/upsell-query-any-array.test.ts server/services/__tests__/wedding-presets.test.ts
       - name: pending billboard gem retries (disposable CI database)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/pending-billboard-gem-idempotency.db.test.ts
       - name: nightly QA invariant runner isolation
@@ -3401,6 +3417,13 @@ jobs:
       - name: advisor-row-author-guard · Advisor-row author guard
         if: ${{ !cancelled() }}
         run: node scripts/check-advisor-row-author.cjs
+      # S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): only TRANSACTION_ID is ever sent to LiteAPI's book call.
+      - name: liteapi-payment-method-guard · LiteAPI payment-method guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-liteapi-payment-method.cjs --self-test
+      - name: liteapi-payment-method-guard · LiteAPI payment-method guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-liteapi-payment-method.cjs
       # 
       - name: preferences-writer-guard · users.preferences one-writer guard predicate self-test
         if: ${{ !cancelled() }}

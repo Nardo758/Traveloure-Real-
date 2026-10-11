@@ -231,6 +231,22 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 678 / 669 → 679 / 670 (ledger `2026-10-08-qa-trip-pass-issue`): POST /api/admin/trip-pass/issue —
  * admin issues zero-charge Trip Pass to QA-domain accounts; admin boundary. admin 169 → 170,
  * admin-role 169 → 170.
+ * 679 / 670 → 680 / 671 (ledger `2026-10-09-s1-one-stay`, R386): POST /api/trips/:tripId/stay-pick/seen —
+ * the stay card clears its one-time `changed` flag; owner or managing assistant, one 404 otherwise.
+ * 680 / 671 → 682 / 673 (ledger `2026-10-09-fd2-content-tier-tags`): POST /api/admin/gems/:id/verify — an
+ * admin verifies an untagged gem (ruling 3); admin boundary. POST /internal/jobs/content-expiry-census —
+ * the internal-secret trigger (ruling 8); public-or-system. admin 170 → 171, other 235 → 236.
+ * 682 / 673 → 683 / 674 (ledger `2026-10-10-s1-d1-liteapi`): POST /internal/jobs/liteapi-sync — the nightly
+ * LiteAPI sync's internal-secret trigger; public-or-system. other 236 → 237, public-or-system 44 → 45.
+ * 683 / 674 → 684 / 675 (ledger `2026-10-10-ss1b-official-refresh`): POST /internal/jobs/official-refresh — the
+ * market-level official refresh's internal-secret trigger; public-or-system. other 237 → 238, public-or-system 45 → 46.
+ * 684 / 675 → 685 / 676 (ledger `2026-10-11-tc3a-ride-item`): POST /api/trips/:tripId/rides — the owner inserts a
+ * catalog ride between two items (ownership checked before the body, one 404); resource-owner. user-data 235 → 236,
+ * resource-owner 99 → 100.
+ * 685 / 676 → 689 / 680 (ledger `2026-10-10-s1-d3a-liteapi-booking`): POST /api/trips/:tripId/items/:itemId/
+ * stay-booking/{prebook,book,cancel} — owner-only in the service (one 404 otherwise); user-data, session-self
+ * (user-data 236 → 239, session-self 353 → 356) — and POST /internal/jobs/liteapi-booking-sync, the
+ * internal-secret trigger; public-or-system (other 238 → 239, public-or-system 46 → 47).
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -239,8 +255,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 679);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 670);
+  assert.equal(result.mutations.length, 689);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 680);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -250,9 +266,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 670);
-  assert.equal(manifest.rawRegistrationCount, 679);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 670);
+  assert.equal(endpointRows.length, 680);
+  assert.equal(manifest.rawRegistrationCount, 689);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 680);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -265,7 +281,16 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /internal/jobs/leg-google-coords (R313): other, public-or-system — the internal-secret trigger.
   // + POST /internal/jobs/legs-dayof-recheck (step 9b D6): other, public-or-system — the internal-secret trigger.
   // + POST /api/trips/:tripId/transport-legs/:legId/options (step 9c D1): user-data, session-self.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 170, "user-data": 234, other: 235 });
+  // + POST /api/trips/:tripId/stay-pick/seen (ledger `2026-10-09-s1-one-stay`, R386): user-data, session-self;
+  // markStayPickSeen checks the plan's "choose" role before the write.
+  // + POST /api/admin/gems/:id/verify (FD-2 ruling 3): admin, behind the blanket /api/admin guard.
+  // + POST /internal/jobs/content-expiry-census (FD-2 ruling 8): other, public-or-system — the internal-secret trigger.
+  // + POST /internal/jobs/liteapi-sync (S1-d-1): other, public-or-system — the internal-secret trigger.
+  // + POST /internal/jobs/official-refresh (SS-1b): other, public-or-system — the internal-secret trigger.
+  // + POST /api/trips/:tripId/items/:itemId/stay-booking/{prebook,book,cancel} (S1-d-3a): user-data,
+  // session-self; owner-only in the service. Not `payments`: Nuitée is merchant of record and these rails
+  // move no money of ours. + POST /internal/jobs/liteapi-booking-sync (S1-d-3a): other, public-or-system.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 171, "user-data": 239, other: 239 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -281,9 +306,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // session-self) and + POST /email-preferences (other, session-self) — both isAuthenticated, the user
   // from the session; + POST /email-preferences/unsubscribe/:token (other, resource-owner) — the token
   // resolves the traveler from their own email_outbox row, one 404 otherwise. 658/649 → 661/652.
+  // + POST /api/trips/:tripId/stay-pick/seen (R386): session-self 352 → 353.
+  // + POST /api/trips/:tripId/rides (TC-3a, R428): resource-owner 99 → 100.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 170, "session-self": 352, "resource-owner": 99,
-    signature: 6, "public-or-system": 43, unknown: 0,
+    "admin-role": 171, "session-self": 356, "resource-owner": 100,
+    signature: 6, "public-or-system": 47, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

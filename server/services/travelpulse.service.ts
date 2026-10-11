@@ -1,4 +1,5 @@
 import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
+import { teamSeededGemTags } from "@shared/content-tiers";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 import { db } from "../db";
 import {
@@ -341,14 +342,19 @@ export class TravelPulseService {
     return cities;
   }
 
-  async getCityIntelligence(cityName: string) {
+  /**
+   * `opts.forDraft` (FD-2, ledger `2026-10-09-fd2-content-tier-tags`): an AI DRAFT's read. Gems come only
+   * from `getDraftEligibleGems` — untagged rows (an AI-written gem until a person verifies it, ruling 3)
+   * and expired local rows (ruling 8) never reach a prompt. Public city pages keep the plain read.
+   */
+  async getCityIntelligence(cityName: string, opts: { forDraft?: boolean } = {}) {
     const city = await this.getCityByName(cityName);
     if (!city) {
       return null;
     }
 
     const [hiddenGems, alerts, happeningNow, liveActivity] = await Promise.all([
-      this.getHiddenGems(cityName),
+      opts.forDraft ? this.getDraftEligibleGems(cityName) : this.getHiddenGems(cityName),
       this.getCityAlerts(cityName),
       this.getHappeningNow(cityName),
       this.getLiveActivity(cityName),
@@ -378,6 +384,24 @@ export class TravelPulseService {
       .limit(limit);
 
     return gems;
+  }
+
+  /**
+   * The ONE gem read an AI draft may use (FD-2 rulings 3 and 8). SQL form of `isDraftEligible`
+   * (shared/content-tiers.ts): a source class is stated, and a LOCAL row's `expires_at` has not passed
+   * (NULL = no expiry stated, live). Hidden at build time — nothing is deleted and no status is written.
+   */
+  async getDraftEligibleGems(city: string, limit: number = 10): Promise<TravelPulseHiddenGem[]> {
+    return db
+      .select()
+      .from(travelPulseHiddenGems)
+      .where(and(
+        eq(travelPulseHiddenGems.city, city),
+        sql`${travelPulseHiddenGems.sourceClass} IN ('public', 'local')`,
+        sql`(${travelPulseHiddenGems.sourceClass} <> 'local' OR ${travelPulseHiddenGems.expiresAt} IS NULL OR ${travelPulseHiddenGems.expiresAt} > NOW())`,
+      ))
+      .orderBy(desc(travelPulseHiddenGems.gemScore))
+      .limit(limit);
   }
 
   async getLiveActivity(city: string, limit: number = 20): Promise<TravelPulseLiveActivity[]> {
@@ -861,7 +885,8 @@ export class TravelPulseService {
     ];
 
     for (const gem of gems) {
-      await db.insert(travelPulseHiddenGems).values(gem);
+      // FD-2: a hand-written team seed (not AI output) ⇒ team tags.
+      await db.insert(travelPulseHiddenGems).values({ ...gem, ...teamSeededGemTags() });
     }
     console.log(`Seeded ${gems.length} hidden gems`);
   }
