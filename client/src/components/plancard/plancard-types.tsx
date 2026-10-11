@@ -400,6 +400,10 @@ export interface PlanCardTransport {
    * routed plan: line and fare as the source gave them, and who answered when.
    */
   routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true; transitApiUncovered?: true };
+  /** TC-4 (LD 69): the live-directions deep link, present only when both ends are located (server-built). */
+  liveDirections?: import("@shared/live-directions").LegLiveDirections;
+  /** TC-4 ruling 1: the earliest last departure near the stop this leg leaves, that day; absent ⇒ none known. */
+  lastService?: import("@shared/live-directions").LegLastService;
   /** Step 9c (ledger `2026-10-07-step9c-leg-options`): an engine leg's mode options, current first (≤3). */
   routedOptions?: import("@shared/leg-options").LegOptionView[];
   /** Step 9c: the options were already asked — a tap makes no call. */

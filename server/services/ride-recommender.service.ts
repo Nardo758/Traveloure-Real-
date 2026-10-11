@@ -46,7 +46,14 @@ export function todayInZone(now: Date, timeZone: string | null | undefined): str
   }
 }
 
-export async function rideRecommendationsForTrip(tripId: string, viewerUserId: string | null, now: Date = new Date()): Promise<TripRideAnswer> {
+export async function rideRecommendationsForTrip(
+  tripId: string,
+  viewerUserId: string | null,
+  now: Date = new Date(),
+  // TC-4 ruling 4 (ledger `2026-10-11-tc4-live-directions`): the Trip Card shows the line read-only and does NOT
+  // record `offered` — the slip stays the one place an offer counts as served.
+  opts: { recordOffered?: boolean } = {},
+): Promise<TripRideAnswer> {
   try {
     const [trip] = await db
       .select({
@@ -180,7 +187,7 @@ export async function rideRecommendationsForTrip(tripId: string, viewerUserId: s
     const suggestions = new Map<number, RideSuggestion[]>();
     for (const s of list) suggestions.set(s.dayNumber, [...(suggestions.get(s.dayNumber) ?? []), s]);
     const occasion = trip.momentKey ?? trip.experienceType ?? null;
-    void recordTransportOptionEvents(
+    if (opts.recordOffered !== false) void recordTransportOptionEvents(
       list.map((s) => ({ tripId, corridorKey: s.corridorKey, serviceId: s.serviceId, event: "offered" as const, dayNumber: s.dayNumber, legId: s.legId, occasion })),
     );
     return { suggestions, teasers: new Map() };

@@ -36,7 +36,9 @@ import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { factCheckedLabel, itemFactsLine } from "@/lib/place-facts";
-import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine } from "@/lib/trip-card";
+import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine, estimatedMinutesSuffix, lastServiceLine, liveDirectionsLabel } from "@/lib/trip-card";
+import { rideSuggestionFor, rideSwapSummary, type RideSuggestionView } from "@/lib/ride-suggestions";
+import type { LegLastService, LegLiveDirections } from "@shared/live-directions";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { apiRequest } from "@/lib/queryClient";
 import { FEEDBACK_CODES } from "@shared/feedback";
@@ -88,7 +90,38 @@ export function cardLegAfter(legs: DayTransport[], acts: Array<{ id: string }>, 
   return legs.find((l: any) => (l.fromActivityId ?? l.from) === from && (l.toActivityId ?? l.to) === to) ?? null;
 }
 
-export function LegLine({ leg, showMinutes, timeZone }: { leg: DayTransport; showMinutes: boolean; timeZone?: string | null }) {
+/**
+ * TC-4 (LD 69; ledger `2026-10-11-tc4-live-directions`): under the leg's planning line, the live tier — the
+ * server's deep link, the last departure near the stop the leg leaves, and (owner only, read-only) "A better way
+ * there". Drawn only from what the server sent; an absent field draws nothing (§13).
+ */
+function LegLiveTier({ leg, ride }: { leg: DayTransport; ride?: RideSuggestionView | null }) {
+  const live = (leg as any).liveDirections as LegLiveDirections | undefined;
+  const last = (leg as any).lastService as LegLastService | undefined;
+  if (!live && !last && !ride) return null;
+  const id = (leg as any).id;
+  return (
+    <div className="ml-6 pl-3 pb-1 space-y-0.5 text-xs" data-testid={`card-leg-live-${id}`}>
+      {live ? (
+        <a href={live.url} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2" data-testid={`card-leg-live-link-${id}`}>
+          {liveDirectionsLabel(live)} ↗
+        </a>
+      ) : null}
+      {last ? (
+        <p className="text-muted-foreground" data-testid={`card-leg-last-service-${id}`}>
+          {lastServiceLine(last)}
+        </p>
+      ) : null}
+      {ride ? (
+        <p className="text-muted-foreground" data-testid={`card-leg-better-way-${id}`}>
+          {rideSwapSummary(ride)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTransport; showMinutes: boolean; timeZone?: string | null; ride?: RideSuggestionView | null }) {
   const mode = String((leg as any).userSelectedMode ?? (leg as any).recommendedMode ?? (leg as any).mode ?? "");
   const label = (TRANSPORT_MODE_LABELS as Record<string, string>)[mode] ?? mode;
   const minutes = Number((leg as any).estimatedDurationMinutes ?? (leg as any).duration);
@@ -99,17 +132,23 @@ export function LegLine({ leg, showMinutes, timeZone }: { leg: DayTransport; sho
   const routed = fromId && toId ? routedLegBetween([{ transports: [leg as any] }], fromId, toId) : null;
   if (routed) {
     return (
-      <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`} data-leg-source={routed.route.provenance.source}>
-        {routedLegLine({ mode: routed.mode, route: routed.route }, timeZone ?? null)}
-      </p>
+      <>
+        <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`} data-leg-source={routed.route.provenance.source}>
+          {routedLegLine({ mode: routed.mode, route: routed.route }, timeZone ?? null)}
+        </p>
+        <LegLiveTier leg={leg} ride={ride} />
+      </>
     );
   }
-  if (!label) return null;
+  if (!label) return <LegLiveTier leg={leg} ride={ride} />;
   return (
-    <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`}>
-      {label}
-      {showMinutes && Number.isFinite(minutes) && minutes > 0 ? ` · ${Math.round(minutes)} min` : ""}
-    </p>
+    <>
+      <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`}>
+        {label}
+        {showMinutes && Number.isFinite(minutes) && minutes > 0 ? estimatedMinutesSuffix(minutes) : ""}
+      </p>
+      <LegLiveTier leg={leg} ride={ride} />
+    </>
   );
 }
 
@@ -374,7 +413,12 @@ export function TripCardDays(props: TripCardDaysProps) {
                   </p>
                 ) : null}
                 {idx < acts.length - 1 && cardLegAfter(legs, acts, idx) ? (
-                  <LegLine leg={cardLegAfter(legs, acts, idx)!} showMinutes={props.showTravelMinutes} timeZone={timeZone} />
+                  <LegLine
+                    leg={cardLegAfter(legs, acts, idx)!}
+                    showMinutes={props.showTravelMinutes}
+                    timeZone={timeZone}
+                    ride={props.isOwner ? rideSuggestionFor(days as any, a.id, acts[idx + 1].id) : null}
+                  />
                 ) : null}
               </Fragment>
             ))}

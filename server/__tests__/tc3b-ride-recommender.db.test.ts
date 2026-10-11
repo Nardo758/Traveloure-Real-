@@ -8,6 +8,8 @@
  *   RB5 the general trip rails can neither forge nor wipe the overlay
  *   RB6 the plan's profile read merges the overlay over the account profile
  *   RB7 a ride inserted between the stops reports its corridor, so the route can record `accepted`
+ *   RB8 TC-4 ruling 4 (ledger `2026-10-11-tc4-live-directions`): the Trip Card's read (`recordOffered: false`) gets the
+ *       same owner-only suggestions and records NO `offered` row (runs before RB1, whose serving is the first record)
  *
  * NEGATIVE SPACE (§18d): the dismiss and overlay ROUTES are thin owner-gated wrappers over the services proven
  * here (and are probed by the mutation-auth suite); the pure ranking rules are shared/__tests__/ride-recommender.
@@ -102,6 +104,14 @@ after(async () => {
   await db.execute(sql`DELETE FROM trips WHERE id IN (${PAID}, ${FREE}, ${id("unconfirmed")})`);
   await db.execute(sql`DELETE FROM provider_services WHERE id = ${RIDE}`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${owner}, ${stranger}, ${op})`);
+});
+
+test("RB8 the Trip Card's read shows the owner's swap and records no offered row", async () => {
+  const card = await rideRecommendationsForTrip(PAID, owner, NOW, { recordOffered: false });
+  assert.ok((card.suggestions.get(1) ?? []).length > 0, "the owner sees the swap on the card");
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(await offeredRows(PAID), 0, "the card's read records nothing");
+  assert.equal((await rideRecommendationsForTrip(PAID, stranger, NOW, { recordOffered: false })).suggestions.size, 0, "owner only");
 });
 
 test("RB1 the paid plan's owner gets the swap; the first serving records ONE offered row", async () => {

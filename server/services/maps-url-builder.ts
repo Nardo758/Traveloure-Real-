@@ -26,10 +26,15 @@ export function buildGoogleMapsUrl(activities: ActivityPoint[], dominantMode: st
 export function buildGoogleNavUrl(
   fromLat: number, fromLng: number,
   toLat: number, toLng: number,
-  mode: string
+  mode: string,
+  opts: { travelmode?: "transit" } = {},
 ): string {
   void mode; // R321 (S11-9): Maps chooses the mode.
-  return `https://www.google.com/maps/dir/?api=1&origin=${fromLat},${fromLng}&destination=${toLat},${toLng}`;
+  // TC-4 (ledger `2026-10-11-tc4-live-directions`): the Trip Card's live-directions link ALONE may ask
+  // for transit, and only where the routing API has no transit (`apiTransitCoverage: false`) — its label
+  // promises train and bus. Every other caller passes nothing and keeps R321's no-mode link.
+  const tm = opts.travelmode ? `&travelmode=${opts.travelmode}` : "";
+  return `https://www.google.com/maps/dir/?api=1&origin=${fromLat},${fromLng}&destination=${toLat},${toLng}${tm}`;
 }
 
 export function buildGooglePlaceUrl(lat: number, lng: number, name: string): string {
