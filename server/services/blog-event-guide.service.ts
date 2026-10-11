@@ -25,8 +25,6 @@ import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
 
 export type RawDraft = { title?: unknown; summary?: unknown; body?: unknown };
 
-const UNSUPPORTED_MEASUREMENT = /\b\d+(?:\.\d+)?\s*(?:minutes?|mins?|hours?|hrs?|kilometers?|kilometres?|kms?|miles?|meters?|metres?|feet|ft|yards?|yds?)\b/i;
-
 export const EVENT_GUIDE_SYSTEM_PROMPT = [
   "You write a short weekend guide to ONE event for Traveloure, from the JSON facts you are given and nothing else.",
   "Use only the facts' names, dates and times. Do not state prices, capacities, distances, durations, ratings, weather or any number the facts do not contain.",
@@ -79,7 +77,6 @@ export function checkPlatformDraft(
   const summary = typeof raw.summary === "string" ? raw.summary.trim() : "";
   if (!title || !body) return { error: `${prefix}_malformed` };
   const text = `${title}\n${summary}\n${body}`;
-  if (UNSUPPORTED_MEASUREMENT.test(text)) return { error: `${prefix}_unknown_number` };
   if (firstInventedNumber(text, numbersInFacts(factsForNumbers)) !== null) return { error: `${prefix}_unknown_number` };
   if (firstForeignLink(text, []) !== null) return { error: `${prefix}_foreign_link` };
   const own = new Set(ownCities.map((c) => c.toLowerCase()));

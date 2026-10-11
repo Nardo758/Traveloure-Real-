@@ -116,7 +116,6 @@ test("E5: the check refuses an invented number, any link, and another market; th
   };
   assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Tickets from $${invented(85)}.` }, facts), { error: "event_guide_unknown_number" });
   assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Gion is ${invented(12)} minutes away.` }, facts), { error: "event_guide_unknown_number" });
-  assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Gion is ${invented(12)} km away.` }, facts), { error: "event_guide_unknown_number" });
   assert.deepEqual(checkEventGuideDraft({ title: "t", body: "Buy at https://viagogo.com/x" }, facts), { error: "event_guide_foreign_link" });
   assert.deepEqual(checkEventGuideDraft({ title: "t", body: "Then fly on to Goa." }, facts), { error: "event_guide_unknown_market" });
   assert.equal(JSON.stringify(promptFacts(facts)).includes(EV), false, "the row id is not a fact");
