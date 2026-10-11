@@ -1156,7 +1156,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           // same Maps action (plus Message/Get-help + Share) at mobile widths.
           <div className="hidden sm:flex px-3 sm:px-5 pb-4 pt-2 gap-2">
             {/* Mobile-lens audit #9: the "View Itinerary" button that used to sit here linked to
-                /itinerary/:id, which redirects straight back to this same /trip/:id?tab=itinerary
+                /itinerary/:id, which redirects straight back to this same /trip/:id
                 page — a no-op button. Removed rather than repointed: this full-stage card IS the
                 itinerary view, so there's nothing additive to send the traveler to from here. */}
             <Button

@@ -125,7 +125,7 @@ test('D5: guest add-to-plan, then sign up — does the item survive?', async ({ 
       )
     : [];
   const survivedCart = userId
-    ? await q(`SELECT id FROM cart_items WHERE user_id = $1 AND provider_service_id = $2`, [userId, providerA.providerServiceId]).catch(
+    ? await q(`SELECT id FROM cart_items WHERE user_id = $1 AND service_id = $2`, [userId, providerA.providerServiceId]).catch(
         () => [] as any[],
       )
     : [];
