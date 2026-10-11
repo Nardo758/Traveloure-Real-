@@ -3385,6 +3385,13 @@ jobs:
       - name: advisor-row-author-guard · Advisor-row author guard
         if: ${{ !cancelled() }}
         run: node scripts/check-advisor-row-author.cjs
+      # S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): only TRANSACTION_ID is ever sent to LiteAPI's book call.
+      - name: liteapi-payment-method-guard · LiteAPI payment-method guard predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-liteapi-payment-method.cjs --self-test
+      - name: liteapi-payment-method-guard · LiteAPI payment-method guard
+        if: ${{ !cancelled() }}
+        run: node scripts/check-liteapi-payment-method.cjs
       # 
       - name: preferences-writer-guard · users.preferences one-writer guard predicate self-test
         if: ${{ !cancelled() }}

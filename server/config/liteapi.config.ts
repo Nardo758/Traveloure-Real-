@@ -91,3 +91,12 @@ export function liteapiConfig(env: NodeJS.ProcessEnv = process.env): LiteapiConf
     staleAfterDays: Number.isFinite(stale) && stale > 0 ? stale : LITEAPI_STALE_AFTER_DAYS_DEFAULT,
   };
 }
+
+/**
+ * S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`; S1-d-3 ruling): booking is SANDBOX ONLY until the
+ * decision-maker rules otherwise. A production key never prebooks, books, cancels or syncs — every step asks
+ * this ONE predicate first (§18 rule 1).
+ */
+export function liteapiBookingEnabled(cfg: LiteapiConfig | null): cfg is LiteapiConfig {
+  return !!cfg && cfg.env === "sandbox";
+}
