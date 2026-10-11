@@ -1,6 +1,6 @@
 # TC-3b — the ride recommender and the trip profile overlay
 
-Ledger `2026-10-11-tc3b-ride-recommender` (R?, numbered at merge). TC-3 brief rev 1, lane TC-3b. Decision-maker
+Ledger `2026-10-11-tc3b-ride-recommender` (R433). TC-3 brief rev 1, lane TC-3b. Decision-maker
 rulings 1–4, Oct 11, 2026. Migrations 370 and 372 are HELD for Leon's approval comments on the PR.
 
 ## Phase 0 (read-only) — what the code already had
@@ -43,11 +43,15 @@ Walking range 1,200 m; 400 m for limited mobility.
 
 ## Stated limits
 
-- Booking lead time reads `service_transport_facts.booking_window_days` as the MINIMUM days ahead a booking must be
-  made. Every seeded ride has it NULL, so it filters nothing today. Confirm the reading before a row sets it.
-- Wheelchair: no ride states accessibility, so a wheelchair overlay hides every ride. The answer is honest; the
-  catalog needs the fact.
-- Occasion fit is recorded on every event but does not rank; no catalog field carries it.
+- Booking lead time: `service_transport_facts.booking_window_days` is the MINIMUM number of days ahead a ride must be
+  booked (decision-maker ruling 1, Oct 11, 2026 — confirmed). Every seeded ride has it NULL, so it filters nothing
+  today.
+- Wheelchair (ruling 2, held): no ride states accessibility, so a wheelchair overlay hides every ride, and TC-3b does
+  not change that. The next sidecar migration adds `service_transport_facts.wheelchair_accessible` (true / false /
+  unknown) together with `price_cents` / `currency`, from operator statements only. Once that field exists, `unknown`
+  renders the ride with an "accessibility not confirmed" line and never hides it.
+- Occasion fit (ruling 3, held): recorded on every `transport_option_events` row, not used in ranking. It is revisited
+  as a soft ranking input after 30 days of offered / accepted / skipped data exist.
 - Walk minutes are straight-line at 80 m/min, not routed.
 - Eizan has no seeded departures, so it is never offered.
 - Pass, payment and luggage filtering waits for a later lane that reads 372's `notes.filters`.
