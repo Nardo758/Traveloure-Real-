@@ -212,7 +212,7 @@ export async function computePlanLegs(
   deps: { adapter?: RoutingAdapter | null; qualifies?: boolean; now?: () => Date } = {},
 ): Promise<PlanLegsResult> {
   const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
-  const qualifies = adapter ? (deps.qualifies ?? (await tripGetsRoutedLegs(tripId))) : false;
+  const qualifies = deps.qualifies ?? (await tripGetsRoutedLegs(tripId));
   const trip = adapter && qualifies ? await storage.getTrip(tripId) : undefined;
   // Ledger `2026-10-08-e1-zero-questions` (E1 ruling 7): a plan whose dates nobody chose has no real
   // departure instants, so nothing is routed against its placeholder window — the same skip the

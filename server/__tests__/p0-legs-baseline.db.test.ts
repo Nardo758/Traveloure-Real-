@@ -289,7 +289,8 @@ test("L10: 2 located + 1 unlocated + a legacy leg on the unlocated pair ⇒ 0 un
 test("L11: the skip reason names the first gate that stops the run; a start-only edit moves the end by the item's own minutes", () => {
   const on = { engineOn: true, qualifies: true, tripExists: true, datesConfirmed: true };
   assert.equal(planLegsSkipReason(on), null);
-  assert.equal(planLegsSkipReason({ ...on, engineOn: false, qualifies: false }), "engine_off");
+  assert.equal(planLegsSkipReason({ ...on, engineOn: false, qualifies: false }), "free_plan", "a free plan is told about Optimize even with the engine off");
+  assert.equal(planLegsSkipReason({ ...on, engineOn: false }), "engine_off");
   assert.equal(planLegsSkipReason({ ...on, qualifies: false }), "free_plan");
   assert.equal(planLegsSkipReason({ ...on, tripExists: false }), "no_trip");
   assert.equal(planLegsSkipReason({ ...on, datesConfirmed: false }), "dates_not_confirmed");

@@ -69,7 +69,7 @@ async function routedLegsFor(tripId: string): Promise<boolean> {
 async function legsSkippedFor(tripId: string, datesConfirmed: boolean): Promise<PlanLegsSkipReason | null> {
   try {
     const engineOn = !!routingAdapter();
-    const qualifies = engineOn ? await tripGetsRoutedLegs(tripId) : false;
+    const qualifies = await tripGetsRoutedLegs(tripId);
     return planLegsSkipReason({ engineOn, qualifies, tripExists: true, datesConfirmed });
   } catch {
     return null;

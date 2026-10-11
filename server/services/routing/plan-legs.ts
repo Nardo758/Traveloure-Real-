@@ -336,8 +336,9 @@ export function legIsRouted(leg: {
  */
 export type PlanLegsSkipReason = "engine_off" | "free_plan" | "no_trip" | "dates_not_confirmed";
 export function planLegsSkipReason(input: { engineOn: boolean; qualifies: boolean; tripExists: boolean; datesConfirmed: boolean }): PlanLegsSkipReason | null {
-  if (!input.engineOn) return "engine_off";
+  // A free plan is told what would give it travel times (Optimize), whether or not the engine is on.
   if (!input.qualifies) return "free_plan";
+  if (!input.engineOn) return "engine_off";
   if (!input.tripExists) return "no_trip";
   if (!input.datesConfirmed) return "dates_not_confirmed";
   return null;
