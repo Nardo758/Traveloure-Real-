@@ -440,3 +440,17 @@ mtime_ms = 1791664974559
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/695ca1d5-7a6b-429f-afdb-0973e9483929/f0844d4d-e9a9-4df2-80da-a25e05c5b3ae"
 storage_version_token = "1791665010190027"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "t5mCrG98Pa8Mxf94pj80c"
+uri = "file://reports/automation-part10-final-report.md"
+type = "text"
+title = "Part 10 — final development gates and release blockers"
+description = "Per-rule dispositions, fresh gate evidence, trigger archive references, direct-sender inventory and explicit release holds."
+logical_id = "64ff35d6-38e0-489f-9353-77f4d4ec0bc9"
+content_hash = "sha256:4fb54c45636bbecb423bd77c97d492436b8081e83bab5bf55ab5fc7ad0a2cb05"
+size = 18963
+mtime_ms = 1791694909449
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/64ff35d6-38e0-489f-9353-77f4d4ec0bc9/86bb8691-765f-44f1-8495-5a0c26b0c4b6"
+storage_version_token = "1791695002999184"
+content_type = "text/markdown"
