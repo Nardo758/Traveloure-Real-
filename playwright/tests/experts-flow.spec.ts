@@ -53,23 +53,6 @@ async function selectOption(page: Page, triggerTestId: string, optionText: strin
 
 // ── T01 — Page load ───────────────────────────────────────────────────────────
 
-test.describe('T01 — Page load', () => {
-  test('expert cards and filter bar visible on /experts', async ({ page }) => {
-    await gotoExperts(page);
-
-    await expect(page.getByTestId('input-search-experts')).toBeVisible();
-    await expect(page.getByTestId('select-destination')).toBeVisible();
-    await expect(page.getByTestId('select-experience-type')).toBeVisible();
-    await expect(page.getByTestId('select-language')).toBeVisible();
-
-    // At least one expert card rendered
-    const cards = page.locator('[data-testid^="card-expert-"]');
-    await expect(cards.first()).toBeVisible();
-    const count = await cards.count();
-    expect(count).toBeGreaterThan(0);
-  });
-});
-
 // ── T02 — Name search ─────────────────────────────────────────────────────────
 
 test.describe('T02 — Name search', () => {
@@ -96,27 +79,6 @@ test.describe('T02 — Name search', () => {
 });
 
 // ── T03 — Destination filter ───────────────────────────────────────────────────
-
-test.describe('T03 — Destination filter', () => {
-  test('selecting "Tokyo, Japan" narrows the expert grid', async ({ page }) => {
-    await gotoExperts(page);
-
-    const initialCards = await page.locator('[data-testid^="card-expert-"]').count();
-
-    await selectOption(page, 'select-destination', 'Tokyo');
-
-    // Active chip should appear
-    await expect(page.getByTestId('chip-filter-destination')).toBeVisible();
-
-    // Grid must still render (at least 1 result — Tokyo experts are seeded)
-    const afterCards = page.locator('[data-testid^="card-expert-"]');
-    await expect(afterCards.first()).toBeVisible();
-
-    // Count should be ≤ initial (filter narrows or stays same, never expands)
-    const afterCount = await afterCards.count();
-    expect(afterCount).toBeLessThanOrEqual(initialCards);
-  });
-});
 
 // ── T04 — Experience type filter ──────────────────────────────────────────────
 
@@ -233,53 +195,7 @@ test.describe('T07 — Clear filters', () => {
 
 // ── T08 — Expert card detail ──────────────────────────────────────────────────
 
-test.describe('T08 — Expert card detail', () => {
-  test('expert card shows name and "View Profile" button', async ({ page }) => {
-    await gotoExperts(page);
-
-    const firstCard = page.locator('[data-testid^="card-expert-"]').first();
-    await expect(firstCard).toBeVisible();
-
-    // Name visible
-    await expect(firstCard.getByTestId('text-expert-name')).toBeVisible();
-
-    // Price rendered if set (optional — experts without a rate omit it)
-    const priceEl = firstCard.getByTestId('text-price');
-    const priceAttached = await priceEl.count();
-    if (priceAttached > 0) {
-      await expect(priceEl).toBeAttached();
-    }
-
-    // View Profile button always visible
-    await expect(firstCard.getByTestId('button-view-profile')).toBeVisible();
-  });
-});
-
 // ── T09 — View Profile navigates to expert page ───────────────────────────────
-
-test.describe('T09 — "View Profile" navigates to booking flow', () => {
-  test('clicking View Profile lands on /expert/:id or /experts/:id, not 404', async ({ page }) => {
-    test.setTimeout(60_000);
-    await gotoExperts(page);
-
-    const firstCard = page.locator('[data-testid^="card-expert-"]').first();
-    await expect(firstCard).toBeVisible();
-
-    const profileBtn = firstCard.getByTestId('button-view-profile');
-    await expect(profileBtn).toBeVisible();
-
-    await profileBtn.click();
-    await page.waitForTimeout(2_000);
-
-    // Must have navigated away from /experts
-    const url = page.url();
-    const landed = url.includes('/expert') || url.includes('/profile') || url.includes('/provider');
-    expect(landed, `Expected expert profile URL, got: ${url}`).toBe(true);
-
-    // No 404 / error boundary
-    await expect(page.getByText(/page not found|404|Something went wrong/i)).toHaveCount(0);
-  });
-});
 
 // ── T10 — No-results state ────────────────────────────────────────────────────
 

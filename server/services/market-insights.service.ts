@@ -29,6 +29,9 @@
  * contributors") stays wherever the caller renders any of this.
  */
 
+import { haversineKm, parseCoord, placeServiceInNeighborhood, type NeighborhoodRow } from "@shared/neighborhood-placement";
+export { haversineKm, parseCoord, placeServiceInNeighborhood, type NeighborhoodRow };
+
 /**
  * The minimum number of REAL searches (in the recent window) a destination bucket must reach before
  * it renders. Below this everywhere, the demand layer shows the honest "not enough signal yet"
@@ -39,16 +42,6 @@ export const MIN_DEMAND_SIGNAL = 3;
 
 // ── Input row shapes (plain data — the storage layer maps DB rows into these) ────────────────────
 
-/** A neighborhood in the provider's market scope. Centroid is REAL (city_neighborhoods, notNull). */
-export interface NeighborhoodRow {
-  id: string;
-  city: string;
-  name: string;
-  slug: string;
-  centroidLat: string | number | null;
-  centroidLng: string | number | null;
-  radiusKm: string | number | null;
-}
 
 /** A bookable supply listing (approved+active) with everything needed to place it — or not. */
 export interface SupplyServiceRow {
@@ -111,68 +104,11 @@ export interface DemandResult {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────────────────────────
 
-/** Tolerant decimal parse (rows store lat/lng as strings). Range-checked; null on anything unreal. */
-export function parseCoord(
-  lat: string | number | null | undefined,
-  lng: string | number | null | undefined,
-): { lat: number; lng: number } | null {
-  if (lat === null || lat === undefined || lat === "" || lng === null || lng === undefined || lng === "") return null;
-  const nLat = Number(lat);
-  const nLng = Number(lng);
-  if (!Number.isFinite(nLat) || !Number.isFinite(nLng)) return null;
-  if (Math.abs(nLat) > 90 || Math.abs(nLng) > 180) return null;
-  return { lat: nLat, lng: nLng };
-}
-
-/** Great-circle (haversine) distance in km — STRAIGHT-LINE, the SAME formula the map uses. */
-export function haversineKm(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number },
-): number {
-  const R = 6371; // km
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const lat1 = (a.lat * Math.PI) / 180;
-  const lat2 = (b.lat * Math.PI) / 180;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
 const norm = (s: string | null | undefined): string => (s ?? "").trim().toLowerCase();
 
-/**
- * Place ONE supply service into a neighborhood id, or return null if UNPLACED (§13 — excluded, never
- * guessed). Priority: (a) its own `neighborhood` slug matched to a scoped neighborhood; else (b) the
- * nearest scoped neighborhood centroid WITHIN that neighborhood's radiusKm, using the same haversine
- * the map uses, for services carrying a confirmed pin. No slug match and no pin ⇒ null.
- */
-export function placeServiceInNeighborhood(
-  service: SupplyServiceRow,
-  neighborhoods: NeighborhoodRow[],
-): string | null {
-  // (a) slug match — stable across renames, the soft-FK design on provider_services.neighborhood.
-  const slug = norm(service.neighborhood);
-  if (slug) {
-    const bySlug = neighborhoods.find((n) => norm(n.slug) === slug);
-    if (bySlug) return bySlug.id;
-  }
-  // (b) nearest centroid within radius — only for a genuinely LOCATED service.
-  const pin = parseCoord(service.latitude, service.longitude);
-  if (!pin) return null;
-  let bestId: string | null = null;
-  let bestDist = Infinity;
-  for (const n of neighborhoods) {
-    const c = parseCoord(n.centroidLat, n.centroidLng);
-    if (!c) continue;
-    const radius = Number(n.radiusKm ?? "1.5");
-    const d = haversineKm(pin, c);
-    if (d <= radius && d < bestDist) {
-      bestDist = d;
-      bestId = n.id;
-    }
-  }
-  return bestId;
-}
+// PB-1 (ledger `2026-10-10-pb1-property-category-city`): the placement rule and its helpers moved to
+// shared/neighborhood-placement.ts so the property builder's pin pre-fill runs the SAME code (§18 rule 1).
+// Re-exported here so every existing caller and test keeps its import.
 
 // ── Layer 1: coverage gaps ────────────────────────────────────────────────────────────────────────
 

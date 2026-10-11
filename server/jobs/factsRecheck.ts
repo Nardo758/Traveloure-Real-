@@ -33,6 +33,8 @@ export interface FactsRecheckResult {
   legsChecked: number;
   legsChanged: number;
   legsNotified: number;
+  /** P0 ruling 6: desired pairs that show no leg (counted, never written). Present only when > 0. */
+  legsMissing?: number;
   error?: string;
 }
 
@@ -140,6 +142,8 @@ export async function runFactsRecheck(now: Date = new Date(), deps: FactsRecheck
       result.legsChecked += legs.checked;
       result.legsChanged += legs.changed + legs.broken;
       result.legsNotified += legs.notified;
+      // P0 ruling 6: pairs with no leg are counted, never written; present only when > 0.
+      if (legs.missing) result.legsMissing = (result.legsMissing ?? 0) + legs.missing;
     } catch (err) {
       result.failed += 1;
       console.error(`[facts-recheck] plan ${trip.id} failed:`, (err as Error)?.message ?? err);
