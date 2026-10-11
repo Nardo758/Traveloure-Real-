@@ -28,7 +28,7 @@ test.describe("Surface retirement redirects", () => {
   });
 
   /**
-   * /itinerary/:id → /trip/:id?tab=itinerary (client-side Wouter Redirect).
+   * /itinerary/:id → /trip/:id (client-side Wouter Redirect).
    * /trip/:id is a ProtectedRoute so unauthenticated browsers are redirected
    * further (to / or login). We assert:
    *   1. The page is no longer at the deprecated /itinerary/ path.

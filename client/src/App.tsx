@@ -688,11 +688,14 @@ function Router() {
           </PageErrorBoundary>
         )}
       </Route>
+      {/* Legacy itinerary deep-links land on the Trip Card, which sends a plan that is not final
+          to its slip (LD 42 D8). No `?tab=`: the tab shell is gone (LD 45(6)); ledger
+          `2026-10-10-ss2c-itinerary-redirect`. */}
       <Route path="/itinerary/:id">
-        {({ id }) => <Redirect to={`/trip/${id}?tab=itinerary`} />}
+        {({ id }) => <Redirect to={`/trip/${id}`} />}
       </Route>
       <Route path="/my-itinerary/:id">
-        {({ id }) => <Redirect to={`/trip/${id}?tab=itinerary`} />}
+        {({ id }) => <Redirect to={`/trip/${id}`} />}
       </Route>
       <Route path="/itinerary-comparison/:id">
         {() => <DashboardLayout><ProtectedRoute component={ItineraryComparisonPage} /></DashboardLayout>}
