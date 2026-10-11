@@ -12,7 +12,9 @@
  *     option's `hotel_cache` row → a LiteAPI row in this plan's city (ruling 4).
  *   · THE OFFER ID NEVER COMES FROM THE BROWSER (§14): prebook re-quotes the plan's own dates and party on
  *     the d-2 rates rail (same gate, same cap), and the PREBOOK's price is what the SDK charges and the page
- *     shows before it opens. Below LiteAPI's SSP is refused.
+ *     shows before it opens. THE BOOKING MARGIN is `bookingMarginFraction` (decision-maker, Oct 11, 2026):
+ *     max(band, SSP / net − 1) from the re-quote's own answer; above the band, ONE more re-quote at that
+ *     margin, whose offer is prebooked. Refused only when the SSP is unstated or in another currency.
  *   · CLAIM BEFORE EVERY EXTERNAL CALL (§15/§15b): `prebooked → booking` before book, `confirmed →
  *     cancelling` before cancel, each one atomic conditional. A definite LiteAPI refusal ends the claim; an
  *     answer we cannot read leaves it for the sync to DETECT — the sync never books (ruling).
@@ -32,6 +34,7 @@ import {
   bookingStatusOf,
   offerIdFromRates,
   sspFromRates,
+  bookingMarginFraction,
   parseBook,
   parsePrebook,
 } from "@shared/liteapi-booking";
@@ -75,8 +78,10 @@ type Refusal =
   | "not_confirmed";
 
 export type PrebookResult =
-  | { state: "prebooked"; bookingId: string; amountCents: number; currency: string; transactionId: string; secretKey: string; checkin: string; checkout: string; adults: number }
-  | { state: Refusal };
+  | { state: "prebooked"; bookingId: string; amountCents: number; currency: string; transactionId: string; secretKey: string; checkin: string; checkout: string; adults: number; env: string }
+  | { state: Refusal }
+  // §13 (d-3b): an "unavailable" says which refusal it was — no secret and no price, only the reason.
+  | { state: "unavailable"; reason: string; status?: number };
 
 export type BookResult =
   | { state: "confirmed"; bookingId: string; hotelConfirmationCode: string | null }
@@ -147,11 +152,9 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
 
   const client = deps.client(cfg);
   const timeoutMs = deps.timeoutMs();
-  let offerId: string | null = null;
-  let quotedSsp: ReturnType<typeof sspFromRates> = null;
-  try {
-    const marginPercent = Math.round((await deps.marginFraction()) * 10_000) / 100;
-    const quoted = await gatedLiteapiRatesCall(
+  // One rates request at a given margin (LiteAPI prices the offer id it returns at that margin).
+  const quote = async (marginPercent: number) => {
+    const out = await gatedLiteapiRatesCall(
       async () => {
         const body = await withTimeout(
           client.hotelRates({
@@ -171,25 +174,61 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       },
       { userId: input.userId ?? null, env: cfg.env, deps: deps.gate },
     );
-    if ("refused" in quoted) return { state: "unavailable" };
+    return out;
+  };
+  let offerId: string | null = null;
+  let quotedSsp: ReturnType<typeof sspFromRates> = null;
+  try {
+    const band = await deps.marginFraction();
+    const bandPercent = Math.round(band * 10_000) / 100;
+    const quoted = await quote(bandPercent);
+    if ("refused" in quoted) {
+      console.warn(`[liteapi-booking] re-quote ${input.itemId} refused: rates ${quoted.refused}`);
+      return { state: "unavailable", reason: "rates_paused" };
+    }
     offerId = offerIdFromRates(quoted.value);
-    quotedSsp = sspFromRates(quoted.value);
+    if (offerId) {
+      // The booking margin (decision-maker, Oct 11, 2026): max(band, SSP / net − 1) from THIS answer, so the
+      // booked price is never below the SSP nor below our band. Refused only for an unstated SSP or one in
+      // another currency.
+      const m = bookingMarginFraction(quoted.value, band);
+      if (!m.ok) {
+        console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${m.reason}`);
+        return { state: "unavailable", reason: m.reason };
+      }
+      quotedSsp = m.ssp;
+      if (m.percent > bandPercent) {
+        // The band alone prices under the SSP: re-quote ONCE at the floor margin and prebook that offer.
+        const raised = await quote(m.percent);
+        if ("refused" in raised) {
+          console.warn(`[liteapi-booking] floor re-quote ${input.itemId} refused: rates ${raised.refused}`);
+          return { state: "unavailable", reason: "rates_paused" };
+        }
+        offerId = offerIdFromRates(raised.value);
+        quotedSsp = sspFromRates(raised.value) ?? m.ssp;
+        console.info(`[liteapi-booking] ${input.itemId}: margin ${bandPercent}% → ${m.percent}% to meet the SSP`);
+      }
+    }
   } catch (err: any) {
     console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${err?.message ?? err}`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: "rates_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };
   }
-  if (!offerId) return { state: "unavailable" };
+  if (!offerId) {
+    // §13: say which refusal it was — LiteAPI answered with no offer for these dates and this party.
+    console.warn(`[liteapi-booking] re-quote ${input.itemId}: no offer for ${checkin}→${checkout}, ${adults} adult(s)`);
+    return { state: "unavailable", reason: "no_offer" };
+  }
 
   let parsed;
   try {
     parsed = parsePrebook(await client.prebook({ offerId }), quotedSsp);
   } catch (err: any) {
     console.warn(`[liteapi-booking] prebook ${input.itemId}: ${err?.message ?? err}`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: "prebook_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };
   }
   if (!parsed.ok) {
     console.warn(`[liteapi-booking] prebook ${input.itemId} refused: ${parsed.reason}`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: parsed.reason };
   }
   const f = parsed.facts;
   // The pair is written BEFORE the SDK opens: LiteAPI cannot hand it back later. The secret key is not stored.
@@ -214,7 +253,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       cancellationPolicy: (f.cancellationPolicy ?? null) as any,
     })
     .returning({ id: liteapiBookings.id });
-  return { state: "prebooked", bookingId: row.id, amountCents: f.amountCents, currency: f.currency, transactionId: f.transactionId, secretKey: f.secretKey, checkin, checkout, adults };
+  // `env` is the Payment SDK's public key ("sandbox" | "live") — the page never decides it (d-3b).
+  return { state: "prebooked", bookingId: row.id, amountCents: f.amountCents, currency: f.currency, transactionId: f.transactionId, secretKey: f.secretKey, checkin, checkout, adults, env: cfg.env };
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -318,7 +358,9 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
     if (!done) return;
     await tx
       .update(itineraryItems)
-      .set({ routingStatus: "purchased", updatedAt: new Date() } as any)
+      // d-3b: the hotel's code rides the item's existing `confirmation_number`, so the slip's ONE booking line
+      // (`slipItemBookingLine`) reads "booked · #<code>" with no plan-card change (ruling 4).
+      .set({ routingStatus: "purchased", ...(facts.hotelConfirmationCode ? { confirmationNumber: facts.hotelConfirmationCode } : {}), updatedAt: new Date() } as any)
       .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), sql`routing_status <> 'purchased'`));
     await tx.insert(emailOutbox).values(
       voucherRow({ toEmail: holder.email || null, bookingId: pre.id, hotelName: stay.hotelName, code: facts.hotelConfirmationCode, checkin: String(pre.checkin), checkout: String(pre.checkout), adults: pre.adults }) as any,
@@ -372,21 +414,31 @@ export async function cancelStay(input: { tripId: string; itemId: string; userId
       .update(itineraryItems)
       .set({ routingStatus: "in_planning", updatedAt: new Date() } as any)
       .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), sql`routing_status = 'purchased'`, sql`booking_id IS NULL`));
+    // The code this booking wrote is cleared — only that code, never one another rail put there.
+    if (row.hotelConfirmationCode) {
+      await tx
+        .update(itineraryItems)
+        .set({ confirmationNumber: null, updatedAt: new Date() } as any)
+        .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), eq(itineraryItems.confirmationNumber, row.hotelConfirmationCode)));
+    }
   });
   return { state: "cancelled", bookingId: row.id };
 }
 
 /** The owner's read of the item's latest booking — status, code, price as booked. Nothing secret. */
-export async function stayBookingView(input: { tripId: string; itemId: string; userId: string | null | undefined }) {
+export async function stayBookingView(input: { tripId: string; itemId: string; userId: string | null | undefined }, deps: Pick<StayBookingDeps, "config"> = defaultStayBookingDeps) {
   if (!(await ownerOf(input.tripId, input.userId))) return null;
+  // d-3b: whether "Book" draws — booking is on (sandbox only) AND the item resolves to a chosen LiteAPI stay.
+  const bookable = liteapiBookingEnabled(deps.config()) && (await resolveChosenLiteapiStay(input.tripId, input.itemId)) !== null;
   const [row] = await db
     .select()
     .from(liteapiBookings)
     .where(and(eq(liteapiBookings.tripId, input.tripId), eq(liteapiBookings.itineraryItemId, input.itemId)))
     .orderBy(desc(liteapiBookings.createdAt))
     .limit(1);
-  if (!row) return { booking: null };
+  if (!row) return { bookable, booking: null };
   return {
+    bookable,
     booking: {
       id: row.id,
       status: row.status,
