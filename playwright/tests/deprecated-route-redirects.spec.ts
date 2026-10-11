@@ -185,30 +185,31 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /spontaneous → /destinations");
   });
 
-  test("/itinerary/:id → /trip/:id?tab=itinerary (parameterised)", () => {
+  // SS-2 C (ledger `2026-10-10-ss2c-itinerary-redirect`, sanctioned): the legacy itinerary
+  // deep-links land on the Trip Card with no `?tab=` — the tab shell is gone (LD 45(6)), and the
+  // Trip Card sends a plan that is not final to its slip (LD 42 D8).
+  test("/itinerary/:id → /trip/:id (parameterised, no ?tab=)", () => {
     assertParamRouteRedirect(
       readApp(),
       "/itinerary/:id",
       "/trip/",
       "legacy itinerary deep-link"
     );
-    // Also verify the query string fragment is present anywhere in the file for
-    // this particular redirect (the block regex captures the render-prop correctly)
     expect(
       /tab=itinerary/.test(readApp()),
-      "App.tsx must contain tab=itinerary — /itinerary/:id must redirect to /trip/:id?tab=itinerary"
-    ).toBe(true);
-    console.log("[deprecated-route-redirects] PASS /itinerary/:id → /trip/:id?tab=itinerary");
+      "App.tsx must not send anyone to ?tab=itinerary — the Trip Card has no tab shell (LD 45(6))"
+    ).toBe(false);
+    console.log("[deprecated-route-redirects] PASS /itinerary/:id → /trip/:id");
   });
 
-  test("/my-itinerary/:id → /trip/:id?tab=itinerary (parameterised)", () => {
+  test("/my-itinerary/:id → /trip/:id (parameterised, no ?tab=)", () => {
     assertParamRouteRedirect(
       readApp(),
       "/my-itinerary/:id",
       "/trip/",
       "legacy my-itinerary deep-link"
     );
-    console.log("[deprecated-route-redirects] PASS /my-itinerary/:id → /trip/:id?tab=itinerary");
+    console.log("[deprecated-route-redirects] PASS /my-itinerary/:id → /trip/:id");
   });
 
   // ── Expert redirects ─────────────────────────────────────────────────────

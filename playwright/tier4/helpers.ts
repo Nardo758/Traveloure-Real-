@@ -215,44 +215,6 @@ export async function registerAndLogin(
   return { email, id: body?.user?.id };
 }
 
-// ── Discover a real priced service ────────────────────────────────────────────
-
-export interface ServiceInfo {
-  id: string;
-  price: number;
-  name: string;
-}
-
-/**
- * Fetches approved+active priced services and picks one deterministically.
- * Uses page.request so the cookie jar is shared.
- */
-export async function findPricedService(page: Page): Promise<ServiceInfo> {
-  const res = await page.request.get(`${BASE_URL}/api/provider-services?limit=50`);
-  expect(res.ok(), `provider-services fetch failed: ${res.status()}`).toBe(true);
-  const body = await res.json().catch(() => ({}));
-  const list: any[] = Array.isArray(body) ? body : (body.services ?? body.data ?? []);
-  const priced = list.filter(
-    (s: any) => s.id && Number(s.price ?? s.basePrice ?? 0) > 0,
-  );
-  expect(priced.length, 'no priced provider services found').toBeGreaterThan(0);
-  const picked = seededPick(priced, 'service-selection');
-  return {
-    id: picked.id,
-    price: Number(picked.price ?? picked.basePrice ?? 0),
-    name: picked.serviceName ?? picked.service_name ?? picked.name ?? picked.id,
-  };
-}
-
-// ── Add service to cart via page.request ──────────────────────────────────────
-
-export async function addToCartApi(page: Page, serviceId: string): Promise<void> {
-  const res = await page.request.post(`${BASE_URL}/api/cart`, {
-    data: { serviceId, quantity: 1 },
-  });
-  expect(res.ok(), `add-to-cart (API) failed: ${res.status()} ${await res.text()}`).toBe(true);
-}
-
 // ── Stripe test card helpers ───────────────────────────────────────────────────
 
 const STRIPE_CARD = '4242424242424242';

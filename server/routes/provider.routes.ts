@@ -11,6 +11,7 @@ import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 // Ledger 90 (FP-5, S2): the payout floor is quoted from its single source, never re-typed here.
 import { MIN_PAYOUT_DOLLARS } from "../config/payout.config";
 import { deriveCityPatch } from "../utils/service-city";
+import { accommodationCategoryId } from "../utils/property-category";
 // S10 (Gate G4): the ONE bundle delivery-method derivation, shared with the read path
 // (content.routes.ts) so write-time and read-time can never resolve it two different ways.
 import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
@@ -511,7 +512,8 @@ const propertyCreateSchema = z.object({
   location: z.string().max(255).optional(),
   locationPoint: locationPointSchema.optional(),
   neighborhood: z.string().max(100).optional(),
-  categoryId: z.string().optional(),
+  // PB-1 R1: no `categoryId` — a property is lodging by construction and the server sets it (an
+  // unknown key is stripped by the parse, so a client-sent category never reaches the row).
   serviceImage: z.string().max(2000).optional(),
   galleryImages: z.array(z.string().max(2000)).max(20).optional(),
   rooms: z.array(roomInputSchema).min(1, "A property needs at least one room type"),
@@ -599,6 +601,8 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
     const cityPatch = await deriveCityPatch(body.neighborhood, {
       neighborhoodPresent: body.neighborhood !== undefined,
     });
+    // PB-1 R1: the category is server-set (`accommodation`), never the body's; rooms inherit it below.
+    const categoryId = await accommodationCategoryId();
 
     const { property, rooms } = await db.transaction(async (tx) => {
       const [createdProperty] = await tx
@@ -611,7 +615,7 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
           ...(body.location !== undefined ? { location: body.location } : {}),
           ...(body.neighborhood !== undefined ? { neighborhood: body.neighborhood } : {}),
           ...cityPatch,
-          ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
+          categoryId,
           serviceImage: body.serviceImage ?? null,
           galleryImages: body.galleryImages ?? [],
           // Stay terms (absent ⇒ NULL = never captured, §13 — never a default written for them).
@@ -746,11 +750,27 @@ router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) =
     if (body.galleryImages !== undefined) patch.galleryImages = body.galleryImages;
     if (body.status !== undefined) patch.status = body.status;
 
-    const [updated] = await db
-      .update(providerServices)
-      .set(patch)
-      .where(eq(providerServices.id, existing.id))
-      .returning();
+    // PB-2 / R3 (ledger `2026-10-10-pb2-property-patch-rooms`): rooms inherit the property's
+    // neighborhood and city at creation, so a change here carries to them — in the SAME
+    // transaction, so a property and its rooms never disagree about where they are. The city is
+    // the one `deriveCityPatch` just resolved for the property, never re-derived per room.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(providerServices)
+        .set(patch)
+        .where(eq(providerServices.id, existing.id))
+        .returning();
+      if (body.neighborhood !== undefined) {
+        await tx
+          .update(providerServices)
+          .set({ neighborhood: patch.neighborhood, city: patch.city ?? null, updatedAt: patch.updatedAt })
+          .where(and(
+            eq(providerServices.parentServiceId, existing.id),
+            eq(providerServices.productShape, "property_room"),
+          ));
+      }
+      return row;
+    });
     res.json(updated);
   } catch (err) {
     if (err instanceof z.ZodError) {

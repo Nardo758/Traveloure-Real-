@@ -13,6 +13,8 @@
  * No db, no clock: every date is passed in.
  */
 
+import { PAGE_READ_ORIGINS } from "./content-facts";
+
 export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service"] as const;
 export type FeasibilityFactType = (typeof FEASIBILITY_FACT_TYPES)[number];
 
@@ -20,8 +22,11 @@ export function isFeasibilityFactType(v: unknown): v is FeasibilityFactType {
   return typeof v === "string" && (FEASIBILITY_FACT_TYPES as readonly string[]).includes(v);
 }
 
-/** The writers a feasibility fact may come from (ruling 1): an official crawled page, or an expert. */
-const FEASIBILITY_ORIGINS = new Set(["crawled", "expert_nugget"]);
+/**
+ * The writers a feasibility fact may come from (ruling 1): an official page read (the per-plan crawl or SS-1b's
+ * market-level refresh, `PAGE_READ_ORIGINS`), or an expert.
+ */
+const FEASIBILITY_ORIGINS = new Set<string>([...PAGE_READ_ORIGINS, "expert_nugget"]);
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MMDD = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;

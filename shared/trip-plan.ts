@@ -542,6 +542,8 @@ export interface TripPlanLegRouted {
   line: string | null;
   fare: { amount: number; currency: string } | null;
   provenance: { source: string; checkedAt: string };
+  /** P0 ruling 2: present only on a drive the engine fell back to because transit had no route. */
+  transitUnavailable?: true;
 }
 
 export interface TripPlanDay {
