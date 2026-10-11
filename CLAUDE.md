@@ -2682,9 +2682,11 @@ This document captures architectural decisions to maintain consistency across co
     **AMENDED — S1-d-3a: WORDING HELD FOR FOUNDER REVIEW (ledger `2026-10-11-ld64-d3a-wording-held`).** The
     S1-d-3a amendment text merged with R430 while still marked FOUNDER WORDING REVIEW and is withdrawn here
     until Leon approves its wording — it stated a commercial position (who is merchant of record) as settled
-    text. Not withdrawn: migration 371 (approved — "Migration 371 SQL approved — Leon" on #1402), the code on
+    text. Not withdrawn: migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402), the code on
     `main` (sandbox only, `liteapiBookingEnabled`), and the build record in ledger
     `2026-10-10-s1-d3a-liteapi-booking` and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`.
+    The replacement wording, including the LD 43(c)/44(b)(c) merchant-of-record sentence, is a PROPOSAL in
+    the fix PR's body for Leon's wording; it is not text of this file until he approves it.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
@@ -3366,6 +3368,10 @@ authority beyond that.
   reference. If provenance is needed, say the session wrote it.
 - **Blocked permission checks.** A permission check that fires is a stop. Ask, every time. An approval granted
   on one PR is not permission on the next, and a prior waiver is not precedent.
+- **Founder wording review is a merge gate (decision-maker, Oct 11, 2026 — ledger
+  `2026-10-11-ld64-d3a-wording-held`).** A PR carrying a FOUNDER WORDING REVIEW block does not merge until
+  Leon's "wording approved" comment is on it, whatever its queue number says: it is skipped and re-queued.
+  A migration approval on the same PR does not clear it.
 
 ## Service Model: Canonical Table
 
