@@ -53,7 +53,6 @@ import type { DraftOpenSet } from "@shared/draft-basis";
 import { trackFunnelEvent } from "../utils/funnelTracker";
 import { loadMarketCentroids, loadMatrixReader } from "./travel-time-matrix.service";
 import { planTravelFrom } from "./travel-time.service";
-import { drivePlanTravel } from "@shared/leg-resolution";
 import { marketTransitRouting } from "@shared/routing-engine";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
@@ -577,13 +576,14 @@ async function planScorer(tripId: string) {
   const travel = travelTimeServiceEnabled() ? planTravelFrom(matrix) : matrix;
   const items = await fitItems(tripId);
   // P0-b: where the routing API has no transit for the market, the plan's legs show the drive time,
-  // so plan-fit measures beyond-walk stops by drive too — one number per leg, never a transit time.
+  // so plan-fit measures beyond-walk stops by drive too (the market's drive matrix cells, else the
+  // labelled estimate) — one number per leg, never a transit time.
   // Behind the same flag as the one rule above: with it off no leg is routed, and plan-fit keeps its
   // legacy reading.
   const profile = market ? (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[market.toLowerCase()] : undefined;
-  const beyondWalkTravel = travelTimeServiceEnabled() && marketTransitRouting(profile).transitApiUncovered ? drivePlanTravel : undefined;
+  const beyondWalkMode = travelTimeServiceEnabled() && marketTransitRouting(profile).transitApiUncovered ? ("drive" as const) : undefined;
   const score = (lat: unknown, lng: unknown): PlanFit =>
-    planFitFor({ option: toPoint(lat, lng), items, travel, centroids, walkThresholdMeters: WITHIN_WALK_METERS, beyondWalkTravel });
+    planFitFor({ option: toPoint(lat, lng), items, travel, centroids, walkThresholdMeters: WITHIN_WALK_METERS, beyondWalkMode });
   const located = items.filter((i) => i.lat !== null && i.lng !== null).length;
   return { score, centroids, market, stops: { located, total: items.length } };
 }

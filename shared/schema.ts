@@ -5021,7 +5021,7 @@ export const travelTimeMatrix = pgTable("travel_time_matrix", {
   marketSlug: varchar("market_slug", { length: 40 }).notNull(),
   originSlug: varchar("origin_slug", { length: 100 }).notNull(),
   destSlug: varchar("dest_slug", { length: 100 }).notNull(),
-  // App-enforced: walk | transit (shared/travel-time.ts TRAVEL_MODES). No CHECK.
+  // App-enforced: walk | transit | drive (shared/travel-time.ts TRAVEL_MODES; drive only where matrixModesFor asks it). No CHECK.
   mode: varchar("mode", { length: 10 }).notNull(),
   // NULL = the Routes API returned no route for this pair and mode — never a guessed number (§13).
   durationSeconds: integer("duration_seconds"),

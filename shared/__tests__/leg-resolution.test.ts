@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { haversineMeters, WALK_METERS_PER_MIN } from "../geo";
 import { defaultLegMode, LEG_MODE_STORED, metersPerMinute, normalizeLegMode, straightLineMinutes } from "../travel-speeds";
-import { drivePlanTravel, perDayAgreement, resolveLeg, unifiedPlanTravel, type LegSources } from "../leg-resolution";
+import { perDayAgreement, resolveLeg, unifiedPlanTravel, type LegSources } from "../leg-resolution";
 import { planFitFor } from "../plan-fit";
 import type { TravelTime } from "../travel-time";
 
@@ -153,24 +153,28 @@ test("L10: the retired speeds are gone from their three homes", () => {
   assert.doesNotMatch(read("server/services/anchor-scoring.ts"), /15\s*\*\s*80\b/);
 });
 
-test("L11: no transit in the routing API — drive legs, plan-fit by drive, one number per leg, and they agree", async () => {
+test("L11: no transit in the routing API — plan-fit measures by drive (the drive cell, else the drive estimate), never transit, and agrees with the drive legs", async () => {
   const stay = { lat: 35.08, lng: 135.76 };
   const days: Record<number, Array<{ lat: number; lng: number }>> = {
     1: [{ lat: 35.0935, lng: 135.76 }, { lat: 35.0665, lng: 135.76 }],
     2: [{ lat: 35.08, lng: 135.7765 }, { lat: 35.08, lng: 135.7435 }],
   };
   const items = Object.entries(days).flatMap(([d, pts]) => pts.map((p) => ({ dayNumber: Number(d), ...p })));
-  const drive = drivePlanTravel(stay, days[1][0]);
-  assert.equal(drive.basis, "est", "the matrix holds no drive cells, so the drive measure is always est.");
-  assert.equal(drive.minutes, straightLineMinutes(haversineMeters(stay.lat, stay.lng, days[1][0].lat, days[1][0].lng), "drive"));
   const asked: string[] = [];
-  const travel = (from: { lat: number; lng: number }, to: { lat: number; lng: number }, mode: "walk" | "transit"): TravelTime => {
+  const unified = unifiedPlanTravel(null);
+  const travel = (from: { lat: number; lng: number }, to: { lat: number; lng: number }, mode: "walk" | "transit" | "drive"): TravelTime => {
     asked.push(mode);
-    return unifiedPlanTravel(null)(from, to, mode);
+    return unified(from, to, mode);
   };
-  const fit = planFitFor({ option: stay, items, travel, centroids: [], walkThresholdMeters: 15 * 80, beyondWalkTravel: drivePlanTravel });
+  const drive = unified(stay, days[1][0], "drive");
+  assert.equal(drive.basis, "est", "no drive cell ⇒ the labelled estimate");
+  assert.equal(drive.minutes, straightLineMinutes(haversineMeters(stay.lat, stay.lng, days[1][0].lat, days[1][0].lng), "drive"), "at the drive speed");
+  const withCell = unifiedPlanTravel(() => ({ basis: "matrix", minutes: 9, mode: "drive", originSlug: "a", destSlug: "b" }))(stay, days[1][0], "drive");
+  assert.deepEqual([withCell.basis, withCell.minutes], ["matrix", 9], "a drive cell is a matrix answer");
+  const fit = planFitFor({ option: stay, items, travel, centroids: [], walkThresholdMeters: 15 * 80, beyondWalkMode: "drive" });
   assert.equal(fit.scored, true);
   assert.equal(asked.includes("transit"), false, "no transit time is read for a stop beyond walking distance");
+  assert.ok(asked.includes("drive"));
   const legs: Record<number, number> = {};
   for (const [d, pts] of Object.entries(days)) {
     for (let i = 0; i < pts.length - 1; i++) {
