@@ -217,9 +217,11 @@ export async function computePlanLegs(
   // Ledger `2026-10-08-e1-zero-questions` (E1 ruling 7): a plan whose dates nobody chose has no real
   // departure instants, so nothing is routed against its placeholder window — the same skip the
   // day-of re-check takes (`leg-recheck.service.ts`). Setting dates re-runs the compute. The order is
-  // the ONE `planLegsSkipReason` (P0-b item 1), which the plan card's `legsSkipped` also reads.
-  const skipReason = planLegsSkipReason({ engineOn: !!adapter, qualifies, tripExists: !!trip, datesConfirmed: !!trip?.datesConfirmedAt });
+  // the ONE `planLegsSkipReason` (P0-b item 1), which the plan card's `legsSkipped` also reads; its last
+  // gate — the dates — is the E1 line itself, kept as written.
+  const skipReason = planLegsSkipReason({ engineOn: !!adapter, qualifies, tripExists: !!trip, datesConfirmed: true });
   if (skipReason || !adapter || !trip) return { skipped: skipReason ?? "no_trip" };
+  if (!trip.datesConfirmedAt) return { skipped: "dates_not_confirmed" };
 
   const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, transitApiUncovered } = await loadPlanLegContext(tripId, trip);
   // P0 ruling 3: a day that is already over is never routed — its legs are frozen (not asked, not

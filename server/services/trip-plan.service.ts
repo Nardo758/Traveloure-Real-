@@ -377,10 +377,8 @@ export async function resolveMissingItemCoordinates(
     // gets a row coordinate — its pin, if any, is Google's location fact (LD 57), read at the DTO.
     // P0-b item 4 (ledger `2026-10-11-p0b-routing-follow-ups`): it is never geocoded, so it counts as
     // tried — otherwise `coordinatesPending` stays true forever for a row nothing will ever resolve.
-    if (!rowCoordinatesTrusted(item)) {
-      attempted.add(item.id);
-      continue;
-    }
+    if (!rowCoordinatesTrusted(item)) attempted.add(item.id);
+    if (!rowCoordinatesTrusted(item)) continue;
     // Ledger `2026-10-03-no-ward-pins`: an area-only location is led by the item's title, and a
     // result Google marks as an AREA is refused — never a ward or city centroid as the stop's pin.
     const address = geocodeQuery(item, destination, isAreaOnlyLocation);
