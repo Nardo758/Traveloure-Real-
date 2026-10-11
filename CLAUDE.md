@@ -1550,6 +1550,8 @@ This document captures architectural decisions to maintain consistency across co
     SPA catch-alls, which were answering Stripe's verification fetch with the SPA's 200-HTML "404
     – Lost at Sea?" page — the file itself remains an operator drop-in, and the dashboard
     registration remains the operator step this clause rules it to be.**
+    **AMENDED — LITEAPI HOTEL BOOKINGS (ledger `2026-10-11-ld64-d3a-wording-held`).** (c)'s "affiliate purchases
+    never see wallets" holds for them: "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 44. **THE PLATFORM'S BOOKING AGENT IS THE AI COPILOT FIRST; A HUMAN OR A PARTNER API MAKES THE
     PURCHASE; BROWSER CONTROL IS READ-ONLY (decision-maker ratified Sep 5, 2026, evening — ledger
@@ -1698,6 +1700,8 @@ This document captures architectural decisions to maintain consistency across co
     `itinerary_items` row atomically, keyed on `itinerary_item_id` + `trip_id`, and never a second
     item; the unlinked legacy create is kept byte-for-byte, and the `origin` question above stays
     open — this lane does not decide it.
+    **AMENDED — LITEAPI IS PHASE 2's FIRST PARTNER (ledger `2026-10-11-ld64-d3a-wording-held`), closing the
+    seventh open question above:** "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
     OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows
@@ -2680,13 +2684,11 @@ This document captures architectural decisions to maintain consistency across co
     is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
     default card shows "See rates" and no price; the item row and booking are d-3.
     **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
-    ledger `2026-10-10-s1-d3a-liteapi-booking`; brief `docs/planning/briefs/s1-d3-liteapi-booking.md`; migration
-    371, APPROVED by Leon Oct 11, 2026 — "Migration 371 SQL approved — Leon" on #1402; FOUNDER WORDING REVIEW).** Nuitée is merchant of record:
-    its Payment SDK takes the card and we send only `payment.method = TRANSACTION_ID`
-    (`scripts/check-liteapi-payment-method.cjs`). One `liteapi_bookings` row per prebook, written before the SDK
-    opens; owner-only; the offer is re-quoted server-side and never taken from the browser; confirmed flips the
-    item to `purchased` and inserts the voucher in one transaction; cancel is a `confirmed → cancelling` claim with
-    no refund row; the daily sync records LiteAPI's status and never books. Sandbox only (`liteapiBookingEnabled`).
+    ledger `2026-10-10-s1-d3a-liteapi-booking`, wording ledger `2026-10-11-ld64-d3a-wording-held`).** In Leon's words:
+    "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
+    The rail itself is recorded in the d-3a ledger row and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`;
+    migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
+    (`liteapiBookingEnabled`).
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
@@ -3368,6 +3370,10 @@ authority beyond that.
   reference. If provenance is needed, say the session wrote it.
 - **Blocked permission checks.** A permission check that fires is a stop. Ask, every time. An approval granted
   on one PR is not permission on the next, and a prior waiver is not precedent.
+- **Founder wording review is a merge gate (decision-maker, Oct 11, 2026 — ledger
+  `2026-10-11-ld64-d3a-wording-held`).** A PR carrying a FOUNDER WORDING REVIEW block does not merge until
+  Leon's "wording approved" comment is on it, whatever its queue number says: it is skipped and re-queued.
+  A migration approval on the same PR does not clear it.
 
 ## Service Model: Canonical Table
 
