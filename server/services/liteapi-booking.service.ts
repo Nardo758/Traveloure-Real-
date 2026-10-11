@@ -76,7 +76,9 @@ type Refusal =
 
 export type PrebookResult =
   | { state: "prebooked"; bookingId: string; amountCents: number; currency: string; transactionId: string; secretKey: string; checkin: string; checkout: string; adults: number; env: string }
-  | { state: Refusal };
+  | { state: Refusal }
+  // §13 (d-3b): an "unavailable" says which refusal it was — no secret and no price, only the reason.
+  | { state: "unavailable"; reason: string; status?: number };
 
 export type BookResult =
   | { state: "confirmed"; bookingId: string; hotelConfirmationCode: string | null }
@@ -173,18 +175,18 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
     );
     if ("refused" in quoted) {
       console.warn(`[liteapi-booking] re-quote ${input.itemId} refused: rates ${quoted.refused}`);
-      return { state: "unavailable" };
+      return { state: "unavailable", reason: "rates_paused" };
     }
     offerId = offerIdFromRates(quoted.value);
     quotedSsp = sspFromRates(quoted.value);
   } catch (err: any) {
     console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${err?.message ?? err}`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: "rates_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };
   }
   if (!offerId) {
     // §13: say which refusal it was — LiteAPI answered with no offer for these dates and this party.
     console.warn(`[liteapi-booking] re-quote ${input.itemId}: no offer for ${checkin}→${checkout}, ${adults} adult(s)`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: "no_offer" };
   }
 
   let parsed;
@@ -192,11 +194,11 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
     parsed = parsePrebook(await client.prebook({ offerId }), quotedSsp);
   } catch (err: any) {
     console.warn(`[liteapi-booking] prebook ${input.itemId}: ${err?.message ?? err}`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: "prebook_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };
   }
   if (!parsed.ok) {
     console.warn(`[liteapi-booking] prebook ${input.itemId} refused: ${parsed.reason}`);
-    return { state: "unavailable" };
+    return { state: "unavailable", reason: parsed.reason };
   }
   const f = parsed.facts;
   // The pair is written BEFORE the SDK opens: LiteAPI cannot hand it back later. The secret key is not stored.

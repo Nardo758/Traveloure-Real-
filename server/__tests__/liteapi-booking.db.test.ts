@@ -128,7 +128,7 @@ test("B1 not_found for a stranger and a non-LiteAPI stay; production ⇒ booking
 
 test("B2/B3 prebook re-quotes server-side, stores the pair before the SDK, never the secret; below SSP is refused", async () => {
   const low = fakes({ prebook: prebookAnswer({ price: 280 }) }); // below the re-quote's SSP of 300
-  assert.deepEqual(await prebookStay(q("s1"), low.deps), { state: "unavailable" });
+  assert.deepEqual(await prebookStay(q("s1"), low.deps), { state: "unavailable", reason: "below_ssp" });
   assert.equal(await row("s1"), undefined, "nothing stored below the SSP");
 
   const f = fakes();

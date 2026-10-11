@@ -62,7 +62,12 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
     // Try hotels in order until the SERVER says one is bookable and prices it (sandbox availability varies).
     let priced = false;
     const tried: string[] = [];
-    for (const h of hotels.slice(0, 8)) {
+    for (const [i, h] of hotels.slice(0, 8).entries()) {
+      // A chosen set is closed; reopen it before offering the next hotel (the option-set rail's own rule).
+      if (i > 0) {
+        const re = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/reopen`, { data: {} });
+        if (!re.ok()) tried.push(`reopen ${re.status()}`);
+      }
       const opt = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, { data: { source: { kind: "hotel_cache", hotelCacheId: h.id } } });
       if (!opt.ok()) {
         tried.push(`${h.name}: add option ${opt.status()}`);
@@ -88,7 +93,7 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       await book.click();
       const pre = await (await prebook).json();
       if (pre.state !== "prebooked") {
-        tried.push(`${h.name}: ${pre.state}`);
+        tried.push(`${h.name}: ${pre.state}${pre.reason ? ` (${pre.reason}${pre.status ? ` ${pre.status}` : ""})` : ""}`);
         await expect(page.getByTestId(`stay-book-refusal-${itemId}`)).toBeVisible();
         await page.keyboard.press("Escape");
         continue;
