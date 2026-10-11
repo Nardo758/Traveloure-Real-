@@ -2679,6 +2679,14 @@ This document captures architectural decisions to maintain consistency across co
     optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
     is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
     default card shows "See rates" and no price; the item row and booking are d-3.
+    **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
+    ledger `2026-10-10-s1-d3a-liteapi-booking`; brief `docs/planning/briefs/s1-d3-liteapi-booking.md`; migration
+    371, APPROVED by Leon Oct 11, 2026 — "Migration 371 SQL approved — Leon" on #1402; FOUNDER WORDING REVIEW).** Nuitée is merchant of record:
+    its Payment SDK takes the card and we send only `payment.method = TRANSACTION_ID`
+    (`scripts/check-liteapi-payment-method.cjs`). One `liteapi_bookings` row per prebook, written before the SDK
+    opens; owner-only; the offer is re-quoted server-side and never taken from the browser; confirmed flips the
+    item to `purchased` and inserts the voucher in one transaction; cancel is a `confirmed → cancelling` claim with
+    no refund row; the daily sync records LiteAPI's status and never books. Sandbox only (`liteapiBookingEnabled`).
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
@@ -3341,6 +3349,25 @@ Five incidents, two of which reached production, justify this rule. The sixth (2
 **The way of working — roles per model, lane briefs, the serial landing procedure, the publish
 procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md` (ratified Sep 6,
 2026); a session reads both files.**
+
+### Recording approvals
+
+An approval reference records what a named person approved, where they said it, and when. It carries no
+authority beyond that.
+
+- **Placement.** The reference sits immediately beside the artifact approved — the migration, the SQL block,
+  the specific clause. Never in a heading, a PR title, a section title, or the header of an amendment. A
+  citation in a heading reads as approving everything under it.
+- **Scope.** Name the artifact, not the container. "Migration 369 SQL approved by Leon" is correct.
+  "Approved by Leon" and "#1405 — approved by Leon" are not: both read as approval of the entire PR.
+- **Form.** `<artifact> approved by <name> — comment <HH:MM>Z on #<PR>`
+- **Derivation.** An approval reference may only be written where that person actually approved that
+  artifact. It is never inferred, extended to adjacent content, or carried from one PR to another. Content
+  that came from rulings in conversation is cited to those rulings, not to a PR comment.
+- **Self-authored text.** A heading or line a session writes on its own initiative does not take an approval
+  reference. If provenance is needed, say the session wrote it.
+- **Blocked permission checks.** A permission check that fires is a stop. Ask, every time. An approval granted
+  on one PR is not permission on the next, and a prior waiver is not precedent.
 
 ## Service Model: Canonical Table
 

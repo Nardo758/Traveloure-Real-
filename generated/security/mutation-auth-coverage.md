@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/676**; remaining: **676**.
-- Admin: **0/171**; payments: **0/31**; user-data: **0/236**; other: **0/238**.
+- **Tested: 0/680**; remaining: **680**.
+- Admin: **0/171**; payments: **0/31**; user-data: **0/239**; other: **0/239**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `189a751de86bf423bbe05fb191c8a84466e7d9cec127f18e330132c1ec97a494`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `32dfb3fc69d88c5ba041d2360756a824177c7debb0bb25b40dd6c37bd6e8ca9a`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -614,6 +614,9 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/trips/:tripId/handoff/quote | user-data | session-self | server/routes/handoff.routes.ts:155 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/items/:itemId/comments | user-data | resource-owner | server/routes/booking-actions.ts:1729 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:tripId/items/:itemId/route | user-data | resource-owner | server/routes/routing.routes.ts:138 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/items/:itemId/stay-booking/book | user-data | session-self | server/routes/plan-option-sets.routes.ts:414 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/items/:itemId/stay-booking/cancel | user-data | session-self | server/routes/plan-option-sets.routes.ts:424 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/items/:itemId/stay-booking/prebook | user-data | session-self | server/routes/plan-option-sets.routes.ts:404 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/itinerary-items | user-data | resource-owner | server/routes.ts:13260 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/itinerary-items/:itemId/fresh-facts | user-data | session-self | server/routes/content-facts.routes.ts:27 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/itinerary/optimize-order | user-data | resource-owner | server/routes.ts:13550 | Not run: evidence manifest SHA-256 is stale. |
@@ -634,7 +637,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/trips/:tripId/reopen | user-data | resource-owner | server/routes/routing.routes.ts:600 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/rides | user-data | resource-owner | server/routes/trips.routes.ts:3161 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:tripId/slip-events | user-data | session-self | server/routes/plan-option-sets.routes.ts:265 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/stay-pick/seen | user-data | session-self | server/routes/plan-option-sets.routes.ts:373 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/stay-pick/seen | user-data | session-self | server/routes/plan-option-sets.routes.ts:435 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/transactions | user-data | session-self | server/routes.ts:13120 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/transactions/split | user-data | session-self | server/routes.ts:13137 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/transport-legs/:legId/options | user-data | session-self | server/routes/transport-legs.routes.ts:364 | Not run: evidence manifest SHA-256 is stale. |
@@ -669,26 +672,27 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/webhooks/stripe-identity | other | signature | server/routes/webhooks.routes.ts:37 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /email-preferences | other | session-self | server/routes/itinerary-email-preferences.routes.ts:78 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /email-preferences/unsubscribe/:token | other | resource-owner | server/routes/itinerary-email-preferences.routes.ts:110 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /internal/jobs/availability-materialization | other | public-or-system | server/routes/internal.routes.ts:304 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/booking-auto-completion | other | public-or-system | server/routes/internal.routes.ts:261 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/booking-expiry | other | public-or-system | server/routes/internal.routes.ts:317 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/checkout-sweep | other | public-or-system | server/routes/internal.routes.ts:290 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/content-expiry-census | other | public-or-system | server/routes/internal.routes.ts:435 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/earnings-release | other | public-or-system | server/routes/internal.routes.ts:247 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/email-outbox | other | public-or-system | server/routes/internal.routes.ts:352 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/facts-recheck | other | public-or-system | server/routes/internal.routes.ts:428 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/handoff-timers | other | public-or-system | server/routes/internal.routes.ts:413 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/itinerary-generation-sweep | other | public-or-system | server/routes/internal.routes.ts:343 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/leg-google-coords | other | public-or-system | server/routes/internal.routes.ts:464 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/legs-dayof-recheck | other | public-or-system | server/routes/internal.routes.ts:456 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/liteapi-sync | other | public-or-system | server/routes/internal.routes.ts:441 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/official-refresh | other | public-or-system | server/routes/internal.routes.ts:448 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/score-neighborhood-claims | other | public-or-system | server/routes/internal.routes.ts:370 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/stripe-reconciliation | other | public-or-system | server/routes/internal.routes.ts:272 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/travel-matrix-refresh | other | public-or-system | server/routes/internal.routes.ts:390 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/travelpayouts-report-poll | other | public-or-system | server/routes/internal.routes.ts:325 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/travelpulse-weekly | other | public-or-system | server/routes/internal.routes.ts:405 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/run-occasion-drafts | other | public-or-system | server/routes/internal.routes.ts:229 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/availability-materialization | other | public-or-system | server/routes/internal.routes.ts:308 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/booking-auto-completion | other | public-or-system | server/routes/internal.routes.ts:265 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/booking-expiry | other | public-or-system | server/routes/internal.routes.ts:321 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/checkout-sweep | other | public-or-system | server/routes/internal.routes.ts:294 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/content-expiry-census | other | public-or-system | server/routes/internal.routes.ts:439 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/earnings-release | other | public-or-system | server/routes/internal.routes.ts:251 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/email-outbox | other | public-or-system | server/routes/internal.routes.ts:356 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/facts-recheck | other | public-or-system | server/routes/internal.routes.ts:432 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/handoff-timers | other | public-or-system | server/routes/internal.routes.ts:417 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/itinerary-generation-sweep | other | public-or-system | server/routes/internal.routes.ts:347 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/leg-google-coords | other | public-or-system | server/routes/internal.routes.ts:475 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/legs-dayof-recheck | other | public-or-system | server/routes/internal.routes.ts:467 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/liteapi-booking-sync | other | public-or-system | server/routes/internal.routes.ts:459 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/liteapi-sync | other | public-or-system | server/routes/internal.routes.ts:445 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/official-refresh | other | public-or-system | server/routes/internal.routes.ts:452 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/score-neighborhood-claims | other | public-or-system | server/routes/internal.routes.ts:374 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/stripe-reconciliation | other | public-or-system | server/routes/internal.routes.ts:276 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/travel-matrix-refresh | other | public-or-system | server/routes/internal.routes.ts:394 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/travelpayouts-report-poll | other | public-or-system | server/routes/internal.routes.ts:329 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/travelpulse-weekly | other | public-or-system | server/routes/internal.routes.ts:409 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/run-occasion-drafts | other | public-or-system | server/routes/internal.routes.ts:233 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PUT /api/admin/neighborhoods/:id/lead | admin | admin-role | server/routes/admin.routes.ts:8894 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/admin/testimonials/featured | admin | admin-role | server/routes/admin.routes.ts:7501 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/anchors/:id | other | resource-owner | server/routes/trips.routes.ts:1774 | Other-category endpoint is intentionally outside the strict tested set. |

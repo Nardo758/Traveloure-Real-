@@ -1995,4 +1995,9 @@ export const MIGRATION_FILES = [
   // Transport" account — every value from the official read, located from six OSM nodes and active
   // (service_route_points.osm_node_id). Migration 369 SQL approved by Leon — comment 00:42Z on #1405.
   "369_tc3_ride_seed.sql",
+  // 371 — liteapi_bookings (ledger 2026-10-10-s1-d3a-liteapi-booking): a new table born empty, a UNIQUE on
+  // prebook_id and a partial UNIQUE of one live booking per item (safe: no row exists at creation), plus a
+  // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are the TC-3 lane's.
+  // APPROVED — "Migration 371 SQL approved — Leon" on #1402.
+  "371_liteapi_bookings.sql",
 ] as const;

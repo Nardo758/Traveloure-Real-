@@ -370,6 +370,68 @@ router.get("/api/trips/:tripId/stays/:stayId/rates", isAuthenticated, async (req
   }
 });
 
+// S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): booking the chosen LiteAPI stay. OWNER ONLY (booking
+// pays — LD 52); anyone else and an absent plan, item or stay are ONE 404 (LD 40). Every body is an empty
+// `.strict()` object (§19): the offer, the price, the holder and the transaction id are all server-derived (§14).
+const stayBookingBody = z.object({}).strict();
+const STAY_BOOKING_STATUS: Record<string, number> = {
+  not_found: 404,
+  booking_unavailable: 409,
+  already_booked: 409,
+  dates_needed: 409,
+  party_needed: 409,
+  unavailable: 409,
+  no_prebook: 409,
+  holder_incomplete: 409,
+  not_confirmed: 409,
+};
+function sendStayBooking(res: any, out: { state: string }) {
+  const code = STAY_BOOKING_STATUS[out.state];
+  if (code === 404) return res.status(404).json({ code: "not_found", message: "No such stay on this plan" });
+  res.status(code ?? 200).json(out);
+}
+router.get("/api/trips/:tripId/items/:itemId/stay-booking", isAuthenticated, async (req: any, res) => {
+  try {
+    const { stayBookingView } = await import("../services/liteapi-booking.service");
+    const out = await stayBookingView({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) });
+    if (!out) return res.status(404).json({ code: "not_found", message: "No such stay on this plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[stay-booking]", err);
+    res.status(500).json({ code: "internal", message: "Could not read the booking" });
+  }
+});
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/prebook", isAuthenticated, async (req: any, res) => {
+  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { prebookStay } = await import("../services/liteapi-booking.service");
+    sendStayBooking(res, await prebookStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+  } catch (err) {
+    console.error("[stay-booking prebook]", err);
+    res.status(500).json({ code: "internal", message: "Could not prepare the booking" });
+  }
+});
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/book", isAuthenticated, async (req: any, res) => {
+  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { bookStay } = await import("../services/liteapi-booking.service");
+    sendStayBooking(res, await bookStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+  } catch (err) {
+    console.error("[stay-booking book]", err);
+    res.status(500).json({ code: "internal", message: "Could not complete the booking" });
+  }
+});
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/cancel", isAuthenticated, async (req: any, res) => {
+  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { cancelStay } = await import("../services/liteapi-booking.service");
+    sendStayBooking(res, await cancelStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+  } catch (err) {
+    console.error("[stay-booking cancel]", err);
+    res.status(500).json({ code: "internal", message: "Could not cancel the booking" });
+  }
+});
+
 router.post("/api/trips/:tripId/stay-pick/seen", isAuthenticated, async (req: any, res) => {
   if (!staySeenBody.safeParse(req.body ?? {}).success) return badBody(res);
   try {
