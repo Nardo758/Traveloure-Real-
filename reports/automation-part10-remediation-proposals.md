@@ -159,7 +159,7 @@ Those remain separately authorized real-provider proof, never implied here.
 
 ## 2. Current-main conflict — BOTH versions, no resolution
 
-Refreshed main: `e8dabc1d61f6666117bf43ff9fde4caa939ebf1f`.
+Latest read-only refreshed main: `c3f24d65d9d37e83735dff078680ef7453955c7d`.
 Review branch checkpoint: `62f7fc2bee21f5f934bd2790fcbfe5c35789c96b`.
 Read-only merge preview found these **five** conflicting files:
 
@@ -216,14 +216,14 @@ force-resolution, main overwrite or generated-file reconciliation performed.
 
 ## 3. Held migration renumber proposal
 
-On refreshed main, both numeric SQL filenames and `migration-files.ts` reach
-**368**; no 369 filename or registry entry exists. Main's 360 is
+On latest refreshed main, both numeric SQL filenames and `migration-files.ts` reach
+**369**, including `369_tc3_ride_seed.sql`. Next currently free is 370. Main's 360 is
 `360_occasion_descriptions.sql`.
 
 Propose renaming the held draft, only after approval:
 
 `360_job_heartbeats_nullable_success.sql`
-→ `369_job_heartbeats_nullable_success.sql`.
+→ `370_job_heartbeats_nullable_success.sql`.
 
 Its existing SQL remains:
 
@@ -231,7 +231,7 @@ Its existing SQL remains:
 ALTER TABLE job_heartbeats ALTER COLUMN last_success_at DROP NOT NULL;
 ```
 
-369 is provisional, not reserved: re-fetch/recheck at actual approval/registration
+370 is provisional, not reserved: re-fetch/recheck at actual approval/registration
 time. **No rename, SQL change, registration, migration run or production action
 performed.** Main's 346/347 ownership is unchanged.
 
@@ -283,6 +283,10 @@ After a successful actual start, append its real timestamp/due times and mark
 WAITING. No background email is scheduled or sent; future sending requires
 separate explicit authorization. No NEXT-DAY PROVEN until the genuine due-time
 pair has a matching provider-observed delivered receipt.
+
+Current sweep/drain/main/provider proposals and latest refs are in
+`automation-clock-safety-proposals.md`; this document retains historical
+design and before-repair excerpts for evidence, not a new execution approval.
 
 The QA-only adaptation was approved and implemented. The genuine ledger now
 records WAITING with real timestamps; no email was sent or scheduled. Earlier

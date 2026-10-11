@@ -78,14 +78,18 @@ not represented as a current blocker.
 | Committed pre-handoff attempt / uncertain-acceptance repair | 6, 8–10 | Separately authorized real-provider and recovery proof; preserve indefinite uncertain-attempt hold | Founder | Fixed in development: reproduced before/after, 11 cases × 2 clean loops; provider proof still Open |
 | Additional generated security merge conflicts | 10 / integration | Main-owner-approved reconciliation, then regenerate all four outputs and check | Founder / main owner | Open; no force-resolution |
 | Genuine real-clock start-path gap | 4, 9–10 | Real preceding-step history and delivered receipt at genuine due time, after separate sending authorization | Founder | Fixed start mode; actual retained scenario WAITING; next-day proof Open |
-| Uncertain intent operational visibility | 6, 10 | Separately approved reconciliation/visibility for a surviving processing intent when dead-letter write fails | Founder | Deferred scope; durable intent blocks resend but may not appear in existing dead-only panel |
+| Uncertain intent operational visibility | 6, 10 | Approve separate read-only held-intent report and truthful digest rendering; status-independent visibility, no blind retry | Founder | Open proposal; processing intents absent from dead-only report; current digest “never delivered” copy is inaccurate for uncertainty |
+| Development drain recipient safety | 9–10 | Approve exact monitored-inbox allowlist before claims/handoff, fail closed, preserve production recipients and no QA-setting reads | Founder | Open proposal; zero due/pending/failed/processing rows now, but no QA restriction; no restart authorized |
+| Retained-clock sweep execution | 3–4, 9–10 | Approve one-shot owned attach runner using registered job/heartbeat, no provider channel or public binding | Founder | Open proposal; 1h mark missed; zero scenario outbox/heartbeat rows; future slots not scheduled |
+| Retained-clock failure heartbeat constraint | 3, 9–10 | Separately approve DROP NOT NULL only in owned fixture; no public DDL/registration | Founder | Open prerequisite; retained and public last_success_at both NOT NULL; do not fabricate first success |
+| Real-provider QA exact-key path | 6, 9–10 | Review owned ID collision plan and validated unchanged dispatcher key in QA parent, authorize actual provider proof separately | Founder | Open; existing QA keys are run/loop/family-namespaced, not the dispatcher row-derived key |
 
 The heartbeat numbering collision is explicitly recorded; it is not silently
 reclassified as a new registered migration or an approval to change main.
-Refreshed main is `e8dabc1d61f6666117bf43ff9fde4caa939ebf1f`; its maximum
-registered/numeric file is 368. Proposed draft name is
-`369_job_heartbeats_nullable_success.sql`, provisional and still held; no
-file rename or registry edit occurred.
+Latest read-only refresh is `c3f24d65d9d37e83735dff078680ef7453955c7d`;
+its maximum registered/numeric file is 369 (`369_tc3_ride_seed.sql`).
+Proposed draft name is now `370_job_heartbeats_nullable_success.sql`,
+provisional and still held; no file rename or registry edit occurred.
 
 The new dispatcher, both-version main reconciliation, exact touch lists and
 proof plans are in
@@ -264,3 +268,24 @@ screenshot do not claim integrated/deployed-code boot certification.
 Main reconciliation still requires founder and main-owner approval.
 The held migration remains unrenamed/unregistered. Production, flags,
 real-provider transport, release, actual merge and ledger remain held.
+
+## Accepted repair — clock/drain safety review
+
+The founder accepted the dispatcher repair and non-sending start while retaining
+all release and real-traveler holds. New written proposals, exact touch lists and
+proof plans: [`automation-clock-safety-proposals.md`](automation-clock-safety-proposals.md).
+No implementation, restart, sweep, drain, sender call or DDL in this review.
+
+Read-only development observation completed by `2026-10-11T10:51:03Z`:
+zero public pending/failed/processing/due rows, historical sent 90/cancelled 6/dead 2;
+zero public commerce delivery-attempt markers; retained scenario outbox and sweep
+heartbeat counts both zero. This is not a safe-restart guarantee: the development
+drain has no QA-recipient restriction and the provider key is present.
+
+Ledger records the missed 1h mark honestly. The stored timezone is Asia/Kolkata;
+the real 1d mark falls at 11:23:16.241 IST on October 12, inside allowed hours.
+No timezone/history/clock changed. WAITING, not next-day proven. Proposed one-shot
+future invocation times are not scheduled; UNKNOWN rails and all prior-step/cap
+guards remain active.
+
+**DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**

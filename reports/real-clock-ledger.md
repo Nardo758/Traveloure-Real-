@@ -83,6 +83,28 @@ send an email or claim NEXT-DAY PROVEN during start-only setup.
 
 Status: **WAITING**. NEXT-DAY PROVEN: **NO**.
 
+### Actual 1h observation — October 11 (read-only)
+
+- Observation completed by `2026-10-11T10:51:03Z`.
+- Real 1h threshold was `2026-10-11T06:53:16.241Z`.
+- Owned namespace: one cart, one canonical itinerary correlation, zero outbox
+  rows, zero `commerce-email-sweep` heartbeat rows.
+- No sweep/send for this scenario was authorized or performed by this agent.
+  No provider receipt is recorded; the inbox/provider was not queried.
+- Actual outcome: **1h execution missed; no enqueue or delivery proof.**
+  Startup mode intentionally installed no scheduler/provider channel.
+- An overdue future send cannot prove the original 60–75-minute cadence.
+- Stored `preferences.itineraryMarketing.timeZone`: `Asia/Kolkata`, unchanged.
+- Exact 1d threshold: October 12, **11:23:16.241 IST**
+  (`2026-10-12T05:53:16.241Z`), inside 09:00–20:00.
+- Proposed following sweep slot: 06:00 UTC / 11:30 IST, **not scheduled**.
+  The 1h prerequisite, daily cap and UNKNOWN checks still apply.
+- 1d and 3d are future checks, not backdated observations.
+- **WAITING. NEXT-DAY PROVEN: NO. RELEASE HELD.**
+
+Execution prerequisites/proposals: `automation-clock-safety-proposals.md`.
+No timer, restart, application flag, real email or owned/public DDL was changed.
+
 ```json
 {
   "runId": "d5dcaccc-abdb-401a-b3ab-1a72d24ec98a",
