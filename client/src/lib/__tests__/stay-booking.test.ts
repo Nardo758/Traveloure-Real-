@@ -30,6 +30,8 @@ test("SB2 every server refusal has words; an unknown one claims nothing", () => 
   assert.match(stayRefusalText("something_new"), /Nothing was booked/);
   // Below SSP is refused (decision-maker, Oct 11, 2026) and says so — never "no room is available".
   assert.match(stayRefusalText("unavailable", "below_ssp"), /price available right now/);
+  assert.match(stayRefusalText("unavailable", "no_ssp"), /price available right now/);
+  assert.match(stayRefusalText("unavailable", "ssp_currency"), /price available right now/);
   assert.equal(stayRefusalText("unavailable", "no_offer"), STAY_BOOK_REFUSALS.unavailable);
 });
 

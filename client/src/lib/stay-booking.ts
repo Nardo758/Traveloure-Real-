@@ -82,9 +82,16 @@ export const STAY_BOOK_REFUSALS: Record<string, string> = {
   cancel_refused: "The booking couldn't be canceled. It is still booked.",
 };
 
-/** An "unavailable" with a named reason that has its own words (decision-maker, Oct 11, 2026: below SSP ⇒ refuse). */
+/**
+ * An "unavailable" with a named reason that has its own words. The booking margin lifts the price to the SSP
+ * (decision-maker, Oct 11, 2026), so these are refused only when the SSP is unstated or in another currency —
+ * and `below_ssp`, the prebook's own guard, should not fire after that.
+ */
+const PRICE_REFUSAL = "We can't book this hotel at the price available right now. Nothing was booked.";
 export const STAY_BOOK_UNAVAILABLE_REASONS: Record<string, string> = {
-  below_ssp: "We can't book this hotel at the price available right now. Nothing was booked.",
+  below_ssp: PRICE_REFUSAL,
+  no_ssp: PRICE_REFUSAL,
+  ssp_currency: PRICE_REFUSAL,
 };
 
 export function stayRefusalText(state: string, reason?: string | null): string {

@@ -89,5 +89,9 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
 - Tests: `client/src/lib/__tests__/stay-booking.test.ts` SB1–SB5 (build.yml); B1/B4/B6 extended for
   `bookable` and the code on the item.
 - **Below SSP is refused (decision-maker, Oct 11, 2026).** The refusal is named (`unavailable`, `reason: below_ssp`)
-  and the sheet says so. Book and cancel are proven in CI only once a sandbox hotel prices at or above its SSP
-  (the follow-up e2e).
+  and the sheet says so.
+- **Amended the same day — the booking margin meets the SSP (decision-maker, Oct 11, 2026).** Prebook sends
+  margin = max(`hotel_margin_public`, SSP / net − 1) from the re-quote's own answer (`bookingMarginFraction`):
+  above the band, one more rates request at that margin, and its offer is prebooked, so the booked price is never
+  below the SSP nor below our band — d-2's display floor. Refused only when the SSP is unstated or in another
+  currency. Book and cancel are proven against sandbox by the follow-up e2e (#1411).

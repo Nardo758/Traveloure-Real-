@@ -6,8 +6,10 @@
  *   · NUITÉE IS MERCHANT OF RECORD: the Payment SDK takes the card, so the ONLY payment method this platform
  *     ever sends to `/rates/book` is `TRANSACTION_ID` (guarded by scripts/check-liteapi-payment-method.cjs).
  *   · THE OFFER ID COMES FROM A SERVER RE-QUOTE, never the browser (§14) — `offerIdFromRates`.
- *   · THE PRICE SHOWN BEFORE THE SDK OPENS IS THE PREBOOK'S, and a prebook below LiteAPI's suggested selling
- *     price is refused, never shown (the d-2 SSP floor, kept at the moment of sale).
+ *   · THE PRICE SHOWN BEFORE THE SDK OPENS IS THE PREBOOK'S, and it is never below LiteAPI's suggested selling
+ *     price nor below our band: the margin sent on the offer's rates request is `bookingMarginFraction`
+ *     (decision-maker, Oct 11, 2026 — the d-2 display floor, kept at the moment of sale). Refused only when the
+ *     re-quote states no SSP or states it in another currency.
  *   · A field LiteAPI's answer does not state is NULL, never guessed (§13).
  */
 
@@ -49,6 +51,49 @@ export function sspFromRates(body: any): { amount: number; currency: string } | 
     if (amount !== null && amount > 0 && currency) return { amount, currency };
   }
   return null;
+}
+
+/** A money field read as `{ amount, currency }` or the first of an array of them; null when unstated. */
+function moneyOf(v: unknown): { amount: number; currency: string } | null {
+  const one: any = Array.isArray(v) ? v[0] : v;
+  const amount = money(one?.amount);
+  const currency = ccy(one?.currency);
+  return amount !== null && amount > 0 && currency ? { amount, currency } : null;
+}
+
+export type BookingMargin =
+  | { ok: true; fraction: number; percent: number; ssp: { amount: number; currency: string } }
+  | { ok: false; reason: "no_ssp" | "ssp_currency" | "no_price" };
+
+/**
+ * THE MARGIN SENT FOR A BOOKING (decision-maker, Oct 11, 2026): max(our band, SSP / net − 1), computed from the
+ * re-quote's own answer, so the booked price is never below the SSP and never below our band — the same floor
+ * d-2 applies on display. LiteAPI takes the margin on the RATES request and prices the offer id that request
+ * returns; the prebook only takes that offer id. So when this exceeds the band, the service re-quotes once at
+ * this margin and prebooks THAT answer's offer.
+ *
+ *   · retail = the room type's `offerRetailRate` (verified sandbox 2026-10-09), else the rate's `retailRate.total`;
+ *   · net    = retail − LiteAPI's stated `commission` (our margin amount) in the same currency; where none is
+ *              stated, retail / (1 + band) — the margin the request carried;
+ *   · percent is rounded UP to LiteAPI's two decimals, so rounding never lands the price under the SSP.
+ * Refused, by name, only when the SSP is unstated (`no_ssp`) or in another currency (`ssp_currency`); a re-quote
+ * with no readable price is `no_price`.
+ */
+export function bookingMarginFraction(body: any, bandFraction: number): BookingMargin {
+  const band = Number.isFinite(bandFraction) && bandFraction > 0 ? bandFraction : 0;
+  const ssp = sspFromRates(body);
+  if (!ssp) return { ok: false, reason: "no_ssp" };
+  const rt = body?.data?.[0]?.roomTypes?.[0];
+  const rate = rt?.rates?.[0];
+  const retail = moneyOf(rt?.offerRetailRate) ?? moneyOf(rate?.retailRate?.total);
+  if (!retail) return { ok: false, reason: "no_price" };
+  if (ssp.currency !== retail.currency) return { ok: false, reason: "ssp_currency" };
+  const commission = moneyOf(rt?.commission) ?? moneyOf(rate?.commission);
+  const net = commission && commission.currency === retail.currency && commission.amount < retail.amount ? retail.amount - commission.amount : retail.amount / (1 + band);
+  const needed = net > 0 ? ssp.amount / net - 1 : band;
+  const fraction = Math.max(band, needed);
+  const percent = Math.ceil(fraction * 10_000 - 1e-9) / 100;
+  return { ok: true, fraction: percent / 100, percent, ssp };
 }
 
 export interface PrebookFacts {
