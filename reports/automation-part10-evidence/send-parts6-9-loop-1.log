@@ -1,0 +1,434 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# [email] sendEmail ok — id=synthetic_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_2 subject="Synthetic reminder" [address-redacted]
+# Subtest: cart retry key and payload survive the actual sendEmail → Resend SDK adapter
+ok 1 - cart retry key and payload survive the actual sendEmail → Resend SDK adapter
+  ---
+  duration_ms: 4.005453
+  ...
+# New database connection established
+# [2026-10-11 04:57:58.476 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "6f9ad69c-b4d5-4592-ba4d-898fba1bd1cf"
+#     [35mbookingId[39m: "dcf32f46-4392-4948-bbef-f86164d5ef88"
+# [2026-10-11 04:57:58.482 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_894bf2bc454d4130a3fe6afee3e306a8"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking dcf32f46-4392-4948-bbef-f86164d5ef88 via payment_intent.succeeded (pi=pi_synthetic_894bf2bc454d4130a3fe6afee3e306a8)
+# [WEBHOOK] Duplicate event evt_synthetic_63da61c29da54962b10f9a982f131003 (payment_intent.succeeded) already processed — skipping
+# [WEBHOOK] Duplicate event evt_synthetic_63da61c29da54962b10f9a982f131003 (payment_intent.succeeded) already processed — skipping
+# [2026-10-11 04:57:58.630 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "ee66cb7c-a93b-4032-972a-a26192d4979a"
+#     [35mbookingId[39m: "0662767d-7bf3-4d5e-993b-3592214591e8"
+# [2026-10-11 04:57:58.634 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_d7192773fe2a4395b595eb74455efc24"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 0662767d-7bf3-4d5e-993b-3592214591e8 via payment_intent.succeeded (pi=pi_synthetic_d7192773fe2a4395b595eb74455efc24)
+# New database connection established
+# [2026-10-11 04:57:58.737 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "5ce296d2-05e8-43a6-969c-8897a50f9dfe"
+#     [35mbookingId[39m: "f45d617f-251e-4b80-99c6-5aa5a6510fbc"
+# [2026-10-11 04:57:58.741 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_cdc2f7def73c4c95bddf1e0ca9aaced7"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking f45d617f-251e-4b80-99c6-5aa5a6510fbc via payment_intent.succeeded (pi=pi_synthetic_cdc2f7def73c4c95bddf1e0ca9aaced7)
+# [2026-10-11 04:57:58.852 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "9cedbd1b-ae5d-4498-9fe1-14ebae693f9f"
+#     [35mbookingId[39m: "60244df7-bbbe-4464-a6b2-29b6ae28cab5"
+# [2026-10-11 04:57:58.857 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_6af427efe7ab440db959415a728b8109"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 60244df7-bbbe-4464-a6b2-29b6ae28cab5 via payment_intent.succeeded (pi=pi_synthetic_6af427efe7ab440db959415a728b8109)
+# [2026-10-11 04:57:58.966 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "425f8308-2c66-4550-9ab5-47c8c1331726"
+#     [35mbookingId[39m: "7a5e462f-9d90-4f06-9683-b7079790b152"
+# [2026-10-11 04:57:58.969 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_0c1dd2a3207e4300aea7e059e8a3554b"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 7a5e462f-9d90-4f06-9683-b7079790b152 via payment_intent.succeeded (pi=pi_synthetic_0c1dd2a3207e4300aea7e059e8a3554b)
+# [WEBHOOK] Duplicate event evt_synthetic_580d59f4b3224a54952b86b03761d2f3 (payment_intent.succeeded) already processed — skipping
+# [WEBHOOK] Duplicate event evt_synthetic_580d59f4b3224a54952b86b03761d2f3 (payment_intent.succeeded) already processed — skipping
+# [2026-10-11 04:57:59.072 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "adb9c549-ef53-42a4-be4f-2dff6233bf19"
+#     [35mbookingId[39m: "2b124065-da52-43b8-9fe9-48e80d4989b2"
+# [2026-10-11 04:57:59.076 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_8ab3f1ba009642d3b9fa1e82ee537e4f"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 2b124065-da52-43b8-9fe9-48e80d4989b2 via payment_intent.succeeded (pi=pi_synthetic_8ab3f1ba009642d3b9fa1e82ee537e4f)
+# [2026-10-11 04:57:59.167 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "09a6801c-34e3-484a-b01f-7de4a7ae9534"
+#     [35mbookingId[39m: "9b40a535-00d4-4388-9e2e-966eeaf65eb6"
+# [2026-10-11 04:57:59.170 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_bf7987da886641c4b285ab17d4329837"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 9b40a535-00d4-4388-9e2e-966eeaf65eb6 via payment_intent.succeeded (pi=pi_synthetic_bf7987da886641c4b285ab17d4329837)
+# [2026-10-11 04:57:59.270 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "6a29230b-9f9d-47bc-b3b8-c75a4212de2e"
+#     [35mbookingId[39m: "a1d862d5-cc07-444d-9a90-711abc4c45be"
+# [2026-10-11 04:57:59.273 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_e2006c61ed49475a9b0fe223f8e9aee1"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking a1d862d5-cc07-444d-9a90-711abc4c45be via payment_intent.succeeded (pi=pi_synthetic_e2006c61ed49475a9b0fe223f8e9aee1)
+# {"part":"6-real-handlers","loops":[{"loop":1,"scenario":"b4e5d226-7770-4bdd-a12c-b01fc8e13e37","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["same signed event three times: one processed event and zero stale cart emails","actual handler ordering:webhook-first; zero stale cart emails","actual handler ordering:success-first; zero stale cart emails","actual handler ordering:concurrent; zero stale cart emails"],"authMiddlewareCoverage":false,"realStripeCalls":0,"realEmails":0},{"loop":2,"scenario":"1e18978a-8017-46a3-8c48-14cdb2a0e0f4","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["same signed event three times: one processed event and zero stale cart emails","actual handler ordering:webhook-first; zero stale cart emails","actual handler ordering:success-first; zero stale cart emails","actual handler ordering:concurrent; zero stale cart emails"],"authMiddlewareCoverage":false,"realStripeCalls":0,"realEmails":0}],"sdkLookups":4}
+# Subtest: Part 6: actual signed webhook replays and actual success-handler concurrency, two isolated loops
+ok 2 - Part 6: actual signed webhook replays and actual success-handler concurrency, two isolated loops
+  ---
+  duration_ms: 3023.823224
+  ...
+# New database connection established
+# New database connection established
+# New database connection established
+# [2026-10-11 04:58:00.107 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 8
+# [2026-10-11 04:58:00.116 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "2"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.112Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.119 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "4"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.116Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.123 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "6"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.119Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.127 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "8"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.123Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.131 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "10"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.127Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.134 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "12"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.131Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.138 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "14"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.135Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# [2026-10-11 04:58:00.141 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: "16"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Booking confirmed — Your booking"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.138Z"
+#     error: "Expected values to be strictly equal:\\n+ actual - expected\\n\\n+ undefined\\n- 'cart-reminder-17'"
+# Subtest: provider acceptance / DB failure: isolated evidence, including known duplicate-submission blockers
+    # Subtest: loop 1: healthy locked send excludes competing claims
+    not ok 1 - loop 1: healthy locked send excludes competing claims
+      ---
+      duration_ms: 205.207203
+      location: '/home/runner/workspace/server/routes/__tests__/commerce-provider-failure.db.test.ts:8:3310'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        
+        8 !== 0
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 0
+      actual: 8
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/commerce-provider-failure.db.test.ts:159:18)
+        process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+        async Test.run (node:internal/test_runner/test:797:9)
+        async TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/commerce-provider-failure.db.test.ts:144:7)
+        async Test.run (node:internal/test_runner/test:797:9)
+        async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+      ...
+    # Subtest: loop 1: statement_abort after acceptance cancels retries but does NOT prove unsent
+    ok 2 - loop 1: statement_abort after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 100.009163
+      ...
+    # Subtest: loop 1: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+    ok 3 - loop 1: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 106.81006
+      ...
+    # Subtest: loop 1: lost COMMIT acknowledgement retains sent row but returns cancelled
+    ok 4 - loop 1: lost COMMIT acknowledgement retains sent row but returns cancelled
+      ---
+      duration_ms: 87.512943
+      ...
+# [2026-10-11 04:58:00.530 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 21
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your saved cart is ready to review"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:00.526Z"
+#     error: "Failed query: \\n      UPDATE email_outbox SET status='cancelled', last_error='check_failed', retry_after=NULL,\\n        metadata=coalesce(metadata,'{}'::jsonb) ||\\n          '{\\"cancelReason\\":\\"check_failed\\",\\"cancelDetail\\":\\"verification_transaction_failed\\"}'::jsonb,\\n        updated_at=NOW()\\n      WHERE id=$1 AND status='processing'\\n        AND retry_after IS NOT DISTINCT FROM CAST($2 AS timestamp)\\nparams: 21,2026-10-11 05:08:00.493866+00"
+# [2026-10-11 04:58:00.539 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+    # Subtest: loop 1: fallback_write_failure exposes duplicate submission despite stable key
+    ok 5 - loop 1: fallback_write_failure exposes duplicate submission despite stable key
+      ---
+      duration_ms: 133.011186
+      ...
+# [2026-10-11 04:58:00.682 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+# New database connection established
+    # Subtest: loop 1: new_claim_before_fallback exposes duplicate submission despite stable key
+    ok 6 - loop 1: new_claim_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 141.927848
+      ...
+# [2026-10-11 04:58:00.797 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+    # Subtest: loop 1: new_lease_before_fallback exposes duplicate submission despite stable key
+    ok 7 - loop 1: new_lease_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 118.718405
+      ...
+    # Subtest: loop 2: healthy locked send excludes competing claims
+    ok 8 - loop 2: healthy locked send excludes competing claims
+      ---
+      duration_ms: 86.42416
+      ...
+    # Subtest: loop 2: statement_abort after acceptance cancels retries but does NOT prove unsent
+    ok 9 - loop 2: statement_abort after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 113.15914
+      ...
+    # Subtest: loop 2: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+    ok 10 - loop 2: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 171.093346
+      ...
+    # Subtest: loop 2: lost COMMIT acknowledgement retains sent row but returns cancelled
+    ok 11 - loop 2: lost COMMIT acknowledgement retains sent row but returns cancelled
+      ---
+      duration_ms: 86.4237
+      ...
+# [2026-10-11 04:58:01.377 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 28
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your saved cart is ready to review"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:03:01.374Z"
+#     error: "Failed query: \\n      UPDATE email_outbox SET status='cancelled', last_error='check_failed', retry_after=NULL,\\n        metadata=coalesce(metadata,'{}'::jsonb) ||\\n          '{\\"cancelReason\\":\\"check_failed\\",\\"cancelDetail\\":\\"verification_transaction_failed\\"}'::jsonb,\\n        updated_at=NOW()\\n      WHERE id=$1 AND status='processing'\\n        AND retry_after IS NOT DISTINCT FROM CAST($2 AS timestamp)\\nparams: 28,2026-10-11 05:08:01.339824+00"
+# [2026-10-11 04:58:01.386 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+    # Subtest: loop 2: fallback_write_failure exposes duplicate submission despite stable key
+    ok 12 - loop 2: fallback_write_failure exposes duplicate submission despite stable key
+      ---
+      duration_ms: 134.836327
+      ...
+# [2026-10-11 04:58:01.518 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+# New database connection established
+    # Subtest: loop 2: new_claim_before_fallback exposes duplicate submission despite stable key
+    ok 13 - loop 2: new_claim_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 125.280178
+      ...
+# [2026-10-11 04:58:01.645 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+# COMMERCE_PROVIDER_FAILURE_EVIDENCE=[{"loop":1,"case":"statement_abort","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":1,"case":"deferred_commit_failure","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":1,"case":"lost_commit_ack","submissions":1,"syntheticAcceptances":1,"durable":"sent","blocker":"function returns cancelled despite durable sent"},{"loop":1,"case":"fallback_write_failure","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"accepted send becomes retryable failed; duplicate submission; mock-only dedup"},{"loop":1,"case":"new_claim_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"},{"loop":1,"case":"new_lease_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"},{"loop":2,"case":"healthy_claims","submissions":1,"syntheticAcceptances":1,"durable":"sent"},{"loop":2,"case":"statement_abort","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":2,"case":"deferred_commit_failure","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":2,"case":"lost_commit_ack","submissions":1,"syntheticAcceptances":1,"durable":"sent","blocker":"function returns cancelled despite durable sent"},{"loop":2,"case":"fallback_write_failure","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"accepted send becomes retryable failed; duplicate submission; mock-only dedup"},{"loop":2,"case":"new_claim_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"},{"loop":2,"case":"new_lease_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"}]
+# RELEASE_CERTIFIED=false REAL_PROVIDER_ONCE_ONLY_PROVEN=false
+    # Subtest: loop 2: new_lease_before_fallback exposes duplicate submission despite stable key
+    ok 14 - loop 2: new_lease_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 125.394287
+      ...
+    1..14
+not ok 3 - provider acceptance / DB failure: isolated evidence, including known duplicate-submission blockers
+  ---
+  duration_ms: 1788.220425
+  location: '/home/runner/workspace/server/routes/__tests__/commerce-provider-failure.db.test.ts:1:1784'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: QA proof defaults off; malformed permission never reaches transport
+ok 4 - QA proof defaults off; malformed permission never reaches transport
+  ---
+  duration_ms: 0.96729
+  ...
+# Subtest: Every rejection has zero synthetic provider calls; each loop has four reservations only
+ok 5 - Every rejection has zero synthetic provider calls; each loop has four reservations only
+  ---
+  duration_ms: 0.989632
+  ...
+# Subtest: Qualified QA copy does not infer stock from listing status or null capacity
+ok 6 - Qualified QA copy does not infer stock from listing status or null capacity
+  ---
+  duration_ms: 0.237542
+  ...
+# Subtest: Production sources cannot read inbox substitution or arm proof transport
+ok 7 - Production sources cannot read inbox substitution or arm proof transport
+  ---
+  duration_ms: 1.137249
+  ...
+# [Fever/Impact] API not configured - IMPACT_ACCOUNT_SID and IMPACT_AUTH_TOKEN required
+# [Fever/Impact] Get credentials from https://app.impact.com/secure/mediapartner/account-settings-flow.ihtml
+# [tavily] This package is deprecated. Please use @tavily/core instead:
+#   npm install @tavily/core
+#   https://www.npmjs.com/package/@tavily/core
+# New database connection established
+# New database connection established
+# [2026-10-11 04:58:04.426 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 2
+# [2026-10-11 04:58:11.519 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 3
+# [2026-10-11 04:58:11.651 +0000] [31mERROR[39m: [36m[background-job] pass failed[39m
+#     [35mjob[39m: "messaging.commerce-email-sweep"
+#     [35mattempt[39m: 1
+#     [35mmaxAttempts[39m: 3
+#     [35mtransient[39m: false
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS part8_candidate_query_fault\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS part8_candidate_query_fault
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-scenario-matrix.db.test.ts:454:11)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-scenario-matrix.db.test.ts:454:11)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS part8_candidate_query_fault",
+#       "params": []
+#     }
+# [2026-10-11 04:58:11.657 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS part8_candidate_query_fault\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS part8_candidate_query_fault
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-scenario-matrix.db.test.ts:454:11)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-scenario-matrix.db.test.ts:454:11)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS part8_candidate_query_fault",
+#       "params": []
+#     }
+# New database connection established
+# [bookings webhook] Stripe platform webhook signing secret is missing for this environment — refusing deliveries.
+# COMMERCE_PART8_MATRIX={"loop":1,"scenario":"107ee60e-2ba6-4a3a-be59-f115ddaa4967","outcomes":[{"id":"enqueue.eligible","label":"All readable eligibility conditions passing","scope":"readable-record-subset","scenario":"021db21f-abfc-4f46-a41c-71b7e9fdc310","status":"PASS","observation":{"rowId":31,"syntheticCalls":1}},{"id":"enqueue.reject.unsubscribed","label":"Enqueue rejects unsubscribed","scope":"readable-record-subset","scenario":"0e7618a7-586f-4a7e-ba18-c44c2df4eeeb","status":"PASS","observation":{"reason":"marketing_unsubscribed","rows":0}},{"id":"enqueue.reject.suspended","label":"Enqueue rejects suspended","scope":"readable-record-subset","scenario":"9a3fc40e-ba87-4d21-97cd-f9e6abe7d923","status":"PASS","observation":{"reason":"account_suspended","rows":0}},{"id":"enqueue.reject.deleted","label":"Enqueue rejects deleted","scope":"readable-record-subset","scenario":"afd63fff-1e5c-4632-b4a5-79a1e7a45913","status":"PASS","observation":{"reason":"account_deleted","rows":0}},{"id":"enqueue.reject.no_email","label":"Enqueue rejects no_email","scope":"readable-record-subset","scenario":"6e24c247-0afb-470c-ab2b-5115f6322fd3","status":"PASS","observation":{"reason":"no_account_recipient","rows":0}},{"id":"enqueue.reject.unknown_timezone","label":"Enqueue rejects unknown_timezone","scope":"readable-record-subset","scenario":"2ca9a08c-cb60-420c-8715-0047dc9e96fc","status":"PASS","observation":{"reason":"unknown_timezone_or_preferences","rows":0}},{"id":"enqueue.reject.empty","label":"Enqueue rejects empty","scope":"readable-record-subset","scenario":"2e8a42ff-a8fb-465d-9bee-11c0e52b7b11","status":"PASS","observation":{"reason":"empty_cart","rows":0}},{"id":"enqueue.reject.no_stamp","label":"Enqueue rejects no_stamp","scope":"readable-record-subset","scenario":"495b36bc-f1d9-4e8b-aece-21938481de6f","status":"PASS","observation":{"reason":"no_activity_stamp","rows":0}},{"id":"idle.cart_reminder_1h.-1","label":"cart_reminder_1h: idle threshold -1ms","scope":"readable-record-subset","scenario":"ceaf49b1-e594-45c6-8cee-8862d0a53ba9","status":"PASS","observation":{"thresholdMs":3600000,"offsetMs":-1,"eligible":false,"reason":"not_idle"}},{"id":"idle.cart_reminder_1h.0","label":"cart_reminder_1h: idle threshold 0ms","scope":"readable-record-subset","scenario":"179d2f4d-a1d7-470a-9498-6b17d7008c38","status":"PASS","observation":{"thresholdMs":3600000,"offsetMs":0,"eligible":true,"reason":"eligible"}},{"id":"idle.cart_reminder_1h.1","label":"cart_reminder_1h: idle threshold 1ms","scope":"readable-record-subset","scenario":"e45d3359-08d9-45b6-b7b8-a96218c45b23","status":"PASS","observation":{"thresholdMs":3600000,"offsetMs":1,"eligible":true,"reason":"eligible"}},{"id":"idle.cart_reminder_1d.-1","label":"cart_reminder_1d: idle threshold -1ms","scope":"readable-record-subset","scenario":"7ad695cf-aa37-4c8c-aa08-67b3d14b482c","status":"PASS","observation":{"thresholdMs":86400000,"offsetMs":-1,"eligible":false,"reason":"not_idle"}},{"id":"idle.cart_reminder_1d.0","label":"cart_reminder_1d: idle threshold 0ms","scope":"readable-record-subset","scenario":"2fd21d78-5c74-4fd1-a542-e6ed5a416e82","status":"PASS","observation":{"thresholdMs":86400000,"offsetMs":0,"eligible":true,"reason":"eligible"}},{"id":"idle.cart_reminder_1d.1","label":"cart_reminder_1d: idle threshold 1ms","scope":"readable-record-subset","scenario":"fc008695-4afa-4b3d-91ad-750de15af6b2","status":"PASS","observation":{"thresholdMs":86400000,"offsetMs":1,"eligible":true,"reason":"eligible"}},{"id":"idle.cart_reminder_3d.-1","label":"cart_reminder_3d: idle threshold -1ms","scope":"readable-record-subset","scenario":"019a6376-0e72-4e81-896d-6faba3e969e9","status":"PASS","observation":{"thresholdMs":259200000,"offsetMs":-1,"eligible":false,"reason":"not_idle"}},{"id":"idle.cart_reminder_3d.0","label":"cart_reminder_3d: idle threshold 0ms","scope":"readable-record-subset","scenario":"b1a19ac5-c91a-43af-b7d3-b98a9ceb8f6f","status":"PASS","observation":{"thresholdMs":259200000,"offsetMs":0,"eligible":true,"reason":"eligible"}},{"id":"idle.cart_reminder_3d.1","label":"cart_reminder_3d: idle threshold 1ms","scope":"readable-record-subset","scenario":"c3114ac6-c1b0-416c-8b2b-7e7a7ce483a4","status":"PASS","observation":{"thresholdMs":259200000,"offsetMs":1,"eligible":true,"reason":"eligible"}},{"id":"enqueue.step_sent","label":"Sent step cannot enqueue again in the same sequence","scope":"readable-record-subset","scenario":"4714ca6d-3590-4783-a136-bdda41112812","status":"PASS","observation":{"rows":1,"syntheticCalls":1}},{"id":"enqueue.fourth","label":"Fourth reminder is impossible","scope":"readable-record-subset","scenario":"afca4ee2-a0aa-4d0d-88e2-7be310c05727","status":"PASS","observation":{"reason":"no_due_step_or_unsupported_step","rows":0}},{"id":"enqueue.item_changed_today","label":"Sent change notice suppresses today's reminder","scope":"readable-record-subset","scenario":"1a0c8a4e-45c3-405a-9d56-b3ec35077cb6","status":"PASS","observation":{"reason":"item_change_sent_today"}},{"id":"sweep.sequential","label":"Two sweeps in a row","scope":"readable-record-subset","scenario":"10d2ea90-cae0-4a9b-9f77-2a25cbc7f76d","status":"PASS","observation":{"rows":1,"enqueued":1,"duplicates":1}},{"id":"sweep.concurrent","label":"Two sweeps at once","scope":"readable-record-subset","scenario":"69e86198-0c5e-4099-b938-42d025c9d6ea","status":"PASS","observation":{"rows":1,"enqueued":1,"duplicates":1}},{"id":"sweep.empty","label":"Nothing due succeeds with zero enqueues","scope":"readable-record-subset","scenario":"d03a3636-0d98-40df-8f22-df26e8a9c558","status":"PASS","observation":{"enqueued":0,"skipReasons":{"not_idle":1}}},{"id":"payment.canonical_provider.before_send","label":"canonical_provider: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"a9763f76-915d-4959-9f7b-b1d12553c7c3","status":"PASS","observation":{"rowId":47,"reason":"paid","calls":0,"terminal":true,"rail":"canonical_provider","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.canonical_provider.after_send","label":"canonical_provider: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"f16c798c-7af9-407e-9785-77004a31283f","status":"PASS","observation":{"rowId":48,"syntheticCalls":1,"rail":"canonical_provider","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.legacy_booking.before_send","label":"legacy_booking: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"52e8fe87-5a0e-4a4b-a738-0e01e1856d82","status":"PASS","observation":{"rowId":49,"reason":"paid","calls":0,"terminal":true,"rail":"legacy_booking","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.legacy_booking.after_send","label":"legacy_booking: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"a2d7e89a-d4f6-4379-9282-c20545d6d29d","status":"PASS","observation":{"rowId":50,"syntheticCalls":1,"rail":"legacy_booking","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.stripe_intent_ledger.before_send","label":"stripe_intent_ledger: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"6c1ea1ad-b157-44f0-9520-e709aa0a2e4b","status":"PASS","observation":{"rowId":51,"reason":"paid","calls":0,"terminal":true,"rail":"stripe_intent_ledger","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.stripe_intent_ledger.after_send","label":"stripe_intent_ledger: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"f138a783-cbe4-4739-acdd-61bd5c5a076f","status":"PASS","observation":{"rowId":52,"syntheticCalls":1,"rail":"stripe_intent_ledger","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.credits.before_send","label":"credits: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"56fe8931-f796-49cd-b9ce-ebcdfa3d6a40","status":"PASS","observation":{"rowId":53,"reason":"paid","calls":0,"terminal":true,"rail":"credits","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.credits.after_send","label":"credits: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"ac5927e7-d486-4c25-828e-ca83eb97bafd","status":"PASS","observation":{"rowId":54,"syntheticCalls":1,"rail":"credits","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.wallet.before_send","label":"wallet: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"e3727bf7-12ab-44d4-9257-6bbc19bfb1f4","status":"PASS","observation":{"rowId":55,"reason":"paid","calls":0,"terminal":true,"rail":"wallet","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.wallet.after_send","label":"wallet: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"21f00adc-83e2-4c0d-a529-c7731928208d","status":"PASS","observation":{"rowId":56,"syntheticCalls":1,"rail":"wallet","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.trip_pass.before_send","label":"trip_pass: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"b5bcc820-e986-4840-880e-364c25ea2158","status":"PASS","observation":{"rowId":57,"reason":"paid","calls":0,"terminal":true,"rail":"trip_pass","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.trip_pass.after_send","label":"trip_pass: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"726e2304-fe8c-4a4d-973b-7b9c4f974e7a","status":"PASS","observation":{"rowId":58,"syntheticCalls":1,"rail":"trip_pass","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.partner_request.before_send","label":"partner_request: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"d6f14b88-4c74-41ff-a46e-2bd7595896a1","status":"PASS","observation":{"rowId":59,"reason":"paid","calls":0,"terminal":true,"rail":"partner_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.partner_request.after_send","label":"partner_request: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"64323df7-8d37-4c2f-93d8-64c8d6718287","status":"PASS","observation":{"rowId":60,"syntheticCalls":1,"rail":"partner_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.coordination.before_send","label":"coordination: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"3fb75a07-33e8-441f-8dbd-3787289d3797","status":"PASS","observation":{"rowId":61,"reason":"paid","calls":0,"terminal":true,"rail":"coordination","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.coordination.after_send","label":"coordination: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"4ae7a0ba-76bc-4bca-b80b-de0a1a312742","status":"PASS","observation":{"rowId":62,"syntheticCalls":1,"rail":"coordination","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.coordination_booking.before_send","label":"coordination_booking: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"7ffe690e-b45f-4a47-83d0-6ec425297494","status":"PASS","observation":{"rowId":63,"reason":"paid","calls":0,"terminal":true,"rail":"coordination_booking","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.coordination_booking.after_send","label":"coordination_booking: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"381e0ddc-4941-44a7-96f5-ead8fa2331fe","status":"PASS","observation":{"rowId":64,"syntheticCalls":1,"rail":"coordination_booking","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.coordination_credit.before_send","label":"coordination_credit: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"f5f82f05-854f-43b0-b584-56b0b8625a7e","status":"PASS","observation":{"rowId":65,"reason":"paid","calls":0,"terminal":true,"rail":"coordination_credit","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.coordination_credit.after_send","label":"coordination_credit: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"6192ad5b-f2ff-4e4d-a58c-abe42b160b78","status":"PASS","observation":{"rowId":66,"syntheticCalls":1,"rail":"coordination_credit","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.ready_made_purchase.before_send","label":"ready_made_purchase: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"345921a0-5cdd-4b1c-a08d-9718baf637a7","status":"PASS","observation":{"rowId":67,"reason":"paid","calls":0,"terminal":true,"rail":"ready_made_purchase","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.ready_made_purchase.after_send","label":"ready_made_purchase: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"0c5f64ab-2ae4-427c-88d2-3492c4cc4473","status":"PASS","observation":{"rowId":68,"syntheticCalls":1,"rail":"ready_made_purchase","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.template_purchase.before_send","label":"template_purchase: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"c9309625-9136-44df-900c-c62b6d2d6858","status":"PASS","observation":{"rowId":69,"reason":"paid","calls":0,"terminal":true,"rail":"template_purchase","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.template_purchase.after_send","label":"template_purchase: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"add20eda-5d6e-4c95-a006-2c605dc831b9","status":"PASS","observation":{"rowId":70,"syntheticCalls":1,"rail":"template_purchase","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.expert_tip.before_send","label":"expert_tip: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"14de45d0-9021-4360-81fa-d26a2a8fbe29","status":"PASS","observation":{"rowId":71,"reason":"paid","calls":0,"terminal":true,"rail":"expert_tip","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.expert_tip.after_send","label":"expert_tip: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"e6bf2535-81fb-44cc-8bbf-ca9e6348d31d","status":"PASS","observation":{"rowId":72,"syntheticCalls":1,"rail":"expert_tip","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.expert_request.before_send","label":"expert_request: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"dc70ff89-630d-4444-b190-824219c88a2b","status":"PASS","observation":{"rowId":73,"reason":"paid","calls":0,"terminal":true,"rail":"expert_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.expert_request.after_send","label":"expert_request: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"05d3380f-1b3d-4dc6-835e-5e65fe693245","status":"PASS","observation":{"rowId":74,"syntheticCalls":1,"rail":"expert_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.booking_request.before_send","label":"booking_request: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"dc016f37-10b6-420c-8189-0b944de3a481","status":"PASS","observation":{"rowId":75,"reason":"paid","calls":0,"terminal":true,"rail":"booking_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.booking_request.after_send","label":"booking_request: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"1847035e-b4b1-448a-aa7b-1eba65310203","status":"PASS","observation":{"rowId":76,"syntheticCalls":1,"rail":"booking_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.provider_request.before_send","label":"provider_request: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"433a30ff-8eb4-4eb3-b0e5-e12fedf762ce","status":"PASS","observation":{"rowId":77,"reason":"paid","calls":0,"terminal":true,"rail":"provider_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.provider_request.after_send","label":"provider_request: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"732680a5-2b68-42c9-a02b-1c40880e2c04","status":"PASS","observation":{"rowId":78,"syntheticCalls":1,"rail":"provider_request","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.group_transaction.before_send","label":"group_transaction: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"563ff70e-5614-480b-8d38-83e0efca664b","status":"PASS","observation":{"rowId":79,"reason":"paid","calls":0,"terminal":true,"rail":"group_transaction","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.group_transaction.after_send","label":"group_transaction: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"1f32e270-3b88-4841-acf0-84a63a03d82b","status":"PASS","observation":{"rowId":80,"syntheticCalls":1,"rail":"group_transaction","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.content_invoice.before_send","label":"content_invoice: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"e297b00e-a44d-4ed0-8800-ade85923513d","status":"PASS","observation":{"rowId":81,"reason":"paid","calls":0,"terminal":true,"rail":"content_invoice","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.content_invoice.after_send","label":"content_invoice: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"4c51574d-3149-41bd-9992-c90dae54ebdb","status":"PASS","observation":{"rowId":82,"syntheticCalls":1,"rail":"content_invoice","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.booking_component.before_send","label":"booking_component: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"d3c18c6e-5492-4472-9b18-dc04b97cf954","status":"PASS","observation":{"rowId":83,"reason":"paid","calls":0,"terminal":true,"rail":"booking_component","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.booking_component.after_send","label":"booking_component: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"2bbc168d-61f4-4260-83b0-6402e02cfd41","status":"PASS","observation":{"rowId":84,"syntheticCalls":1,"rail":"booking_component","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.partial_settlement.before_send","label":"partial_settlement: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"5b03f055-72d2-43fd-bf4c-d540505c44c6","status":"PASS","observation":{"rowId":85,"reason":"paid","calls":0,"terminal":true,"rail":"partial_settlement","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.partial_settlement.after_send","label":"partial_settlement: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"90e43a43-6323-4946-b555-69dc10361cde","status":"PASS","observation":{"rowId":86,"syntheticCalls":1,"rail":"partial_settlement","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.typed_fee_ledger.before_send","label":"typed_fee_ledger: recorded birth before synthetic send","scope":"readable-record-subset","scenario":"11efbab4-6e31-4351-929c-0acca5767ad4","status":"PASS","observation":{"rowId":87,"reason":"paid","calls":0,"terminal":true,"rail":"typed_fee_ledger","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"payment.typed_fee_ledger.after_send","label":"typed_fee_ledger: recorded birth after synthetic send","scope":"readable-record-subset","scenario":"cc2cdeb9-c06e-4bf6-bdeb-4cc5efbcf2cc","status":"PASS","observation":{"rowId":88,"syntheticCalls":1,"rail":"typed_fee_ledger","stimulus":"recorded-birth-not-authoritative-writer"}},{"id":"cancel.cart_empty","label":"Live cancel reason cart_empty; cancelled row terminal","scope":"readable-record-subset","scenario":"acd92be9-1f11-4679-aa72-a8d9e2a2d453","status":"PASS","observation":{"rowId":89,"reason":"cart_empty","calls":0,"terminal":true}},{"id":"cancel.unsubscribed","label":"Live cancel reason unsubscribed; cancelled row terminal","scope":"readable-record-subset","scenario":"46ae69ab-c498-4dc4-ae29-bcbabf7bb040","status":"PASS","observation":{"rowId":90,"reason":"unsubscribed","calls":0,"terminal":true}},{"id":"cancel.account_gone","label":"Live cancel reason account_gone; cancelled row terminal","scope":"readable-record-subset","scenario":"d37d68f6-da2f-4344-8032-bf7da397a2a8","status":"PASS","observation":{"rowId":91,"reason":"account_gone","calls":0,"terminal":true}},{"id":"cancel.no_email","label":"Live cancel reason no_email; cancelled row terminal","scope":"readable-record-subset","scenario":"3602c8d5-5aaa-4d36-9601-8f1b75f9c7fb","status":"PASS","observation":{"rowId":92,"reason":"no_email","calls":0,"terminal":true}},{"id":"cancel.superseded","label":"Live cancel reason superseded; cancelled row terminal","scope":"readable-record-subset","scenario":"ce3d59b1-edff-44d7-936a-c5e33379ec8b","status":"PASS","observation":{"rowId":93,"reason":"superseded","calls":0,"terminal":true}},{"id":"cancel.item_changed","label":"Live cancel reason item_changed; cancelled row terminal","scope":"readable-record-subset","scenario":"fb150362-65d5-40b0-9fe1-239f9fc75957","status":"PASS","observation":{"rowId":94,"reason":"item_changed","calls":0,"terminal":true}},{"id":"cancel.payment_correlation_ambiguous","label":"Live cancel reason payment_correlation_ambiguous; cancelled row terminal","scope":"readable-record-subset","scenario":"cc328ed0-91f2-4f69-b5c8-b16723159f07","status":"PASS","observation":{"rowId":95,"reason":"payment_correlation_ambiguous","calls":0,"terminal":true}},{"id":"cancel.suspended","label":"Suspended account mid-sequence","scope":"readable-record-subset","scenario":"1369df21-467b-47f0-ab8c-4c3b64df3ecd","status":"PASS","observation":{"rowId":96,"reason":"account_gone","calls":0,"terminal":true}},{"id":"cancel.missing_email","label":"Email removed after queue","scope":"readable-record-subset","scenario":"5d280ef1-87f5-4dd6-ab69-0acc44107fcc","status":"PASS","observation":{"rowId":97,"reason":"no_email","calls":0,"terminal":true}},{"id":"cancel.payment_rail_unknown","label":"Unreadable payment coverage cancels an already queued reminder","scope":"readable-record-subset","scenario":"b039c639-0300-4ef1-aee1-879d3150ab1a","status":"PASS","observation":{"rowId":98,"reason":"payment_rail_unknown","calls":0,"terminal":true}},{"id":"claim.concurrent","label":"Two dispatchers atomically claim one row; one synthetic handoff","scope":"readable-record-subset","scenario":"ca20960b-0d44-4d7b-aa2d-95665e4408f6","status":"PASS","observation":{"syntheticCalls":1,"competingClaims":2}},{"id":"sellout.before_send","label":"Sell-out before due reminder handoff","scope":"readable-record-subset","scenario":"65c807f4-8b9f-499e-8e14-1a625e886186","status":"PASS","observation":{"rowId":100,"reason":"item_changed","calls":0,"terminal":true}},{"id":"sellout.after_send","label":"Sell-out after due reminder handoff","scope":"readable-record-subset","scenario":"a7945833-5e5b-47fe-8529-f58e8fbf43a0","status":"PASS","observation":{"syntheticCalls":1,"sellOutAfterHandoff":true}},{"id":"sellout.final_read_handoff","label":"Measured inventory residual: accepted marketing only; change notice held","scope":"accepted-residual-marketing-only","scenario":"89f41d6c-d2a6-437d-bc9c-35f0123a1125","status":"PASS","observation":{"classification":"accepted_residual_marketing_only","fixed":false,"marketingMeasurements":[{"kind":"cart_reminder_1h","availabilityReadReturnedToSyntheticProviderMs":8.995445999999902,"finalVerifierReturnedToInvokeMs":4.390878999999586,"status":"sent","syntheticCalls":1,"acceptedResidual":true,"fixed":false},{"kind":"cart_reminder_1d","availabilityReadReturnedToSyntheticProviderMs":8.976749000000382,"finalVerifierReturnedToInvokeMs":4.337015000000065,"status":"sent","syntheticCalls":1,"acceptedResidual":true,"fixed":false},{"kind":"cart_reminder_3d","availabilityReadReturnedToSyntheticProviderMs":10.962489999999889,"finalVerifierReturnedToInvokeMs":4.154489999999896,"status":"sent","syntheticCalls":1,"acceptedResidual":true,"fixed":false}],"itemChange":{"status":"pending","syntheticCalls":0,"blocker":"must_have_payment_ordering_unknown","actualHandoffGapMs":null,"prospectiveAvailabilityReadToBoundaryMs":53.964319000000614,"prospectiveOnly":true,"injectedDelayMs":10,"residualAccepted":false}}},{"id":"price.9.99","label":"Integer-cent price boundary 9.99","scope":"readable-record-subset","scenario":"1fb0e60d-169e-4f87-a1cc-7a7e74837f0a","status":"PASS","observation":{"priceDeltaCents":-1,"changes":1,"reasons":["price_down"]}},{"id":"price.10.00","label":"Integer-cent price boundary 10.00","scope":"readable-record-subset","scenario":"62bf6dc3-45b0-4b24-9fc6-12af804e2ce0","status":"PASS","observation":{"priceDeltaCents":0,"changes":0,"reasons":[]}},{"id":"price.10.01","label":"Integer-cent price boundary 10.01","scope":"readable-record-subset","scenario":"3f166c35-eb10-4af4-bab2-c3abacdbe859","status":"PASS","observation":{"priceDeltaCents":1,"changes":1,"reasons":["price_up"]}},{"id":"change.no_snapshot","label":"Legacy cart without snapshot is skipped, not guessed","scope":"readable-record-subset","scenario":"7b2d1cc0-0e3d-406d-9052-29318afca12f","status":"PASS","observation":{"reason":"no_snapshot","rows":0}},{"id":"change.notified_once","label":"Same catalog change queues and marks once","scope":"readable-record-subset","scenario":"4a9731d8-4252-4099-8a16-897e62f14a43","status":"PASS","observation":{"rows":1,"reason":"already_notified"}},{"id":"change.unsubscribed_eligibility","label":"Change notice exempt from consent and quiet hours","scope":"readable-record-subset","scenario":"8f790105-d81a-4605-834e-87d016934b18","status":"PASS","observation":{"consentExemptionVerified":true,"deliveryHeld":true,"syntheticCalls":0}},{"id":"change.unsubscribed_sent","label":"Unsubscribed traveler actually receives change notice","scope":"unresolved-delivery-guarantee","scenario":"4041e2ba-e99b-4301-a869-12e43a353ece","status":"BLOCKED","observation":{"blocked":"must_have_payment_ordering_unknown","actualDeliveryProof":false,"rowId":111}},{"id":"guest.claim","label":"Guest receives nothing; authenticated claim starts reminders","scope":"readable-record-subset","scenario":"8b892134-e489-4650-9ddc-2eac97f7602b","status":"PASS","observation":{"beforeClaim":0,"afterClaim":1}},{"id":"resume.cap","label":"New sequence ignores old step history but respects daily cap","scope":"readable-record-subset","scenario":"c81177d7-7585-4040-a5e5-acb32432a19b","status":"PASS","observation":{"newSequence":true,"dailyCapRespected":true}},{"id":"quiet.08:59:59","label":"Quiet-window send boundary 08:59:59","scope":"readable-record-subset","scenario":"4a9b5848-3def-4cb2-a680-970b8b7654fc","status":"PASS","observation":{"time":"08:59:59","status":"pending","calls":0,"reason":"outside_marketing_window"}},{"id":"quiet.09:00:00","label":"Quiet-window send boundary 09:00:00","scope":"readable-record-subset","scenario":"5ecb3b96-e603-4067-98a4-421db99d25e2","status":"PASS","observation":{"time":"09:00:00","status":"sent","calls":1,"reason":null}},{"id":"quiet.19:59:59","label":"Quiet-window send boundary 19:59:59","scope":"readable-record-subset","scenario":"203b9230-de09-479c-90bb-a14908d3b5b3","status":"PASS","observation":{"time":"19:59:59","status":"sent","calls":1,"reason":null}},{"id":"quiet.20:00:00","label":"Quiet-window send boundary 20:00:00","scope":"readable-record-subset","scenario":"24ffb4b9-e402-4d58-ba77-f236beb16b77","status":"PASS","observation":{"time":"20:00:00","status":"pending","calls":0,"reason":"outside_marketing_window"}},{"id":"quiet.unknown_at_send","label":"Timezone disappears after queue; no send and reason recorded","scope":"readable-record-subset","scenario":"f09daddb-3b80-418b-aa99-bca700bb37de","status":"PASS","observation":{"status":"cancelled","reason":"unknown_timezone","calls":0}},{"id":"marketing.cart_priority","label":"Cart beats itinerary reminder for one marketing day","scope":"readable-record-subset","scenario":"7acbe691-35c3-4030-8f72-c9f2691c5785","status":"PASS","observation":{"cartEnqueued":1,"itineraryDeferred":true,"syntheticCalls":0}},{"id":"marketing.cap_at_send","label":"Another marketing delivery takes the day after queue: no second send","scope":"readable-record-subset","scenario":"94453e7d-42f7-4d7d-92ac-9a200f0b2b6c","status":"PASS","observation":{"reason":"daily_marketing_cap","syntheticCalls":0}},{"id":"fault.skipped_sweep","label":"Deliberately skipped cart still cancelled by dispatcher","scope":"readable-record-subset","scenario":"b7e07205-6964-4097-96b9-1b871dd46cc3","status":"PASS","observation":{"rowId":123,"reason":"item_changed","calls":0,"terminal":true,"skippedCandidates":0}},{"id":"fault.candidate_query","label":"Candidate query exception produces FAILED heartbeat","scope":"readable-record-subset","scenario":"cb21e09d-67e7-41e4-8dd9-20d1f13f9049","status":"PASS","observation":{"heartbeat":"FAILED","httpStatus":500,"enqueued":0}},{"id":"fault.check.initial","label":"Dispatcher initial check throws: terminal cancellation, zero send","scope":"readable-record-subset","scenario":"d841543e-2f53-499a-8315-01129526d488","status":"PASS","observation":{"rowId":124,"reason":"check_failed","calls":0,"terminal":true}},{"id":"fault.check.final","label":"Dispatcher final check throws: terminal cancellation, zero send","scope":"readable-record-subset","scenario":"1f84a171-617b-4712-8026-6c48e9426a86","status":"PASS","observation":{"rowId":125,"reason":"check_failed","calls":0,"terminal":true}},{"id":"payment.residual","label":"Approved marketing-only final-read/payment residual window measured","scope":"readable-record-subset","scenario":"0f80d1ca-2eb4-4033-9432-d039d2ed8089","status":"PASS","observation":{"postReadToInvokeMs":28.068375000000742,"syntheticCalls":1,"acceptedMarketingWindowOnly":true}},{"id":"stripe.recorded_replays","label":"Three recorded Stripe-like signals never duplicate email","scope":"readable-record-subset","scenario":"2d1a69d1-7d81-495c-bf9d-47fc7cbc0c18","status":"PASS","observation":{"replays":3,"syntheticCalls":1,"actualWebhookCalls":0}},{"id":"stripe.recorded_competition","label":"Concurrent recorded success signals plus competing dispatchers","scope":"readable-record-subset","scenario":"948d7a36-86d3-4af4-97f1-78dc8210dd71","status":"PASS","observation":{"rowId":128,"reason":"paid","calls":0,"terminal":true,"actualWebhookCalls":0,"actualSuccessPageCalls":0}},{"id":"unknown.stripe_activity_before_local_persistence_or_unstamped_lifecycle","label":"All-rail coverage gap: stripe_activity_before_local_persistence_or_unstamped_lifecycle","scope":"unresolved-payment-coverage","scenario":"4d61b226-507d-49fe-8e94-4097b2a6a6bb","status":"BLOCKED","observation":{"blocked":"stripe_activity_before_local_persistence_or_unstamped_lifecycle","failClosed":true,"allRailProof":false}},{"id":"unknown.off_platform_partner_payment_without_local_update","label":"All-rail coverage gap: off_platform_partner_payment_without_local_update","scope":"unresolved-payment-coverage","scenario":"754931e4-d344-4dc5-a7d3-7f75e3492707","status":"BLOCKED","observation":{"blocked":"off_platform_partner_payment_without_local_update","failClosed":true,"allRailProof":false}},{"id":"unknown.fee_ledger_source_without_proven_traveler_ownership","label":"All-rail coverage gap: fee_ledger_source_without_proven_traveler_ownership","scope":"unresolved-payment-coverage","scenario":"181a8057-512a-466c-a4b1-b5ef864d470d","status":"BLOCKED","observation":{"blocked":"fee_ledger_source_without_proven_traveler_ownership","failClosed":true,"allRailProof":false}},{"id":"stripe.actual.replay_3x","label":"Actual payment handlers: replay_3x","scope":"unresolved-authoritative-handler-coverage","scenario":"f5c7f870-e27d-41da-ac3c-51b0b20bdb93","status":"BLOCKED","observation":{"blocked":"authentic-handler-writer-proof-not-established","entryStatus":503,"authenticatedEventsProcessed":0,"actualSuccessPageCalls":0,"detail":"Entry probe only; no signing credentials or replacement payment writer injected"}},{"id":"stripe.actual.webhook_success_together","label":"Actual payment handlers: webhook_success_together","scope":"unresolved-authoritative-handler-coverage","scenario":"7f71b02c-ce70-4a80-b916-e35510c91aaa","status":"BLOCKED","observation":{"blocked":"authentic-handler-writer-proof-not-established","entryStatus":503,"authenticatedEventsProcessed":0,"actualSuccessPageCalls":0,"detail":"Entry probe only; no signing credentials or replacement payment writer injected"}}],"realEmails":0,"actualExternalPaymentCalls":0,"releaseBlocked":true}
+# Subtest: Part 8: explicit randomized scenario matrix; provider-free isolated database
+ok 8 - Part 8: explicit randomized scenario matrix; provider-free isolated database
+  ---
+  duration_ms: 9188.267363
+  ...
+# New database connection established
+# New database connection established
+# New database connection established
+# {"part":"6-addendum","loops":[{"loop":1,"scenario":"55c514ab-9600-444e-9029-5cc2df7e1ecd","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["check_failed:initial; late completion and retries cannot send","check_failed:final; late completion and retries cannot send","check_failed:sql; late completion and retries cannot send","check_failed:timeout; late completion and retries cannot send","pre-queue read errors and malformed/unknown read results refuse enqueue","local:19:59:00:sent","local:20:00:00:pending","local:08:59:00:pending","crossing 20:00 after final read holds before handoff","deferral rounds to exact eligible minute","two direct dispatchers and drain race: exactly one synthetic invocation","payment_correlation_ambiguous stored and terminal","default payment UNKNOWN cancels without transport","item notice exempt from consent/timezone/window; must-have hold retained; second price change cancels"],"actualProviderCalls":0,"releaseBlocked":true},{"loop":2,"scenario":"015b6567-3770-4b91-afd8-ec1833f7ecce","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["check_failed:initial; late completion and retries cannot send","check_failed:final; late completion and retries cannot send","check_failed:sql; late completion and retries cannot send","check_failed:timeout; late completion and retries cannot send","pre-queue read errors and malformed/unknown read results refuse enqueue","local:19:59:00:sent","local:20:00:00:pending","local:08:59:00:pending","crossing 20:00 after final read holds before handoff","deferral rounds to exact eligible minute","two direct dispatchers and drain race: exactly one synthetic invocation","payment_correlation_ambiguous stored and terminal","default payment UNKNOWN cancels without transport","item notice exempt from consent/timezone/window; must-have hold retained; second price change cancels"],"actualProviderCalls":0,"releaseBlocked":true}],"realEmails":0}
+# Subtest: Part 6 addendum: two fresh loops; errors, timeouts, holds, claims and item exemptions
+ok 9 - Part 6 addendum: two fresh loops; errors, timeouts, holds, claims and item exemptions
+  ---
+  duration_ms: 3325.552053
+  ...
+# New database connection established
+# New database connection established
+# New database connection established
+# New database connection established
+# {"part":6,"loops":[{"loop":1,"scenario":"225eca3c-ef0b-4c50-959a-9e31074fa06e","checks":["read-only:content_invoice; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","read-only:booking_component; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","read-only:partial_settlement; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","read-only:typed_fee_ledger; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","cancel:paid; drain/direct/admin replay suppressed","cancel:cart_empty; drain/direct/admin replay suppressed","cancel:unsubscribed; drain/direct/admin replay suppressed","cancel:item_changed; drain/direct/admin replay suppressed","cancel:superseded; drain/direct/admin replay suppressed","cancel:account_gone; drain/direct/admin replay suppressed","cancel:no_email; drain/direct/admin replay suppressed","suspension detail","recipient changed after enqueue","JSONB reordered keys accepted; changed value and malformed items fail closed","payment between preliminary check and FINAL check cancels","marketing-only accepted residual window measured with controlled 15ms delay","three recorded Stripe-like replays; concurrent recorded success signals; one synthetic email","two competing delivery claims send once","FAULT: sweep omits candidate; dispatcher catches availability mismatch independently","item-change consent exemption; queued target comparison; must-have timing hold; changed target cancels","item target values and quoted HTML independently verified, not just cart digest","pre-queue stale item facts rejected; no outbox or notified-marker commit","pre-queue reminder independently rejects withdrawn consent","shared SDK/synthetic boundary rejects before invoke"],"attacks":["legacy/forged row without server queue facts","tampered queued digest","forced retry of cancelled row retains cancellation","final verifier failure never invokes provider","default UNKNOWN and production boundary never bypassed by test seam"],"measured":{"queryAndVerificationMs":26.6140519999999,"postReadToInvokeMs":19.265558000000055,"paymentInstant":"2026-10-11T04:58:18.565Z","marketing":true},"actualStripeHandlerCoverage":"OPEN: recorded signal fixtures only","allRailCertified":false,"realEmails":0,"releaseBlocked":true},{"loop":2,"scenario":"dd7864fd-bce9-47fe-a994-f9cdbe10dc65","checks":["read-only:content_invoice; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","read-only:booking_component; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","read-only:partial_settlement; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","read-only:typed_fee_ledger; owner/other-owner; birth vs lifecycle; before/at/after; missing or contradictory ownership","cancel:paid; drain/direct/admin replay suppressed","cancel:cart_empty; drain/direct/admin replay suppressed","cancel:unsubscribed; drain/direct/admin replay suppressed","cancel:item_changed; drain/direct/admin replay suppressed","cancel:superseded; drain/direct/admin replay suppressed","cancel:account_gone; drain/direct/admin replay suppressed","cancel:no_email; drain/direct/admin replay suppressed","suspension detail","recipient changed after enqueue","JSONB reordered keys accepted; changed value and malformed items fail closed","payment between preliminary check and FINAL check cancels","marketing-only accepted residual window measured with controlled 15ms delay","three recorded Stripe-like replays; concurrent recorded success signals; one synthetic email","two competing delivery claims send once","FAULT: sweep omits candidate; dispatcher catches availability mismatch independently","item-change consent exemption; queued target comparison; must-have timing hold; changed target cancels","item target values and quoted HTML independently verified, not just cart digest","pre-queue stale item facts rejected; no outbox or notified-marker commit","pre-queue reminder independently rejects withdrawn consent","shared SDK/synthetic boundary rejects before invoke"],"attacks":["legacy/forged row without server queue facts","tampered queued digest","forced retry of cancelled row retains cancellation","final verifier failure never invokes provider","default UNKNOWN and production boundary never bypassed by test seam"],"measured":{"queryAndVerificationMs":24.89483999999993,"postReadToInvokeMs":18.607256000000234,"paymentInstant":"2026-10-11T04:58:20.824Z","marketing":true},"actualStripeHandlerCoverage":"OPEN: recorded signal fixtures only","allRailCertified":false,"realEmails":0,"releaseBlocked":true}],"timings":[{"queryAndVerificationMs":6.573742999999922,"postReadToInvokeMs":0.3318419999998241,"paymentInstant":"2026-10-11T04:58:18.342Z","marketing":true},{"queryAndVerificationMs":26.6140519999999,"postReadToInvokeMs":19.265558000000055,"paymentInstant":"2026-10-11T04:58:18.565Z","marketing":true},{"queryAndVerificationMs":6.170436000000336,"postReadToInvokeMs":0.23513400000001639,"paymentInstant":"2026-10-11T04:58:18.716Z","marketing":true},{"queryAndVerificationMs":11.491910000000644,"postReadToInvokeMs":0.2515300000004572,"paymentInstant":"2026-10-11T04:58:20.641Z","marketing":true},{"queryAndVerificationMs":24.89483999999993,"postReadToInvokeMs":18.607256000000234,"paymentInstant":"2026-10-11T04:58:20.824Z","marketing":true},{"queryAndVerificationMs":5.449278000000049,"postReadToInvokeMs":0.244818000000123,"paymentInstant":"2026-10-11T04:58:20.936Z","marketing":true}]}
+# Subtest: Part 6: two fresh native loops; live cancellation, recorded-signal orderings and measured synthetic boundary
+ok 10 - Part 6: two fresh native loops; live cancellation, recorded-signal orderings and measured synthetic boundary
+  ---
+  duration_ms: 4578.728188
+  ...
+1..10
+# tests 24
+# suites 0
+# pass 22
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

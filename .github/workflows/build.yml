@@ -3063,7 +3063,7 @@ jobs:
           # Independently fixed CI target; never derive approval from the queried DB.
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traveloure
           MESSAGING_DEV_FINGERPRINT: 96b4d02d7161da67c35e6d9aeed73112
-        run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/cart-email-state.test.ts server/__tests__/cart-email-state.db.test.ts
+        run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/cart-email-state.test.ts server/__tests__/cart-email-state.db.test.ts server/__tests__/commerce-provider-idempotency.test.ts
       - name: Commerce scenario and fault matrix (isolated; unresolved rules fail the gate)
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/traveloure

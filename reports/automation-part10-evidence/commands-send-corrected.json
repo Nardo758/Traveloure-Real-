@@ -1,0 +1,42 @@
+[
+  {
+    "name": "send-parts6-9-corrected-loop-1",
+    "startedAt": "2026-10-11T04:59:18.868Z",
+    "finishedAt": "2026-10-11T04:59:50.548Z",
+    "exitCode": 0,
+    "passing": 9,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "provider-failure-corrected-loop-1",
+    "startedAt": "2026-10-11T04:59:50.550Z",
+    "finishedAt": "2026-10-11T05:00:00.194Z",
+    "exitCode": 0,
+    "passing": 15,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "send-parts6-9-corrected-loop-2",
+    "startedAt": "2026-10-11T05:00:00.195Z",
+    "finishedAt": "2026-10-11T05:00:33.017Z",
+    "exitCode": 0,
+    "passing": 9,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "provider-failure-corrected-loop-2",
+    "startedAt": "2026-10-11T05:00:33.018Z",
+    "finishedAt": "2026-10-11T05:00:52.379Z",
+    "exitCode": 0,
+    "passing": 15,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  }
+]

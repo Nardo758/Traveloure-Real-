@@ -1,0 +1,142 @@
+[
+  {
+    "name": "typecheck",
+    "startedAt": "2026-10-11T04:53:18.488Z",
+    "finishedAt": "2026-10-11T04:53:30.492Z",
+    "exitCode": 1,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "mutation-auth-regenerate",
+    "startedAt": "2026-10-11T04:53:30.495Z",
+    "finishedAt": "2026-10-11T04:54:07.853Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "mutation-auth-check",
+    "startedAt": "2026-10-11T04:54:07.854Z",
+    "finishedAt": "2026-10-11T04:54:43.144Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "mutation-auth-coverage-regenerate",
+    "startedAt": "2026-10-11T04:54:43.144Z",
+    "finishedAt": "2026-10-11T04:54:43.430Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "mutation-auth-coverage-check",
+    "startedAt": "2026-10-11T04:54:43.431Z",
+    "finishedAt": "2026-10-11T04:54:43.726Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "guard-batch",
+    "startedAt": "2026-10-11T04:54:43.727Z",
+    "finishedAt": "2026-10-11T04:55:08.149Z",
+    "exitCode": 1,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "golden",
+    "startedAt": "2026-10-11T04:55:08.150Z",
+    "finishedAt": "2026-10-11T04:56:13.360Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "cart-parts2-5-loop-1",
+    "startedAt": "2026-10-11T04:56:13.362Z",
+    "finishedAt": "2026-10-11T04:57:50.184Z",
+    "exitCode": 0,
+    "passing": 11,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "send-parts6-9-loop-1",
+    "startedAt": "2026-10-11T04:57:50.184Z",
+    "finishedAt": "2026-10-11T04:58:21.857Z",
+    "exitCode": 1,
+    "passing": 22,
+    "failing": 2,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "cart-parts2-5-loop-2",
+    "startedAt": "2026-10-11T04:58:21.857Z",
+    "finishedAt": "2026-10-11T04:59:50.813Z",
+    "exitCode": 0,
+    "passing": 11,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "send-parts6-9-loop-2",
+    "startedAt": "2026-10-11T04:59:50.814Z",
+    "finishedAt": "2026-10-11T05:00:28.074Z",
+    "exitCode": 1,
+    "passing": 22,
+    "failing": 2,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  },
+  {
+    "name": "sdk-provider-free",
+    "startedAt": "2026-10-11T05:00:28.075Z",
+    "finishedAt": "2026-10-11T05:00:52.786Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 16,
+    "vitestFailing": 0
+  },
+  {
+    "name": "vendor-proposal-provider-free",
+    "startedAt": "2026-10-11T05:00:52.786Z",
+    "finishedAt": "2026-10-11T05:00:54.451Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 17,
+    "vitestFailing": 0
+  },
+  {
+    "name": "qa-dry-proof",
+    "startedAt": "2026-10-11T05:00:54.452Z",
+    "finishedAt": "2026-10-11T05:01:15.462Z",
+    "exitCode": 0,
+    "passing": 0,
+    "failing": 0,
+    "vitestPassing": 0,
+    "vitestFailing": 0
+  }
+]

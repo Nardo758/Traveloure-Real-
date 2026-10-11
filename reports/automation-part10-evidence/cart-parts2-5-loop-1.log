@@ -1,0 +1,481 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# [tavily] This package is deprecated. Please use @tavily/core instead:
+#   npm install @tavily/core
+#   https://www.npmjs.com/package/@tavily/core
+# New database connection established
+# [2026-10-11 04:56:27.283 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.305 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.318 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.329 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.339 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.354 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.365 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.375 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.480 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:27.533 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "empty_cart"
+# [2026-10-11 04:56:27.760 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 04:56:27.760 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# New database connection established
+# PART2_LOOP_RESULT={"loop":1,"checks":"direct-writer atomicity, snapshots, injection, malformed JSON, concurrency, resume, notification state","before":{"successes":60,"samples":60,"successRate":1,"p50Ms":4.807722000000467,"p95Ms":10.002937000000202},"after":{"successes":60,"samples":60,"successRate":1,"p50Ms":5.395423999999366,"p95Ms":6.7329170000002705}}
+# New database connection established
+# [2026-10-11 04:56:28.796 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.816 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.826 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.837 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.848 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.858 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.872 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.880 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:28.998 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 04:56:29.057 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "empty_cart"
+# [2026-10-11 04:56:29.242 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 04:56:29.242 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# PART2_LOOP_RESULT={"loop":2,"checks":"direct-writer atomicity, snapshots, injection, malformed JSON, concurrency, resume, notification state","before":{"successes":60,"samples":60,"successRate":1,"p50Ms":4.779363000000558,"p95Ms":6.632470999999896},"after":{"successes":60,"samples":60,"successRate":1,"p50Ms":5.4237700000003315,"p95Ms":10.273795000000064}}
+# Subtest: two randomized isolated Part 2 loops, actual cart writers and before/after benchmark
+ok 1 - two randomized isolated Part 2 loops, actual cart writers and before/after benchmark
+  ---
+  duration_ms: 4714.804373
+  ...
+# Subtest: pure builder tolerates malformed, huge, legacy and hostile input without traversal
+ok 2 - pure builder tolerates malformed, huge, legacy and hostile input without traversal
+  ---
+  duration_ms: 10.50876
+  ...
+# Subtest: origin is server-scoped to mutation routes, never reads, and isolated across async work
+ok 3 - origin is server-scoped to mutation routes, never reads, and isolated across async work
+  ---
+  duration_ms: 0.675517
+  ...
+# Subtest: builder fault becomes a safe error, rather than exposing the injected exception
+ok 4 - builder fault becomes a safe error, rather than exposing the injected exception
+  ---
+  duration_ms: 0.650946
+  ...
+# Subtest: idle boundary below, exactly at, and above 60 minutes
+ok 5 - idle boundary below, exactly at, and above 60 minutes
+  ---
+  duration_ms: 0.225271
+  ...
+# Subtest: missing/future/malformed stamps never get a guessed clock; empty cart closes sequence
+ok 6 - missing/future/malformed stamps never get a guessed clock; empty cart closes sequence
+  ---
+  duration_ms: 0.12359
+  ...
+# Subtest: old cart skips change email; notified values suppress repetition
+ok 7 - old cart skips change email; notified values suppress repetition
+  ---
+  duration_ms: 0.17436
+  ...
+# [Fever/Impact] API not configured - IMPACT_ACCOUNT_SID and IMPACT_AUTH_TOKEN required
+# [Fever/Impact] Get credentials from https://app.impact.com/secure/mediapartner/account-settings-flow.ihtml
+# [tavily] This package is deprecated. Please use @tavily/core instead:
+#   npm install @tavily/core
+#   https://www.npmjs.com/package/@tavily/core
+# New database connection established
+# New database connection established
+# [2026-10-11 04:56:33.919 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "Error",
+#       "message": "Injected item-change candidate query failure",
+#       "stack":
+#           Error: Injected item-change candidate query failure
+#               at assessCartItemChanges (/home/runner/workspace/server/services/cart-item-change.service.ts:119:13)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:99:24)
+#               at async NodePgSession.transaction (/home/runner/workspace/node_modules/src/node-postgres/session.ts:259:19)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:97:25)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/cart-item-changes.db.test.ts:288:22)
+#               at async Test.run (node:internal/test_runner/test:797:9)
+#               at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+#     }
+# [2026-10-11 04:56:45.464 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 04:56:45.470 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 15
+# [2026-10-11 04:56:47.458 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "Error",
+#       "message": "Injected item-change candidate query failure",
+#       "stack":
+#           Error: Injected item-change candidate query failure
+#               at assessCartItemChanges (/home/runner/workspace/server/services/cart-item-change.service.ts:119:13)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:99:24)
+#               at async NodePgSession.transaction (/home/runner/workspace/node_modules/src/node-postgres/session.ts:259:19)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:97:25)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/cart-item-changes.db.test.ts:288:22)
+#               at async Test.run (node:internal/test_runner/test:797:9)
+#               at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+#     }
+# [2026-10-11 04:57:01.468 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 04:57:01.473 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 14
+# {"part":5,"loops":[{"loop":1,"scenario":"f44500da-e431-4656-8cc4-1478215a820c","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["default UNKNOWN blocks enqueue and notified marker","price up; one queue; notified linked; snapshot/clock immutable; escaped rendered content","price down","capacity reduction still available is harmless; sold-out loss once","requested-unit stock boundary; quantity-only no false notice; raw notified facts preserved","legacy null/zero/negative requested quantities fail closed","combined change has one email","unsubscribed, unknown timezone, outside marketing hours still selected","marketing daily cap bypassed; item-change queue does not reserve marketing day","deleted/suspended refused","shared paid reader blocks canceled activity at inclusive boundary; partner-only ambiguity","no_snapshot and no activity stamp; no backfill","display/client metadata cannot overwrite snapshot","two concurrent queue passes once","marker failure rolls back enqueue; retry succeeds","guest cannot send; authenticated claim enables subset selection","documented observed target-repeat and unobserved A-B-A limits","five hostile scenarios; failed candidate heartbeat then genuine recovery","existing sweep integration; repeat sweep no duplicate","generic/drain/admin paths verify current item facts without provider; production gate"],"attacks":["slot orphan","cross-owner plan","custom quote","currency/decimal/JSON semantics","catalog query fault"],"actualProviderCalls":0,"allRailCertified":false,"realDelivery":"OPEN"},{"loop":2,"scenario":"7a11a87e-8a85-4d77-a78b-f5aad9feded3","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["default UNKNOWN blocks enqueue and notified marker","price up; one queue; notified linked; snapshot/clock immutable; escaped rendered content","price down","capacity reduction still available is harmless; sold-out loss once","requested-unit stock boundary; quantity-only no false notice; raw notified facts preserved","legacy null/zero/negative requested quantities fail closed","combined change has one email","unsubscribed, unknown timezone, outside marketing hours still selected","marketing daily cap bypassed; item-change queue does not reserve marketing day","deleted/suspended refused","shared paid reader blocks canceled activity at inclusive boundary; partner-only ambiguity","no_snapshot and no activity stamp; no backfill","display/client metadata cannot overwrite snapshot","two concurrent queue passes once","marker failure rolls back enqueue; retry succeeds","guest cannot send; authenticated claim enables subset selection","documented observed target-repeat and unobserved A-B-A limits","five hostile scenarios; failed candidate heartbeat then genuine recovery","existing sweep integration; repeat sweep no duplicate","generic/drain/admin paths verify current item facts without provider; production gate"],"attacks":["slot orphan","cross-owner plan","custom quote","currency/decimal/JSON semantics","catalog query fault"],"actualProviderCalls":0,"allRailCertified":false,"realDelivery":"OPEN"}],"realEmails":0,"releaseBlocked":true}
+# Subtest: Part 5: two randomized native loops, must-have selection only, zero provider transport
+ok 8 - Part 5: two randomized native loops, must-have selection only, zero provider transport
+  ---
+  duration_ms: 29544.44946
+  ...
+# New database connection established
+# [2026-10-11 04:57:34.240 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_reminder_requires_guarded_sweep"
+# [2026-10-11 04:57:42.903 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_reminder_requires_guarded_sweep"
+# PART4_DB_EVIDENCE=[{"loop":1,"scenario":"d7c1db53-0a57-43aa-936a-3770ea700144","clean":true,"scope":"recorded-readable-subset-only","rails":[{"rail":"canonical_provider","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"legacy_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"stripe_intent_ledger","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"credits","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"wallet","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"trip_pass","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"partner_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_credit","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"ready_made_purchase","before":true,"at":true,"after":true,"nullColumnTested":false},{"rail":"template_purchase","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_tip","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"booking_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"provider_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"group_transaction","before":true,"at":true,"after":true,"nullColumnTested":true}],"eligibilityCases":11,"duplicates":3,"resumedDayCap":true,"fourthRejected":true,"paidProviderRemovedPartnerOnly":true,"defaultUnknownBlocked":true,"paymentSweepOrderings":2,"guestClaim":true,"itineraryFirstAndCartFirst":true,"realEmails":0},{"loop":2,"scenario":"1ef72726-ce68-4513-af81-5a99abb9bc69","clean":true,"scope":"recorded-readable-subset-only","rails":[{"rail":"canonical_provider","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"legacy_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"stripe_intent_ledger","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"credits","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"wallet","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"trip_pass","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"partner_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_credit","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"ready_made_purchase","before":true,"at":true,"after":true,"nullColumnTested":false},{"rail":"template_purchase","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_tip","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"booking_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"provider_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"group_transaction","before":true,"at":true,"after":true,"nullColumnTested":true}],"eligibilityCases":11,"duplicates":3,"resumedDayCap":true,"fourthRejected":true,"paidProviderRemovedPartnerOnly":true,"defaultUnknownBlocked":true,"paymentSweepOrderings":2,"guestClaim":true,"itineraryFirstAndCartFirst":true,"realEmails":0}]
+# PART4_PURE_EVIDENCE=[{"loop":1,"scenario":"dfbc53bf-a201-4574-9c6d-370a34c834fd","clean":true,"thresholds":9,"localBoundaries":6,"malformedTimestamps":8},{"loop":2,"scenario":"7b985567-a36b-49cc-8226-f0ef98cf9b2a","clean":true,"thresholds":9,"localBoundaries":6,"malformedTimestamps":8}]
+# Subtest: Part 4: two native randomized loops over recorded rails; unknown coverage remains closed
+ok 9 - Part 4: two native randomized loops over recorded rails; unknown coverage remains closed
+  ---
+  duration_ms: 43871.549206
+  ...
+# Subtest: Part 4 pure policy: two fresh loops, all thresholds and local-window boundaries
+ok 10 - Part 4 pure policy: two fresh loops, all thresholds and local-window boundaries
+  ---
+  duration_ms: 3.932024
+  ...
+# [Fever/Impact] API not configured - IMPACT_ACCOUNT_SID and IMPACT_AUTH_TOKEN required
+# [Fever/Impact] Get credentials from https://app.impact.com/secure/mediapartner/account-settings-flow.ihtml
+# [tavily] This package is deprecated. Please use @tavily/core instead:
+#   npm install @tavily/core
+#   https://www.npmjs.com/package/@tavily/core
+# New database connection established
+# New database connection established
+# [2026-10-11 04:57:48.144 +0000] [31mERROR[39m: [36m[background-job] pass failed[39m
+#     [35mjob[39m: "messaging.commerce-email-sweep"
+#     [35mattempt[39m: 1
+#     [35mmaxAttempts[39m: 3
+#     [35mtransient[39m: false
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# [2026-10-11 04:57:48.151 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# [2026-10-11 04:57:48.163 +0000] [31mERROR[39m: [36m[background-job] pass failed[39m
+#     [35mjob[39m: "messaging.commerce-email-sweep"
+#     [35mattempt[39m: 1
+#     [35mmaxAttempts[39m: 3
+#     [35mtransient[39m: false
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# [2026-10-11 04:57:48.163 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# New database connection established
+# [2026-10-11 04:57:48.435 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "legacy-4f7d4ed3-11c7-4138-82a8-489ff90e634f"
+#     err: {
+#       "type": "Error",
+#       "message": "synthetic legacy failure",
+#       "stack":
+#           Error: synthetic legacy failure
+#               at runJob.useBackgroundJobRunner (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:209:48)
+#               at runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:69)
+#               at TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:209:13)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Test.run (node:internal/test_runner/test:797:9)
+#               at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+#     }
+# New database connection established
+# [2026-10-11 04:57:49.001 +0000] [31mERROR[39m: [36m[background-job] pass failed[39m
+#     [35mjob[39m: "messaging.commerce-email-sweep"
+#     [35mattempt[39m: 1
+#     [35mmaxAttempts[39m: 3
+#     [35mtransient[39m: false
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# [2026-10-11 04:57:49.002 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# [2026-10-11 04:57:49.015 +0000] [31mERROR[39m: [36m[background-job] pass failed[39m
+#     [35mjob[39m: "messaging.commerce-email-sweep"
+#     [35mattempt[39m: 1
+#     [35mmaxAttempts[39m: 3
+#     [35mtransient[39m: false
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# [2026-10-11 04:57:49.015 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "DrizzleQueryError",
+#       "message": "Failed query: SELECT 1 / 0 AS injected_candidate_query_failure\\nparams: : division by zero",
+#       "stack":
+#           Error: Failed query: SELECT 1 / 0 AS injected_candidate_query_failure
+#           params: 
+#               at NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async <anonymous> (/home/runner/workspace/server/routes/internal.routes.ts:360:28)
+#           caused by: error: division by zero
+#               at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:149:14)
+#               at async NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:71:12)
+#               at async Object.commerceSweepDependencies.selectCandidates (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:150:9)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:72:22)
+#               at async dispatchDefinition (/home/runner/workspace/server/automations/event-dispatcher.ts:44:18)
+#               at async execute (/home/runner/workspace/server/automations/scheduler-wrapper.ts:43:24)
+#               at async runBackgroundJob (/home/runner/workspace/server/services/background-job-runner.ts:115:16)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#       "query": "SELECT 1 / 0 AS injected_candidate_query_failure",
+#       "params": []
+#     }
+# New database connection established
+# [2026-10-11 04:57:49.266 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "legacy-faac5054-c562-452d-9c66-e0182451083f"
+#     err: {
+#       "type": "Error",
+#       "message": "synthetic legacy failure",
+#       "stack":
+#           Error: synthetic legacy failure
+#               at runJob.useBackgroundJobRunner (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:209:48)
+#               at runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:69)
+#               at TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/commerce-email-sweep.db.test.ts:209:13)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async Test.run (node:internal/test_runner/test:797:9)
+#               at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+#     }
+# PART3_LOOP_EVIDENCE=[{"loop":1,"scenario":"1f7623d5-3afd-406f-8618-bc4a68be9f1d","clean":true,"sequentialRows":2,"concurrentRows":2,"concurrentDuplicates":2,"firstFailureSuccessIsNull":true,"previousSuccessPreserved":true,"emptyEnqueued":0,"deliveryCalls":0,"attackScenarios":5},{"loop":2,"scenario":"064b3c94-a42b-4587-a529-0a66a0e47d47","clean":true,"sequentialRows":2,"concurrentRows":2,"concurrentDuplicates":2,"firstFailureSuccessIsNull":true,"previousSuccessPreserved":true,"emptyEnqueued":0,"deliveryCalls":0,"attackScenarios":5}]
+# Subtest: Part 3: two randomized isolated queue-only loops plus hostile scenarios
+ok 11 - Part 3: two randomized isolated queue-only loops plus hostile scenarios
+  ---
+  duration_ms: 2451.808318
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

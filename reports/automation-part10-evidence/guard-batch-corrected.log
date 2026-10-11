@@ -1,0 +1,159 @@
+{"stageComplete":"scripts/check-test-files-wired.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-test-files-wired.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-workstation-retired.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-workstation-retired.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-workstation-retired.cjs --bundle","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-tripless-cart-writers.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-tripless-cart-writers.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-tripless-cart-writers.cjs --bundle","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-us-spelling.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-us-spelling.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-unlimited-runs.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-unlimited-runs.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-money-endpoints.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-money-endpoints.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-claims-only-user-lookups.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-claims-only-user-lookups.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-trip-card-honesty.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-trip-card-honesty.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-planning-entry.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-planning-entry.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-conflict-markers.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-conflict-markers.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-e2e-helper-waits.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-e2e-helper-waits.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-item-removed-logging.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-item-removed-logging.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-itinerary-rebuild-guard.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-itinerary-rebuild-guard.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-traveler-fee-coverage.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-traveler-fee-coverage.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-unmounted-routers.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-trip-mint-owner-access.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-decision-guards.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-decision-guards.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-decision-guards.cjs --require-assigned","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-ledger-union-merge.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-ledger-union-merge.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-coverage-matrix.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-coverage-matrix.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-env-allowlist.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-env-allowlist.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-omit-schema-ratchet.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-omit-schema-ratchet.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-migration-indexes-declared.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-migration-indexes-declared.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-demand-rollup.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-demand-rollup.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-coords-preservation.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-coords-preservation.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-linkage-preservation.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-artifact-deploy-guard.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-artifact-deploy-guard.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-duplicate-migration-prefixes.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-duplicate-migration-prefixes.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-category-reachability.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-category-reachability.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-roles-needed-reachability.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-roles-needed-reachability.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-page-hex.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-page-hex.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-earn-planner-keys.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-earn-planner-keys.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-trip-route-shadows.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-trip-route-shadows.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-privileged-field-completeness.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-privileged-field-completeness.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-advisor-row-author.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-advisor-row-author.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-preferences-writer.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-preferences-writer.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-query-userid-reads.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-query-userid-reads.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-public-user-id.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-public-user-id.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-ai-draft-eligibility.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-ai-draft-eligibility.cjs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-doc-band-keys.cjs --self-test","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"scripts/check-doc-band-keys.cjs","exitCode":0,"passed":1,"failed":0}
+| Test | Pass / fail | Time (ms) |
+|---|---|---:|
+| scripts/check-test-files-wired.cjs --self-test | PASS | 36.1 |
+| scripts/check-test-files-wired.cjs | PASS | 594.0 |
+| scripts/check-workstation-retired.cjs --self-test | PASS | 30.3 |
+| scripts/check-workstation-retired.cjs | PASS | 1916.0 |
+| scripts/check-workstation-retired.cjs --bundle | PASS | 350.0 |
+| scripts/check-tripless-cart-writers.cjs --self-test | PASS | 36.6 |
+| scripts/check-tripless-cart-writers.cjs | PASS | 711.8 |
+| scripts/check-tripless-cart-writers.cjs --bundle | PASS | 79.3 |
+| scripts/check-us-spelling.cjs --self-test | PASS | 551.8 |
+| scripts/check-us-spelling.cjs | PASS | 1741.3 |
+| scripts/check-unlimited-runs.cjs --self-test | PASS | 223.2 |
+| scripts/check-unlimited-runs.cjs | PASS | 1496.5 |
+| scripts/check-money-endpoints.cjs --self-test | PASS | 33.3 |
+| scripts/check-money-endpoints.cjs | PASS | 2167.1 |
+| scripts/check-claims-only-user-lookups.cjs --self-test | PASS | 30.5 |
+| scripts/check-claims-only-user-lookups.cjs | PASS | 142.9 |
+| scripts/check-trip-card-honesty.cjs --self-test | PASS | 28.6 |
+| scripts/check-trip-card-honesty.cjs | PASS | 362.9 |
+| scripts/check-planning-entry.cjs --self-test | PASS | 38.5 |
+| scripts/check-planning-entry.cjs | PASS | 58.9 |
+| scripts/check-conflict-markers.cjs --self-test | PASS | 34.8 |
+| scripts/check-conflict-markers.cjs | PASS | 24088.0 |
+| scripts/check-e2e-helper-waits.cjs --self-test | PASS | 38.9 |
+| scripts/check-e2e-helper-waits.cjs | PASS | 40.7 |
+| scripts/check-item-removed-logging.cjs --self-test | PASS | 32.2 |
+| scripts/check-item-removed-logging.cjs | PASS | 150.7 |
+| scripts/check-itinerary-rebuild-guard.cjs --self-test | PASS | 40.0 |
+| scripts/check-itinerary-rebuild-guard.cjs | PASS | 143.3 |
+| scripts/check-traveler-fee-coverage.cjs --self-test | PASS | 38.3 |
+| scripts/check-traveler-fee-coverage.cjs | PASS | 46.3 |
+| scripts/check-unmounted-routers.cjs | PASS | 519.2 |
+| scripts/check-trip-mint-owner-access.cjs | PASS | 173.2 |
+| scripts/check-decision-guards.cjs --self-test | PASS | 31.9 |
+| scripts/check-decision-guards.cjs | PASS | 80.6 |
+| scripts/check-decision-guards.cjs --require-assigned | PASS | 79.6 |
+| scripts/check-ledger-union-merge.cjs --self-test | PASS | 200.3 |
+| scripts/check-ledger-union-merge.cjs | PASS | 35.8 |
+| scripts/check-coverage-matrix.cjs --self-test | PASS | 30.3 |
+| scripts/check-coverage-matrix.cjs | PASS | 72.3 |
+| scripts/check-env-allowlist.cjs --self-test | PASS | 31.6 |
+| scripts/check-env-allowlist.cjs | PASS | 56.8 |
+| scripts/check-omit-schema-ratchet.cjs --self-test | PASS | 29.8 |
+| scripts/check-omit-schema-ratchet.cjs | PASS | 32.0 |
+| scripts/check-migration-indexes-declared.cjs --self-test | PASS | 27.0 |
+| scripts/check-migration-indexes-declared.cjs | PASS | 68.2 |
+| scripts/check-demand-rollup.cjs --self-test | PASS | 33.1 |
+| scripts/check-demand-rollup.cjs | PASS | 31.6 |
+| scripts/check-coords-preservation.cjs --self-test | PASS | 25.5 |
+| scripts/check-coords-preservation.cjs | PASS | 28.0 |
+| scripts/check-linkage-preservation.cjs | PASS | 251.7 |
+| scripts/check-artifact-deploy-guard.cjs --self-test | PASS | 32.9 |
+| scripts/check-artifact-deploy-guard.cjs | PASS | 51.1 |
+| scripts/check-duplicate-migration-prefixes.cjs --self-test | PASS | 25.5 |
+| scripts/check-duplicate-migration-prefixes.cjs | PASS | 27.5 |
+| scripts/check-category-reachability.cjs --self-test | PASS | 33.4 |
+| scripts/check-category-reachability.cjs | PASS | 64.3 |
+| scripts/check-roles-needed-reachability.cjs --self-test | PASS | 49.8 |
+| scripts/check-roles-needed-reachability.cjs | PASS | 38.5 |
+| scripts/check-page-hex.cjs --self-test | PASS | 27.0 |
+| scripts/check-page-hex.cjs | PASS | 193.7 |
+| scripts/check-earn-planner-keys.cjs --self-test | PASS | 28.6 |
+| scripts/check-earn-planner-keys.cjs | PASS | 51.8 |
+| scripts/check-trip-route-shadows.cjs --self-test | PASS | 29.6 |
+| scripts/check-trip-route-shadows.cjs | PASS | 36.0 |
+| scripts/check-privileged-field-completeness.cjs --self-test | PASS | 30.7 |
+| scripts/check-privileged-field-completeness.cjs | PASS | 177.6 |
+| scripts/check-advisor-row-author.cjs --self-test | PASS | 31.0 |
+| scripts/check-advisor-row-author.cjs | PASS | 167.2 |
+| scripts/check-preferences-writer.cjs --self-test | PASS | 28.8 |
+| scripts/check-preferences-writer.cjs | PASS | 122.8 |
+| scripts/check-query-userid-reads.cjs --self-test | PASS | 29.1 |
+| scripts/check-query-userid-reads.cjs | PASS | 94.5 |
+| scripts/check-public-user-id.cjs --self-test | PASS | 32.2 |
+| scripts/check-public-user-id.cjs | PASS | 443.4 |
+| scripts/check-ai-draft-eligibility.cjs --self-test | PASS | 31.7 |
+| scripts/check-ai-draft-eligibility.cjs | PASS | 210.8 |
+| scripts/check-doc-band-keys.cjs --self-test | PASS | 29.2 |
+| scripts/check-doc-band-keys.cjs | PASS | 41.2 |
+Evidence: reports/automation-part1-evidence/golden-1-9093261c-e24f-4105-bc01-8684a27ed222/results.json
