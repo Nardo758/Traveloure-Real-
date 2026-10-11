@@ -185,6 +185,11 @@ jobs:
       # and R-ac's free re-times — the fourth refused with nothing written. B1–B4.
       - name: Versions board — per-day apply and the free re-time limit
         run: npx tsx --test --test-force-exit server/__tests__/version-board.db.test.ts
+      # V-1 (R437; ledger `2026-10-11-v1-version-sanity`): version stops locate like the slip (trusted
+      # row → listing → Google fact, the fact in memory only — LD 57), the board locates at read time,
+      # and a version's sanity flags (untimed, two dinners, late start) are flagged, never acted on. L1–L5.
+      - name: Versions — locate like the slip; sanity flags only
+        run: npx tsx --test --test-force-exit server/__tests__/v1-version-locate.db.test.ts
 
       # TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): no legacy crowd/pulse field on
       # the four public routes, the 48h Trend freshness gate, and /api/health's score age. T1–T4.

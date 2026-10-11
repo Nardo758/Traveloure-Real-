@@ -29,16 +29,26 @@ export interface BoardVersion {
   badge: BadgeKey | null;
   /** Held-batch-1 item 22: the server's strict winner by S1's tiebreak; absent on an older payload ⇒ false. */
   recommended?: boolean;
-  anchor: { name: string; lat: number | null; lng: number | null } | null;
+  /** V-1 (R437): `type` is the stored anchor kind (hotel | neighborhood | activity); absent/null on an older payload. */
+  anchor: { name: string; type?: string | null; lat: number | null; lng: number | null } | null;
+  /** V-1 (R437): the version's sanity flags from its run; absent on an older payload ⇒ none. */
+  flags?: VersionFlag[];
   stops: BoardStop[];
   days: DayDiff[];
+}
+
+export type VersionFlagKey = "untimed_stops" | "duplicate_dinner" | "late_start";
+export interface VersionFlag {
+  key: VersionFlagKey;
+  count: number;
+  stopNames: string[];
 }
 
 export interface VersionsBoardView {
   run: { comparisonId: string; runId: string | null; runAt: string; charge?: RunCharge | null } | null;
   plan: { stops: BoardStop[] };
   versions: BoardVersion[];
-  retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean> };
+  retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean>; unlimited?: boolean };
 }
 
 export type DayPicks = Readonly<Record<number, string>>;
@@ -172,9 +182,11 @@ export function retimeGate(
 ): { free: boolean; remaining: number; line: string } {
   const key = dayRetimeKey(view, dayNumber);
   const used = view.retimes.used[key] ?? 0;
-  const free = retimeIsFree({ runAt: view.run?.runAt ?? null, now, used, limit: view.retimes.limit });
+  // V-1 (R437): a Trip Pass holder's re-times are unlimited inside the window — the server says so.
+  const unlimited = view.retimes.unlimited === true;
+  const free = retimeIsFree({ runAt: view.run?.runAt ?? null, now, used, limit: view.retimes.limit, unlimited });
   const remaining = Math.max(0, view.retimes.limit - used);
-  return { free, remaining, line: retimeLine({ free, remaining, feeLabel }) };
+  return { free, remaining, line: retimeLine({ free, remaining, feeLabel, unlimited }) };
 }
 
 /** Drag payloads (HTML5 dataTransfer, one MIME type). The DAY is the unit across columns. */
@@ -320,5 +332,45 @@ export function runChargeLine(
   const money = charge.currency.toLowerCase() === "usd" ? `$${amount}` : `${charge.currency.toUpperCase()} ${amount}`;
   const paid = `Paid ${opts.formatDate(charge.at)} · ${money}`;
   const ends = opts.windowEndsAt ? new Date(opts.windowEndsAt).getTime() : NaN;
-  return Number.isFinite(ends) && opts.now.getTime() < ends ? `${paid} · free re-times until ${opts.formatTime(opts.windowEndsAt!)}` : paid;
+  if (!(Number.isFinite(ends) && opts.now.getTime() < ends)) return paid;
+  return `${paid} · free re-times until ${windowEndLabel(opts.windowEndsAt!, opts.now, opts)}`;
+}
+
+/**
+ * V-1 (R437): when the free re-time window closes, with its day — the window is 24 h, so a time alone
+ * is ambiguous. "3:00 PM today", "3:00 PM tomorrow", else the date ("Oct 5, 3:00 PM"). Days are the
+ * viewer's own calendar days.
+ */
+export function windowEndLabel(
+  iso: string,
+  now: Date,
+  fmt: { formatDate: (iso: string) => string; formatTime: (iso: string) => string },
+): string {
+  const end = new Date(iso);
+  const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const time = fmt.formatTime(iso);
+  if (dayKey(end) === dayKey(now)) return `${time} today`;
+  if (dayKey(end) === dayKey(tomorrow)) return `${time} tomorrow`;
+  return `${fmt.formatDate(iso)}, ${time}`;
+}
+
+/** V-1 (R437): the version's sanity flags as one line each — flag only, nothing was changed. */
+export function versionFlagLines(flags: readonly VersionFlag[] | undefined): string[] {
+  return (flags ?? []).map((f) => {
+    const names = f.stopNames.join(", ");
+    if (f.key === "untimed_stops") return `${f.count === 1 ? "1 stop has" : `${f.count} stops have`} no time: ${names}`;
+    if (f.key === "duplicate_dinner") return `More than one dinner on a day: ${names}`;
+    return `${f.count === 1 ? "Starts" : "Start"} late: ${names}`;
+  });
+}
+
+/** V-1 (R437): only a hotel anchor is a place to stay; a neighbourhood or an activity is a venue. */
+export function versionAnchorIsStay(anchor: BoardVersion["anchor"] | null | undefined): boolean {
+  return !!anchor && anchor.type === "hotel";
+}
+
+/** V-1 (R437): the map's anchor kind from the stored type — hotel → stay, anything else → venue. */
+export function versionMapAnchorKind(anchor: BoardVersion["anchor"] | null | undefined): "stay" | "venue" {
+  return versionAnchorIsStay(anchor) ? "stay" : "venue";
 }
