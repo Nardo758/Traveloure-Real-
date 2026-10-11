@@ -454,3 +454,31 @@ mtime_ms = 1791694909449
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/64ff35d6-38e0-489f-9353-77f4d4ec0bc9/86bb8691-765f-44f1-8495-5a0c26b0c4b6"
 storage_version_token = "1791695002999184"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "gi9_90k7sZpm_nNwGX2GW"
+uri = "file://reports/automation-final-status.md"
+type = "text"
+title = "Final automation status — DEV-CLOSED WITH BLOCKERS"
+description = "Complete gates, consolidated blocker table, per-rule evidence, all ten receipt/outbox pairs and document-only release checklist."
+logical_id = "9bc36365-3b93-4c7a-9e6c-ebfff817db34"
+content_hash = "sha256:c0ef90e205f0f82b01a65a6c130ccfecca12f309bad7aec71610a8e60eda97fe"
+size = 21478
+mtime_ms = 1791696614973
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/9bc36365-3b93-4c7a-9e6c-ebfff817db34/b5526be4-b249-456e-b090-32a56d21fd9b"
+storage_version_token = "1791696642360986"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "7P1Kym_ux_STawSgJQxHc"
+uri = "file://reports/real-clock-ledger.md"
+type = "text"
+title = "Real-clock ledger — NEXT-DAY CHECK OPEN"
+description = "All archived scenarios, genuine due-time gaps and historical delivery observation timestamps. No new email or production action."
+logical_id = "5ba90094-4245-43a5-9f61-4ba93ec407dd"
+content_hash = "sha256:5c48e7c7cd9df02b1dbcfd848bb2a40ceb3f83f86f56c2eba02d2480ccc88cee"
+size = 4726
+mtime_ms = 1791696530889
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/5ba90094-4245-43a5-9f61-4ba93ec407dd/cd9dc552-484e-4215-aa26-89709fe5ca9c"
+storage_version_token = "1791696643036622"
+content_type = "text/markdown"
