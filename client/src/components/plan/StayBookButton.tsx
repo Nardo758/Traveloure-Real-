@@ -31,7 +31,7 @@ export function StayBookButton({ tripId, itemId, hotelName }: { tripId: string; 
     setPhase({ kind: "checking" });
     try {
       const out = await postStayBooking(tripId, itemId, "prebook");
-      setPhase(out.state === "prebooked" ? { kind: "price", pre: out as StayPrebook } : { kind: "refused", text: stayRefusalText(out.state) });
+      setPhase(out.state === "prebooked" ? { kind: "price", pre: out as StayPrebook } : { kind: "refused", text: stayRefusalText(out.state, out.reason) });
     } catch (e: any) {
       setPhase({ kind: "refused", text: e?.message || stayRefusalText("") });
     }

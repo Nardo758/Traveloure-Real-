@@ -35,39 +35,41 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
     });
     expect(reg.status(), await reg.text()).toBe(201);
 
-    // A Kyoto plan with chosen dates (the owner's re-date rail stamps them confirmed) and two adults.
+    // One FRESH Kyoto plan per hotel tried: a comparison holds a capped number of places and a chosen place
+    // becomes the plan's own, so a new plan is the honest way to offer the next hotel.
     const start = new Date(Date.now() + 60 * 86_400_000);
     const end = new Date(start.getTime() + 86_400_000);
     const d = (x: Date) => x.toISOString().slice(0, 10);
-    const trip = await api.post(`${BASE_URL}/api/trips`, { data: { title: "Sandbox stay", destination: "Kyoto, Japan", startDate: d(start), endDate: d(end) } });
-    expect(trip.status(), await trip.text()).toBe(201);
-    const tripId = (await trip.json()).id as string;
-    const redate = await api.patch(`${BASE_URL}/api/trips/${tripId}`, { data: { startDate: d(start), endDate: d(end) } });
-    expect(redate.ok(), await redate.text()).toBeTruthy();
-    const party = await api.patch(`${BASE_URL}/api/trips/${tripId}/occasion`, { data: { adults: 2 } });
-    expect(party.ok(), await party.text()).toBeTruthy();
+    async function planWithItem(): Promise<{ tripId: string; itemId: string; setId: string }> {
+      const trip = await api.post(`${BASE_URL}/api/trips`, { data: { title: "Sandbox stay", destination: "Kyoto, Japan", startDate: d(start), endDate: d(end) } });
+      expect(trip.status(), await trip.text()).toBe(201);
+      const tripId = (await trip.json()).id as string;
+      // The owner's re-date rail stamps the dates confirmed; the party is two adults.
+      const redate = await api.patch(`${BASE_URL}/api/trips/${tripId}`, { data: { startDate: d(start), endDate: d(end) } });
+      expect(redate.ok(), await redate.text()).toBeTruthy();
+      const party = await api.patch(`${BASE_URL}/api/trips/${tripId}/occasion`, { data: { adults: 2 } });
+      expect(party.ok(), await party.text()).toBeTruthy();
+      const item = await api.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: { title: "Hotel", dayNumber: 1, itemType: "accommodation" } });
+      expect(item.status(), await item.text()).toBe(201);
+      const itemId = (await item.json()).id as string;
+      const set = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, { data: { itineraryItemId: itemId, categoryKey: "accommodation", label: "Where to stay" } });
+      expect(set.status(), await set.text()).toBe(201);
+      return { tripId, itemId, setId: (await set.json()).set.id as string };
+    }
 
-    // The stay item, its option set, and a chosen LiteAPI hotel (the job ran the Kyoto static sync first).
-    const item = await api.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: { title: "Hotel", dayNumber: 1, itemType: "accommodation" } });
-    expect(item.status(), await item.text()).toBe(201);
-    const itemId = (await item.json()).id as string;
-    const set = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, { data: { itineraryItemId: itemId, categoryKey: "accommodation", label: "Where to stay" } });
-    expect(set.status(), await set.text()).toBe(201);
-    const setId = (await set.json()).set.id as string;
-    const search = await api.get(`${BASE_URL}/api/trips/${tripId}/option-sets/search?q=`);
+    const first = await planWithItem();
+    const search = await api.get(`${BASE_URL}/api/trips/${first.tripId}/option-sets/search?q=`);
     expect(search.ok(), await search.text()).toBeTruthy();
     const hotels = (await search.json()).results as Array<{ id: string; name: string }>;
     expect(hotels.length, "the Kyoto LiteAPI sync gave the plan's city hotels").toBeGreaterThan(0);
 
-    // Try hotels in order until the SERVER says one is bookable and prices it (sandbox availability varies).
-    let priced = false;
+    // Try hotels until the SERVER prices one. Below its suggested selling price a stay is REFUSED (decision-maker,
+    // Oct 11, 2026), and the sheet says so.
+    let priced: { tripId: string; itemId: string } | null = null;
     const tried: string[] = [];
-    for (const [i, h] of hotels.slice(0, 8).entries()) {
-      // A chosen set is closed; reopen it before offering the next hotel (the option-set rail's own rule).
-      if (i > 0) {
-        const re = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/reopen`, { data: {} });
-        if (!re.ok()) tried.push(`reopen ${re.status()}`);
-      }
+    let belowSspShown = false;
+    for (const [i, h] of hotels.slice(0, 6).entries()) {
+      const { tripId, itemId, setId } = i === 0 ? first : await planWithItem();
       const opt = await api.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, { data: { source: { kind: "hotel_cache", hotelCacheId: h.id } } });
       if (!opt.ok()) {
         tried.push(`${h.name}: add option ${opt.status()}`);
@@ -94,7 +96,14 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       const pre = await (await prebook).json();
       if (pre.state !== "prebooked") {
         tried.push(`${h.name}: ${pre.state}${pre.reason ? ` (${pre.reason}${pre.status ? ` ${pre.status}` : ""})` : ""}`);
-        await expect(page.getByTestId(`stay-book-refusal-${itemId}`)).toBeVisible();
+        const refusal = page.getByTestId(`stay-book-refusal-${itemId}`);
+        await expect(refusal).toBeVisible();
+        if (pre.reason === "below_ssp") {
+          await expect(refusal).toContainText("price available right now");
+          belowSspShown = true;
+        }
+        // Nothing was stored for a refused prebook.
+        expect((await (await api.get(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking`)).json()).booking).toBeNull();
         await page.keyboard.press("Escape");
         continue;
       }
@@ -103,10 +112,18 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       expect(pre.env).toBe("sandbox");
       await page.getByTestId(`stay-book-continue-${itemId}`).click();
       await expect(page.getByTestId(`stay-book-sdk-${itemId}`).locator("*").first()).toBeAttached({ timeout: 30_000 });
-      priced = true;
+      priced = { tripId, itemId };
       break;
     }
-    expect(priced, `a Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
+    if (!priced) {
+      // §18d: a run where every hotel tried was refused below SSP has proven the refusal path, NOT booking. It is
+      // marked SKIPPED (never passed), naming what was not exercised, so a green job is never read as "booked".
+      const onlyBelowSsp = tried.length > 0 && tried.every((t) => t.endsWith("(below_ssp)"));
+      expect(onlyBelowSsp && belowSspShown, `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
+      test.skip(true, `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried was below its suggested selling price and was refused (ruled Oct 11, 2026). Tried: ${tried.join("; ")}`);
+      return;
+    }
+    const { tripId, itemId } = priced;
 
     // Book through our rail (TRANSACTION_ID only — the server builds the body), then cancel at once.
     const booked = await (await api.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking/book`, { data: {} })).json();

@@ -28,6 +28,9 @@ test("SB2 every server refusal has words; an unknown one claims nothing", () => 
   assert.ok(states.size >= 8, "found the server's states");
   for (const s of states) assert.ok(STAY_BOOK_REFUSALS[s], `words for ${s}`);
   assert.match(stayRefusalText("something_new"), /Nothing was booked/);
+  // Below SSP is refused (decision-maker, Oct 11, 2026) and says so — never "no room is available".
+  assert.match(stayRefusalText("unavailable", "below_ssp"), /price available right now/);
+  assert.equal(stayRefusalText("unavailable", "no_offer"), STAY_BOOK_REFUSALS.unavailable);
 });
 
 test("SB3 the price is the server's minor units in its currency", () => {

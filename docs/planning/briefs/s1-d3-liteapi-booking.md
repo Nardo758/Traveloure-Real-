@@ -90,3 +90,7 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
   from this environment; the e2e's mount step is what proves them.
 - Tests: `client/src/lib/__tests__/stay-booking.test.ts` SB1–SB5 (build.yml); B1/B4/B6 extended for
   `bookable` and the code on the item.
+- **Below SSP is refused (decision-maker, Oct 11, 2026).** The refusal is named (`unavailable`, `reason: below_ssp`)
+  and the sheet says so. The sandbox e2e marks book-and-cancel **skipped** — not passed — when every hotel it tries
+  is below SSP, naming the hotels; book and cancel are proven in CI only once a sandbox hotel prices at or above
+  its SSP.
