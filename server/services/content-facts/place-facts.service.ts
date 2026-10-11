@@ -813,6 +813,31 @@ export interface FeasibilityFacts {
   lastServices: Array<{ lat: number; lng: number; value: unknown }>;
 }
 
+/**
+ * Every official, unexpired, admitted `last_service` row in a market that has a station point — the ONE read of
+ * them (FD-3; TC-4 ledger `2026-10-11-tc4-live-directions`). Callers match rows to a stop by distance: the
+ * optimizer lead's inferred ride and the Trip Card's last-departure line, both from the stop a leg LEAVES.
+ */
+export async function lastServicesForMarket(market: string, now: Date = new Date()): Promise<Array<{ lat: number; lng: number; value: unknown }>> {
+  const services = await db
+    .select()
+    .from(placeFacts)
+    .where(
+      and(
+        eq(placeFacts.factType, "last_service"),
+        eq(placeFacts.market, market),
+        eq(placeFacts.license, "official"),
+        isNull(placeFacts.supersededBy),
+        sql`${placeFacts.sourceClass} IS NOT NULL`,
+        sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
+      ),
+    );
+  return services
+    .filter((r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok)
+    .map((r) => ({ lat: Number(r.placeLat), lng: Number(r.placeLng), value: r.value }))
+    .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
+}
+
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
   // The item → place id map, from the plan's own Places rows.
@@ -869,24 +894,6 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
     if (la) lastAdmission.set(itemId, la.value);
   });
 
-  const services = market
-    ? await db
-        .select()
-        .from(placeFacts)
-        .where(
-          and(
-            eq(placeFacts.factType, "last_service"),
-            eq(placeFacts.market, market),
-            eq(placeFacts.license, "official"),
-            isNull(placeFacts.supersededBy),
-            sql`${placeFacts.sourceClass} IS NOT NULL`,
-            sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
-          ),
-        )
-    : [];
-  const lastServices = services
-    .filter((r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok)
-    .map((r) => ({ lat: Number(r.placeLat), lng: Number(r.placeLng), value: r.value }))
-    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  const lastServices = market ? await lastServicesForMarket(market, now) : [];
   return { hours, lastAdmission, lastServices };
 }

@@ -259,6 +259,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // first, else the unexpired `location` fact, as plan-fit does), only for the plan's OWNER, through the
     // plan card. What leaves is a ride suggestion per corridor; no fact text and no Places point is sent.
     "server/services/ride-recommender.service.ts",
+    // TC-4 (ledger `2026-10-11-tc4-live-directions`, LD 69): the Trip Card's live tier reads the market's OFFICIAL
+    // `last_service` rows (`lastServicesForMarket` — never a Places fact) behind the plan card's gate. What leaves is
+    // operator, line or station, and the stated last departure per leg; no Places fact is read.
+    "server/services/live-directions.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

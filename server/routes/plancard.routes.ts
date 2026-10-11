@@ -13,6 +13,7 @@ import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
 import { localTeasersForTrip } from "../services/local-teaser.service";
 import { rideRecommendationsForTrip } from "../services/ride-recommender.service";
+import { liveLegFactsForTrip } from "../services/live-directions.service";
 import { loadDayFeasibility } from "../services/optimizer-lead.service";
 import {
   insertItineraryChangeSchema,
@@ -899,7 +900,14 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the plan OWNER's ride swaps — on a paid plan, per day, up
     // to three "a better way there" suggestions over its routed legs (the first serving records `offered`); on a free
     // plan, a count-only `rideTeaser`. Never fails the read; an empty answer is no key (§13).
-    const rides = await rideRecommendationsForTrip(tripId, userId);
+    const rides = await rideRecommendationsForTrip(tripId, userId, new Date(), { recordOffered: render !== "final" });
+    // TC-4 (LD 69; ledger `2026-10-11-tc4-live-directions`): per leg with both ends located, the live-directions deep
+    // link and the earliest last departure near the stop the leg leaves. Every viewer this gate admits; never fails
+    // the read — a failed read is no key on any leg (§13), never a claimed link.
+    const liveLegs = await liveLegFactsForTrip(tripId, plan.days as any[]).catch((err) => {
+      console.error(`[plancard] live legs failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
+      return new Map();
+    });
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
@@ -913,6 +921,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
         const rs = rides.suggestions.get(d.dayNumber);
         return {
           ...d,
+          ...(liveLegs.size && Array.isArray(d.transports)
+            ? { transports: d.transports.map((tr: any) => (liveLegs.has(tr?.id) ? { ...tr, ...liveLegs.get(tr.id) } : tr)) }
+            : {}),
           ...(t ? { localTeaser: t } : {}),
           ...(f ? { feasibility: f } : {}),
           ...(rt && rt.rides > 0 ? { rideTeaser: rt } : {}),

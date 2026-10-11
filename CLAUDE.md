@@ -2805,6 +2805,16 @@ This document captures architectural decisions to maintain consistency across co
     `notes.filters` (passes, payment, luggage) derived only from each seeded row's `fact_sources`. Pass, payment and
     luggage filtering is not yet wired.
 
+69. LD 69 — Two time tiers. Planning (slip, versions, Optimize) shows close-enough times, stored and tier-labelled. Live (Trip Card, on the day) shows exact times only: fetched at the moment from a timetable source, or a deep link to one; never a stored estimate presented as exact. Where no exact source exists for a market, the Trip Card shows the labelled estimate plus a live-directions link and the operator's first/last-service facts.
+    (Decision-maker, Oct 11, 2026 — ledger `2026-10-11-tc4-live-directions`; TC-4 rulings 1–5. FOUNDER WORDING
+    REVIEW on the PR.) The server builds each leg's `liveDirections.url` (`server/services/live-directions.service.ts`,
+    through `buildGoogleNavUrl`; provider per city in `server/config/live-directions.config.ts`, Google Maps for
+    every city), only when both ends are located; it alone sends `travelmode=transit`, and only where
+    `apiTransitCoverage` is false — R321's no-mode rule stands for every other Maps link. Beside it, the earliest
+    last departure, that day, from an official station within 1.2 km of the stop the leg LEAVES; none ⇒ nothing.
+    An unrouted leg's minutes read "est."; a routed leg keeps its "checked" provenance as a planning estimate.
+    The owner sees "A better way there" read-only on the card, and the card's read records no `offered`.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
