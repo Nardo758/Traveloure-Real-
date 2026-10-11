@@ -188,6 +188,8 @@ const GuestPlanMapPage = lazy(() => import("@/pages/guest-plan-map"));
 // Ledger `2026-09-04-guests-per-event`: the plan's guest roster — one row per person, one column
 // per event. Parameterised, so like the slip it is deliberately NOT in role-routes-config.ts.
 const PlanGuestsPage = lazy(() => import("@/pages/plan-guests"));
+// S1-d-3b (ledger `2026-10-11-s1-d3b-stay-book-ui`): where Nuitée's Payment SDK returns the traveler.
+const StayBookedPage = lazy(() => import("@/pages/stay-booked"));
 // Track A step A4 (ledger `2026-09-29-a4-plan-fit-compare`): compare the places in one of a plan's
 // comparisons, led by plan-fit. Parameterised, so NOT in role-routes-config.ts.
 const PlanComparePage = lazy(() => import("@/pages/plan-compare"));
@@ -703,6 +705,13 @@ function Router() {
           /plans/:tripId so the more specific path is never shadowed. Same auth posture: the
           server's owner-tier gate on GET /api/trips/:tripId/guests decides, the URL grants
           nothing. */}
+      <Route path="/plans/:tripId/stays/:itemId/booked">
+        {() => (
+          <PageErrorBoundary fallbackHeading="Booking Not Found">
+            <DashboardLayout><ProtectedRoute component={StayBookedPage} /></DashboardLayout>
+          </PageErrorBoundary>
+        )}
+      </Route>
       <Route path="/plans/:tripId/guests">
         {() => (
           <PageErrorBoundary fallbackHeading="Guest List Not Found">

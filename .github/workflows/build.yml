@@ -522,6 +522,11 @@ jobs:
       # a covered fee is never shown as the fee charged.
       - name: Traveler fee preview copy pin
         run: npx tsx --test client/src/lib/__tests__/traveler-fee-preview.test.ts
+      # Ledger `2026-10-11-s1-d3b-stay-book-ui` (S1-d-3 rulings 2–3): "Book" draws only for the owner on a
+      # server-bookable stay; every server refusal has words; the page holds no card field, no payment method
+      # and no offer id — Nuitée's SDK takes the card and the server decides the rest.
+      - name: Stay booking UI pin
+        run: npx tsx --test client/src/lib/__tests__/stay-booking.test.ts
       # Ledger `2026-09-21-trip-pass-revision-claim`: Trip Pass sold "one expert revision" on the
       # pricing page and on the in-product upsell card while nothing could deliver or record one
       # (LD 41 (f) — `expert_revision` has no consumption or charge site; consumeRevision has zero

@@ -1,0 +1,118 @@
+name: Stay Book Sandbox Gate (LiteAPI book then immediate cancel)
+
+# S1-d-3b (ledger `2026-10-11-s1-d3b-stay-book-ui`; S1-d-3 rulings): re-proves in CI the LiteAPI field
+# names verified by the founder's Oct 9 sandbox run. SANDBOX ONLY, QA-domain account only, the booking is
+# cancelled IMMEDIATELY. It needs the repository secret `LITEAPI_SANDBOX_API_KEY`.
+#
+# STATED, NOT HIDDEN (§18d): when that secret is not configured the job prints a warning naming it and
+# runs NOTHING — a green run without the secret proves nothing about LiteAPI, and the warning says so.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  stay-book-sandbox:
+    name: stay-book-sandbox (LiteAPI sandbox book + immediate cancel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_KEY: ${{ secrets.LITEAPI_SANDBOX_API_KEY != '' }}
+    steps:
+      - name: Sandbox key present?
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::warning file=.github/workflows/stay-book-sandbox-gate.yml::NOT RUN — repository secret LITEAPI_SANDBOX_API_KEY is not configured. Nothing about LiteAPI was proven by this job."
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        if: env.HAS_KEY == 'true'
+        uses: ./.github/actions/start-postgres
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+        if: env.HAS_KEY == 'true'
+
+      - name: Install Playwright (chromium)
+        if: env.HAS_KEY == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Build production bundle
+        if: env.HAS_KEY == 'true'
+        run: npm run build
+
+      - name: Set up CI database (migrations + sessions table)
+        if: env.HAS_KEY == 'true'
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+
+      - name: Start production server (LiteAPI sandbox)
+        if: env.HAS_KEY == 'true'
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          E2E_AI_STUB: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          INTERNAL_JOB_SECRET: ci-internal-secret
+          QA_ACCOUNT_EMAIL_DOMAIN: traveloure-qa.test
+          LITEAPI_API_KEY: ${{ secrets.LITEAPI_SANDBOX_API_KEY }}
+          LITEAPI_ENV: sandbox
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server
+        if: env.HAS_KEY == 'true'
+        run: |
+          for i in $(seq 1 60); do
+            if curl -s http://localhost:5000/api/ready | grep -q '"ready":true'; then echo "Server ready"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"; exit 1
+
+      - name: Kyoto LiteAPI static sync (sandbox)
+        if: env.HAS_KEY == 'true'
+        run: |
+          curl -sf -X POST -H "x-internal-secret: ci-internal-secret" http://localhost:5000/internal/jobs/liteapi-sync --max-time 900 | tee /tmp/sync.json
+          echo
+
+      - name: Book then cancel (sandbox, QA account)
+        if: env.HAS_KEY == 'true'
+        run: npx playwright test playwright/tests/journeys/j-stay-book-sandbox.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          LITEAPI_SANDBOX_E2E: '1'
+          QA_ACCOUNT_EMAIL_DOMAIN: traveloure-qa.test
