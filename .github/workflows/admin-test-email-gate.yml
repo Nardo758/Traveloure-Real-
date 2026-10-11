@@ -19,6 +19,8 @@ on:
       - 'client/src/pages/admin/system.tsx'
       - 'server/routes/admin.routes.ts'
       - 'playwright/tests/admin-test-email.spec.ts'
+      - 'client/src/pages/admin/payouts.tsx'
+      - 'playwright/tests/admin-payout-trigger.spec.ts'
       - '.github/workflows/admin-test-email-gate.yml'
   push:
     branches: [main]
@@ -26,6 +28,8 @@ on:
       - 'client/src/pages/admin/system.tsx'
       - 'server/routes/admin.routes.ts'
       - 'playwright/tests/admin-test-email.spec.ts'
+      - 'client/src/pages/admin/payouts.tsx'
+      - 'playwright/tests/admin-payout-trigger.spec.ts'
       - '.github/workflows/admin-test-email-gate.yml'
   workflow_dispatch:
 
@@ -170,6 +174,21 @@ jobs:
         # All three suites use page.route() to intercept and assert the POST body
         # without touching the real Resend API.
         run: npx playwright test admin-test-email --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          PW_AUTH_SETUP: '1'
+
+      - name: Admin payout trigger (SS-2 Phase D pin 5 — payout stubbed, nothing moves money)
+        # Ledger `2026-10-10-ss2d-pins`. page.route() answers GET/PATCH /api/admin/payouts, so the
+        # server's payout handler is never reached; the pin is what the console SENDS (§14: a status
+        # and requesterType, never an amount or a user id). Same admin session as the step above.
+        run: |
+          if [ ! -f "playwright/tests/admin-payout-trigger.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/admin-payout-trigger.spec.ts"
+            exit 1
+          fi
+          npx playwright test admin-payout-trigger --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'

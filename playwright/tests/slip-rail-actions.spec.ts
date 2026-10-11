@@ -437,3 +437,67 @@ test("A13: Withdraw shows 'Request withdrawn — hold released' and the finding 
   await expect(page.getByTestId("handoff-withdraw")).toHaveCount(0);
   expect(reloaded, "the banner moved without a page reload").toBe(false);
 });
+
+// ── SS-2 Phase D, pin 1 (ledger `2026-10-10-ss2d-pins`; LD 62, R323) ──────────────────────────
+// Finalize's "Travel expert" lane is the ONE handoff door: continuing closes the chooser and opens
+// the HandoffChooser on "book" with the plan's unbooked items — and sends NOTHING. The request is
+// made only when the traveler confirms inside the HandoffChooser (with its hold), never by the
+// Finalize continue. The retired finalize-booking-modal test asserted the old POST.
+test("A14: Finalize's expert lane opens the HandoffChooser on 'book' and sends no expert request (LD 62)", async ({
+  page,
+}) => {
+  const tripId = await registerAndCreateTrip(page, "fin-expert");
+  await addItem(page, tripId);
+  await openSlip(page, tripId);
+
+  const expertRequests: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && /\/api\/expert-requests\b/.test(r.url())) expertRequests.push(r.url());
+  });
+
+  await page.getByTestId("slip-action-finalize-plan").click();
+  await expect(page.getByTestId("finalize-modal")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("finalize-option-expert").click();
+  await page.getByTestId("finalize-continue").click();
+
+  await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("handoff-kind-book")).toHaveAttribute("aria-checked", "true");
+  // Nothing is sent by opening the chooser; its confirm is the request.
+  await page.waitForTimeout(1_000);
+  expect(expertRequests, "Finalize's expert lane must not POST /api/expert-requests").toEqual([]);
+});
+
+
+// ── SS-2 Phase D, pin 2 (ledger `2026-10-10-ss2d-pins`; smoke 10, `2026-10-04-smoke10-fixes`) ──
+// A plan-backed /itinerary-comparison/:id renders that plan's Versions board and applies NOTHING;
+// `?autoApply=1` changes nothing. The run is seeded (one generated comparison, one AI variant) so no
+// model and no charge is involved.
+test("A15: a plan-backed comparison opens the Versions board and sends no apply call; ?autoApply=1 changes nothing (smoke 10)", async ({
+  page,
+}) => {
+  const tripId = await registerAndCreateTrip(page, "versions");
+  const userId = psql(`SELECT user_id FROM trips WHERE id = '${tripId}'`);
+  expect(userId, "the minted plan has an owner").toBeTruthy();
+  const comparisonId = psql(`SELECT gen_random_uuid()`);
+  psql(`INSERT INTO itinerary_comparisons (id, user_id, trip_id, title, destination, travelers, status, optimized_at)
+        VALUES ('${comparisonId}', '${userId}', '${tripId}', 'Slip rail versions', 'Kyoto, Japan', 2, 'generated', NOW())`);
+  psql(`INSERT INTO itinerary_variants (id, comparison_id, name, source, status)
+        VALUES (gen_random_uuid(), '${comparisonId}', 'AI optimized', 'ai_optimized', 'generated')`);
+
+  const applyCalls: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.url().includes("/apply-to-trip")) applyCalls.push(r.url());
+  });
+
+  for (const suffix of ["", "?autoApply=1"]) {
+    await page.goto(`${BASE_URL}/itinerary-comparison/${comparisonId}${suffix}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("plan-versions-page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("versions-board")).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(2_000);
+    expect(new URL(page.url()).pathname, `${suffix || "no flag"}: the page stays on the board`).toBe(
+      `/itinerary-comparison/${comparisonId}`,
+    );
+  }
+  expect(applyCalls, "opening the board — with or without ?autoApply=1 — applies nothing").toEqual([]);
+});

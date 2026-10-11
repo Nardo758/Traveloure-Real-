@@ -1785,11 +1785,11 @@ export default function CartPage() {
         optimizationPaymentId,
       });
 
-      // G7: if we have a tripId, signal the comparison page to auto-apply and redirect. This
-      // ?autoApply=1 query-param behavior is UNCHANGED (R-E only changed where the auto-apply
-      // path itself lands — see itinerary-comparison.tsx).
-      const autoApplyFlag = experienceContext?.tripId ? "?autoApply=1" : "";
-      setLocation(`/itinerary-comparison/${comparison.id}${autoApplyFlag}`);
+      // The comparison opens on its review surface. For a plan-backed comparison that is the
+      // plan's Versions board, which applies nothing (smoke 10, `2026-10-04-smoke10-fixes`); the
+      // `?autoApply=1` this used to append was read by nothing and is gone (ledger
+      // `2026-10-10-ss2d-pins`).
+      setLocation(`/itinerary-comparison/${comparison.id}`);
     } catch (error: any) {
       // Lane 5b: the optimizer reads the TRIP now, so a full cart against an empty trip is a
       // specific, fixable state rather than a generic failure. The server names it; we open the
