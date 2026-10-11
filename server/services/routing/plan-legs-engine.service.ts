@@ -149,6 +149,8 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
     name: it.title || "Stop",
     dayNumber: it.dayNumber,
     point: pointFor(it),
+    // TC-3a (migration 368): a ride's exit pin — the origin of the leg that follows it.
+    exitPoint: realPoint(it.exitLatitude, it.exitLongitude),
     startTime: it.startTime || null,
     endTime: it.endTime || null,
     durationMinutes: it.durationMinutes ?? null,
@@ -233,7 +235,7 @@ export async function computePlanLegs(
   // pre-engine writer, every leg "driving") is re-routed on the plan's first engine run. The new row is
   // an engine leg that KEEPS `confirmed` (and the expert's stamp, tip and pickup); the legacy row is
   // superseded — hidden (`proposal_status` NULL, which every trip reader skips) and marked
-  // `origin='superseded'`, never deleted — and the mode change is logged in the plan's change log. The
+  // `superseded_at` (migration 368; TC-3a closed the interim `origin` marker), never deleted — and the mode change is logged in the plan's change log. The
   // expert's own pick (`user_selected_mode`) is kept as the mode; else the engine's default. A pair with
   // no route keeps its legacy leg as it was. Only pairs the plan still has, on days not yet over.
   const legacyConfirmed = existingRows.filter((l) => l.source == null && l.proposalStatus === "confirmed" && l.variantId == null);
@@ -277,7 +279,7 @@ export async function computePlanLegs(
     if (!want || !live(want.dayNumber)) continue;
     const picked = old.userSelectedMode ? normalizeLegMode(old.userSelectedMode) : null;
     const mode = picked ?? want.mode;
-    const asked = await routeWithTransitFallback(memo, adapter, { origin: want.from.point, destination: want.to.point, mode, departAt: departAt(want), hourBucket: want.hourBucket });
+    const asked = await routeWithTransitFallback(memo, adapter, { origin: want.origin, destination: want.to.point, mode, departAt: departAt(want), hourBucket: want.hourBucket });
     calls += asked.calls;
     reused += asked.reused;
     if (asked.outcome.kind === "paused") {
@@ -292,7 +294,7 @@ export async function computePlanLegs(
       await tx.execute(sql`SELECT id FROM trips WHERE id = ${tripId} FOR UPDATE`);
       const claimed = await tx
         .update(transportLegs)
-        .set({ proposalStatus: null, origin: "superseded", updatedAt: new Date() })
+        .set({ proposalStatus: null, supersededAt: new Date(), updatedAt: new Date() })
         .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), isNull(transportLegs.source)))
         .returning({ id: transportLegs.id });
       if (!claimed.length) return; // a concurrent run superseded it first (§15)
@@ -302,8 +304,8 @@ export async function computePlanLegs(
         legOrder: want.legOrder,
         fromActivityId: want.from.id,
         fromName: want.from.name,
-        fromLat: want.from.point.lat,
-        fromLng: want.from.point.lng,
+        fromLat: want.origin.lat,
+        fromLng: want.origin.lng,
         toActivityId: want.to.id,
         toName: want.to.name,
         toLat: want.to.point.lat,
@@ -323,7 +325,7 @@ export async function computePlanLegs(
             reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source,
             line: route.line,
             fare: route.fare,
-            legKey: routeLegKey(want.from.point, want.to.point, mode, want.hourBucket),
+            legKey: routeLegKey(want.origin, want.to.point, mode, want.hourBucket),
             hourBucket: want.hourBucket,
           },
         ] as any,
@@ -361,7 +363,7 @@ export async function computePlanLegs(
   for (const leg of diff.compute) {
     if (paused) break;
     const asked = await routeWithTransitFallback(memo, adapter, {
-      origin: leg.from.point,
+      origin: leg.origin,
       destination: leg.to.point,
       mode: leg.mode,
       departAt: departAt(leg),
@@ -390,8 +392,8 @@ export async function computePlanLegs(
       legOrder: leg.legOrder,
       fromActivityId: leg.from.id,
       fromName: leg.from.name,
-      fromLat: leg.from.point.lat,
-      fromLng: leg.from.point.lng,
+      fromLat: leg.origin.lat,
+      fromLng: leg.origin.lng,
       toActivityId: leg.to.id,
       toName: leg.to.name,
       toLat: leg.to.point.lat,

@@ -952,3 +952,30 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.keyboard.press('Escape');
   });
 });
+
+// ── SS-2 Phase D, pin 4 (ledger `2026-10-10-ss2d-pins`; ledger `2026-08-25-two-field-search`) ──
+// The "what" field on /services FILTERS: the debounced query reaches the results read as `q`, the
+// URL carries it so a refresh or a share restores the same results, a query nothing matches shows
+// the honest empty state, and clearing the field drops `q` again. (The retired search-bar suite
+// asserted a different, older search UI.)
+test.describe('/services — the "what" search filters the results', () => {
+  test('a query reaches the read as q, is kept in the URL, and clears', async ({ page }) => {
+    await gotoPath(page, '/services');
+    const input = page.getByTestId('input-search');
+    await expect(input).toBeVisible();
+
+    const NO_MATCH = 'zzqx-no-such-service';
+    const filtered = page.waitForResponse(
+      (r) => r.url().includes('/api/discover') && new URL(r.url()).searchParams.get('q') === NO_MATCH,
+      { timeout: 15_000 },
+    );
+    await input.fill(NO_MATCH);
+    expect((await filtered).status()).toBe(200);
+    await expect.poll(() => new URL(page.url()).searchParams.get('q'), { timeout: 5_000 }).toBe(NO_MATCH);
+    await expect(page.getByTestId('services-no-results')).toBeVisible({ timeout: 10_000 });
+
+    await input.fill('');
+    await expect.poll(() => new URL(page.url()).searchParams.get('q'), { timeout: 5_000 }).toBeNull();
+    await expect(page.getByTestId('services-no-results')).not.toBeAttached({ timeout: 10_000 });
+  });
+});

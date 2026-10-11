@@ -10,7 +10,7 @@
  *   L7 generate on a routed plan with the engine off writes nothing (ruling 4)
  *   L8 confirmed legacy legs shaped like production's 9 (source NULL, "driving"/"taxi") are re-routed on
  *      the first engine run: the new row keeps `confirmed` and the expert's stamp, the legacy row is
- *      superseded (hidden, `origin='superseded'`) not deleted, and the mode change is logged (ruling 7)
+ *      superseded (hidden, `superseded_at` — migration 368) not deleted, and the mode change is logged (ruling 7)
  *
  * NEGATIVE SPACE (§18d): the adapter is an in-test fake (no Google call). The activate-transport ROUTE
  * branch is a straight `travelTimeServiceEnabled()` read; L7 proves the service it shares the rule with.
@@ -211,7 +211,7 @@ test("L8: confirmed legacy legs are re-routed once, keep confirmed, the legacy r
   assert.equal(legacy.length, 2, "never deleted");
   for (const l of legacy) {
     assert.equal(l.proposal_status, null, "hidden from every trip reader");
-    assert.equal(l.origin, "superseded");
+    assert.ok(l.superseded_at, "superseded_at stamped (migration 368 moved the marker off origin)"); assert.equal(l.superseded_by_item_id, null, "an engine supersede names no ride — never restored");
   }
   assert.deepEqual(pairs(routed), ["1:a>b", "1:b>c"]);
   for (const l of routed) {

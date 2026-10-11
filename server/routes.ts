@@ -3304,7 +3304,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // the flag clears. Read-only — no provider_services row is touched.
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const { withoutConciergePoolListings } = await import("./services/expert-routability");
-    const live = await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId);
+    // TC-3 catalog rides surface only as rides, never in this browse (ledger `2026-10-11-tc3-ride-seed`).
+    const { withoutRideListings } = await import("./services/ride-listings");
+    const live = await withoutRideListings(
+      await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
+      (s) => s.id,
+    );
     // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
     // getAllProviderServices() is shared with admin (which legitimately needs the full row),

@@ -88,8 +88,8 @@ export default function TripDetails() {
   const searchStr = useSearch();
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(searchStr);
-  // `?tab=` and `?section=` still arrive from the `/itinerary/:id` redirects in App.tsx; with no
-  // tab shell they select nothing and are ignored.
+  // An old bookmark may still carry `?tab=` or `?section=`; with no tab shell they select nothing
+  // and are ignored (the `/itinerary/:id` redirects no longer add them).
   const justOptimized = searchParams.get("optimized") === "1";
   const { data: trip, isLoading, isError: tripError, refetch: refetchTrip } = useTrip(id || "");
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the

@@ -1,12 +1,12 @@
 # S1-d-3 — booking the chosen LiteAPI stay (rulings Oct 10, 2026)
 
-Ledger `2026-10-10-s1-d3a-liteapi-booking` (R?). Split: **d-3a** server (this brief's build) and **d-3b** the
+Ledger `2026-10-10-s1-d3a-liteapi-booking` (R430). Split: **d-3a** server (this brief's build) and **d-3b** the
 item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
 
 ## Rulings (decision-maker, Oct 10, 2026)
 1. **Migration 371**, a new `liteapi_bookings` table: UNIQUE on `prebook_id`, partial UNIQUE of one live booking
    per item (allowed on a new empty table), plus `commission_cents` (from `clientCommission`) and
-   `processing_fee_cents` (if returned) for later payout reconciliation. Held for "Migration 371 SQL approved — Leon".
+   `processing_fee_cents` (if returned) for later payout reconciliation. Approved — "Migration 371 SQL approved — Leon" on #1402 (Oct 11, 2026).
    368–370 are held by the TC-3 lane.
 2. **Nuitée is merchant of record.** No PaymentIntent, no `platform_revenue` row at booking; our take is the
    `hotel_margin_public` band inside the rate, paid out weekly by Nuitée. LD 43(c) / 44(b)(c) amendment drafted

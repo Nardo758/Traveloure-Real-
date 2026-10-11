@@ -1984,9 +1984,20 @@ export const MIGRATION_FILES = [
   // DATA ONLY: INSERT … ON CONFLICT DO NOTHING, band_key first. Nothing to declare. APPROVED by Leon on the
   // TC-0 PR (#1394), Oct 10, 2026.
   "367_transport_fee_bands.sql",
+  // 368 — TC-3a: the ride as a plan item (ledger 2026-10-11-tc3a-ride-item): itinerary_items exit pin
+  // (two nullable columns), transport_legs superseded_at / superseded_by_item_id (nullable; P0's
+  // origin='superseded' marker moved over), and the new service_transport_facts table (born empty, UNIQUE
+  // service_id, FK CASCADE). All declared in shared/schema.ts. APPROVED — "Migration 368 SQL approved — Leon"
+  // on #1401.
+  "368_ride_item_and_transport_facts.sql",
+  // 369 — TC-3 ride seed (ledger 2026-10-11-tc3-ride-seed): service_transport_facts.fact_sources + notes
+  // (jsonb, nullable) and the Sagano / Hozugawa / Eizan "Kirara" rides under the reserved "Traveloure
+  // Transport" account — every value from the official read, located from six OSM nodes and active
+  // (service_route_points.osm_node_id). Approved by Leon — comment 00:42Z on #1405.
+  "369_tc3_ride_seed.sql",
   // 371 — liteapi_bookings (ledger 2026-10-10-s1-d3a-liteapi-booking): a new table born empty, a UNIQUE on
   // prebook_id and a partial UNIQUE of one live booking per item (safe: no row exists at creation), plus a
-  // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are held by
-  // the TC-3 lane. HELD: merges only with "Migration 371 SQL approved — Leon" on the S1-d-3a PR.
+  // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are the TC-3 lane's.
+  // APPROVED — "Migration 371 SQL approved — Leon" on #1402.
   "371_liteapi_bookings.sql",
 ] as const;
