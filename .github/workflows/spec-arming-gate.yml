@@ -18,9 +18,11 @@ name: Spec-Arming Gate
 # Oct 11, 2026: "Fix the gate, don't drop it"). The verdict comes from the Actions
 # API: the gate waits for the arming workflow's own run on the head SHA. A run id
 # named in the body is only a POINTER the gate fetches and checks (same repo,
-# workflow, head SHA, success) — never evidence by itself. It reads the RUN's
-# conclusion, not each test's: a spec that skips itself still concludes success
-# (stated limit — see the script header).
+# workflow, head SHA, success) — never evidence by itself. A green run is not
+# enough: the gate reads that run's `playwright-json*` artifact (the JSON report
+# playwright.config.ts writes under CI) and FAILS an armed spec that skipped
+# itself, quoting the spec's own skip reason. No artifact ⇒ FAIL (cannot tell
+# pass from skip), so a workflow that arms a spec must upload playwright-json/.
 #
 # REQUIRED-CHECK NOTE. To block merges, add the status context
 # `spec-arming-gate (green-run evidence)` to branch protection

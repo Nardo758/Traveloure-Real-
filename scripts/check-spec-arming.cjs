@@ -23,19 +23,25 @@
  * A run counts only if: it is in THIS repository, its `path` is the arming workflow, its `head_sha` is the PR
  * head, it is `completed`, and its `conclusion` is `success`. No token ⇒ FAIL (cannot verify ⇒ not verified).
  *
+ * ARMED BUT SKIPPED IS NOT GREEN (decision-maker, Oct 11, 2026: "read the Playwright JSON report and refuse an
+ * armed spec that was skipped"). A run concludes `success` when a spec skips itself, so the run alone cannot tell
+ * pass from skip. For the green run, the gate downloads that run's `playwright-json*` artifact(s) (the JSON
+ * reporter's output — `playwright.config.ts` writes `playwright-json/results.json` under CI) and requires:
+ * at least one test of the spec in the report, and EVERY one `expected` or `flaky`. A skipped test FAILS and the
+ * FAIL quotes the spec's own skip reason, so "skipped because the sandbox priced every hotel below SSP" reads as
+ * exactly that. No report artifact ⇒ FAIL ("cannot tell pass from skip") — the workflow must upload it.
+ *
  * NEGATIVE SPACE (§18d — green means green-within-stated-bounds):
- *   • It reads the WORKFLOW RUN's conclusion, not each test's outcome: a spec that skips itself (test.skip) or a
- *     job that no-ops (a missing secret) still concludes `success`. The run proves the spec ran green, not that
- *     every assertion in it executed. Reading test-level results needs a reporter artifact this gate does not
- *     parse.
+ *   • It reads TEST outcomes, not assertions: a test that reaches its end without asserting anything is `expected`.
+ *   • A spec is matched in the report by FILE BASENAME; two specs with the same basename in one report are merged.
  *   • A workflow that arms several specs is verified as ONE run; which job ran which spec is not mapped.
  *   • A workflow that never runs on the PR head (schedule / dispatch only) has no automatic run: the pointer
  *     form must name a run dispatched on that head SHA.
  *
- * INPUT. The pure part is `analyze({ diffText })` (which specs are armed, by which workflow) and
- * `verifyRun(run, ctx)` (does a run object count). The CLI reads the workflow diff from --diff <file> (or
+ * INPUT. The pure parts are `analyze({ diffText })` (which specs are armed, by which workflow),
+ * `verifyRun(run, ctx)` / `evaluatePointers` (does a run count) and `verdictFromReport` (did the spec's tests run). The CLI reads the workflow diff from --diff <file> (or
  * stdin; empty ⇒ nothing armed), the PR body from $PR_BODY, and GITHUB_TOKEN / GITHUB_REPOSITORY / HEAD_SHA
- * from the environment. --self-test (§18d) proves both pure parts before any verdict is trusted.
+ * from the environment. --self-test (§18d) proves the pure parts before any verdict is trusted.
  */
 const fs = require("fs");
 
@@ -108,6 +114,43 @@ function pointerRunIds(prBody, spec) {
   return ids;
 }
 
+/** Pure: every test of `spec` (basename) in a Playwright JSON report → { ok, why?, counts }. */
+function verdictFromReport(report, spec) {
+  const tests = [];
+  const walk = (suite) => {
+    if (!suite || typeof suite !== "object") return;
+    for (const sp of suite.specs || []) {
+      const file = sp.file || suite.file || "";
+      if (basename(file) !== spec) continue;
+      for (const t of sp.tests || []) tests.push({ title: sp.title, t });
+    }
+    for (const child of suite.suites || []) walk(child);
+  };
+  for (const s of (report && report.suites) || []) walk(s);
+  if (!tests.length) return { ok: false, why: `the run's report holds no test from ${spec} — the run did not execute it` };
+  const skipped = tests.filter(({ t }) => t.status === "skipped");
+  const bad = tests.filter(({ t }) => t.status !== "expected" && t.status !== "flaky" && t.status !== "skipped");
+  if (bad.length) return { ok: false, why: `${bad.length} test(s) in ${spec} did not pass: ${bad.map(({ title, t }) => `"${title}" ${t.status}`).join(", ")}` };
+  if (skipped.length) {
+    const reasons = [];
+    for (const { t } of skipped) {
+      const notes = [...(t.annotations || []), ...((t.results || []).flatMap((r) => r.annotations || []))];
+      for (const a of notes) if (a && a.type === "skip" && a.description && !reasons.includes(a.description)) reasons.push(a.description);
+    }
+    const reason = reasons.length ? reasons.map((r) => `"${r}"`).join("; ") : "the spec gave no reason (test.skip with no description)";
+    return {
+      ok: false,
+      why: `ARMED BUT SKIPPED — ${skipped.length} of ${tests.length} test(s) in ${spec} did not run, so the run's success proves nothing about them. Reason given by the spec: ${reason}`,
+    };
+  }
+  return { ok: true, counts: tests.length };
+}
+
+/** Pure: the verdict on every run the body points at for `spec`, given those runs (fetched by the caller). */
+function evaluatePointers(prBody, spec, runsById, ctx) {
+  return pointerRunIds(prBody, spec).map((id) => ({ id, verdict: runsById[id] ? verifyRun(runsById[id], ctx) : "no_run" }));
+}
+
 function selfTest() {
   const results = {};
   const armDiff = [
@@ -147,13 +190,39 @@ function selfTest() {
     pointerRunIds("create-service-layout.spec.ts https://github.com/o/r/actions/runs/123\nother.spec.ts https://github.com/o/r/actions/runs/9", "create-service-layout.spec.ts").join() === "123";
   // The typed form is no longer evidence: a marker line with a URL yields no run id and verifies nothing.
   results.N_typed_marker_not_evidence = pointerRunIds("spec-green: create-service-layout.spec.ts https://ci.example/run/9", "create-service-layout.spec.ts").length === 0;
+  // The old gate's hole, end to end: a `spec-green:` line linking a REAL green run of the right workflow in the right
+  // repo — but on ANOTHER commit. The pointer is followed, and the run is refused for its commit.
+  const stale = evaluatePointers(
+    "spec-green: create-service-layout.spec.ts https://github.com/o/r/actions/runs/777",
+    "create-service-layout.spec.ts",
+    { 777: { ...good, id: 777, head_sha: "old" } },
+    ctx,
+  );
+  results.O_green_link_other_commit_refused = stale.length === 1 && stale[0].id === "777" && stale[0].verdict === "other_commit";
+
+  const rep = (tests, file = "journeys/j-stay-book-sandbox.spec.ts") => ({ suites: [{ file, specs: [], suites: [{ file, specs: [{ file, title: "books and cancels", tests }] }] }] });
+  const SPEC = "j-stay-book-sandbox.spec.ts";
+  results.P_report_passed_ok = verdictFromReport(rep([{ status: "expected", annotations: [] }]), SPEC).ok === true;
+  results.Q_report_flaky_ok = verdictFromReport(rep([{ status: "flaky", annotations: [] }]), SPEC).ok === true;
+  const skip = verdictFromReport(
+    rep([{ status: "skipped", annotations: [{ type: "skip", description: "BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried was below its suggested selling price" }] }]),
+    SPEC,
+  );
+  results.R_skipped_refused_with_reason = skip.ok === false && /ARMED BUT SKIPPED/.test(skip.why) && /below its suggested selling price/.test(skip.why);
+  const skipInResult = verdictFromReport(rep([{ status: "skipped", annotations: [], results: [{ annotations: [{ type: "skip", description: "no key" }] }] }]), SPEC);
+  results.S_skip_reason_from_result_annotations = skipInResult.ok === false && /"no key"/.test(skipInResult.why);
+  const skipNoReason = verdictFromReport(rep([{ status: "skipped" }]), SPEC);
+  results.T_skip_without_reason_still_refused = skipNoReason.ok === false && /gave no reason/.test(skipNoReason.why);
+  results.U_spec_absent_refused = verdictFromReport(rep([{ status: "expected" }], "other.spec.ts"), SPEC).ok === false;
+  results.V_unexpected_refused = /did not pass/.test(verdictFromReport(rep([{ status: "unexpected" }]), SPEC).why || "");
+  results.W_one_skip_among_passes_refused = verdictFromReport(rep([{ status: "expected" }, { status: "skipped" }]), SPEC).ok === false;
 
   const failed = Object.entries(results).filter(([, v]) => !v);
   if (failed.length) {
     console.error("SELF-TEST FAILED", failed.map(([k]) => k));
     process.exit(1);
   }
-  console.log(`spec-arming self-test OK (${Object.keys(results).length} cases: arming detection, and runs verified by repo, workflow, head SHA and conclusion — a typed link is not evidence)`);
+  console.log(`spec-arming self-test OK (${Object.keys(results).length} cases: arming detection; runs verified by repo, workflow, head SHA and conclusion — a typed link, or a green link on another commit, is not evidence; and the run's Playwright report refuses a skipped spec, naming its reason)`);
   process.exit(0);
 }
 
@@ -163,6 +232,39 @@ async function gh(path, token) {
   });
   if (!res.ok) throw new Error(`GitHub API ${res.status} on ${path}`);
   return res.json();
+}
+
+/** The green run's Playwright JSON report(s): artifacts named `playwright-json*`, downloaded and unzipped. */
+async function reportVerdict(runId, spec, env, how) {
+  const { execFileSync } = require("child_process");
+  const os = require("os");
+  const path = require("path");
+  const arts = ((await gh(`/repos/${env.repo}/actions/runs/${runId}/artifacts?per_page=100`, env.token)).artifacts || []).filter(
+    (a) => a.name.startsWith("playwright-json") && !a.expired,
+  );
+  if (!arts.length)
+    return {
+      ok: false,
+      why: `${how}, but it uploaded no \`playwright-json*\` artifact — the gate cannot tell pass from skip. Upload playwright-json/ (the JSON reporter's output) from the job that runs ${spec}.`,
+    };
+  const suites = [];
+  for (const a of arts) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spec-arming-"));
+    const res = await fetch(a.archive_download_url, { headers: { Authorization: `Bearer ${env.token}`, Accept: "application/vnd.github+json" } });
+    if (!res.ok) return { ok: false, why: `${how}, but its artifact ${a.name} could not be downloaded (${res.status})` };
+    fs.writeFileSync(path.join(dir, "a.zip"), Buffer.from(await res.arrayBuffer()));
+    execFileSync("unzip", ["-q", "-o", path.join(dir, "a.zip"), "-d", path.join(dir, "out")]);
+    for (const f of fs.readdirSync(path.join(dir, "out"), { recursive: true })) {
+      if (!String(f).endsWith(".json")) continue;
+      try {
+        suites.push(...(JSON.parse(fs.readFileSync(path.join(dir, "out", String(f)), "utf8")).suites || []));
+      } catch {
+        /* not a Playwright report */
+      }
+    }
+  }
+  const v = verdictFromReport({ suites }, spec);
+  return v.ok ? { ok: true, how: `${how}; its report shows ${v.counts} test(s) of ${spec} run, none skipped` } : { ok: false, why: `${how}, but ${v.why}` };
 }
 
 async function verifyArmed({ spec, workflow }, env) {
@@ -175,7 +277,7 @@ async function verifyArmed({ spec, workflow }, env) {
     for (const id of pointerRunIds(env.prBody, spec)) {
       try {
         const v = verifyRun(await gh(`/repos/${env.repo}/actions/runs/${id}`, env.token), ctx);
-        if (v === "ok") return { ok: true, how: `run ${id} (named in the body, verified)` };
+        if (v === "ok") return reportVerdict(id, spec, env, `run ${id} (named in the body, verified)`);
         last = `run ${id}: ${v}`;
       } catch (err) {
         last = `run ${id}: ${err.message}`;
@@ -185,7 +287,7 @@ async function verifyArmed({ spec, workflow }, env) {
     const runs = (list.workflow_runs || []).filter((r) => r.path === workflow);
     const verdicts = runs.map((r) => [r, verifyRun(r, ctx)]);
     const green = verdicts.find(([, v]) => v === "ok");
-    if (green) return { ok: true, how: `run ${green[0].id} on ${env.headSha.slice(0, 9)} concluded success` };
+    if (green) return reportVerdict(green[0].id, spec, env, `run ${green[0].id} on ${env.headSha.slice(0, 9)} concluded success`);
     const pending = verdicts.some(([, v]) => v === "pending");
     if (runs.length && !pending) return { ok: false, why: `every run of ${workflow} on the head commit finished without success: ${verdicts.map(([r, v]) => `${r.id} ${v}`).join(", ")}` };
     if (runs.length) last = `run(s) of ${workflow} still in progress`;
@@ -227,12 +329,13 @@ async function main() {
   if (failed) {
     console.error(
       "\nA spec was wired into a CI workflow without a GREEN RUN of that workflow on this commit (ledger\n" +
-        "2026-08-17-create-service-spec-doa; verified since 2026-10-11-spec-arming-verified). Make the run green,\n" +
-        "or, for a dispatch-only workflow, dispatch it on this head SHA and name its run on a line with the spec.",
+        "2026-08-17-create-service-spec-doa; verified since 2026-10-11-spec-arming-verified), or the run's\n" +
+        "Playwright report shows the spec SKIPPED. Make the run green with every test executed, or, for a\n" +
+        "dispatch-only workflow, dispatch it on this head SHA and name its run on a line with the spec.",
     );
     process.exit(1);
   }
-  console.log("spec-arming guard OK (every armed spec has a verified green run on the head commit)");
+  console.log("spec-arming guard OK (every armed spec has a verified green run on the head commit, and its report shows it ran)");
 }
 
 main().catch((err) => {
