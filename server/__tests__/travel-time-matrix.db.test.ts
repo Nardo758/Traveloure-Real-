@@ -11,6 +11,8 @@
  *   M6  a run whose ceiling cost exceeds the maximum is refused before any call
  *   M7  a failing batch marks the run failed with the error; earlier cells stay
  *   M8  transit requests never exceed 100 elements and carry a departure time
+ *   M9  P0-b A4 ruling: Kyoto (`apiTransitCoverage: false`) asks WALK and DRIVE, never TRANSIT, stores
+ *       drive cells, and the reader answers a drive pair from the matrix
  *
  * DISPOSABLE DB ONLY: every row is under a unique fake market slug and is deleted afterwards.
  */
@@ -20,7 +22,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { refreshMarketMatrix, loadMatrixReader, type RouteMatrixElement } from "../services/travel-time-matrix.service";
-import type { Centroid } from "@shared/travel-time";
+import { matrixModesFor, type Centroid } from "@shared/travel-time";
 
 const MARKET = `test-${crypto.randomUUID().slice(0, 8)}`;
 const C3: Centroid[] = [
@@ -136,4 +138,24 @@ test("M7: a failing batch marks the run failed and records the error", async () 
   assert.equal(run.status, "failed");
   assert.ok(run.finished_at);
   assert.equal(await cellCount(), 18, "cells from earlier runs stay");
+});
+
+test("M9: a market with no transit in the routing API refreshes walk + drive, never transit, and reads drive cells", async () => {
+  const before = bodies.length;
+  const r: any = await refreshMarketMatrix({ marketSlug: "kyoto", force: true, fetchMatrix: fakeFetch(), loadCentroids: load3 });
+  try {
+    assert.equal(r.status, "complete");
+    const asked = new Set(bodies.slice(before).map((b) => b.travelMode));
+    assert.deepEqual([...asked].sort(), ["DRIVE", "WALK"], "no TRANSIT request for Kyoto");
+    assert.deepEqual([...matrixModesFor(true)], ["walk", "drive"]);
+    assert.deepEqual([...matrixModesFor(false)], ["walk", "transit"]);
+    const [run] = (await db.execute(sql`SELECT modes FROM travel_time_matrix_refreshes WHERE id = ${r.refreshId}`)).rows as any[];
+    assert.deepEqual(run.modes, ["walk", "drive"]);
+    const read = await loadMatrixReader("kyoto", load3);
+    const t = read({ lat: 35.0037, lng: 135.7788 }, { lat: 34.9858, lng: 135.7588 }, "drive");
+    assert.equal(t.basis, "matrix", "a drive pair is answered from the matrix");
+  } finally {
+    await db.execute(sql`DELETE FROM travel_time_matrix WHERE refresh_id = ${r.refreshId}`);
+    await db.execute(sql`DELETE FROM travel_time_matrix_refreshes WHERE id = ${r.refreshId}`);
+  }
 });

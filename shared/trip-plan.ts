@@ -544,6 +544,8 @@ export interface TripPlanLegRouted {
   provenance: { source: string; checkedAt: string };
   /** P0 ruling 2: present only on a drive the engine fell back to because transit had no route. */
   transitUnavailable?: true;
+  /** P0-b item 8: present only on a drive standing in for transit the routing API cannot answer (Kyoto). */
+  transitApiUncovered?: true;
 }
 
 export interface TripPlanDay {

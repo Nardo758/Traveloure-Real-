@@ -2659,6 +2659,9 @@ This document captures architectural decisions to maintain consistency across co
     recomputed). The marker now lives in `superseded_at` (migration 368, TC-3a — the held follow-up is closed;
     `origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
     is set by Leon in Deployments after the deploy carrying P0.
+    **AMENDED BY P0-b (decision-maker, Oct 11, 2026 — ledger `2026-10-11-p0b-routing-follow-ups`).**
+    "P0 ruling 7 amended: legacy confirmed legs are superseded once on the first engine run — re-routed where
+    routable, retired where the pair has an unlocated stop. No unsourced leg shows on a routed plan."
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**

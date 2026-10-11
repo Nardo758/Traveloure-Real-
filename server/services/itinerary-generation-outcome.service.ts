@@ -38,15 +38,18 @@ export async function persistGenerationOutcome(tx: Transaction, input: Generatio
     eq(itineraryComparisons.status, "generating"),
     eq(itineraryComparisons.updatedAt, input.startedAt),
   )).returning();
-  if (!comparison) return { transitioned: false, outcome: resolved.outcome, outboxId: null };
+  if (!comparison) return { transitioned: false, outcome: resolved.outcome, outboxId: null, tripId: null as string | null };
+  // P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): the plan a READY run belongs to, so the
+  // caller can recompute its legs after commit. Null for a failed run or a comparison with no plan.
+  const tripId = resolved.outcome === "ready" ? comparison.tripId ?? null : null;
 
   const [user] = await tx.select({ email: users.email, firstName: users.firstName })
     .from(users).where(eq(users.id, comparison.userId)).limit(1);
   if (!user?.email || !/^[^\s@<>\[\]]+@[^\s@<>\[\]]+\.[^\s@<>\[\]]+$/.test(user.email)) {
-    return { transitioned: true, outcome: resolved.outcome, outboxId: null };
+    return { transitioned: true, outcome: resolved.outcome, outboxId: null, tripId };
   }
   if (!canQueueGenerationNotice(user.email)) {
-    return { transitioned: true, outcome: resolved.outcome, outboxId: null };
+    return { transitioned: true, outcome: resolved.outcome, outboxId: null, tripId };
   }
 
   const key = generationNoticeKey(comparison.id, resolved.outcome, input.startedAt);
@@ -55,7 +58,7 @@ export async function persistGenerationOutcome(tx: Transaction, input: Generatio
   const [existing] = await tx.select({ id: emailOutbox.id, status: emailOutbox.status }).from(emailOutbox)
     .where(sql`${emailOutbox.metadata}->>'generationNoticeKey' = ${key}`).limit(1);
   if (existing && existing.status !== "cancelled") {
-    return { transitioned: true, outcome: resolved.outcome, outboxId: null };
+    return { transitioned: true, outcome: resolved.outcome, outboxId: null, tripId };
   }
 
   const { getAppBaseUrl } = await import("./email.service");
@@ -95,7 +98,7 @@ export async function persistGenerationOutcome(tx: Transaction, input: Generatio
       readyAt: now,
     });
   }
-  return { transitioned: true, outcome: resolved.outcome, outboxId };
+  return { transitioned: true, outcome: resolved.outcome, outboxId, tripId };
 }
 
 export async function finishComparisonGeneration(input: GenerationOutcomeInput) {
@@ -108,6 +111,13 @@ export async function finishComparisonGeneration(input: GenerationOutcomeInput) 
   );
   // Only after commit: failed immediate delivery stays durable for the existing retry worker.
   if (result.outboxId !== null && input.deliverImmediately !== false) await deliverQueuedEmail(result.outboxId);
+  // P0-b item 1: after a READY run commits, recompute the plan's legs now — a finished Optimize run is what
+  // earns a plan routed legs, so waiting for the next item edit left them unworked. Never awaited and never
+  // fails the outcome (§15b); `runNow` logs its own skip reason.
+  if (result.transitioned && result.tripId) {
+    const { runNow } = await import("./routing/plan-legs-queue");
+    void runNow(result.tripId);
+  }
   return result;
 }
 

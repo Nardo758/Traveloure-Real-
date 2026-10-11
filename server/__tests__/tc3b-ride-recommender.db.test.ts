@@ -67,8 +67,9 @@ async function trip(tid: string, opts: { paid: boolean; confirmed: boolean }) {
       VALUES (${`${tid}-${key}`}, ${tid}, ${key.toUpperCase()}, 'activity', 1, ${order}, ${String(p.lat)}, ${String(p.lng)}, ${start}, ${end}, 'traveler')`);
   }
   await db.execute(sql`INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng, to_activity_id, to_name, to_lat, to_lng,
-      distance_meters, distance_display, recommended_mode, estimated_duration_minutes, alternative_modes, energy_cost, proposal_status, checked_by, checked_at)
-    VALUES (${`${tid}-leg`}, ${tid}, 1, 1, ${`${tid}-a`}, 'A', ${A.lat}, ${A.lng}, ${`${tid}-c`}, 'C', ${C.lat}, ${C.lng}, 9000, '9 km', 'transit', 40, '[]'::jsonb, 0, 'confirmed', ${owner}, now())`);
+      distance_meters, distance_display, recommended_mode, estimated_duration_minutes, alternative_modes, energy_cost, proposal_status, checked_by, checked_at, source, calculated_at)
+    VALUES (${`${tid}-leg`}, ${tid}, 1, 1, ${`${tid}-a`}, 'A', ${A.lat}, ${A.lng}, ${`${tid}-c`}, 'C', ${C.lat}, ${C.lng}, 9000, '9 km', 'transit', 40, '[]'::jsonb, 0, 'confirmed', ${owner}, now(), 'stub', now())`);
+  // P0-b item 5: a leg is routed only when the engine sourced it, so the fixture leg carries a source.
 }
 
 async function offeredRows(tid: string): Promise<number> {

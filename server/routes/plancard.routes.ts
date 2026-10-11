@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { routingAdapter } from "../services/routing/index";
+import { planLegsSkipReason, type PlanLegsSkipReason } from "../services/routing/plan-legs";
 import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service";
 import { routingPausedToday } from "../services/maps-billing/maps-billing.service";
 
@@ -61,6 +62,17 @@ async function routedLegsFor(tripId: string): Promise<boolean> {
     return !!routingAdapter() && (await tripGetsRoutedLegs(tripId));
   } catch {
     return false;
+  }
+}
+
+/** P0-b item 1: the engine's skip reason for this plan, or null when its legs are worked out. */
+async function legsSkippedFor(tripId: string, datesConfirmed: boolean): Promise<PlanLegsSkipReason | null> {
+  try {
+    const engineOn = !!routingAdapter();
+    const qualifies = await tripGetsRoutedLegs(tripId);
+    return planLegsSkipReason({ engineOn, qualifies, tripExists: true, datesConfirmed });
+  } catch {
+    return null;
   }
 }
 
@@ -872,6 +884,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const readyMadeSource = await readyMadeProvenanceForTrip(tripId);
     // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): does the engine route this plan?
     const routedLegs = await routedLegsFor(tripId);
+    // P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): WHY this plan's legs are not worked out,
+    // through the engine's own `planLegsSkipReason` — present only when something skips it.
+    const legsSkipped = await legsSkippedFor(tripId, (plan as any).trip?.datesConfirmed === true);
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
     // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
     const localTeasers = await localTeasersForTrip(tripId);
@@ -950,6 +965,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       ...((await travelTimesPausedFor(tripId, routedLegs)) ? { travelTimesPaused: true } : {}),
       // Step 9b D8: PRESENT ONLY WHEN TRUE — the plan's legs are recomputed by the engine after an edit.
       ...(routedLegs ? { routedLegs: true } : {}),
+      ...(legsSkipped ? { legsSkipped } : {}),
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

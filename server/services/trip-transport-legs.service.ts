@@ -262,7 +262,7 @@ export type ReadyMadeLegLine = {
  */
 export function readyMadeLegLines(
   items: ReadonlyArray<{ id: string; title: string; dayNumber: number; latitude?: unknown; longitude?: unknown }>,
-  legs: ReadonlyArray<{ id: string; dayNumber: number; fromActivityId: string | null; toActivityId: string | null; proposalStatus?: string | null; userSelectedMode?: string | null }>,
+  legs: ReadonlyArray<{ id: string; dayNumber: number; fromActivityId: string | null; toActivityId: string | null; proposalStatus?: string | null; userSelectedMode?: string | null; recommendedMode?: string | null }>,
 ): { blocking: ReadyMadeLegLine[]; advisory: ReadyMadeLegLine[] } {
   const byPair = new Map<string, (typeof legs)[number][]>();
   for (const leg of legs) {
@@ -691,12 +691,10 @@ export async function updateTripTransportLeg(
   if (patch.pickupProviderServiceId !== undefined) {
     updates.pickupProviderServiceId = patch.pickupProviderServiceId || null;
   }
-  // Review blocking-4: a confirm that names no mode keeps the mode the Workstation SHOWS — the
-  // engine's recommendation (`userSelectedMode || recommendedMode`) — so "Confirmed" on screen and
-  // "picked" at the publish gate (R-ax) are the same fact. Never overwrites a mode already chosen.
-  if (patch.proposalStatus === "confirmed" && patch.userSelectedMode === undefined && !leg.userSelectedMode && leg.recommendedMode) {
-    updates.userSelectedMode = leg.recommendedMode;
-  }
+  // P0-b item 9, option (a) (ledger `2026-10-11-p0b-routing-follow-ups`): a confirm that names no mode no
+  // longer copies `recommended_mode` into `user_selected_mode`. "Confirmed" on screen and "picked" at the
+  // publish gate (R-ax) stay the same fact because `isPickedLeg` reads the recommended mode itself, and a
+  // copied value can no longer be mistaken for a traveler's or an expert's choice.
   // R-bf: a confirm by an expert-side caller is a check. Re-confirming an already-confirmed leg
   // re-stamps it (that is a fresh check). A confirm by anyone else leaves the stamp as it was.
   if (patch.proposalStatus === "confirmed" && patch.stampCheckedBy) {

@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { wallClockMinutes } from "@shared/leg-reachability";
 import { tripGetsRoutedLegs, tripLegsShown } from "../services/routing/plan-routed-legs.service";
 import { routedFactsOf } from "../services/routing/plan-legs";
 import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
@@ -281,6 +282,16 @@ interface TripAnchorCandidatesDependencies {
   getTrip: typeof storage.getTrip;
   loadTripInputs: typeof loadTripOptimizerInputs;
   rankAnchors: typeof loadRankedAnchors;
+}
+
+/** P0-b item 10: "HH:MM" start + the item's own minutes → "HH:MM" end the same day, or null (never guessed). */
+export function endTimeFromDuration(start: unknown, durationMinutes: unknown): string | null {
+  const from = wallClockMinutes(typeof start === "string" ? start : null);
+  const dur = Number(durationMinutes);
+  if (from == null || durationMinutes == null || !Number.isInteger(dur) || dur <= 0) return null;
+  const to = from + dur;
+  if (to >= 24 * 60) return null;
+  return `${String(Math.floor(to / 60)).padStart(2, "0")}:${String(to % 60).padStart(2, "0")}`;
 }
 
 export function createTripAnchorCandidatesHandler(
@@ -2712,11 +2723,19 @@ router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenti
           order: item.sortOrder || idx,
         }));
 
+      // P0-b item 7 (ledger `2026-10-11-p0b-routing-follow-ups`): the version's legs come from the routing
+      // engine or not at all — no routing context (engine off) is a 409, never the retired drive fallback.
+      const { versionRoutingFor } = await import("../services/routing/plan-legs-engine.service");
+      const routing = (await versionRoutingFor(comparison.id))?.ctx ?? null;
+      if (!routing) {
+        return res.status(409).json({ error: "Travel times aren't being worked out right now", code: "routing_engine_off" });
+      }
       const legs = await calculateTransportLegs(
         variantId,
         activities,
         comparison.destination || "",
-        userPrefs || {}
+        userPrefs || {},
+        routing,
       );
 
       res.json({ legs, count: legs.length });
@@ -3417,6 +3436,13 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
           bookingId: merged("bookingId") ?? null,
         });
         if (refusal) return res.status(400).json({ message: refusal });
+      }
+      // P0-b item 10 (ledger `2026-10-11-p0b-routing-follow-ups`): a patch that moves the START and names no
+      // END keeps the item's own length — the end moves with it, from the row's `duration_minutes`. No
+      // duration, an unparseable start, or a move past midnight leaves the end as it was (§13).
+      if ((safeBody as any).startTime !== undefined && (safeBody as any).endTime === undefined) {
+        const end = endTimeFromDuration((safeBody as any).startTime, (existing as any).durationMinutes);
+        if (end) (safeBody as any).endTime = end;
       }
       // Step 7b (R323; §12 step 3, R-n): an advisor's edit on a traveler's plan is FILED as a
       // suggestion carrying the final, validated `safeBody`; the owner's accept replays this same
