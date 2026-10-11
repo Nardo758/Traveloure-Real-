@@ -2752,6 +2752,18 @@ This document captures architectural decisions to maintain consistency across co
     `origin='superseded'` marker moved to `superseded_at` (held follow-up closed). The catalog seed (migration 369 —
     Sagano Romantic Train, Hozugawa boat, Eizan Kirara) waits on Chrome's official reads; an unverified field stays
     NULL and the row stays inactive.
+    **AMENDED — THE SEED (decision-maker rulings 1–4, Oct 11, 2026; ledger `2026-10-11-tc3-ride-seed`; migration
+    369, HELD for "Migration 369 SQL approved — Leon").** 369 adds `service_transport_facts.fact_sources` (field →
+    {url, quote}) and `notes` (facts no column carries), jsonb, nullable, no DEFAULT — and seeds five directional rides
+    (Sagano down/up, Hozugawa, Eizan Kirara down/up) under the reserved "Traveloure Transport" account (no login, no
+    handle). Every value comes from the committed official read (`docs/planning/briefs/tc-3-reads/`) and names its row
+    in `fact_sources` — no entry, no value; NOT ON SITE stays NULL. Fares live in `notes.fare` as JPY (`price` stays
+    NULL: the column has no currency). Coordinates come ONLY from OSM node ids read by Chrome and seeded with the row,
+    never a boot-time resolve: each route point stores its node (new nullable `service_route_points.osm_node_id`) and
+    a `fact_sources` entry naming the node URL, with `osm_attribution = true`. Rides seed located and active,
+    approved, `booking_mode='hidden'` (never a cart line), and never in browse: `notRideListingSql` /
+    `withoutRideListings` (`server/services/ride-listings.ts`) gate the four public list readers. The refresh interval
+    is set in `/admin/content-sources`, never on the ride row.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

@@ -54,6 +54,34 @@ Anything the read does not confirm stays NULL; a row is seeded INACTIVE and goes
 - **Queue:** TC-3a lands as R428, after SS-2 D. The 369 seed and the "Traveloure Transport" operator account
   follow in their own PR once Chrome's official reads land.
 
-## Held — needs data or ruling
-- "Migration 368 SQL approved — Leon" on the PR.
-- Chrome official reads for 369 (checklist above) — a separate PR.
+## Migration 369 — built (its own PR, HELD for "Migration 369 SQL approved — Leon")
+Decision-maker rulings, Oct 11, 2026:
+1. Coordinates: OSM node ids read by Chrome, seeded with the row — never a boot-time resolve (a seed is
+   deterministic). Node id stored in `service_route_points.osm_node_id`, coordinates beside it, a `fact_sources`
+   entry per point with the node URL, `osm_attribution = true`. With the points in hand the rides seed located
+   and active.
+2. 369 adds `fact_sources` (field → {url, quote}) and `notes` (jsonb) — schema + data. No entry, no value.
+3. Refresh interval: the three operators join `/admin/content-sources` at 30 days; the ride row carries none.
+4. `booking_mode='hidden'`, official booking page linked, approved and active; never in `/services` browse or
+   the cart.
+
+Source of record: `docs/planning/briefs/tc-3-reads/nine-site-read-2026-10-10-v2.md`.
+
+### The six OSM points (read from openstreetmap.org 2026-10-10; © OpenStreetMap contributors)
+| Point | Node | Lat, lon |
+|---|---|---|
+| Torokko-Saga | 12997335828 | 35.0185888, 135.6807067 |
+| Torokko-Kameoka (railway=stop; no station node) | 538973298 | 35.0131065, 135.6068310 |
+| Hozugawa boarding 乗船場 (Kameoka) | 4174041189 | 35.0175747, 135.5873099 |
+| Hozugawa landing 下船場 (Arashiyama, ~570 m upstream of Togetsukyo) | 4539039690 | 35.0135421, 135.6714667 |
+| Demachiyanagi (Eizan, operator 叡山電鉄; not the Keihan node) | 335671845 | 35.0304955, 135.7732355 |
+| Kurama | 7886699754 | 35.1128960, 135.7722690 |
+
+### Still empty, by ruling or for want of a read
+- Sagano extra trains (17:10/18:26 down, 17:43/18:59 up): the read does not say which time is 81/82 and
+  which 91/92, so no extra slots — the agreed dates are in `notes.extraTrains`. Needs the timetable PDF's train
+  numbers per departure.
+- Hozugawa Dec 14–28 departures (winter times for December 2026 not stated); public holidays carry the weekday
+  rows (holiday dates are not in the read).
+- Eizan departures: the ◆ marks per train (not Wed/Thu) and which dates are holidays.
+- Sagano beyond Dec 29; seat capacities; Hozugawa luggage; Sagano general weather rule.
