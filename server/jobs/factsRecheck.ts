@@ -35,6 +35,8 @@ export interface FactsRecheckResult {
   legsNotified: number;
   /** P0 ruling 6: desired pairs that show no leg (counted, never written). Present only when > 0. */
   legsMissing?: number;
+  /** PF-1 ruling 2: `place_lookup_outcomes` rows older than the retention window, deleted this pass. */
+  lookupOutcomesPruned?: number;
   error?: string;
 }
 
@@ -45,9 +47,15 @@ export interface FactsRecheckDeps {
   notifyOnce: (n: { tripId: string; userId: string; destination: string | null; conflicts: Finding[]; checkedAt: Date }) => Promise<boolean>;
   /** Step 9b: the plan's leg re-check (the ONE `recheckPlanLegs`). */
   legRecheck: (trip: { id: string; userId: string; destination: string | null; startDate?: string | null; timezone?: string | null; datesConfirmed?: boolean }, now: Date) => Promise<LegRecheckResult>;
+  /** PF-1 ruling 2: the retention prune of `place_lookup_outcomes` (config window). Absent ⇒ not run. */
+  pruneLookupOutcomes?: (now: Date) => Promise<number>;
 }
 
 export const defaultFactsRecheckDeps: FactsRecheckDeps = {
+  async pruneLookupOutcomes(now) {
+    const { pruneLookupOutcomes } = await import("../services/content-facts/lookup-outcomes.service");
+    return pruneLookupOutcomes(now);
+  },
   async candidates(now) {
     const r = await db.execute(sql`
       SELECT t.id, t.user_id, t.destination, t.market_slug, t.start_date::text AS start_date, t.timezone,
@@ -71,6 +79,7 @@ export const defaultFactsRecheckDeps: FactsRecheckDeps = {
     const { enrichPlanItems } = await import("../services/content-facts/place-facts.service");
     const items = await storage.getItineraryItems(trip.id);
     await enrichPlanItems({
+      trigger: "facts_recheck",
       tripId: trip.id,
       market: trip.marketSlug,
       city: trip.destination,
@@ -123,11 +132,22 @@ export const defaultFactsRecheckDeps: FactsRecheckDeps = {
 
 export async function runFactsRecheck(now: Date = new Date(), deps: FactsRecheckDeps = defaultFactsRecheckDeps): Promise<FactsRecheckResult> {
   const result: FactsRecheckResult = { checked: 0, conflicts: 0, notified: 0, failed: 0, legsChecked: 0, legsChanged: 0, legsNotified: 0 };
+  // PF-1 ruling 2: the retention window is enforced here, daily. A failed prune is the job's error (so the
+  // heartbeat shows it) but never stops the re-check itself.
+  let pruneError: string | undefined;
+  if (deps.pruneLookupOutcomes) {
+    try {
+      result.lookupOutcomesPruned = await deps.pruneLookupOutcomes(now);
+    } catch (err: any) {
+      pruneError = `lookup-outcomes prune failed: ${err?.message ?? String(err)}`;
+      console.error(`[facts-recheck] ${pruneError}`);
+    }
+  }
   let plans: Awaited<ReturnType<FactsRecheckDeps["candidates"]>>;
   try {
     plans = await deps.candidates(now);
   } catch (err: any) {
-    return { ...result, error: err?.message ?? String(err) };
+    return { ...result, error: [err?.message ?? String(err), pruneError].filter(Boolean).join("; ") };
   }
   for (const trip of plans) {
     try {
@@ -149,5 +169,6 @@ export async function runFactsRecheck(now: Date = new Date(), deps: FactsRecheck
       console.error(`[facts-recheck] plan ${trip.id} failed:`, (err as Error)?.message ?? err);
     }
   }
+  if (pruneError) result.error = pruneError;
   return result;
 }

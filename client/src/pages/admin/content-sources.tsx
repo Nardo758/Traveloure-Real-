@@ -249,8 +249,145 @@ export default function AdminContentSources() {
             </div>
           </CardContent>
         </Card>
+        <LookupOutcomesCard />
       </div>
     </AdminLayout>
+  );
+}
+
+interface LookupOutcomeCountsResponse {
+  days: number;
+  since: string;
+  counts: Array<{ outcome: string; reason: string | null; count: number }>;
+}
+interface PlanLookupOutcomesResponse {
+  tripId: string;
+  items: Array<{
+    itemId: string;
+    itemTitle: string | null;
+    day: number | null;
+    outcome: string;
+    reason: string | null;
+    trigger: string | null;
+    runStartedAt: string;
+    placeId: string | null;
+    cache: string | null;
+  }>;
+}
+
+/**
+ * PF-1 ruling 3 (ledger `2026-10-11-pf1-lookup-outcomes`): what the Places lookups did — counts by outcome and
+ * reason over the server's window, and a plan-id view of each item's latest outcome. Shows the server's words
+ * as stored; derives nothing. A title is the item's CURRENT title (the table stores ids only); a deleted item
+ * says so rather than inventing one.
+ */
+function LookupOutcomesCard() {
+  const [planInput, setPlanInput] = useState("");
+  const [planId, setPlanId] = useState<string | null>(null);
+  const counts = useQuery<LookupOutcomeCountsResponse>({ queryKey: ["/api/admin/content-sources/lookup-outcomes"] });
+  const plan = useQuery<PlanLookupOutcomesResponse>({
+    queryKey: [`/api/admin/content-sources/lookup-outcomes/plan/${encodeURIComponent(planId ?? "")}`],
+    enabled: !!planId,
+  });
+  return (
+    <Card data-testid="card-lookup-outcomes">
+      <CardHeader>
+        <CardTitle>Places lookup outcomes</CardTitle>
+        <CardDescription>
+          What each plan item's Places lookup did: attached, unmatched, capped, skipped, no place, or error, with the reason.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {counts.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : counts.isError || !counts.data ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-lookup-counts-error">The counts could not be loaded.</p>
+        ) : counts.data.counts.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-lookup-counts-empty">
+            No lookups recorded in the last {counts.data.days} days.
+          </p>
+        ) : (
+          <div data-testid="table-lookup-counts">
+            <p className="text-xs text-muted-foreground mb-2">Last {counts.data.days} days</p>
+            <table className="text-sm w-full">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="font-normal py-1">Outcome</th>
+                  <th className="font-normal py-1">Reason</th>
+                  <th className="font-normal py-1 text-right">Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {counts.data.counts.map((c) => (
+                  <tr key={`${c.outcome}:${c.reason ?? ""}`} className="border-t">
+                    <td className="py-1">{c.outcome}</td>
+                    <td className="py-1">{c.reason ?? "—"}</td>
+                    <td className="py-1 text-right tabular-nums">{c.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const v = planInput.trim();
+            setPlanId(v || null);
+          }}
+        >
+          <div className="space-y-1 min-w-0 flex-1">
+            <Label htmlFor="lookup-plan-id">Plan id</Label>
+            <Input id="lookup-plan-id" value={planInput} onChange={(e) => setPlanInput(e.target.value)} data-testid="input-lookup-plan-id" />
+          </div>
+          <Button type="submit" variant="outline" data-testid="button-lookup-plan">Show items</Button>
+        </form>
+        {planId && (
+          plan.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : plan.isError || !plan.data ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-lookup-plan-error">That plan's outcomes could not be loaded.</p>
+          ) : plan.data.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-lookup-plan-empty">
+              No lookups recorded for this plan in the retention window.
+            </p>
+          ) : (
+            <div className="overflow-x-auto" data-testid="table-lookup-plan">
+              <table className="text-sm w-full">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="font-normal py-1">Day</th>
+                    <th className="font-normal py-1">Item</th>
+                    <th className="font-normal py-1">Outcome</th>
+                    <th className="font-normal py-1">Reason</th>
+                    <th className="font-normal py-1">Run</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {plan.data.items.map((it) => (
+                    <tr key={it.itemId} className="border-t align-top" data-testid={`row-lookup-${it.itemId}`}>
+                      <td className="py-1">{it.day ?? "—"}</td>
+                      <td className="py-1">
+                        <div>{it.itemTitle ?? "Item no longer on the plan"}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{it.itemId}</div>
+                      </td>
+                      <td className="py-1">{it.outcome}</td>
+                      <td className="py-1">{it.reason ?? "—"}</td>
+                      <td className="py-1 text-xs text-muted-foreground">
+                        {new Date(it.runStartedAt).toLocaleString()}
+                        {it.trigger ? ` · ${it.trigger}` : ""}
+                        {it.cache ? ` · cache ${it.cache}` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -44,7 +44,7 @@ import {
 } from "./services/smart-sequencing.service";
 import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
 import {
-  getTravelerProfile,
+  getTravelerProfileForTrip,
   recordDislikeFeedback,
   buildTravelerProfilePromptSection,
   effectiveProfileToTransportPrefs,
@@ -1023,7 +1023,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // degrades to "no profile signal", never a failed optimization.
     let travelerProfile: TravelerProfile | null = null;
     try {
-      travelerProfile = await getTravelerProfile(userId);
+      // TC-3b: the trip's own profile overlay applies over the account profile (one helper, both read sites).
+      travelerProfile = await getTravelerProfileForTrip(userId, tripId);
     } catch (err) {
       console.warn("[Optimizer] Traveler profile fetch failed (non-critical):", (err as Error).message);
     }

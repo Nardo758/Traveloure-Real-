@@ -33,6 +33,10 @@ export const HEALTH_FLAG_NAMES = [
   // Smoke 13 (ledger `2026-10-06-smoke13-handoff-money`): relaxes ONLY the seed-domain clause of the
   // routability predicate (CI's seeded fixtures). Production must read false.
   "SHOW_DEMO_EXPERTS",
+  // P0-b item 6 (ledger `2026-10-11-p0b-routing-follow-ups`): the routing engine's switch and the CI stub
+  // adapter's switch, so a production read can show whether legs are being routed at all.
+  "TRAVEL_TIME_SERVICE_ENABLED",
+  "ROUTING_ADAPTER_STUB",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;
@@ -57,6 +61,20 @@ export function healthEgressFlags(state: typeof healthEgress = healthEgress): { 
 export function healthMapsCaps(env: Record<string, string | undefined> = process.env): Record<MapsCallerKey, number> {
   const out = {} as Record<MapsCallerKey, number>;
   for (const key of MAPS_CALLER_KEYS) out[key] = mapsCallerDailyCap(key, env);
+  return out;
+}
+
+/**
+ * P0-b item 6 (ledger `2026-10-11-p0b-routing-follow-ups`): whether a credential is SET — a boolean and
+ * nothing else. Never the value, a prefix, a length or a hash. Present means non-empty after trimming; it
+ * says nothing about whether the key is valid or what it is allowed to call.
+ */
+export const HEALTH_KEY_NAMES = { googleMaps: "GOOGLE_MAPS_API_KEY" } as const;
+export function healthKeyPresence(env: Record<string, string | undefined> = process.env): Record<keyof typeof HEALTH_KEY_NAMES, boolean> {
+  const out = {} as Record<keyof typeof HEALTH_KEY_NAMES, boolean>;
+  for (const [k, name] of Object.entries(HEALTH_KEY_NAMES) as [keyof typeof HEALTH_KEY_NAMES, string][]) {
+    out[k] = typeof env[name] === "string" && env[name]!.trim().length > 0;
+  }
   return out;
 }
 

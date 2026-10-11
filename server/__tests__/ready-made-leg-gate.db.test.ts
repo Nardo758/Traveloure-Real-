@@ -1,8 +1,9 @@
 /**
  * L1-2 — the ready-made leg gate, R-ax (work plan docs/planning/expert-console-ready-made-work-plan.md).
  *
- *   G1  submit with an unpicked leg (proposed, or confirmed with no mode) ⇒ 400 with one `legs` line
- *       per gap, naming day, stops and the leg; the listing stays `draft`
+ *   G1  submit with an unpicked leg (proposed) ⇒ 400 with one `legs` line per gap, naming day, stops
+ *       and the leg; the listing stays `draft`. A CONFIRMED leg is picked — its recommended mode is the
+ *       one the author confirmed (P0-b item 9 (a); `recommended_mode` is NOT NULL)
  *   G2  submit with a located pair and NO leg row at all ⇒ 400 `legs` line without a legId
  *   G3  admin approve refuses the same listing with the same lines (it calls the same gate)
  *   G4  a fully picked build passes submit; an unlocated stop does not block (advisory only)
@@ -139,13 +140,12 @@ test("G1: unpicked legs block submit, one line per gap", async () => {
   const r = await request(ids.author, "POST", `/api/expert/ready-made/${ids.listing}/submit`);
   assert.equal(r.status, 400);
   const legs = r.body.missing.filter((m: any) => m.requirement === "legs");
-  assert.equal(legs.length, 2);
+  assert.equal(legs.length, 1, "the confirmed leg counts as picked (P0-b item 9 (a))");
   assert.deepEqual(legs.map((l: any) => [l.dayNumber, l.fromItemId, l.toItemId, l.legId]), [
     [1, ids.a, ids.b, ids.legAB],
-    [1, ids.b, ids.c, ids.legBC],
   ]);
   assert.match(legs[0].message, /Kiyomizu-dera to Yasaka Shrine/);
-  assert.equal(r.body.missing.length, 2, "only the leg clause is missing");
+  assert.equal(r.body.missing.length, 1, "only the leg clause is missing");
   assert.equal(await listingStatus(), "draft");
 });
 
