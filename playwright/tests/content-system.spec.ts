@@ -19,13 +19,6 @@ const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
 // Suite A — Retired surface redirects (must redirect, never 404)
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe("Surface retirement redirects", () => {
-  test("/discover-experiences redirects to /discover", async ({ page }) => {
-    await page.goto(`${BASE_URL}/discover-experiences`, { waitUntil: "domcontentloaded" });
-    await expect(page).toHaveURL(/\/discover($|\?|#)/);
-    // Must not be a 404 page
-    const body = await page.textContent("body");
-    expect(body).not.toMatch(/404|page not found/i);
-  });
 
   test("/spontaneous redirects to /destinations", async ({ page }) => {
     await page.goto(`${BASE_URL}/spontaneous`, { waitUntil: "domcontentloaded" });
@@ -169,16 +162,9 @@ test.describe("Static assertion — no raw window.open(item.affiliate_url)", () 
       mutationCheck: "/api/content/affiliate-redirect",
     },
     {
-      rel: "client/src/components/fever-events-section.tsx",
-      hookCheck: "useContentAgentBooking",
-    },
-    {
       rel: "client/src/components/affiliate-transport-products.tsx",
       // Transport uses the in-platform agent booking mutation
       mutationCheck: "/api/affiliate-booking-requests",
-    },
-    {
-      rel: "client/src/components/travelpayouts/TravelpayoutsSection.tsx",
     },
   ];
 

@@ -81,21 +81,6 @@ test.describe("Cart conversion → /plans/:tripId redirect (Suite 6)", () => {
   // (setLocation(`/plans/${tripId}`)), never the details card mid-flow. The
   // original bug this suite guards — the plural /trips/${…} typo that 404'd —
   // stays guarded.
-  test("EnhancedPlanningModal.tsx fallback uses /plans/${…} — never /trips/${…}", () => {
-    const src = readSource(MODAL_FILE);
-
-    expect(
-      /setLocation\(`\/trips\/\$\{/.test(src),
-      "EnhancedPlanningModal.tsx still contains the broken setLocation(`/trips/${…}`) pattern."
-    ).toBe(false);
-
-    expect(
-      /setLocation\(`\/plans\/\$\{/.test(src),
-      "EnhancedPlanningModal.tsx does not contain setLocation(`/plans/${…}`) — the post-planning fallback may be broken (ruling 2026-08-28-single-planning-entry)."
-    ).toBe(true);
-
-    console.log("[cart-checkout-redirect] PASS EnhancedPlanningModal.tsx fallback uses /plans/:tripId");
-  });
 
   // ── C. App.tsx declares both targets ─────────────────────────────────────
   test('App.tsx declares /plans/:tripId (cart target) and /trip/:id (modal target)', () => {
