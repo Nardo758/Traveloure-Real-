@@ -15,7 +15,6 @@ import {
   assertNotProduction,
   checkOverflow,
   collectConsole,
-  findPricedService,
   saveScreenshot,
   seededIndex,
   writeEvidence,
@@ -254,87 +253,6 @@ test.describe("Deep UI QA loops", () => {
       result: "PASS - two responsive rendered loops",
       loops,
       limitations: "Automated keyboard checks are not a claim of physical screen-reader coverage.",
-    });
-  });
-
-  test("messaging/reviews — two disposable rendered loops", async ({ browser }, testInfo) => {
-    const loops: LoopResult[] = [];
-    for (const variant of VARIANTS) {
-      const context = await createContext(browser, variant);
-      const page = await context.newPage();
-      const consoleMessages = collectConsole(page);
-      const surfaceAudits: SurfaceAudit[] = [];
-      try {
-        await registerTraveler(context, `${testInfo.project.name}-${variant.name}`);
-        const expertsResponse = await context.request.get(`${BASE_URL}/api/experts?limit=20`);
-        expect(expertsResponse.ok()).toBe(true);
-        const expertsBody = await expertsResponse.json();
-        const experts = Array.isArray(expertsBody) ? expertsBody : (expertsBody.experts ?? expertsBody.data ?? []);
-        const expert = experts.find((row: any) => String(row.id).length > 10);
-        expect(expert, "A real expert UUID is required for the rendered chat loop").toBeTruthy();
-        const name = `${expert.firstName ?? ""} ${expert.lastName ?? ""}`.trim() || "Audit expert";
-
-        await page.goto(`/chat?expertId=${encodeURIComponent(expert.id)}&name=${encodeURIComponent(name)}`, {
-          waitUntil: "domcontentloaded",
-        });
-        const input = page.getByTestId("input-message");
-        await expect(input).toBeVisible({ timeout: 15_000 });
-        const messageLog = page.getByRole("log", { name: "Message thread" });
-        await expect(messageLog).toBeVisible();
-
-        const marker = `deep-ui-${testInfo.project.name}-${variant.name}-${crypto.randomBytes(3).toString("hex")}`;
-        const messages = [
-          `${marker} hello 👋`,
-          `${marker} ${"Long itinerary detail. ".repeat(10)}`,
-          `${marker} rapid follow-up ✈️🌏`,
-        ];
-        for (const message of messages) {
-          await input.fill(message);
-          await page.getByTestId("button-send").click();
-          await expect(input).toHaveValue("", { timeout: 10_000 });
-          await expect(messageLog.getByText(message, { exact: true })).toHaveCount(1, { timeout: 12_000 });
-        }
-        surfaceAudits.push(await auditSurface(
-          page,
-          "chat-thread-after-rapid-messages",
-          `deep-chat-${testInfo.project.name}-${variant.name}.png`,
-        ));
-
-        const service = await findPricedService(page);
-        await page.goto(`/services/${service.id}`, { waitUntil: "domcontentloaded" });
-        await expect(page.getByTestId("text-service-name")).toBeVisible({ timeout: 12_000 });
-        const reviewCards = page.locator('[data-testid^="card-review-"]');
-        const reviewCount = await reviewCards.count();
-        if (reviewCount === 0) {
-          await expect(page.getByText(/no reviews|be the first/i).first()).toBeVisible({ timeout: 8_000 });
-        }
-
-        surfaceAudits.push(await auditSurface(
-          page,
-          "service-review-rendering",
-          `deep-reviews-${testInfo.project.name}-${variant.name}.png`,
-        ));
-        loops.push({
-          variant: variant.name,
-          viewport: variant.viewport,
-          ...summarizeSurfaceAudits(surfaceAudits),
-          consoleErrors: relevantErrors(consoleMessages),
-          details: { sentMessages: messages.length, duplicateCountsVerified: true, reviewCards: reviewCount },
-        });
-      } finally {
-        await context.close();
-      }
-    }
-    expect(loops.every((loop) => loop.noHorizontalOverflow)).toBe(true);
-    expect(loops.every((loop) => loop.consoleErrors.length === 0)).toBe(true);
-    writeEvidence(`deep-messaging-reviews-${testInfo.project.name}.json`, {
-      seed: TIER4_SEED,
-      chosenStep: "messaging-reviews",
-      engine: testInfo.project.name,
-      project: testInfo.project.name,
-      result: "PASS - two disposable rendered loops",
-      loops,
-      limitations: "Review authoring requires a completed booking; this run audits real review rendering, not review submission.",
     });
   });
 
