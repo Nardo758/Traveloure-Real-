@@ -8,7 +8,7 @@ const paid = { basis: "paid" as const, amountCents: 599, currency: "usd", at: "2
 const ENDS = "2026-10-04T15:00:00.000Z";
 
 test("RL1 paid, inside the re-time window", () => {
-  // V-1 (R437; ledger `2026-10-11-v1-version-sanity`): the window's end names its day, never a time alone.
+  // V-1 (R438; ledger `2026-10-11-v1-version-sanity`): the window's end names its day, never a time alone.
   assert.equal(
     runChargeLine(paid, { ...fmt, windowEndsAt: ENDS, now: new Date("2026-10-03T16:00:00Z") }),
     "Paid Oct 3 · $5.99 · free re-times until 3:00 PM tomorrow",

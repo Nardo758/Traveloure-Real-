@@ -152,7 +152,7 @@ function toBoardStop(r: typeof itineraryVariantItems.$inferSelect): BoardStop {
 type Point = { lat: number; lng: number };
 
 /**
- * V-1 (R437): where the board draws a plan item, located the way the slip locates it — the row's own
+ * V-1 (R438): where the board draws a plan item, located the way the slip locates it — the row's own
  * point only when `rowCoordinatesTrusted`, else Google's cached `location` fact (30-day, LD 57). READ
  * ONLY: the apply and re-time paths never see these points, so a Google point is never written. Also
  * returns each row's raw point, so a version stop that saved an untrusted (area-centroid) copy of it
@@ -205,7 +205,7 @@ function locateVersionStop(stop: BoardStop, pts: { point: Map<string, Point>; un
   return { ...stop, lat: p?.lat ?? null, lng: p?.lng ?? null };
 }
 
-/** V-1 (R437): a version's sanity flags, read from its metric rows (one per flag type). */
+/** V-1 (R438): a version's sanity flags, read from its metric rows (one per flag type). */
 export interface VersionFlag {
   key: VersionSanityKey;
   count: number;
@@ -264,9 +264,9 @@ export interface VersionsBoardView {
     badge: BadgeKey | null;
     /** Held-batch-1 item 22: the strict winner by S1's tiebreak (`recommendedVersion`); at most one. */
     recommended: boolean;
-    /** V-1 (R437): `type` is the stored anchor kind (hotel | neighborhood | activity), null when unknown. */
+    /** V-1 (R438): `type` is the stored anchor kind (hotel | neighborhood | activity), null when unknown. */
     anchor: { name: string; type: string | null; lat: number | null; lng: number | null } | null;
-    /** V-1 (R437): the version's sanity flags; empty when none fired (or the run predates them). */
+    /** V-1 (R438): the version's sanity flags; empty when none fired (or the run predates them). */
     flags: VersionFlag[];
     stops: BoardStop[];
     days: DayDiff[];

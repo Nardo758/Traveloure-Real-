@@ -21,7 +21,7 @@ export interface OptimizerCoordinateSource {
   planItemId?: string;
   latitude?: number | string | null;
   longitude?: number | string | null;
-  /** V-1 (R437): a Google Places point held in memory only (LD 57) — never copied onto an activity. */
+  /** V-1 (R438): a Google Places point held in memory only (LD 57) — never copied onto an activity. */
   placesPoint?: { lat: number; lng: number };
 }
 
@@ -171,7 +171,7 @@ export async function resolveOptimizerActivityCoordinates(
   const cache = dependencies.cache ?? databaseCache;
   const geocode = dependencies.geocode ?? geocodeAddress;
   const now = dependencies.now ?? (() => new Date());
-  // V-1 (R437): a stop the model tagged with its plan item IS that item — its identity, not its
+  // V-1 (R438): a stop the model tagged with its plan item IS that item — its identity, not its
   // (possibly reworded) title, so a renamed kept stop still finds its point.
   const baselineByPlanItem = new Map(
     baselineItems.filter((item) => item.planItemId).map((item) => [item.planItemId!, item]),

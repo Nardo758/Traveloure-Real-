@@ -19,10 +19,10 @@ import { isDiningServiceType } from "./version-sanity";
 /** A trip stop that also carries a display name — the basis for an `activity` anchor. */
 export interface NamedStop extends StopPoint {
   name: string;
-  /** V-1 (R437): the stop's optimizer serviceType, when the caller knows it. A dining stop is scored
+  /** V-1 (R438): the stop's optimizer serviceType, when the caller knows it. A dining stop is scored
    *  against but never offered as an activity anchor — a restaurant is not a place to build days around. */
   serviceType?: string | null;
-  /** V-1 (R437): false for a stop located only by an in-memory Google point (LD 57). It counts when
+  /** V-1 (R438): false for a stop located only by an in-memory Google point (LD 57). It counts when
    *  scoring other anchors, but is never itself an anchor, whose point is saved on the version. */
   anchorEligible?: boolean;
 }

@@ -1,5 +1,5 @@
 /**
- * V-1 (R437; ledger `2026-10-11-v1-version-sanity`): a version's sanity checks, run after its
+ * V-1 (R438; ledger `2026-10-11-v1-version-sanity`): a version's sanity checks, run after its
  * coordinates are resolved and before it is saved. PURE — no DB, no config read; the thresholds
  * arrive as arguments from `server/config/optimizer-sanity.config.ts`.
  *

@@ -1,5 +1,5 @@
 /**
- * V-1 (R437; ledger `2026-10-11-v1-version-sanity`): the two wall-clock thresholds a version's sanity
+ * V-1 (R438; ledger `2026-10-11-v1-version-sanity`): the two wall-clock thresholds a version's sanity
  * checks read. Deployment config, never a literal at the check: a dining stop starting at or after
  * `OPTIMIZER_DINNER_FROM` (default 17:00) is a dinner, and a stop starting after
  * `OPTIMIZER_LATEST_STOP_START` (default 22:00) is flagged `late_start`. An unparseable value falls
