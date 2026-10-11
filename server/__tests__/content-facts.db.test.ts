@@ -254,6 +254,11 @@ test("C5: no Places fact reaches a public route", async () => {
     // `planGetsRoutedLegs`. A Places point is never written onto an item row; what leaves is a leg's
     // duration, distance, line, fare and provenance, read only behind the plan's own gate (in-plan, R-h).
     "server/services/routing/plan-legs-engine.service.ts",
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the ride recommender reads the plan's stored
+    // `last_admission` facts (the "deciding" stops, ruling 1) and its stops' points (the trusted row point
+    // first, else the unexpired `location` fact, as plan-fit does), only for the plan's OWNER, through the
+    // plan card. What leaves is a ride suggestion per corridor; no fact text and no Places point is sent.
+    "server/services/ride-recommender.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

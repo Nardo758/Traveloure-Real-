@@ -94,6 +94,12 @@ test("LS2 a full pass pages, upserts, records the env and confirms the city", as
   assert.equal(r.targets[0].mode, "full");
   assert.equal(r.targets[0].pages, 3);
   assert.equal(r.targets[0].upserted, 5);
+  // The run's totals are top-level numbers, so the job heartbeat's allowlist keeps them.
+  assert.deepEqual(r.totals, { pages: 3, rowsProcessed: 5, upserted: 5, lapsed: 0, skipped: 0 });
+  const { summarizeJobResult } = await import("../services/job-heartbeats.service");
+  const beat = summarizeJobResult({ ok: true, job: "liteapi-sync", result: r });
+  assert.equal(beat["result.totals.rowsProcessed"], 5);
+  assert.equal(beat["result.totals.pages"], 3);
   assert.ok(q.every((x) => x.lastUpdatedAt === undefined));
   const rs = await rows();
   assert.equal(rs.length, 5);
