@@ -46,6 +46,8 @@ export type PlanLegsResult =
       skippedPairs: number;
       /** P0 ruling 7: confirmed legacy legs re-routed this run (present only when > 0). */
       superseded?: number;
+      /** P0 ruling 7 as amended: confirmed legacy legs retired (unlocated stop, no replacement); present only when > 0. */
+      retiredLegacy?: number;
     };
 
 function realPoint(lat: unknown, lng: unknown): { lat: number; lng: number } | null {
@@ -272,11 +274,35 @@ export async function computePlanLegs(
   let reused = 0;
   let noRoute = 0;
   let paused = false;
+  let retiredLegacy = 0;
+  const unlocatedPairs = new Set(skipped.map((p) => legPairKey(p.dayNumber, p.fromItemId, p.toItemId)));
   for (const old of legacyConfirmed) {
     if (paused) break;
-    const want = desiredByPair.get(legPairKey(old.dayNumber, old.fromActivityId, old.toActivityId));
-    if (!want || !live(want.dayNumber)) continue;
-    const picked = old.userSelectedMode ? normalizeLegMode(old.userSelectedMode) : null;
+    const pairKey = legPairKey(old.dayNumber, old.fromActivityId, old.toActivityId);
+    const want = desiredByPair.get(pairKey);
+    // P0 ruling 7 as amended (P0-b item 2, ledger `2026-10-11-p0b-routing-follow-ups`): a legacy leg whose
+    // pair has an UNLOCATED stop cannot be re-routed, so it is retired — superseded with no replacement
+    // (`superseded_at` set, `superseded_by_item_id` left null), never deleted. The slip then reads the gap
+    // as "not worked out yet — <stop> isn't on the map". No unsourced leg shows on a routed plan.
+    if (!want) {
+      if (unlocatedPairs.has(pairKey) && live(old.dayNumber)) {
+        const retired = await db
+          .update(transportLegs)
+          .set({ proposalStatus: null, supersededAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), isNull(transportLegs.source)))
+          .returning({ id: transportLegs.id });
+        if (retired.length) {
+          retiredLegacy += 1;
+          console.info(`[routing] legacy leg ${old.id} retired on ${tripId}: missing_coordinates`);
+        }
+      }
+      continue;
+    }
+    if (!live(want.dayNumber)) continue;
+    // P0-b item 9: a mode copied from `recommended_mode` on confirm (no checker, the same value) is not a
+    // traveler's or an expert's choice, so it does not pin the re-route; only a real pick does.
+    const copied = old.checkedBy == null && old.userSelectedMode != null && old.userSelectedMode === old.recommendedMode;
+    const picked = old.userSelectedMode && !copied ? normalizeLegMode(old.userSelectedMode) : null;
     const mode = picked ?? want.mode;
     const asked = await routeWithTransitFallback(memo, adapter, { origin: want.origin, destination: want.to.point, mode, departAt: departAt(want), hourBucket: want.hourBucket });
     calls += asked.calls;
@@ -470,6 +496,7 @@ export async function computePlanLegs(
     paused,
     skippedPairs: skipped.length,
     ...(superseded ? { superseded } : {}),
+    ...(retiredLegacy ? { retiredLegacy } : {}),
   };
 }
 

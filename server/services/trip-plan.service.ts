@@ -729,7 +729,6 @@ export async function assembleTripPlan(
 
   const comparison = await storage.getItineraryComparisonByTripId(tripId);
 
-  let variantLegs: any[] = [];
   let variantMetrics: any[] = [];
 
   if (comparison) {
@@ -742,7 +741,9 @@ export async function assembleTripPlan(
       variant = await storage.getFirstVariantByComparisonId(comparison.id);
     }
     if (variant) {
-      variantLegs = await storage.getOrderedTransportLegsByVariantId(variant.id);
+      // P0-b item 3 (ledger `2026-10-11-p0b-routing-follow-ups`): a version's legs are NOT the plan's legs
+      // and no longer reach the plan payload — the plan shows its own trip-scoped legs only. The engine
+      // still seeds its memo from the run's version legs on apply (`computePlanLegs`), untouched here.
       variantMetrics = await storage.getVariantMetricsAllByVariantId(variant.id);
     }
   }
@@ -758,14 +759,14 @@ export async function assembleTripPlan(
   const legSelection = selectPlanLegs({
     qualifies: await tripGetsRoutedLegs(tripId),
     tripLegs: await getTripTransportLegs(tripId, { includeProposed: true }),
-    variantLegs,
+    // P0-b item 3: no version legs are offered to the read rule, so none can reach the payload.
+    variantLegs: [],
   });
   const tripLegs = legSelection.tripLegs;
-  variantLegs = legSelection.variantLegs;
 
   // transportLegId → primary booking option (badge display + the §3 `booked` block). Booking rows
   // hang off `transport_legs.id`, so trip-scoped legs resolve through the same shared helper.
-  const legBookingMap = await resolveLegBookings([...variantLegs, ...tripLegs]);
+  const legBookingMap = await resolveLegBookings([...tripLegs]);
 
   const changes = await storage.getItineraryChanges(tripId, 20);
   // W5-D cleanup (Aug 1, 2026): `activity_comments` (the source of a per-activity comment
@@ -1002,13 +1003,9 @@ export async function assembleTripPlan(
 
   let days: TripPlanDay[] = dayNumbers.map((dayNum) => {
     const dayItems = items.filter((i) => i.dayNumber === dayNum);
-    const dayLegs = [
-      ...variantLegs.filter((l) => l.dayNumber === dayNum && l.userSelectedMode !== "dismissed"),
-      // Expert-confirmed trip legs for the same day (already ordered by legOrder). A trip with no
-      // optimizer comparison — the expert-built Workstation case L4 exists for — gets its legs
-      // from here alone; a legacy variant-only trip gets nothing extra, so its output is unchanged.
-      ...tripLegs.filter((l: any) => l.dayNumber === dayNum),
-    ];
+    // P0-b item 3: the day's legs are the plan's own trip-scoped legs (already ordered by legOrder);
+    // version legs are never mixed in.
+    const dayLegs = [...tripLegs.filter((l: any) => l.dayNumber === dayNum)];
     const types = dayItems.map((i) => i.itemType || "activity");
     return {
       dayNumber: dayNum,
@@ -1203,12 +1200,8 @@ export async function assembleTripPlan(
     role: c.role,
   }));
 
-  // Transport totals count every leg really on the plan: undismissed variant legs plus the
-  // expert-CONFIRMED trip legs (proposals are not on the plan, so they are not counted).
-  const activeLegs = [
-    ...variantLegs.filter((l) => l.userSelectedMode !== "dismissed"),
-    ...tripLegs,
-  ];
+  // Transport totals count every leg really on the plan — its own trip-scoped legs (P0-b item 3).
+  const activeLegs = [...tripLegs];
   const budget = await resolveBudget(tripId, trip.budget);
 
   const legs: TripPlanLeg[] = [];

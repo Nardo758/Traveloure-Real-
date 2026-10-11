@@ -180,21 +180,15 @@ export async function calculateTransportLegs(
   userPrefs: Partial<UserTransportPrefs> = {},
   routing?: VersionRoutingContext | null,
 ): Promise<TransportLegResult[]> {
-  const prefs = { ...DEFAULT_PREFS, ...userPrefs };
-  const profile = getDestinationProfile(destination);
+  // P0-b item 7 (ledger `2026-10-11-p0b-routing-follow-ups`): the legacy variant drive path is retired for
+  // real — P0 ruling 4 was recorded as done but this writer still fell back to a Google driving call for
+  // every pair. With no routing context (engine off, or no plan) it writes NOTHING: no legs, no schedule,
+  // no maps URLs — the version keeps whatever it had, and no unsourced leg is born.
+  if (!routing) return [];
 
   const allLegs: TransportLegResult[] = [];
   for (const pair of buildSameDayActivityPairs(activities)) {
-    const leg = routing
-      ? await computeRoutedVersionLeg(pair.from, pair.to, pair.dayNumber, pair.legOrder, routing)
-      : await computeSingleLeg(
-          pair.from,
-          pair.to,
-          pair.dayNumber,
-          pair.legOrder,
-          profile,
-          prefs,
-        );
+    const leg = await computeRoutedVersionLeg(pair.from, pair.to, pair.dayNumber, pair.legOrder, routing);
     if (leg) allLegs.push(leg);
   }
 
