@@ -2737,7 +2737,7 @@ This document captures architectural decisions to maintain consistency across co
 
 68. **A RIDE IS A PLAN ITEM; IT LOCKS ON INSERT AND SUPERSEDES THE LEG IT REPLACES WITHOUT DELETING IT (decision-maker,
     Oct 10, 2026 — TC-3 brief rev 1, lane TC-3a; ledger `2026-10-11-tc3a-ride-item`; brief
-    `docs/planning/briefs/tc-3a-ride-item.md`; migration 368, HELD for Leon).** A ride is an ordinary `itinerary_items` row:
+    `docs/planning/briefs/tc-3a-ride-item.md`; migration 368, APPROVED by Leon Oct 10, 2026).** A ride is an ordinary `itinerary_items` row:
     `item_type='transport'` with `provider_service_id` set to a transport CATALOG row — a `provider_services` row that has
     a `service_transport_facts` row (weather rule + routed-fallback mode, luggage, pass validity, payment constraints,
     official link, `official_source` REQUIRED, `verified_at`, booking window, OSM attribution; one per service), approved
