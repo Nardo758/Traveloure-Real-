@@ -3,6 +3,7 @@ import { tripGetsRoutedLegs, tripLegsShown } from "../services/routing/plan-rout
 import { routedFactsOf } from "../services/routing/plan-legs";
 import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
 import { setItemLock } from '../services/item-lock.service';
+import { insertRide } from '../services/ride-item.service';
 import { platformCarFits } from '../services/airport-leg.service';
 import { anchorConflicts } from '@shared/optimizer-lead';
 import { anchorDatetimeFromInput, anchorWallClockString } from '@shared/anchor-time';
@@ -3139,6 +3140,40 @@ router.put("/api/trips/:tripId/itinerary-items/:itemId/lock", isAuthenticated, a
   } catch (err) {
     console.error("[item-lock] failed:", err);
     res.status(500).json({ message: "Couldn't change the lock" });
+  }
+});
+
+/**
+ * TC-3a (ledger `2026-10-11-tc3a-ride-item`; migration 368): put a catalog RIDE on the plan, after an item
+ * (or first on the day). Owner only; `.strict()` body (§19) — the pins, the schedule's end, the lock and the
+ * superseded legs are all the server's (`insertRide`). A plan, item or service that is not there or not the
+ * caller's is ONE 404 (LD 40). Removing the ride is the ordinary item DELETE, which restores the legs it
+ * superseded.
+ */
+const rideInsertBody = z
+  .object({
+    serviceId: z.string().min(1).max(64),
+    dayNumber: z.number().int().min(1).max(60),
+    afterItemId: z.string().min(1).max(64).nullable(),
+    departureTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  })
+  .strict();
+router.post("/api/trips/:tripId/rides", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    // Ownership BEFORE validation: a stranger learns nothing from the body's shape (one 404, LD 40).
+    if (!(await verifyTripOwnership(req.params.tripId, userId))) return res.status(404).json({ code: "not_found", message: "No such plan or ride" });
+    const parsed = rideInsertBody.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ code: "invalid_body", message: "Send { serviceId, dayNumber, afterItemId, departureTime }" });
+    const out = await insertRide({ tripId: req.params.tripId, userId, ...parsed.data });
+    if (!out.ok) {
+      const status = out.code === "not_found" ? 404 : out.code === "bad_position" ? 400 : 409;
+      return res.status(status).json({ code: out.code, message: out.message });
+    }
+    res.status(201).json({ itemId: out.itemId, supersededLegs: out.supersededLegIds.length });
+  } catch (err) {
+    console.error("[rides] insert failed:", err);
+    res.status(500).json({ message: "Couldn't add the ride" });
   }
 });
 

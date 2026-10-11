@@ -1501,6 +1501,9 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
     // FD-2 ruling 9 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): source_class is stamped by
     // the server at create (`stampItemSourceClass`) and is never client-settable.
     sourceClass: _sourceClass,
+    // TC-3a (migration 368): a ride's exit pin is written only by the ride service, never by a generic write.
+    exitLatitude: _exitLat,
+    exitLongitude: _exitLng,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
@@ -8163,6 +8166,14 @@ export class DatabaseStorage implements IStorage {
             `[ItineraryItems] cascade-deleted ${cascaded.length} trip-scoped transport leg(s) referencing deleted item ${id} (trip ${item.tripId})`,
           );
         }
+
+        // TC-3a (migration 368): removing a ride restores exactly the legs it superseded — they were kept,
+        // hidden, never deleted. Matched by the ride's id only, so a leg the engine superseded (P0 ruling 7,
+        // ride link NULL) is never brought back.
+        await tx
+          .update(transportLegs)
+          .set({ proposalStatus: "confirmed", supersededAt: null, supersededByItemId: null, updatedAt: new Date() })
+          .where(and(eq(transportLegs.tripId, item.tripId), eq(transportLegs.supersededByItemId, id)));
 
         // R15: same-transaction removal signal. Skipped only when the item did not exist (no
         // tripId ⇒ nothing was removed ⇒ no phantom row, §13).
