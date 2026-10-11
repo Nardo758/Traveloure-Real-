@@ -2761,7 +2761,7 @@ This document captures architectural decisions to maintain consistency across co
     Sagano Romantic Train, Hozugawa boat, Eizan Kirara) waits on Chrome's official reads; an unverified field stays
     NULL and the row stays inactive.
     **AMENDED — THE SEED (decision-maker rulings 1–4, Oct 11, 2026; ledger `2026-10-11-tc3-ride-seed`; migration
-    369, approved by Leon — comment 00:42Z on #1405).** 369 adds `service_transport_facts.fact_sources` (field →
+    369).** 369 (Migration 369 SQL approved by Leon — comment 00:42Z on #1405) adds `service_transport_facts.fact_sources` (field →
     {url, quote}) and `notes` (facts no column carries), jsonb, nullable, no DEFAULT — and seeds five directional rides
     (Sagano down/up, Hozugawa, Eizan Kirara down/up) under the reserved "Traveloure Transport" account (no login, no
     handle). Every value comes from the committed official read (`docs/planning/briefs/tc-3-reads/`) and names its row

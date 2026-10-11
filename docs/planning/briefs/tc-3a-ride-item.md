@@ -54,7 +54,9 @@ Anything the read does not confirm stays NULL; a row is seeded INACTIVE and goes
 - **Queue:** TC-3a lands as R428, after SS-2 D. The 369 seed and the "Traveloure Transport" operator account
   follow in their own PR once Chrome's official reads land.
 
-## Migration 369 — built (its own PR, #1405 — approved by Leon, comment 00:42Z on #1405)
+## Migration 369 — built (its own PR, #1405)
+Migration 369 SQL approved by Leon — comment 00:42Z on #1405.
+
 Decision-maker rulings, Oct 11, 2026:
 1. Coordinates: OSM node ids read by Chrome, seeded with the row — never a boot-time resolve (a seed is
    deterministic). Node id stored in `service_route_points.osm_node_id`, coordinates beside it, a `fact_sources`
