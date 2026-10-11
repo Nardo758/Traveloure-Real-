@@ -1,6 +1,27 @@
 # Commerce automation Parts 1–10: development proof and final gates
 
+This narrative is retained as the Part 10 gate snapshot. The review-updated
+PR description is the full contents of `reports/automation-final-status.md`,
+including the consolidated blocker table and all receipt/outbox pairs.
+
+**FINAL STATUS: DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**
+
 **DRAFT — DEVELOPMENT REVIEW ONLY. NOT MERGE-READY OR RELEASE-CERTIFIED.**
+
+The complete gate table, single consolidated blocker table (Parts, closure,
+approver, status), per-rule dispositions, all ten Part 9 receipt/outbox pairs,
+release checklist and verified #1391 carriage are in
+**reports/automation-final-status.md**. Real due-time accounting is in
+**reports/real-clock-ledger.md**: **NEXT-DAY CHECK OPEN**. No genuine reminder
+due time is established by the controlled-clock QA receipts.
+
+The golden runner's historical unavailability is **Fixed**, not an active
+blocker. Isolated actual webhook/success handler tests are proven with mocked
+Stripe retrieval; full lifecycle/upstream coverage remains **Open**.
+
+This review update is documentation only: no merge, registration, flag change,
+production access, email send or new implementation work. The documented
+production sweep and commerce sending hold remains in force.
 
 This updates the existing implementation PR rather than creating a second one.
 The implementation carries the corrected cart-email-state test and dependencies,
