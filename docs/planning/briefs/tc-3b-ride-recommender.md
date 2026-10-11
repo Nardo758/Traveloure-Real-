@@ -59,7 +59,7 @@ Walking range 1,200 m; 400 m for limited mobility.
 
 ## TC-3c minimal (stacked PR) — "A better way there"
 
-Ledger `2026-10-11-tc3c-better-way-line` (R434). Under a routed leg, `RideSwapLine` (`client/src/components/plan/RideSwapLine.tsx`,
+Ledger `2026-10-11-tc3c-better-way-line` (R435). Under a routed leg, `RideSwapLine` (`client/src/components/plan/RideSwapLine.tsx`,
 mounted by `useSlipLegs`) draws the server's suggestion for exactly that pair and opens the swap card. Swap = the
 existing ride route; "Not this time" = the dismiss. Copy: `client/src/lib/ride-suggestions.ts`. "Arashiyama only"
 holds by data (only Sagano and Hozugawa have departures), so no client-side corridor rule was added.
