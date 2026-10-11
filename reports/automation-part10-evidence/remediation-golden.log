@@ -1,0 +1,159 @@
+{"stageComplete":"Itinerary outcome payload","exitCode":0,"passed":5,"failed":0}
+{"stageComplete":"Itinerary follow-up payload","exitCode":0,"passed":5,"failed":0}
+{"stageComplete":"Generation authoritative-writer tests","exitCode":0,"passed":8,"failed":0}
+{"stageComplete":"Three itinerary follow-up tests","exitCode":0,"passed":20,"failed":0}
+{"stageComplete":"Signup welcome","exitCode":0,"passed":22,"failed":0}
+{"stageComplete":"Verification and password-reset boundaries","exitCode":0,"passed":4,"failed":0}
+{"stageComplete":"Booking confirmation duplicate and payment retry","exitCode":0,"passed":3,"failed":0}
+{"stageComplete":"Booking durable delivery / retry","exitCode":0,"passed":3,"failed":0}
+{"stageComplete":"Outbox retry / leases / dedupe / cancellation","exitCode":0,"passed":26,"failed":0}
+{"stageComplete":"Retained registry contract suites","exitCode":0,"passed":38,"failed":0}
+{"stageComplete":"Registry IDs","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"Cron roster","exitCode":0,"passed":1,"failed":0}
+{"stageComplete":"New harness safety tests","exitCode":0,"passed":7,"failed":0}
+| Test | Pass / fail | Time (ms) |
+|---|---|---:|
+| varied ready/failed loop 1: boundaries and independent itineraries | PASS | 1.8 |
+| varied ready/failed loop 2: boundaries and independent itineraries | PASS | 0.1 |
+| ready/error/timeout copy escapes persisted content and links to the actual comparison route | PASS | 0.5 |
+| missing personalization is not fabricated | PASS | 0.2 |
+| development recipient guard rejects absent/placeholder/unapproved inboxes without changing production eligibility | PASS | 0.2 |
+| exactly three active marketing definitions and durable delay values | PASS | 1.1 |
+| copy loop 1: real expert or top-rated activity, escaped text, bookable-only urgency | PASS | 0.9 |
+| copy loop 2: real expert or top-rated activity, escaped text, bookable-only urgency | PASS | 0.2 |
+| consent and timezone/quiet hours are explicit; missing or invalid values fail closed | PASS | 12.6 |
+| local calendar cap and quiet hours defer across midnight and DST without dropping mail | PASS | 14.6 |
+| ready DB loop 1: concurrent completion, two same-day itineraries, provider retry and dedupe | PASS | 125.7 |
+| failed DB loop 1: exact timeout and two variations, late success, error, new attempt | PASS | 95.6 |
+| refinement loop 1: cancelled ready notice is recoverable, exact case plus two variants | PASS | 144.3 |
+| ready DB loop 2: concurrent completion, two same-day itineraries, provider retry and dedupe | PASS | 112.3 |
+| failed DB loop 2: exact timeout and two variations, late success, error, new attempt | PASS | 110.5 |
+| refinement loop 2: cancelled ready notice is recoverable, exact case plus two variants | PASS | 169.8 |
+| missing email and deleted/superseded itineraries or accounts never reach sender | PASS | 125.4 |
+| outbox persistence failure rolls back the terminal state | PASS | 12.4 |
+| itinerary_nudge_2h SQL loop 1: registry fires, persisted send, stable retry identity | PASS | 177.3 |
+| itinerary_followup_24h SQL loop 1: registry fires, persisted send, stable retry identity | PASS | 60.3 |
+| itinerary_reengagement_5d SQL loop 1: registry fires, persisted send, stable retry identity | PASS | 64.2 |
+| cancellation loop 1: a booking within one hour cancels all three at the first send | PASS | 70.8 |
+| supersession loop 1: newer ready itinerary cancels old sequence, not ready notices | PASS | 63.6 |
+| bookability loop 1: absent or newly paused items cancel five-day mail without urgency | PASS | 89.8 |
+| itinerary_nudge_2h SQL loop 2: registry fires, persisted send, stable retry identity | PASS | 46.9 |
+| itinerary_followup_24h SQL loop 2: registry fires, persisted send, stable retry identity | PASS | 58.0 |
+| itinerary_reengagement_5d SQL loop 2: registry fires, persisted send, stable retry identity | PASS | 65.0 |
+| cancellation loop 2: a booking within one hour cancels all three at the first send | PASS | 69.5 |
+| supersession loop 2: newer ready itinerary cancels old sequence, not ready notices | PASS | 52.5 |
+| bookability loop 2: absent or newly paused items cancel five-day mail without urgency | PASS | 714.0 |
+| mid-sequence cancellation preserves already-sent 2h mail and stops both remaining emails | PASS | 105.1 |
+| late older completion cannot cancel a newer plan: exact case plus two creation-age variations | PASS | 595.0 |
+| daily marketing cap defers, consent/deletion cancel, retries retain provider identity | PASS | 134.2 |
+| a booking on the legacy, affiliate or coordination rail cancels the follow-ups at send time | PASS | 145.7 |
+| real HTTP unsubscribe: scanner GET is read-only; explicit POST cancels all pending rows | PASS | 118.0 |
+| authenticated preferences save actual consent, reject bad input and CSRF, preserve other preferences | PASS | 529.4 |
+| booking vs send, both orders: a committed booking stops the send; a send in flight blocks the booking | PASS | 171.8 |
+| actual outbox claim routes a due follow-up and will not claim a future one | PASS | 66.7 |
+| permits recorded consent and unchanged recipient | PASS | 0.8 |
+| suppresses missing, deleted and suspended accounts | PASS | 0.3 |
+| suppresses changed email, missing consent and previous delivery | PASS | 0.1 |
+| keeps signup enqueue transactional and removes its direct welcome call | PASS | 0.7 |
+| retains main itinerary dispatch and provider guards | PASS | 0.4 |
+| production app send path never imports or reads the QA inbox | PASS | 2.9 |
+| production recipient resolution returns the account address without reading the inbox | PASS | 0.4 |
+| signup welcome pure guards and main wiring | PASS | 6.6 |
+| rolls back the account and welcome obligation together | PASS | 52.7 |
+| concurrent enqueues persist exactly one welcome | PASS | 57.4 |
+| immediate delivery claims once and persists the provider ID | PASS | 34.0 |
+| production dispatcher sends to the account's own address even with an override configured | PASS | 22.8 |
+| the scheduled/admin dispatcher cannot resend an already sent row | PASS | 29.8 |
+| send-time guard cancels changed-email without transport | PASS | 27.1 |
+| send-time guard cancels no-consent without transport | PASS | 23.2 |
+| send-time guard cancels soft-deleted without transport | PASS | 25.5 |
+| send-time guard cancels suspended without transport | PASS | 22.4 |
+| send-time guard cancels missing-account without transport | PASS | 53.3 |
+| provider failure uses existing backoff and a stable retry key | PASS | 37.1 |
+| another sent welcome suppresses a duplicate row | PASS | 21.4 |
+| a stale duplicate sender waits for the first sender and cannot send again | PASS | 27.3 |
+| signup welcome real database | PASS | 493.9 |
+| messaging producer definitions register eleven unique active boundaries | PASS | 1.2 |
+| producer adapter forwards its stable ID and preserves result via a mocked dispatcher | PASS | 0.4 |
+| provider transport adapter keeps mocked SDK arguments and response unchanged | PASS | 0.3 |
+| provider transport adapter propagates original SDK errors unchanged | PASS | 0.4 |
+| \#846 — sequential double-confirm writes earnings/revenue exactly once | PASS | 184.6 |
+| \#846 — concurrent double-confirm (Promise.all) writes earnings/revenue exactly once | PASS | 67.6 |
+| \#1581 — a pre-existing earnings row makes the confirm no-op, never abort | PASS | 85.3 |
+| A1: the alert payload escapes typed text and names the service | PASS | 0.9 |
+| A2: a failed send leaves a durable row scheduled for retry | PASS | 48.3 |
+| A3: a successful send marks the row sent | PASS | 12.7 |
+| (A1) after 1st failure schedules a ~5-min delay | PASS | 0.8 |
+| (A2) after 2nd failure schedules a ~15-min delay | PASS | 0.2 |
+| (A3) after 3rd failure schedules a ~45-min delay | PASS | 0.2 |
+| (A4) after 4th failure schedules a ~120-min delay | PASS | 0.1 |
+| (A5) after 5th failure schedules a ~360-min delay | PASS | 0.3 |
+| (A6) out-of-bounds index clamps to the last backoff entry (360 min) | PASS | 0.1 |
+| _nextRetryAfter — backoff schedule | PASS | 2.3 |
+| (E) delays align with documented schedule [5, 15, 45, 120, 360] min | PASS | 0.3 |
+| _nextRetryAfter — five-failure sequence matches BACKOFF_MINUTES | PASS | 0.5 |
+| (B) after maxAttempts failures the row is marked dead with retry_after=NULL | PASS | 8.4 |
+| drainOutbox — terminal state (dead) | PASS | 8.7 |
+| (C) marks row sent with resend_id, clears last_error, conditional on status='processing' | PASS | 1.7 |
+| drainOutbox — success path | PASS | 1.9 |
+| (D) claim SQL contains FOR UPDATE SKIP LOCKED | PASS | 1.4 |
+| drainOutbox — concurrent drain safety | PASS | 1.6 |
+| (F) emits only the claim SQL and no update SQL when no rows are claimed | PASS | 0.9 |
+| drainOutbox — no-op on empty claim | PASS | 1.2 |
+| (G1) does not throw when the DB insert fails | PASS | 5.1 |
+| (G2) does not throw when both DB insert and send fail | PASS | 1.2 |
+| enqueueEmail — never throws | PASS | 6.7 |
+| (H) enqueueEmail inserts the row as status='processing' (not 'pending') | PASS | 2.4 |
+| (H2) a 'processing' row with a live lease is NOT targeted by the drain claim SQL | PASS | 0.8 |
+| enqueueEmail — enqueue-vs-drain race protection | PASS | 3.3 |
+| (I) status update SQL includes AND status='processing' guard for success path | PASS | 1.2 |
+| (I2) status update SQL includes AND status='processing' guard for failure path | PASS | 1.5 |
+| attemptDelivery — stale-sender conditional update | PASS | 2.8 |
+| legacy expiry startup, interval, and admin trigger preserve one callback and result | PASS | 6.4 |
+| Trip Card nudge startup and hourly interval preserve one callback and result | PASS | 2.9 |
+| bookings registry contains complete stable definitions without loading database services | PASS | 1.2 |
+| booking event and scheduled adapters dispatch each supplied action once and preserve its result | PASS | 0.6 |
+| booking notice/slot-release nodes retain caller-owned guards and manual policies are not nodes | PASS | 0.2 |
+| messaging delivery definitions cover the existing event and schedule rails | PASS | 1.3 |
+| messaging event adapters invoke simulated delivery actions once and preserve return values | PASS | 0.4 |
+| messaging schedule adapters invoke simulated actions once and preserve return values | PASS | 0.3 |
+| moderation registry has complete stable definitions without loading database services | PASS | 1.4 |
+| pending report notification is gated on a persisted message/user report and preserves the action closure | PASS | 0.5 |
+| moderation runtime binds the supplied action and scheduled cleanup uses its declared schedule | PASS | 0.4 |
+| retained request-path gates are not required to run through asynchronous registry dispatch | PASS | 0.1 |
+| registry rejects duplicate stable IDs and unresolved cancellation references | PASS | 1.0 |
+| event dispatcher requires a matching stable ID, trigger, enabled node, and passing condition | PASS | 1.0 |
+| scheduled wrapper gates by schedule ID and condition without owning deduplication | PASS | 0.3 |
+| non-none delay and cancellation policies fail explicitly without durable adapters | PASS | 0.2 |
+| delays receive execution context and cancellation runs only after action success | PASS | 0.5 |
+| returned failed or skipped outcomes never trigger cancellations | PASS | 0.2 |
+| messaging chat boundary nodes are metadata-only and have stable unique identities | PASS | 0.9 |
+| post-persist follow-on callbacks are condition-gated and run once without changing results | PASS | 0.4 |
+| chat realtime callback runs synchronously once and preserves its result | PASS | 0.1 |
+| legacy POST /api/chat/start retains its guards and dispatches existing follow-ons and fanout | PASS | 1.8 |
+| legacy start callback preserves notification/activity order and immediately fans out once | PASS | 0.2 |
+| messaging producer definitions register eleven unique active boundaries | PASS | 1.4 |
+| producer adapter forwards its stable ID and preserves result via a mocked dispatcher | PASS | 0.6 |
+| provider transport adapter keeps mocked SDK arguments and response unchanged | PASS | 0.4 |
+| provider transport adapter propagates original SDK errors unchanged | PASS | 0.5 |
+| checkout-session condition reads the signed event's data.object.metadata.type | PASS | 0.7 |
+| Connect-transfer condition reads signed data.object.metadata | PASS | 0.1 |
+| signed platform checkout-session endpoint dispatches a supported session through the stubbed action seam | PASS | 777.8 |
+| signed Connect transfer endpoint dispatches supported payout metadata through the stubbed action seam | PASS | 17.4 |
+| admin follow-on metadata is limited to six enabled provider nodes | PASS | 2.7 |
+| dispatch gates existing decision/request context and preserves callback result, order, and errors | PASS | 3.9 |
+| admin routes dispatch only existing notification/email groups and leave decisions outside | PASS | 288.1 |
+| all six definitions document real guard semantics and no retry guarantee | PASS | 0.4 |
+| provider intake nodes validate unique IDs and preserve callback results and errors | PASS | 3.7 |
+| bio mirror stays inside its original nonblank guard and nonfatal catch, with six original callers | PASS | 25.2 |
+| new expert hooks dispatch the original stamp once per alias, outside the unchanged AI calls | PASS | 16.2 |
+| Registry IDs | PASS | 411.5 |
+| Cron roster | PASS | 36.5 |
+| provider-free environment drops all live transports and production URLs | PASS | 0.8 |
+| retained suites precede registry / roster; no live verification suites run implicitly | PASS | 2.0 |
+| randomized TAP parsing: skipped and TODO cases fail rather than certify | PASS | 11.5 |
+| five hostile reporter cases: empty, malformed, keys, recipients, token URLs | PASS | 1.5 |
+| provider receipt UUIDs remain reportable without exposing credentials | PASS | 1.1 |
+| Vitest report survives retained cleanup output without certifying skipped assertions | PASS | 85.7 |
+| HTTP transport bridge refuses preview, production, credentials and unisolated fixtures | PASS | 1.9 |
+Evidence: reports/automation-part1-evidence/golden-1-a8c85383-03a8-401b-b31d-bb6673c32c2f/results.json

@@ -1,0 +1,10 @@
+  ok    clean tree passes (callers pass merges; other columns and tables untouched)
+  ok    a multi-line drizzle write is caught
+  ok    a shorthand `preferences` key is caught
+  ok    a raw SQL write is caught
+  ok    an update of another table's preferences is not caught (stated negative space)
+  ok    a test file may write freely
+  ok    the writer losing its lock fails loudly
+  ok    a missing writer file fails rather than passing vacuously
+
+preferences-writer guard self-test: 8/8 fixture cases pass.

@@ -1,0 +1,11 @@
+  ok    clean tree passes (author inserts, callers only call/read/update)
+  ok    a second drizzle insert is caught
+  ok    a raw SQL insert is caught
+  ok    an UPDATE is deliberately NOT caught (stated negative space)
+  ok    a test file may insert freely
+  ok    a *.test.ts outside __tests__ is exempt too
+  ok    the author losing its insert fails loudly, not vacuously
+  ok    a missing author file fails rather than passing over an unwritable table
+  ok    the author file itself may insert without being flagged
+
+advisor-row-author guard self-test: 9/9 fixture cases pass.

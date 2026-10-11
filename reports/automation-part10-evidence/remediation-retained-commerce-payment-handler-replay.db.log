@@ -1,0 +1,113 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# [2026-10-11 06:13:00.475 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "79617697-7ac8-41f4-ba35-2d523ea65ac4"
+#     [35mbookingId[39m: "1cce42a6-aab5-4589-b92e-41f2ebfcfad3"
+# [2026-10-11 06:13:00.484 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_6d8cc44716ea4e5596e41e49620c8751"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 1cce42a6-aab5-4589-b92e-41f2ebfcfad3 via payment_intent.succeeded (pi=pi_synthetic_6d8cc44716ea4e5596e41e49620c8751)
+# [WEBHOOK] Duplicate event evt_synthetic_fa9e82a5744743de86139d3e9a2c0817 (payment_intent.succeeded) already processed — skipping
+# [WEBHOOK] Duplicate event evt_synthetic_fa9e82a5744743de86139d3e9a2c0817 (payment_intent.succeeded) already processed — skipping
+# [2026-10-11 06:13:00.646 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "9be60fb6-84c6-4eca-891e-a196e9dc0263"
+#     [35mbookingId[39m: "c2450f0b-e500-428d-add6-6dc4bc5a726f"
+# [2026-10-11 06:13:00.653 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_80ca35db202c41a481cc390a3e752f8a"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking c2450f0b-e500-428d-add6-6dc4bc5a726f via payment_intent.succeeded (pi=pi_synthetic_80ca35db202c41a481cc390a3e752f8a)
+# New database connection established
+# [2026-10-11 06:13:00.756 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "8bbee7f0-234e-4464-94d0-aeae749a2c24"
+#     [35mbookingId[39m: "cb8256e1-6212-4dec-8d3e-31659636ec25"
+# [2026-10-11 06:13:00.761 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_138691c88c19425fab56fb062361297e"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking cb8256e1-6212-4dec-8d3e-31659636ec25 via payment_intent.succeeded (pi=pi_synthetic_138691c88c19425fab56fb062361297e)
+# [2026-10-11 06:13:00.921 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "e0da2dbc-9096-49f0-8203-a725307ccb2b"
+#     [35mbookingId[39m: "0d1faaa3-6cb7-4f7b-8a05-b79b8c2d6a03"
+# [2026-10-11 06:13:00.927 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_53e41f9248a34ee992ecf1f69293c0d0"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 0d1faaa3-6cb7-4f7b-8a05-b79b8c2d6a03 via payment_intent.succeeded (pi=pi_synthetic_53e41f9248a34ee992ecf1f69293c0d0)
+# [2026-10-11 06:13:01.091 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "32caec0f-9fda-4963-8e86-e68f9649d2fb"
+#     [35mbookingId[39m: "cce1c0a9-bcaa-4a3e-bac1-8089575a2308"
+# [2026-10-11 06:13:01.095 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_5063342af60d4afea66afc5cebefa1b8"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking cce1c0a9-bcaa-4a3e-bac1-8089575a2308 via payment_intent.succeeded (pi=pi_synthetic_5063342af60d4afea66afc5cebefa1b8)
+# [WEBHOOK] Duplicate event evt_synthetic_e88e946efdc04d0b98dd3c2bd7b8b879 (payment_intent.succeeded) already processed — skipping
+# [WEBHOOK] Duplicate event evt_synthetic_e88e946efdc04d0b98dd3c2bd7b8b879 (payment_intent.succeeded) already processed — skipping
+# [2026-10-11 06:13:01.289 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "9eda016c-822b-4b12-bf37-97250e5d4398"
+#     [35mbookingId[39m: "283657b1-c4a8-4ca3-bfd8-3dd4f547cb0d"
+# [2026-10-11 06:13:01.292 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_8c8537fa4e0448a5b7f43410e0d1e2ba"
+#     [35mactor[39m: "webhook"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking 283657b1-c4a8-4ca3-bfd8-3dd4f547cb0d via payment_intent.succeeded (pi=pi_synthetic_8c8537fa4e0448a5b7f43410e0d1e2ba)
+# [2026-10-11 06:13:01.419 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "a5dfc7ca-4da8-473c-98d9-a835fef8f3fe"
+#     [35mbookingId[39m: "c71bef9d-058a-4915-a274-bc91a3a1619f"
+# [2026-10-11 06:13:01.423 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_0cb84355eec84518a70dd767ea832dd1"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# [webhook] confirmed booking c71bef9d-058a-4915-a274-bc91a3a1619f via payment_intent.succeeded (pi=pi_synthetic_0cb84355eec84518a70dd767ea832dd1)
+# [2026-10-11 06:13:01.556 +0000] [33mWARN[39m: [36mrouting: item not flipped to purchased (not in ready_for_checkout, or no such item) — booking stands[39m
+#     [35mitemId[39m: "6d8d2349-3bbc-4a14-b4d8-d8c275754819"
+#     [35mbookingId[39m: "837089fa-bda1-4aed-bc24-319352f4e0de"
+# [webhook] confirmed booking 837089fa-bda1-4aed-bc24-319352f4e0de via payment_intent.succeeded (pi=pi_synthetic_eb5494cf8a1549e1ad6aaa20c5ff2bdb)
+# [2026-10-11 06:13:01.563 +0000] [32mINFO[39m: [36m[checkout-promote] payment promotion complete[39m
+#     [35mpaymentIntentId[39m: "pi_synthetic_eb5494cf8a1549e1ad6aaa20c5ff2bdb"
+#     [35mactor[39m: "client"
+#     [35mpromoted[39m: 1
+#     [35malreadyConfirmed[39m: 0
+#     [35mexceptions[39m: 0
+#     [35mlateAuthorized[39m: 0
+# {"part":"6-real-handlers","loops":[{"loop":1,"scenario":"987e3451-db5d-46cd-8adc-b9595b3b96fe","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["same signed event three times: one processed event and zero stale cart emails","actual handler ordering:webhook-first; zero stale cart emails","actual handler ordering:success-first; zero stale cart emails","actual handler ordering:concurrent; zero stale cart emails"],"authMiddlewareCoverage":false,"realStripeCalls":0,"realEmails":0},{"loop":2,"scenario":"1ddb3bb8-3ac7-4505-8357-42a04c5356c7","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["same signed event three times: one processed event and zero stale cart emails","actual handler ordering:webhook-first; zero stale cart emails","actual handler ordering:success-first; zero stale cart emails","actual handler ordering:concurrent; zero stale cart emails"],"authMiddlewareCoverage":false,"realStripeCalls":0,"realEmails":0}],"sdkLookups":4}
+# Subtest: Part 6: actual signed webhook replays and actual success-handler concurrency, two isolated loops
+ok 1 - Part 6: actual signed webhook replays and actual success-handler concurrency, two isolated loops
+  ---
+  duration_ms: 2927.439084
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

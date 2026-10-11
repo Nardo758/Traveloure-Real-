@@ -1,0 +1,5 @@
+  ✓ marker with lat+lng passes
+  ✓ marker missing lng fails
+  ✓ marker with neither fails
+  ✓ no marker → nothing required
+coords-preservation self-test: all fixtures passed

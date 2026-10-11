@@ -1,0 +1,20 @@
+  ok    a POST to /api/cart is a writer
+  ok    a POST to /api/cart/items is a writer
+  ok    a template-literal apply-to-cart is a writer
+  ok    a writer is keyed by its enclosing name
+  ok    a call naming tripId is trip-scoped, not counted
+  ok    a GET fetch of /api/cart is not a writer
+  ok    a PATCH of a cart line is not a writer
+  ok    /api/cart/migrate and /resolve-trip are not writers
+  ok    a writer in a comment is not counted
+  ok    a queryKey literal is not a bare cart literal
+  ok    a URL held in a variable is caught as a bare literal
+  ok    a NEW writer fails
+  ok    a second write under an allowlisted key fails
+  ok    a writer that disappeared fails until the list shrinks
+  ok    the exact list passes
+  ok    an import of experience-map is caught
+  ok    a lazy import of the template page is caught
+  ok    experience-map-utils is not experience-map
+
+tripless-cart-writers self-test: 18/18 fixture cases pass.

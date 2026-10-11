@@ -1,7 +1,6 @@
 /**
- * Characterization, NOT release certification. An accepted synthetic message
- * can outlive its local transaction. Known unsafe outcomes are asserted and
- * reported explicitly rather than treating mock deduplication as once-only proof.
+ * Durable-intent fault proof, NOT release certification. Original failure
+ * characterization is archived; acceptance uncertainty must never auto-resend.
  * Run only through run-messaging-gate.mjs --isolated-db.
  */
 import assert from "node:assert/strict";
@@ -18,7 +17,7 @@ import {
   enqueuePendingCommerceReminder, deliverQueuedEmail, drainOutbox,
   drainOutboxForAdminRetry, _outboxTestHooks,
 } from "../../services/email-outbox.service";
-import { deliverVerifiedCommerce } from "../../services/commerce-send-verification.service";
+import { deliverVerifiedCommerce, commerceSendVerification } from "../../services/commerce-send-verification.service";
 import type { SendEmailParams } from "../../services/email.service";
 
 const anchor = new Date("2030-05-05T12:00:00Z");
@@ -28,7 +27,7 @@ const sentWrite = (query: string | { text?: string; values?: unknown[] }, values
   /^update "email_outbox" set "status"/i.test(queryText(query)) &&
   (values ?? (typeof query === "string" ? [] : query.values))?.[0] === "sent";
 const fallbackWrite = (query: string | { text?: string }) =>
-  /UPDATE email_outbox SET status='cancelled', last_error='check_failed'/i.test(queryText(query));
+  /UPDATE email_outbox SET status='dead'/i.test(queryText(query));
 function signal() {
   let resolve!: () => void;
   const promise = new Promise<void>(done => { resolve = done; });
@@ -128,13 +127,14 @@ test("provider acceptance / DB failure: isolated evidence, including known dupli
   };
   const assertCancellation = async (id: number) => {
     const row = await read(id);
-    assert.equal(row.status, "cancelled");
-    assert.equal(row.last_error, "check_failed");
-    assert.equal(row.metadata.cancelReason, "check_failed");
+    assert.equal(row.status, "dead");
+    assert.equal(row.last_error, "provider_acceptance_unknown");
+    assert.equal(row.metadata.cancelReason, undefined);
+    assert.equal(row.metadata.commerceDeliveryAttempt.phase, "uncertain");
     assert.equal(row.sent_at, null);
     assert.equal(row.resend_id, null);
     assert.equal(row.retry_after, null);
-    assert.equal(row.attempt_count, 0, "rolled-back acceptance is absent from local attempt accounting");
+    assert.equal(row.attempt_count, 1, "committed attempt survives failed acceptance persistence");
     return row;
   };
   const originalQuery = pg.Client.prototype.query;
@@ -169,14 +169,14 @@ test("provider acceptance / DB failure: isolated evidence, including known dupli
       });
 
       for (const fault of ["statement_abort", "deferred_commit_failure"] as const) {
-        await t.test(`loop ${loop}: ${fault} after acceptance cancels retries but does NOT prove unsent`, async st => {
+        await t.test(`loop ${loop}: ${fault} preserves intent and holds uncertain acceptance`, async st => {
           const id = await fixture(), provider = mockProvider(id);
           let fired = false;
           if (fault === "deferred_commit_failure") {
             await observer.query(`UPDATE email_outbox SET metadata=metadata ||
               '{"proofCommitFailure":true}'::jsonb WHERE id=$1`, [id]);
             st.mock.method(pg.Client.prototype, "query", async function(this: pg.Client, ...args: any[]) {
-              if (queryText(args[0]).toLowerCase() === "commit") {
+              if (queryText(args[0]).toLowerCase() === "commit" && provider.acceptances.size === 1) {
                 assert.equal(provider.acceptances.size, 1);
                 try { return await (originalQuery as any).apply(this, args); }
                 catch (error) {
@@ -201,17 +201,17 @@ test("provider acceptance / DB failure: isolated evidence, including known dupli
           await deliverQueuedEmail(id);
           assert.equal(fired, true, "actual post-acceptance database fault was exercised");
           const durable = await assertCancellation(id);
-          assert.equal(durable.metadata.cancelDetail, "verification_transaction_failed");
+          assert.ok(durable.metadata.commerceDeliveryAttempt.intentAt);
           await competitors();
           await deliverQueuedEmail(id);
           assert.equal(provider.submissions.length, 1);
           assert.equal(provider.acceptances.size, 1);
           evidence.push({ loop, case: fault, submissions: 1, syntheticAcceptances: 1,
-            durable: "cancelled/check_failed", blocker: "accepted receipt and attempt lost; not unsent" });
+            durable: "dead/provider_acceptance_unknown", duplicatePrevented: true, receiptUncertain: true });
         });
       }
 
-      await t.test(`loop ${loop}: lost COMMIT acknowledgement retains sent row but returns cancelled`, async st => {
+      await t.test(`loop ${loop}: lost COMMIT acknowledgement returns durable sent outcome`, async st => {
         const id = await fixture(), provider = mockProvider(id);
         await observer.query(`UPDATE email_outbox SET status='processing',
           retry_after=NOW()+INTERVAL '10 minutes' WHERE id=$1`, [id]);
@@ -228,7 +228,7 @@ test("provider acceptance / DB failure: isolated evidence, including known dupli
         });
         const outcome = await deliverVerifiedCommerce(id, provider.send);
         assert.equal(fired, true);
-        assert.equal(outcome, "cancelled", "KNOWN BLOCKER: return value contradicts durable sent outcome");
+        assert.equal(outcome, "sent");
         const durable = await read(id);
         assert.equal(durable.status, "sent");
         assert.equal(durable.resend_id, [...provider.acceptances.values()][0].id);
@@ -238,24 +238,14 @@ test("provider acceptance / DB failure: isolated evidence, including known dupli
         await competitors();
         assert.equal(provider.submissions.length, 1);
         evidence.push({ loop, case: "lost_commit_ack", submissions: 1, syntheticAcceptances: 1,
-          durable: "sent", blocker: "function returns cancelled despite durable sent" });
+          durable: "sent", truthfulOutcome: true });
       });
 
       for (const recovery of ["fallback_write_failure", "new_claim_before_fallback", "new_lease_before_fallback"] as const) {
-        await t.test(`loop ${loop}: ${recovery} exposes duplicate submission despite stable key`, async st => {
+        await t.test(`loop ${loop}: ${recovery} cannot cause a second submission`, async st => {
           const id = await fixture(), provider = mockProvider(id);
           const fallbackEntered = signal(), releaseFallback = signal();
-          const newTransactionEntered = signal(), releaseNewTransaction = signal();
           let aborted = false, fallbackIntercepted = false;
-          let pauseNewTransaction = false;
-          const originalTransaction = db.transaction;
-          st.mock.method(db, "transaction", async (...args: any[]) => {
-            if (pauseNewTransaction) {
-              newTransactionEntered.resolve();
-              await bounded(releaseNewTransaction.promise);
-            }
-            return (originalTransaction as any).apply(db, args);
-          });
           st.mock.method(pg.Client.prototype, "query", async function(this: pg.Client, ...args: any[]) {
             if (!aborted && sentWrite(args[0], args[1])) {
               aborted = true;
@@ -277,66 +267,119 @@ test("provider acceptance / DB failure: isolated evidence, including known dupli
             }
             return (originalQuery as any).apply(this, args);
           });
-          // The generic outbox catch turns a failed cancellation write into a
-          // retryable failed row, despite the earlier provider acceptance.
+          // A failed fallback cannot erase the separately committed intent.
           const sending = deliverQueuedEmail(id);
           let competing: ReturnType<typeof competitors> | undefined;
           try {
             await bounded(fallbackEntered.promise);
             if (recovery === "fallback_write_failure") await sending;
             const before = await read(id);
-            assert.equal(before.status, recovery === "fallback_write_failure" ? "failed" : "processing");
+            assert.equal(before.status, "processing");
             assert.equal(before.resend_id, null);
-            assert.equal(before.attempt_count, recovery === "fallback_write_failure" ? 1 : 0);
-            if (recovery === "fallback_write_failure") {
-              assert.ok(before.retry_after);
-              assert.equal(before.sent_at, null);
-              assert.match(before.last_error, /check_failed/);
-            }
+            assert.equal(before.attempt_count, 1);
+            assert.equal(before.metadata.commerceDeliveryAttempt.phase, "intent");
             assert.equal(provider.submissions.length, 1);
             await expire(id); // isolated fixture lease expiry, not wall-clock waiting
-            pauseNewTransaction = recovery === "new_lease_before_fallback";
             competing = competitors();
-            if (pauseNewTransaction) {
-              // Existing drain claim has committed, but its verification
-              // transaction has not acquired the row lock yet. This isolates
-              // the lease predicate from the separate terminal-status predicate.
-              await bounded(newTransactionEntered.promise);
-              const newer = await read(id);
-              assert.equal(newer.status, "processing");
-              assert.notEqual(newer.lease, before.lease);
-              releaseFallback.resolve();
-              await sending;
-              const afterStaleFallback = await read(id);
-              assert.equal(afterStaleFallback.status, "processing");
-              assert.equal(afterStaleFallback.lease, newer.lease);
-              assert.equal(afterStaleFallback.metadata.cancelReason, undefined);
-              releaseNewTransaction.resolve();
+            if (recovery === "new_lease_before_fallback") {
+              // Fixture-only forced newer intent: impossible through normal
+              // claims, but tests the independent owner-token fence.
+              await observer.query(`UPDATE email_outbox SET metadata=jsonb_set(metadata,
+                '{commerceDeliveryAttempt,ownerToken}',to_jsonb($2::text)),
+                retry_after=NOW()+INTERVAL '10 minutes' WHERE id=$1`, [id, randomUUID()]);
+            } else if (recovery === "new_claim_before_fallback") {
+              await observer.query(`UPDATE email_outbox SET status='sent',
+                resend_id=$2, sent_at=NOW() WHERE id=$1`, [id, [...provider.acceptances.values()][0].id]);
             }
             const claims = await competing;
             claims.forEach(result => assert.equal(result.error, undefined));
-            assert.equal(claims.reduce((sum, result) => sum + result.drained, 0), 1);
+            assert.equal(claims.reduce((sum, result) => sum + result.drained, 0), 0);
           } finally {
             releaseFallback.resolve();
-            releaseNewTransaction.resolve();
             await sending;
             if (competing) await competing;
           }
           const durable = await read(id);
-          assert.equal(durable.status, "sent", "stale fallback must not cancel a newer sent claim");
-          assert.equal(durable.resend_id, [...provider.acceptances.values()][0].id);
+          assert.equal(durable.status, recovery === "new_claim_before_fallback" ? "sent" : "processing");
           assert.equal(durable.metadata.cancelReason, undefined);
-          assert.equal(durable.attempt_count, recovery === "fallback_write_failure" ? 2 : 1);
-          assert.equal(provider.submissions.length, 2, "KNOWN BLOCKER: provider was submitted to twice");
+          assert.equal(durable.attempt_count, 1);
+          assert.equal(provider.submissions.length, 1);
           assert.equal(provider.acceptances.size, 1, "mock dedup is NOT evidence of real provider guarantees");
           await competitors();
-          assert.equal(provider.submissions.length, 2);
-          evidence.push({ loop, case: recovery, submissions: 2, syntheticAcceptances: 1,
-            durable: "sent", blocker: recovery === "fallback_write_failure"
-              ? "accepted send becomes retryable failed; duplicate submission; mock-only dedup"
-              : "duplicate submission; mock-only dedup; first attempt unrecorded" });
+          assert.equal(provider.submissions.length, 1);
+          evidence.push({ loop, case: recovery, submissions: 1, syntheticAcceptances: 1,
+            durable: durable.status, duplicatePrevented: true });
         });
       }
+      await t.test(`loop ${loop}: intent SQL failure invokes no provider`, async st => {
+        const id = await fixture(), provider = mockProvider(id);
+        let fired = false;
+        st.mock.method(pg.Client.prototype, "query", function(this: pg.Client, ...args: any[]) {
+          if (!fired && /update "email_outbox"/i.test(queryText(args[0])) &&
+              (args[1] ?? []).some((value: unknown) => typeof value === "string" && value.includes('"phase":"intent"'))) {
+            fired = true;
+            return originalQuery.call(this, "SELECT nonexistent_intent_proof_column FROM email_outbox");
+          }
+          return (originalQuery as any).apply(this, args);
+        });
+        _outboxTestHooks.sendEmailFn = provider.send;
+        await deliverQueuedEmail(id);
+        assert.equal(fired, true);
+        assert.equal(provider.submissions.length, 0);
+        assert.equal((await read(id)).metadata.commerceDeliveryAttempt, undefined);
+      });
+      await t.test(`loop ${loop}: crash/expired intent and malformed intent never retry after 24h`, async () => {
+        for (const attempt of [null, { version: 1, phase: "intent", intentAt: "2020-01-01T00:00:00Z" }]) {
+          const id = await fixture(), provider = mockProvider(id);
+          _outboxTestHooks.sendEmailFn = provider.send;
+          await observer.query(`UPDATE email_outbox SET metadata=metadata ||
+            jsonb_build_object('commerceDeliveryAttempt',$2::jsonb), status='processing',
+            retry_after=NOW()-INTERVAL '25 hours' WHERE id=$1`, [id, JSON.stringify(attempt)]);
+          await competitors(); await deliverQueuedEmail(id);
+          assert.equal(provider.submissions.length, 0);
+        }
+      });
+      await t.test(`loop ${loop}: unknown intent COMMIT acknowledgement never hands off`, async st => {
+        const id = await fixture(), provider = mockProvider(id);
+        _outboxTestHooks.sendEmailFn = provider.send;
+        let fired = false;
+        st.mock.method(pg.Client.prototype, "query", async function(this: pg.Client, ...args: any[]) {
+          if (!fired && queryText(args[0]).toLowerCase() === "commit") {
+            fired = true;
+            await (originalQuery as any).apply(this, args);
+            throw new Error("Synthetic lost intent COMMIT acknowledgement");
+          }
+          return (originalQuery as any).apply(this, args);
+        });
+        await deliverQueuedEmail(id);
+        assert.equal(fired, true);
+        assert.equal(provider.submissions.length, 0);
+        const durable = await read(id);
+        assert.ok(durable.metadata.commerceDeliveryAttempt);
+        assert.equal(durable.status, "dead");
+        await competitors();
+        assert.equal(provider.submissions.length, 0);
+      });
+      await t.test(`loop ${loop}: proven pre-handoff quiet deferral releases unused cap and resumes safely`, async () => {
+        const id = await fixture(), provider = mockProvider(id);
+        _outboxTestHooks.sendEmailFn = provider.send;
+        commerceSendVerification.beforeFinalRead = async () => {
+          cartReminderVerification.now = new Date("2030-05-05T20:00:00Z");
+        };
+        try { await deliverQueuedEmail(id); }
+        finally { commerceSendVerification.beforeFinalRead = null; }
+        const held = await read(id);
+        assert.equal(held.status, "pending");
+        assert.equal(held.metadata.commerceDeliveryAttempt.phase, "not_invoked");
+        assert.equal(held.metadata.deliveryCalendarDay, undefined);
+        assert.equal(held.metadata.deliveryCalendarDays, undefined);
+        assert.equal(provider.submissions.length, 0);
+        cartReminderVerification.now = new Date("2030-05-06T10:00:00Z");
+        await observer.query("UPDATE email_outbox SET retry_after=NULL WHERE id=$1", [id]);
+        await deliverQueuedEmail(id);
+        assert.equal((await read(id)).status, "sent");
+        assert.equal(provider.submissions.length, 1);
+      });
     }
     console.log("COMMERCE_PROVIDER_FAILURE_EVIDENCE=" + JSON.stringify(evidence));
     assert.equal(networkCalls, 0);

@@ -1,0 +1,15 @@
+ANNOTATED WAITS AND COUNTS (printed on every run — a stated decision, never a silent baseline):
+  • e2e/supply-demand/lib/flows.ts:22 [.count()] count-ok: the option list has rendered (awaited above)
+  • e2e/supply-demand/lib/flows.ts:428 [.count()] count-ok: PN_DEBUG diagnostics only, decides nothing
+  • e2e/supply-demand/lib/flows.ts:430 [.count()] count-ok: PN_DEBUG diagnostics only
+  • e2e/supply-demand/lib/flows.ts:468 [waitForTimeout] settle-ok: polling the option's own aria-pressed — the loop IS the confirmation
+  • e2e/supply-demand/lib/flows.ts:576 [waitForTimeout] settle-ok: a step transition; the loop's next pass CONFIRMS by probing for the review card / next control
+  • e2e/supply-demand/lib/flows.ts:591 [.count()] count-ok: after the review summary rendered
+  • e2e/supply-demand/lib/flows.ts:617 [.count()] count-ok: after the review summary rendered
+  • e2e/supply-demand/lib/flows.ts:631 [.count()] count-ok: after the review summary rendered
+  • e2e/supply-demand/lib/flows.ts:764 [.count()] count-ok: the checklist has rendered (awaited above)
+  • e2e/supply-demand/lib/flows.ts:881 [waitForTimeout] settle-ok: one beat for the occasion click to register; re-checked on the next line
+  • e2e/supply-demand/lib/flows.ts:885 [waitForTimeout] settle-ok: a step transition; the loop's next pass CONFIRMS by probing for the finish row / next step
+  • e2e/supply-demand/lib/ui.ts:112 [waitForTimeout] settle-ok: polling the checkbox's own state — the loop IS the confirmation
+
+e2e-helper-waits guard: OK — 15 helper module(s) scanned, 12 annotated wait(s)/count(s).

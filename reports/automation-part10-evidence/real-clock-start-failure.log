@@ -1,0 +1,32 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+CHILD_PROVIDER_CREDENTIALS_ABSENT=true; PRIVATE_QA_PARENT_CHANNEL=true
+TAP version 13
+# New database connection established
+# Subtest: non-sending real-clock start: real cart writer and retained owned QA fixture
+not ok 1 - non-sending real-clock start: real cart writer and retained owned QA fixture
+  ---
+  duration_ms: 62.243896
+  location: '/home/runner/workspace/server/routes/__tests__/commerce-real-clock-start.db.test.ts:1:420'
+  failureType: 'testCodeFailure'
+  error: |-
+    Failed query: insert into "trips" ("id", "user_id", "tracking_number", "title", "event_type", "start_date", "end_date", "destination", "status", "number_of_travelers", "adults", "kids", "budget", "preferences", "experience_type", "moment_key", "travelers", "special_requests", "expert_id", "expert_notes", "expert_traveler_note", "expert_modified_at", "primary_expert_id", "neighborhood_ids", "booking_reference", "is_public", "share_token", "managed_by_ea_id", "ea_client_relationship_id", "author_id", "finalized_at", "origin_market", "market_slug", "timezone", "budget_approver_name", "budget_approver_email", "accessibility_note", "pet_kind", "pet_count", "stay_pick", "dates_confirmed_at", "created_at", "updated_at") values ($1, $2, default, default, default, $3, default, $4, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default, default) returning "id", "user_id", "tracking_number", "title", "event_type", "start_date", "end_date", "destination", "status", "number_of_travelers", "adults", "kids", "budget", "preferences", "experience_type", "moment_key", "travelers", "special_requests", "expert_id", "expert_notes", "expert_traveler_note", "expert_modified_at", "primary_expert_id", "neighborhood_ids", "booking_reference", "is_public", "share_token", "managed_by_ea_id", "ea_client_relationship_id", "author_id", "finalized_at", "origin_market", "market_slug", "timezone", "budget_approver_name", "budget_approver_email", "accessibility_note", "pet_kind", "pet_count", "stay_pick", "dates_confirmed_at", "created_at", "updated_at"
+    params: e6d6c0b5-b050-4551-8cf4-e00549084706,4ec31480-209b-4ef7-bc0e-72b654b0d7d6,2026-10-11,Kyoto
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    NodePgPreparedQuery.queryWithCache (/home/runner/workspace/node_modules/src/pg-core/session.ts:73:11)
+    process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    async <anonymous> (/home/runner/workspace/node_modules/src/node-postgres/session.ts:154:19)
+    async TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/commerce-real-clock-start.db.test.ts:28:20)
+    async Test.run (node:internal/test_runner/test:797:9)
+    async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

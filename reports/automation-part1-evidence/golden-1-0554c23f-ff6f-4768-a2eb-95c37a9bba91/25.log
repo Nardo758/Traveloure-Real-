@@ -1,0 +1,5 @@
+  ✓ logged site with a same-transaction write passes
+  ✓ unannotated delete FAILS
+  ✓ logged without an item_removed write FAILS
+  ✓ replace site passes and is reported as an exemption
+item-removed-logging self-test: all fixtures passed

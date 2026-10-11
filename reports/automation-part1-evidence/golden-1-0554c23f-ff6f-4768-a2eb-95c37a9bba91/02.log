@@ -1,0 +1,35 @@
+test-files-wired: 888/921 reachable; 33 orphan(s)
+ORPHAN playwright/crossbrowser/smoke.spec.ts
+ORPHAN playwright/tests/breakpoint-hamburger.spec.ts
+ORPHAN playwright/tests/content-system.spec.ts
+ORPHAN playwright/tests/deprecated-route-redirects.spec.ts
+ORPHAN playwright/tests/discover-bento-real-data.spec.ts
+ORPHAN playwright/tests/expert-application-mobile.spec.ts
+ORPHAN playwright/tests/experts-flow.spec.ts
+ORPHAN playwright/tests/finalize-booking-modal.spec.ts
+ORPHAN playwright/tests/lane1-phase1d-routing.spec.ts
+ORPHAN playwright/tests/lb-p1-password-reset.spec.ts
+ORPHAN playwright/tests/offering-card.spec.ts
+ORPHAN playwright/tests/optimization-payment-gate.spec.ts
+ORPHAN playwright/tests/optimize-apply-banner.spec.ts
+ORPHAN playwright/tests/optimized-slip-live.spec.ts
+ORPHAN playwright/tests/phase-1-expert-setup.spec.ts
+ORPHAN playwright/tests/phase-2-provider-setup.spec.ts
+ORPHAN playwright/tests/phase-3-traveler-flows.spec.ts
+ORPHAN playwright/tests/phase-4-7-advanced-flows.spec.ts
+ORPHAN playwright/tests/seam-cross-console.spec.ts
+ORPHAN playwright/tests/search-bar.spec.ts
+ORPHAN playwright/tests/security-regression.spec.ts
+ORPHAN playwright/tests/slip-parity-fixture.spec.ts
+ORPHAN playwright/tests/stripe-init-deferral.spec.ts
+ORPHAN playwright/tests/travel-surcharge-step.spec.ts
+ORPHAN playwright/tests/tripstrip-count-accuracy.spec.ts
+ORPHAN playwright/tests/user-menu.spec.ts
+ORPHAN playwright/tier4/a11y.spec.ts
+ORPHAN playwright/tier4/booking.spec.ts
+ORPHAN playwright/tier4/deep-ui-loop.spec.ts
+ORPHAN playwright/tier4/keyboard.spec.ts
+ORPHAN server/__tests__/deliverable-protected-rail.http.test.ts
+ORPHAN server/__tests__/deposit-cancel.db.test.ts
+ORPHAN server/services/__tests__/content-matching.test.ts
+test-orphan-ratchet: OK — baseline: 33 recorded orphan(s) (debt, not exempt)

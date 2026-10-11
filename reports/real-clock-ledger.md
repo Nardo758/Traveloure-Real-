@@ -58,9 +58,10 @@ Sources:
 No NEXT-DAY CHECK is marked PROVEN. Future proof or release execution requires
 separate founder authorization; this ledger does not authorize either.
 
-## Part 10 follow-up: requested genuine start
+## Part 10 follow-up: pre-approval start-path finding (historical)
 
-**Start status: BLOCKED / NOT STARTED. NEXT-DAY CHECK remains OPEN.**
+**Historical start status: BLOCKED / NOT STARTED.** Superseded by the genuine
+WAITING scenario recorded below after QA-mode approval. NEXT-DAY CHECK remains OPEN.
 
 Both approved development inbox setting names are present; values are not
 printed. The existing approved controller only runs immediately eligible,
@@ -77,3 +78,33 @@ The exact QA-only adaptation and touch list are in
 actual fixture creation, record scenario ID, real database start, exact due
 instant and checks, then mark WAITING. Do not initialize provider transport,
 send an email or claim NEXT-DAY PROVEN during start-only setup.
+
+## Genuine scenario d5dcaccc-abdb-401a-b3ab-1a72d24ec98a
+
+Status: **WAITING**. NEXT-DAY PROVEN: **NO**.
+
+```json
+{
+  "runId": "d5dcaccc-abdb-401a-b3ab-1a72d24ec98a",
+  "scenarioId": "d88d08e8-baca-4cd8-acfb-6442692f2b5f",
+  "cartId": "e244f935-2c04-4cd9-b3b7-fadc7bb68a50",
+  "sequenceId": "9708d8a8-5691-408c-9b5e-bb26cead60b7",
+  "startTime": "2026-10-11T05:53:16.241Z",
+  "due1h": "2026-10-11T06:53:16.241Z",
+  "due1d": "2026-10-12T05:53:16.241Z",
+  "due3d": "2026-10-14T05:53:16.241Z",
+  "timezone": "Asia/Kolkata",
+  "priorStepSent": false,
+  "outboxRows": 0,
+  "providerCallsBlocked": true,
+  "schema": "automation_msg_748a6c8ec0a411fe",
+  "status": "WAITING",
+  "realTransport": false,
+  "inboxSetting": "SIGNUP_QA_TEST_INBOX",
+  "productionBlocked": true,
+  "releaseCertified": false
+}
+```
+
+Retained owned development fixture; no provider initialized, email sent, or job scheduled.
+Check live cart/sequence/account/recipient/consent/timezone, readable payment rails and UNKNOWN holds, quiet hours, daily cap, actual preceding 1h delivery history and a matching delivered receipt after the real 1d due time. The preceding step is NOT fabricated; future delivery needs separate authorization.

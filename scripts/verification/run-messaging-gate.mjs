@@ -13,13 +13,17 @@ const args = process.argv.slice(2);
 const dbMode = args.includes("--isolated-db");
 const httpHarness = args.includes("--http-harness");
 const qaProofChannel = args.includes("--qa-proof-channel");
-const testFiles = args.filter((arg) => !["--isolated-db", "--http-harness", "--qa-proof-channel"].includes(arg));
+const realClockStart = args.includes("--real-clock-start");
+const testFiles = args.filter((arg) => !["--isolated-db", "--http-harness", "--qa-proof-channel", "--real-clock-start"].includes(arg));
+if (realClockStart && !qaProofChannel) throw new Error("Real-clock retention requires the private QA owner");
 let proofBinding;
 if (qaProofChannel) {
   if (!dbMode || httpHarness || process.env.NODE_ENV !== "development" || process.env.REPLIT_DEPLOYMENT ||
       !process.env.REPLIT_DEV_DOMAIN || process.env.ENVIRONMENT === "production" ||
       process.env.COMMERCE_QA_DELIVERY_PROOF !== "1" || !process.send ||
-      testFiles.length !== 1 || testFiles[0] !== "server/routes/__tests__/commerce-real-delivery-proof.db.test.ts") {
+      testFiles.length !== 1 || testFiles[0] !== (realClockStart
+        ? "server/routes/__tests__/commerce-real-clock-start.db.test.ts"
+        : "server/routes/__tests__/commerce-real-delivery-proof.db.test.ts")) {
     throw new Error("Private QA proof channel is not authorized");
   }
   proofBinding = JSON.parse(process.env.COMMERCE_QA_PROOF_RUN_ID ?? "null");
@@ -27,6 +31,9 @@ if (qaProofChannel) {
       !/^[a-f0-9]{64}$/.test(proofBinding.token) || ![1, 2].includes(proofBinding.loop) ||
       !Number.isInteger(proofBinding.port) || proofBinding.port < 1 || proofBinding.port > 65535) {
     throw new Error("Invalid private proof channel");
+  }
+  if (realClockStart && (proofBinding.startOnly !== true || proofBinding.loop !== 1)) {
+    throw new Error("Explicit non-sending start binding required");
   }
 }
 if (httpHarness && !dbMode) {
@@ -287,7 +294,9 @@ try {
   await stopProcessGroup(child);
   // Stop the fixture HTTP server before dropping its schema, even after test/startup failure.
   await stopProcessGroup(harness);
-  if (schemaCreated) {
+  if (schemaCreated && realClockStart && process.exitCode === 0 && !interrupted) {
+    console.log("OWNED_REAL_CLOCK_SCHEMA_RETAINED=true; PROVIDER_CHANNEL_OFF=true");
+  } else if (schemaCreated) {
     await pool.query(`DROP SCHEMA ${q(schema)} CASCADE`);
     const remaining = await pool.query("SELECT 1 FROM pg_namespace WHERE nspname=$1", [schema]);
     if (remaining.rowCount !== 0) throw new Error("Fixture schema cleanup did not complete");

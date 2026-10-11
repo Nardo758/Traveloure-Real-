@@ -1,0 +1,15 @@
+self-test OK — retained isolated messaging wrapper reaches only explicit files
+self-test OK — wrapper prose and other scripts do not establish reachability
+self-test OK — direct file + directory reachability, unreferenced orphan
+self-test OK — prose echo naming a runner yields no selectors
+self-test OK — real invocation plus trailing prose echo yields only the real selector
+self-test OK — annotation and comment lines yield no selectors
+self-test OK — heredoc body yields no selectors
+self-test OK — non-existent directory prefix matches nothing
+self-test OK — redirect target is not a selector
+self-test OK — ratchet — unchanged inventory passes
+self-test OK — ratchet — a NEW orphan fails
+self-test OK — ratchet — a baseline entry that became REACHABLE fails
+self-test OK — ratchet — a baseline entry whose file is GONE fails
+self-test OK — ratchet — a correctly shrunk baseline passes
+self-test OK (14/14 fixtures — 9 reachability, 5 ratchet)

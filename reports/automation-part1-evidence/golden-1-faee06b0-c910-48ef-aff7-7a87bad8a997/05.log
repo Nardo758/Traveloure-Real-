@@ -1,0 +1,132 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# Subtest: signup welcome pure guards and main wiring
+    # Subtest: permits recorded consent and unchanged recipient
+    ok 1 - permits recorded consent and unchanged recipient
+      ---
+      duration_ms: 0.6614
+      ...
+    # Subtest: suppresses missing, deleted and suspended accounts
+    ok 2 - suppresses missing, deleted and suspended accounts
+      ---
+      duration_ms: 0.155021
+      ...
+    # Subtest: suppresses changed email, missing consent and previous delivery
+    ok 3 - suppresses changed email, missing consent and previous delivery
+      ---
+      duration_ms: 0.078672
+      ...
+    # Subtest: keeps signup enqueue transactional and removes its direct welcome call
+    ok 4 - keeps signup enqueue transactional and removes its direct welcome call
+      ---
+      duration_ms: 0.549811
+      ...
+    # Subtest: retains main itinerary dispatch and provider guards
+    ok 5 - retains main itinerary dispatch and provider guards
+      ---
+      duration_ms: 0.305972
+      ...
+    # Subtest: production app send path never imports or reads the QA inbox
+    ok 6 - production app send path never imports or reads the QA inbox
+      ---
+      duration_ms: 0.924762
+      ...
+    # Subtest: production recipient resolution returns the account address without reading the inbox
+    ok 7 - production recipient resolution returns the account address without reading the inbox
+      ---
+      duration_ms: 0.425801
+      ...
+    1..7
+ok 1 - signup welcome pure guards and main wiring
+  ---
+  duration_ms: 3.941385
+  type: 'suite'
+  ...
+# New database connection established
+# Subtest: signup welcome real database
+    # Subtest: rolls back the account and welcome obligation together
+    ok 1 - rolls back the account and welcome obligation together
+      ---
+      duration_ms: 47.459419
+      ...
+# New database connection established
+# New database connection established
+# New database connection established
+# New database connection established
+    # Subtest: concurrent enqueues persist exactly one welcome
+    ok 2 - concurrent enqueues persist exactly one welcome
+      ---
+      duration_ms: 52.104805
+      ...
+    # Subtest: immediate delivery claims once and persists the provider ID
+    ok 3 - immediate delivery claims once and persists the provider ID
+      ---
+      duration_ms: 37.941044
+      ...
+    # Subtest: production dispatcher sends to the account's own address even with an override configured
+    ok 4 - production dispatcher sends to the account's own address even with an override configured
+      ---
+      duration_ms: 20.785337
+      ...
+    # Subtest: the scheduled/admin dispatcher cannot resend an already sent row
+    ok 5 - the scheduled/admin dispatcher cannot resend an already sent row
+      ---
+      duration_ms: 23.333472
+      ...
+    # Subtest: send-time guard cancels changed-email without transport
+    ok 6 - send-time guard cancels changed-email without transport
+      ---
+      duration_ms: 25.325809
+      ...
+    # Subtest: send-time guard cancels no-consent without transport
+    ok 7 - send-time guard cancels no-consent without transport
+      ---
+      duration_ms: 20.440618
+      ...
+    # Subtest: send-time guard cancels soft-deleted without transport
+    ok 8 - send-time guard cancels soft-deleted without transport
+      ---
+      duration_ms: 20.025618
+      ...
+    # Subtest: send-time guard cancels suspended without transport
+    ok 9 - send-time guard cancels suspended without transport
+      ---
+      duration_ms: 22.599805
+      ...
+    # Subtest: send-time guard cancels missing-account without transport
+    ok 10 - send-time guard cancels missing-account without transport
+      ---
+      duration_ms: 53.94418
+      ...
+    # Subtest: provider failure uses existing backoff and a stable retry key
+    ok 11 - provider failure uses existing backoff and a stable retry key
+      ---
+      duration_ms: 34.101535
+      ...
+    # Subtest: another sent welcome suppresses a duplicate row
+    ok 12 - another sent welcome suppresses a duplicate row
+      ---
+      duration_ms: 22.030478
+      ...
+    # Subtest: a stale duplicate sender waits for the first sender and cannot send again
+    ok 13 - a stale duplicate sender waits for the first sender and cannot send again
+      ---
+      duration_ms: 21.138087
+      ...
+    1..13
+ok 2 - signup welcome real database
+  ---
+  duration_ms: 456.323453
+  type: 'suite'
+  ...
+1..2
+# tests 20
+# suites 2
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

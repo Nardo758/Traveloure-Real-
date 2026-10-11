@@ -1,0 +1,4 @@
+[grandfathered] filesystem (server/migrations/*.sql) prefix "079" is duplicated by design: 079_season_tag_on_offering_types.sql, 079_seed_missing_fee_bands.sql
+[grandfathered] filesystem (server/migrations/*.sql) prefix "098" is duplicated by design: 098_bookings_dispute_columns.sql, 098_restore_event_planner_offering_types.sql
+[grandfathered] filesystem (server/migrations/*.sql) prefix "099" is duplicated by design: 099_bookings_expert_slot_unique.sql, 099_restore_expert_offering_types.sql
+duplicate-migration-prefix guard OK (360 files on disk, 354 registry entries; 3 grandfathered prefix collision(s))

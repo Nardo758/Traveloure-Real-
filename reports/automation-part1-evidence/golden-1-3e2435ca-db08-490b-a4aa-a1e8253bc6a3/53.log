@@ -1,0 +1,1 @@
+self-test OK (7 predicate fixtures: unique/no-dup, letter-suffix distinctness, non-numeric-filename exclusion, exact-duplicate detection incl. letter-suffixed, allowlist scoping, registry-string extraction)

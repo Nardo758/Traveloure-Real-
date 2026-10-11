@@ -1,0 +1,82 @@
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# [email] sendEmail ok — id=synthetic_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_2 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_1_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_1_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail Resend error: {
+#   to: [address-redacted]',
+#   subject: 'Different payload',
+#   error: {
+#     name: 'invalid_idempotent_request',
+#     message: 'Synthetic payload conflict',
+#     statusCode: 409
+#   }
+# }
+# [email] sendEmail Resend error: {
+#   to: [address-redacted]',
+#   subject: 'Synthetic reminder',
+#   error: {
+#     name: 'concurrent_idempotent_requests',
+#     message: 'Synthetic in-flight conflict',
+#     statusCode: 409
+#   }
+# }
+# [email] sendEmail Resend error: {
+#   to: [address-redacted]',
+#   subject: 'Different payload',
+#   error: {
+#     name: 'invalid_idempotent_request',
+#     message: 'Synthetic payload conflict',
+#     statusCode: 409
+#   }
+# }
+# [email] sendEmail Resend error: {
+#   to: [address-redacted]',
+#   subject: 'Synthetic reminder',
+#   error: {
+#     name: 'concurrent_idempotent_requests',
+#     message: 'Synthetic in-flight conflict',
+#     statusCode: 409
+#   }
+# }
+# [email] sendEmail ok — id=synthetic_retention_1_2 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_1_2 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_2_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_2_1 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_2_2 subject="Synthetic reminder" [address-redacted]
+# [email] sendEmail ok — id=synthetic_retention_2_2 subject="Synthetic reminder" [address-redacted]
+# Subtest: cart retry key and payload survive the actual sendEmail → Resend SDK adapter
+ok 1 - cart retry key and payload survive the actual sendEmail → Resend SDK adapter
+  ---
+  duration_ms: 7.302919
+  ...
+# Subtest: QA proof defaults off; malformed permission never reaches transport
+ok 2 - QA proof defaults off; malformed permission never reaches transport
+  ---
+  duration_ms: 0.912523
+  ...
+# Subtest: Every rejection has zero synthetic provider calls; each loop has four reservations only
+ok 3 - Every rejection has zero synthetic provider calls; each loop has four reservations only
+  ---
+  duration_ms: 1.150179
+  ...
+# Subtest: Qualified QA copy does not infer stock from listing status or null capacity
+ok 4 - Qualified QA copy does not infer stock from listing status or null capacity
+  ---
+  duration_ms: 0.216872
+  ...
+# Subtest: Production sources cannot read inbox substitution or arm proof transport
+ok 5 - Production sources cannot read inbox substitution or arm proof transport
+  ---
+  duration_ms: 1.111391
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

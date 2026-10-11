@@ -1,0 +1,6 @@
+doc-band-keys: 4 exemption(s) in force:
+  · docs/design/PRICING_AND_FEATURE_MAP.md:5: band-key-ok
+  · docs/design/PRICING_AND_FEATURE_MAP.md:95: band-key-ok
+  · docs/design/PRICING_AND_FEATURE_MAP.md:100: band-key-ok
+  · docs/design/PRICING_AND_FEATURE_MAP.md:101: band-key-ok
+doc-band-keys OK — 7 file(s), 46 declared band keys.

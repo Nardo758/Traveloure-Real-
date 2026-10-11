@@ -1,0 +1,23 @@
+omit-schema-ratchet: scanned 2 entry file(s), 205 createInsertSchema(...) call site(s) — 187 .omit(), 0 bare (no modifier), 18 .pick(). Denylist total (omit+bare) = 187; OMIT_BASELINE = 187.
+   shared/schema.ts: 201 call site(s) — 183 omit, 0 bare, 18 pick
+   shared/guest-invites-schema.ts: 4 call site(s) — 4 omit, 0 bare, 0 pick
+✅ omit-schema-ratchet guard: denylist count holds at 187.
+   NEGATIVE SPACE (§18d — what this predicate does NOT cover):
+   · Only counts SHAPES (.omit() vs .pick() vs bare) at the createInsertSchema(...) call site —
+     it never checks whether the OMITTED FIELD LIST is correct, or whether a .pick()'s field list
+     is the right allowlist. A schema can be .pick()-based and still leak a privileged column if
+     that column is deliberately (or mistakenly) picked; this guard only proves the SHAPE moved.
+   · Scoped to the two drizzle-kit schema entry files only (shared/schema.ts,
+     shared/guest-invites-schema.ts). A hand-written zod object, or an insert schema defined in
+     any other file, is entirely outside it — the same blind spot check-money-endpoints.cjs
+     already states for its own schema-mediated pass.
+   · A schema DERIVED from an existing insert schema via `.pick()`/`.omit()` on the SCHEMA VARIABLE
+     (not on `createInsertSchema(...)` directly — e.g. ruling 46's `createBookingRequestSchema =
+     insertServiceBookingSchema.pick({...})`) does not match this guard's call-site pattern and is
+     not counted at all, in either direction.
+   · This guard does not know whether a schema is ever `.parse()`d from a request body — that
+     reachability judgment stays with check-money-endpoints.cjs's schema-mediated pass. A schema
+     that is never client-reachable ratchets identically to one that is.
+   · It is a COUNT ratchet, not an identity ratchet: converting one omit schema to pick while adding
+     a new bare one nets to the same total and PASSES — it proves the AGGREGATE never grows, not
+     that any specific named schema was the one converted.

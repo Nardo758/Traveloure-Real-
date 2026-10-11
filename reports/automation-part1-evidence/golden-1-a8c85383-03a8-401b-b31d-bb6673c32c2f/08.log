@@ -1,0 +1,41 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# Subtest: A1: the alert payload escapes typed text and names the service
+ok 1 - A1: the alert payload escapes typed text and names the service
+  ---
+  duration_ms: 0.920858
+  ...
+# New database connection established
+# [2026-10-11 05:58:34.912 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 1
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "New booking request: Tea & <script>ceremony</script>"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:03:34.903Z"
+#     error: "simulated Resend outage"
+# Subtest: A2: a failed send leaves a durable row scheduled for retry
+ok 2 - A2: a failed send leaves a durable row scheduled for retry
+  ---
+  duration_ms: 48.25713
+  ...
+# [2026-10-11 05:58:34.936 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+#     [35moutboxId[39m: 2
+#     [35mresendId[39m: "re_test_123"
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "New booking request: Tea & <script>ceremony</script>"
+# Subtest: A3: a successful send marks the row sent
+ok 3 - A3: a successful send marks the row sent
+  ---
+  duration_ms: 12.721863
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

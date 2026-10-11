@@ -2,9 +2,11 @@
 
 **FINAL STATUS: DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**
 
-Proposals only. No runtime/test implementation, merge, migration rename or
-registration, flag change, production access or real email send in this update.
-Approval of a proposal is not release authorization or permission for email.
+Historical proposal, subsequently approved for dispatcher repair and non-sending
+QA start mode only. Results are in `automation-part10-remediation-results.md`.
+Main reconciliation and migration renumber remain proposals awaiting approval.
+No merge, migration registration, flag change, production action or real email.
+Development approval is not release authorization or permission for email.
 
 ## 1. Provider acceptance followed by database failure
 
@@ -61,7 +63,7 @@ No provider API request or email was sent to validate this documentation.
    liveness, but needs immutable actual transport payload, lease fencing,
    conservative retention deadlines and separate provider proof. Defer.
 
-### Recommended dispatcher-only design — NOT IMPLEMENTED
+### Approved dispatcher-only design — see implementation results
 
 1. Claim/verify the existing row under recipient/outbox locks. Preserve every
    current consent, timezone, cart, sequence, paid-rail and production hold.
@@ -282,4 +284,6 @@ WAITING. No background email is scheduled or sent; future sending requires
 separate explicit authorization. No NEXT-DAY PROVEN until the genuine due-time
 pair has a matching provider-observed delivered receipt.
 
-**Waiting for approval of this QA-only adaptation before editing it.**
+The QA-only adaptation was approved and implemented. The genuine ledger now
+records WAITING with real timestamps; no email was sent or scheduled. Earlier
+BLOCKED/NOT STARTED observations above describe the pre-approval state only.

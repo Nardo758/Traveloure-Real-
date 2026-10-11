@@ -1,0 +1,30 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# [2026-10-11 06:12:23.916 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_reminder_requires_guarded_sweep"
+# [2026-10-11 06:12:32.866 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_reminder_requires_guarded_sweep"
+# PART4_DB_EVIDENCE=[{"loop":1,"scenario":"15b5cde8-37f6-42f8-a203-04b716bf3588","clean":true,"scope":"recorded-readable-subset-only","rails":[{"rail":"canonical_provider","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"legacy_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"stripe_intent_ledger","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"credits","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"wallet","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"trip_pass","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"partner_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_credit","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"ready_made_purchase","before":true,"at":true,"after":true,"nullColumnTested":false},{"rail":"template_purchase","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_tip","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"booking_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"provider_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"group_transaction","before":true,"at":true,"after":true,"nullColumnTested":true}],"eligibilityCases":11,"duplicates":3,"resumedDayCap":true,"fourthRejected":true,"paidProviderRemovedPartnerOnly":true,"defaultUnknownBlocked":true,"paymentSweepOrderings":2,"guestClaim":true,"itineraryFirstAndCartFirst":true,"realEmails":0},{"loop":2,"scenario":"227aa7e5-de27-4422-b782-8f2742d4d75d","clean":true,"scope":"recorded-readable-subset-only","rails":[{"rail":"canonical_provider","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"legacy_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"stripe_intent_ledger","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"credits","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"wallet","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"trip_pass","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"partner_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_booking","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"coordination_credit","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"ready_made_purchase","before":true,"at":true,"after":true,"nullColumnTested":false},{"rail":"template_purchase","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_tip","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"expert_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"booking_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"provider_request","before":true,"at":true,"after":true,"nullColumnTested":true},{"rail":"group_transaction","before":true,"at":true,"after":true,"nullColumnTested":true}],"eligibilityCases":11,"duplicates":3,"resumedDayCap":true,"fourthRejected":true,"paidProviderRemovedPartnerOnly":true,"defaultUnknownBlocked":true,"paymentSweepOrderings":2,"guestClaim":true,"itineraryFirstAndCartFirst":true,"realEmails":0}]
+# PART4_PURE_EVIDENCE=[{"loop":1,"scenario":"3c1dc552-3d67-4ce8-b028-ef144441d131","clean":true,"thresholds":9,"localBoundaries":6,"malformedTimestamps":8},{"loop":2,"scenario":"df9fe0fc-ec1d-4831-ab3f-d46ff92fdede","clean":true,"thresholds":9,"localBoundaries":6,"malformedTimestamps":8}]
+# Subtest: Part 4: two native randomized loops over recorded rails; unknown coverage remains closed
+ok 1 - Part 4: two native randomized loops over recorded rails; unknown coverage remains closed
+  ---
+  duration_ms: 18828.689692
+  ...
+# Subtest: Part 4 pure policy: two fresh loops, all thresholds and local-window boundaries
+ok 2 - Part 4 pure policy: two fresh loops, all thresholds and local-window boundaries
+  ---
+  duration_ms: 2.724283
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

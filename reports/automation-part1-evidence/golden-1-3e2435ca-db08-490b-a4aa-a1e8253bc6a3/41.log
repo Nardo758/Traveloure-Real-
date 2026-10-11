@@ -1,0 +1,1 @@
+env-allowlist guard OK (prod-strict source intact · seed gated on ALLOW_TEST_ACCOUNTS w/ prod purge · no deploy-targeting workflow seeds test accounts)

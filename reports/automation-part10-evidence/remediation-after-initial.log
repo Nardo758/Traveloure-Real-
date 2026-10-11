@@ -1,0 +1,116 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# New database connection established
+# New database connection established
+# Subtest: provider acceptance / DB failure: isolated evidence, including known duplicate-submission blockers
+    # Subtest: loop 1: healthy locked send excludes competing claims
+    ok 1 - loop 1: healthy locked send excludes competing claims
+      ---
+      duration_ms: 307.744863
+      ...
+    # Subtest: loop 1: statement_abort preserves intent and holds uncertain acceptance
+    ok 2 - loop 1: statement_abort preserves intent and holds uncertain acceptance
+      ---
+      duration_ms: 166.595741
+      ...
+    # Subtest: loop 1: deferred_commit_failure preserves intent and holds uncertain acceptance
+    ok 3 - loop 1: deferred_commit_failure preserves intent and holds uncertain acceptance
+      ---
+      duration_ms: 117.873717
+      ...
+    # Subtest: loop 1: lost COMMIT acknowledgement returns durable sent outcome
+    ok 4 - loop 1: lost COMMIT acknowledgement returns durable sent outcome
+      ---
+      duration_ms: 136.429537
+      ...
+    # Subtest: loop 1: fallback_write_failure cannot cause a second submission
+    ok 5 - loop 1: fallback_write_failure cannot cause a second submission
+      ---
+      duration_ms: 111.969327
+      ...
+# New database connection established
+    # Subtest: loop 1: new_claim_before_fallback cannot cause a second submission
+    ok 6 - loop 1: new_claim_before_fallback cannot cause a second submission
+      ---
+      duration_ms: 117.645008
+      ...
+    # Subtest: loop 1: new_lease_before_fallback cannot cause a second submission
+    ok 7 - loop 1: new_lease_before_fallback cannot cause a second submission
+      ---
+      duration_ms: 121.077292
+      ...
+    # Subtest: loop 1: intent SQL failure invokes no provider
+    ok 8 - loop 1: intent SQL failure invokes no provider
+      ---
+      duration_ms: 136.496373
+      ...
+    # Subtest: loop 1: crash/expired intent and malformed intent never retry after 24h
+    ok 9 - loop 1: crash/expired intent and malformed intent never retry after 24h
+      ---
+      duration_ms: 114.246689
+      ...
+    # Subtest: loop 2: healthy locked send excludes competing claims
+    ok 10 - loop 2: healthy locked send excludes competing claims
+      ---
+      duration_ms: 94.066112
+      ...
+    # Subtest: loop 2: statement_abort preserves intent and holds uncertain acceptance
+    ok 11 - loop 2: statement_abort preserves intent and holds uncertain acceptance
+      ---
+      duration_ms: 154.425171
+      ...
+    # Subtest: loop 2: deferred_commit_failure preserves intent and holds uncertain acceptance
+    ok 12 - loop 2: deferred_commit_failure preserves intent and holds uncertain acceptance
+      ---
+      duration_ms: 108.655752
+      ...
+    # Subtest: loop 2: lost COMMIT acknowledgement returns durable sent outcome
+    ok 13 - loop 2: lost COMMIT acknowledgement returns durable sent outcome
+      ---
+      duration_ms: 97.428951
+      ...
+    # Subtest: loop 2: fallback_write_failure cannot cause a second submission
+    ok 14 - loop 2: fallback_write_failure cannot cause a second submission
+      ---
+      duration_ms: 98.204989
+      ...
+# New database connection established
+    # Subtest: loop 2: new_claim_before_fallback cannot cause a second submission
+    ok 15 - loop 2: new_claim_before_fallback cannot cause a second submission
+      ---
+      duration_ms: 114.149923
+      ...
+    # Subtest: loop 2: new_lease_before_fallback cannot cause a second submission
+    ok 16 - loop 2: new_lease_before_fallback cannot cause a second submission
+      ---
+      duration_ms: 140.055205
+      ...
+    # Subtest: loop 2: intent SQL failure invokes no provider
+    ok 17 - loop 2: intent SQL failure invokes no provider
+      ---
+      duration_ms: 77.190326
+      ...
+# COMMERCE_PROVIDER_FAILURE_EVIDENCE=[{"loop":1,"case":"healthy_claims","submissions":1,"syntheticAcceptances":1,"durable":"sent"},{"loop":1,"case":"statement_abort","submissions":1,"syntheticAcceptances":1,"durable":"dead/provider_acceptance_unknown","duplicatePrevented":true,"receiptUncertain":true},{"loop":1,"case":"deferred_commit_failure","submissions":1,"syntheticAcceptances":1,"durable":"dead/provider_acceptance_unknown","duplicatePrevented":true,"receiptUncertain":true},{"loop":1,"case":"lost_commit_ack","submissions":1,"syntheticAcceptances":1,"durable":"sent","truthfulOutcome":true},{"loop":1,"case":"fallback_write_failure","submissions":1,"syntheticAcceptances":1,"durable":"processing","duplicatePrevented":true},{"loop":1,"case":"new_claim_before_fallback","submissions":1,"syntheticAcceptances":1,"durable":"sent","duplicatePrevented":true},{"loop":1,"case":"new_lease_before_fallback","submissions":1,"syntheticAcceptances":1,"durable":"processing","duplicatePrevented":true},{"loop":2,"case":"healthy_claims","submissions":1,"syntheticAcceptances":1,"durable":"sent"},{"loop":2,"case":"statement_abort","submissions":1,"syntheticAcceptances":1,"durable":"dead/provider_acceptance_unknown","duplicatePrevented":true,"receiptUncertain":true},{"loop":2,"case":"deferred_commit_failure","submissions":1,"syntheticAcceptances":1,"durable":"dead/provider_acceptance_unknown","duplicatePrevented":true,"receiptUncertain":true},{"loop":2,"case":"lost_commit_ack","submissions":1,"syntheticAcceptances":1,"durable":"sent","truthfulOutcome":true},{"loop":2,"case":"fallback_write_failure","submissions":1,"syntheticAcceptances":1,"durable":"processing","duplicatePrevented":true},{"loop":2,"case":"new_claim_before_fallback","submissions":1,"syntheticAcceptances":1,"durable":"sent","duplicatePrevented":true},{"loop":2,"case":"new_lease_before_fallback","submissions":1,"syntheticAcceptances":1,"durable":"processing","duplicatePrevented":true}]
+# RELEASE_CERTIFIED=false REAL_PROVIDER_ONCE_ONLY_PROVEN=false
+    # Subtest: loop 2: crash/expired intent and malformed intent never retry after 24h
+    ok 18 - loop 2: crash/expired intent and malformed intent never retry after 24h
+      ---
+      duration_ms: 100.084095
+      ...
+    1..18
+ok 1 - provider acceptance / DB failure: isolated evidence, including known duplicate-submission blockers
+  ---
+  duration_ms: 2397.213817
+  ...
+1..1
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

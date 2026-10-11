@@ -1,0 +1,79 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# New database connection established
+# New database connection established
+# [email] sendEmail: RESEND_API_KEY is not set
+# [2026-10-11 06:04:28.023 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 1
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your booking is confirmed — Test tour"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:09:28.019Z"
+#     error: "RESEND_API_KEY is not set"
+# [email] sendEmail: RESEND_API_KEY is not set
+# [2026-10-11 06:04:28.056 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 2
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "New booking request: Test tour"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:09:28.039Z"
+#     error: "RESEND_API_KEY is not set"
+# Subtest: \#846 — sequential double-confirm writes earnings/revenue exactly once
+ok 1 - \#846 — sequential double-confirm writes earnings/revenue exactly once
+  ---
+  duration_ms: 261.334
+  ...
+# [email] sendEmail: RESEND_API_KEY is not set
+# [email] sendEmail: RESEND_API_KEY is not set
+# [2026-10-11 06:04:28.251 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 3
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your booking is confirmed — Test tour"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:09:28.247Z"
+#     error: "RESEND_API_KEY is not set"
+# [2026-10-11 06:04:28.255 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 4
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "New booking request: Test tour"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:09:28.250Z"
+#     error: "RESEND_API_KEY is not set"
+# Subtest: \#846 — concurrent double-confirm (Promise.all) writes earnings/revenue exactly once
+ok 2 - \#846 — concurrent double-confirm (Promise.all) writes earnings/revenue exactly once
+  ---
+  duration_ms: 61.629418
+  ...
+# [email] sendEmail: RESEND_API_KEY is not set
+# [2026-10-11 06:04:28.308 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 5
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your booking is confirmed — Test tour"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:09:28.303Z"
+#     error: "RESEND_API_KEY is not set"
+# [email] sendEmail: RESEND_API_KEY is not set
+# [2026-10-11 06:04:28.318 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 6
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "New booking request: Test tour"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T06:09:28.313Z"
+#     error: "RESEND_API_KEY is not set"
+# Subtest: \#1581 — a pre-existing earnings row makes the confirm no-op, never abort
+ok 3 - \#1581 — a pre-existing earnings row makes the confirm no-op, never abort
+  ---
+  duration_ms: 88.85396
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

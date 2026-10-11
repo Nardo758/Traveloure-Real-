@@ -1,0 +1,75 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# [tavily] This package is deprecated. Please use @tavily/core instead:
+#   npm install @tavily/core
+#   https://www.npmjs.com/package/@tavily/core
+# New database connection established
+# [2026-10-11 06:11:58.596 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.623 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.633 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.644 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.653 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.662 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.671 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:58.681 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:59.024 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:11:59.083 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "empty_cart"
+# [2026-10-11 06:11:59.310 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 06:11:59.310 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# New database connection established
+# PART2_LOOP_RESULT={"loop":1,"checks":"direct-writer atomicity, snapshots, injection, malformed JSON, concurrency, resume, notification state","before":{"successes":60,"samples":60,"successRate":1,"p50Ms":4.8321420000002036,"p95Ms":7.154935000000478},"after":{"successes":60,"samples":60,"successRate":1,"p50Ms":5.146684999999707,"p95Ms":6.4406660000004194}}
+# New database connection established
+# [2026-10-11 06:12:00.223 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.239 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.249 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.258 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.268 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.277 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.287 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.297 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.589 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "not_idle"
+# [2026-10-11 06:12:00.652 +0000] [32mINFO[39m: [36mcart clock ineligible[39m
+#     [35mreason[39m: "empty_cart"
+# [2026-10-11 06:12:00.833 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 06:12:00.833 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# PART2_LOOP_RESULT={"loop":2,"checks":"direct-writer atomicity, snapshots, injection, malformed JSON, concurrency, resume, notification state","before":{"successes":60,"samples":60,"successRate":1,"p50Ms":4.362779999999475,"p95Ms":8.362159000000247},"after":{"successes":60,"samples":60,"successRate":1,"p50Ms":5.24763300000086,"p95Ms":7.535280000000057}}
+# Subtest: two randomized isolated Part 2 loops, actual cart writers and before/after benchmark
+ok 1 - two randomized isolated Part 2 loops, actual cart writers and before/after benchmark
+  ---
+  duration_ms: 5069.946471
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

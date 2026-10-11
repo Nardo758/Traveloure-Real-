@@ -1,0 +1,7 @@
+ok   a definition: ["ItemsEditorPanel"]
+ok   a mount: ["CanvasMapSection"]
+ok   an import of the deleted file: ["LeafletPlanMap"]
+ok   a comment naming it: []
+ok   a retired testid in a chunk: ["button-toggle-item-editor"]
+ok   a live testid: []
+workstation-retired self-test: 6/6 fixtures pass

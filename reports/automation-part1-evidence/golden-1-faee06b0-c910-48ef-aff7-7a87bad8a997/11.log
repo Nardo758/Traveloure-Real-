@@ -1,0 +1,2002 @@
+{
+  "count": 90,
+  "nodes": [
+    {
+      "id": "bookings.auto-completion",
+      "domain": "bookings",
+      "type": "must_have",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly, with the existing jittered startup pass",
+        "scheduleId": "booking-auto-completion",
+        "source": "warm scheduler and POST /internal/jobs/booking-auto-completion"
+      },
+      "condition": "Run only for the existing booking-auto-completion schedule.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing unified hourly booking completion job without changing its result contract"
+      },
+      "retryPolicy": "Existing background-job-runner, per-booking isolation, Stripe lookup deferral, and next-pass behavior remain unchanged.",
+      "failureBehavior": "The job retains its current structured result and error handling; the registry adds no retry, mint, or fallback policy."
+    },
+    {
+      "id": "bookings.declared-window-close",
+      "domain": "bookings",
+      "type": "must_have",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 1b"
+      },
+      "condition": "Run only from the existing hourly completion job.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Close eligible completion_declared service bookings through completeBooking"
+      },
+      "retryPolicy": "Failed rows remain eligible for the existing next hourly pass; no new retry policy is introduced.",
+      "failureBehavior": "The pass keeps its current isolated error handling and skip accounting."
+    },
+    {
+      "id": "bookings.artifact-acceptance",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 3"
+      },
+      "condition": "Run only from the existing hourly completion job.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing confirmed-to-awaiting_acceptance and elapsed-window-to-disputed arms"
+      },
+      "retryPolicy": "Transition/Stripe failures defer to the existing next hourly pass; no separate communication retry is added.",
+      "failureBehavior": "Missing delivery timestamps and other refusals remain explicit skip reasons; no timestamp or email is invented."
+    },
+    {
+      "id": "bookings.coordination-window-close",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a distinct pass of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "runBookingAutoCompletion pass 1c"
+      },
+      "condition": "Run only from the existing hourly completion job.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing coordination window close pass"
+      },
+      "retryPolicy": "Existing pass-level and row-level failure behavior remains unchanged.",
+      "failureBehavior": "Missing declaration timestamps and open windows retain their explicit skip reasons."
+    },
+    {
+      "id": "bookings.completion-ledger-reconciliation",
+      "domain": "bookings",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as pass 2 of the existing hourly completion job",
+        "scheduleId": "booking-auto-completion",
+        "source": "bookingAutoCompleteScheduler.reconcileMissingLedgerRows"
+      },
+      "condition": "Run only from the existing hourly completion job.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Heal missing earning-ledger rows for already-completed service bookings"
+      },
+      "retryPolicy": "The existing next hourly pass retries failed reconciliation; no new retry policy is added.",
+      "failureBehavior": "The caller continues to log reconciliation failure without failing earlier completion passes."
+    },
+    {
+      "id": "bookings.legacy-payment-expiry",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every four hours with the existing jittered startup pass",
+        "scheduleId": "booking-expiry",
+        "source": "BookingExpirySchedulerService and POST /internal/jobs/booking-expiry"
+      },
+      "condition": "Run only through the existing booking-expiry pass.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing legacy pending-payment cancellation sweep and its best-effort notice"
+      },
+      "retryPolicy": "Per-booking errors remain isolated and eligible rows are retried by a later existing pass.",
+      "failureBehavior": "The scheduler preserves its current stats, error collection, and manual-run result semantics; payment/refund policy is not added."
+    },
+    {
+      "id": "bookings.earner-no-response-notice",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "as a separate notice-only arm of the existing four-hour booking-expiry pass",
+        "scheduleId": "booking-expiry",
+        "source": "BookingExpirySchedulerService.runCancellation"
+      },
+      "condition": "Run only from the existing booking-expiry pass.",
+      "idempotencyKey": "booking:<bookingId>:earner_no_response or advisor:<advisorId>:earner_no_response",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Persist the existing in-app notice and, only for the inserting pass and enabled preference, enqueue the existing traveler email"
+      },
+      "retryPolicy": "The later four-hour scan retries unmarked candidates; the existing outbox owns retries after enqueue. A persisted dedupe notice is not resent.",
+      "failureBehavior": "Candidate failures are collected while the rest of the pass proceeds; no new cancellation or notice retry policy is introduced."
+    },
+    {
+      "id": "bookings.trip-card-handover-nudge",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly with the existing jittered startup pass",
+        "scheduleId": "trip-card-handover",
+        "source": "tripCardHandoverScheduler"
+      },
+      "condition": "Run only through the existing trip-card handover scheduler.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Create the existing trip_card_ready notification only; do not finalize the trip"
+      },
+      "retryPolicy": "Existing per-trip best-effort failures are retried by a later hourly pass while eligible.",
+      "failureBehavior": "Notification failures remain isolated and logged; no email or external runner is introduced."
+    },
+    {
+      "id": "bookings.occasion-drafts",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily external internal-job trigger; warm-instance timer remains defense-in-depth",
+        "scheduleId": "run-occasion-drafts",
+        "source": "POST /internal/run-occasion-drafts and occasionDraftsScheduler"
+      },
+      "condition": "Run only through the existing occasion-drafts daily pass.",
+      "idempotencyKey": "occasion_id + recurrence cycle/date in occasion_drafts",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "enqueue_job",
+        "detail": "Generate the existing occasion trip draft and run its existing one-attempt email enqueue"
+      },
+      "retryPolicy": "Generation leases permit existing reclamation; notified_at is stamped before enqueue and is not cleared to retry a changed-policy or failed enqueue.",
+      "failureBehavior": "Per-occasion errors and existing endpoint/timer result behavior remain unchanged; no campaign or channel is added."
+    },
+    {
+      "id": "bookings.availability-horizon-materialization",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily after the existing delayed startup pass",
+        "scheduleId": "availability-materialization",
+        "source": "availabilityMaterializationSweep and POST /internal/jobs/availability-materialization"
+      },
+      "condition": "Run only through the existing availability-materialization schedule.",
+      "idempotencyKey": "(service_id, date, start_time) unique constraint with ON CONFLICT DO NOTHING",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Extend the existing rolling availability horizon for services with weekly patterns"
+      },
+      "retryPolicy": "Per-service failures remain isolated; the next daily sweep retries.",
+      "failureBehavior": "Existing result and logging behavior is preserved; no stale-slot cleanup is inferred."
+    },
+    {
+      "id": "bookings.availability-pattern-authoring",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.availability.patterns.saved"
+        ]
+      },
+      "condition": "Only run after the existing owner-authorized weekly-pattern save supplies its service id.",
+      "idempotencyKey": "(service_id, date, start_time) unique constraint with ON CONFLICT DO NOTHING",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run materializeServiceAvailability for the service whose weekly patterns were just saved"
+      },
+      "retryPolicy": "The request retains its current error response; a later save or daily sweep can revisit eligible slots.",
+      "failureBehavior": "The route keeps its existing error handling and response shape; existing slots are never deleted."
+    },
+    {
+      "id": "bookings.availability-date-range-authoring",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.availability.date-ranges.saved"
+        ]
+      },
+      "condition": "Only run after the existing owner-authorized property date-range save supplies its service id.",
+      "idempotencyKey": "(service_id, date, start_time) unique constraint with ON CONFLICT DO NOTHING",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing date-range materializer and unbooked-slot repricing for the saved service"
+      },
+      "retryPolicy": "The request retains its current error response; a later save can revisit the existing action.",
+      "failureBehavior": "The route keeps its existing response and error handling; no cleanup/deletion of stale slots is added."
+    },
+    {
+      "id": "bookings.availability-blackout-authoring",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.availability.blackouts.saved"
+        ]
+      },
+      "condition": "Only run after the existing owner-authorized blackout save supplies its service id.",
+      "idempotencyKey": "(service_id, date, start_time) unique constraint with ON CONFLICT DO NOTHING",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Re-run the existing weekly-pattern and date-range materializers for the saved service"
+      },
+      "retryPolicy": "The request retains its current error handling; a later save or horizon sweep may revisit eligible future slots.",
+      "failureBehavior": "Existing route response semantics remain unchanged; no slot cancellation policy is introduced."
+    },
+    {
+      "id": "bookings.completion-writer",
+      "domain": "bookings",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.completion.requested"
+        ]
+      },
+      "condition": "Run for an existing caller of the shared completion writer with a booking id and actor.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Invoke the existing completeBooking implementation exactly once"
+      },
+      "retryPolicy": "Existing callers retain their current retry and result semantics; the writer's conditional and ledger guards remain authoritative.",
+      "failureBehavior": "Thrown writer failures and returned refusal/lost-race results pass through unchanged."
+    },
+    {
+      "id": "bookings.completion-declaration-writer",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.completion_declaration.requested"
+        ]
+      },
+      "condition": "Run for an existing completion-declaration caller with a booking id and actor.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Invoke the existing declareBookingCompletion implementation exactly once"
+      },
+      "retryPolicy": "Existing owner-route and scheduled-job retry semantics are unchanged; the conditional status transition remains the guard.",
+      "failureBehavior": "Returned refusal/lost-race outcomes and thrown errors pass through unchanged."
+    },
+    {
+      "id": "bookings.provider-acceptance-follow-on",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.provider_accepted"
+        ]
+      },
+      "condition": "Run only when the existing status writer is supplied its provider-acceptance notification.",
+      "idempotencyKey": "booking:<bookingId>:accepted",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Invoke the existing status writer for a provider acceptance and its supplied in-app notice"
+      },
+      "retryPolicy": "Existing request retry behavior and notification dedupe remain unchanged.",
+      "failureBehavior": "The shared writer result or thrown transaction failure passes through unchanged."
+    },
+    {
+      "id": "bookings.cancellation-follow-ons",
+      "domain": "bookings",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "service_booking.cancelled",
+          "service_booking.refunded"
+        ]
+      },
+      "condition": "Run for an existing caller that asks the shared status writer to cancel or refund a booking.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Invoke the existing cancellation/refund status writer exactly once, including only its existing follow-on effects"
+      },
+      "retryPolicy": "Existing request and per-item retry behavior is unchanged; a repeated transition cannot release capacity twice.",
+      "failureBehavior": "The shared writer result or transaction error passes through unchanged; this node creates no cancellation or refund policy."
+    },
+    {
+      "id": "messaging.email-outbox-enqueue",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "email.enqueue"
+        ]
+      },
+      "condition": "Run only for the existing transactional-email enqueue entrypoint.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Insert the email outbox row and perform its existing immediate delivery attempt"
+      },
+      "retryPolicy": "No registry retry. Existing outbox retry timing is 5, 15, 45, 120, and 360 minutes after failures; the sixth failed attempt becomes dead. A missing row after insert failure cannot be retried.",
+      "failureBehavior": "The existing enqueue result is the outbox row ID or null, not a delivery receipt; delivery errors are recorded by the outbox action and are not propagated to callers."
+    },
+    {
+      "id": "messaging.email-outbox-drain",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes",
+        "scheduleId": "email-outbox-drain",
+        "source": "server/services/email-outbox.service.ts existing scheduler"
+      },
+      "condition": "Run only for the existing email outbox drain schedule.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Claim and attempt up to 50 due or lease-expired email outbox rows"
+      },
+      "retryPolicy": "No registry retry. Each row uses its existing maximum of six attempts and 5/15/45/120/360-minute retry schedule; the sixth failed attempt becomes dead.",
+      "failureBehavior": "The existing drain result reports claimed row count and claim errors. Individual delivery failures are recorded on rows and logged; a successful drain result does not mean every email was delivered."
+    },
+    {
+      "id": "messaging.email-outbox-admin-retry",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "email_outbox.admin_retry"
+        ]
+      },
+      "condition": "Run only after the existing authenticated admin retry route resets a failed or dead row.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Run the existing outbox drain asynchronously after the admin retry reset"
+      },
+      "retryPolicy": "No registry retry or added delay. The outbox's existing per-row attempts and retry schedule remain in force after the administrator reset.",
+      "failureBehavior": "The route still acknowledges the successful reset without waiting for delivery; delivery failures remain recorded on the outbox row, while drain-level promise rejection is logged by the existing background callback."
+    },
+    {
+      "id": "messaging.push-notification-dispatch",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "notification.push_requested"
+        ]
+      },
+      "condition": "Run only for the existing immediate push-dispatch entrypoint.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "Claim and attempt the existing Web Push delivery for one notification"
+      },
+      "retryPolicy": "No registry retry. Existing push claims are at-most-once and failed claims are not reopened by this node; the normal recent-notification sweep covers only unclaimed notices.",
+      "failureBehavior": "The existing immediate push action is non-fatal and returns no delivery receipt. Provider-reported invalid subscriptions (404/410) are removed; other failures are logged and counted by the push service."
+    },
+    {
+      "id": "messaging.push-notification-sweep",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes",
+        "scheduleId": "push-notification-sweep",
+        "source": "server/services/email-outbox.service.ts existing composite outbox scheduler"
+      },
+      "condition": "Run only when invoked by the existing five-minute push sweep entrypoint.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "Claim and attempt push delivery for up to 100 recent unclaimed notifications"
+      },
+      "retryPolicy": "No registry retry or new queue. Existing notification claims are not retried; the existing sweep cadence only considers unclaimed notices still inside the push window.",
+      "failureBehavior": "The sweep preserves its existing non-fatal result of zero claimed/sent on sweep-level errors. Its counts are attempts/accepted devices, not proof a user received or read a notification."
+    },
+    {
+      "id": "messaging.auth-password-reset-email",
+      "domain": "messaging",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "auth.password_reset_email"
+        ]
+      },
+      "condition": "Run for the existing password-reset email call.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Invoke the existing password-reset email sender."
+      },
+      "retryPolicy": "No automation retry; existing sender behavior and provider response semantics are retained.",
+      "failureBehavior": "Existing sender errors propagate to the auth caller; a missing provider key may return without sending."
+    },
+    {
+      "id": "messaging.auth-verification-email",
+      "domain": "messaging",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "auth.verification_email"
+        ]
+      },
+      "condition": "Run for the existing email-verification call.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Invoke the existing email-verification sender."
+      },
+      "retryPolicy": "No automation retry; existing sender behavior and provider response semantics are retained.",
+      "failureBehavior": "Existing sender errors propagate to the auth caller; a missing provider key may return without sending."
+    },
+    {
+      "id": "messaging.auth-welcome-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "auth.welcome_email"
+        ]
+      },
+      "condition": "Persist one welcome row for an existing signup account.",
+      "idempotencyKey": "signup-welcome:{accountId}",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Queue the welcome in the existing email_outbox; only its dispatcher sends."
+      },
+      "retryPolicy": "Existing outbox lease, backoff and terminal-attempt policy; stable provider retry key.",
+      "failureBehavior": "No send without an outbox row; provider acceptance does not establish inbox delivery."
+    },
+    {
+      "id": "messaging.plan-delivered-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.delivered_email",
+          "itinerary.ready"
+        ]
+      },
+      "condition": "Expert delivery or a persisted AI-generation outcome.",
+      "idempotencyKey": "AI only: itinerary-ready:{comparisonId}; legacy expert delivery retains its transition gate",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Expert-delivered sender unchanged; AI-ready email uses the existing outbox."
+      },
+      "retryPolicy": "AI notices use existing outbox retries; expert sender behavior unchanged.",
+      "failureBehavior": "Outbox acceptance is not inbox receipt; AI outcome and notice persist atomically."
+    },
+    {
+      "id": "messaging.itinerary-failed-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.failed"
+        ]
+      },
+      "condition": "A generation error or attempt exceeding five minutes.",
+      "idempotencyKey": "itinerary-failed:{comparisonId}:{attemptStartedAt}",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Persist failure notice in the existing email outbox."
+      },
+      "retryPolicy": "Existing outbox retries and leases.",
+      "failureBehavior": "No billing changes or invented refund/credit claims; provider acceptance is not receipt."
+    },
+    {
+      "id": "messaging.plan-approved-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.approved_email"
+        ]
+      },
+      "condition": "Run at the existing approved-plan email call site.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Invoke the existing best-effort plan-approved email sender."
+      },
+      "retryPolicy": "No automation retry; the sender catches/logs provider errors.",
+      "failureBehavior": "Existing best-effort sender behavior is retained; completion does not establish delivery."
+    },
+    {
+      "id": "messaging.plan-changes-requested-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.changes_requested_email"
+        ]
+      },
+      "condition": "Run at the existing changes-requested email call site.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Invoke the existing best-effort changes-requested email sender."
+      },
+      "retryPolicy": "No automation retry; the sender catches/logs provider errors.",
+      "failureBehavior": "Existing best-effort sender behavior is retained; completion does not establish delivery."
+    },
+    {
+      "id": "messaging.plan-suggestion-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "plan.suggestion_email"
+        ]
+      },
+      "condition": "Run at the existing plan-suggestion email call site.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Invoke the existing best-effort suggestion email sender."
+      },
+      "retryPolicy": "No automation retry; the sender catches/logs provider errors.",
+      "failureBehavior": "Existing best-effort sender behavior is retained; completion does not establish delivery."
+    },
+    {
+      "id": "messaging.activity-email",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "activity.email"
+        ]
+      },
+      "condition": "Run for the existing activity-email producer call.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Build and enqueue the existing activity email through the email outbox; enqueue acceptance is not delivery."
+      },
+      "retryPolicy": "No automation retry; the durable email outbox owns its existing retry behavior after enqueue.",
+      "failureBehavior": "The activity-email action catches/logs failures and returns skipped; it never fails the originating action."
+    },
+    {
+      "id": "messaging.guest-invite-send",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "guest_invite.send"
+        ]
+      },
+      "condition": "Run for the existing organizer guest-invite send request.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "enqueue_job",
+        "detail": "Claim eligible invitation rows and enqueue accepted guest messages via the existing outbox; enqueued is not delivered."
+      },
+      "retryPolicy": "No automation retry; the existing per-invite debounce and outbox retry behavior remain authoritative.",
+      "failureBehavior": "Existing whole-request refusal and per-invite enqueue outcomes are returned unchanged."
+    },
+    {
+      "id": "messaging.email-provider-transport",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "email.provider_send"
+        ]
+      },
+      "condition": "Run only around the existing send call on the configured cached provider client.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "Submit unchanged arguments to the existing Resend emails.send method; a provider response or acceptance is not proof of recipient delivery."
+      },
+      "retryPolicy": "No automation retry; the existing caller and provider behavior remain authoritative.",
+      "failureBehavior": "Provider response values and thrown errors pass through unchanged to the original caller."
+    },
+    {
+      "id": "messaging.chat-follow-ons",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "chat.created"
+        ]
+      },
+      "condition": "Only a successfully persisted chat with a recipient is eligible; persistence and request guards stay with their existing callers.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing post-persist notification and activity-email scheduling for this chat"
+      },
+      "retryPolicy": "Caller-owned; no retry or delivery guarantee is added around these already-committed follow-ons.",
+      "failureBehavior": "Follow-on failures do not roll back the persisted chat; notification failures retain their existing catch and activity email remains fire-and-forget."
+    },
+    {
+      "id": "messaging.message-follow-ons",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "message.created"
+        ]
+      },
+      "condition": "Only the existing sendMessage action's persisted message and resolved participants are eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing post-persist notification and activity-email scheduling for this message"
+      },
+      "retryPolicy": "Caller-owned; no retry, queue, or provider-delivery guarantee is added.",
+      "failureBehavior": "Existing notification insertion failures propagate unchanged after the message commit; push and activity email remain fire-and-forget."
+    },
+    {
+      "id": "messaging.notification-create",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "notification.created"
+        ]
+      },
+      "condition": "Only an inserted notification row with an id schedules its existing push dispatcher.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "Invoke the existing asynchronous push dispatcher without delaying notification persistence"
+      },
+      "retryPolicy": "Existing nonblocking dispatcher behavior only; no retry or delivery guarantee is introduced.",
+      "failureBehavior": "Push dispatch remains fire-and-forget and its errors remain swallowed by the existing createNotification caller."
+    },
+    {
+      "id": "messaging.chat-realtime-fanout",
+      "domain": "messaging",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "chat.realtime.requested"
+        ]
+      },
+      "condition": "Run only when an existing HTTP or WebSocket caller requests its post-persist frame relay.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Synchronously forward the existing chat frame to the recipient's connected WebSocket client"
+      },
+      "retryPolicy": "No retry, queue, or delivery guarantee; preserve the existing immediate best-effort socket write.",
+      "failureBehavior": "Socket errors retain the existing caller error handling; no sender acknowledgement or recipient frame is added by this node."
+    },
+    {
+      "id": "messaging.itinerary-nudge-2h",
+      "domain": "messaging",
+      "type": "marketing",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.followup_due"
+        ]
+      },
+      "condition": "Consent, current sequence, no booking; five-day notice additionally requires live bookable items.",
+      "idempotencyKey": "itinerary_nudge_2h:{comparisonId}",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Existing email outbox transport, retry identity, marketing consent, local calendar-day cap, and explicit quiet hours."
+      },
+      "retryPolicy": "Existing outbox retry/backoff with a stable per-row provider key.",
+      "failureBehavior": "Fail closed on missing context/consent; no provider acceptance is reported as inbox receipt."
+    },
+    {
+      "id": "messaging.itinerary-followup-24h",
+      "domain": "messaging",
+      "type": "marketing",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.followup_due"
+        ]
+      },
+      "condition": "Consent, current sequence, no booking; five-day notice additionally requires live bookable items.",
+      "idempotencyKey": "itinerary_followup_24h:{comparisonId}",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Existing email outbox transport, retry identity, marketing consent, local calendar-day cap, and explicit quiet hours."
+      },
+      "retryPolicy": "Existing outbox retry/backoff with a stable per-row provider key.",
+      "failureBehavior": "Fail closed on missing context/consent; no provider acceptance is reported as inbox receipt."
+    },
+    {
+      "id": "messaging.itinerary-reengagement-5d",
+      "domain": "messaging",
+      "type": "marketing",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "itinerary.followup_due"
+        ]
+      },
+      "condition": "Consent, current sequence, no booking; five-day notice additionally requires live bookable items.",
+      "idempotencyKey": "itinerary_reengagement_5d:{comparisonId}",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Existing email outbox transport, retry identity, marketing consent, local calendar-day cap, and explicit quiet hours."
+      },
+      "retryPolicy": "Existing outbox retry/backoff with a stable per-row provider key.",
+      "failureBehavior": "Fail closed on missing context/consent; no provider acceptance is reported as inbox receipt."
+    },
+    {
+      "id": "messaging.commerce-email-sweep",
+      "domain": "messaging",
+      "type": "marketing",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "*/15 * * * *",
+        "scheduleId": "commerce-email-sweep",
+        "source": "jobs-cron.yml / backstops"
+      },
+      "condition": "Isolated development verification only; release requires Parts 4 and 6; Part 5 item changes are must-have",
+      "idempotencyKey": "cart-reminder-{1h|1d|3d}:user:{user_id}:cart:{scope_id}:{sequence_id} | cart-item-changed:{canonical-target-sha256}",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "enqueue_job",
+        "detail": "SELECT candidates, enqueue existing outbox; item-change enqueue and JSONB notified values commit together"
+      },
+      "retryPolicy": "Existing 15-minute external job retries; database commerceKey uniqueness",
+      "failureBehavior": "Throw, record FAILED heartbeat, preserve last actual success"
+    },
+    {
+      "id": "moderation.claim-submit-score",
+      "domain": "moderation",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "neighborhood_claim.submitted",
+          "neighborhood_claim.rescore_requested"
+        ]
+      },
+      "condition": "Only an existing submitted claim/version pair may be handed to the scorer.",
+      "idempotencyKey": "claim_id + version",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "enqueue_job",
+        "detail": "Best-effort dynamic import of evidence-scorer.service.scoreClaim for the submitted claim/version"
+      },
+      "retryPolicy": "No automatic retry; the existing fire-and-forget enqueue logs import/action failure, while explicit admin rescore is required for scorer-failed claims.",
+      "failureBehavior": "Submission remains committed; enqueue failure is logged and does not fail the submit or create enforcement."
+    },
+    {
+      "id": "moderation.claim-score-hourly",
+      "domain": "moderation",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly external jobs-cron due bucket",
+        "scheduleId": "score-neighborhood-claims",
+        "source": "POST /internal/jobs/score-neighborhood-claims"
+      },
+      "condition": "Only the authenticated existing internal job schedule is eligible.",
+      "idempotencyKey": "claim_id + version",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "enqueue_job",
+        "detail": "Run the existing scorePendingClaims batch with the caller's optional limit"
+      },
+      "retryPolicy": "Existing internal runJob/background-job-runner behavior; scorer-failed claims are excluded from automatic retries and require explicit rescore.",
+      "failureBehavior": "Internal job preserves existing HTTP failure/heartbeat semantics; per-claim failures remain recorded as scorer-failed or skipped."
+    },
+    {
+      "id": "moderation.claim-score-warm",
+      "domain": "moderation",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 15 minutes after the existing 7-minute jittered first pass",
+        "scheduleId": "evidence-scorer-warm",
+        "source": "evidenceScorerScheduler warm-process timer"
+      },
+      "condition": "Only the existing warm-instance evidence scorer timer is eligible.",
+      "idempotencyKey": "claim_id + version",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "enqueue_job",
+        "detail": "Run the existing scorePendingClaims batch without an additional background-runner wrapper"
+      },
+      "retryPolicy": "No same-pass automatic retry after scorer failure; next timer may pick eligible unfailed rows, while scorer-failed claims require explicit admin rescore.",
+      "failureBehavior": "Existing runOnce catches and records/logs pass failure; timer startup, cadence, overlap runner, and unref behavior remain owned by the scheduler."
+    },
+    {
+      "id": "moderation.verification-held-listing-activation",
+      "domain": "moderation",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "identity.verification_session.verified",
+          "account.updated.business_verification_verified"
+        ]
+      },
+      "condition": "Only a verified identity or business-verification transition with a resolved owner ID may trigger the shared follow-on.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Call the existing shared verification-held listing activation service"
+      },
+      "retryPolicy": "No local retry/backfill; the webhook caller catches and logs failure as non-fatal.",
+      "failureBehavior": "Verification webhook handling remains successful/non-fatal on activation failure; no approval or owner-paused listing is changed."
+    },
+    {
+      "id": "moderation.pending-report-admin-notification",
+      "domain": "moderation",
+      "type": "must_have",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "message_report.pending",
+          "user_report.pending"
+        ]
+      },
+      "condition": "Only a newly inserted pending report with its existing notification payload may notify admins.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Insert the existing best-effort admin_notifications row for the pending report"
+      },
+      "retryPolicy": "No retry; notification insert failure is caught/logged and never fails report creation.",
+      "failureBehavior": "Report remains pending; this node does not suspend, block, or otherwise enforce against any user."
+    },
+    {
+      "id": "moderation.content-flag-created",
+      "domain": "moderation",
+      "type": "must_have",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "content_flag.created"
+        ]
+      },
+      "condition": "Only a caller-supplied flag with a tracking number and flag type is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing storage createContentFlag action, including its flagged-status follow-on"
+      },
+      "retryPolicy": "Caller-owned; no automatic retry is added around the existing storage operation.",
+      "failureBehavior": "Existing storage errors propagate to the route; no moderation decision or enforcement is inferred."
+    },
+    {
+      "id": "moderation.suspension-session-cleanup",
+      "domain": "moderation",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "admin.user_suspension.persisted"
+        ]
+      },
+      "condition": "Only run after the existing admin action has persisted a non-admin target suspension.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Delete the target user's sessions and disconnect its live WebSocket using the existing route callbacks"
+      },
+      "retryPolicy": "No automatic retry; both cleanup operations retain their existing independent best-effort catches.",
+      "failureBehavior": "Suspension remains persisted even if session purge or WebSocket disconnect fails; authentication request/login gates remain authoritative."
+    },
+    {
+      "id": "moderation.password-reset-session-purge",
+      "domain": "moderation",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "password_reset.password_persisted"
+        ]
+      },
+      "condition": "Only a successfully claimed, unexpired, single-use reset token with a user ID may invalidate sessions.",
+      "idempotencyKey": "password_reset_tokens.token_hash (single-use used_at claim)",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Execute the existing transaction-scoped DELETE FROM sessions for the reset user"
+      },
+      "retryPolicy": "Transaction/caller-owned; SQL failure rolls back password and token changes.",
+      "failureBehavior": "The existing password-reset transaction fails closed and does not report success if the purge fails."
+    },
+    {
+      "id": "moderation.rate-limiter-cleanup",
+      "domain": "moderation",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "rate-limiter-cleanup",
+        "source": "server/infrastructure/rate-limiter.ts local interval"
+      },
+      "condition": "Only the existing in-process generic limiter cleanup timer is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing generic InMemoryRateLimiter cleanup callback"
+      },
+      "retryPolicy": "No retry; next local interval runs the same map sweep.",
+      "failureBehavior": "Local cache eviction only; existing request-path rate-limit decisions remain unchanged."
+    },
+    {
+      "id": "moderation.internal-jobs-limiter-cleanup",
+      "domain": "moderation",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "internal-jobs-limiter-cleanup",
+        "source": "server/middleware/internal-jobs-limiter.ts local interval"
+      },
+      "condition": "Only the existing internal-job middleware state sweep is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing internal-jobs-limiter state sweep callback"
+      },
+      "retryPolicy": "No retry; the next local minute interval repeats the eviction sweep.",
+      "failureBehavior": "Local middleware housekeeping only; it does not loosen request-path limits or lockout."
+    },
+    {
+      "id": "moderation.message-rate-limiter-cleanup",
+      "domain": "moderation",
+      "type": "security",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 1 minute",
+        "scheduleId": "message-rate-limiter-cleanup",
+        "source": "server/infrastructure/message-rate-limiter.ts local interval"
+      },
+      "condition": "Only the existing process-local messaging limiter cleanup timer is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing messaging limiter cleanup callback"
+      },
+      "retryPolicy": "No retry; the next local minute interval repeats the map sweep.",
+      "failureBehavior": "Local cache eviction only; message send and chat request safety gates are unchanged."
+    },
+    {
+      "id": "payments.stripe-reconciliation",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "0 9 * * * (UTC; with in-process daily defense timer)",
+        "scheduleId": "stripe-reconciliation",
+        "source": "POST /internal/jobs/stripe-reconciliation and warm-instance timer"
+      },
+      "condition": "Only the scheduled reconciliation invocation is eligible.",
+      "idempotencyKey": "reconciliation_exceptions.dedupe_key = the existing detector exception fingerprint",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "runStripeReconciliation; preserves reconciliation ledger, detect-only policy, and existing recovery handoffs"
+      },
+      "retryPolicy": "Existing runBackgroundJob transient-database retries; Stripe API failures remain job-reported failures.",
+      "failureBehavior": "Missing Stripe key is an explicit skipped result; failed result remains an HTTP failure and is logged/persisted by the job."
+    },
+    {
+      "id": "payments.stripe-reconciliation-manual",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "admin.stripe-reconciliation.run_now"
+        ]
+      },
+      "condition": "Only the existing authenticated admin run-now route may invoke the detector.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "The authenticated admin route directly invokes the existing Stripe drift detector with triggeredBy=manual."
+      },
+      "retryPolicy": "Existing route returns its current HTTP 500 shape on thrown failures; no automated retry is added.",
+      "failureBehavior": "Manual run-now remains user-triggered and does not create/enable a cron or warm timer."
+    },
+    {
+      "id": "payments.checkout-claim-sweep",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 5 minutes in-process; */15 * * * * cold-instance backstop",
+        "scheduleId": "checkout-sweep",
+        "source": "checkoutClaimSweepScheduler and POST /internal/jobs/checkout-sweep"
+      },
+      "condition": "The checkout sweep trigger must not be overridden by caller data.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "sweepExpiredCheckoutClaims followed by sweepStaleAuthorizedClaims; PaymentIntent-aware claim guards remain authoritative"
+      },
+      "retryPolicy": "Existing runBackgroundJob transient-database retries and checkout service behavior.",
+      "failureBehavior": "Thrown pass failures surface to the existing timer logger or internal-job HTTP failure path; no new claim state is written."
+    },
+    {
+      "id": "payments.checkout-paid-promotion",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "checkout.paid-promotion.requested"
+        ]
+      },
+      "condition": "The shared action owns actor authorization, input validation, and its current no-op behavior.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "checkout-claim.service.promotePaidCheckout preserves the cart paid-promotion implementation for client, webhook, sweep, and reconciliation callers"
+      },
+      "retryPolicy": "Preserve the shared promotion's existing error and retry behavior.",
+      "failureBehavior": "The registry does not claim a key or move any booking state outside the existing promotion."
+    },
+    {
+      "id": "payments.balance-paid-promotion",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "checkout.balance-promotion.requested"
+        ]
+      },
+      "condition": "The shared action owns actor authorization, identity checks, and its current no-op behavior.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "checkout-claim.service.promoteBalancePayment preserves the shared balance-promotion implementation for inline checkout and webhook callers"
+      },
+      "retryPolicy": "Preserve the shared balance promotion's existing error and retry behavior.",
+      "failureBehavior": "The registry does not claim a key or alter the balance-payment transaction."
+    },
+    {
+      "id": "payments.platform-late-success-refund",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded.late-failed"
+        ]
+      },
+      "condition": "The existing late-success action receives its actor and preserves the shared refund implementation's current no-op and webhook-owned behavior.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "checkout-claim.service.refundLateSuccessOnFailedIntent remains the one late-success refund implementation"
+      },
+      "retryPolicy": "Preserve the existing refund claim and Stripe retry behavior.",
+      "failureBehavior": "No refund is initiated by the registry; production refund reachability remains owned by the existing platform webhook branch."
+    },
+    {
+      "id": "payments.earnings-release",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "hourly, with first warm-instance pass after startup delay",
+        "scheduleId": "earnings-release",
+        "source": "earningsReleaseScheduler and POST /internal/jobs/earnings-release"
+      },
+      "condition": "Run only for the existing scheduled earnings-release pass.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "storage.releaseMaturedEarnings; no payout transfer is initiated"
+      },
+      "retryPolicy": "Existing runBackgroundJob transient-database retries; local scheduler retains its current error handling.",
+      "failureBehavior": "Service-reported {error} remains distinguishable from a skip; caller behavior is unchanged."
+    },
+    {
+      "id": "payments.travelpayouts-report-poll",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 6 hours, plus warm-instance defense timer",
+        "scheduleId": "travelpayouts-report-poll",
+        "source": "cacheSchedulerService and POST /internal/jobs/travelpayouts-report-poll"
+      },
+      "condition": "Run only for the existing Travelpayouts report-poll trigger.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "cacheSchedulerService.runTravelpayoutsReportPoll; no Partnerize scaffolding is activated"
+      },
+      "retryPolicy": "Existing background-job transient-database retries; poll errors remain in the existing result.error field.",
+      "failureBehavior": "Missing token remains the existing no-op; returned poll errors remain failures at the internal route."
+    },
+    {
+      "id": "payments.bundle-partial-settlement",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "daily warm-instance timer after existing ~90m startup delay",
+        "scheduleId": "bundle-partial-settlement-sweep",
+        "source": "server/index.ts warm-instance timer only; no internal endpoint or cron route found"
+      },
+      "condition": "Run only from the existing bundle partial-settlement timer.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "The existing bundle partial-settlement service is imported lazily and invoked by its sole daily timer."
+      },
+      "retryPolicy": "Existing runBackgroundJob transient-database retry; sweep reports per-outcome counts and retains its documented failure handling.",
+      "failureBehavior": "No new refund or settlement decision is introduced; charge.refunded remains the other existing promoter."
+    },
+    {
+      "id": "payments.partnerize-campaign-sync",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 12 hours only after the existing credential gate",
+        "scheduleId": "partnerize-campaign-sync",
+        "source": "cacheSchedulerService credential-conditional warm timer; no external runner route"
+      },
+      "condition": "Partnerize credentials must already have resolved in the current scheduler path.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "partnerizeSyncService.syncCampaigns remains conditional and local-only"
+      },
+      "retryPolicy": "Existing runBackgroundJob handling and service behavior; no cron retry channel was found.",
+      "failureBehavior": "The integration remains unvalidated credential-gated scaffolding and absent from external cron."
+    },
+    {
+      "id": "payments.partnerize-report-poll",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 6 hours only after the existing credential gate",
+        "scheduleId": "partnerize-report-poll",
+        "source": "cacheSchedulerService credential-conditional warm timer; no external runner route"
+      },
+      "condition": "Partnerize credentials must already have resolved in the current scheduler path.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "The existing Partnerize report poll and matcher remain conditional and local-only"
+      },
+      "retryPolicy": "Existing void-returning poll catches/logs errors; no external cron retry channel was found.",
+      "failureBehavior": "This remains unvalidated credential-gated scaffolding and absent from external cron."
+    },
+    {
+      "id": "payments.stripe-connect-reminder",
+      "domain": "payments",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "cron",
+        "schedule": "every 72 hours with existing restart-aware first-run calculation",
+        "scheduleId": "stripe-connect-reminder",
+        "source": "stripeConnectReminderScheduler warm-instance timer only"
+      },
+      "condition": "Run only from the existing Stripe Connect reminder scheduler.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Existing service sends in-app onboarding reminders to approved providers/experts who still need Connect setup"
+      },
+      "retryPolicy": "Existing background-job runner handles transient DB failures; service logs/catches batch errors.",
+      "failureBehavior": "No payout is initiated; existing startup behavior defers a full interval after a cooldown-query failure."
+    },
+    {
+      "id": "payments.platform-payment-intent-succeeded",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded"
+        ]
+      },
+      "condition": "A signature-verified platform PaymentIntent success event is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook preserves the existing branch behavior and delegates cart, balance, ready-made, legacy, and late-refund actions through their distinct registry nodes"
+      },
+      "retryPolicy": "Thrown handler errors remain HTTP 500 for Stripe retry; existing nonfatal recovery catches stay nonfatal.",
+      "failureBehavior": "Existing webhook receipt and route semantics are unchanged; this node does not create a second webhook path."
+    },
+    {
+      "id": "payments.ready-made-purchase-fulfilment",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "ready_made.purchase-fulfilment.requested"
+        ]
+      },
+      "condition": "The existing webhook or buyer-confirm actor enters through the shared action, which retains metadata, payment, and route-expectation validation.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "The webhook and buyer-confirm routes both continue through the same recordAndFulfilReadyMadePurchase implementation"
+      },
+      "retryPolicy": "Preserve the shared ready-made action's existing webhook recovery and buyer-confirm response behavior.",
+      "failureBehavior": "The wrapper does not move the existing unique-PI guard or buyer-confirm authorization checks."
+    },
+    {
+      "id": "payments.platform-legacy-booking-success",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded"
+        ]
+      },
+      "condition": "A signed platform PaymentIntent must carry at least one legacy booking UUID.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "The legacy bookings-table status confirmation and confirmation-email branch remains unchanged"
+      },
+      "retryPolicy": "Preserve the platform PaymentIntent webhook's existing thrown-error behavior.",
+      "failureBehavior": "Cart, balance, and ready-made ids are not treated as legacy booking UUIDs."
+    },
+    {
+      "id": "payments.platform-payment-intent-failed",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.payment_failed"
+        ]
+      },
+      "condition": "A signature-verified platform PaymentIntent failure event is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook marks cart checkout failure, sends only existing guarded notices, and updates the legacy rail"
+      },
+      "retryPolicy": "Thrown handler errors remain HTTP 500 for Stripe retry; existing handled error semantics are unchanged.",
+      "failureBehavior": "Existing handler behavior is preserved; a failed booking remains final for later paid promotion."
+    },
+    {
+      "id": "payments.platform-payment-intent-canceled",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.canceled"
+        ]
+      },
+      "condition": "A signature-verified platform PaymentIntent cancellation event is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook stamps cancellation, releases stamped cart claims, and updates legacy bookings"
+      },
+      "retryPolicy": "Thrown handler errors remain HTTP 500 for Stripe retry; release helper's existing nonthrowing behavior is preserved.",
+      "failureBehavior": "Existing webhook receipt and cancellation behavior are unchanged; the scheduled claim sweep remains the fallback."
+    },
+    {
+      "id": "payments.platform-payment-intent-requires-action",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.requires_action"
+        ]
+      },
+      "condition": "A signature-verified platform requires-action event is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook records the existing 3DS/bank challenge state"
+      },
+      "retryPolicy": "Thrown handler errors remain HTTP 500 for Stripe retry.",
+      "failureBehavior": "Existing logged/ledger behavior remains; registry adds no new payment transition."
+    },
+    {
+      "id": "payments.platform-charge-refunded",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "charge.refunded"
+        ]
+      },
+      "condition": "A signature-verified platform charge-refunded event is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook validates refund snapshots, records audits and out-of-band safety effects, and promotes existing partial settlement when its metadata matches"
+      },
+      "retryPolicy": "Invalid charge/refund snapshot throws for Stripe retry; existing bundle settlement promotion remains best-effort.",
+      "failureBehavior": "Existing webhook error response and nonfatal bundle settlement behavior are preserved; paid-out earnings are not clawed back."
+    },
+    {
+      "id": "payments.platform-checkout-session-completed",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "checkout.session.completed"
+        ]
+      },
+      "condition": "A signed checkout session must use an existing handled expert-service or transport-booking branch.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook handles only expert_service and transport_booking checkout sessions"
+      },
+      "retryPolicy": "Thrown handler errors remain HTTP 500 for Stripe retry.",
+      "failureBehavior": "Unsupported session types retain the existing acknowledged no-op behavior and are not routed through this node."
+    },
+    {
+      "id": "payments.platform-subscription-membership",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "customer.subscription.created",
+          "customer.subscription.updated",
+          "customer.subscription.deleted"
+        ]
+      },
+      "condition": "A signature-verified Stripe subscription lifecycle event is required.",
+      "idempotencyKey": "plan_memberships.stripe_subscription_id = Stripe Subscription.id",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "stripePaymentService.handleWebhook delegates all subscription variants to the shared membership upsert"
+      },
+      "retryPolicy": "Thrown handler errors remain HTTP 500 for Stripe retry; named unresolved-user/plan refusal behavior is unchanged.",
+      "failureBehavior": "Existing durable reconciliation can detect eligible missing memberships; registry introduces no alternate entitlement writer."
+    },
+    {
+      "id": "payments.connect-payment-intent-succeeded",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.succeeded"
+        ]
+      },
+      "condition": "A signature-verified connected-account PaymentIntent success event is required.",
+      "idempotencyKey": "platform_revenue.metadata->>'paymentIntentId' (platform_revenue_payment_intent_uniq partial unique index)",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Connect webhook confirms through the shared payment handler and records source revenue"
+      },
+      "retryPolicy": "Existing webhook catches remain nonfatal where present; uncaught errors stay in the durable receipt and return HTTP 500.",
+      "failureBehavior": "Existing promotion/revenue behavior is unchanged; platform-account PaymentIntents remain owned by the platform endpoint."
+    },
+    {
+      "id": "payments.connect-payment-intent-failed",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payment_intent.payment_failed"
+        ]
+      },
+      "condition": "A signature-verified connected-account PaymentIntent failure event is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Connect webhook marks canonical checkout failure through the shared writer"
+      },
+      "retryPolicy": "Existing handler catches and records errors as before; uncaught failures remain retryable by Stripe.",
+      "failureBehavior": "Existing catch-and-log behavior is preserved; no additional terminal or refund policy is introduced."
+    },
+    {
+      "id": "payments.connect-dispute-lifecycle",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "charge.dispute.created",
+          "charge.dispute.closed",
+          "charge.dispute.updated",
+          "charge.dispute.funds_withdrawn",
+          "charge.dispute.funds_reinstated"
+        ]
+      },
+      "condition": "A signature-verified connected-account dispute event is required.",
+      "idempotencyKey": "stripe_dispute_lifecycle.dispute_id = Stripe Dispute.id",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Connect webhook processes its existing dispute variants in a database transaction"
+      },
+      "retryPolicy": "Existing receipt error is persisted and uncaught failures return HTTP 500 for Stripe retry.",
+      "failureBehavior": "Dispute manual-review boundaries and existing receipt rollback are preserved."
+    },
+    {
+      "id": "payments.connect-transfer-status",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "transfer.created",
+          "transfer.paid"
+        ]
+      },
+      "condition": "A signature-verified transfer event with the existing payout/requester metadata is required.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Connect webhook marks the named expert/provider payout completed for transfer.created or transfer.paid"
+      },
+      "retryPolicy": "Existing receipt error/HTTP retry semantics apply to storage failures.",
+      "failureBehavior": "Missing or unsupported payout metadata remains the existing acknowledged no-op, not a fabricated status transition."
+    },
+    {
+      "id": "payments.platform-stripe-dispute-lifecycle",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "charge.dispute.created",
+          "charge.dispute.updated",
+          "charge.dispute.closed",
+          "charge.dispute.funds_withdrawn",
+          "charge.dispute.funds_reinstated"
+        ]
+      },
+      "condition": "A signature-verified platform Stripe dispute event with a payload is required.",
+      "idempotencyKey": "(platform_webhook_consumers.stripe_event_id, consumer='platform-disputes')",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "processPlatformWebhookEvent handles only its current dispute event family"
+      },
+      "retryPolicy": "Stripe retries failed delivery; existing transactional claim/error behavior remains authoritative.",
+      "failureBehavior": "Transaction rollback and durable consumer error remain visible; unmatched or paid-out disputes retain human-review boundaries."
+    },
+    {
+      "id": "payments.platform-stripe-bank-payout-alert",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "payout.paid",
+          "payout.failed"
+        ]
+      },
+      "condition": "A signature-verified platform Stripe payout event with a payload is required.",
+      "idempotencyKey": "(platform_webhook_consumers.stripe_event_id, consumer='platform-disputes')",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "processPlatformWebhookEvent records its existing platform bank-payout admin notification"
+      },
+      "retryPolicy": "Stripe retries failed delivery; existing transactional claim/error behavior remains authoritative.",
+      "failureBehavior": "Existing claim transaction rolls back and persists error; no payout is started or repeated by registry policy."
+    },
+    {
+      "id": "payments.affiliate-booking-purchase-ledger",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "affiliate.booking_request.purchase_recorded"
+        ]
+      },
+      "condition": "The human purchase transition must have won its existing atomic claim.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "The existing expert/admin purchase route records honest zero commission/share values and the configured split snapshot; it does not invent partner commission."
+      },
+      "retryPolicy": "The route catches/logs ledger-write errors; no automatic retry or repair queue is invented.",
+      "failureBehavior": "A ledger-write failure remains nonfatal after the purchase; later report matching may lack that earning row."
+    },
+    {
+      "id": "payments.affiliate-admin-reconciliation-view",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "admin.affiliate.reconciliation_view.requested"
+        ]
+      },
+      "condition": "The existing admin route must authorize an administrator before matching begins.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "call_external_api",
+        "detail": "The authenticated admin GET triggers partner report reads and matching before rendering the reconciliation view."
+      },
+      "retryPolicy": "Existing route catches errors and returns HTTP 500; partner fetchers that return empty arrays remain indistinguishable from no report rows.",
+      "failureBehavior": "This remains request-triggered and admin-authorized; the registry does not schedule or otherwise activate matching."
+    },
+    {
+      "id": "payments.affiliate-exact-report-adoption",
+      "domain": "payments",
+      "type": "financial",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "affiliate.report.exact_token_adoption.check"
+        ]
+      },
+      "condition": "An existing affiliate reconciliation pass must contain both internal and external report rows.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "The report-matching pass adopts the partner-reported amount verbatim and links the exact-token affiliate booking request/trip; it does not estimate commission."
+      },
+      "retryPolicy": "Existing matchRecords callers retain their own catch/HTTP response behavior; ancillary confirmation failures remain caught for a later pass.",
+      "failureBehavior": "Fuzzy-match behavior remains separate, and no new report fetch, payout, or booking confirmation policy is added."
+    },
+    {
+      "id": "provider.application-bio-mirror",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "application.bio_mirror"
+        ]
+      },
+      "condition": "The existing nonblank-bio helper supplies the authenticated account ID.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing post-persistence users.bio mirror for expert creation/resubmission and provider creation, including compatibility aliases."
+      },
+      "retryPolicy": "No automation retry; the existing separate backfill remains outside this action.",
+      "failureBehavior": "The original helper catches/logs failures and does not fail the already-persisted application."
+    },
+    {
+      "id": "provider.expert-application-neighborhood-stamp",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "expert_application.neighborhood_stamp"
+        ]
+      },
+      "condition": "Only an existing new-application hook supplies a persisted form and account ID.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Run the existing server-derived no-neighborhoods stamp after new expert application persistence, before the unchanged AI scoring call."
+      },
+      "retryPolicy": "No registry retry or new backfill, claim, enforcement, or AI request.",
+      "failureBehavior": "Both original intake hooks catch/log errors and continue returning the persisted application."
+    },
+    {
+      "id": "provider.expert-application-decision-follow-ons",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "expert.application.decision"
+        ]
+      },
+      "condition": "Only an existing approved or rejected decision that entered its requested terminal status with an expert application and user id is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Run the existing expert application decision notification/email calls"
+      },
+      "retryPolicy": "Caller-owned; no retry, queue, or durable outbox is added.",
+      "failureBehavior": "Existing notification and email error behavior is unchanged; there is no durable retry."
+    },
+    {
+      "id": "provider.provider-application-decision-follow-ons",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.application.decision"
+        ]
+      },
+      "condition": "Only an existing approved or rejected decision that entered its requested terminal status with a provider application and user id is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Run the existing provider application decision notification/email calls"
+      },
+      "retryPolicy": "Caller-owned; no retry, queue, or durable outbox is added.",
+      "failureBehavior": "Existing notification failure propagation and email behavior are unchanged; there is no durable retry."
+    },
+    {
+      "id": "provider.expert-rejection-feedback-notification",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "expert.application.rejection-feedback-updated"
+        ]
+      },
+      "condition": "Only a requested expert rejection-feedback update with an application and user id is eligible; repeating the update repeats its notice.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Insert the existing expert rejection-feedback-updated notification"
+      },
+      "retryPolicy": "Caller-owned; no retry or durable outbox is added.",
+      "failureBehavior": "Notification insertion failures propagate unchanged; no retry is added."
+    },
+    {
+      "id": "provider.provider-rejection-feedback-follow-ons",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.application.rejection-feedback-updated"
+        ]
+      },
+      "condition": "Only a requested provider rejection-feedback update with an application and user id is eligible; repeating the update repeats both follow-ons.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Run the existing provider rejection-feedback notification and email calls"
+      },
+      "retryPolicy": "Caller-owned; no retry, queue, or durable outbox is added.",
+      "failureBehavior": "Existing awaited notification failure propagation and email behavior remain unchanged; no durable retry."
+    },
+    {
+      "id": "provider.verification-decision-email",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.verification.decision-changed"
+        ]
+      },
+      "condition": "Only a verified/rejected decision that differs from the previously-read status and has a recipient email is eligible.",
+      "idempotencyKey": null,
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "send_message",
+        "detail": "Schedule the existing verification decision email"
+      },
+      "retryPolicy": "Caller-owned; fire-and-forget sender behavior is retained with no durable retry.",
+      "failureBehavior": "Existing logged fire-and-forget rejection and import/send catch behavior are unchanged."
+    },
+    {
+      "id": "provider.listing-review-decision-notification",
+      "domain": "provider",
+      "type": "operational",
+      "enabled": true,
+      "trigger": {
+        "kind": "event",
+        "events": [
+          "provider.listing-review.decision-notification"
+        ]
+      },
+      "condition": "Only a requested existing listing decision notification with its recipient, service, and dedupe key is eligible.",
+      "idempotencyKey": "Existing SQL unique dedupe_key on the notification insert; dispatcher does not pre-check or claim it.",
+      "delay": null,
+      "cancels": [],
+      "action": {
+        "kind": "mutate_record",
+        "detail": "Attempt the existing deduplicated provider listing review notification insert"
+      },
+      "retryPolicy": "Caller-owned; no retry or durable outbox is added.",
+      "failureBehavior": "The helper continues to suppress duplicate-key outcomes and log other insert/dispatch failures non-fatally."
+    }
+  ]
+}

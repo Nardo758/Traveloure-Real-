@@ -1,0 +1,1 @@
+advisor-row-author guard: OK — server/services/booking-actions.service.ts is the only non-test server file that inserts trip_expert_advisors (810 files scanned).

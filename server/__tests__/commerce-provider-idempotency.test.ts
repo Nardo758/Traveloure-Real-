@@ -59,6 +59,38 @@ test("cart retry key and payload survive the actual sendEmail → Resend SDK ada
     const distinct = await sendEmail({ ...params, idempotencyKey: "cart-reminder-43" });
     assert.deepEqual(distinct, { ok: true, id: "synthetic_2" });
     assert.equal(accepted.size, 2, "different outbox rows must not share a provider key");
+    // Documented retention/conflict semantics, NOT real provider evidence.
+    for (let loop = 1; loop <= 2; loop++) {
+      let clock = 0, receipts = 0, busy = false;
+      const retained = new Map<string, { digest: string; until: number; id: string }>();
+      t.mock.method(sdkPrototype, "send", async (payload: unknown, options: { idempotencyKey: string }) => {
+        if (busy) return { data: null, error: {
+          name: "concurrent_idempotent_requests", message: "Synthetic in-flight conflict", statusCode: 409 } };
+        const digest = JSON.stringify(payload), prior = retained.get(options.idempotencyKey);
+        if (prior && clock < prior.until) {
+          if (prior.digest !== digest) return { data: null,
+            error: { name: "invalid_idempotent_request", message: "Synthetic payload conflict", statusCode: 409 } };
+          return { data: { id: prior.id }, error: null };
+        }
+        const id = `synthetic_retention_${loop}_${++receipts}`;
+        retained.set(options.idempotencyKey, { digest, id, until: clock + 86_400_000 });
+        return { data: { id }, error: null };
+      });
+      const scoped = { ...params, idempotencyKey: `cart-reminder-${100 + loop}` };
+      const initial = await sendEmail(scoped);
+      clock = 86_399_999;
+      assert.deepEqual(await sendEmail(scoped), initial);
+      assert.equal((await sendEmail({ ...scoped, subject: "Different payload" })).ok, false);
+      clock = 86_400_000;
+      const afterExpiry = await sendEmail(scoped);
+      assert.notEqual(afterExpiry.id, initial.id,
+        "TTL-limited mock demonstrates why key-only recovery after expiry is unsafe");
+      assert.equal(receipts, 2);
+      clock++;
+      assert.deepEqual(await sendEmail(scoped), afterExpiry);
+      busy = true;
+      assert.equal((await sendEmail(scoped)).ok, false);
+    }
     assert.equal(networkCalls, 0);
   } finally {
     t.mock.restoreAll();

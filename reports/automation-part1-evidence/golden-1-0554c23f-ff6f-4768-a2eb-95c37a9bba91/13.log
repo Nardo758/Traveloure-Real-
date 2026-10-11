@@ -1,0 +1,1 @@
+self-test OK (37 predicate fixtures: rate/share/commission/split positives, payment-identity positives (stripe<Thing>Id / paymentIntentId — ruling 46), verification-status positives (identity/businessVerification*, identityVerifiedAt — §19), substring-collision + status/grant/FK negatives, §14 no-regression)

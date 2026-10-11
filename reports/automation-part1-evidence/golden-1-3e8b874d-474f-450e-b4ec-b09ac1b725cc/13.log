@@ -1,0 +1,44 @@
+TAP version 13
+# Subtest: provider-free environment drops all live transports and production URLs
+ok 1 - provider-free environment drops all live transports and production URLs
+  ---
+  duration_ms: 0.708666
+  ...
+# Subtest: retained suites precede registry / roster; no live verification suites run implicitly
+ok 2 - retained suites precede registry / roster; no live verification suites run implicitly
+  ---
+  duration_ms: 1.708075
+  ...
+# Subtest: randomized TAP parsing: skipped and TODO cases fail rather than certify
+ok 3 - randomized TAP parsing: skipped and TODO cases fail rather than certify
+  ---
+  duration_ms: 11.312251
+  ...
+# Subtest: five hostile reporter cases: empty, malformed, keys, recipients, token URLs
+ok 4 - five hostile reporter cases: empty, malformed, keys, recipients, token URLs
+  ---
+  duration_ms: 1.496413
+  ...
+# Subtest: provider receipt UUIDs remain reportable without exposing credentials
+ok 5 - provider receipt UUIDs remain reportable without exposing credentials
+  ---
+  duration_ms: 0.946338
+  ...
+# Subtest: Vitest report survives retained cleanup output without certifying skipped assertions
+ok 6 - Vitest report survives retained cleanup output without certifying skipped assertions
+  ---
+  duration_ms: 6.430598
+  ...
+# Subtest: HTTP transport bridge refuses preview, production, credentials and unisolated fixtures
+ok 7 - HTTP transport bridge refuses preview, production, credentials and unisolated fixtures
+  ---
+  duration_ms: 1.716883
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

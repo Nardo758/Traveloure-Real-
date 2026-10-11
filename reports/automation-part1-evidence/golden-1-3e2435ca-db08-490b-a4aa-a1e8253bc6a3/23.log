@@ -1,0 +1,10 @@
+  ok    unannotated fixed wait FAILS
+  ok    annotated wait on the same line passes
+  ok    annotation on the line above passes
+  ok    an empty settle-ok reason does not count
+  ok    unannotated one-shot count FAILS
+  ok    annotated count passes
+  ok    a mention inside a comment is not a call
+  ok    both in one line need both notes
+
+e2e-helper-waits guard self-test: 8/8 fixture cases pass.

@@ -1,0 +1,1 @@
+self-test OK (A: union keeps both parallel rows, no conflict; B(i): same-id union yields a duplicate id; B(ii): dup-slug lint still catches it)

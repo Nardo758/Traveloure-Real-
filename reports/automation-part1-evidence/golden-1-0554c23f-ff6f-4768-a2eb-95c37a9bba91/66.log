@@ -1,0 +1,18 @@
+✅ Privileged-field completeness guard: scanned 193 insert schemas, 27 body-reachable — no unclassified privileged column exposed across the 6 named families (role, status/approval, fee/payout/rate, verification, payment-identity, plan/entitlement), 15 grandfathered.
+   NEGATIVE SPACE (ruling 43 — what this guard does NOT cover):
+   · Scans shared/schema.ts createInsertSchema(...) call sites ONLY — a hand-written zod object
+     schema, or a table in shared/guest-invites-schema.ts, is out of scope.
+   · "Body-reachable" tracks req.body-derived identifiers ONE hop through a same-handler
+     destructure or function call (the `extractServiceLocation(bodyWithoutX)` shape) — a value
+     threaded through TWO or more intermediate calls, reassigned under yet another name, or
+     passed into a helper declared in a different file is invisible to this pass. Each handler's
+     taint set is scoped to that handler's own line range (delimited by the next app./router.
+     registration) so it cannot leak across routes — but also cannot see across them.
+   · Column-NAME family membership only. It does not know whether a route or storage layer
+     already strips a flagged column server-side, and a grandfathered column is a human claim,
+     not a machine proof.
+   · The six families are NAMED, not exhaustive — an authorization grant, an arbitrary amount
+     column, or any future privileged shape nobody has named yet is invisible until it becomes
+     a seventh family here.
+   · Does not analyze whether a route that parses a flagged schema ever actually spreads the
+     field into a write — money-endpoints.cjs's line-level req.body pass owns that.

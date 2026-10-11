@@ -1,0 +1,122 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# New database connection established
+# New database connection established
+# New database connection established
+# Subtest: provider acceptance / DB failure: isolated evidence, including known duplicate-submission blockers
+    # Subtest: loop 1: healthy locked send excludes competing claims
+    ok 1 - loop 1: healthy locked send excludes competing claims
+      ---
+      duration_ms: 177.399532
+      ...
+    # Subtest: loop 1: statement_abort after acceptance cancels retries but does NOT prove unsent
+    ok 2 - loop 1: statement_abort after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 105.305547
+      ...
+    # Subtest: loop 1: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+    ok 3 - loop 1: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 110.417759
+      ...
+    # Subtest: loop 1: lost COMMIT acknowledgement retains sent row but returns cancelled
+    ok 4 - loop 1: lost COMMIT acknowledgement retains sent row but returns cancelled
+      ---
+      duration_ms: 87.185614
+      ...
+# [2026-10-11 05:50:40.572 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 5
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your saved cart is ready to review"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:55:40.568Z"
+#     error: "Failed query: \\n      UPDATE email_outbox SET status='cancelled', last_error='check_failed', retry_after=NULL,\\n        metadata=coalesce(metadata,'{}'::jsonb) ||\\n          '{\\"cancelReason\\":\\"check_failed\\",\\"cancelDetail\\":\\"verification_transaction_failed\\"}'::jsonb,\\n        updated_at=NOW()\\n      WHERE id=$1 AND status='processing'\\n        AND retry_after IS NOT DISTINCT FROM CAST($2 AS timestamp)\\nparams: 5,2026-10-11 06:00:40.538712+00"
+# [2026-10-11 05:50:40.582 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+    # Subtest: loop 1: fallback_write_failure exposes duplicate submission despite stable key
+    ok 5 - loop 1: fallback_write_failure exposes duplicate submission despite stable key
+      ---
+      duration_ms: 130.78296
+      ...
+# [2026-10-11 05:50:40.848 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+# New database connection established
+    # Subtest: loop 1: new_claim_before_fallback exposes duplicate submission despite stable key
+    ok 6 - loop 1: new_claim_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 260.853018
+      ...
+# [2026-10-11 05:50:40.973 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+    # Subtest: loop 1: new_lease_before_fallback exposes duplicate submission despite stable key
+    ok 7 - loop 1: new_lease_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 131.655879
+      ...
+    # Subtest: loop 2: healthy locked send excludes competing claims
+    ok 8 - loop 2: healthy locked send excludes competing claims
+      ---
+      duration_ms: 92.371832
+      ...
+    # Subtest: loop 2: statement_abort after acceptance cancels retries but does NOT prove unsent
+    ok 9 - loop 2: statement_abort after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 109.79829
+      ...
+    # Subtest: loop 2: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+    ok 10 - loop 2: deferred_commit_failure after acceptance cancels retries but does NOT prove unsent
+      ---
+      duration_ms: 167.692048
+      ...
+    # Subtest: loop 2: lost COMMIT acknowledgement retains sent row but returns cancelled
+    ok 11 - loop 2: lost COMMIT acknowledgement retains sent row but returns cancelled
+      ---
+      duration_ms: 83.742368
+      ...
+# [2026-10-11 05:50:41.566 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+#     [35moutboxId[39m: 12
+#     [35mto[39m: "[address-redacted]"
+#     [35msubject[39m: "Your saved cart is ready to review"
+#     [35mattemptCount[39m: 1
+#     [35mretryAt[39m: "2026-10-11T05:55:41.560Z"
+#     error: "Failed query: \\n      UPDATE email_outbox SET status='cancelled', last_error='check_failed', retry_after=NULL,\\n        metadata=coalesce(metadata,'{}'::jsonb) ||\\n          '{\\"cancelReason\\":\\"check_failed\\",\\"cancelDetail\\":\\"verification_transaction_failed\\"}'::jsonb,\\n        updated_at=NOW()\\n      WHERE id=$1 AND status='processing'\\n        AND retry_after IS NOT DISTINCT FROM CAST($2 AS timestamp)\\nparams: 12,2026-10-11 06:00:41.520517+00"
+# [2026-10-11 05:50:41.575 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+    # Subtest: loop 2: fallback_write_failure exposes duplicate submission despite stable key
+    ok 12 - loop 2: fallback_write_failure exposes duplicate submission despite stable key
+      ---
+      duration_ms: 140.698027
+      ...
+# [2026-10-11 05:50:41.692 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+# New database connection established
+    # Subtest: loop 2: new_claim_before_fallback exposes duplicate submission despite stable key
+    ok 13 - loop 2: new_claim_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 114.616798
+      ...
+# [2026-10-11 05:50:41.811 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 1
+# COMMERCE_PROVIDER_FAILURE_EVIDENCE=[{"loop":1,"case":"healthy_claims","submissions":1,"syntheticAcceptances":1,"durable":"sent"},{"loop":1,"case":"statement_abort","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":1,"case":"deferred_commit_failure","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":1,"case":"lost_commit_ack","submissions":1,"syntheticAcceptances":1,"durable":"sent","blocker":"function returns cancelled despite durable sent"},{"loop":1,"case":"fallback_write_failure","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"accepted send becomes retryable failed; duplicate submission; mock-only dedup"},{"loop":1,"case":"new_claim_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"},{"loop":1,"case":"new_lease_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"},{"loop":2,"case":"healthy_claims","submissions":1,"syntheticAcceptances":1,"durable":"sent"},{"loop":2,"case":"statement_abort","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":2,"case":"deferred_commit_failure","submissions":1,"syntheticAcceptances":1,"durable":"cancelled/check_failed","blocker":"accepted receipt and attempt lost; not unsent"},{"loop":2,"case":"lost_commit_ack","submissions":1,"syntheticAcceptances":1,"durable":"sent","blocker":"function returns cancelled despite durable sent"},{"loop":2,"case":"fallback_write_failure","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"accepted send becomes retryable failed; duplicate submission; mock-only dedup"},{"loop":2,"case":"new_claim_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"},{"loop":2,"case":"new_lease_before_fallback","submissions":2,"syntheticAcceptances":1,"durable":"sent","blocker":"duplicate submission; mock-only dedup; first attempt unrecorded"}]
+# RELEASE_CERTIFIED=false REAL_PROVIDER_ONCE_ONLY_PROVEN=false
+    # Subtest: loop 2: new_lease_before_fallback exposes duplicate submission despite stable key
+    ok 14 - loop 2: new_lease_before_fallback exposes duplicate submission despite stable key
+      ---
+      duration_ms: 119.489816
+      ...
+    1..14
+ok 1 - provider acceptance / DB failure: isolated evidence, including known duplicate-submission blockers
+  ---
+  duration_ms: 1910.485565
+  ...
+1..1
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

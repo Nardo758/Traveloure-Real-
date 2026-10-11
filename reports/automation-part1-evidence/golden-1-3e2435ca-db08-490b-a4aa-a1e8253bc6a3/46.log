@@ -1,0 +1,15 @@
+  ✓ client .reduce() over demand data fails
+  ✓ client render of a server summary field passes
+  ✓ totalRevenue read fails (any demand file)
+  ✓ compute fn outside home fails (strict file)
+  ✓ compute fn IN home passes
+  ✓ floor literal outside config fails (strict file)
+  ✓ floor literal IN config passes
+  ✓ R29 enumerable floor literal (3) outside config fails
+  ✓ R29 enumerable floor literal (3) IN config passes
+  ✓ window literal (90) outside config fails
+  ✓ window literal (90) IN config passes
+  ✓ 86_400_000 does not trip the 90 window gate
+  ✓ legacy floor/compute in mixed non-strict file is not policed
+  ✓ clean service line passes
+demand-rollup gate self-test: all fixtures passed

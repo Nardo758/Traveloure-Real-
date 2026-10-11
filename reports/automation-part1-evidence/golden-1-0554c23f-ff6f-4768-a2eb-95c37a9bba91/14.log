@@ -1,0 +1,26 @@
+✅ Money-endpoint guard (operation-scoped): scanned 612 files (74 money-named + 538 scanned for money-operation handlers) — no client-trusted amount/identity/rate, no bare commission literals, no rate-bearing mass assignment.
+   NEGATIVE SPACE (ruling 43 — what this guard does NOT cover):
+   · req.body check is LINE-LOCAL — a body value read on one line and used on another is invisible,
+     and destructuring (`const { amount } = req.body`) only trips it because both words share a line.
+   · Only server/routes + server/services + server/routes.ts are scanned; server/jobs, server/utils,
+     server/storage.ts and any client code are OUT of scope.
+   · MONEY_OP_RE is a NAME heuristic. A handler that moves money through an indirectly-named helper
+     is not recognised as a money handler, so body reads inside it are not flagged.
+   · Handler ranges are delimited by the NEXT app./router. registration, so a body read in a helper
+     declared between two routes is attributed to the preceding route, not to its real caller.
+   · The commission-literal pass only knows the values 0.9/0.1/0.75/0.25 in commission/payment/fee/
+     payout/checkout-NAMED files — any other rate value, or the same value elsewhere, is invisible.
+   · The privileged-field mass-assignment pass reads shared/schema.ts only: a privileged field on a
+     HAND-WRITTEN zod object (not createInsertSchema) or in another schema file is out of scope, as is
+     any rate column whose name contains none of rate/share/commission/split, any payment-identity
+     column not spelled stripe<Thing>Id / paymentIntentId, and any verification-status column not
+     prefixed identity/business + Verification…/VerifiedAt (a GENERIC `status`, a boolean grant, or an
+     amount column is still NOT covered — ruling 42 stripped those families by NAME, not by predicate;
+     §19 narrowly added ONE more named family, not a general status predicate).
+   · It only knows the RATE, PAYMENT-IDENTITY and VERIFICATION-STATUS classes. Every other privileged
+     column an .omit()-based schema forgets — an amount, an arbitrary status, an authorization grant
+     (#PS16) — is still reachable and still invisible here. That is the standing class ruling 46
+     records, and the structural answer is a pick-based ALLOWLIST schema, which no grep can substitute
+     for.
+   · Nothing here proves the resolved rate/verification verdict is CORRECT — only that the client did
+     not choose it.

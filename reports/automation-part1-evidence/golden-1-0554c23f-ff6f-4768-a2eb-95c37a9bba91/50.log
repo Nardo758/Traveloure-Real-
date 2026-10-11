@@ -1,0 +1,1 @@
+✅ Linkage-preservation guard: scanned 1380 files, 57 itinerary-item write site(s) — every write with a service-bearing source in scope preserves providerServiceId (or is explicitly annotated linkage-none-ok).

@@ -66,7 +66,7 @@ not represented as a current blocker.
 | Direct senders: ten families and unused confirmation helper | 7, 9–10 / later conversion | Separately approve outbox conversion and retry/duplicate proofs, vendor bulk first; no sender changes in this lane | Founder per conversion scope | Deferred; inventory Satisfied, conversions not performed |
 | Payment-provenance proposal #1828 | 4–6, 8–10 | Separately approve trusted eligibility instant, lifecycle stamps/joins and timing guarantees; prove approved design before relying on it | Founder | Open, separate proposal track; no implementation authorization here |
 | Payment-provenance proposal #1829 | 4–6, 8–10 | Separately approve ownership/rail coverage proposal and exact writer/schema touch list; fresh proof | Founder | Open, separate proposal track; no UNKNOWN removed |
-| Provider acceptance followed by DB failure | 6, 8–10 | Durable acceptance/recovery and real-provider idempotency proof; no lost receipts or duplicate sends on retry | Founder approves separate retry design/proof | Open; characterized, not fixed |
+| Provider acceptance followed by DB failure | 6, 8–10 | Separately authorized real-provider uncertainty/recovery proof; no lost receipts treated as unsent | Founder | Fixed automatic duplicate risk in development; real-provider proof remains Open |
 | Normal cart-reminder sending / sweep activation | 3–6, 10 / release | Close release blockers, satisfy real-clock and production checks, obtain explicit release/activation sign-off | Founder | Deferred; remain OFF in production; no flag inspection/change here |
 | Real elapsed next-day proof | 4, 9–10 | Recorded genuine activity time + real due time + provider-observed delivered receipt; no shifted eligibility clock | Founder authorizes future real-clock delivery scope | Open; NEXT-DAY CHECK is not PROVEN |
 | Current-main cart-projection merge conflict | 2, 10 / integration | Separately reviewed reconciliation preserving current main and atomic clock/snapshot behavior, then relevant gates | Founder / main release owner | Open; draft PR not merge-ready |
@@ -75,9 +75,10 @@ not represented as a current blocker.
 | Email-client/authenticated browser certification | 5, 9–10 / release | Separately authorized rendering and authenticated journey proof; payload tests do not prove browser middleware/navigation | Founder approves proof scope | Open / Deferred |
 | Production commit/configuration/scheduler/first delivery | 10 / release | Ordered checklist below, only after separate release authorization, with recorded approvals and evidence | Founder authorizes; human release operator executes | Deferred; no production actions or reads in this update |
 | Merge decision ledger | 10 / merge | Append row with approved reviewed head at actual human merge | Human merger / founder | Deferred; no premature ledger row |
-| Committed pre-handoff attempt / uncertain-acceptance repair proposal | 6, 8–10 | Approve dispatcher-only design, reproduce before/after and two clean loops; no automatic second handoff | Founder | Open; proposal only, no runtime edits |
+| Committed pre-handoff attempt / uncertain-acceptance repair | 6, 8–10 | Separately authorized real-provider and recovery proof; preserve indefinite uncertain-attempt hold | Founder | Fixed in development: reproduced before/after, 11 cases × 2 clean loops; provider proof still Open |
 | Additional generated security merge conflicts | 10 / integration | Main-owner-approved reconciliation, then regenerate all four outputs and check | Founder / main owner | Open; no force-resolution |
-| Genuine real-clock start-path gap | 4, 9–10 | Approve QA-only start/retain mode; create a real server-clock fixture and record genuine due times | Founder | Open; NOT STARTED, not falsely WAITING |
+| Genuine real-clock start-path gap | 4, 9–10 | Real preceding-step history and delivered receipt at genuine due time, after separate sending authorization | Founder | Fixed start mode; actual retained scenario WAITING; next-day proof Open |
+| Uncertain intent operational visibility | 6, 10 | Separately approved reconciliation/visibility for a surviving processing intent when dead-letter write fails | Founder | Deferred scope; durable intent blocks resend but may not appear in existing dead-only panel |
 
 The heartbeat numbering collision is explicitly recorded; it is not silently
 reclassified as a new registered migration or an approval to change main.
@@ -135,7 +136,7 @@ The following index records all rule groups without changing their proof scope.
 | Triple webhook replay / webhook plus success together | Satisfied in isolated mocked-upstream proof | Actual handlers, mocked Stripe retrieval; remaining lifecycle gap Open |
 | Sell-out versus reminder due both orderings | Satisfied for recorded marketing scope | Part 8; actual item-change race remains Open |
 | Residual window measured | Satisfied for measurement; Deferred marketing-only risk | Part 8: marketing 25.628 / 31.907 ms; synthetic boundary, not production bound |
-| Provider acceptance/DB failure once-only safety | Open | Lost acceptance and duplicate submissions reproduced |
+| Provider acceptance/DB failure once-only safety | Fixed in development; real-provider proof Open | Durable intent survives rollback; two clean fault loops; no automatic second submission; mocks are not real receipts |
 | Fifteen triggers archived/removed; shared guards kept | Satisfied | DDL, cutover/import manifests; zero public commerce triggers at prior check |
 | Historical wrappers/helpers/drafts and eight functions | Deferred | Approved carried-forward identity and cleanup holds |
 | Migrations 346/347 main-owned; no new registration | Satisfied | No migration/registry edit in this review |
@@ -241,3 +242,25 @@ inspection or change. Nobody is authorized to enable sending during deployment.
    approved rollback procedure.
 
 **FINAL STATUS: DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**
+
+## Approved development remediation update
+
+Results: [`automation-part10-remediation-results.md`](automation-part10-remediation-results.md).
+Fresh original-checkpoint reproduction: 15/15 reported entries. Repaired
+fault/retained suites: 26/26, with 11 fault cases in each of two clean loops;
+SDK/isolation: 5/5. Latest golden: 143/143; latest guards: 78/78;
+latest normalized typecheck: 117, no additions/removals or new-module diagnostics.
+No route changed, so no mutation-auth regeneration/resolution performed.
+
+Real scenario `d88d08e8-baca-4cd8-acfb-6442692f2b5f` started
+`2026-10-11T05:53:16.241Z`; 1d threshold is
+`2026-10-12T05:53:16.241Z`. **WAITING**, not next-day proven; no prior 1h
+history fabricated, no email sent/scheduled. Earlier proposal-stage
+NOT STARTED statements are superseded by the genuine ledger entry.
+
+The unchanged development app boot schedules a live outbox drain. It was not
+restarted under the no-real-email hold; isolated native proof and visitor
+screenshot do not claim integrated/deployed-code boot certification.
+Main reconciliation still requires founder and main-owner approval.
+The held migration remains unrenamed/unregistered. Production, flags,
+real-provider transport, release, actual merge and ledger remain held.

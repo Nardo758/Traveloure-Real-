@@ -1,0 +1,9 @@
+ok   a full conflict: [2,4,6]
+ok   a bare start marker: [2]
+ok   an orphan end marker: [2]
+ok   a CRLF conflict: [2,3,4]
+ok   a setext heading: []
+ok   an indented marker: []
+ok   eight chevrons: []
+ok   a marker inside a string: []
+conflict-marker self-test: 8/8 fixtures pass

@@ -1,0 +1,19 @@
+  ok    clean case passes
+  ok    unreachable enum key is caught
+  ok    seeded key outside the enum is caught
+  ok    broken registry parse fails loudly, not vacuously
+  ok    missing enum declaration is caught
+  ok    empty enum fails vacuity check
+  ok    registry parser finds both fixture files' keys
+  ok    REGISTRY — a key present only in the SECOND migration is reachable
+  ok    REGISTRY — that same key is UNREACHABLE when the second migration is not registered
+  ok    REGISTRY — a key in NEITHER migration is caught
+  ok    REGISTRY — the SAME key claimed by BOTH migrations FAILS (a fork, not a union)
+  ok    REPAIR — a declared repair re-assigning its target's own pairs PASSES
+  ok    REPAIR — the SAME file UNDECLARED is still a duplicate (the declaration is what makes it legal)
+  ok    REPAIR — a repair naming a key its target does not carry FAILS as out of scope
+  ok    REPAIR — a repair whose TARGET is not registered FAILS
+  ok    REPAIR — a repair CLAIMS nothing: the union is unchanged by adding one
+  ok    REPAIR — an EMPTY repair file still fails REGISTRY PARSE, never passes vacuously
+
+roles-needed guard self-test: 17/17 fixture cases pass.

@@ -1,0 +1,11 @@
+[check-public-user-id] 4 exemption(s) in force (public-user-id-ok):
+  shared/schema.ts:3456  EXPERT_PUBLIC_FIELDS."id"
+    reason: LD 40 lane-2 debt (see above) — hire rail, chat name resolution and the ready-made cross-sell are still id-addressed; a handle-less earner has no other public profile.
+  server/routes/ready-made.routes.ts:1196  GET /api/ready-made — authorId: r.authorId,
+    reason: LD 40 lane-2 debt — paired with EXPERT_PUBLIC_FIELDS.id; a handle-less author has no other public profile.
+  server/routes/storefront.routes.ts:1213  explicit public route lookup exemption
+    reason: legacy compatibility lookup only; the response omits users.id.
+  server/routes/content.routes.ts:0  GET /api/discover (raw rows, predicate 3 debt)
+    reason: the Services tab's search rows carry `userId`; its card still links a handle-less expert to /experts/:id (LD 40 lane 2: still id-addressed) — moving that card to handle-or-nothing is the fix
+
+[check-public-user-id] OK — scanned 75 route file(s) and 5 projection file(s); no public payload publishes a users.id.

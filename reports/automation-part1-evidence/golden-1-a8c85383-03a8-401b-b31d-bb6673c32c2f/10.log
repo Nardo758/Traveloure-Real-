@@ -1,0 +1,206 @@
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# [BookingExpiry] Starting booking expiry scheduler
+# [BookingExpiry] Scheduled to run every 4 hours
+# [BookingExpiry] Scheduler stopped
+# [TripCardHandover] Starting T-48h auto-handover scheduler
+# [TripCardHandover] Scheduled to run every 60 minutes
+# Subtest: legacy expiry startup, interval, and admin trigger preserve one callback and result
+ok 1 - legacy expiry startup, interval, and admin trigger preserve one callback and result
+  ---
+  duration_ms: 6.415305
+  ...
+# [TripCardHandover] Scheduler stopped
+# Subtest: Trip Card nudge startup and hourly interval preserve one callback and result
+ok 2 - Trip Card nudge startup and hourly interval preserve one callback and result
+  ---
+  duration_ms: 2.864377
+  ...
+# Subtest: bookings registry contains complete stable definitions without loading database services
+ok 3 - bookings registry contains complete stable definitions without loading database services
+  ---
+  duration_ms: 1.227428
+  ...
+# Subtest: booking event and scheduled adapters dispatch each supplied action once and preserve its result
+ok 4 - booking event and scheduled adapters dispatch each supplied action once and preserve its result
+  ---
+  duration_ms: 0.575892
+  ...
+# Subtest: booking notice/slot-release nodes retain caller-owned guards and manual policies are not nodes
+ok 5 - booking notice/slot-release nodes retain caller-owned guards and manual policies are not nodes
+  ---
+  duration_ms: 0.194446
+  ...
+# Subtest: messaging delivery definitions cover the existing event and schedule rails
+ok 6 - messaging delivery definitions cover the existing event and schedule rails
+  ---
+  duration_ms: 1.269238
+  ...
+# Subtest: messaging event adapters invoke simulated delivery actions once and preserve return values
+ok 7 - messaging event adapters invoke simulated delivery actions once and preserve return values
+  ---
+  duration_ms: 0.354559
+  ...
+# Subtest: messaging schedule adapters invoke simulated actions once and preserve return values
+ok 8 - messaging schedule adapters invoke simulated actions once and preserve return values
+  ---
+  duration_ms: 0.297016
+  ...
+# Subtest: moderation registry has complete stable definitions without loading database services
+ok 9 - moderation registry has complete stable definitions without loading database services
+  ---
+  duration_ms: 1.38328
+  ...
+# Subtest: pending report notification is gated on a persisted message/user report and preserves the action closure
+ok 10 - pending report notification is gated on a persisted message/user report and preserves the action closure
+  ---
+  duration_ms: 0.500417
+  ...
+# Subtest: moderation runtime binds the supplied action and scheduled cleanup uses its declared schedule
+ok 11 - moderation runtime binds the supplied action and scheduled cleanup uses its declared schedule
+  ---
+  duration_ms: 0.425738
+  ...
+# Subtest: retained request-path gates are not required to run through asynchronous registry dispatch
+ok 12 - retained request-path gates are not required to run through asynchronous registry dispatch
+  ---
+  duration_ms: 0.121269
+  ...
+# Subtest: registry rejects duplicate stable IDs and unresolved cancellation references
+ok 13 - registry rejects duplicate stable IDs and unresolved cancellation references
+  ---
+  duration_ms: 1.009782
+  ...
+# Subtest: event dispatcher requires a matching stable ID, trigger, enabled node, and passing condition
+ok 14 - event dispatcher requires a matching stable ID, trigger, enabled node, and passing condition
+  ---
+  duration_ms: 1.036608
+  ...
+# Subtest: scheduled wrapper gates by schedule ID and condition without owning deduplication
+ok 15 - scheduled wrapper gates by schedule ID and condition without owning deduplication
+  ---
+  duration_ms: 0.335276
+  ...
+# Subtest: non-none delay and cancellation policies fail explicitly without durable adapters
+ok 16 - non-none delay and cancellation policies fail explicitly without durable adapters
+  ---
+  duration_ms: 0.211483
+  ...
+# Subtest: delays receive execution context and cancellation runs only after action success
+ok 17 - delays receive execution context and cancellation runs only after action success
+  ---
+  duration_ms: 0.511471
+  ...
+# Subtest: returned failed or skipped outcomes never trigger cancellations
+ok 18 - returned failed or skipped outcomes never trigger cancellations
+  ---
+  duration_ms: 0.198771
+  ...
+# Subtest: messaging chat boundary nodes are metadata-only and have stable unique identities
+ok 19 - messaging chat boundary nodes are metadata-only and have stable unique identities
+  ---
+  duration_ms: 0.939598
+  ...
+# Subtest: post-persist follow-on callbacks are condition-gated and run once without changing results
+ok 20 - post-persist follow-on callbacks are condition-gated and run once without changing results
+  ---
+  duration_ms: 0.423163
+  ...
+# Subtest: chat realtime callback runs synchronously once and preserves its result
+ok 21 - chat realtime callback runs synchronously once and preserves its result
+  ---
+  duration_ms: 0.133746
+  ...
+# Subtest: legacy POST /api/chat/start retains its guards and dispatches existing follow-ons and fanout
+ok 22 - legacy POST /api/chat/start retains its guards and dispatches existing follow-ons and fanout
+  ---
+  duration_ms: 1.771315
+  ...
+# Subtest: legacy start callback preserves notification/activity order and immediately fans out once
+ok 23 - legacy start callback preserves notification/activity order and immediately fans out once
+  ---
+  duration_ms: 0.195505
+  ...
+# Subtest: messaging producer definitions register eleven unique active boundaries
+ok 24 - messaging producer definitions register eleven unique active boundaries
+  ---
+  duration_ms: 1.396627
+  ...
+# Subtest: producer adapter forwards its stable ID and preserves result via a mocked dispatcher
+ok 25 - producer adapter forwards its stable ID and preserves result via a mocked dispatcher
+  ---
+  duration_ms: 0.572101
+  ...
+# Subtest: provider transport adapter keeps mocked SDK arguments and response unchanged
+ok 26 - provider transport adapter keeps mocked SDK arguments and response unchanged
+  ---
+  duration_ms: 0.382274
+  ...
+# Subtest: provider transport adapter propagates original SDK errors unchanged
+ok 27 - provider transport adapter propagates original SDK errors unchanged
+  ---
+  duration_ms: 0.456927
+  ...
+# Subtest: checkout-session condition reads the signed event's data.object.metadata.type
+ok 28 - checkout-session condition reads the signed event's data.object.metadata.type
+  ---
+  duration_ms: 0.669008
+  ...
+# Subtest: Connect-transfer condition reads signed data.object.metadata
+ok 29 - Connect-transfer condition reads signed data.object.metadata
+  ---
+  duration_ms: 0.133773
+  ...
+# Subtest: signed platform checkout-session endpoint dispatches a supported session through the stubbed action seam
+ok 30 - signed platform checkout-session endpoint dispatches a supported session through the stubbed action seam
+  ---
+  duration_ms: 777.824069
+  ...
+# Subtest: signed Connect transfer endpoint dispatches supported payout metadata through the stubbed action seam
+ok 31 - signed Connect transfer endpoint dispatches supported payout metadata through the stubbed action seam
+  ---
+  duration_ms: 17.444884
+  ...
+# Subtest: admin follow-on metadata is limited to six enabled provider nodes
+ok 32 - admin follow-on metadata is limited to six enabled provider nodes
+  ---
+  duration_ms: 2.668714
+  ...
+# Subtest: dispatch gates existing decision/request context and preserves callback result, order, and errors
+ok 33 - dispatch gates existing decision/request context and preserves callback result, order, and errors
+  ---
+  duration_ms: 3.881301
+  ...
+# Subtest: admin routes dispatch only existing notification/email groups and leave decisions outside
+ok 34 - admin routes dispatch only existing notification/email groups and leave decisions outside
+  ---
+  duration_ms: 288.125205
+  ...
+# Subtest: all six definitions document real guard semantics and no retry guarantee
+ok 35 - all six definitions document real guard semantics and no retry guarantee
+  ---
+  duration_ms: 0.368393
+  ...
+# Subtest: provider intake nodes validate unique IDs and preserve callback results and errors
+ok 36 - provider intake nodes validate unique IDs and preserve callback results and errors
+  ---
+  duration_ms: 3.690784
+  ...
+# Subtest: bio mirror stays inside its original nonblank guard and nonfatal catch, with six original callers
+ok 37 - bio mirror stays inside its original nonblank guard and nonfatal catch, with six original callers
+  ---
+  duration_ms: 25.206708
+  ...
+# Subtest: new expert hooks dispatch the original stamp once per alias, outside the unchanged AI calls
+ok 38 - new expert hooks dispatch the original stamp once per alias, outside the unchanged AI calls
+  ---
+  duration_ms: 16.16282
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

@@ -1,0 +1,10 @@
+
+EXEMPTIONS APPLIED (printed on every run — filed debt must not become a silent baseline):
+  • server/services/itinerary-rebuild-guard.ts [rebuild delete]
+      The rebuild-guard predicate's own DEFINITION. It names the token because it exports it; it writes nothing and touches no trip.
+  • server/services/occasion-drafts.service.ts [snapshot re-apply]
+      Plus occasion-draft scheduler (CLAUDE.md Locked Decision 26). It calls the snapshot with `tripId: null` on every run — it MINTS a new plan and never re-applies onto an existing one — so the predicate could only ever answer `new_trip`. Exempt because there is no slip to be non-empty, not because the rule is waived.
+  • server/services/proposal-charge.service.ts [rebuild delete]
+      The AI-PROPOSAL APPLY and its charge point (punchlist D-20/D-21, ledger `2026-09-15-d20-d21-proposal-charge`). It is a PAID rail — LD 41 (b) says any AI action on a non-empty slip is charged, and this one is: the apply is authorized by `resolveProposalApplyAuthorization` (a Trip Pass, or a PaymentIntent verified for that exact proposal) before it writes anything. It never runs a free draft, never calls the snapshot, and never generates — it applies a change set the traveler has already read. It names the rebuild-guard token only to REUSE the one protected-class predicate on its replace delete (LD 42 D3, §18 rule 1), which is the opposite of the defect this guard exists to catch. Exempt because it is already pay-gated, not because the rule is waived.
+
+ai-draft-eligibility guard: OK — every AI-draft writer under server/ consults server/services/ai-draft-eligibility.ts (810 files scanned, 3 exemption(s)).

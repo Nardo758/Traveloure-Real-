@@ -1,0 +1,51 @@
+  ok    both wired passes
+  ok    PlanEntryCta alone satisfies a surface
+  ok    the ruled IntakePanel shape still satisfies an ordinary surface
+  ok    a bare surface fails
+  ok    planningRouteForTrip alone is NOT an entry
+  ok    a missing file fails loudly
+  ok    an IntakePanel with no opener is not an entry
+  ok    the fork page is held to the same bar
+  ok    E1 · /experiences with its IntakePanel back (a SECOND intake) FAILS
+  ok    E1 · /experiences with the mint AND an IntakePanel still FAILS
+  ok    E1 · /experiences calling the modal opener (the step-8a shape) FAILS
+  ok    E1 · /experiences with no mint call FAILS
+  ok    E1 · /experiences minting without the guest record FAILS
+  ok    E1 · /experiences starting with no city FAILS
+  ok    D13 · a door passing its required key passes
+  ok    D13 · the SAME door passing nothing FAILS
+  ok    D13 · shorthand `{ destination }` counts as passing it
+  ok    D13 · a JSX prop (`city={...}`) counts — the ruled IntakePanel shape
+  ok    E1 · /experiences is not held to the opener-field list
+  ok    D13 · a PlanEntryCta source literal counts
+  ok    D13 · a bare PlanEntryCta where a city IS required FAILS
+  ok    D13 · a conditional source counts
+  ok    D13 · a key in a TYPE or a filter is NOT a door passing it
+  ok    D13 · the ticker passing NO city passes
+  ok    D13 · the ticker passing a city FAILS (§13 — eight markets, no single one)
+  ok    D15 · the storefront CTA passing a returnTo passes
+  ok    D15 · a BARE storefront CTA now FAILS — the page IS this earner
+  ok    D13 · the storefront forwarding earner.location as a city FAILS
+  ok    D13 · a surface with a requirement and NO opener at all fails loudly
+  ok    D13 · a missing required-field file fails loudly
+  ok    D13 · window.open is not a planning opener
+  ok    D13 · a Home door passing nothing passes
+  ok    D13 · a Home door seeding an existing plan's destination FAILS (§13)
+  ok    D13 · the AI door passing destination + experienceSlug conditionally passes
+  ok    D13 · the AI door passing NOTHING fails
+  ok    D13 · the AI door forwarding eventType as experienceType FAILS (frozen coarse keys only)
+  ok    D13 · the concierge door passing destination + a resolved slug passes
+  ok    D13 · the concierge door passing NOTHING fails
+  ok    D13 · the concierge door forwarding the form's eventType as experienceType FAILS
+  ok    D14 · CityGrid passes its selected city and country
+  ok    D14 · CityGrid missing country FAILS
+  ok    D13 · a browse door using the builder passes
+  ok    D13 · a browse door hand-assembling the URL FAILS
+  ok    D13 · a browse door with NO builder call at all FAILS
+  ok    D13 · the role-chip alias `servicesBrowseHref` also counts as the builder
+  ok    D13 · a missing browse-door file fails loudly
+  ok    D13 · a plain `/services` link (no query) is not a hand-assembled browse
+  ok    D13 · a COMMENT naming the old `/services?…` URL does not fail the door
+  ok    D13 · a comment does not MASK a real hand-assembled URL below it
+
+planning-entry guard self-test: 49/49 fixture cases pass.

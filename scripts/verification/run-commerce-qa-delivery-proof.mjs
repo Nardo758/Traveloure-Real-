@@ -22,9 +22,10 @@ export function validateInvocation(env, args) {
       !env.REPLIT_DEV_DOMAIN || env.ENVIRONMENT === "production") fail("PRODUCTION_OR_UNKNOWN_ENVIRONMENT");
   if (env.COMMERCE_QA_DELIVERY_PROOF !== "1") fail("PROOF_OFF");
   if (!args.includes("--isolated-db") ||
-      args.filter(arg => arg === "--deliver-qa" || arg === "--dry-run").length !== 1 ||
+      args.filter(arg => ["--deliver-qa", "--dry-run", "--real-clock-start"].includes(arg)).length !== 1 ||
       new Set(args).size !== args.length ||
-      args.some(arg => !["--isolated-db", "--deliver-qa", "--dry-run", "--item-copy-only"].includes(arg))) fail("EXPLICIT_PERMISSION_REQUIRED");
+      args.some(arg => !["--isolated-db", "--deliver-qa", "--dry-run", "--item-copy-only", "--real-clock-start"].includes(arg)) ||
+      (args.includes("--real-clock-start") && args.includes("--item-copy-only"))) fail("EXPLICIT_PERMISSION_REQUIRED");
   if (!/^[a-f0-9]{32}$/.test(env.MESSAGING_DEV_FINGERPRINT ?? "")) fail("FINGERPRINT_REQUIRED");
 }
 export function validateEnvelope(request, context) {
@@ -66,6 +67,51 @@ export function describeRecordedAvailability(item) {
 
 export async function main(args = process.argv.slice(2), env = process.env) {
   validateInvocation(env, args);
+  if (args.includes("--real-clock-start")) {
+    // No Resend import, HTTP handoff server, provider credential or real email.
+    if (!env.SIGNUP_QA_TEST_INBOX || !env.ITINERARY_OUTCOME_TEST_EMAIL) fail("APPROVED_DEVELOPMENT_SETTINGS_REQUIRED");
+    const runId = crypto.randomUUID();
+    const binding = { runId, token: crypto.randomBytes(32).toString("hex"),
+      loop: 1, port: 1, startOnly: true };
+    let schema, record, output = "";
+    const owner = spawn(process.execPath, [
+      "scripts/verification/run-messaging-gate.mjs", "--isolated-db",
+      "--qa-proof-channel", "--real-clock-start",
+      "server/routes/__tests__/commerce-real-clock-start.db.test.ts",
+    ], { env: { ...env, COMMERCE_QA_PROOF_RUN_ID: JSON.stringify(binding) },
+      stdio: ["ignore", "pipe", "pipe", "ipc"] });
+    owner.on("message", message => {
+      if (message?.type === "commerce-proof-schema" && message.runId === runId &&
+          namespace.test(message.schema)) schema = message.schema;
+    });
+    owner.stdout.on("data", bytes => { output += bytes.toString(); });
+    // Do not echo child error stacks, SQL parameters or any inherited setting.
+    owner.stderr.on("data", () => {});
+    const code = await new Promise((resolve, reject) => {
+      owner.once("error", reject); owner.once("exit", resolve);
+    });
+    for (const line of output.split("\n")) {
+      const match = line.match(/COMMERCE_REAL_CLOCK_START=(\{.*\})$/);
+      if (match) record = JSON.parse(match[1]);
+    }
+    if (code !== 0 || !schema || record?.runId !== runId || !record?.providerCallsBlocked) {
+      fs.writeFileSync("reports/automation-part10-evidence/real-clock-start-failure.log", redact(output));
+      fail("REAL_CLOCK_START_FAILED");
+    }
+    const artifact = { ...record, schema, status: "WAITING", realTransport: false,
+      inboxSetting: "SIGNUP_QA_TEST_INBOX", productionBlocked: true, releaseCertified: false };
+    const ledger = "reports/real-clock-ledger.md";
+    const existing = fs.readFileSync(ledger, "utf8");
+    const section = `\n## Genuine scenario ${runId}\n\nStatus: **WAITING**. NEXT-DAY PROVEN: **NO**.\n\n` +
+      `\`\`\`json\n${JSON.stringify(artifact, null, 2)}\n\`\`\`\n\n` +
+      "Retained owned development fixture; no provider initialized, email sent, or job scheduled.\n" +
+      "Check live cart/sequence/account/recipient/consent/timezone, readable payment rails and UNKNOWN holds, " +
+      "quiet hours, daily cap, actual preceding 1h delivery history and a matching delivered receipt after the real 1d due time. " +
+      "The preceding step is NOT fabricated; future delivery needs separate authorization.\n";
+    fs.writeFileSync(ledger, existing + section);
+    console.log(JSON.stringify(artifact));
+    return artifact;
+  }
   const dry = args.includes("--dry-run");
   const itemCopyOnly = args.includes("--item-copy-only"), expectedPerLoop = itemCopyOnly ? 1 : 4;
   if (!dry && (![env.SIGNUP_QA_TEST_INBOX, env.ITINERARY_OUTCOME_TEST_EMAIL]

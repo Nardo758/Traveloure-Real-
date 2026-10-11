@@ -1,0 +1,13 @@
+PASS  a footer page with a hex fails
+PASS  a footer page with a token passes
+PASS  a comment issue ref is not a colour
+PASS  a hex inside a string after // in the same line still counts
+PASS  8-digit and 3-digit hexes count
+PASS  an id like #main-content is not a colour
+PASS  a non-footer file within its baseline passes
+PASS  a non-footer file above its baseline fails
+PASS  a new file with a hex fails
+PASS  a shrunk file is reported, not failed
+PASS  a footer page listed in the baseline fails
+PASS  a landing component with a hex fallback fails
+PASS  a landing component on tokens passes

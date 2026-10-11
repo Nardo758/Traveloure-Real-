@@ -1,0 +1,1 @@
+self-test OK (17 cases: definition/reference/purge/gate-order/deploy-leak positives + fail-closed bypass forms (quoted/secrets/env-prefix) + generalized deploy detection (staging/https-literal base URLs) + no-false-positive on comment-only, throwaway-DB, localhost gates, clean-deploy, staging-clean, and non-deploy reference)

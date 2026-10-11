@@ -2,7 +2,7 @@
  * Part 6: read-only eligibility and isolated dispatcher proof.
  * UNKNOWN payment coverage and production transport remain blocked.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { eq, sql, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
@@ -226,11 +226,18 @@ export async function deliverVerifiedCommerce(
     leaseToken: sql<string | null>`${emailOutbox.retryAfter}::text`,
   }).from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1);
   const meta = initial?.metadata as Record<string, any> | undefined;
-  try { return await db.transaction(async tx => {
+  const ownerToken = randomUUID();
+  let intentConfirmed = false;
+  try {
+    const preparation = await db.transaction(async tx => {
     if (typeof meta?.travelerId === "string") await lockMarketingTraveler(tx, meta.travelerId);
     const [row] = await tx.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1).for("update");
     if (!row || row.status !== "processing") return "skipped";
     const metadata = row.metadata as Record<string, any> | null;
+    // Unfinished/malformed markers fence retries; a proven non-invocation can resume.
+    if (metadata && Object.prototype.hasOwnProperty.call(metadata, "commerceDeliveryAttempt") &&
+        !(metadata.commerceDeliveryAttempt?.version === 1 &&
+          metadata.commerceDeliveryAttempt?.phase === "not_invoked")) return "skipped";
     const cancel = async (reason: string, detail?: string) => {
       await tx.update(emailOutbox).set({ status: "cancelled", lastError: reason, retryAfter: null,
         metadata: { ...metadata, cancelReason: reason, ...(detail ? { cancelDetail: detail } : {}) },
@@ -293,11 +300,64 @@ export async function deliverVerifiedCommerce(
         .where(eq(emailOutbox.id, outboxId));
       return "deferred";
     }
-    let result: SendEmailResult;
-    const isolatedTest = process.env.NODE_ENV === "test" && cartReminderVerificationEnabled();
-    // Build payload BEFORE the last check; do not widen the gap with rendering.
     const payload: SendEmailParams = { to: row.toEmail, ...buildCartReminderEmail(),
       idempotencyKey: `cart-reminder-${outboxId}` };
+    const intent = {
+      version: 1, key: payload.idempotencyKey, ownerToken,
+      intentAt: String((await tx.execute(sql`SELECT clock_timestamp() AS at`)).rows[0].at),
+      payloadDigest: createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+      phase: "intent",
+      previousReservation: Object.fromEntries(
+        ["deliveryCalendarDay", "deliveryCalendarDays"]
+          .filter(key => Object.prototype.hasOwnProperty.call(metadata, key))
+          .map(key => [key, metadata[key]])),
+    };
+    await tx.update(emailOutbox).set({
+      attemptCount: row.attemptCount + 1,
+      metadata: { ...reserveMarketingDay(metadata, marketingWindow(now, first.preferences!).day),
+        commerceDeliveryAttempt: intent },
+      updatedAt: new Date(),
+    }).where(eq(emailOutbox.id, outboxId));
+    return { identity, payload, intent };
+    });
+    if (typeof preparation === "string") return preparation;
+    // This is reached only after the intent transaction's COMMIT acknowledged.
+    intentConfirmed = true;
+    return await db.transaction(async tx => {
+      await lockMarketingTraveler(tx, preparation.identity.travelerId);
+      const [row] = await tx.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1).for("update");
+      const metadata = row?.metadata as Record<string, any> | undefined;
+      if (!row || row.status !== "processing" ||
+          metadata?.commerceDeliveryAttempt?.ownerToken !== ownerToken ||
+          metadata.commerceDeliveryAttempt.phase !== "intent" ||
+          metadata.commerceDeliveryAttempt.version !== 1 ||
+          metadata.commerceDeliveryAttempt.key !== preparation.intent.key ||
+          metadata.commerceDeliveryAttempt.payloadDigest !== preparation.intent.payloadDigest) return "skipped";
+      const { identity, payload } = preparation;
+      const marketing = identity.marketing;
+      const now = await cartReminderNow(tx);
+      const notInvokedMetadata = { ...metadata };
+      for (const key of ["deliveryCalendarDay", "deliveryCalendarDays"]) {
+        if (Object.prototype.hasOwnProperty.call(preparation.intent.previousReservation, key)) {
+          notInvokedMetadata[key] = preparation.intent.previousReservation[key];
+        } else delete notInvokedMetadata[key];
+      }
+      const cancel = async (reason: string, detail?: string) => {
+        await tx.update(emailOutbox).set({
+          status: "cancelled", lastError: reason, retryAfter: null,
+          metadata: { ...notInvokedMetadata, cancelReason: reason, ...(detail ? { cancelDetail: detail } : {}),
+            commerceDeliveryAttempt: { ...metadata.commerceDeliveryAttempt, phase: "not_invoked" } },
+          updatedAt: new Date(),
+        }).where(eq(emailOutbox.id, outboxId));
+        return "cancelled";
+      };
+      if (row.toEmail !== payload.to) return cancel("no_email", "recipient_changed_after_intent");
+      if (metadata.travelerId !== identity.travelerId || metadata.sequenceId !== identity.sequenceId ||
+          metadata.cartScopeRaw !== identity.scope) return cancel("superseded", "identity_changed_after_intent");
+    let result: SendEmailResult;
+    let invokedProvider = false;
+    const isolatedTest = process.env.NODE_ENV === "test" && cartReminderVerificationEnabled();
+    // Build payload BEFORE the last check; do not widen the gap with rendering.
     let begin = 0, returned = 0, paymentInstant: string | undefined;
     try {
        result = await atEmailProviderHandoff(async () => {
@@ -324,31 +384,66 @@ export async function deliverVerifiedCommerce(
           queryAndVerificationMs: invoked - begin, postReadToInvokeMs: invoked - returned,
           paymentInstant, marketing,
         });
+        invokedProvider = true;
         return syntheticSender!(payload);
       });
     } catch (error) {
-      if (error instanceof EmailSendCancelled) return error.reason === "outside_marketing_window"
-        ? holdWindow() : cancel(error.reason, error.detail);
+      if (error instanceof EmailSendCancelled && !invokedProvider) {
+        if (error.reason !== "outside_marketing_window") return cancel(error.reason, error.detail);
+        const account = (await tx.execute(sql`SELECT preferences FROM users WHERE id=${identity.travelerId}`)).rows[0];
+        const preferences = marketingPreferences(account?.preferences);
+        if (!preferences) return cancel("unknown_timezone");
+        await tx.update(emailOutbox).set({
+          status: "pending", lastError: "outside_marketing_window",
+          retryAfter: nextCartMarketingWindow(await cartReminderNow(tx), preferences),
+          metadata: { ...notInvokedMetadata, commerceDeliveryAttempt: {
+            ...metadata.commerceDeliveryAttempt, phase: "not_invoked" } },
+          updatedAt: new Date(),
+        }).where(eq(emailOutbox.id, outboxId));
+        return "deferred";
+      }
       result = { ok: false, error: "Commerce verification or synthetic provider failed" };
     }
-    const attempts = row.attemptCount + 1, dead = attempts >= row.maxAttempts;
-    await tx.update(emailOutbox).set({ status: result.ok ? "sent" : dead ? "dead" : "failed",
-      attemptCount: attempts, resendId: result.id ?? null, sentAt: result.ok ? now : null,
-      lastError: result.ok ? null : "Commerce verification or synthetic provider failed",
-      retryAfter: result.ok || dead ? null : new Date(now.getTime() + 5 * 60_000), updatedAt: new Date(),
+    const accepted = result.ok && typeof result.id === "string" && result.id.length > 0;
+    await tx.update(emailOutbox).set({ status: accepted ? "sent" : "dead",
+      resendId: accepted ? result.id : null, sentAt: accepted ? now : null,
+      lastError: accepted ? null : "provider_acceptance_unknown",
+      retryAfter: null, updatedAt: new Date(),
+      metadata: { ...metadata, commerceDeliveryAttempt: { ...metadata.commerceDeliveryAttempt,
+        phase: accepted ? "accepted" : "uncertain",
+        ...(accepted ? { providerMessageId: result.id } : {}) } },
     }).where(eq(emailOutbox.id, outboxId));
-    return result.ok ? "sent" : "failed";
-  }); } catch {
+    return accepted ? "sent" : "uncertain";
+    });
+  } catch {
+    // Intent can survive a failed COMMIT acknowledgement. Inspect via a fresh
+    // connection/statement; a durable receipt beats an ambiguous return value.
+    try {
+      const [durable] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).limit(1);
+      if (durable?.status === "sent") return "sent";
+      const attempt = (durable?.metadata as any)?.commerceDeliveryAttempt;
+      if (attempt && attempt.ownerToken === ownerToken) {
+        await db.execute(sql`UPDATE email_outbox SET status='dead',
+          last_error='provider_acceptance_unknown', retry_after=NULL,
+          metadata=jsonb_set(metadata,'{commerceDeliveryAttempt,phase}','"uncertain"'::jsonb),
+          updated_at=NOW() WHERE id=${outboxId} AND status='processing'
+          AND metadata->'commerceDeliveryAttempt'->>'ownerToken'=${ownerToken}`);
+        return "uncertain";
+      }
+      if (intentConfirmed || attempt) return "uncertain";
+    } catch { return "uncertain"; } // Existing intent remains non-sendable.
     // A failed SQL statement aborts its transaction. Persist the safe outcome only
     // after rollback, and only for the original processing lease; never overwrite
     // a newer claim or resurrect a terminal row.
-    if (initial?.status === "processing") await db.execute(sql`
+    try { if (initial?.status === "processing") await db.execute(sql`
       UPDATE email_outbox SET status='cancelled', last_error='check_failed', retry_after=NULL,
         metadata=coalesce(metadata,'{}'::jsonb) ||
           '{"cancelReason":"check_failed","cancelDetail":"verification_transaction_failed"}'::jsonb,
         updated_at=NOW()
       WHERE id=${outboxId} AND status='processing'
+        AND NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt')
         AND retry_after IS NOT DISTINCT FROM CAST(${initial.leaseToken} AS timestamp)`);
+    } catch { return "uncertain"; }
     return "cancelled";
   }
 }

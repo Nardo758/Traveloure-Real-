@@ -1,0 +1,35 @@
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# Subtest: varied ready/failed loop 1: boundaries and independent itineraries
+ok 1 - varied ready/failed loop 1: boundaries and independent itineraries
+  ---
+  duration_ms: 1.79213
+  ...
+# Subtest: varied ready/failed loop 2: boundaries and independent itineraries
+ok 2 - varied ready/failed loop 2: boundaries and independent itineraries
+  ---
+  duration_ms: 0.146956
+  ...
+# Subtest: ready/error/timeout copy escapes persisted content and links to the actual comparison route
+ok 3 - ready/error/timeout copy escapes persisted content and links to the actual comparison route
+  ---
+  duration_ms: 0.506306
+  ...
+# Subtest: missing personalization is not fabricated
+ok 4 - missing personalization is not fabricated
+  ---
+  duration_ms: 0.15968
+  ...
+# Subtest: development recipient guard rejects absent/placeholder/unapproved inboxes without changing production eligibility
+ok 5 - development recipient guard rejects absent/placeholder/unapproved inboxes without changing production eligibility
+  ---
+  duration_ms: 0.182842
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

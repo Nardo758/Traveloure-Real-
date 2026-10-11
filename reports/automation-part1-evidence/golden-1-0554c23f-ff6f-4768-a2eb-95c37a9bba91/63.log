@@ -1,0 +1,7 @@
+  ok    clean pair passes
+  ok    a resurrected shadow FAILS
+  ok    a missing canonical registration FAILS
+  ok    single-quoted registrations are seen
+  ok    both failures report at once
+
+trip-route-shadows guard self-test: 5/5 fixture cases pass.

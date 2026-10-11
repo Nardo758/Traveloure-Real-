@@ -1,0 +1,68 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# [Fever/Impact] API not configured - IMPACT_ACCOUNT_SID and IMPACT_AUTH_TOKEN required
+# [Fever/Impact] Get credentials from https://app.impact.com/secure/mediapartner/account-settings-flow.ihtml
+# [tavily] This package is deprecated. Please use @tavily/core instead:
+#   npm install @tavily/core
+#   https://www.npmjs.com/package/@tavily/core
+# New database connection established
+# New database connection established
+# [2026-10-11 06:12:46.101 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "Error",
+#       "message": "Injected item-change candidate query failure",
+#       "stack":
+#           Error: Injected item-change candidate query failure
+#               at assessCartItemChanges (/home/runner/workspace/server/services/cart-item-change.service.ts:119:13)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:99:24)
+#               at async NodePgSession.transaction (/home/runner/workspace/node_modules/src/node-postgres/session.ts:259:19)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:97:25)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/cart-item-changes.db.test.ts:288:22)
+#               at async Test.run (node:internal/test_runner/test:797:9)
+#               at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+#     }
+# [2026-10-11 06:12:47.666 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 06:12:47.672 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 13
+# [2026-10-11 06:12:49.682 +0000] [31mERROR[39m: [36m[internal-jobs] job threw[39m
+#     [35mjob[39m: "commerce-email-sweep"
+#     err: {
+#       "type": "Error",
+#       "message": "Injected item-change candidate query failure",
+#       "stack":
+#           Error: Injected item-change candidate query failure
+#               at assessCartItemChanges (/home/runner/workspace/server/services/cart-item-change.service.ts:119:13)
+#               at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+#               at async <anonymous> (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:99:24)
+#               at async NodePgSession.transaction (/home/runner/workspace/node_modules/src/node-postgres/session.ts:259:19)
+#               at async runCommerceEmailSweep (/home/runner/workspace/server/services/commerce-email-sweep.service.ts:97:25)
+#               at async runJob (/home/runner/workspace/server/routes/internal.routes.ts:131:63)
+#               at async TestContext.<anonymous> (/home/runner/workspace/server/routes/__tests__/cart-item-changes.db.test.ts:288:22)
+#               at async Test.run (node:internal/test_runner/test:797:9)
+#               at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+#     }
+# [2026-10-11 06:12:52.364 +0000] [33mWARN[39m: [36m[email-outbox] cart enqueue refused[39m
+#     [35mreason[39m: "cart_item_change_requires_guarded_sweep"
+# [2026-10-11 06:12:52.371 +0000] [32mINFO[39m: [36m[email-outbox] drainOutbox: processing claimed rows[39m
+#     [35mcount[39m: 14
+# {"part":5,"loops":[{"loop":1,"scenario":"e4b61cbe-ebef-4ecd-8b89-2ec8b0558371","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["default UNKNOWN blocks enqueue and notified marker","price up; one queue; notified linked; snapshot/clock immutable; escaped rendered content","price down","capacity reduction still available is harmless; sold-out loss once","requested-unit stock boundary; quantity-only no false notice; raw notified facts preserved","legacy null/zero/negative requested quantities fail closed","combined change has one email","unsubscribed, unknown timezone, outside marketing hours still selected","marketing daily cap bypassed; item-change queue does not reserve marketing day","deleted/suspended refused","shared paid reader blocks canceled activity at inclusive boundary; partner-only ambiguity","no_snapshot and no activity stamp; no backfill","display/client metadata cannot overwrite snapshot","two concurrent queue passes once","marker failure rolls back enqueue; retry succeeds","guest cannot send; authenticated claim enables subset selection","documented observed target-repeat and unobserved A-B-A limits","five hostile scenarios; failed candidate heartbeat then genuine recovery","existing sweep integration; repeat sweep no duplicate","generic/drain/admin paths verify current item facts without provider; production gate"],"attacks":["slot orphan","cross-owner plan","custom quote","currency/decimal/JSON semantics","catalog query fault"],"actualProviderCalls":0,"allRailCertified":false,"realDelivery":"OPEN"},{"loop":2,"scenario":"85835341-5053-4885-82e8-82d3fed52676","status":"CLEAN_READABLE_SUBSET_ONLY","checks":["default UNKNOWN blocks enqueue and notified marker","price up; one queue; notified linked; snapshot/clock immutable; escaped rendered content","price down","capacity reduction still available is harmless; sold-out loss once","requested-unit stock boundary; quantity-only no false notice; raw notified facts preserved","legacy null/zero/negative requested quantities fail closed","combined change has one email","unsubscribed, unknown timezone, outside marketing hours still selected","marketing daily cap bypassed; item-change queue does not reserve marketing day","deleted/suspended refused","shared paid reader blocks canceled activity at inclusive boundary; partner-only ambiguity","no_snapshot and no activity stamp; no backfill","display/client metadata cannot overwrite snapshot","two concurrent queue passes once","marker failure rolls back enqueue; retry succeeds","guest cannot send; authenticated claim enables subset selection","documented observed target-repeat and unobserved A-B-A limits","five hostile scenarios; failed candidate heartbeat then genuine recovery","existing sweep integration; repeat sweep no duplicate","generic/drain/admin paths verify current item facts without provider; production gate"],"attacks":["slot orphan","cross-owner plan","custom quote","currency/decimal/JSON semantics","catalog query fault"],"actualProviderCalls":0,"allRailCertified":false,"realDelivery":"OPEN"}],"realEmails":0,"releaseBlocked":true}
+# Subtest: Part 5: two randomized native loops, must-have selection only, zero provider transport
+ok 1 - Part 5: two randomized native loops, must-have selection only, zero provider transport
+  ---
+  duration_ms: 8255.555657
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+ISOLATED_SCHEMA_REMOVED=true

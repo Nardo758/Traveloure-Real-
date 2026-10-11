@@ -1,0 +1,6 @@
+  ✓ guarded trip-scoped rebuild delete passes
+  ✓ unguarded trip-scoped rebuild delete FAILS
+  ✓ exempt-annotated trip-scoped delete passes
+  ✓ single-row delete is not rebuild-shape (ignored)
+  ✓ prose reference in a comment is not a site
+itinerary-rebuild-guard self-test: all fixtures passed

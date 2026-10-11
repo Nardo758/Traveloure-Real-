@@ -1,0 +1,35 @@
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# Subtest: exactly three active marketing definitions and durable delay values
+ok 1 - exactly three active marketing definitions and durable delay values
+  ---
+  duration_ms: 1.14323
+  ...
+# Subtest: copy loop 1: real expert or top-rated activity, escaped text, bookable-only urgency
+ok 2 - copy loop 1: real expert or top-rated activity, escaped text, bookable-only urgency
+  ---
+  duration_ms: 0.856257
+  ...
+# Subtest: copy loop 2: real expert or top-rated activity, escaped text, bookable-only urgency
+ok 3 - copy loop 2: real expert or top-rated activity, escaped text, bookable-only urgency
+  ---
+  duration_ms: 0.247455
+  ...
+# Subtest: consent and timezone/quiet hours are explicit; missing or invalid values fail closed
+ok 4 - consent and timezone/quiet hours are explicit; missing or invalid values fail closed
+  ---
+  duration_ms: 12.610323
+  ...
+# Subtest: local calendar cap and quiet hours defer across midnight and DST without dropping mail
+ok 5 - local calendar cap and quiet hours defer across midnight and DST without dropping mail
+  ---
+  duration_ms: 14.619466
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

@@ -353,14 +353,18 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     const result = await db.execute(sql`
       WITH candidates AS (
         SELECT id FROM email_outbox
-        WHERE (
+        WHERE ((
           status IN ('pending', 'failed')
           AND (retry_after IS NULL OR retry_after <= NOW())
         )
         OR (
           status = 'processing'
           AND retry_after < NOW() - INTERVAL '1 minute'
-        )
+        ))
+        AND (email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
+          OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt')
+          OR (metadata->'commerceDeliveryAttempt'->>'version'='1'
+            AND metadata->'commerceDeliveryAttempt'->>'phase'='not_invoked'))
         ORDER BY created_at ASC
         LIMIT 50
         FOR UPDATE SKIP LOCKED
@@ -410,6 +414,10 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
         retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
       WHERE id = ${outboxId} AND status IN ('pending', 'failed')
         AND (retry_after IS NULL OR retry_after <= NOW())
+        AND (email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
+          OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt')
+          OR (metadata->'commerceDeliveryAttempt'->>'version'='1'
+            AND metadata->'commerceDeliveryAttempt'->>'phase'='not_invoked'))
       RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type
     `);
     const row = result.rows?.[0] as {
@@ -565,6 +573,8 @@ async function attemptDelivery(
                updated_at    = NOW()
         WHERE  id     = ${outboxId}
           AND  status = 'processing'
+          AND (email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
+            OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt'))
       `);
       logger.info(
         { outboxId, resendId: result.id, to: toStr, subject: params.subject },
@@ -584,6 +594,8 @@ async function attemptDelivery(
                updated_at    = NOW()
         WHERE  id     = ${outboxId}
           AND  status = 'processing'
+          AND (email_type NOT IN ('cart_reminder_1h','cart_reminder_1d','cart_reminder_3d','cart_item_changed')
+            OR NOT (coalesce(metadata,'{}'::jsonb) ? 'commerceDeliveryAttempt'))
       `);
 
       if (isDead) {

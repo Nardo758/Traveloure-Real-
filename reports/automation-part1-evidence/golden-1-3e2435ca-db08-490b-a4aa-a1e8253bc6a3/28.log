@@ -1,0 +1,9 @@
+itinerary-rebuild-guard: 7 rebuild-delete site(s) accounted for (reported, not failing):
+  · server/routes.ts:2047 — guarded (itineraryItemRebuildDeletable)
+  · server/routes/plancard.routes.ts:204 — rebuild-guard-exempt: in_planning-only AND not-expert-work — ready_for_checkout/purchased/booked rows preserved by construction (D-1); expert work by the D3 clause ANDed into the WHERE.
+  · server/services/content-query.service.ts:512 — guarded (itineraryItemRebuildDeletable)
+  · server/services/proposal-charge.service.ts:548 — guarded (itineraryItemRebuildDeletable)
+  · server/services/where-to-stay.service.ts:616 — rebuild-guard-exempt: in_planning-only AND unbooked AND not machine-protected (expert work, locked) —
+  · server/storage.ts:9043 — rebuild-guard-exempt: dead — no live caller; a future caller wiring this to a rebuild path must
+  · server/storage.ts:9063 — rebuild-guard-exempt: in_planning-only AND not-expert-work — routed/booked rows preserved by construction (D-1), expert work by the D3 clause.
+itinerary-rebuild-guard OK — every trip-scoped itinerary_items delete is guarded or exempt (D-1).

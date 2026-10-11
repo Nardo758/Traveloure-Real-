@@ -1,0 +1,30 @@
+PROVIDER_FREE_ALLOWLIST=true
+TAP version 13
+# Subtest: messaging producer definitions register eleven unique active boundaries
+ok 1 - messaging producer definitions register eleven unique active boundaries
+  ---
+  duration_ms: 1.245576
+  ...
+# Subtest: producer adapter forwards its stable ID and preserves result via a mocked dispatcher
+ok 2 - producer adapter forwards its stable ID and preserves result via a mocked dispatcher
+  ---
+  duration_ms: 0.37097
+  ...
+# Subtest: provider transport adapter keeps mocked SDK arguments and response unchanged
+ok 3 - provider transport adapter keeps mocked SDK arguments and response unchanged
+  ---
+  duration_ms: 0.230211
+  ...
+# Subtest: provider transport adapter propagates original SDK errors unchanged
+ok 4 - provider transport adapter propagates original SDK errors unchanged
+  ---
+  duration_ms: 0.364897
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0

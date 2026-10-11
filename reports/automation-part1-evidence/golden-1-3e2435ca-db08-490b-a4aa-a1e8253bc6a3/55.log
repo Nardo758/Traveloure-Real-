@@ -1,0 +1,15 @@
+  ✓ THE BUG — the orphan bundle row fails R2 (services-wedding, no key)
+  ✓ THE BUG — R2 fires even if the orphan were allowlisted
+  ✓ THE FIX — the orphan rows are gone; only keyed/allowlisted rows are seeded
+  ✓ R1 — a NEW key-less category that is neither 034-keyed nor declared fails
+  ✓ R1 — the custom-other regression (migrations 189/208): literal key present ⇒ passes
+  ✓ R1 — a slug migration 034 keys needs no literal key
+  ✓ R3 — an offering pointing at an unassigned category_key fails
+  ✓ R3 — an offering pointing at an assigned key passes
+  ✓ R0 REGISTRY — a key present ONLY in the second migration (285) is assigned
+  ✓ R0 REGISTRY — a key in NEITHER migration fails R3 against the same registry
+  ✓ R0 REGISTRY — the SAME key claimed by BOTH migrations FAILS (a fork, not a union)
+  ✓ R0 REPAIR — a DECLARED repair of 034's own pairs is clean, and widens nothing
+  ✓ R0 REPAIR — the SAME file UNDECLARED is still a duplicate (the declaration is the licence)
+  ✓ R0 REPAIR — a repair that RE-POINTS a key at a new slug FAILS as out of scope
+[check-category-reachability] self-test OK — 14 fixtures (bug fails, fix passes)

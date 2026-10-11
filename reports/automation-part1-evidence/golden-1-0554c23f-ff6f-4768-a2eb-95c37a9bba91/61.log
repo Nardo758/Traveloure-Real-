@@ -1,0 +1,13 @@
+  ok    clean case passes
+  ok    a listed key no migration seeds is caught (rule 1)
+  ok    a seeded key missing from the list is caught (rule 2)
+  ok    a planner row seeded into the wrong tier is caught (rule 3)
+  ok    a key satisfied by ANOTHER migration passes rule 1
+  ok    an insert into a DIFFERENT table contributes no keys
+  ok    broken migration parse fails loudly, not vacuously
+  ok    missing list declaration is caught
+  ok    empty list fails vacuity check
+  ok    a missing 283 is caught
+  ok    parser reads both fixture pairs with their tiers
+
+earn-planner-keys guard self-test: 11/11 fixture cases pass.

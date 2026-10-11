@@ -1,0 +1,99 @@
+DEVELOPMENT_TARGET_MATCH=true
+ISOLATED_EMPTY_SCHEMA_READY=true tables=335 foreignKeys=412
+PROVIDER_FREE_ALLOWLIST=true
+[2026-10-11 06:04:01.695 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+    [35moutboxId[39m: 1
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+    [35mattemptCount[39m: 1
+    [35mretryAt[39m: "2026-10-11T06:09:01.693Z"
+    error: "simulated transient provider error"
+[2026-10-11 06:04:01.702 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 1
+    [35mresendId[39m: "intercepted-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:01.723 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 9
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.735 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 10
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.746 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 11
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.753 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 12
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.796 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 17
+    [35mresendId[39m: "intercepted-recovery-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:01.819 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 21
+    [35mresendId[39m: "intercepted-recovery-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:01.843 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 25
+    [35mresendId[39m: "intercepted-recovery-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:01.871 +0000] [33mWARN[39m: [36m[email-outbox] delivery failed; scheduled for retry[39m
+    [35moutboxId[39m: 29
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+    [35mattemptCount[39m: 1
+    [35mretryAt[39m: "2026-10-11T06:09:01.870Z"
+    error: "simulated transient provider error"
+[2026-10-11 06:04:01.876 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 29
+    [35mresendId[39m: "intercepted-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:01.901 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 37
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.915 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 38
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.925 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 39
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.936 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 40
+    [35mresendId[39m: "intercepted-failure-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "We couldn't finish your itinerary"
+[2026-10-11 06:04:01.969 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 45
+    [35mresendId[39m: "intercepted-recovery-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:01.994 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 49
+    [35mresendId[39m: "intercepted-recovery-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+[2026-10-11 06:04:02.016 +0000] [32mINFO[39m: [36m[email-outbox] sent[39m
+    [35moutboxId[39m: 53
+    [35mresendId[39m: "intercepted-recovery-not-real"
+    [35mto[39m: "[address-redacted]"
+    [35msubject[39m: "Your itinerary is ready"
+{"numTotalTestSuites":1,"numPassedTestSuites":1,"numFailedTestSuites":0,"numPendingTestSuites":0,"numTotalTests":8,"numPassedTests":8,"numFailedTests":0,"numPendingTests":0,"numTodoTests":0,"snapshot":{"added":0,"failure":false,"filesAdded":0,"filesRemoved":0,"filesRemovedList":[],"filesUnmatched":0,"filesUpdated":0,"matched":0,"total":0,"unchecked":0,"uncheckedKeysByFile":[],"unmatched":0,"updated":0,"didUpdate":false},"startTime":1791698639747,"success":true,"testResults":[{"assertionResults":[{"ancestorTitles":[],"fullName":"ready DB loop 1: concurrent completion, two same-day itineraries, provider retry and dedupe","status":"passed","title":"ready DB loop 1: concurrent completion, two same-day itineraries, provider retry and dedupe","duration":78.25978600000008,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"failed DB loop 1: exact timeout and two variations, late success, error, new attempt","status":"passed","title":"failed DB loop 1: exact timeout and two variations, late success, error, new attempt","duration":55.14879400000018,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"refinement loop 1: cancelled ready notice is recoverable, exact case plus two variants","status":"passed","title":"refinement loop 1: cancelled ready notice is recoverable, exact case plus two variants","duration":81.23026200000004,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"ready DB loop 2: concurrent completion, two same-day itineraries, provider retry and dedupe","status":"passed","title":"ready DB loop 2: concurrent completion, two same-day itineraries, provider retry and dedupe","duration":40.459624000000076,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"failed DB loop 2: exact timeout and two variations, late success, error, new attempt","status":"passed","title":"failed DB loop 2: exact timeout and two variations, late success, error, new attempt","duration":63.28331299999991,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"refinement loop 2: cancelled ready notice is recoverable, exact case plus two variants","status":"passed","title":"refinement loop 2: cancelled ready notice is recoverable, exact case plus two variants","duration":70.02459199999976,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"missing email and deleted/superseded itineraries or accounts never reach sender","status":"passed","title":"missing email and deleted/superseded itineraries or accounts never reach sender","duration":75.66199199999983,"failureMessages":[],"meta":{},"tags":[]},{"ancestorTitles":[],"fullName":"outbox persistence failure rolls back the terminal state","status":"passed","title":"outbox persistence failure rolls back the terminal state","duration":9.03118799999993,"failureMessages":[],"meta":{},"tags":[]}],"startTime":1791698641630,"endTime":1791698642103.0312,"status":"passed","message":"","name":"/home/runner/workspace/server/services/__tests__/itinerary-generation-outcome.vitest.ts"}]}
+ISOLATED_SCHEMA_REMOVED=true

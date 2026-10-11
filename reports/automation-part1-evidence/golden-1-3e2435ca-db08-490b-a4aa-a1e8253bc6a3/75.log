@@ -1,0 +1,16 @@
+  ok    clean tree passes (predicate present, writer gated)
+  ok    an ungated snapshot caller is caught
+  ok    an ungated rebuild delete is caught
+  ok    a rebuild delete gated by assertAiDraftEligible passes
+  ok    a COMMENT-ONLY mention of either token is not a write (the storage.ts false positive)
+  ok    a stray `*/` inside a LINE comment cannot swallow a real writer (the false-pass class)
+  ok    a multi-line JSDoc block naming a token is still not a call
+  ok    the paid optimizer rail matches nothing and is not an exemption
+  ok    a test file may write a draft ungated
+  ok    a *.test.ts outside __tests__ is exempt too
+  ok    an EXEMPT file passes and is REPORTED, never silently allowed
+  ok    a missing predicate module fails rather than passing over an unenforceable tree
+  ok    the predicate losing one of its two exports fails loudly, not vacuously
+  ok    the predicate file itself is never flagged as an ungated writer
+
+ai-draft-eligibility guard self-test: 14/14 fixture cases pass.

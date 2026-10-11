@@ -1,0 +1,13 @@
+  ok    a clean file passes
+  ok    a Null Island default center fails
+  ok    spacing variants of Null Island fail
+  ok    a 0,0 fixture in a TEST file is exempt
+  ok    an ItineraryCard import fails
+  ok    a hand-rolled Google dir URL in a page fails
+  ok    a hand-rolled Apple scheme in a component fails
+  ok    the canonical builder is allowlisted
+  ok    a URL mentioned in a COMMENT is invisible (text-over-source, stated negative space)
+  ok    the surviving ItineraryCard FILE fails loudly
+  ok    the deleted ItineraryCard file passes
+
+trip-card-honesty guard self-test: 11/11 fixture cases pass.

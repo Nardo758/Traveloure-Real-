@@ -1,0 +1,1 @@
+self-test OK (9 parser fixtures: omit/pick/bare single-line + multiline, chained-modifier precedence, derived-schema exclusion, mixed-file independence; 3 ratchet-verdict fixtures: net-new FAIL, unlocked-improvement FAIL, holds-at-baseline PASS)

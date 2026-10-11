@@ -1,0 +1,11 @@
+item-removed-logging: 9 annotated non-removal delete site(s) (reported, not failing):
+  · server/routes/plancard.routes.ts:204 — item-removed:replace
+  · server/routes.ts:2047 — item-removed:replace
+  · server/services/content-query.service.ts:512 — item-removed:replace
+  · server/services/itinerary-intelligence.service.ts:130 — item-removed:dead
+  · server/services/proposal-charge.service.ts:548 — item-removed:replace
+  · server/services/version-board.service.ts:258 — item-removed:replace
+  · server/services/where-to-stay.service.ts:616 — item-removed:replace
+  · server/storage.ts:9043 — item-removed:dead
+  · server/storage.ts:9063 — item-removed:replace
+item-removed-logging OK — every itinerary_items delete path is annotated (R15).

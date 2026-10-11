@@ -1,0 +1,1 @@
+preferences-writer guard: OK — server/services/user-preferences-writer.ts is the only non-test server file that writes users.preferences (810 files scanned).
