@@ -115,6 +115,9 @@ jobs:
         run: npx playwright test playwright/tests/journeys/j-stay-book-sandbox.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/results.json
+          # The spec's setup sets hotel_margin_public to migration 366's seeded rate on this disposable database.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_DB_WRITES_OK: '1'
           BASE_URL: http://localhost:5000
           CI: 'true'
           LITEAPI_SANDBOX_E2E: '1'

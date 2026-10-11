@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { BASE_URL, uid } from "./_journey-helpers";
+import { readFileSync } from "fs";
+import { Pool } from "pg";
+import { BASE_URL, uid, assertDisposableDb } from "./_journey-helpers";
 
 /**
  * S1-d-3b — the LiteAPI SANDBOX book-and-cancel (ledger `2026-10-11-s1-d3b-stay-book-ui`; S1-d-3 rulings).
@@ -22,9 +24,46 @@ import { BASE_URL, uid } from "./_journey-helpers";
 const QA_DOMAIN = process.env.QA_ACCOUNT_EMAIL_DOMAIN ?? "";
 const ON = process.env.LITEAPI_SANDBOX_E2E === "1";
 
+/**
+ * THE PUBLIC MARGIN IS THE SEEDED ONE (decision-maker, Oct 11, 2026). Without it the shown price is the bare
+ * retail rate, which sits below LiteAPI's suggested selling price, and every stay is refused below SSP. The value
+ * is read from migration 366's own INSERT — the seed of record — never typed here (LD 8: no margin literal).
+ */
+function seededPublicMargin(): number {
+  const sql = readFileSync("server/migrations/366_hotel_margin_bands.sql", "utf8");
+  const m = /\('hotel_margin_public',\s*'percent',\s*([0-9.]+)/.exec(sql);
+  if (!m) throw new Error("migration 366 no longer seeds hotel_margin_public — read the seed of record");
+  return Number(m[1]);
+}
+let marginInForce: number | null = null;
+
 test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () => {
   test.skip(!ON, "LITEAPI_SANDBOX_E2E is not set — the sandbox key is not configured for this run");
   test.setTimeout(10 * 60_000);
+
+  test.beforeAll(async () => {
+    if (!ON) return;
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    try {
+      await assertDisposableDb(pool);
+      const rate = seededPublicMargin();
+      const upd = await pool.query(
+        `UPDATE fee_bands SET default_rate = $1, rate_type = 'percent', is_active = true WHERE band_key = 'hotel_margin_public'`,
+        [rate],
+      );
+      if (upd.rowCount === 0) {
+        await pool.query(
+          `INSERT INTO fee_bands (band_key, rate_type, default_rate, display_name, is_active) VALUES ('hotel_margin_public', 'percent', $1, 'Hotel margin — public rate', true)`,
+          [rate],
+        );
+      }
+      const r = await pool.query(`SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands WHERE band_key = 'hotel_margin_public' AND is_active = true AND rate_type = 'percent'`);
+      marginInForce = r.rows[0]?.rate ?? null;
+      expect(marginInForce, "hotel_margin_public is the seeded rate for this run").toBe(rate);
+    } finally {
+      await pool.end();
+    }
+  });
 
   test("Book shows the server's price, books in sandbox, and is cancelled at once", async ({ page }) => {
     expect(QA_DOMAIN, "QA_ACCOUNT_EMAIL_DOMAIN must be set — QA accounts only").not.toBe("");
@@ -120,7 +159,10 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       // marked SKIPPED (never passed), naming what was not exercised, so a green job is never read as "booked".
       const onlyBelowSsp = tried.length > 0 && tried.every((t) => t.endsWith("(below_ssp)"));
       expect(onlyBelowSsp && belowSspShown, `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
-      test.skip(true, `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried was below its suggested selling price and was refused (ruled Oct 11, 2026). Tried: ${tried.join("; ")}`);
+      test.skip(
+        true,
+        `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried was below its suggested selling price and was refused (ruled Oct 11, 2026), with hotel_margin_public at ${marginInForce} (the seeded margin). Tried: ${tried.join("; ")}`,
+      );
       return;
     }
     const { tripId, itemId } = priced;
