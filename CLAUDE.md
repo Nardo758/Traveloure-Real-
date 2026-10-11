@@ -2775,7 +2775,7 @@ This document captures architectural decisions to maintain consistency across co
     `withoutRideListings` (`server/services/ride-listings.ts`) gate the four public list readers. The refresh interval
     is set in `/admin/content-sources`, never on the ride row.
     **AMENDED — TC-3b, THE RECOMMENDER AND THE TRIP PROFILE OVERLAY (decision-maker rulings 1–4, Oct 11, 2026;
-    ledger `2026-10-11-tc3b-ride-recommender`; migrations 370 and 372, held).** For the plan's OWNER only, a paid plan
+    ledger `2026-10-11-tc3b-ride-recommender`; migrations 370 and 372).** For the plan's OWNER only, a paid plan
     (`planGetsRoutedLegs`) gets at most three "a better way there" ride swaps per day (`days[].rideSuggestions`), one
     per routed leg. A free plan gets a count-only `days[].rideTeaser` from straight-line corridors, with no Maps call.
     A ride fits when it boards within walking range of the stop left (1,200 m; 400 m for limited mobility), exits
@@ -2784,12 +2784,12 @@ This document captures architectural decisions to maintain consistency across co
     skipped this trip, or a ride's own legs. Hard filters hide: mobility, a child under the ride's stated minimum
     height, the booking lead time. Soft ranking (pace, budget, scenic, return pair) only reorders, never by
     commission. Pure core `shared/ride-recommender.ts`. The free draft never inserts a ride.
-    `transport_option_events` (370, new, no FK) records `offered` once per trip × corridor × service at first
+    `transport_option_events` (370, new, no FK; Migration 370 SQL approved by Leon — comment 17:33Z on #1416) records `offered` once per trip × corridor × service at first
     serving, `accepted` from the ride route, and `skipped` from the owner-only
     `POST /api/trips/:tripId/ride-suggestions/dismiss`, which also closes the corridor for the trip. The trip-level
     `trips.preferences.profileOverlay` is written by the owner-only `PUT /api/trips/:tripId/profile-overlay`
     (`skippedCorridors` by the dismiss alone), merged over the account profile at both profile read sites through
-    `getTravelerProfileForTrip`, never copied to the account, and never set by the general trip rails (§19). 372 adds
+    `getTravelerProfileForTrip`, never copied to the account, and never set by the general trip rails (§19). 372 (Migration 372 SQL approved by Leon — comment 17:33Z on #1416) adds
     `notes.filters` (passes, payment, luggage) derived only from each seeded row's `fact_sources`. Pass, payment and
     luggage filtering is not yet wired.
 

@@ -1,7 +1,7 @@
 # TC-3b — the ride recommender and the trip profile overlay
 
 Ledger `2026-10-11-tc3b-ride-recommender` (R434). TC-3 brief rev 1, lane TC-3b. Decision-maker
-rulings 1–4, Oct 11, 2026. Migrations 370 and 372 are HELD for Leon's approval comments on the PR.
+rulings 1–4, Oct 11, 2026. Migration 370 (Migration 370 SQL approved by Leon — comment 17:33Z on #1416). Migration 372 (Migration 372 SQL approved by Leon — comment 17:33Z on #1416).
 
 ## Phase 0 (read-only) — what the code already had
 
