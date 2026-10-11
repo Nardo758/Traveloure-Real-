@@ -496,3 +496,17 @@ mtime_ms = 1791697382665
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/8281f620-c01f-4f4b-8597-7f0ade6ed4e0/f7c42bdd-ad54-47c5-b259-da36343a69b2"
 storage_version_token = "1791697432926225"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "UlutOdUgLnix_VTZmgODM"
+uri = "file://reports/automation-part10-remediation-results.md"
+type = "text"
+title = "Part 10 development remediation results"
+description = "Two clean fault loops, fresh regression gates, genuine real-clock WAITING ledger, and remaining release blockers. No real email or production changes."
+logical_id = "791e3295-8331-4a75-af7e-6db9135ad975"
+content_hash = "sha256:31dc2be1ff9c433b15dfa4222f8db5d83610722b0bce8ee5c2fadeee1a52d3e7"
+size = 10650
+mtime_ms = 1791699308053
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/791e3295-8331-4a75-af7e-6db9135ad975/edcd341e-cd04-4e88-9c28-06e228c8239e"
+storage_version_token = "1791699446479157"
+content_type = "text/markdown"
