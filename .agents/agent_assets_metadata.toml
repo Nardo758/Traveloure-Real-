@@ -482,3 +482,17 @@ mtime_ms = 1791696530889
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/5ba90094-4245-43a5-9f61-4ba93ec407dd/cd9dc552-484e-4215-aa26-89709fe5ca9c"
 storage_version_token = "1791696643036622"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "fnIs_ZNNzhaVyVmYJY8SE"
+uri = "file://reports/automation-part10-remediation-proposals.md"
+type = "text"
+title = "Part 10 remediation proposals — approval required"
+description = "Reproduced provider failure, documented Resend limits, exact dispatcher touch list/proof plan, both main versions, held migration 369 proposal and QA start-path blocker."
+logical_id = "8281f620-c01f-4f4b-8597-7f0ade6ed4e0"
+content_hash = "sha256:94b7e4f72f2e0498b038c3862f8cea5d1977375e93c616f2e0996d049d3b7af4"
+size = 16674
+mtime_ms = 1791697382665
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/8281f620-c01f-4f4b-8597-7f0ade6ed4e0/f7c42bdd-ad54-47c5-b259-da36343a69b2"
+storage_version_token = "1791697432926225"
+content_type = "text/markdown"
