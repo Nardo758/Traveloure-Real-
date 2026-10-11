@@ -2681,9 +2681,8 @@ This document captures architectural decisions to maintain consistency across co
     default card shows "See rates" and no price; the item row and booking are d-3.
     **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
     ledger `2026-10-10-s1-d3a-liteapi-booking`; brief `docs/planning/briefs/s1-d3-liteapi-booking.md`; migration
-    371, APPROVED by Leon Oct 11, 2026 — "Migration 371 SQL approved — Leon" on #1402; FOUNDER WORDING REVIEW).** Nuitée is merchant of record:
-    its Payment SDK takes the card and we send only `payment.method = TRANSACTION_ID`
-    (`scripts/check-liteapi-payment-method.cjs`). One `liteapi_bookings` row per prebook, written before the SDK
+    371; FOUNDER WORDING REVIEW).** (Migration 371 SQL approved by Leon — comment 00:45Z on #1402.)
+    One `liteapi_bookings` row per prebook, written before the SDK
     opens; owner-only; the offer is re-quoted server-side and never taken from the browser; confirmed flips the
     item to `purchased` and inserts the voucher in one transaction; cancel is a `confirmed → cancelling` claim with
     no refund row; the daily sync records LiteAPI's status and never books. Sandbox only (`liteapiBookingEnabled`).
