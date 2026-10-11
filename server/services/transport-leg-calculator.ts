@@ -11,7 +11,7 @@ import {
 } from "./maps-url-builder";
 import { eq } from "drizzle-orm";
 import { getTrafficAwareDrivingRoute } from "./routes.service";
-import { TRANSIT_UNAVAILABLE_REASON, defaultRoutedMode, routeHourBucket, routeLegKey, type RoutingAdapter } from "@shared/routing-engine";
+import { defaultRoutedMode, routedLegReason, routeHourBucket, routeLegKey, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
 import { routeWithTransitFallback, type RouteRunMemo } from "./routing/route-memo";
@@ -43,6 +43,8 @@ export interface VersionRoutingContext {
   /** ONE memo for the whole run — the four versions share it; nothing is persisted (Google terms). */
   memo: RouteRunMemo;
   hasTransitCoverage: boolean;
+  /** P0-b item 8: the market's API has no transit (Kyoto) — a drive leg there carries `transit_api_uncovered`. */
+  transitApiUncovered?: boolean;
   /** The plan's first day and zone, for a real departure instant; null ⇒ no departure sent. */
   tripStart: string | null;
   timezone: string | null;
@@ -328,7 +330,7 @@ async function computeRoutedVersionLeg(
     estimatedDurationMinutes: route.durationMin,
     estimatedCostUsd: null,
     alternativeModes: [
-      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source, line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
+      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: routedLegReason({ transitUnavailable: asked.transitUnavailable, transitApiUncovered: routing.transitApiUncovered === true, mode, picked: false, source: route.provenance.source }), line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
     ],
     energyCost: 0,
     routeProvider: route.provenance.source === "stub" ? "stub" : "google_routes",

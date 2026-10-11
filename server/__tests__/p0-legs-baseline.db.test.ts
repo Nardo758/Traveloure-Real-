@@ -11,6 +11,14 @@
  *   L8 confirmed legacy legs shaped like production's 9 (source NULL, "driving"/"taxi") are re-routed on
  *      the first engine run: the new row keeps `confirmed` and the expert's stamp, the legacy row is
  *      superseded (hidden, `superseded_at` — migration 368) not deleted, and the mode change is logged (ruling 7)
+ *   L9 P0-b item 8: a Kyoto plan (`apiTransitCoverage: false`) with a 3 km pair makes ZERO transit asks and
+ *      stores a drive leg labelled `transit_api_uncovered`, which the plan payload carries as `transitApiUncovered`
+ *   L10 P0-b acceptance: 2 located stops + 1 unlocated + a legacy drive leg on the unlocated pair ⇒ the plan
+ *      shows 0 unsourced legs and 1 routed leg; the legacy row is retired (superseded, not deleted) and the
+ *      unlocated stop is the one gap the slip names (its line is pinned by G6)
+ *
+ * The fixtures sit in Edinburgh (a market whose routing API answers transit) so L2/L8 can still ask transit;
+ * the zone stays Asia/Tokyo because L4 asserts its UTC instant. Kyoto's own behaviour is L9.
  *
  * NEGATIVE SPACE (§18d): the adapter is an in-test fake (no Google call). The activate-transport ROUTE
  * branch is a straight `travelTimeServiceEnabled()` read; L7 proves the service it shares the rule with.
@@ -32,7 +40,9 @@ const { db } = await import("../db");
 const { computePlanLegs, planLegGapsByDay } = await import("../services/routing/plan-legs-engine.service");
 const { recheckPlanLegs } = await import("../services/routing/leg-recheck.service");
 const { generateTripTransportLegs } = await import("../services/trip-transport-legs.service");
-const { TRANSIT_UNAVAILABLE_REASON } = await import("@shared/routing-engine");
+const { TRANSIT_UNAVAILABLE_REASON, TRANSIT_API_UNCOVERED_REASON } = await import("@shared/routing-engine");
+const { routedFactsOf } = await import("../services/routing/plan-legs");
+const { assembleTripPlan } = await import("../services/trip-plan.service");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const K = crypto.randomInt(0, 100_000) / 1e4;
@@ -43,6 +53,8 @@ const BRIDGE = id("bridge");
 const NOTRANSIT = id("notransit");
 const PAST = id("past");
 const LEGACY = id("legacy");
+const KYOTO = id("kyoto");
+const GAP = id("gap");
 
 class FakeAdapter implements RoutingAdapter {
   readonly source = "stub";
@@ -77,9 +89,10 @@ async function legs(trip: string): Promise<any[]> {
 }
 const pairs = (rows: any[]) => rows.map((l) => `${l.day_number}:${String(l.from_activity_id).split("-").pop()}>${String(l.to_activity_id).split("-").pop()}`);
 
-async function trip(t: string, start: string, end: string) {
+async function trip(t: string, start: string, end: string, market: "edinburgh" | "kyoto" = "edinburgh") {
+  const destination = market === "kyoto" ? "Kyoto, Japan" : "Edinburgh, UK";
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-    VALUES (${t}, ${owner}, 'P0L', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', ${start}, ${end}, 'draft', now())`);
+    VALUES (${t}, ${owner}, 'P0L', ${destination}, ${market}, 'Asia/Tokyo', ${start}, ${end}, 'draft', now())`);
   await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${t}-pass`}, ${t}, 'trip_pass', 'active', 'manual')`);
 }
 
@@ -109,11 +122,22 @@ before(async () => {
       VALUES (${`${LEGACY}-${k}`}, ${LEGACY}, 1, ${k === "ab" ? 1 : 2}, ${`${LEGACY}-${from}`}, ${from.toUpperCase()}, 0, 0, ${`${LEGACY}-${to}`}, ${to.toUpperCase()}, 0, 0,
         3600, '3.6 km', 'driving', ${sel}, 14, '[]'::jsonb, 0, 'confirmed', ${owner}, now(), 'Ask for the back exit')`);
   }
+  await trip(KYOTO, "2026-11-11", "2026-11-11", "kyoto");
+  await item(KYOTO, "a", 1, 0, P(0.6, 0), "09:00", "10:00");
+  await item(KYOTO, "b", 1, 1, P(0.627, 0), "11:00", "12:00"); // ~3 km — transit by default where the API covers it
+  await trip(GAP, "2026-11-11", "2026-11-11");
+  await item(GAP, "a", 1, 0, P(0.8, 0), "09:00", "10:00");
+  await item(GAP, "b", 1, 1, null, "11:00", "12:00"); // unlocated
+  await item(GAP, "c", 1, 2, P(0.83, 0.02), "13:00", "14:00");
+  await db.execute(sql`INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng, to_activity_id, to_name, to_lat, to_lng,
+      distance_meters, distance_display, recommended_mode, estimated_duration_minutes, alternative_modes, energy_cost, proposal_status)
+    VALUES (${`${GAP}-ab`}, ${GAP}, 1, 1, ${`${GAP}-a`}, 'A', 0, 0, ${`${GAP}-b`}, 'B', 0, 0, 3600, '3.6 km', 'driving', 14, '[]'::jsonb, 0, 'confirmed')`);
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM itinerary_changes WHERE trip_id = ${LEGACY}`);
-  await db.execute(sql`DELETE FROM trips WHERE id IN (${BRIDGE}, ${NOTRANSIT}, ${PAST}, ${LEGACY})`);
+  await db.execute(sql`DELETE FROM itinerary_changes WHERE trip_id IN (${KYOTO}, ${GAP})`);
+  await db.execute(sql`DELETE FROM trips WHERE id IN (${BRIDGE}, ${NOTRANSIT}, ${PAST}, ${LEGACY}, ${KYOTO}, ${GAP})`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
 });
 
@@ -232,4 +256,29 @@ test("L8: confirmed legacy legs are re-routed once, keep confirmed, the legacy r
   assert.equal(r2.superseded, undefined, "first run only");
   assert.equal(again.calls.length, 0, "the confirmed engine legs are never recomputed");
   assert.equal((await legs(LEGACY)).length, 4, "and never removed");
+});
+
+test("L9: Kyoto (no transit in the routing API) — a 3 km pair makes zero transit asks and stores a labelled drive", async () => {
+  const fake = new FakeAdapter();
+  await computePlanLegs(KYOTO, { adapter: fake });
+  assert.deepEqual(fake.calls.map((c) => c.mode), ["drive"], "no transit request is ever sent for Kyoto");
+  const [leg] = await legs(KYOTO);
+  assert.equal(leg.recommended_mode, "driving");
+  assert.equal(leg.alternative_modes[0].reason, TRANSIT_API_UNCOVERED_REASON, "distinct from transit_unavailable");
+  assert.equal(routedFactsOf({ source: leg.source, calculatedAt: leg.calculated_at, alternativeModes: leg.alternative_modes })?.transitApiUncovered, true);
+  assert.equal(routedFactsOf({ source: leg.source, calculatedAt: leg.calculated_at, alternativeModes: leg.alternative_modes })?.transitUnavailable, undefined);
+});
+
+test("L10: 2 located + 1 unlocated + a legacy leg on the unlocated pair ⇒ 0 unsourced shown, 1 routed, legacy retired", async () => {
+  const r: any = await computePlanLegs(GAP, { adapter: new FakeAdapter() });
+  assert.equal(r.skippedPairs, 2, "a>b and b>c are the honest gaps the unlocated stop makes");
+  assert.equal(r.retiredLegacy, 1);
+  const legacy = (await legs(GAP)).find((l) => l.id === `${GAP}-ab`);
+  assert.ok(legacy, "the legacy row is kept");
+  assert.equal(legacy.proposal_status, null);
+  assert.ok(legacy.superseded_at, "retired, not deleted");
+  const plan: any = await assembleTripPlan(GAP, "full");
+  const shown = (plan.days ?? []).flatMap((d: any) => d.transports ?? []);
+  assert.equal(shown.filter((l: any) => !l.routed).length, 0, "no unsourced leg shows on a routed plan");
+  assert.equal(shown.filter((l: any) => l.routed).length, 1, "the one routed leg bridges a→c");
 });

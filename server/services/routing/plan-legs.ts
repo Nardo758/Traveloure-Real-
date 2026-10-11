@@ -14,6 +14,7 @@
  */
 import {
   DEFAULT_LEG_DEPARTURE_WALL_CLOCK,
+  TRANSIT_API_UNCOVERED_REASON,
   TRANSIT_UNAVAILABLE_REASON,
   defaultRoutedMode,
   routeLegKey,
@@ -266,7 +267,7 @@ export function routedFactsOf(leg: {
   source?: string | null;
   calculatedAt?: Date | string | null;
   alternativeModes?: unknown;
-}): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true } | null {
+}): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true; transitApiUncovered?: true } | null {
   if (!leg.source || !leg.calculatedAt) return null;
   const at = new Date(leg.calculatedAt as any);
   if (Number.isNaN(at.getTime())) return null;
@@ -278,6 +279,8 @@ export function routedFactsOf(leg: {
     provenance: { source: leg.source, checkedAt: at.toISOString() },
     // P0 ruling 2: present only on a drive the engine fell back to because transit had no route.
     ...(alt?.reason === TRANSIT_UNAVAILABLE_REASON ? { transitUnavailable: true as const } : {}),
+    // P0-b item 8: present only on a drive standing in for transit the routing API cannot answer (Kyoto).
+    ...(alt?.reason === TRANSIT_API_UNCOVERED_REASON ? { transitApiUncovered: true as const } : {}),
   };
 }
 

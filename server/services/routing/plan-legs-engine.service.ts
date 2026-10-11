@@ -14,7 +14,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
-import { TRANSIT_UNAVAILABLE_REASON, marketHasTransitCoverage, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
+import { marketTransitRouting, routedLegReason, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
 import type { StoredLegOption } from "@shared/leg-options";
 import { zonedWallClockToInstant, addCalendarDays } from "@shared/plan-timing";
@@ -188,10 +188,11 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
   }));
   const picked = new Map(existing.map((e) => [legPairKey(e.dayNumber, e.fromActivityId, e.toActivityId), selectedModeOf(e)]));
   const marketSlug = (trip.marketSlug ?? "").toLowerCase();
-  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }> }>)[marketSlug];
+  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[marketSlug];
+  const { hasTransitCoverage, transitApiUncovered } = marketTransitRouting(profile);
   const { legs: desired, skipped } = desiredPlanLegs(stops, {
     stay,
-    hasTransitCoverage: marketHasTransitCoverage(profile?.availableModes),
+    hasTransitCoverage,
     selectedMode: (k) => picked.get(k) ?? null,
     airports: await airportStopsForPlan(tripId, trip.startDate ? String(trip.startDate).slice(0, 10) : null),
   });
@@ -203,8 +204,7 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
     if (!tripStart) return null;
     return zonedWallClockToInstant(addCalendarDays(tripStart, leg.dayNumber - 1), legDepartureWallClock(leg.wallClock), trip.timezone);
   };
-  const hasTransitCoverage = marketHasTransitCoverage(profile?.availableModes);
-  return { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, hasTransitCoverage };
+  return { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, hasTransitCoverage, transitApiUncovered };
 }
 
 export async function computePlanLegs(
@@ -221,7 +221,7 @@ export async function computePlanLegs(
   const skipReason = planLegsSkipReason({ engineOn: !!adapter, qualifies, tripExists: !!trip, datesConfirmed: !!trip?.datesConfirmedAt });
   if (skipReason || !adapter || !trip) return { skipped: skipReason ?? "no_trip" };
 
-  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt } = await loadPlanLegContext(tripId, trip);
+  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, transitApiUncovered } = await loadPlanLegContext(tripId, trip);
   // P0 ruling 3: a day that is already over is never routed — its legs are frozen (not asked, not
   // recomputed, not deleted), so neither side of the diff sees that day.
   const now = deps.now ? deps.now() : new Date();
@@ -347,7 +347,7 @@ export async function computePlanLegs(
             durationMinutes: route.durationMin,
             costUsd: null,
             energyCost: 0,
-            reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source,
+            reason: routedLegReason({ transitUnavailable: asked.transitUnavailable, transitApiUncovered, mode: asked.mode, picked: picked != null, source: route.provenance.source }),
             line: route.line,
             fare: route.fare,
             legKey: routeLegKey(want.origin, want.to.point, mode, want.hourBucket),
@@ -437,7 +437,7 @@ export async function computePlanLegs(
           durationMinutes: route.durationMin,
           costUsd: null,
           energyCost: 0,
-          reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source,
+          reason: routedLegReason({ transitUnavailable: asked.transitUnavailable, transitApiUncovered, mode: rowMode, picked: picked.get(leg.pairKey) != null, source: route.provenance.source }),
           line: route.line,
           fare: route.fare,
           legKey: r.legKey,
@@ -542,12 +542,14 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   if (!trip) return null;
   const items = await storage.getItineraryItems(tripId);
   const refs = await placeRefsForTrip(tripId, items.map((i) => i.id));
-  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }> }>)[(trip.marketSlug ?? "").toLowerCase()];
+  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[(trip.marketSlug ?? "").toLowerCase()];
+  const transit = marketTransitRouting(profile);
   return {
     ctx: {
       adapter,
       memo: new RouteRunMemo(),
-      hasTransitCoverage: marketHasTransitCoverage(profile?.availableModes),
+      hasTransitCoverage: transit.hasTransitCoverage,
+      transitApiUncovered: transit.transitApiUncovered,
       tripStart: trip.startDate ? String(trip.startDate).slice(0, 10) : null,
       timezone: trip.timezone ?? null,
     },
