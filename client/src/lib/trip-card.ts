@@ -138,3 +138,26 @@ export const CARD_ADD_TRAVEL_TIMES_LINE = "Add travel times · Optimize";
 export function stayingAtLine(name: string): string {
   return `Staying at ${name}`;
 }
+
+// ── TC-4: the live tier on a leg (LD 69; ledger `2026-10-11-tc4-live-directions`) ──────────────────────────────
+// Every sentence the card's leg says about live times lives here. The URL is the SERVER's (`liveDirections.url`);
+// nothing here builds one.
+
+/** The live-directions link's label: train and bus where the link asks Maps for transit, directions elsewhere. */
+export const LIVE_DIRECTIONS_TRANSIT_LABEL = "Train & bus times in Google Maps";
+export const LIVE_DIRECTIONS_LABEL = "Live directions in Google Maps";
+
+export function liveDirectionsLabel(live: { transit: boolean }): string {
+  return live.transit ? LIVE_DIRECTIONS_TRANSIT_LABEL : LIVE_DIRECTIONS_LABEL;
+}
+
+/** "Last departure nearby: Keihan Main Line 23:40" — operator, then line (else station), then the stated time. */
+export function lastServiceLine(ls: { operator: string; line: string | null; station: string | null; lastDeparture: string }): string {
+  const where = ls.line ?? ls.station;
+  return `Last departure nearby: ${[ls.operator, where].filter(Boolean).join(" ")} ${ls.lastDeparture}`;
+}
+
+/** A non-routed leg's minutes are an estimate and say so (LD 69 — a stored estimate is never presented as exact). */
+export function estimatedMinutesSuffix(minutes: number): string {
+  return ` · ${Math.round(minutes)} min est.`;
+}

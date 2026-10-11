@@ -28,7 +28,7 @@ type SlipLeg = {
   estimatedDurationMinutes?: number;
   durationMin?: number;
   distanceMeters?: number | null;
-  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true };
+  routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true; transitApiUncovered?: true };
   routedOptions?: LegOptionView[];
   routedOptionsChecked?: true;
   /** Step 9c D8: set only once a provider-confirmed host pickup exists (no column yet — never today). */
@@ -39,7 +39,11 @@ type SlipDay = { dayNumber?: number; dayNum?: number; activities?: Array<{ id: s
 export interface RoutedLegView {
   legId: string;
   mode: RoutingMode;
-  route: RouteAnswer;
+  /**
+   * The route's facts. `transitApiUncovered` (P0-b item 8) rides on the route so the row reads its
+   * ruled line wherever the route is drawn: a drive standing in for transit the API cannot answer.
+   */
+  route: RouteAnswer & { transitApiUncovered?: true };
   /** P0 ruling 2: a drive shown because transit had no route — the row says so. */
   transitUnavailable?: true;
 }
@@ -122,7 +126,14 @@ export function routedLegBetween(days: readonly SlipDay[] | null | undefined, pr
       return {
         legId: l.id,
         mode,
-        route: { durationMin: minutes, distanceM: Number(l.distanceMeters ?? 0), line: l.routed.line, fare: l.routed.fare, provenance: l.routed.provenance },
+        route: {
+          durationMin: minutes,
+          distanceM: Number(l.distanceMeters ?? 0),
+          line: l.routed.line,
+          fare: l.routed.fare,
+          provenance: l.routed.provenance,
+          ...(l.routed.transitApiUncovered ? { transitApiUncovered: true as const } : {}),
+        },
         ...(l.routed.transitUnavailable ? { transitUnavailable: true as const } : {}),
       };
     }

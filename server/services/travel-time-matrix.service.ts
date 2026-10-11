@@ -7,7 +7,8 @@
  *   · runs ONLY where `GOOGLE_MAPS_API_KEY` is set — the Routes API with Compute Route Matrix enabled.
  *     With no key it records nothing and answers `skipped: "no_api_key"`. This session never runs it;
  *     the first refresh is the operator's signal on Replit (`POST /internal/jobs/travel-matrix-refresh`).
- *   · centroid × centroid for each mode (walk, transit), batched to the per-request cap (transit
+ *   · centroid × centroid for each mode (walk, transit — or walk, drive where the routing API has no
+ *     transit for the market, `matrixModesFor`), batched to the per-request cap (transit
  *     100 ⇒ 10×10), transit routed at a weekday daytime departure so a night-time run is not a
  *     matrix of "no route".
  *   · COST-TRACKED: the run row records the elements asked for and returned and the unit prices it
@@ -38,7 +39,11 @@ import {
   type MatrixCell,
   type TravelMode,
   type TravelTime,
+  matrixModesFor,
+  TRAVEL_MODES,
 } from "@shared/travel-time";
+import { marketTransitRouting } from "@shared/routing-engine";
+import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import {
   ceilingPricePer1000,
   essentialsPricePer1000,
@@ -55,7 +60,14 @@ import { gatedMapsCall } from "./maps-billing/maps-billing.service";
 
 const ROUTE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
 const ROUTE_MATRIX_FIELD_MASK = "originIndex,destinationIndex,duration,distanceMeters,condition";
-const ALL_MODES: readonly TravelMode[] = ["walk", "transit"];
+/** Google's travel-mode name for a matrix mode. */
+const GOOGLE_TRAVEL_MODE: Readonly<Record<TravelMode, string>> = { walk: "WALK", transit: "TRANSIT", drive: "DRIVE" };
+
+/** The modes this market's refresh asks for — `matrixModesFor` over the ONE flag reader. */
+function refreshModesFor(market: string): readonly TravelMode[] {
+  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[market];
+  return matrixModesFor(marketTransitRouting(profile).transitApiUncovered);
+}
 
 /** The market's centroids, from `city_neighborhoods`. An unknown market has none. */
 export async function loadMarketCentroids(marketSlug: string): Promise<Centroid[]> {
@@ -197,8 +209,9 @@ export async function refreshMarketMatrix(opts: {
     if (!due.due) return { skipped: "not_due", market, reason: due.reason };
   }
 
+  const modes = refreshModesFor(market);
   const prices = { essentialsPer1000: essentialsPricePer1000(), proPer1000: proPricePer1000(), ceilingPer1000: ceilingPricePer1000() };
-  const cost = estimateRefreshCost({ centroidCount: centroids.length, modes: ALL_MODES, ...prices });
+  const cost = estimateRefreshCost({ centroidCount: centroids.length, modes, ...prices });
   if (cost.ceilingUsd > maxRefreshCeilingUsd()) {
     return { refused: "over_ceiling", market, ceilingUsd: cost.ceilingUsd, maxUsd: maxRefreshCeilingUsd() };
   }
@@ -207,7 +220,7 @@ export async function refreshMarketMatrix(opts: {
   await db.insert(travelTimeMatrixRefreshes).values({
     id: refreshId,
     marketSlug: market,
-    modes: [...ALL_MODES],
+    modes: [...modes],
     centroidHash: hash,
     centroidCount: centroids.length,
     status: "running",
@@ -222,7 +235,7 @@ export async function refreshMarketMatrix(opts: {
   try {
     const zone = MARKET_TIMEZONES[market] ?? "UTC";
     const departureTime = nextWeekdayDeparture(zone, transitDepartureLocalTime(), now);
-    for (const mode of ALL_MODES) {
+    for (const mode of modes) {
       const perRequest = mode === "transit" ? transitElementsPerRequest() : otherElementsPerRequest();
       for (const batch of planMatrixBatches(centroids.length, perRequest)) {
         const origins = centroids.slice(batch.originStart, batch.originEnd);
@@ -230,7 +243,7 @@ export async function refreshMarketMatrix(opts: {
         const body: Record<string, unknown> = {
           origins: origins.map(waypoint),
           destinations: dests.map(waypoint),
-          travelMode: mode === "transit" ? "TRANSIT" : "WALK",
+          travelMode: GOOGLE_TRAVEL_MODE[mode],
           ...(mode === "transit" ? { departureTime } : {}),
         };
         const elements = await fetchMatrix(body);
@@ -286,8 +299,9 @@ export async function loadMatrixReader(
     : [];
   const cells = new Map<string, MatrixCell>();
   for (const r of rows) {
-    if (r.mode !== "walk" && r.mode !== "transit") continue;
-    cells.set(matrixKey(r.originSlug, r.destSlug, r.mode), { ...r, mode: r.mode });
+    if (!(TRAVEL_MODES as readonly string[]).includes(r.mode)) continue;
+    const mode = r.mode as TravelMode;
+    cells.set(matrixKey(r.originSlug, r.destSlug, mode), { ...r, mode });
   }
   return (from, to, mode) => resolveTravelTime({ from, to, mode, centroids, lookup: (k) => cells.get(k) });
 }

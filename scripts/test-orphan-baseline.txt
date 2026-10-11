@@ -25,7 +25,6 @@
 playwright/crossbrowser/smoke.spec.ts
 playwright/tests/breakpoint-hamburger.spec.ts
 playwright/tests/content-system.spec.ts
-playwright/tests/deprecated-route-redirects.spec.ts
 playwright/tests/discover-bento-real-data.spec.ts
 playwright/tests/expert-application-mobile.spec.ts
 playwright/tests/experts-flow.spec.ts

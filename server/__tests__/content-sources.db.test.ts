@@ -171,7 +171,8 @@ test("R8: no valid license class ⇒ 409; unknown id ⇒ 404", async () => {
 test("R9: every registry route sits under /api/admin", () => {
   const src = fs.readFileSync(path.join(process.cwd(), "server", "routes", "content-sources.routes.ts"), "utf8");
   const paths = [...src.matchAll(/router\.(get|post|patch|put|delete)\(\s*"([^"]+)"/g)].map((m) => m[2]);
-  assert.equal(paths.length, 6);
+  // PF-1 (ledger `2026-10-11-pf1-lookup-outcomes`) added the two lookup-outcome reads: 6 → 8.
+  assert.equal(paths.length, 8);
   assert.ok(paths.every((p) => p.startsWith("/api/admin/content-sources")), paths.join(", "));
 });
 

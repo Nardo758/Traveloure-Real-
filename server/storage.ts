@@ -20,6 +20,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 // concierge-fee expert-share re-split is skipped when the listing owner is not a person.
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
+import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
@@ -182,6 +183,7 @@ import { itineraryItemRebuildDeletable, itineraryItemNotMachineProtected } from 
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { resolveTripTimezone } from "./services/trip-timezone";
 import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
+import { preferencesKeepingStoredOverlay, stripClientProfileOverlay } from "./services/trip-profile-overlay.service";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
@@ -1501,6 +1503,9 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
     // FD-2 ruling 9 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): source_class is stamped by
     // the server at create (`stampItemSourceClass`) and is never client-settable.
     sourceClass: _sourceClass,
+    // TC-3a (migration 368): a ride's exit pin is written only by the ride service, never by a generic write.
+    exitLatitude: _exitLat,
+    exitLongitude: _exitLng,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
@@ -1604,6 +1609,11 @@ export class DatabaseStorage implements IStorage {
     const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, ...mintValues } = trip as InsertTrip &
       { userId: string; datesConfirmedAt?: unknown };
     const datesConfirmedAt = options?.datesChosenByTraveler ? new Date() : null;
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the trip profile overlay has its own two writers
+    // (trip-profile-overlay.service.ts); a mint body never carries one (§19 layer 2).
+    if (mintValues.preferences && typeof mintValues.preferences === "object") {
+      mintValues.preferences = stripClientProfileOverlay(mintValues.preferences as Record<string, unknown>);
+    }
     const [newTrip] = await db
       .insert(trips)
       .values({ ...mintValues, marketSlug, timezone, datesConfirmedAt, trackingNumber })
@@ -1700,6 +1710,12 @@ export class DatabaseStorage implements IStorage {
       Partial<InsertTrip> & { datesConfirmedAt?: unknown; stayPick?: unknown };
     if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
       derived.datesConfirmedAt = new Date();
+    }
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): a `preferences` write keeps the STORED profile overlay
+    // and drops any client-sent one — one SQL expression, no read-modify-write (§19 layer 2; §15).
+    if (safeUpdates.preferences !== undefined) {
+      const incoming = safeUpdates.preferences && typeof safeUpdates.preferences === "object" ? (safeUpdates.preferences as Record<string, unknown>) : {};
+      (safeUpdates as any).preferences = preferencesKeepingStoredOverlay(incoming);
     }
     if (safeUpdates.startDate === undefined) {
       const [updatedTrip] = await db
@@ -3208,6 +3224,8 @@ export class DatabaseStorage implements IStorage {
       eq(providerServices.approvalStatus, "approved"),
       // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
       await notConciergePoolListingSql(providerServices.userId),
+      // TC-3 catalog rides surface only as rides, never in browse (ledger `2026-10-11-tc3-ride-seed`).
+      notRideListingSql(providerServices.id),
     ];
     if (categoryId) {
       conditions.push(eq(providerServices.categoryId, categoryId));
@@ -4070,7 +4088,8 @@ export class DatabaseStorage implements IStorage {
     // Price/rating filters now run in SQL (decimal columns compare numerically), not Node.
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const notPool = await notConciergePoolListingSql(providerServices.userId);
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool];
+    // TC-3 catalog rides surface only as rides, never in search (ledger `2026-10-11-tc3-ride-seed`).
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id)];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
@@ -4160,6 +4179,7 @@ export class DatabaseStorage implements IStorage {
             eq(providerServices.status, "active"),
             eq(providerServices.approvalStatus, "approved"),
             notPool,
+            notRideListingSql(providerServices.id),
             sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) > 0.2`,
           ))
           .orderBy(sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) DESC`)
@@ -8163,6 +8183,14 @@ export class DatabaseStorage implements IStorage {
             `[ItineraryItems] cascade-deleted ${cascaded.length} trip-scoped transport leg(s) referencing deleted item ${id} (trip ${item.tripId})`,
           );
         }
+
+        // TC-3a (migration 368): removing a ride restores exactly the legs it superseded — they were kept,
+        // hidden, never deleted. Matched by the ride's id only, so a leg the engine superseded (P0 ruling 7,
+        // ride link NULL) is never brought back.
+        await tx
+          .update(transportLegs)
+          .set({ proposalStatus: "confirmed", supersededAt: null, supersededByItemId: null, updatedAt: new Date() })
+          .where(and(eq(transportLegs.tripId, item.tripId), eq(transportLegs.supersededByItemId, id)));
 
         // R15: same-transaction removal signal. Skipped only when the item did not exist (no
         // tripId ⇒ nothing was removed ⇒ no phantom row, §13).

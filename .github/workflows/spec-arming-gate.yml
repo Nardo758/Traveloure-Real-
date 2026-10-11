@@ -10,13 +10,19 @@ name: Spec-Arming Gate
 # verifying) and this is the meta-guard that ruling filed for the next CI-touch.
 #
 # THE RULE. If a PR ARMS a spec — adds a new `*.spec.ts` reference to any
-# `.github/workflows/*.yml` — the PR BODY must link a GREEN RUN of that spec.
-# Missing evidence ⇒ this required check FAILS. A pure relocation (same spec
-# removed and re-added within the diff) is not arming and needs no evidence.
+# `.github/workflows/*.yml` — that workflow must have a run that CONCLUDED
+# `success` on the PR's head commit. Missing ⇒ this required check FAILS. A pure
+# relocation (same spec removed and re-added within the diff) is not arming.
 #
-# ACCEPTED EVIDENCE (either, line-scoped — see the script header):
-#   spec-green: <spec-file> <url>
-#   …or a body line naming <spec-file> alongside a .../actions/runs/<id> URL.
+# VERIFIED, NOT TYPED (ledger 2026-10-11-spec-arming-verified; decision-maker,
+# Oct 11, 2026: "Fix the gate, don't drop it"). The verdict comes from the Actions
+# API: the gate waits for the arming workflow's own run on the head SHA. A run id
+# named in the body is only a POINTER the gate fetches and checks (same repo,
+# workflow, head SHA, success) — never evidence by itself. A green run is not
+# enough: the gate reads that run's `playwright-json*` artifact (the JSON report
+# playwright.config.ts writes under CI) and FAILS an armed spec that skipped
+# itself, quoting the spec's own skip reason. No artifact ⇒ FAIL (cannot tell
+# pass from skip), so a workflow that arms a spec must upload playwright-json/.
 #
 # REQUIRED-CHECK NOTE. To block merges, add the status context
 # `spec-arming-gate (green-run evidence)` to branch protection
@@ -30,6 +36,9 @@ on:
 
 permissions:
   contents: read
+  # Ledger `2026-10-11-spec-arming-verified`: the verdict comes from the Actions API (the arming workflow's run on
+  # the head commit), never from text typed into the PR body.
+  actions: read
 
 # Cancel superseded PR runs. A new push to a PR makes the previous run's jobs
 # dead work that still holds runner slots, so the new run queues behind its own
@@ -44,7 +53,8 @@ jobs:
   spec-arming-gate:
     name: spec-arming-gate (green-run evidence)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Waits (bounded by SPEC_ARMING_WAIT_MINUTES) for the arming workflow's own run on the head commit to finish.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,7 +77,10 @@ jobs:
           git diff "$BASE_SHA" "$HEAD_SHA" -- .github/workflows/ > /tmp/workflow.diff || true
           echo "--- workflow diff (first 200 lines) ---"
           head -n 200 /tmp/workflow.diff || true
-      - name: Require green-run evidence for any newly-armed spec
+      - name: Require a VERIFIED green run for any newly-armed spec
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SPEC_ARMING_WAIT_MINUTES: '50'
         run: node scripts/check-spec-arming.cjs --diff /tmp/workflow.diff

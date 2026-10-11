@@ -71,6 +71,9 @@ export const CLONE_CARRIED_FIELDS = [
   "dayNumber", "startTime", "endTime", "durationMinutes", "isFlexible",
   // Where
   "locationName", "locationAddress", "latitude", "longitude", "googlePlaceId",
+  // A ride's exit pin (TC-3a, migration 368) — like the boarding pin above, it comes from the catalog
+  // ride's own route points, so it is content: the copy's legs route on from where the ride ends.
+  "exitLatitude", "exitLongitude",
   // How you get there from the previous item — a property of the SEQUENCE, which is the content.
   "travelFromPrevious", "transportProvided", "pickupPoint", "dropOffPoint",
   // What it is grounded to. All three are pointers into PLATFORM-WIDE catalogs (provider_services,

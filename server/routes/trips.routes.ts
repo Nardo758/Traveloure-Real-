@@ -1,8 +1,15 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { wallClockMinutes } from "@shared/leg-reachability";
 import { tripGetsRoutedLegs, tripLegsShown } from "../services/routing/plan-routed-legs.service";
 import { routedFactsOf } from "../services/routing/plan-legs";
 import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
 import { setItemLock } from '../services/item-lock.service';
+import { insertRide } from '../services/ride-item.service';
+import { recordTransportOptionEvents } from '../services/transport-option-events.service';
+import { tripOccasion } from '../services/ride-recommender.service';
+import { addSkippedCorridor, writeTripProfileOverlay } from '../services/trip-profile-overlay.service';
+import { corridorKey } from '@shared/ride-recommender';
+import { overlayPatchFromBody, tripProfileOverlayBody } from '@shared/trip-profile-overlay';
 import { platformCarFits } from '../services/airport-leg.service';
 import { anchorConflicts } from '@shared/optimizer-lead';
 import { anchorDatetimeFromInput, anchorWallClockString } from '@shared/anchor-time';
@@ -113,7 +120,7 @@ import {
   serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
-  temporalAnchors, itineraryItems, generatedItineraries,
+  temporalAnchors, itineraryItems, generatedItineraries, serviceTransportFacts,
   userAndExpertChats, insertUserAndExpertChatSchema,
   expertPayouts, providerPayouts,
   eaClientRelationships,
@@ -275,6 +282,16 @@ interface TripAnchorCandidatesDependencies {
   getTrip: typeof storage.getTrip;
   loadTripInputs: typeof loadTripOptimizerInputs;
   rankAnchors: typeof loadRankedAnchors;
+}
+
+/** P0-b item 10: "HH:MM" start + the item's own minutes → "HH:MM" end the same day, or null (never guessed). */
+export function endTimeFromDuration(start: unknown, durationMinutes: unknown): string | null {
+  const from = wallClockMinutes(typeof start === "string" ? start : null);
+  const dur = Number(durationMinutes);
+  if (from == null || durationMinutes == null || !Number.isInteger(dur) || dur <= 0) return null;
+  const to = from + dur;
+  if (to >= 24 * 60) return null;
+  return `${String(Math.floor(to / 60)).padStart(2, "0")}:${String(to % 60).padStart(2, "0")}`;
 }
 
 export function createTripAnchorCandidatesHandler(
@@ -2706,11 +2723,19 @@ router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenti
           order: item.sortOrder || idx,
         }));
 
+      // P0-b item 7 (ledger `2026-10-11-p0b-routing-follow-ups`): the version's legs come from the routing
+      // engine or not at all — no routing context (engine off) is a 409, never the retired drive fallback.
+      const { versionRoutingFor } = await import("../services/routing/plan-legs-engine.service");
+      const routing = (await versionRoutingFor(comparison.id))?.ctx ?? null;
+      if (!routing) {
+        return res.status(409).json({ error: "Travel times aren't being worked out right now", code: "routing_engine_off" });
+      }
       const legs = await calculateTransportLegs(
         variantId,
         activities,
         comparison.destination || "",
-        userPrefs || {}
+        userPrefs || {},
+        routing,
       );
 
       res.json({ legs, count: legs.length });
@@ -3142,6 +3167,118 @@ router.put("/api/trips/:tripId/itinerary-items/:itemId/lock", isAuthenticated, a
   }
 });
 
+/**
+ * TC-3a (ledger `2026-10-11-tc3a-ride-item`; migration 368): put a catalog RIDE on the plan, after an item
+ * (or first on the day). Owner only; `.strict()` body (§19) — the pins, the schedule's end, the lock and the
+ * superseded legs are all the server's (`insertRide`). A plan, item or service that is not there or not the
+ * caller's is ONE 404 (LD 40). Removing the ride is the ordinary item DELETE, which restores the legs it
+ * superseded.
+ */
+const rideInsertBody = z
+  .object({
+    serviceId: z.string().min(1).max(64),
+    dayNumber: z.number().int().min(1).max(60),
+    afterItemId: z.string().min(1).max(64).nullable(),
+    departureTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  })
+  .strict();
+router.post("/api/trips/:tripId/rides", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    // Ownership BEFORE validation: a stranger learns nothing from the body's shape (one 404, LD 40).
+    if (!(await verifyTripOwnership(req.params.tripId, userId))) return res.status(404).json({ code: "not_found", message: "No such plan or ride" });
+    const parsed = rideInsertBody.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ code: "invalid_body", message: "Send { serviceId, dayNumber, afterItemId, departureTime }" });
+    const out = await insertRide({ tripId: req.params.tripId, userId, ...parsed.data });
+    if (!out.ok) {
+      const status = out.code === "not_found" ? 404 : out.code === "bad_position" ? 400 : 409;
+      return res.status(status).json({ code: out.code, message: out.message });
+    }
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): `accepted` once per trip × corridor × service, whether
+    // or not the ride came from a suggestion (rule 8 ranks by acceptance). Never fails the insert (§15b).
+    if (out.corridor) {
+      await recordTransportOptionEvents([{
+        tripId: req.params.tripId,
+        corridorKey: corridorKey(out.corridor.fromItemId, out.corridor.toItemId),
+        serviceId: parsed.data.serviceId,
+        event: "accepted",
+        dayNumber: parsed.data.dayNumber,
+        occasion: await tripOccasion(req.params.tripId),
+      }]);
+    }
+    res.status(201).json({ itemId: out.itemId, supersededLegs: out.supersededLegIds.length });
+  } catch (err) {
+    console.error("[rides] insert failed:", err);
+    res.status(500).json({ message: "Couldn't add the ride" });
+  }
+});
+
+/**
+ * TC-3b (ledger `2026-10-11-tc3b-ride-recommender`; ruling 3): the owner dismisses a ride suggestion. Records
+ * `skipped` and closes the corridor for this trip in the profile overlay ("no suggestion on this leg again this
+ * trip") — so a skipped ride never re-offers there, nor does any other. Owner only, `.strict()` body (§19); a plan,
+ * stop pair or ride that is not there or not the caller's is ONE 404 (LD 40). Idempotent.
+ */
+const rideDismissBody = z
+  .object({
+    fromItemId: z.string().min(1).max(64),
+    toItemId: z.string().min(1).max(64),
+    serviceId: z.string().min(1).max(64),
+  })
+  .strict();
+router.post("/api/trips/:tripId/ride-suggestions/dismiss", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const notFound = () => res.status(404).json({ code: "not_found", message: "No such plan or suggestion" });
+    // Ownership BEFORE validation: a stranger learns nothing from the body's shape (one 404, LD 40).
+    if (!(await verifyTripOwnership(req.params.tripId, userId))) return notFound();
+    const parsed = rideDismissBody.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ code: "invalid_body", message: "Send { fromItemId, toItemId, serviceId }" });
+    const { fromItemId, toItemId, serviceId } = parsed.data;
+    const pair = await db
+      .select({ id: itineraryItems.id, dayNumber: itineraryItems.dayNumber })
+      .from(itineraryItems)
+      .where(and(eq(itineraryItems.tripId, req.params.tripId), inArray(itineraryItems.id, [fromItemId, toItemId])));
+    const [ride] = await db.select({ id: serviceTransportFacts.serviceId }).from(serviceTransportFacts).where(eq(serviceTransportFacts.serviceId, serviceId)).limit(1);
+    if (pair.length !== 2 || fromItemId === toItemId || !ride) return notFound();
+    const key = corridorKey(fromItemId, toItemId);
+    await addSkippedCorridor(req.params.tripId, key);
+    await recordTransportOptionEvents([{
+      tripId: req.params.tripId,
+      corridorKey: key,
+      serviceId,
+      event: "skipped",
+      dayNumber: pair.find((p) => p.id === fromItemId)?.dayNumber ?? null,
+      occasion: await tripOccasion(req.params.tripId),
+    }]);
+    res.json({ dismissed: true, corridorKey: key });
+  } catch (err) {
+    console.error("[rides] dismiss failed:", err);
+    res.status(500).json({ message: "Couldn't dismiss the suggestion" });
+  }
+});
+
+/**
+ * TC-3b: the trip profile overlay — trip-level, opt-in, never copied to the account profile (TC-3 profile rule).
+ * Owner only; `.strict()` body (§19) — `skippedCorridors` is the dismiss route's alone. `null` clears a field.
+ */
+router.put("/api/trips/:tripId/profile-overlay", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    // Ownership BEFORE validation: a stranger learns nothing from the body's shape (one 404, LD 40).
+    if (!(await verifyTripOwnership(req.params.tripId, userId))) return res.status(404).json({ code: "not_found", message: "No such plan" });
+    const parsed = tripProfileOverlayBody.safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ code: "invalid_body", message: "Send any of { mobility, pace, budgetBand, scenic, childHeightsCm }" });
+    const overlay = await writeTripProfileOverlay(req.params.tripId, overlayPatchFromBody(parsed.data));
+    if (!overlay) return res.status(404).json({ code: "not_found", message: "No such plan" });
+    const { skippedCorridors: _closed, ...visible } = overlay;
+    res.json({ overlay: visible });
+  } catch (err) {
+    console.error("[profile-overlay] write failed:", err);
+    res.status(500).json({ message: "Couldn't save" });
+  }
+});
+
 router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -3299,6 +3436,13 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
           bookingId: merged("bookingId") ?? null,
         });
         if (refusal) return res.status(400).json({ message: refusal });
+      }
+      // P0-b item 10 (ledger `2026-10-11-p0b-routing-follow-ups`): a patch that moves the START and names no
+      // END keeps the item's own length — the end moves with it, from the row's `duration_minutes`. No
+      // duration, an unparseable start, or a move past midnight leaves the end as it was (§13).
+      if ((safeBody as any).startTime !== undefined && (safeBody as any).endTime === undefined) {
+        const end = endTimeFromDuration((safeBody as any).startTime, (existing as any).durationMinutes);
+        if (end) (safeBody as any).endTime = end;
       }
       // Step 7b (R323; §12 step 3, R-n): an advisor's edit on a traveler's plan is FILED as a
       // suggestion carrying the final, validated `safeBody`; the owner's accept replays this same

@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, bigint, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HANDLE_MAX_LENGTH } from "./handle";
@@ -5021,7 +5021,7 @@ export const travelTimeMatrix = pgTable("travel_time_matrix", {
   marketSlug: varchar("market_slug", { length: 40 }).notNull(),
   originSlug: varchar("origin_slug", { length: 100 }).notNull(),
   destSlug: varchar("dest_slug", { length: 100 }).notNull(),
-  // App-enforced: walk | transit (shared/travel-time.ts TRAVEL_MODES). No CHECK.
+  // App-enforced: walk | transit | drive (shared/travel-time.ts TRAVEL_MODES; drive only where matrixModesFor asks it). No CHECK.
   mode: varchar("mode", { length: 10 }).notNull(),
   // NULL = the Routes API returned no route for this pair and mode — never a guessed number (§13).
   durationSeconds: integer("duration_seconds"),
@@ -6016,6 +6016,13 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Optimize and Build-around never move or remove it. No DEFAULT, no CHECK; written ONLY by the
   // owner's lock rail and the Moment default, and omitted from `insertItineraryItemSchema` (§19).
   lockedAt: timestamp("locked_at"),
+  // TC-3a (migration 368; ledger `2026-10-11-tc3a-ride-item`): a RIDE item's exit pin — where the ride
+  // leaves the traveler. The boarding pin is the item's own `latitude`/`longitude`; when an exit pin is
+  // present the legs engine routes the FOLLOWING leg from it. Nullable, no DEFAULT/CHECK/index. Written
+  // only by the ride service (`ride-item.service.ts`); omitted from the insert schema and stripped from
+  // every generic write. NULL = not a ride, or a ride that ends where it starts.
+  exitLatitude: decimal("exit_latitude", { precision: 10, scale: 7 }),
+  exitLongitude: decimal("exit_longitude", { precision: 10, scale: 7 }),
   // Migration 343 (step 5): the optimizer run and version an ADOPTED day came from. Written only by
   // apply-days. NULL = not adopted from a version. No DEFAULT/CHECK/index/FK.
   sourceRunId: varchar("source_run_id"),
@@ -6379,7 +6386,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -8170,6 +8177,13 @@ export const transportLegs = pgTable("transport_legs", {
   // Writer: the stay re-route. NULL = no Google coordinate recorded on the leg.
   coordSource: varchar("coord_source", { length: 20 }),
   coordFetchedAt: timestamp("coord_fetched_at"),
+  // TC-3a (migration 368): a SUPERSEDED leg — kept, hidden, never deleted. Set with `proposal_status` NULL
+  // (which every trip reader already skips). `superseded_by_item_id` names the ride item that replaced it,
+  // so removing the ride restores exactly the legs it superseded; NULL there with `superseded_at` set =
+  // superseded by the engine's re-route of a legacy leg (P0 ruling 7) — never restored. Nullable, no
+  // DEFAULT/CHECK/index/FK.
+  supersededAt: timestamp("superseded_at"),
+  supersededByItemId: varchar("superseded_by_item_id"),
   // Migration 357 (ledger `2026-10-07-step9a-routing-engine`, step 9a ruling 3): the routing source that
   // computed this leg — `google_routes` | `stub`. NULL = not a routing-engine leg. A traveler sees an
   // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
@@ -11463,6 +11477,9 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   name: varchar("name", { length: 255 }).notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // TC-3 seed (migration 369): the OpenStreetMap node the coordinates were read from. Nullable; NULL = not
+  // from an OSM node (an owner's own placement). Where set, "© OpenStreetMap contributors" applies.
+  osmNodeId: bigint("osm_node_id", { mode: "number" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -11470,6 +11487,40 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+/**
+ * TC-3a (migration 368; ledger `2026-10-11-tc3a-ride-item`): the facts a TRANSPORT catalog row carries that
+ * `provider_services` has no column for — one row per service (UNIQUE), FK CASCADE. A service is a ride in
+ * the catalog exactly when it has a row here. `official_source` is REQUIRED (FD-3's admission rule: nothing
+ * seeds without the official page it was read from); every other fact is NULL until an official read
+ * confirms it, and NULL is never rendered as "no rule". Pins live in `service_route_points` (first =
+ * boarding, last = exit). Born empty; table and index declared here per the deploy-push durability rule.
+ */
+export const serviceTransportFacts = pgTable("service_transport_facts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  weatherRule: text("weather_rule"),
+  weatherFallbackMode: varchar("weather_fallback_mode", { length: 20 }),
+  luggageRule: text("luggage_rule"),
+  passValidity: text("pass_validity"),
+  paymentConstraints: text("payment_constraints"),
+  officialLink: text("official_link"),
+  officialSource: text("official_source").notNull(),
+  verifiedAt: timestamp("verified_at"),
+  bookingWindowDays: integer("booking_window_days"),
+  osmAttribution: boolean("osm_attribution"),
+  // TC-3 seed (migration 369; ledger `2026-10-11-tc3-ride-seed`): `fact_sources` maps every seeded field
+  // (a column name, or `notes.<key>`) to { url, quote } from the official read — no entry, no value.
+  // `notes` holds the facts no column carries (fares in yen, calendar caveat, duration conflict, child
+  // height, pairing note …). Both nullable, no DEFAULT; NULL = nothing seeded.
+  factSources: jsonb("fact_sources"),
+  notes: jsonb("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("service_transport_facts_service_id_uniq").on(table.serviceId),
+]);
+export type ServiceTransportFacts = typeof serviceTransportFacts.$inferSelect;
 
 /**
  * D-25 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`; punchlist D-25 = option A).
@@ -12440,3 +12491,90 @@ export const freeDraftRuns = pgTable("free_draft_runs", {
   tripUniq: uniqueIndex("uq_free_draft_runs_trip").on(table.tripId).where(sql`status <> 'released'`),
 }));
 export type FreeDraftRun = typeof freeDraftRuns.$inferSelect;
+
+// PF-1 (migration 373; ledger `2026-10-11-pf1-lookup-outcomes`): one row per (plan item, Places lookup run) — what
+// the lookup did with the item. Ids only, no title or query text. NO FK (the evidence outlives the plan), NO
+// CHECK/DEFAULT on outcome (value set ONCE in shared/place-lookup-outcomes.ts). ONE writer:
+// server/services/content-facts/lookup-outcomes.service.ts. Retention: config window, pruned by facts-recheck.
+export const placeLookupOutcomes = pgTable("place_lookup_outcomes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull(),
+  runStartedAt: timestamp("run_started_at").notNull(),
+  tripId: varchar("trip_id").notNull(),
+  itineraryItemId: varchar("itinerary_item_id").notNull(),
+  runTrigger: varchar("run_trigger", { length: 32 }),
+  dayNumber: integer("day_number"),
+  outcome: varchar("outcome", { length: 16 }).notNull(),
+  reason: varchar("reason", { length: 64 }),
+  placeId: varchar("place_id", { length: 255 }),
+  cache: varchar("cache", { length: 8 }),
+  costCents: integer("cost_cents"),
+  latencyMs: integer("latency_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tripRunIdx: index("idx_place_lookup_outcomes_trip_run").on(table.tripId, table.runStartedAt),
+  createdIdx: index("idx_place_lookup_outcomes_created").on(table.createdAt),
+}));
+export type PlaceLookupOutcomeRecord = typeof placeLookupOutcomes.$inferSelect;
+
+// S1-d-3a (migration 371; ledger `2026-10-10-s1-d3a-liteapi-booking`): one row per LiteAPI prebook. Nuitée is
+// merchant of record (the Payment SDK takes the card), so no PaymentIntent and no platform_revenue row hang
+// off this. NO FK (a paid booking outlives the plan it came from), NO DEFAULT/CHECK on status (value set ONCE
+// in shared/liteapi-booking.ts). ONE writer: server/services/liteapi-booking.service.ts.
+export const liteapiBookings = pgTable("liteapi_bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull(),
+  itineraryItemId: varchar("itinerary_item_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  hotelCacheId: varchar("hotel_cache_id"),
+  providerHotelId: varchar("provider_hotel_id", { length: 64 }).notNull(),
+  env: varchar("env", { length: 16 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  offerId: text("offer_id").notNull(),
+  prebookId: varchar("prebook_id", { length: 128 }).notNull(),
+  transactionId: varchar("transaction_id", { length: 128 }).notNull(),
+  liteapiBookingId: varchar("liteapi_booking_id", { length: 128 }),
+  hotelConfirmationCode: varchar("hotel_confirmation_code", { length: 128 }),
+  checkin: date("checkin").notNull(),
+  checkout: date("checkout").notNull(),
+  adults: integer("adults").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  commissionCents: integer("commission_cents"),
+  processingFeeCents: integer("processing_fee_cents"),
+  cancellationPolicy: jsonb("cancellation_policy"),
+  failureReason: text("failure_reason"),
+  claimedAt: timestamp("claimed_at"),
+  bookedAt: timestamp("booked_at"),
+  cancellingAt: timestamp("cancelling_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncStatus: varchar("last_sync_status", { length: 32 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  prebookUniq: uniqueIndex("uq_liteapi_bookings_prebook").on(table.prebookId),
+  liveItemUniq: uniqueIndex("uq_liteapi_bookings_live_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling')`),
+  statusIdx: index("idx_liteapi_bookings_status").on(table.status),
+}));
+export type LiteapiBooking = typeof liteapiBookings.$inferSelect;
+
+// TC-3b (ledger `2026-10-11-tc3b-ride-recommender`; migration 370, HELD): the ride recommender's acceptance
+// log — `offered` / `accepted` / `skipped` once per trip × corridor × ride service (the UNIQUE index is the
+// dedupe). Born empty. NO FK (the log outlives the plan, item or listing), NO DEFAULT/CHECK on `event` (value
+// set ONCE in shared/transport-option-events.ts). ONE writer: server/services/transport-option-events.service.ts.
+export const transportOptionEvents = pgTable("transport_option_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull(),
+  corridorKey: varchar("corridor_key", { length: 160 }).notNull(),
+  serviceId: varchar("service_id").notNull(),
+  event: varchar("event", { length: 16 }).notNull(),
+  dayNumber: integer("day_number"),
+  legId: varchar("leg_id"),
+  occasion: varchar("occasion", { length: 50 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  onceUniq: uniqueIndex("uq_transport_option_events_once").on(table.tripId, table.corridorKey, table.serviceId, table.event),
+  serviceIdx: index("idx_transport_option_events_service").on(table.serviceId, table.event),
+}));
+export type TransportOptionEvent = typeof transportOptionEvents.$inferSelect;

@@ -67,6 +67,9 @@ let originalBTrip: { id: string; userId: string | null; title: string | null; de
  */
 const tripScopedUserDataMutations = [
   ["POST", "/api/trips/:tripId/participants"],
+  ["POST", "/api/trips/:tripId/rides"],
+  ["POST", "/api/trips/:tripId/ride-suggestions/dismiss"],
+  ["PUT", "/api/trips/:tripId/profile-overlay"],
   ["POST", "/api/trips/:tripId/contracts"],
   ["POST", "/api/trips/:tripId/contracts/:contractId/documents"],
   ["POST", "/api/trips/:tripId/transactions"],
@@ -100,6 +103,12 @@ const tripScopedUserDataMutations = [
 
 const antiOracleOwnershipDenials = new Set([
   "POST /api/trips/:tripId/activate-transport",
+  // TC-3a: putting a ride on a plan answers ONE 404 for a plan that is not the caller's (LD 40).
+  "POST /api/trips/:tripId/rides",
+  // TC-3b: dismissing a ride suggestion and writing the trip profile overlay answer ONE 404 for a plan that is
+  // not the caller's (LD 40), ownership checked before the body.
+  "POST /api/trips/:tripId/ride-suggestions/dismiss",
+  "PUT /api/trips/:tripId/profile-overlay",
   "POST /api/trips/:tripId/analytics/infer",
 ]);
 

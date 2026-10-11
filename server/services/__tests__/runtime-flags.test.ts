@@ -6,13 +6,15 @@
  *   F3  the route wires it on every branch (source pin: the ok answer and both 503 answers)
  *   F6  step 9c D6 (ledger `2026-10-07-step9c-leg-options`): `mapsCaps` — each Maps caller's effective
  *       daily cap as a NUMBER, keyed by caller; never an env name, never a non-numeric env value
+ *   F7  P0-b item 6 (ledger `2026-10-11-p0b-routing-follow-ups`): `keys.googleMaps` — whether the Maps key
+ *       is set, a boolean on every branch, never the value
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags, healthMapsCaps } from "../runtime-flags";
+import { HEALTH_FLAG_NAMES, healthFlags, healthEgress, healthEgressFlags, healthMapsCaps, healthKeyPresence } from "../runtime-flags";
 import { MAPS_CALLERS, MAPS_CALLER_KEYS } from "@shared/maps-billing";
 
 const MAPS_HEALTH_NAMES = [
@@ -41,6 +43,8 @@ test("F1: the named switches, booleans, '1' is on", () => {
     MAPS_GEOCODE_ENABLED: false,
     MAPS_PLACES_TEXT_SEARCH_ENABLED: false,
     SHOW_DEMO_EXPERTS: false,
+    TRAVEL_TIME_SERVICE_ENABLED: false,
+    ROUTING_ADAPTER_STUB: false,
   });
   for (const v of Object.values(healthFlags({}))) assert.equal(typeof v, "boolean");
 });
@@ -201,4 +205,19 @@ test("F6: mapsCaps is every caller's effective cap as an integer, beside the fla
   const block = src.slice(start, src.indexOf('router.get("/api/status"', start));
   assert.equal((block.match(/\bbuild, flags, egress, mapsCaps\b/g) ?? []).length, 3);
   assert.ok(block.includes("const mapsCaps = healthMapsCaps();"));
+});
+
+test("F7: the Maps key is reported as SET or not — a boolean, never the value — on every health branch", () => {
+  assert.deepEqual(healthKeyPresence({}), { googleMaps: false });
+  assert.deepEqual(healthKeyPresence({ GOOGLE_MAPS_API_KEY: "   " }), { googleMaps: false });
+  const secret = "AIza-secret-value-123";
+  const out = healthKeyPresence({ GOOGLE_MAPS_API_KEY: secret });
+  assert.deepEqual(out, { googleMaps: true });
+  assert.ok(!JSON.stringify(out).includes(secret));
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const src = fs.readFileSync(path.join(here, "../../routes/content.routes.ts"), "utf8");
+  const start = src.indexOf('router.get("/api/health"');
+  const block = src.slice(start, src.indexOf('router.get("/api/status"', start));
+  assert.equal((block.match(/\bmapsCaps, keys\b/g) ?? []).length, 3);
+  assert.deepEqual(healthFlags({ TRAVEL_TIME_SERVICE_ENABLED: "1", ROUTING_ADAPTER_STUB: "1" }).TRAVEL_TIME_SERVICE_ENABLED, true);
 });

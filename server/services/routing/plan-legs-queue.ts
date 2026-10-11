@@ -38,6 +38,8 @@ export function runNow(tripId: string): Promise<unknown> {
     .then(async () => {
       const { computePlanLegs } = await import("./plan-legs-engine.service");
       const legs = await computePlanLegs(tripId);
+      // P0-b item 1: a skipped recompute says why, once per run — never silent.
+      if (legs && "skipped" in legs && legs.skipped) console.info(`[routing] legs skipped for ${tripId}: ${legs.skipped}`);
       // S1 (ledger `2026-10-09-s1-one-stay`, ruling 3): after the debounced recompute, re-pick the plan's
       // stay — it re-scores only when the stops changed (`stopsHash`) and only on a routed plan.
       const { scheduleStayPick } = await import("../stay-pick.service");

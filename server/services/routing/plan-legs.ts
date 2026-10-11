@@ -14,6 +14,7 @@
  */
 import {
   DEFAULT_LEG_DEPARTURE_WALL_CLOCK,
+  TRANSIT_API_UNCOVERED_REASON,
   TRANSIT_UNAVAILABLE_REASON,
   defaultRoutedMode,
   routeLegKey,
@@ -49,6 +50,11 @@ export interface PlanStop {
   name: string;
   dayNumber: number;
   point: RoutePoint | null;
+  /**
+   * TC-3a (migration 368): a ride item's exit pin. When present, the leg LEAVING this stop starts here;
+   * the leg arriving at it still ends at `point` (the boarding pin). Absent on every other stop.
+   */
+  exitPoint?: RoutePoint | null;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
@@ -60,6 +66,8 @@ export interface DesiredLeg {
   legOrder: number;
   from: PlanStop & { point: RoutePoint };
   to: PlanStop & { point: RoutePoint };
+  /** Where the leg starts: the from-stop's exit pin when it has one (a ride), else its own point (TC-3a). */
+  origin: RoutePoint;
   mode: RoutingMode;
   /** The departure's local wall clock, or null when the plan does not say. */
   wallClock: string | null;
@@ -151,7 +159,9 @@ export function desiredPlanLegs(
       return;
     }
     const pairKey = legPairKey(dayNumber, from.id, to.id);
-    const mode = opts.selectedMode?.(pairKey) ?? defaultRoutedMode(from.point, to.point, opts.hasTransitCoverage);
+    // TC-3a: a ride leaves the traveler at its exit pin, so the next leg is routed from there.
+    const origin = from.exitPoint ?? from.point;
+    const mode = opts.selectedMode?.(pairKey) ?? defaultRoutedMode(origin, to.point, opts.hasTransitCoverage);
     const hourBucket = routeHourBucket(wallClock);
     legs.push({
       pairKey,
@@ -159,10 +169,11 @@ export function desiredPlanLegs(
       legOrder,
       from: from as PlanStop & { point: RoutePoint },
       to: to as PlanStop & { point: RoutePoint },
+      origin,
       mode,
       wallClock,
       hourBucket,
-      legKey: routeLegKey(from.point, to.point, mode, hourBucket),
+      legKey: routeLegKey(origin, to.point, mode, hourBucket),
     });
   };
   for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
@@ -256,7 +267,7 @@ export function routedFactsOf(leg: {
   source?: string | null;
   calculatedAt?: Date | string | null;
   alternativeModes?: unknown;
-}): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true } | null {
+}): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true; transitApiUncovered?: true } | null {
   if (!leg.source || !leg.calculatedAt) return null;
   const at = new Date(leg.calculatedAt as any);
   if (Number.isNaN(at.getTime())) return null;
@@ -268,6 +279,8 @@ export function routedFactsOf(leg: {
     provenance: { source: leg.source, checkedAt: at.toISOString() },
     // P0 ruling 2: present only on a drive the engine fell back to because transit had no route.
     ...(alt?.reason === TRANSIT_UNAVAILABLE_REASON ? { transitUnavailable: true as const } : {}),
+    // P0-b item 8: present only on a drive standing in for transit the routing API cannot answer (Kyoto).
+    ...(alt?.reason === TRANSIT_API_UNCOVERED_REASON ? { transitApiUncovered: true as const } : {}),
   };
 }
 
@@ -297,11 +310,11 @@ export function selectPlanLegs<L extends { dayNumber: number; fromActivityId: st
 
 /**
  * IS THIS LEG'S DURATION ROUTED? (step 9b, D4 — ledger `2026-10-07-step9b-optimizer-and-rechecks`). The
- * ONE answer the findings read (§18 rule 1). A shown leg with positive minutes counts when it is an
- * ENGINE leg (`source` set — the routing adapter's answer), or a leg an expert CONFIRMED whose own
- * recorded tier is not the straight-line estimate (`alternative_modes[mode].reason !== "est."`, the tier
- * the travel-time service writes): an expert's own minutes are a human answer, not a guess. A leg with
- * no positive minutes is never routed (§13).
+ * ONE answer the findings read (§18 rule 1). A shown leg with positive minutes counts only when it is an
+ * ENGINE leg (`source` set — the routing adapter's answer). P0-b item 5 (ledger
+ * `2026-10-11-p0b-routing-follow-ups`): an unsourced leg is NOT routed, confirmed or not — its minutes
+ * came from no routing source, so a finding that reads them says "(est.)". A leg with no positive
+ * minutes is never routed (§13).
  */
 export function legIsRouted(leg: {
   source?: string | null;
@@ -312,8 +325,21 @@ export function legIsRouted(leg: {
 }): boolean {
   const minutes = Number(leg.estimatedDurationMinutes);
   if (!Number.isFinite(minutes) || minutes <= 0) return false;
-  if (leg.source != null) return true;
-  if (leg.proposalStatus !== "confirmed") return false;
-  const own = (leg.alternativeModes ?? []).find((a) => a?.mode === leg.recommendedMode);
-  return own?.reason !== "est.";
+  return leg.source != null;
+}
+
+/**
+ * P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): WHY a plan's legs are not worked out — the ONE
+ * order the engine skips in (§18 rule 1), read by `computePlanLegs` and by the plan card's `legsSkipped`.
+ * The engine off first (no adapter), then a plan that has not earned routed legs, then a missing trip,
+ * then dates nobody chose. `null` = nothing skips the plan.
+ */
+export type PlanLegsSkipReason = "engine_off" | "free_plan" | "no_trip" | "dates_not_confirmed";
+export function planLegsSkipReason(input: { engineOn: boolean; qualifies: boolean; tripExists: boolean; datesConfirmed: boolean }): PlanLegsSkipReason | null {
+  // A free plan is told what would give it travel times (Optimize), whether or not the engine is on.
+  if (!input.qualifies) return "free_plan";
+  if (!input.engineOn) return "engine_off";
+  if (!input.tripExists) return "no_trip";
+  if (!input.datesConfirmed) return "dates_not_confirmed";
+  return null;
 }

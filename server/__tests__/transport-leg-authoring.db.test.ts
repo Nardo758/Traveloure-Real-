@@ -226,12 +226,14 @@ test("U1: legPickupRefusal", () => {
   assert.equal(legPickupRefusal({ transportProvision: "pickup_included", pickupConfirmedAt: "2026-10-04T00:00:00Z" }), null);
 });
 
-test("K1: a confirm with no mode keeps the mode the Workstation shows (the recommendation); a chosen mode is never overwritten", async () => {
+test("K1: a confirm with no mode confirms the recommendation without copying it (P0-b item 9 (a)); a chosen mode is never overwritten", async () => {
   await resetLeg();
   await db.execute(sql`UPDATE transport_legs SET user_selected_mode = NULL, recommended_mode = 'walk' WHERE id = ${ids.leg}`);
   const r = await patchAs(ids.author, { proposalStatus: "confirmed" });
   assert.equal(r.status, 200);
-  assert.equal((await legRow()).user_selected_mode, "walk");
+  const confirmed = await legRow();
+  assert.equal(confirmed.user_selected_mode, null, "no auto-copied traveler choice");
+  assert.equal(confirmed.recommended_mode, "walk", "the confirmed recommendation is the mode shown");
   await db.execute(sql`UPDATE transport_legs SET user_selected_mode = 'bus', proposal_status = 'proposed' WHERE id = ${ids.leg}`);
   await patchAs(ids.author, { proposalStatus: "confirmed" });
   assert.equal((await legRow()).user_selected_mode, "bus");

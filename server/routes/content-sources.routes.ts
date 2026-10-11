@@ -9,6 +9,8 @@
  *   POST  /api/admin/content-sources/:id/deactivate     any admin
  *   POST  /api/admin/content-sources/:id/public-ok      allowlisted activator only; `{ publicOk }`,
  *                                                       official + terms-checked rows only (ruling R-p)
+ *   GET   /api/admin/content-sources/lookup-outcomes    PF-1: Places lookup outcomes by outcome/reason (`?days=`)
+ *   GET   /api/admin/content-sources/lookup-outcomes/plan/:tripId   PF-1: each item's latest outcome on one plan
  */
 import { Router, type Response } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -23,6 +25,7 @@ import {
   listContentSources,
   setContentSourcePublicOk,
 } from "../services/content-sources.service";
+import { latestLookupOutcomesForPlan, lookupOutcomeCounts } from "../services/content-facts/lookup-outcomes.service";
 
 const router = Router();
 
@@ -40,6 +43,27 @@ router.get("/api/admin/content-sources", isAuthenticated, async (req, res) => {
       viewerMayActivate: mayActivateContentSource(getUserId(req)),
       activatorConfigured: contentSourceActivatorIds().length > 0,
     });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// PF-1 ruling 3 (ledger `2026-10-11-pf1-lookup-outcomes`): counts by outcome and reason over a window (default
+// and maximum from config), and the plan view — each item's LATEST outcome on one plan. Read-only.
+router.get("/api/admin/content-sources/lookup-outcomes", isAuthenticated, async (req, res) => {
+  try {
+    const raw = typeof req.query.days === "string" ? Number.parseInt(req.query.days, 10) : undefined;
+    res.json(await lookupOutcomeCounts(raw && Number.isFinite(raw) && raw > 0 ? raw : undefined));
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.get("/api/admin/content-sources/lookup-outcomes/plan/:tripId", isAuthenticated, async (req, res) => {
+  const tripId = String(req.params.tripId ?? "").trim();
+  if (!tripId || tripId.length > 64) return res.status(400).json({ error: "invalid_trip_id" });
+  try {
+    res.json({ tripId, items: await latestLookupOutcomesForPlan(tripId) });
   } catch (err) {
     fail(res, err);
   }

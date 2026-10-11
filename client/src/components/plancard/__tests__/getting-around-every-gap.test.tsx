@@ -9,6 +9,8 @@
  *   G4 a plan that doesn't earn routed legs gets the header "Travel times come with Optimize"; one that
  *      does gets none
  *   G5 the sheet renders every day and every gap; no row carries a dollar figure (R-h)
+ *   G6 P0-b item 2: a gap beside a stop with no point reads "not worked out yet — <stop> isn't on the map"
+ *   G7 P0-b item 1: the header says why legs are skipped (engine off, dates, free plan)
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/getting-around-every-gap.test.tsx
  */
@@ -18,6 +20,8 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { GettingAroundBody } from "../../plan/GettingAroundSheet";
 import {
+  GETTING_AROUND_DATES_HEADER,
+  GETTING_AROUND_ENGINE_OFF_HEADER,
   GETTING_AROUND_OPTIMIZE_HEADER,
   GETTING_AROUND_PENDING,
   gettingAroundDays,
@@ -26,7 +30,9 @@ import {
 
 (globalThis as any).React = React;
 
-const stops = (day: number, n: number) => Array.from({ length: n }, (_, i) => ({ id: `d${day}s${i + 1}`, name: `Stop ${day}.${i + 1}` }));
+// P0-b (sanctioned Oct 11, 2026): the fixture's stops carry a point, because a gap beside an unlocated
+// stop now names it (G6). The assertions of G1–G5 are unchanged.
+const stops = (day: number, n: number) => Array.from({ length: n }, (_, i) => ({ id: `d${day}s${i + 1}`, name: `Stop ${day}.${i + 1}`, lat: 35 + i / 100, lng: 135.7 }));
 const ROUTED = { line: "Keihan Main Line", fare: { amount: 220, currency: "JPY" }, provenance: { source: "google_routes", checkedAt: "2026-10-04T05:00:00Z" } };
 
 // Smoke-12 shape. Day 1: one routed leg, one unrouted leg with minutes, one gap with no leg.
@@ -93,5 +99,21 @@ describe("Getting around lists every gap", () => {
     assert.ok(!free.includes("$"), "the leg's estimatedCostUsd never reaches a row");
     const paid = renderToString(<GettingAroundBody data={{ days: DAYS, trip: { timezone: "Asia/Tokyo" }, routedLegs: true }} />);
     assert.ok(!paid.includes("getting-around-header"));
+  });
+
+  it("G6 a gap beside an unlocated stop names it", () => {
+    const [d] = gettingAroundDays(
+      [{ dayNumber: 1, activities: [{ id: "a", name: "Kinkaku-ji", lat: 35.03, lng: 135.72 }, { id: "b", name: "Somewhere in Gion", lat: null, lng: null }, { id: "c", name: "Yasaka", lat: 35.0, lng: 135.78 }], transports: [] }],
+      null,
+    );
+    assert.equal(d.gaps[0].line, "not worked out yet — Somewhere in Gion isn't on the map");
+    assert.equal(d.gaps[1].line, "not worked out yet — Somewhere in Gion isn't on the map");
+  });
+
+  it("G7 the header says why legs are skipped", () => {
+    assert.equal(gettingAroundHeader({ legsSkipped: "engine_off" }), GETTING_AROUND_ENGINE_OFF_HEADER);
+    assert.equal(gettingAroundHeader({ routedLegs: true, legsSkipped: "dates_not_confirmed" }), GETTING_AROUND_DATES_HEADER);
+    assert.equal(gettingAroundHeader({ legsSkipped: "free_plan" }), GETTING_AROUND_OPTIMIZE_HEADER);
+    assert.equal(gettingAroundHeader({ routedLegs: true }), null);
   });
 });

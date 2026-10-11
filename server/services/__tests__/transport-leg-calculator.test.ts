@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSameDayActivityPairs, computeTransportLeg } from "../transport-leg-calculator";
+import { buildSameDayActivityPairs, calculateTransportLegs, computeTransportLeg } from "../transport-leg-calculator";
 
 const prefs = {
   prioritize: "time" as const,
@@ -77,4 +77,26 @@ test("R299: with the drive switch off no request is made and the leg is honestly
   );
   assert.equal(leg, null);
   assert.equal(calls, 0);
+});
+
+test("P0-b item 7: with no routing context the variant writer writes nothing and asks nothing", async () => {
+  process.env.GOOGLE_MAPS_API_KEY = "test-key";
+  process.env.MAPS_ROUTES_DRIVE_ENABLED = "1";
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    return new Response("{}", { status: 200 });
+  };
+  const legs = await calculateTransportLegs(
+    "variant-without-engine",
+    [
+      { id: "a", name: "A", lat: 35.0, lng: 135.0, scheduledTime: "09:00", dayNumber: 1, order: 0 },
+      { id: "b", name: "B", lat: 35.05, lng: 135.0, scheduledTime: "10:00", dayNumber: 1, order: 1 },
+    ],
+    "Kyoto",
+    {},
+    null,
+  );
+  assert.deepEqual(legs, []);
+  assert.equal(calls, 0, "the retired drive fallback makes no request");
 });
