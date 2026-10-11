@@ -13,6 +13,8 @@ vi.mock("../../db", () => ({
   db: {
     execute: fixture.execute,
     select: () => ({ from: async () => Array.from(fixture.heartbeats.values()) }),
+    // PF-1 ruling 2: the job prunes `place_lookup_outcomes` before its re-check; nothing is old here.
+    delete: () => ({ where: () => ({ returning: async () => [] }) }),
     insert: () => ({
       values: (row: Record<string, unknown>) => ({
         onConflictDoUpdate: async () => {
@@ -98,7 +100,7 @@ describe("facts-recheck daily registration", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       // Step 9b (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the leg re-check's counts ride along.
-      ok: true, job: "facts-recheck", result: { checked: 0, conflicts: 0, notified: 0, failed: 0, legsChecked: 0, legsChanged: 0, legsNotified: 0 },
+      ok: true, job: "facts-recheck", result: { checked: 0, conflicts: 0, notified: 0, failed: 0, legsChecked: 0, legsChanged: 0, legsNotified: 0, lookupOutcomesPruned: 0 },
     });
     expect(fixture.execute).toHaveBeenCalledOnce();
     expect(fixture.write).toHaveBeenCalledOnce();
