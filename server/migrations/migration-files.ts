@@ -2000,4 +2000,8 @@ export const MIGRATION_FILES = [
   // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are the TC-3 lane's.
   // APPROVED — "Migration 371 SQL approved — Leon" on #1402.
   "371_liteapi_bookings.sql",
+  // 372 — place_lookup_outcomes (PF-1, ledger 2026-10-11-pf1-lookup-outcomes): a new table born empty, one row per
+  // (plan item, Places lookup run), ids only. No FK, no CHECK, no DEFAULT on outcome. Two plain indexes. Declared in
+  // shared/schema.ts. HELD for Leon's approval comment; number provisional until merge-main.
+  "372_place_lookup_outcomes.sql",
 ] as const;

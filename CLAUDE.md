@@ -2469,6 +2469,15 @@ This document captures architectural decisions to maintain consistency across co
     what the refresh stored. A station's point comes from the OSM node its anchor names (`{ stationSlug, osmNodeId }`),
     resolved once through the city-event venue path (LD 59) and stored with "© OpenStreetMap contributors" — never
     from Places; a station OSM does not confirm is stored unplaced, never guessed.
+    **AMENDED — EACH PLACES LOOKUP OUTCOME IS A ROW (decision-maker PF-1 rulings 1–4, Oct 11, 2026; ledger
+    `2026-10-11-pf1-lookup-outcomes`; migration 372, HELD FOR RULING).** `place_lookup_outcomes` (new table, NO FK —
+    it outlives the plan — NO CHECK, declared in `shared/schema.ts`) holds one row per (plan item, run): outcome
+    (`attached` | `unmatched` | `capped` | `skipped` | `no_place` | `error`), reason (`no_named_tokens` | `area_title` |
+    `no_adapter`; `draft_cap` | `maps_id_lookup` | `maps_details`; an error's code, never its message), trigger, place
+    id, cache, cost, latency — ids only. The log lines print the same words from ONE value set
+    (`shared/place-lookup-outcomes.ts`). ONE writer, one INSERT per run, never failing the lookup (§15b); retention is
+    config (90 days), pruned by the daily `facts-recheck`; `/admin/content-sources` shows counts and a plan-id view of
+    each item's latest outcome.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
