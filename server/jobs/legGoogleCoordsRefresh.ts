@@ -81,6 +81,7 @@ export const defaultLegGoogleCoordsDeps: LegGoogleCoordsDeps = {
     if (!it) return;
     const { enrichPlanItems } = await import("../services/content-facts/place-facts.service");
     await enrichPlanItems({
+      trigger: "leg_coords",
       tripId,
       market: it.market_slug ?? null,
       city: it.destination ?? null,

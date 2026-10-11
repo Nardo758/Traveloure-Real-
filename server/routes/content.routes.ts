@@ -5016,6 +5016,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         // A5: the drafted stops' facts (hours, dining basics, coordinates) — cache first, then the
         // Places spine when it is switched on. Fire-and-forget: it never blocks or fails the draft.
         void enrichPlanItems({
+          trigger: "draft",
           tripId: resolvedTripId,
           market: snapshot.trip.marketSlug ?? null,
           city: destination,
