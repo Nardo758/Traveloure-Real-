@@ -35,6 +35,19 @@ export interface MapsCallRecord {
   units: number;
   error?: string;
   userId?: string | null;
+  /**
+   * FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`): this call's cost is recorded on ITS OWN gate row
+   * at this price, because no other table carries it (the stay pick has no refresh row). Absent ⇒ the
+   * caller's `costRecordedOn` decides, unchanged.
+   */
+  costHere?: MapsCostHere;
+}
+
+/** A call that records its own cost on the gate row: the list price it bills at, and what it was for. */
+export interface MapsCostHere {
+  usdPer1000: number;
+  purpose: string;
+  ref?: string | null;
 }
 
 /**
@@ -64,7 +77,7 @@ export async function withMapsGate<T>(
   key: MapsCallerKey,
   deps: MapsGateDeps,
   call: (apiKey: string) => Promise<{ value: T; units?: number; success?: boolean }>,
-  opts: { userId?: string | null; sku?: string } = {},
+  opts: { userId?: string | null; sku?: string; costHere?: MapsCostHere } = {},
 ): Promise<{ value: T } | { refused: MapsGateRefusal }> {
   const gate = await mapsGate(key, deps);
   if (!gate.ok) return { refused: gate.reason };
@@ -72,10 +85,10 @@ export async function withMapsGate<T>(
   const started = Date.now();
   try {
     const out = await call(gate.apiKey);
-    await deps.record({ key, sku, success: out.success ?? true, ms: Date.now() - started, units: out.units ?? 1, userId: opts.userId ?? null });
+    await deps.record({ key, sku, success: out.success ?? true, ms: Date.now() - started, units: out.units ?? 1, userId: opts.userId ?? null, costHere: opts.costHere });
     return { value: out.value };
   } catch (err: any) {
-    await deps.record({ key, sku, success: false, ms: Date.now() - started, units: 1, error: String(err?.message ?? err).slice(0, 300), userId: opts.userId ?? null });
+    await deps.record({ key, sku, success: false, ms: Date.now() - started, units: 1, error: String(err?.message ?? err).slice(0, 300), userId: opts.userId ?? null, costHere: opts.costHere });
     throw err;
   }
 }

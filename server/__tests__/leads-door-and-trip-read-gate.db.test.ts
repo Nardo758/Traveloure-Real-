@@ -50,6 +50,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import tripsRoutes from "../routes/trips.routes";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -193,6 +194,8 @@ before(async () => {
   // `upsertTripAdvisorRow`). `accepted` is written by the author; `rejected` is reachable only by
   // the expert's own decline path, so it is set directly — the proof is about what the READ gate
   // does with the status, not about who may write it.
+  // B3 (sanctioned fixture edit): the one advisor author takes a NEW advisor only when routable.
+  for (const id of [ids.pendingAdvisor, ids.acceptedAdvisor, ids.rejectedAdvisor]) await insertRoutableExpertForm(id);
   for (const advisor of [ids.pendingAdvisor, ids.acceptedAdvisor, ids.rejectedAdvisor]) {
     await storage.createTripExpertAdvisor({
       tripId: ids.trip,

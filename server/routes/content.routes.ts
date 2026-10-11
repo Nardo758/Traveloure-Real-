@@ -1,4 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
+import { freeDraftCopy } from "@shared/free-draft-cap";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getTripRole } from "../utils/trip-role";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "../seeds/lib/demo-seed-gate";
@@ -68,6 +70,7 @@ import { draftBasisInputs } from "../services/plan-option-sets.service";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "../services/content-facts/covering-events";
 import { healthFlags, healthEgressFlags, healthMapsCaps } from "../services/runtime-flags";
+import { readHotelSupply } from "../services/hotel-supply.service";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
@@ -118,7 +121,7 @@ import {
   getUserById, insertExpertChat, insertChatNotification,
   insertAiBlueprint, getProviderCountsByCategory, getExperienceTypeById,
   getDefaultServiceTemplates, getServiceTemplateById, insertAiInteraction,
-  getReviewById, flagReview, getLocalExpertUsers, getApprovedExpertForms,
+  getReviewById, flagReview, getLocalExpertUsers, getRoutableLocalExpertUsers, getApprovedExpertForms,
   insertExpertMatchScore, getCachedDestinationIntelligence,
   getCachedDestinationIntelligenceWithDates, insertDestinationIntelligence,
   insertDestinationIntelligenceStrict, insertAiGeneratedItinerary,
@@ -387,7 +390,10 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
           .then((r: any) => (r.rows ?? r)[0]?.newest ?? null)
           .catch(() => null);
         const trendScores = trendScoreAgeReport(newestScore, trendScoreMaxAgeHours());
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, migrations, trendScores });
+        // Item 3 (ledger `2026-10-10-health-hotel-supply`): rankable hotel supply per live market, report
+        // only. A failed read is `null` (§13) and never fails the health answer.
+        const supply = { hotels: await readHotelSupply().catch(() => null) };
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, migrations, trendScores, supply });
       } else {
         res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps });
       }
@@ -4458,8 +4464,9 @@ router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (re
         };
       }
 
-      // Get expert profiles from database
-      const expertsQuery = await getLocalExpertUsers();
+      // Get expert profiles from database. B3 ruling 4: a RECOMMENDATION is a first match, so only
+      // ROUTABLE experts (the predicate every routing selector reads) — never a seed or Pending account.
+      const expertsQuery = await getRoutableLocalExpertUsers();
 
       let expertsList = expertIds
         ? expertsQuery.filter(e => expertIds.includes(e.id))
@@ -4592,7 +4599,21 @@ router.post("/api/grok/match-experts", aiRateLimiter, isAuthenticated, async (re
     }
   });
 
+// FD-1 (ledger `2026-10-09-fd1-free-draft-cap`; content-tiers ruling §6): the session account's own free-draft
+// numbers and the §6 sentence, from the ONE count the claim uses. The account is the session, never a query (§14).
+router.get("/api/me/free-drafts", isAuthenticated, async (req, res) => {
+  try {
+    const status = await freeDraftStatus(getUserId(req)!);
+    res.json({ ...status, message: status.exempt ? null : freeDraftCopy(status) });
+  } catch (err) {
+    console.error("[free-drafts] status read failed:", err);
+    res.status(500).json({ message: "Could not read your free drafts" });
+  }
+});
+
 router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
+    // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): the claimed free-draft run, released on our failure.
+    let freeDraftRunId: string | null = null;
     try {
       const userId = getUserId(req)!;
       const { 
@@ -4799,6 +4820,13 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // first failure after a breaker reset indistinguishable from a post-trip
       // failure apart from that number, closing the leak window the breaker's
       // FAILURE_THRESHOLD used to leave open.
+      // FD-1: the free-draft cap is CLAIMED before the model call (§15b) — 3 per 30 days per counted account,
+      // one per plan; a paid-tier plan is not a free draft and QA accounts are exempt. A refusal costs no tokens.
+      const freeDraftClaim = await claimFreeDraft({ rail: "slip", tripId: resolvedTripId || null, countedUserId: userId });
+      if (freeDraftClaim.kind === "refused") {
+        return res.status(FREE_DRAFT_REFUSAL_STATUS).json(freeDraftRefusalBody(freeDraftClaim));
+      }
+      if (freeDraftClaim.kind === "claimed") freeDraftRunId = freeDraftClaim.runId;
       let result: Awaited<ReturnType<typeof aiGenerationService.generateAutonomousItinerary>>["result"];
       let usage: Awaited<ReturnType<typeof aiGenerationService.generateAutonomousItinerary>>["usage"];
       // LD 41 (c): which model actually produced the draft (the Anthropic draft tier) — reported
@@ -4830,6 +4858,8 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       } catch (aiError: any) {
         // Real cause (provider name, request id, key text) stays server-side only.
         console.error("AI itinerary generation failed:", aiError);
+        // FD-1 ruling 3: a provider failure is ours — the run never counts.
+        if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
         if (resolvedTripId) {
           void trackFunnelEvent({
             userId,
@@ -4962,6 +4992,8 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         // (b)/(d)), reached from the slip and charged on confirm — never auto-started from here.
       });
       resolvedTripId = snapshot.trip.id;
+      // FD-1: the draft committed — it counts, against the plan it was written into.
+      if (freeDraftRunId) await promoteFreeDraft(freeDraftRunId, resolvedTripId).catch((e) => console.error("[free-draft] promote failed:", e));
       const savedItinerary = snapshot.savedItinerary;
       const insertedItems = snapshot.insertedItems;
       // E6 (slip-funnel-events.md §3.6): written AFTER the snapshot commits, for a plan-bound draft
@@ -5079,6 +5111,8 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         status: savedItinerary.status
       });
     } catch (error: any) {
+      // FD-1 ruling 3: our exception before the draft committed — the run never counts (a no-op once promoted).
+      if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
       // LD 41 (b): the snapshot's in-transaction second layer refused. The pre-check above is not
       // inside that transaction, so a slip that gained an item in between lands here — answer the
       // same honest 409 rather than a 500 that reads like a platform fault (§13).

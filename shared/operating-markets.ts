@@ -165,3 +165,10 @@ export function canonicalMarketName(value: unknown): string | null {
   const needle = value.trim().toLowerCase();
   return OPERATING_MARKET_CITY_NAMES.find((m) => m.toLowerCase() === needle) ?? null;
 }
+
+/**
+ * The /experiences page's description — ONE spelling for the page's SEO head and the server's crawler
+ * head (`server/routes/seo.routes.ts`). E3 ruling 4, decision-maker's copy (Oct 9, 2026).
+ */
+export const EXPERIENCES_PAGE_DESCRIPTION =
+  "Start a plan around a place, a date or an event — in Kyoto, Goa, Mumbai, Jaipur, Edinburgh, Porto, Bogotá and Cartagena.";

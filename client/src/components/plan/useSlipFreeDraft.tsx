@@ -18,7 +18,7 @@
  * `datesPanel` (renamed from `datesDialog`, Oct 8, 2026) is what the Empty board's card mounts; it holds the
  * inline panel.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -26,6 +26,19 @@ import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
 import { slipDraftDisabledReason } from "@/lib/slip-rail";
 import { planDatesAreConfirmed, planDatesGateLine } from "@shared/plan-dates";
 import { InlineDatesPanel, type PlanWindow } from "./SlipAnchorPanels";
+import { DRAFT_AI_QUERY, DRAFT_AI_VALUE } from "@/lib/plan-landing";
+
+/**
+ * E2 ruling 2 / Q1 (a): `?draft=ai` on a plan's URL starts "Draft it with AI" ONCE. Two surfaces mount
+ * this hook (the rail and the empty board), so the request is consumed per plan, by whichever mounts
+ * first, and the parameter is removed from the address so a reload never drafts twice.
+ */
+const draftAiConsumed = new Set<string>();
+
+/** Pure: does this query string ask to start the draft? */
+export function asksToStartDraft(search: string): boolean {
+  return new URLSearchParams(search).get(DRAFT_AI_QUERY) === DRAFT_AI_VALUE;
+}
 
 /** The action's name in the gate's line ("Draft it with AI needs your dates…"). */
 const DRAFT_ACTION = "Draft it with AI";
@@ -94,13 +107,30 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
     />
   ) : null;
 
+  const start = (dates?: PlanWindow) => {
+    if (disabledReason || draft.isPending) return;
+    if (dates) draft.mutate(dates);
+    else if (asksDatesFirst) setAsking(true);
+    else draft.mutate();
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || disabledReason || draftAiConsumed.has(tripId)) return;
+    if (!asksToStartDraft(window.location.search)) return;
+    draftAiConsumed.add(tripId);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete(DRAFT_AI_QUERY);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    } catch {
+      // The draft still starts; a reload would only re-read a parameter already consumed this load.
+    }
+    start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripId, disabledReason]);
+
   return {
-    mutate: (dates?: PlanWindow) => {
-      if (disabledReason || draft.isPending) return;
-      if (dates) draft.mutate(dates);
-      else if (asksDatesFirst) setAsking(true);
-      else draft.mutate();
-    },
+    mutate: start,
     isPending: draft.isPending,
     disabledReason,
     asksDatesFirst,

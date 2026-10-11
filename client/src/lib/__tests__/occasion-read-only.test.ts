@@ -107,8 +107,9 @@ describe("the occasion endpoint is the one writer", () => {
   });
 
   it("C6: source pins — the modal PATCHes experienceSlug; the modal door is gated", () => {
-    const modal = read("client/src/components/trip/plan-modal.tsx");
-    assert.match(modal, /body\.experienceSlug = selectedOccasion\.slug;/);
+    // E2 (sanctioned): a plan's occasion is written at the mint by PlanEntry's Start a plan.
+    const planning0 = read("client/src/contexts/PlanningContext.tsx");
+    assert.match(planning0, /experienceSlug: start\.occasionSlug,/);
     assert.equal(/occasionEdit/.test(read("client/src/lib/trip-context.ts")), false, "no flag plumbing left");
 
     const planning = read("client/src/contexts/PlanningContext.tsx");

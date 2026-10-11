@@ -42,14 +42,13 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   );
   expect(listing?.id, "the fixture listing was written").toBeTruthy();
 
-  // ── The start page: an occasion and one of the eight cities, then Continue ────────────────────
+  // ── The start page: one of the eight cities and the trip group, then Start a plan ─────────────
   await page.goto("/experiences");
-  await testid(page, "occasion-group-trips").click({ timeout: 20_000 });
-  await testid(page, "option-occasion-travel").click();
-  await testid(page, "city-card-kyoto").click();
-  await testid(page, "button-experiences-continue").click();
-  // Lane E1 (ledger `2026-10-08-e1-zero-questions`; sanctioned rewrite of :50-77): Continue opens the plan
-  // straight away — no modal, no When, no Who — on its MAP view, Browse.
+  await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  await testid(page, "plan-entry-group-trips").click();
+  await testid(page, "button-plan-entry-start").click();
+  // E3 (ledger `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :46-50): PlanEntry inline's
+  // Start a plan opens the plan straight away — no pop-up, no When, no Who — on its MAP view, Browse.
   await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 20_000 });
   await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
   const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];

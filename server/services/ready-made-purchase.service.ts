@@ -10,6 +10,7 @@
  * orphan clone, and returns the winner's result. The earning is born HELD on the escrow spine
  * with the ratified 7-day `ready_made_sale` window (D7: refundable only while in escrow).
  */
+import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { db } from "../db";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
@@ -307,7 +308,8 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       sourceItems.map((item) => {
         const id = crypto.randomUUID();
         itemIdMap.set(item.id, id);
-        return { ...buildClonedItineraryItem(item, cloneTrip.id), id };
+        // FD-2 ruling 9: a Ready Made copy is an expert's authored product ⇒ local.
+        return { ...stampItemSourceClass(buildClonedItineraryItem(item, cloneTrip.id) as Record<string, unknown>, { fromLocalInput: true }), id } as any;
       }),
     );
   }

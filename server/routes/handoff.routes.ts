@@ -22,6 +22,7 @@
  * suggestion that does not exist or is not the caller's is one 404 (LD 40).
  */
 import { Router } from "express";
+import { storage } from "../storage";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
@@ -66,7 +67,8 @@ const askBody = z
 const quoteBody = z.object({ kind: kindSchema, itemIds: z.array(z.string().min(1).max(64)).max(200).optional() }).strict();
 const changesBody = z.object({ note: z.string().max(2000).optional().nullable() }).strict();
 const deliverBody = z.object({ offerOnTripSupport: z.boolean().optional() }).strict();
-const assignBody = z.object({ expertId: z.string().min(1).max(64) }).strict();
+// B3 ruling 1: `overrideRoutability` is the ONE admin override of the routability check (logged).
+const assignBody = z.object({ expertId: z.string().min(1).max(64), overrideRoutability: z.literal(true).optional() }).strict();
 const emptyBody = z.object({}).strict();
 
 /** What a client may read about a handoff. The ids of money objects stay server-side. */
@@ -387,7 +389,12 @@ router.post("/api/handoffs/:id/deliver", isAuthenticated, async (req: any, res) 
 router.post("/api/admin/handoffs/:id/assign", isAuthenticated, async (req: any, res) => {
   const parsed = assignBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Send an expertId" });
-  const out = await adminAssignHandoff(req.params.id, parsed.data.expertId);
+  const adminId = getUserId(req);
+  const adminRow = adminId ? await storage.getUser(adminId) : undefined;
+  const out = await adminAssignHandoff(req.params.id, parsed.data.expertId, {
+    overrideRoutability: parsed.data.overrideRoutability === true,
+    ...(adminRow ? { admin: { id: adminRow.id, role: String(adminRow.role ?? "admin") } } : {}),
+  });
   if (!out.ok) return refuse(res, out);
   res.json({ handoff: projectHandoff(await getHandoff(req.params.id)) });
 });

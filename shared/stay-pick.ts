@@ -26,7 +26,7 @@ export const STAY_PICK_FREE_TOP = 3;
 
 /** The ONLY fields a stay candidate carries into a ranking. No price, rate, fee or commission — by design. */
 export const STAY_PICK_CANDIDATE_KEYS = ["kind", "id", "name", "lat", "lng"] as const;
-export type StayPickCandidateKind = "platform" | "hotel_cache" | "affiliate";
+export type StayPickCandidateKind = "platform" | "hotel_cache" | "affiliate" | "liteapi";
 export interface StayPickCandidate {
   kind: StayPickCandidateKind;
   id: string;
@@ -92,6 +92,45 @@ export function rankStays(
     .map(({ candidate, unreachable, closestDays, total }) => ({ candidate, unreachable, closestDays, total }));
 }
 
+/**
+ * FU-S1-3 (decision-maker ruling, Oct 9, 2026): how many of the plan's located-stop days are CLOSE to one
+ * stay. A day is close when the stay's cost to EVERY located stop that day is known and within `threshold`
+ * (routed minutes on a paid plan, straight-line metres on a free plan); an unreachable stop makes its day not
+ * close. `locatedDays` = days with at least one located stop. No located stop ⇒ null (§13: unknown, never 0
+ * of 0). The threshold is the caller's config value — this file names none.
+ */
+export interface StayCloseness {
+  closeDays: number;
+  locatedDays: number;
+  basis: "routed" | "straight_line";
+}
+export function stayDayCloseness(
+  stops: readonly StayPickStop[],
+  cost: (stopIndex: number) => number | null,
+  threshold: number,
+  basis: StayCloseness["basis"],
+): StayCloseness | null {
+  const ordered = canonicalStops(stops);
+  if (!ordered.length || !Number.isFinite(threshold) || threshold <= 0) return null;
+  const byDay = new Map<number, boolean>();
+  ordered.forEach((s, i) => {
+    const c = cost(i);
+    const ok = c !== null && Number.isFinite(c) && c <= threshold;
+    byDay.set(s.dayNumber, (byDay.get(s.dayNumber) ?? true) && ok);
+  });
+  let closeDays = 0;
+  byDay.forEach((ok) => {
+    if (ok) closeDays += 1;
+  });
+  return { closeDays, locatedDays: byDay.size, basis };
+}
+
+/** Straight-line closeness of one candidate (metres against a kilometre threshold). */
+export function straightLineCloseness(candidate: StayPickCandidate, stops: readonly StayPickStop[], thresholdKm: number): StayCloseness | null {
+  const ordered = canonicalStops(stops);
+  return stayDayCloseness(ordered, (i) => haversineMeters(candidate.lat, candidate.lng, ordered[i].lat, ordered[i].lng), thresholdKm * 1000, "straight_line");
+}
+
 /** Straight-line order over the plan's stops (the free list, and the paid scoring order). */
 export function straightLineOrder(candidates: readonly StayPickCandidate[], stops: readonly StayPickStop[]): StayPickCandidate[] {
   const ordered = canonicalStops(stops);
@@ -152,9 +191,15 @@ export interface StayPick {
   tier: "routed";
   /** True when a re-score REPLACED a different earlier pick; the card reads it once (`/stay-pick/seen`). */
   changed: boolean;
+  /**
+   * FU-S1-3: the pick's routed closeness, from the matrix the scorer already fetched. Absent on a pick
+   * stored before FU-S1-3 (no backfill — read as null until the next re-score, §13).
+   */
+  closeness?: StayCloseness | null;
 }
 
-const KINDS: readonly string[] = ["platform", "hotel_cache", "affiliate"];
+// S1-d-1: `liteapi` is allowlisted, or a stored LiteAPI pick would read as no pick.
+const KINDS: readonly string[] = ["platform", "hotel_cache", "affiliate", "liteapi"];
 
 /** Reader: a stored value that is not this shape is no pick (§13 — never guessed into one). */
 export function readStayPick(value: unknown): StayPick | null {
@@ -172,7 +217,18 @@ export function readStayPick(value: unknown): StayPick | null {
     computedAt: v.computedAt,
     tier: "routed",
     changed: v.changed === true,
+    closeness: readCloseness(v.closeness),
   };
+}
+
+/** A stored closeness that is not this shape is no closeness (§13 — never guessed into one). */
+function readCloseness(value: unknown): StayCloseness | null {
+  const c = value as Partial<StayCloseness> | null | undefined;
+  if (!c || typeof c !== "object") return null;
+  if (!Number.isInteger(c.closeDays) || !Number.isInteger(c.locatedDays)) return null;
+  if ((c.closeDays as number) < 0 || (c.locatedDays as number) < 1 || (c.closeDays as number) > (c.locatedDays as number)) return null;
+  if (c.basis !== "routed" && c.basis !== "straight_line") return null;
+  return { closeDays: c.closeDays as number, locatedDays: c.locatedDays as number, basis: c.basis };
 }
 
 /**
@@ -185,5 +241,5 @@ export function nextStayPick(
   computed: Omit<StayPick, "changed" | "tier">,
 ): StayPick {
   const different = !!prev && (prev.hotelId !== computed.hotelId || prev.hotelKind !== computed.hotelKind);
-  return { ...computed, tier: "routed", changed: different || (prev?.changed ?? false) };
+  return { ...computed, closeness: computed.closeness ?? null, tier: "routed", changed: different || (prev?.changed ?? false) };
 }

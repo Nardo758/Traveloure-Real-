@@ -1,5 +1,4 @@
 import { anchorWallClockString } from "@shared/anchor-time";
-import { OccasionPicker } from "@/components/plan/OccasionPicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Calendar, Clock, MapPin, Minus, Plus, X } from "lucide-react";
@@ -11,13 +10,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  clearTripContext,
   getTripContext,
-  releasePendingEventsPen,
   switchTripContext,
   updateTripContext,
   useTripContext,
@@ -26,7 +22,7 @@ import {
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { parseTripDate } from "@/lib/calendar-date";
-import { eventTypeForSlug, findOccasionByKey } from "@shared/occasions";
+import { findOccasionByKey } from "@shared/occasions";
 import {
   MAX_PARTY_COUNT,
   parsePartyCountInput,
@@ -75,23 +71,10 @@ import {
   showsHomeCityDayCaption,
   showsMainMoment,
   type PlanStepId,
-  BRANCHES_THAT_MINT,
-  BRANCHES_THAT_REQUIRE_THE_MINT,
-  saveMintsPlan,
 } from "@/lib/plan-steps";
-import {
-  draftSignature,
-  holdsDraftOnDismiss,
-  offersResume,
-  resumablePenDraft,
-  resumeStep,
-  type DraftAnswers,
-  type PenDraft,
-} from "@/lib/plan-resume";
 import { useAuth } from "@/hooks/use-auth";
-import type { PlanningBranch, PlanningSource } from "@/contexts/PlanningContext";
+import type { PlanningSource } from "@/contexts/PlanningContext";
 import type { ExperienceType } from "@shared/schema";
-import { deriveOccasionSource, finishForBranch, isPlanDoor, type TripMintEntry } from "@shared/slip-funnel-events";
 
 /**
  * PlanModal — THE planning modal. One modal, many doors.
@@ -239,17 +222,10 @@ export type PlanMintOutcome =
   | { ok: false; message?: string };
 
 export interface PlanModalProps {
-  /**
-   * Step 8b-2 (D3): a GUEST finishing on `myself` or `ai` hands the modal's answers to the provider,
-   * which carries them through sign-in in ONE short-lived browser record. Never called for a member.
-   */
-  onGuestGate?: (branch: "myself" | "ai", answers: DraftAnswers) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The door's own context. Null for a door that carries none (the Trip Strip's Edit button). */
   source?: PlanningSource | null;
-  /** The build CTAs the finish offers, in order. A `source.branch` deep-open narrows this to one. */
-  branches: PlanningBranch[];
   /**
    * AUTHORING MODE — an expert building this plan FOR a client (ledger
    * `2026-09-04-step4-variants-fields`). It changes step 4's ACTOR, never its shape: the same two
@@ -266,29 +242,10 @@ export interface PlanModalProps {
    * rails. A label is not a permission.
    */
   authoring?: boolean;
-  /** "Continue {trip}" for a returning traveler; null when no trip is bound. */
-  continueHref?: string | null;
-  continueLabel?: string | null;
-  /** Navigate to the continue target. Owned by the opener, not by this modal. */
-  onContinue?: (href: string) => void;
-  /**
-   * Mints the plan row for a branch that needs one. THE one mint door lives in the opener
-   * (`mintTripSlip` via PlanningContext) — this modal never builds a `POST /api/trips` body.
-   */
-  mintPlan?: (basics: {
-    destination?: string;
-    startDate?: string;
-    endDate?: string;
-    title?: string;
-    /** E1 (ledger `2026-09-28-a0-slice-spec`): event-only door facts; never stored on the trip. */
-    entry?: TripMintEntry;
-  }) => Promise<PlanMintOutcome>;
   /** A minted plan whose source item still needs a confirmed attach. */
   pendingGemRetry?: { title: string } | null;
   retryPendingGem?: () => Promise<PlanMintOutcome>;
   onPendingGemRecovered?: (tripId: string) => void;
-  /** Runs the chosen branch, AFTER the plan has been committed. */
-  onFinish?: (branch: PlanningBranch, plan: CommittedPlan) => void;
 }
 
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -342,22 +299,12 @@ export function PlanModal({
   open,
   onOpenChange,
   source = null,
-  branches,
   authoring = false,
-  continueHref = null,
-  continueLabel = null,
-  onContinue,
-  mintPlan,
   pendingGemRetry = null,
   retryPendingGem,
   onPendingGemRecovered,
-  onFinish,
-  onGuestGate,
 }: PlanModalProps) {
-  // The finish cards' copy (en + ja, `nav.json` `planFinish.*`; ledger `2026-09-29-expert-door`).
-  const { t: tNav } = useTranslation("nav");
   const [ctx] = useTripContext();
-  const [title, setTitle] = useState("");
   /**
    * THE PLAN'S STOPS, and the destination field with them: index 0 IS the destination (the
    * position-0 mirror of `trip_destinations` — Locked Decision 34), so `destination` below is a
@@ -444,7 +391,6 @@ export function PlanModal({
   /** Has the "Something else" chip been pressed in this open? It reveals the field (re-audit A8). */
   const [customOpen, setCustomOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [finishError, setFinishError] = useState<string | null>(null);
   const [pendingGemRetryError, setPendingGemRetryError] = useState<string | null>(null);
   /** Save's own refusal. Separate from `finishError` because Save is on EVERY step and the finish
    *  error renders only inside the finish block on the last one. */
@@ -455,31 +401,18 @@ export function PlanModal({
    * guessing, which used to clear the plan's id and create nothing. `null` = no question pending;
    * otherwise it records which action (Save, or a finish branch) is waiting on the answer.
    */
-  const [cityChoice, setCityChoice] = useState<
-    null | { action: "save" } | { action: "finish"; branch: PlanningBranch }
-  >(null);
+  const [cityChoice, setCityChoice] = useState<null | { action: "save" }>(null);
   // A question asked about one city is not an answer about another, and it does not outlive the open.
   useEffect(() => {
     setCityChoice(null);
   }, [open, destination]);
-  const [step, setStep] = useState<PlanStepId>("occasion");
-  /** The start step is resolved ONCE per open, and only once the catalog has answered. */
+  const [step, setStep] = useState<PlanStepId>("where");
+  /** The bound plan's occasion is resolved ONCE per open, once the catalog has answered. */
   const startResolved = useRef(false);
-  /** Did THIS open start at step 1 (Occasion)? Set with the start step; read only by E1's
-   *  `occasionSource` at the mint. `null` until the start step resolves. */
-  const openedAtOccasionStep = useRef<boolean | null>(null);
-  /** What the form held when it was seeded, and the occasion the door table set (audit R-3). */
-  const seededAnswers = useRef<DraftAnswers | null>(null);
-  const seededOccasionSlug = useRef("");
-  /** The unminted draft offered back at open, or null. Cleared by Continue and Start over. */
-  const [resumeOffer, setResumeOffer] = useState<PenDraft | null>(null);
-  /** Step 8b-2 (D3): a replayed record finishes ONCE per open — never twice. */
-  const autoFinished = useRef(false);
-  const [replayArmed, setReplayArmed] = useState(false);
 
   // The ONE runtime occasion vocabulary. Same query key IntakePanel and the Trip Strip use, so the
   // cache is shared and no two doors can offer different occasions.
-  const { data: occasions, isLoading: occasionsLoading } = useQuery<ExperienceType[]>({
+  const { data: occasions } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
     enabled: open,
   });
@@ -509,11 +442,8 @@ export function PlanModal({
   // parameter exists to prevent.
   const seedFormFrom = (ctx: TripContext, sourceDestination: string) => {
     startResolved.current = false;
-    openedAtOccasionStep.current = null;
-    setFinishError(null);
     setSaveError(null);
-    setStep("occasion");
-    setTitle(ctx.title || "");
+    setStep("where");
     /**
      * The stop list, seeded from what the context already holds: the pre-trip pen (`ctx.stops`)
      * when there is one, otherwise the single `ctx.destination` — the §13 fallback, stated once in
@@ -553,54 +483,12 @@ export function PlanModal({
     setPickedEvents(seededEvents);
     setCustomEvent("");
     setCustomOpen(false);
-    /**
-     * WHAT THE FORM SAID AT OPEN, kept so a dismiss can tell an answer the traveler gave from one
-     * the form merely showed (audit R-3; `@/lib/plan-resume`). The same normalisation as the state
-     * setters above — a second reading of the pen would drift from them. The occasion is not part
-     * of it: the door table decides it later, once the vocabulary loads (`seededOccasionSlug`).
-     */
-    seededAnswers.current = {
-      title: ctx.title || "",
-      stops: seededStops.map((s) => s.name),
-      startDate: ctx.startDate || "",
-      endDate: ctx.endDate || "",
-      adults: typeof ctx.adults === "number" && ctx.adults > 0 ? String(ctx.adults) : "",
-      kids: typeof ctx.kids === "number" && ctx.kids > 0 ? String(ctx.kids) : "",
-      budgetApproverName: ctx.budgetApproverName || "",
-      budgetApproverEmail: ctx.budgetApproverEmail || "",
-      accessibilityNote: ctx.accessibilityNote || "",
-      mainMomentTime: ctx.mainMomentTime || "",
-      mainMomentDate: ctx.mainMomentDate || "",
-      events: seededEvents,
-      occasionSlug: "",
-    };
-    seededOccasionSlug.current = "";
   };
 
-  // Seed the form from the live context each time the modal opens, then let the door's own source
-  // pre-fill over it — a door that names a city is describing the plan the traveler just asked for.
+  // Seed the form from the BOUND plan's live context each time the window opens.
   useEffect(() => {
     if (!open) return;
-    // An item door is explicitly a NEW plan. Do not seed its dates, party, occasion or events from
-    // whichever plan happened to be active; only the source's stated destination crosses over.
-    const seedContext = source?.newPlan ? ({} as TripContext) : ctx;
-    // Step 8b-2 (D3): a plan replayed after sign-in carries the guest's OWN answers — they seed the
-    // form through the same seeder, never a second one (§18 rule 1).
-    seedFormFrom(source?.resumeAnswers ? answersToContext(source.resumeAnswers) : seedContext, doorDestination);
-    autoFinished.current = false;
-    // Armed here and acted on a render LATER, once the seeded answers are in state.
-    setReplayArmed(!!source?.autoFinish);
-    // RESUME (audit R-3): an unminted pen holding a destination or dates is offered back, named —
-    // and only when the form is showing it (a door naming another city is a different plan).
-    const draft = source?.newPlan ? null : resumablePenDraft(ctx);
-    setResumeOffer(
-      offersResume(draft, {
-        boundTripId: source?.newPlan ? undefined : ctx.tripId || source?.tripId,
-        doorDestination,
-      })
-        ? draft
-        : null,
-    );
+    seedFormFrom(ctx, doorDestination);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -633,14 +521,7 @@ export function PlanModal({
     if (!open || !occasions || startResolved.current) return;
     startResolved.current = true;
     setOccasionSlug(doorOccasion ? doorOccasion.slug : "");
-    seededOccasionSlug.current = doorOccasion ? doorOccasion.slug : "";
-    const { startStep } = resolvePlanSteps(
-      source,
-      doorOccasion,
-      source?.newPlan ? {} : { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
-    );
-    openedAtOccasionStep.current = startStep === "occasion";
-    setStep(startStep);
+    setStep("where");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, occasions, doorOccasion]);
 
@@ -784,15 +665,7 @@ export function PlanModal({
    * picking a different tile on step 1 has to be able to add or remove step 5. Only the START
    * step is a once-per-open decision.
    */
-  const { visibleSteps } = useMemo(
-    () =>
-      resolvePlanSteps(
-        source,
-        selectedOccasion,
-        source?.newPlan ? {} : { experienceSlug: ctx.experienceSlug, experienceType: ctx.experienceType },
-      ),
-    [source, selectedOccasion, ctx.experienceSlug, ctx.experienceType],
-  );
+  const { visibleSteps } = useMemo(() => resolvePlanSteps(selectedOccasion), [selectedOccasion]);
 
   // A step that stops being visible (step 5 after switching to an occasion with no schedule) must
   // not strand the traveler on a blank screen.
@@ -1005,15 +878,15 @@ export function PlanModal({
       accessibilityNote !== "";
 
     switchTripContext({
-      title: title.trim() || undefined,
+      // The plan's name comes from the mint and is not edited here (E2) — it is preserved as held.
+      title: liveCtx.title || undefined,
       destination: trimmedDestination,
       startDate: start,
       endDate: end,
       travelers,
-      // No occasion chosen ⇒ keep whatever was stored. switchTripContext has REPLACE semantics
-      // for this field, so omitting it would silently CLEAR an occasion the modal never asked
-      // the traveler to clear.
-      experienceType: selectedOccasion?.name ?? liveCtx.experienceType,
+      // The occasion is not edited here (E2 ruling 1) — the plan's own is preserved. switchTripContext
+      // has REPLACE semantics for this field, so omitting it would silently CLEAR it.
+      experienceType: liveCtx.experienceType,
       tripId,
     });
 
@@ -1055,16 +928,6 @@ export function PlanModal({
       if (wantsAccessibilityNote) held.accessibilityNote = accessibilityNote.trim() || null;
       if (Object.keys(held).length > 0) updateTripContext(held);
     }
-    if (selectedOccasion) {
-      // Local pen only for a bound plan: the server never takes an occasion from the bulk push
-      // (ledger `2026-09-26-occasion-read-only`). The plan's stored occasion is written by the
-      // occasion PATCH below, which carries `experienceSlug`.
-      updateTripContext({
-        experienceSlug: selectedOccasion.slug,
-        eventType: eventTypeForSlug(selectedOccasion.slug),
-      });
-    }
-
     /**
      * …and the trip ROW, which is what the wedding tooling actually reads (`trips.event_type`)
      * and what the demand rollup counts (`trips.adults` / `trips.kids`). ONE owner-gated,
@@ -1073,12 +936,8 @@ export function PlanModal({
      * context write above still stands.
      */
     if (tripId) {
+      // The occasion is set at the mint (PlanEntry) and is not changed by the edit window (E2).
       const body: Record<string, unknown> = {};
-      if (selectedOccasion) {
-        body.eventType = eventTypeForSlug(selectedOccasion.slug);
-        // The ONE way a plan's occasion reaches its pen row (ledger `2026-09-26-occasion-read-only`).
-        body.experienceSlug = selectedOccasion.slug;
-      }
       if (partyAnswered) {
         // NULL, never 0: an unanswered party is not a party of none.
         body.adults = travelersForSave(adults) ?? null;
@@ -1125,7 +984,6 @@ export function PlanModal({
         rowPatch.startDate = start;
         rowPatch.endDate = end;
       }
-      if (title.trim()) rowPatch.title = title.trim();
       if (Object.keys(rowPatch).length > 0) {
         await apiRequest("PATCH", `/api/trips/${tripId}`, rowPatch).catch((err) => {
           // eslint-disable-next-line no-console
@@ -1313,77 +1171,12 @@ export function PlanModal({
     }
   };
 
-  const committedPlan = (tripId?: string): CommittedPlan => ({
-    tripId,
-    destination: destination.trim() || undefined,
-    startDate: startDate || undefined,
-    endDate: (shape === "day" ? startDate : endDate) || undefined,
-    travelers: partyTotal(adults, kids),
-    occasionSlug: selectedOccasion?.slug,
-    occasionName: selectedOccasion?.name,
-  });
-
   /**
-   * THE ONE MINT STEP the finish and Save share (§18 rule 1 — two copies of the pen release and
-   * the mint call are how one path starts double-creating events and the other does not).
-   *
-   * THE MODAL IS THE AUTHOR OF THE EVENTS IT COLLECTED, so it takes its own pen off the table
-   * before the mint (ledger `2026-09-06-event-mint-dedupe`, CLAUDE.md Locked Decision 30 (b)).
-   * `storage.createTrip` awaits the server-side pen drain, and the rows on screen were SEEDED from
-   * that same pen — so without this, every ticked event is created twice in one click: once by the
-   * drain, once by `commitPlan`.
-   *
-   * The modal wins the authorship because it holds what the drain can only guess at: the occasion
-   * resolved on screen (the drain creates NOTHING when a stored slug does not resolve — its rule 5),
-   * and an untick the pen still remembers. The pen keeps its whole job for every other mint door
-   * and for a pen this modal never comes back for.
-   *
-   * AWAITED, and its answer is deliberately NOT branched on: a release the server did not confirm
-   * leaves `commitPlan`'s idempotency filter to do exactly what it is there for.
-   */
-  const mintThisPlan = async (finishBranch?: PlanningBranch): Promise<{ ok: true; tripId: string } | { ok: false; message?: string }> => {
-    if (!mintPlan) return { ok: false };
-    await releasePendingEventsPen();
-    // E1 — the door the traveler came through, as the DOOR named it (a door outside the closed
-    // list names nothing and nothing is sent, §13), and where the occasion answer came from.
-    // Event-only: the server builds the funnel row from it and stores it nowhere else (§19).
-    const entry: TripMintEntry = {};
-    if (isPlanDoor(source?.door)) entry.door = source.door;
-    if (openedAtOccasionStep.current !== null) {
-      entry.occasionSource = deriveOccasionSource({
-        openedAtOccasionStep: openedAtOccasionStep.current,
-        occasionChosen: !!selectedOccasion,
-      });
-    }
-    // Which way to build the traveler chose at the finish (ledger `2026-09-29-expert-door`) — a
-    // separate fact from the door; Save sends none.
-    const finishValue = finishBranch ? finishForBranch(finishBranch) : null;
-    if (finishValue) entry.finish = finishValue;
-    return mintPlan({
-      destination: destination.trim(),
-      startDate,
-      endDate: shape === "day" ? startDate : endDate,
-      title: title.trim() || undefined,
-      ...(Object.keys(entry).length > 0 ? { entry } : {}),
-    });
-  };
-
-  /**
-   * "Save" — commit and close, without choosing a way to build. Every door keeps this.
-   *
-   * On a plan that does not exist yet it now CREATES it (ledger `2026-09-24-rc1-finish-mints`,
-   * audit RC-1): Save used to write only the pen and close, so a traveler who pressed it had
-   * nothing on My Plans and no word saying so. `saveMintsPlan` decides — a bound plan, a guest and
-   * an incomplete answer all keep the old context-only Save. A refused mint stays open and says why
-   * rather than closing as if it had worked.
-   */
-  /**
-   * RC-6: does this Save/finish need the traveler's answer first? Only for a signed-in member whose
-   * pen holds a plan and who named a DIFFERENT city (`boundPlanCityChanged`). A guest holds no plan
-   * id to protect, and a suggested home city is not yet an answer (§13).
+   * RC-6: does this Save need the traveler's answer first? Only when the plan's city is being
+   * changed (`boundPlanCityChanged`). The edit window never starts a plan (E2 ruling 1), so the one
+   * answer is "change this plan's city"; a NEW plan in another city is started from PlanEntry.
    */
   const needsCityChoice = () =>
-    !source?.newPlan &&
     !!user &&
     boundPlanCityChanged({
       boundTripId: getTripContext().tripId,
@@ -1391,28 +1184,19 @@ export function PlanModal({
       destination: destinationSuggested ? "" : destination,
     });
 
-  /**
-   * RC-6: carry out the traveler's answer. "change" renames the selected plan's city through the
-   * rails that own it (`changeBoundPlanCity`) and keeps the plan; "new" creates a plan in the new
-   * city through the ONE mint step. Either failure is shown and the modal stays open.
-   */
-  const resolveCityChoice = async (
-    answer: "change" | "new",
-  ): Promise<{ ok: true; bound?: string; keep?: string } | { ok: false; message?: string }> => {
+  /** RC-6: "change this plan's city" renames it through the rails that own it and keeps the plan. */
+  const resolveCityChoice = async (): Promise<{ ok: true; keep?: string } | { ok: false; message?: string }> => {
     const selected = getTripContext().tripId;
-    if (answer === "change" && selected) {
-      const changed = await changeBoundPlanCity(selected, destination);
-      if (!changed.ok) {
-        return { ok: false, message: changed.message || "We couldn't change this plan's city. Nothing was changed." };
-      }
-      return { ok: true, keep: selected };
+    if (!selected) return { ok: true };
+    const changed = await changeBoundPlanCity(selected, destination);
+    if (!changed.ok) {
+      return { ok: false, message: changed.message || "We couldn't change this plan's city. Nothing was changed." };
     }
-    const outcome = await mintThisPlan();
-    if (!outcome.ok) return { ok: false, message: outcome.message };
-    return { ok: true, bound: outcome.tripId };
+    return { ok: true, keep: selected };
   };
 
-  const save = async (answer?: "change" | "new") => {
+  /** "Save" — commit the edits to the bound plan and close. The edit window creates nothing. */
+  const save = async (answer?: "change") => {
     if (saving) return;
     setSaveError(null);
     if (pendingGemRetry) {
@@ -1426,36 +1210,16 @@ export function PlanModal({
     setCityChoice(null);
     setSaving(true);
     try {
+      let keep: string | undefined;
       if (answer) {
-        const resolved = await resolveCityChoice(answer);
+        const resolved = await resolveCityChoice();
         if (!resolved.ok) {
           if (resolved.message) setSaveError(resolved.message);
           return;
         }
-        await commitPlan(resolved.bound, resolved.keep);
-        onOpenChange(false);
-        return;
+        keep = resolved.keep;
       }
-      let bound: string | undefined;
-      if (
-        saveMintsPlan({
-          boundTripId: source?.newPlan ? undefined : getTripContext().tripId || source?.tripId,
-          signedIn: !!user,
-          // §13 — A SUGGESTION IS NOT AN ANSWER: the home-city default is not yet the traveler's
-          // destination (see `commitPlan`), so it can never be the city a plan is minted in.
-          destination: destinationSuggested ? "" : destination,
-          startDate,
-          endDate: shape === "day" ? startDate : endDate,
-        })
-      ) {
-        const outcome = await mintThisPlan();
-        if (!outcome.ok) {
-          if (outcome.message) setSaveError(outcome.message);
-          return;
-        }
-        bound = outcome.tripId;
-      }
-      await commitPlan(bound);
+      await commitPlan(undefined, keep);
       onOpenChange(false);
     } finally {
       setSaving(false);
@@ -1463,188 +1227,14 @@ export function PlanModal({
   };
 
   /**
-   * THE FINISH. Commit first, then run the branch — so whichever surface the traveler lands on is
-   * reading the plan they just described, not the one they had before they opened the modal.
-   *
-   * WHICH BRANCHES NEED A PLAN ROW IS NOT DECIDED HERE. It is `BRANCHES_THAT_MINT`, stated once
-   * beside `PlanningBranch` (§18 rule 1) — "Build it myself", since Locked Decision 42 D5
-   * "Get a local expert", and since ledger `2026-09-24-rc1-finish-mints` "Plan with AI" (which now
-   * drafts INTO the plan it minted). A `branch === "…"` test written here is how one branch starts minting
-   * and another quietly stops. Either way it mints through the opener's one mint door
-   * (`mintTripSlip`), never a body built here.
-   */
-  const finish = async (branch: PlanningBranch, answer?: "change" | "new") => {
-    if (saving) return;
-    setFinishError(null);
-    if (pendingGemRetry) {
-      setFinishError("Retry adding the gem to your created plan before continuing.");
-      return;
-    }
-    // Only a branch that can create a plan is asked: `occasion` never mints (RC-1), so "start a new
-    // plan" is not an answer it can act on and its finish stays exactly as it was.
-    if (!answer && BRANCHES_THAT_MINT.includes(branch) && needsCityChoice()) {
-      setCityChoice({ action: "finish", branch });
-      return;
-    }
-    setCityChoice(null);
-    setSaving(true);
-    try {
-      if (answer) {
-        const resolved = await resolveCityChoice(answer);
-        if (!resolved.ok) {
-          if (resolved.message) setFinishError(resolved.message);
-          return;
-        }
-        const tripId = await commitPlan(resolved.bound, resolved.keep);
-        onFinish?.(branch, committedPlan(tripId));
-        return;
-      }
-      let bound: string | undefined;
-      /**
-       * D5's §13 half. `mintPlan` opens the sign-in modal for a guest and takes the screen, so a
-       * branch whose destination is PUBLIC must not call it just to be refused — that would gate a
-       * browse the traveler could always reach. `myself` is required (its route is protected) and
-       * is attempted for everyone, guest included, because being gated there IS its behaviour.
-       */
-      // Step 8b-2 (D3): a guest's answers are handed over BEFORE the gate takes the screen, so sign-in
-      // does not lose them. `myself` gates here (the mint); `ai` gates at the AI form's sign-in.
-      if (!user && (branch === "myself" || branch === "ai")) onGuestGate?.(branch, currentAnswers());
-      const mintRequired =
-        BRANCHES_THAT_REQUIRE_THE_MINT.includes(branch) || !!source?.pendingItem;
-      const shouldMint =
-        BRANCHES_THAT_MINT.includes(branch) &&
-        (source?.newPlan || !getTripContext().tripId) &&
-        // A door that NAMES a plan (`source.tripId` — the trip-details re-plan door) is never
-        // minted a second one; before `ai` joined the set this could only bite `myself`/`local`,
-        // which no such door opens (ledger `2026-09-24-rc1-finish-mints`).
-        !source?.tripId &&
-        !!mintPlan &&
-        (mintRequired || !!user);
-      if (shouldMint) {
-        const outcome = await mintThisPlan(branch);
-        if (!outcome.ok) {
-          // A refusal with no message means the opener already took the screen (sign-in).
-          if (outcome.message) setFinishError(outcome.message);
-          // Only a branch that CANNOT run without the row stops here. `local` falls through and
-          // reaches its public browse with no `tripId` — the pre-D5 behaviour, which D5's own §13
-          // clause preserves for exactly this case.
-          if (mintRequired) return;
-        } else {
-          bound = outcome.tripId;
-        }
-      }
-      const tripId = await commitPlan(bound);
-      onFinish?.(branch, committedPlan(tripId));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /**
-   * "CLEAR PLAN" — the plan goes away everywhere it is held (post-publish QA check 4).
-   *
-   * THE DEFECT THIS CLOSES: this was `clearTripContext(); onOpenChange(false);`, and BOTH halves
-   * were short. `clearTripContext` emptied one sessionStorage key while the server row, an armed
-   * debounced push, an in-flight hydrate and the per-slug `searchSettings_<slug>` mirrors all
-   * still held the plan and put it back (that module now closes all four). And this component
-   * kept its OWN copy: `PlanModal` is mounted permanently by `PlanningProvider` (it is the `open`
-   * prop that toggles), so every field the traveler had filled survived the close and was still
-   * on screen at the next open — which is how a cleared Kyoto plan came back with its dates and
-   * its title intact.
-   *
-   * So the form is re-seeded from an EMPTY context through the same `seedFormFrom` the open
-   * effect uses (§18 rule 1 — one description of what an empty plan looks like), and the occasion
-   * is reset with it: `seedFormFrom` does not own `occasionSlug` (the door table sets it, once
-   * per open), and leaving it would put a cleared plan back under its old occasion's pill.
-   *
-   * The two cached READS this modal makes are dropped as well — the bound trip's own row, which
-   * the stop seeding reads, and the context endpoint, which nothing caches today but which a
-   * later reader would inherit stale. The TRIP ITSELF is not deleted: clearing the planning
-   * context is not destroying the traveler's trip (§13 — they are different acts).
-   */
-  const resetPlan = () => {
-    const clearedTripId = contextTripId;
-    clearTripContext();
-    queryClient.removeQueries({ queryKey: ["/api/trip-context"] });
-    if (clearedTripId) queryClient.removeQueries({ queryKey: ["/api/trips", clearedTripId] });
-    seedFormFrom({}, "");
-    setOccasionSlug("");
-    setResumeOffer(null);
-  };
-  const clearAll = () => {
-    resetPlan();
-    onOpenChange(false);
-  };
-
-  /**
-   * DISMISS (✕ / Escape / backdrop) — audit R-3. It still CREATES NOTHING (RC-1): no plan row and
-   * no plan request. For a plan that does not exist yet it keeps the traveler's CHANGED answers in
-   * the pen, through the same `commitPlan` "Save" uses on an unminted plan — which, with no trip
-   * id, writes the pen and nothing else — so the next open can offer them back. A bound plan is
-   * never written by a dismiss; its edits are Save's to make (RC-6). The rule is
-   * `holdsDraftOnDismiss`; this is its one caller.
-   *
-   * Only the Dialog's own close reaches here. The finish, Save and Clear plan close through
-   * `onOpenChange` directly, having already written what they write.
+   * DISMISS (✕ / Escape / backdrop). The edit window writes nothing on a dismiss — a bound plan's
+   * edits are Save's to make (RC-6). Every close goes through this ONE handler.
    */
   const handleDialogOpenChange = (next: boolean) => {
-    if (!next) {
-      const seeded = seededAnswers.current;
-      const changed =
-        seeded !== null &&
-        draftSignature(currentAnswers()) !==
-          draftSignature({ ...seeded, occasionSlug: seededOccasionSlug.current });
-      if (
-        !source?.newPlan &&
-        holdsDraftOnDismiss({
-          boundTripId: getTripContext().tripId || source?.tripId,
-          saving,
-          changed,
-        })
-      ) {
-        void commitPlan().catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn("[plan-modal] draft not kept on dismiss:", err?.message);
-        });
-      }
-    }
     onOpenChange(next);
   };
 
-  /** The form's answers, read from state in the shape `seededAnswers` records. */
-  const currentAnswers = (): DraftAnswers => ({
-    title,
-    // §13 — a suggested home city is not an answer (see `commitPlan`), so row 1 reads empty.
-    stops: stops.map((s, i) => (i === 0 && destinationSuggested ? "" : s.name)),
-    startDate,
-    endDate,
-    adults,
-    kids,
-    budgetApproverName,
-    budgetApproverEmail,
-    accessibilityNote,
-    mainMomentTime,
-    mainMomentDate,
-    events: pickedEvents,
-    occasionSlug,
-  });
-
   // ── Presentation ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Step 8b-2 (D3): the record was taken (and so cleared) BEFORE this modal opened; finishing here runs
-   * the ONE mint exactly as the traveler's own press would. A failure leaves the answers on screen, in
-   * this modal, to retry with the same finish button.
-   */
-  useEffect(() => {
-    if (!open || !replayArmed || autoFinished.current || !occasions || !startResolved.current) return;
-    const branch = source?.autoFinish;
-    if (branch !== "myself" && branch !== "ai") return;
-    autoFinished.current = true;
-    setReplayArmed(false);
-    void finish(branch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, replayArmed, occasions, step]);
 
   const isLastStep = nextPlanStep(visibleSteps, step) === null;
   const back = previousPlanStep(visibleSteps, step);
@@ -1686,7 +1276,6 @@ export function PlanModal({
   }, [destination, selectedOccasion, startDate, endDate, stopsMany, stops]);
 
   const stepTitle: Record<PlanStepId, string> = {
-    occasion: "What are you planning?",
     // STEP 2's TITLE VARIES BY STOPS SHAPE AND BY NOTHING ELSE (re-audit A13). Under `many` the
     // question really is a different one — an ORDER is being asked for, not a place — and that is
     // a fact the occasion's own `default_stops` column already states. The travel artboards' "Where
@@ -1709,7 +1298,6 @@ export function PlanModal({
   };
 
   const stepNote: Record<PlanStepId, string> = {
-    occasion: "Pick one to continue.",
     // The mismatch confirm compares a listing against EVERY city the plan names (ledger
     // `2026-09-04-plan-stops-ui`), so the note says "these cities" exactly when the plan can have
     // several — it never promises a check narrower or wider than the one that actually runs.
@@ -1748,21 +1336,6 @@ export function PlanModal({
   const stepperButton =
     "flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--earn-border)] text-[color:var(--earn-muted)] transition-colors hover:bg-[color:var(--earn-chip)] disabled:opacity-40";
 
-  const finishRow =
-    "flex w-full items-start gap-3 rounded-lg border border-[color:var(--earn-border)] bg-[color:var(--earn-card)] px-4 py-3 text-left transition-colors hover:bg-[color:var(--earn-teal-wash)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary";
-  const finishMeta = { fontFamily: MONO, color: "var(--earn-muted)" } as const;
-
-  // The four finishes' copy lives in `nav.json` (en + ja), `planFinish.*`. The local card says what
-  // the finish now does — mint the plan, then choose how much help and pick an expert on the slip
-  // (ledger `2026-09-29-expert-door`); "experts who live there build it with you" promised a build
-  // the finish never started.
-  const branchCopy: Record<PlanningBranch, { label: string; meta: string }> = {
-    myself: { label: tNav("planFinish.myself.label"), meta: tNav("planFinish.myself.meta") },
-    ai: { label: tNav("planFinish.ai.label"), meta: tNav("planFinish.ai.meta") },
-    local: { label: tNav("planFinish.local.label"), meta: tNav("planFinish.local.meta") },
-    occasion: { label: tNav("planFinish.occasion.label"), meta: tNav("planFinish.occasion.meta") },
-  };
-
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
@@ -1785,89 +1358,12 @@ export function PlanModal({
             >
               {stepTitle[step]}
             </DialogTitle>
-            {/* The occasion pill. Shown once an occasion is chosen and step 1 is behind us —
-                "change" is the way back to it, which is what makes skipping step 1 reversible. */}
-            {selectedOccasion && step !== "occasion" && (
-              <button
-                type="button"
-                onClick={() => goToStep("occasion")}
-                className="inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-semibold"
-                style={{
-                  background: "var(--earn-teal-wash)",
-                  borderColor: "var(--earn-teal-ink)",
-                  color: "var(--earn-teal-ink)",
-                }}
-                data-testid="plan-modal-occasion-pill"
-              >
-                {selectedOccasion.name}
-                <span className="text-[10px] font-normal" style={{ fontFamily: MONO, color: "var(--earn-muted)" }}>
-                  change
-                </span>
-              </button>
-            )}
           </div>
           <DialogDescription className="sr-only">
-            Set your plan once — the whole site uses these details while you plan.
+            Edit this plan's basics: where, when, who and what's happening.
           </DialogDescription>
         </DialogHeader>
 
-        {/* RESUME YOUR PLAN (audit R-3). Shown when the modal reopens on a plan the traveler began and
-            closed before it existed. It names ONLY the pen's own destination and dates — never a
-            party size or a guessed occasion (§13, RC-12) — and the form below is already holding
-            those answers; Continue moves to the first one still missing, Start over clears them. */}
-        {resumeOffer && (
-          <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2"
-            style={{ borderColor: "var(--earn-border)", background: "var(--earn-teal-wash)" }}
-            data-testid="plan-modal-resume"
-          >
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy)" }}>
-                Resume your plan
-              </p>
-              <p className="text-[12px]" style={{ color: "var(--earn-muted)" }} data-testid="text-plan-resume-detail">
-                {[
-                  resumeOffer.destination,
-                  resumeOffer.startDate ? formatPlanRange(resumeOffer.startDate, resumeOffer.endDate) : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-                {" — not created yet. Your answers are kept until you finish or start over."}
-              </p>
-            </div>
-            <span className="flex shrink-0 items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={resetPlan}
-                data-testid="button-plan-resume-clear"
-              >
-                Start over
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                // The start step waits on the occasion vocabulary; moving before it lands would
-                // leave the door's occasion unset.
-                disabled={!occasions}
-                onClick={() => {
-                  setResumeOffer(null);
-                  goToStep(
-                    resumeStep(visibleSteps, {
-                      occasion: !!selectedOccasion,
-                      where: !destinationSuggested && destination.trim() !== "",
-                      when: startDate !== "",
-                    }),
-                  );
-                }}
-                data-testid="button-plan-resume-continue"
-              >
-                Continue
-              </Button>
-            </span>
-          </div>
-        )}
 
         {pendingGemRetry && (
           <div
@@ -1894,8 +1390,8 @@ export function PlanModal({
           </div>
         )}
 
-        {/* The rail. Every VISIBLE step is reachable from it — that is what makes this the same
-            modal for a brand-new plan and for an edit of one that already exists. */}
+        {/* The rail. Every VISIBLE step is reachable from it. The Occasion step is not here: a new
+            plan's occasion is answered in PlanEntry, and the edit window does not re-ask it (E2). */}
         <div className="flex flex-wrap gap-4" data-testid="plan-step-rail">
           {visibleSteps.map((s, i) => {
             const activeIndex = visibleSteps.indexOf(step);
@@ -1927,28 +1423,6 @@ export function PlanModal({
         </div>
 
         <div className="space-y-4">
-          {/* ── STEP 1 · Occasion ─────────────────────────────────────────────────────────────
-              The REAL catalog, from the one runtime vocabulary. Nothing is preselected and
-              nothing is hardcoded: if the fetch yields no rows the step says so rather than
-              falling back to an invented list (§13). Hidden occasions are NOT filtered out —
-              the select this replaced never filtered them either, and `default_visibility`
-              governs Share/guests on the plan, not whether the occasion can be chosen. */}
-          {step === "occasion" && (
-            <div className="space-y-3" data-testid="plan-step-occasion-body">
-              {/* Step 8a: the ONE occasion picker, shared with the /experiences start page — groups, then
-                  the occasions in the chosen group, then See all and search. */}
-              <OccasionPicker
-                occasions={occasions}
-                loading={occasionsLoading}
-                value={occasionSlug}
-                onPick={setOccasionSlug}
-              />
-              <p className="text-[11px]" style={{ fontFamily: MONO, color: "var(--earn-faint)" }}>
-                Or start from a Moment on the home page — the occasion arrives already set.
-              </p>
-            </div>
-          )}
-
           {/* ── STEP 2 · Where — one destination, or an ordered list. See the header note. ─── */}
           {step === "where" && (
             <div className="space-y-1.5" data-testid="plan-step-where-body">
@@ -2597,96 +2071,6 @@ export function PlanModal({
           )}
         </div>
 
-        {/* ── THE FINISH — the three ways to build, on the last visible step. ─────────────────
-            Not a sixth step and not a first one: you say what you are planning before you say
-            who should build it. A `source.branch` deep-open means the "how" is already decided,
-            so `branches` arrives narrowed to that one. */}
-        {isLastStep && (
-          <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--earn-border)" }}>
-            {/* THE PLAN'S NAME IS OPTIONAL AND LAST (re-audit A2). It sat on step 2, carried over
-                from the edit panel this modal was renamed from, where a second field under
-                "Where is it happening?" answered a different question from the one the step asks —
-                and the ratified Step2Where artboard draws one field, not two. A name is the one
-                thing a plan can be finished without: `trips.title` is derived from the destination
-                when it is blank, so asking for it beside the CTA is asking at the only moment it
-                costs nothing. The field, its id, its state and its testid are unchanged — it MOVED,
-                it was not rebuilt. */}
-            <div className="space-y-1.5 pb-1">
-              <Label htmlFor="etp-title">Plan name (optional)</Label>
-              <Input
-                id="etp-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={destination ? `Your ${destination.split(",")[0]} plan` : "My plan"}
-                data-testid="input-etp-title"
-              />
-            </div>
-            {continueHref && !source?.branch && (
-              <button
-                type="button"
-                className={finishRow}
-                onClick={() => {
-                  onOpenChange(false);
-                  onContinue?.(continueHref);
-                }}
-                data-testid="planning-option-continue"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold" style={{ color: "var(--earn-ink)" }}>
-                    {continueLabel}
-                  </span>
-                  <span className="block text-[11px]" style={finishMeta}>
-                    pick up where you left off
-                  </span>
-                </span>
-              </button>
-            )}
-            {branches.map((b) =>
-              b === "ai" ? (
-                /* The one coral primary of the finish (earn grammar). */
-                <button
-                  key={b}
-                  type="button"
-                  disabled={saving}
-                  className="flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left text-white transition-colors bg-[color:var(--earn-coral-ink)] border-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
-                  onClick={() => void finish(b)}
-                  data-testid="planning-option-ai"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold">{branchCopy.ai.label}</span>
-                    <span className="block text-[11px] text-white/80" style={{ fontFamily: MONO }}>
-                      {branchCopy.ai.meta}
-                    </span>
-                  </span>
-                </button>
-              ) : (
-                <button
-                  key={b}
-                  type="button"
-                  disabled={saving}
-                  className={`${finishRow} disabled:opacity-60`}
-                  onClick={() => void finish(b)}
-                  data-testid={`planning-option-${b}`}
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold" style={{ color: "var(--earn-ink)" }}>
-                      {branchCopy[b].label}
-                    </span>
-                    <span className="block text-[11px]" style={finishMeta}>
-                      {branchCopy[b].meta}
-                    </span>
-                  </span>
-                </button>
-              ),
-            )}
-            {finishError && (
-              <p className="text-xs text-destructive" data-testid="text-planning-create-error">
-                {finishError}
-              </p>
-            )}
-          </div>
-        )}
-
         </div>
 
         {cityChoice && (
@@ -2694,36 +2078,22 @@ export function PlanModal({
             className="rounded-md border p-3 space-y-2"
             style={{ borderColor: "var(--earn-border)" }}
             role="group"
-            aria-label="This plan or a new one?"
+            aria-label="Change this plan's city?"
             data-testid="plan-city-choice"
           >
             <p className="text-sm" style={{ color: "var(--earn-ink)" }}>
-              Your selected plan is for {getTripContext().destination || "another city"}. What should happen with{" "}
-              {destination.trim()}?
+              This plan is for {getTripContext().destination || "another city"}. Change it to {destination.trim()}? To
+              plan {destination.trim()} as well, start a new plan instead.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
                 disabled={saving}
-                onClick={() =>
-                  void (cityChoice.action === "save" ? save("change") : finish(cityChoice.branch, "change"))
-                }
+                onClick={() => void save("change")}
                 data-testid="button-plan-city-change"
               >
                 Change this plan's city
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={saving}
-                onClick={() =>
-                  void (cityChoice.action === "save" ? save("new") : finish(cityChoice.branch, "new"))
-                }
-                data-testid="button-plan-city-new"
-              >
-                Start a new plan
               </Button>
               <Button
                 type="button"
@@ -2756,16 +2126,6 @@ export function PlanModal({
               : stepNote[step]}
           </span>
           <span className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground"
-              onClick={clearAll}
-              data-testid="button-etp-clear"
-            >
-              Clear plan
-            </Button>
             {back && (
               <Button
                 type="button"
@@ -2795,7 +2155,6 @@ export function PlanModal({
                 type="button"
                 size="sm"
                 onClick={() => goToStep(next)}
-                disabled={step === "occasion" && !occasionSlug}
                 data-testid="button-planning-next"
               >
                 Next: {PLAN_STEP_LABELS[next]}
@@ -2806,25 +2165,4 @@ export function PlanModal({
       </DialogContent>
     </Dialog>
   );
-}
-
-/** Step 8b-2 (D3): a replayed record's answers, in the pen shape the ONE seeder reads. */
-function answersToContext(a: DraftAnswers): TripContext {
-  const stops = a.stops.map((name) => name.trim()).filter((name) => name.length > 0);
-  const adults = Number(a.adults);
-  const kids = Number(a.kids);
-  return {
-    ...(a.title ? { title: a.title } : {}),
-    ...(stops.length ? { destination: stops[0], stops: stops.map((name) => ({ name })) } : {}),
-    ...(a.startDate ? { startDate: a.startDate } : {}),
-    ...(a.endDate ? { endDate: a.endDate } : {}),
-    ...(Number.isFinite(adults) && adults > 0 ? { adults } : {}),
-    ...(Number.isFinite(kids) && kids > 0 ? { kids } : {}),
-    ...(a.budgetApproverName ? { budgetApproverName: a.budgetApproverName } : {}),
-    ...(a.budgetApproverEmail ? { budgetApproverEmail: a.budgetApproverEmail } : {}),
-    ...(a.accessibilityNote ? { accessibilityNote: a.accessibilityNote } : {}),
-    ...(a.mainMomentTime ? { mainMomentTime: a.mainMomentTime } : {}),
-    ...(a.mainMomentDate ? { mainMomentDate: a.mainMomentDate } : {}),
-    ...(a.events.length ? { pendingEvents: a.events.map((e) => ({ ...e })) } : {}),
-  } as TripContext;
 }

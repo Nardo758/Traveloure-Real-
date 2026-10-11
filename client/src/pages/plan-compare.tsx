@@ -14,9 +14,16 @@
  * Controls mirror the rails and never widen them: Choose / Compare again for the owner or delegate
  * (R129), from the server's own `viewer` answer. A render rule grants nothing.
  *
- * Phone first: one card per place, stacked, no horizontal scroll at 375 px; three columns from `sm`.
- * A place's whole name wraps — never truncated (the A4 list's 390 px item).
+ * Phone first: one card per place, stacked, no horizontal scroll at 375 px. A place's whole name
+ * wraps — never truncated (the A4 list's 390 px item).
+ *
+ * THE COMPARE BOARD (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`): the
+ * slip's tokens and ONE centered column at every width (ruling 7, as on the slip); the easiest place
+ * leads its card with the teal "Easiest days" band and its area; each card states the server's
+ * minutes per day as a strip; "Stay here" is the coral primary (ruling 2). Every pinned sentence and
+ * figure is unchanged.
  */
+import "@/styles/slip-tokens.css";
 import { useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useMutation } from "@tanstack/react-query";
@@ -37,7 +44,9 @@ import {
 import {
   areasCell,
   compareFootLine,
+  compareEyebrow,
   compareTitle,
+  dayStripCells,
   easierLine,
   optionLetter,
   priceCell,
@@ -49,11 +58,11 @@ import {
 function Metric({ label, cell, testId }: { label: string; cell: Cell; testId: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5" data-testid={testId}>
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="text-[17px] font-semibold text-foreground" data-testid={`${testId}-value`}>
+      <span className="text-[11px] font-semibold text-[color:var(--slip-muted)]">{label}</span>
+      <span className="text-[17px] font-semibold text-[color:var(--slip-ink)]" data-testid={`${testId}-value`}>
         {cell.value}
       </span>
-      <span className="text-[11px] text-muted-foreground break-words" data-testid={`${testId}-note`}>
+      <span className="text-[11px] text-[color:var(--slip-muted)] break-words" data-testid={`${testId}-note`}>
         {cell.note}
       </span>
     </div>
@@ -87,67 +96,89 @@ function CompareCard({
   // drawing "Chosen" there would contradict the foot line ("Not chosen yet").
   const chosen = set.status === "chosen" && set.chosenOptionId === option.id;
   const area = option.neighborhood ?? option.locationName;
+  const strip = dayStripCells(option.fit);
+  const primaryBtn =
+    "inline-flex min-h-[48px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] bg-[color:var(--slip-primary)] px-4 text-[15px] font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60";
+  const quietBtn =
+    "inline-flex min-h-[48px] flex-shrink-0 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-4 text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]";
   return (
     <li
-      className={`flex min-w-0 flex-col gap-3 rounded-2xl bg-card p-3.5 ${option.easiest ? "border-2 border-foreground" : "border border-border"}`}
+      className={`flex min-w-0 flex-col overflow-hidden rounded-[var(--slip-radius-card)] bg-[color:var(--slip-card)] ${option.easiest ? "border-2 border-[color:var(--slip-teal)]" : "border border-[color:var(--slip-line)]"}`}
       data-testid={`compare-option-${option.id}`}
       data-fit-rank={option.fitRank ?? ""}
     >
-      <div className="flex items-start gap-3">
-        <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-foreground text-[13px] font-semibold text-background"
-          aria-hidden="true"
-        >
-          {optionLetter(option.position)}
-        </span>
-        <div className="flex min-w-0 flex-grow flex-col gap-0.5">
-          <span className="text-base font-semibold text-foreground break-words" data-testid={`compare-name-${option.id}`}>
-            {option.title}
-          </span>
-          {area ? <span className="text-[13px] text-muted-foreground break-words">{area}</span> : null}
-        </div>
-        {option.easiest ? (
+      {option.easiest ? (
+        <div className="flex items-center justify-between gap-3 bg-[color:var(--slip-teal-wash)] px-4 py-2">
           <span
-            className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.06em] text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100"
+            className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink)]"
             data-testid={`compare-easiest-${option.id}`}
           >
             Easiest days
           </span>
-        ) : null}
-      </div>
-      <div ref={fitRef} className="grid grid-cols-3 gap-2" data-testid={`compare-metrics-${option.id}`}>
-        <Metric label="Travel / day" cell={travelCell(option.fit)} testId={`compare-travel-${option.id}`} />
-        <Metric label="Walkable" cell={areasCell(option.fit)} testId={`compare-areas-${option.id}`} />
-        <Metric label="Price" cell={priceCell(option)} testId={`compare-price-${option.id}`} />
-      </div>
-      <p className="text-xs text-muted-foreground" data-testid={`compare-fit-${option.id}`}>
-        {planFitLine(option.fit)}
-      </p>
-      {reveal && option.easierByMinutes != null ? (
-        <p className="text-[13px] text-emerald-800 dark:text-emerald-300" data-testid={`compare-saves-${option.id}`}>
-          {savesLine(option.easierByMinutes, option.fit)}
-        </p>
+          {area ? <span className="min-w-0 truncate text-xs text-[color:var(--slip-teal-ink)]">{area}</span> : null}
+        </div>
       ) : null}
-      <div className="flex gap-2">
-        <Button asChild variant="outline" className="min-h-[44px] flex-1">
-          <Link href={`/plans/${tripId}`}>See my days</Link>
-        </Button>
-        {chosen ? (
-          <Button className="min-h-[44px] flex-1" aria-pressed="true" disabled data-testid={`compare-chosen-${option.id}`}>
-            Chosen
-          </Button>
-        ) : set.status === "open" && canChoose ? (
-          <Button
-            variant="outline"
-            className="min-h-[44px] flex-1"
-            aria-pressed="false"
-            onClick={() => choose.mutate()}
-            disabled={choose.isPending}
-            data-testid={`compare-choose-${option.id}`}
-          >
-            Choose this place
-          </Button>
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="slip-display text-xl font-semibold leading-tight text-[color:var(--slip-ink)] break-words" data-testid={`compare-name-${option.id}`}>
+            {option.title}
+          </span>
+          {area && !option.easiest ? <span className="text-[13px] text-[color:var(--slip-muted)] break-words">{area}</span> : null}
+        </div>
+        <div ref={fitRef} className="grid grid-cols-3 gap-2" data-testid={`compare-metrics-${option.id}`}>
+          <Metric label="Travel / day" cell={travelCell(option.fit)} testId={`compare-travel-${option.id}`} />
+          <Metric label="Walkable" cell={areasCell(option.fit)} testId={`compare-areas-${option.id}`} />
+          <Metric label="Price" cell={priceCell(option)} testId={`compare-price-${option.id}`} />
+        </div>
+        {strip.length ? (
+          <div className="flex flex-col gap-1.5" data-testid={`compare-days-${option.id}`}>
+            <span className="text-[13px] font-semibold text-[color:var(--slip-navy)]">Plan-fit by day</span>
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(strip.length, 7)}, minmax(0, 1fr))` }}>
+              {strip.map((c) => (
+                <div key={c.day} className="flex min-w-0 flex-col items-center gap-0.5 rounded-lg bg-[color:var(--slip-wash)] px-1 py-1.5" data-testid={`compare-day-${option.id}-${c.day}`}>
+                  <span className="text-[11px] text-[color:var(--slip-muted)]">{c.label}</span>
+                  <span className="text-[11px] font-semibold tabular-nums text-[color:var(--slip-navy)]">{c.minutes}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : null}
+        <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`compare-fit-${option.id}`}>
+          {planFitLine(option.fit)}
+        </p>
+        {reveal && option.easierByMinutes != null ? (
+          <p className="text-[13px] text-[color:var(--slip-teal-ink)]" data-testid={`compare-saves-${option.id}`}>
+            {savesLine(option.easierByMinutes, option.fit)}
+          </p>
+        ) : null}
+        <div className="flex gap-2">
+          {chosen ? (
+            <button
+              type="button"
+              className="inline-flex min-h-[48px] flex-1 items-center justify-center rounded-[var(--slip-radius-button)] bg-[color:var(--slip-teal-wash)] px-4 text-[15px] font-semibold text-[color:var(--slip-teal-ink)]"
+              aria-pressed="true"
+              disabled
+              data-testid={`compare-chosen-${option.id}`}
+            >
+              Chosen
+            </button>
+          ) : set.status === "open" && canChoose ? (
+            <button
+              type="button"
+              // The board's one primary is the best fit's; the other places offer the same choice quietly.
+              className={option.easiest ? primaryBtn : `${quietBtn} flex-1`}
+              aria-pressed="false"
+              onClick={() => choose.mutate()}
+              disabled={choose.isPending}
+              data-testid={`compare-choose-${option.id}`}
+            >
+              Stay here
+            </button>
+          ) : null}
+          <Link href={`/plans/${tripId}`} className={quietBtn}>
+            See my days
+          </Link>
+        </div>
       </div>
     </li>
   );
@@ -171,7 +202,7 @@ export default function PlanComparePage() {
     <Link
       href={`/plans/${tripId}`}
       aria-label="Back to your plan"
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
       data-testid="compare-back"
     >
       <ArrowLeft className="h-[18px] w-[18px]" />
@@ -200,35 +231,38 @@ export default function PlanComparePage() {
   const chosen = set.status === "chosen" ? set.options.find((o) => o.id === set.chosenOptionId) ?? null : null;
   const stops = set.stops ?? { located: 0, total: 0 };
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col" data-testid={`compare-view-${set.id}`} data-set-status={set.status}>
-      <div className="flex items-center gap-2 border-b border-border px-4 pb-3 pt-4 sm:px-5">
+    <main
+      className="slip-surface mx-auto flex w-full max-w-[680px] flex-col bg-[color:var(--slip-ground)] font-[family-name:var(--slip-font-body)]"
+      data-testid={`compare-view-${set.id}`}
+      data-set-status={set.status}
+    >
+      <div className="flex items-center gap-2 px-4 pt-4">
         {back}
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-            {set.label ?? "Where you'll stay"}
-          </span>
-          <h1 className="m-0 font-serif text-[22px] font-semibold text-foreground" data-testid="compare-title">
-            {compareTitle(set.options.length)}
-          </h1>
-        </div>
+        <span className="flex-1 text-center text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="compare-eyebrow">
+          {compareEyebrow(set.label, set.options.length)}
+        </span>
+        <span className="h-11 w-11 shrink-0" aria-hidden="true" />
       </div>
-      <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
-        <p className="text-sm leading-snug text-muted-foreground" data-testid="compare-intro">
+      <div className="flex flex-col gap-3 px-4 pb-6 pt-2">
+        <h1 className="slip-display m-0 text-[28px] font-semibold leading-tight text-[color:var(--slip-ink)]" data-testid="compare-title">
+          {compareTitle(set.options.length)}
+        </h1>
+        <p className="text-[15px] leading-snug text-[color:var(--slip-muted)]" data-testid="compare-intro">
           {compareIntroLine(stops.located, stops.total)}
         </p>
         {set.options.length ? (
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="compare-list">
+          <ul className="grid grid-cols-1 gap-3" data-testid="compare-list">
             {set.options.map((o) => (
               <CompareCard key={o.id} tripId={tripId} set={set} option={o} canChoose={canChoose} reveal={reveal} viewId={viewId} />
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted-foreground">No places in this comparison yet — add them on your plan.</p>
+          <p className="text-sm text-[color:var(--slip-muted)]">No places in this comparison yet — add them on your plan.</p>
         )}
         {set.status === "chosen" && set.easierCount ? (
           <button
             type="button"
-            className="min-h-[44px] self-start text-left text-sm text-emerald-800 underline dark:text-emerald-300"
+            className="min-h-[44px] self-start text-left text-sm font-semibold text-[color:var(--slip-teal-ink)] underline"
             onClick={() => setReveal(true)}
             data-testid="compare-easier"
           >
@@ -238,7 +272,7 @@ export default function PlanComparePage() {
         {set.status === "chosen" && canChoose ? (
           <Button
             variant="outline"
-            className="min-h-[44px] self-start"
+            className="min-h-[44px] self-start rounded-[var(--slip-radius-button)] border-[color:var(--slip-line-strong)] text-[color:var(--slip-navy)]"
             onClick={() => reopen.mutate()}
             disabled={reopen.isPending}
             data-testid="compare-reopen"
@@ -246,7 +280,7 @@ export default function PlanComparePage() {
             Compare again
           </Button>
         ) : null}
-        <p className="text-xs leading-snug text-muted-foreground" data-testid="compare-foot">
+        <p className="text-xs leading-snug text-[color:var(--slip-muted)]" data-testid="compare-foot">
           {compareFootLine(set.status, chosen?.title ?? null, set.options.length)}
         </p>
       </div>

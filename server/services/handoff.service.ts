@@ -353,7 +353,7 @@ export async function matchHandoff(requestId: string): Promise<void> {
  * Name the expert the ask is waiting on. They get a READ-only (`pending`, §12) advisor row so they
  * can read the plan before answering — the ONE advisor-row author, never a write grant.
  */
-async function proposeTo(requestId: string, expertId: string): Promise<void> {
+async function proposeTo(requestId: string, expertId: string, routabilityOverride?: { adminId: string }): Promise<void> {
   const r = await db.execute(sql`
     UPDATE expert_requests SET assigned_expert_id = ${expertId}, assigned_at = NOW(), status = 'proposed'
     WHERE id = ${requestId} AND status IN ('proposed', 'unmatched') AND handoff_kind IS NOT NULL
@@ -362,24 +362,60 @@ async function proposeTo(requestId: string, expertId: string): Promise<void> {
   const tripId = (r.rows?.[0] as any)?.trip_id as string | undefined;
   if (!tripId) return;
   const { upsertTripAdvisorRow, getTripLabel } = await import("./booking-actions.service");
-  await upsertTripAdvisorRow({ tripId, localExpertId: expertId, status: "pending", message: null }).catch((err) =>
+  await upsertTripAdvisorRow({ tripId, localExpertId: expertId, status: "pending", message: null, ...(routabilityOverride ? { routabilityOverride } : {}) }).catch((err) =>
     console.error("[handoff] read grant failed (non-fatal):", err),
   );
   const label = await getTripLabel(tripId).catch(() => "a trip");
   await notify(expertId, tripId, "handoff_proposed", "A traveler wants your help", `${label} — accept or decline in your inbox.`, { requestId });
 }
 
-/** Admin override (R-n: "admin override only"). */
-export async function adminAssignHandoff(requestId: string, expertId: string): Promise<{ ok: true } | HandoffRefusal> {
+/**
+ * Admin override (R-n: "admin override only").
+ *
+ * B3 ruling 1 (ledger `2026-10-09-b3-expert-routability`): the admin may assign a NON-ROUTABLE
+ * expert only by saying so — `overrideRoutability: true` — and that override is recorded in the
+ * admin audit log with the admin's id. Without it, a non-routable expert is refused (409), the same
+ * answer every other advisor author gives. The pool account is never assignable (LD 51).
+ */
+export async function adminAssignHandoff(
+  requestId: string,
+  expertId: string,
+  opts: { overrideRoutability?: boolean; admin?: { id: string; role: string } } = {},
+): Promise<{ ok: true } | HandoffRefusal> {
   const row = await getHandoff(requestId);
   if (!row) return { ok: false, status: 404, code: "not_found", message: "Not found" };
   if (row.status !== "proposed" && row.status !== "unmatched") {
     return { ok: false, status: 409, code: "wrong_status", message: `This handoff is ${row.status}.` };
   }
+  const { isConciergePoolAccount, isExpertIdRoutable } = await import("./expert-routability");
+  if (await isConciergePoolAccount(expertId)) {
+    return { ok: false, status: 409, code: "expert_not_routable", message: "The concierge pool account is never assigned." };
+  }
+  const routable = await isExpertIdRoutable(expertId);
+  if (!routable && !(opts.overrideRoutability && opts.admin)) {
+    return {
+      ok: false,
+      status: 409,
+      code: "expert_not_routable",
+      message: "This expert is not routable (approved, verified and payable). Send overrideRoutability to assign anyway.",
+    };
+  }
+  if (!routable && opts.admin) {
+    const { recordAdminAudit } = await import("./admin-query.service");
+    await recordAdminAudit({
+      actorId: opts.admin.id,
+      actorRole: opts.admin.role,
+      action: "handoff_assign_routability_override",
+      resourceType: "expert_request",
+      resourceId: requestId,
+      targetUserId: expertId,
+      metadata: { tripId: row.tripId ?? null },
+    });
+  }
   if (row.assignedExpertId && row.assignedExpertId !== expertId && row.tripId) {
     await db.execute(sql`UPDATE trip_expert_advisors SET status = 'rejected' WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status = 'pending'`);
   }
-  await proposeTo(requestId, expertId);
+  await proposeTo(requestId, expertId, !routable && opts.admin ? { adminId: opts.admin.id } : undefined);
   return { ok: true };
 }
 

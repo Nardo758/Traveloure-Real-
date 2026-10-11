@@ -43,7 +43,6 @@ import {
   distinguishingReasons,
   isLodgingItem,
   hotelsByNeighborhood,
-  orderStaysByOrigin,
   topWonOnTieBreak,
   rankStayNeighborhoods,
   readStoredStayRanking,
@@ -58,7 +57,8 @@ import {
   type WhereToStayView,
 } from "@shared/where-to-stay";
 import { haversineMeters } from "@shared/geo";
-import { freeStayShortList, readStayPick, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { freeStayShortList, readStayPick, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { loadMatrixReader } from "./travel-time-matrix.service";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
@@ -77,6 +77,8 @@ import { enrichPlanItems } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
+import { listStayLinks } from "./stay-link.service";
+import { stayKindForCacheProvider } from "@shared/liteapi";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -285,7 +287,7 @@ export async function cityHotels(city: string): Promise<Array<StayHotel & { lat:
       .orderBy(asc(providerServices.id))
       .limit(200),
     db
-      .select({ id: hotelCache.id, name: hotelCache.name, lat: hotelCache.latitude, lng: hotelCache.longitude, starRating: hotelCache.starRating })
+      .select({ id: hotelCache.id, name: hotelCache.name, lat: hotelCache.latitude, lng: hotelCache.longitude, starRating: hotelCache.starRating, provider: hotelCache.provider })
       .from(hotelCache)
       .where(and(or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city)), isNotNull(hotelCache.latitude), isNotNull(hotelCache.longitude)))
       .orderBy(asc(hotelCache.id))
@@ -320,7 +322,8 @@ export async function cityHotels(city: string): Promise<Array<StayHotel & { lat:
     const lng = Number(h.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
     const star = h.starRating == null ? null : Number(h.starRating);
-    out.push({ kind: "hotel_cache", id: h.id, name: h.name, starRating: Number.isFinite(star as number) ? star : null, lat, lng });
+    // S1-d-1: a LiteAPI row joins the pool as kind `liteapi`, derived from its provider (no column).
+    out.push({ kind: stayKindForCacheProvider(h.provider), id: h.id, name: h.name, starRating: Number.isFinite(star as number) ? star : null, lat, lng });
   }
   for (const a of affiliate) {
     if (!LODGING_CATEGORY.test(`${a.category ?? ""} ${a.subCategory ?? ""}`)) continue;
@@ -394,7 +397,7 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
   const placed = hotelsByNeighborhood(hotels, neighborhoods, ranked.map((r) => r.slug));
   const oneLiners = await neighbourhoodOneLiners(ranked, neighborhoods);
   const tied = topWonOnTieBreak(ranked);
-  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days);
+  const stay = await stayBlock(tripId, trip.stayPick, hotels, neighborhoods, ranked, byDay, days, city);
   return {
     eligible: true,
     ...(dismissed ? { dismissed: true as const } : {}),
@@ -406,8 +409,9 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
       slug: r.slug,
       name: r.name,
       reason: r.reason,
-      // R-o: within this neighbourhood's band, platform-listed stays first.
-      hotels: orderStaysByOrigin(placed[r.slug] ?? []),
+      // S1-b: no boost for being a provider — the stays keep `hotelsByNeighborhood`'s kind-blind order
+      // (distance to the neighbourhood, then name). R-o's platform-first sort is deleted.
+      hotels: placed[r.slug] ?? [],
       oneLiner: oneLiners.get(r.slug) ?? null,
       ...(i === 0 && tied ? { tieBreak: true as const } : {}),
     })),
@@ -428,6 +432,7 @@ async function stayBlock(
   ranked: readonly RankedStayNeighborhood[],
   byDay: Map<number, StayDay>,
   days: number,
+  city: string | null,
 ): Promise<WhereToStayStay> {
   const byKey = new Map(hotels.map((h) => [`${h.kind}:${h.id}`, h]));
   const strip = (h: StayHotel & { lat: number; lng: number }): StayHotel => {
@@ -436,15 +441,20 @@ async function stayBlock(
   };
   if (await planIsRouted(tripId)) {
     const pick = readStayPick(stored);
-    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null };
+    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null, closeness: null };
     const hotel = byKey.get(`${pick.hotelKind}:${pick.hotelId}`);
+    // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
+    // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
+    const [linked] = hotel ? await listStayLinks([strip(hotel)], city) : [];
     return {
       tier: "routed",
-      pick: hotel ? strip(hotel) : null,
+      pick: linked ?? null,
       scoredCount: pick.scoredCount,
       candidateCount: pick.candidateCount,
       changed: pick.changed,
       computedAt: pick.computedAt,
+      // FU-S1-3: stored by the one writer; null when the pick left our inventory or predates FU-S1-3.
+      closeness: hotel ? (pick.closeness ?? null) : null,
     };
   }
   const top = new Set(ranked.map((r) => r.slug));
@@ -457,7 +467,16 @@ async function stayBlock(
     return !!slug && top.has(slug);
   });
   const list = freeStayShortList(inTop.map((h) => toStayPickCandidate(h)), stops);
-  return { tier: "straight_line", hotels: list.map((c) => strip(byKey.get(`${c.kind}:${c.id}`)!)) };
+  // FU-S1-2: one link per card — own or Google Maps; no Google call on list render.
+  // FU-S1-3: each listed stay's straight-line closeness over the same stops (no Maps call).
+  const km = stayCloseStraightKm();
+  return {
+    tier: "straight_line",
+    hotels: await listStayLinks(
+      list.map((c) => ({ ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km) })),
+      city,
+    ),
+  };
 }
 
 /** The plan's latest draft row — the one its ranking and lookup progress belong to. */
@@ -488,7 +507,7 @@ async function storeStayRanking(draftId: string, value: StoredStayRanking): Prom
 }
 
 export type StayBinding =
-  | { kind: "stay_here"; hotel: { kind: "platform" | "hotel_cache" | "affiliate"; id: string } }
+  | { kind: "stay_here"; hotel: { kind: "platform" | "hotel_cache" | "affiliate" | "liteapi"; id: string } }
   | { kind: "own"; hotelName?: string | null; neighborhoodSlug?: string | null }
   | { kind: "skip" }
   | { kind: "this_item"; itemId: string };
@@ -708,14 +727,15 @@ async function bindWhereToStayInner(
         .limit(1);
       if (!city || !row) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
       source = { kind: "listing", providerServiceId: row.id };
-    } else if (binding.hotel.kind === "hotel_cache") {
-      // Only a hotel in this plan's own city (the panel's own inventory rule).
+    } else if (binding.hotel.kind === "hotel_cache" || binding.hotel.kind === "liteapi") {
+      // Only a hotel in this plan's own city (the panel's own inventory rule), and only under the kind
+      // its own provider derives (S1-d-1) — a LiteAPI row is bound as `liteapi`, any other as `hotel_cache`.
       const [h] = await db
-        .select({ id: hotelCache.id })
+        .select({ id: hotelCache.id, provider: hotelCache.provider })
         .from(hotelCache)
         .where(and(eq(hotelCache.id, binding.hotel.id), or(ilike(hotelCache.city, city), ilike(hotelCache.cityCode, city))))
         .limit(1);
-      if (!city || !h) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
+      if (!city || !h || stayKindForCacheProvider(h.provider) !== binding.hotel.kind) throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");
       source = { kind: "hotel_cache", hotelCacheId: binding.hotel.id };
     } else {
       // §14: name and coordinates come from OUR row, never the body — and only a lodging listing in

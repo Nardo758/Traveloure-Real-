@@ -82,6 +82,12 @@ type WhereToStayStay =
 // StayHotel = { kind: "platform" | "hotel_cache" | "affiliate"; id; name; starRating; photo? } — no coordinates, no price.
 ```
 
+**FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`):** each `StayHotel` in `stay` may carry
+`stayLink: { kind: "own" | "google" | "maps"; url: string }` — the card's ONE link. On the list it is `own` (the
+provider's site) or `maps` ("View on Google Maps", built with no API call). When the PICKED stay's card is opened,
+call `GET /api/trips/:tripId/stay-pick/link` → `{ stayLink }`: the hotel's own site where Google knows one ("View on
+hotel's site"), else Google Maps. `google` and `maps` must be drawn with the "Google Maps" attribution. Absent ⇒ no link.
+
 Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ kind: "stay_here", hotel: { kind, id } }`.
 
 ## Interpretations taken (said here so they can be overruled)
@@ -101,10 +107,9 @@ Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ ki
 
 ## Recorded, not fixed
 
-- **Cost record:** `route_matrix` records its COST on `travel_time_matrix_refreshes` (`costRecordedOn`), so
-  stay-pick requests count their elements toward the cap through `api_usage_logs.request_count` but record $0 there.
-  No table holds what a stay pick cost in dollars. Fix: a caller row of its own, or recording the elements on the
-  pick.
+- **Cost record — FIXED by FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`):** each stay-pick request now
+  records its dollars on its own `route_matrix` gate row (`metadata.purpose = 'stay_pick'`, `ref` = the plan) at the
+  Essentials list price, and its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP`.
 - **Cross-instance overlap:** two server instances can score the same plan at once. Each run stays inside the
   budget, and the later write wins.
 - **The debounced trigger** runs only while `TRAVEL_TIME_SERVICE_ENABLED` is on (the queue's own switch). The other
@@ -116,3 +121,41 @@ Binding the pick uses the EXISTING `POST /api/trips/:tripId/where-to-stay` `{ ki
 
 When 9a-ii is live, delete `STAY_PICK_ELEMENT_BUDGET`, `planStayScoring` and the straight-line prune: every
 candidate is scored through the self-hosted adapter, and `scoredCount` equals `candidateCount`.
+
+## FU-S1-3 — per-day closeness (decision-maker ruling, Oct 9, 2026)
+
+The Compare/stay card's "Close to N of M days" is display only, read from this payload:
+
+- A day is **close** when the stay is within the threshold of **every** located stop that day — routed
+  minutes on a paid plan (`STAY_CLOSE_ROUTED_MINUTES`, default 20), straight-line km on a free plan
+  (`STAY_CLOSE_STRAIGHT_KM`, default 1.5, labelled straight-line). **M** = days with at least one located stop
+  on the plan's dates. Thresholds live in `server/config/stay-closeness.config.ts`, read by name.
+- **Routed:** the one writer stores `closeness` on `trips.stay_pick` from the matrix row the ranking already
+  fetched — no extra request. A pick stored before FU-S1-3 reads `closeness: null` until its next re-score.
+- **Free:** each listed stay carries `closeness`, computed at read time by straight line (no Maps call).
+- Payload: `stay.closeness` (routed) and `stay.hotels[].closeness` (free), each
+  `{ closeDays, locatedDays, basis: "routed" | "straight_line" } | null`. Null means unknown, never zero.
+
+## S1-b — Traveloure stays on the card (decision-maker rulings, Oct 10, 2026)
+
+Ledger `2026-10-10-s1b-provider-stays`. Small: the boost removal, the button, the attribution.
+
+**Confirmed facts (Phase 0, carried in):**
+- `cityHotels` is the ONE shared candidate pool. Every kind of stay goes through the same `rankStays`.
+- `rankStays` never reads price or commission.
+- `hotel_cache` is Amadeus / Booking.com data, not Google. "Google" enters only through a Google Maps or Google website link.
+
+**The three kinds of stay:**
+- `platform`: listed on Traveloure. It carries the "Traveloure stay" badge.
+- `hotel_cache`: Amadeus / Booking.com data.
+- `affiliate`: a partner product. It is not a Traveloure stay and never gets the badge.
+- `liteapi` (added by S1-d-1, R408, after these rulings): LiteAPI static content. It is not a Traveloure stay, so it is treated like `hotel_cache`: the attributed Google link, never "See rooms" or the badge.
+
+**Rulings:**
+1. **No boost for being a provider.** R-o is amended: `orderStaysByOrigin`, which put Traveloure stays first within a neighbourhood, is deleted. "`rankStays` only" means **no kind-based ordering anywhere** (clarified by the decision-maker, Oct 10, 2026). It does not mean re-sorting the neighbourhood lists: a neighbourhood's stays keep `hotelsByNeighborhood`'s existing order, which never reads `kind` (distance to the neighbourhood, then name), and that order stands untouched. The S1 card's own candidates stay ordered by `rankStays`. The badge stays.
+2. **The pool is unchanged.** A stay counts when it is approved, active, in the `accommodation` category, in the plan's city and pinned.
+3. **"See rooms" for a Traveloure stay.** The card's link opens the listing's own page carrying the plan's id (`/services/:id?tripId=`). That page adds a room to the plan with dates, and checkout runs from the plan. There is no new booking rail. The label is "See rooms", never "Book", because the card shows no price.
+   - **AMENDMENT TO R393 (FU-S1-2), `platform` stays only** (decision-maker, Oct 10, 2026). The card's link for a Traveloure stay is "See rooms", replacing R393's `own` provider-site link. The listing page is Traveloure's booking surface for provider stays, and it may carry the provider's own site link itself. Non-platform stays keep R393 exactly: a `google` link keeps "View on hotel's site" (attributed), and `maps` keeps "View on map" (attributed).
+4. **Partner stays keep Google's link.** `hotel_cache` and `affiliate` stays keep FU-S1-2's link: "View on map" or the hotel's site, with "Google Maps" beside it whenever it came from Google.
+
+**HELD (a builder gap, not a stay-card gap):** the property builder must write `category='accommodation'` and a city or neighbourhood. Until then, property-builder listings don't reach the stay card. The stay rule is not widened to `product_shape` in this lane.

@@ -20,6 +20,7 @@
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
 import { notConciergePoolListingSql } from "./expert-routability";
+import { notRideListingSql } from "./ride-listings";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
@@ -437,7 +438,9 @@ class LocationViewService {
           .innerJoin(users, eq(users.id, expertNeighborhoods.expertId))
           .where(inArray(expertNeighborhoods.neighborhoodId, neighborhoodIds))
           .orderBy(sql`${expertNeighborhoods.isLead} DESC`, asc(expertNeighborhoods.createdAt), asc(expertNeighborhoods.id));
-        for (const row of expertRows) {
+        // B3 ruling 4: a neighbourhood's named local is a recommendation — ROUTABLE experts only
+        // (the predicate every routing selector reads); a seed or Pending account is never named.
+        for (const row of await routableNeighborhoodExpertRows(expertRows)) {
           if (!localExpertByNeighborhood.has(row.neighborhoodId)) {
             localExpertByNeighborhood.set(row.neighborhoodId, row);
           }
@@ -544,6 +547,8 @@ class LocationViewService {
           eq(providerServices.approvalStatus, "approved"),
           // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
           await notConciergePoolListingSql(providerServices.userId),
+          // TC-3 catalog rides are not city-page listings (ledger `2026-10-11-tc3-ride-seed`).
+          notRideListingSql(providerServices.id),
           // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
           // fallback for rows that predate the server-side derivation (see cityScopePredicate).
           cityScopePredicate(cityName),
@@ -744,3 +749,10 @@ class LocationViewService {
 }
 
 export const locationViewService = new LocationViewService();
+
+/** B3 ruling 4: the neighbourhood expert rows a traveler may be shown — routable experts only, order kept. */
+export async function routableNeighborhoodExpertRows<T extends { expertId: string }>(rows: readonly T[]): Promise<T[]> {
+  const { routableUserIds } = await import("./expert-routability");
+  const ok = await routableUserIds(Array.from(new Set(rows.map((r) => r.expertId))));
+  return rows.filter((r) => ok.has(r.expertId));
+}

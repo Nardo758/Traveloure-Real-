@@ -19,6 +19,7 @@
  * Run: `tsx server/seeds/major-cities-backfill.seed.ts`
  */
 
+import { teamSeededGemTags } from "@shared/content-tiers";
 import { db } from "../db";
 import { travelPulseHiddenGems, travelPulseCities } from "@shared/schema";
 import { and, eq, isNull, or } from "drizzle-orm";
@@ -795,6 +796,7 @@ export async function seedMajorCitiesBackfill(): Promise<{
     if (existing.length > 0) continue;
 
     await db.insert(travelPulseHiddenGems).values({
+      ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
       country: gem.country,
       placeName: gem.placeName,

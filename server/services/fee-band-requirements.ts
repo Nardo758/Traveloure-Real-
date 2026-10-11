@@ -113,6 +113,19 @@ export const EXPERT_REVIEW_EXPERT_SHARE_BAND = "expert_review_expert_share";
 export const HANDOFF_WITHDRAWAL_ACCEPTED_BAND = "handoff_withdrawal_accepted";
 export const HANDOFF_WITHDRAWAL_DELIVERED_BAND = "handoff_withdrawal_delivered";
 export const ON_TRIP_SUPPORT_BAND = "on_trip_support";
+// S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`, migration 366): LiteAPI hotel margins, percent. The public
+// band is the markup on a stay's public rate (floored at the SSP); the bundle band is seeded for the bundle
+// lane and read by nothing yet. Both optional: absent ⇒ 0 = sell at the SSP, a no-margin state.
+export const HOTEL_MARGIN_PUBLIC_BAND = "hotel_margin_public";
+export const HOTEL_MARGIN_BUNDLE_BAND = "hotel_margin_bundle";
+
+// TC-0 (ledger `2026-10-10-tc0-transport-commission-band`; LD 8): the platform's commission on a
+// platform-booked transport leg. Optional: absent ⇒ 0 — no commission is claimed (the rate is shown on
+// a leg's booking options as metadata; no charge path reads it).
+export const TRANSPORT_PLATFORM_COMMISSION_BAND = "transport_platform_commission";
+// TC-0: the margin shown on the route-search affiliate partners (12Go, Omio, DiscoverCars, Kiwi) — ONE
+// band. Optional: absent ⇒ 0 (no margin claimed). Display metadata only.
+export const AFFILIATE_TRANSPORT_MARGIN_BAND = "affiliate_transport_margin";
 
 /** Explicit categories that the resolver can receive on known booking paths. */
 export const COMMISSION_CATEGORY_BAND_KEYS = [
@@ -426,6 +439,32 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
       unit: "fraction",
     },
   },
+  // TC-0: the transport platform commission. Absent ⇒ 0 — no commission claimed on a platform leg.
+  {
+    bandKey: TRANSPORT_PLATFORM_COMMISSION_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "transport booking options — platform commission (transport-booking-options.service, TC-0)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "resolveTransportCommissionRate (transport-booking-options.service)",
+      value: 0, // fee-literal-ok: documented fallback — no commission claimed
+      unit: "fraction",
+    },
+  },
+  // TC-0: the route-search partners' margin. Absent ⇒ 0 — no margin claimed on an affiliate option.
+  {
+    bandKey: AFFILIATE_TRANSPORT_MARGIN_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "transport booking options — affiliate route-search margin (transport-booking-options.service, TC-0)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "resolveAffiliateTransportMargin (transport-booking-options.service)",
+      value: 0, // fee-literal-ok: documented fallback — no margin claimed
+      unit: "fraction",
+    },
+  },
   // R324 (step 7b, §12 step 6): on-trip support has NO price without this band, so it is not
   // offered at all while the band is absent — there is no number to fall back to.
   {
@@ -434,6 +473,31 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
     required: true,
     owner: "handoff on-trip support (handoff.service, §12 step 6)",
     fallback: { kind: "none", reader: "onTripSupportCents (handoff.service) — on-trip support is not offered without it" },
+  },
+  // S1-d-2: LiteAPI hotel margins. Absent ⇒ 0 — the stay sells at the SSP, a safe no-margin state.
+  {
+    bandKey: HOTEL_MARGIN_PUBLIC_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "LiteAPI stay rates — public margin (liteapi-rates.service, S1-d-2)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "publicMarginFraction (liteapi-rates.service)",
+      value: 0, // fee-literal-ok: documented fallback — no margin, sell at the SSP
+      unit: "fraction",
+    },
+  },
+  {
+    bandKey: HOTEL_MARGIN_BUNDLE_BAND,
+    expectedType: "percent",
+    required: false,
+    owner: "LiteAPI stay rates — bundle margin (seeded for the bundle lane; not read yet)",
+    fallback: {
+      kind: "code_constant",
+      resolver: "none yet — the bundle lane reads it",
+      value: 0, // fee-literal-ok: documented fallback — no margin, sell at the SSP
+      unit: "fraction",
+    },
   },
 ];
 

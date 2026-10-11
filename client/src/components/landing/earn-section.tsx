@@ -2,7 +2,8 @@
  * earn-section.tsx — "Ways to earn" (landing-build Phase 2.8).
  * Visual of record: docs/design/landing-earn-mock.html "EARN: two columns, hairlines".
  *
- * Coral button 2 of the ruled 3 (hero, earn, final). The role links keep the EXISTING
+ * Coral button 2 of the ruled 3 (hero, earn, final) — the final CTA section was cut by H1 (ledger
+ * `2026-10-08-h1-home-copy`), and every primary fills with `--coral-fill`. The role links keep the EXISTING
  * /earn parameter vocabulary (LANDING_SPEC.md preserve-exactly): `?track=provider` and
  * `?track=expert` are the shipped aliases (earn.tsx maps them to service_provider /
  * trip_planner), and `?role=` takes role keys directly — local_expert uses it.
@@ -18,21 +19,21 @@ const ROLES = [
   {
     icon: Briefcase,
     title: "Offer local services",
-    note: "Service provider · tours, transport, photography, food",
+    note: "tours, transport, photography, food",
     href: "/earn?track=provider",
     testId: "earn-role-provider",
   },
   {
     icon: Waypoints,
     title: "Plan trips for others",
-    note: "Trip planner · advise, review plans, coordinate logistics",
+    note: "advise, review, coordinate",
     href: "/earn?track=expert",
     testId: "earn-role-trip-planner",
   },
   {
     icon: Lamp,
     title: "Guide your neighborhood",
-    note: "Local expert · the streets you actually know",
+    note: "the streets you actually know",
     href: "/earn?role=local_expert",
     testId: "earn-role-local-expert",
   },
@@ -56,14 +57,13 @@ export function EarnSection() {
             Know a city well? Get paid for it.
           </h3>
           <p className="mb-4 max-w-[460px] text-[15px]" style={{ color: "var(--earn-muted)" }}>
-            Turn what you know into useful experiences for travelers. Choose the role that fits
-            how you want to work.
+            Choose the role that fits how you want to work.
           </p>
           {/* Coral 2 of 3 (ruled). */}
           <Link
             href="/earn"
             className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold text-white"
-            style={{ background: "var(--earn-coral-ink)" }}
+            style={{ background: "var(--coral-fill)" }}
             data-testid="button-see-ways-to-earn"
           >
             See ways to earn
@@ -84,11 +84,10 @@ export function EarnSection() {
               >
                 <r.icon className="h-4 w-4" />
               </span>
-              <span>
-                <b className="block text-[14px]">{r.title}</b>
-                <small className="block text-[12px] leading-[1.35]" style={{ color: "var(--earn-muted)" }}>
-                  {r.note}
-                </small>
+              {/* H1 (ledger `2026-10-08-h1-home-copy`): one line per role. */}
+              <span className="self-center text-[14px]">
+                <b>{r.title}</b>
+                <span style={{ color: "var(--earn-muted)" }}> · {r.note}</span>
               </span>
             </Link>
           ))}

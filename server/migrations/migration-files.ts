@@ -1952,4 +1952,52 @@ export const MIGRATION_FILES = [
   // 359 — trips.stay_pick (ledger 2026-10-09-s1-one-stay; brief s1-one-stay.md ruling 3). One nullable jsonb,
   // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. HELD.
   "359_trips_stay_pick.sql",
+  // 360 — the six seeded occasion descriptions that read "<name> planning experience" (ledger
+  // 2026-10-09-e3-experiences-inline; E3 ruling 2). DATA ONLY: UPDATE by slug, only while the row still holds
+  // the generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 9, 2026.
+  "360_occasion_descriptions.sql",
+  // 361 — content-tier tags, columns only (ledger 2026-10-09-fd2-content-tier-tags). Nullable, no
+  // DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. APPROVED by the founder, Oct 9, 2026.
+  "361_content_tier_tags.sql",
+  // 362 — content-tier tags, backfill only (same ledger). Data only, guarded by source_class IS NULL.
+  // APPROVED by the founder, Oct 9, 2026.
+  "362_content_tier_backfill.sql",
+  // 363 — free_draft_runs (ledger 2026-10-09-fd1-free-draft-cap): a new table born empty, two indexes and a
+  // partial UNIQUE on trip_id (safe: no row exists at creation). No FK. Declared in shared/schema.ts.
+  // APPROVED by the founder, Oct 9, 2026.
+  "363_free_draft_runs.sql",
+  // 364 — the three production occasion descriptions 360 missed (anniversary, bachelor-bachelorette,
+  // sports-event — production's own slugs; the seeder's `anniversary-trip` is not a production row). Ledger
+  // 2026-10-10-m364-occasion-descriptions. DATA ONLY: UPDATE by slug, only while the row still holds the
+  // generated placeholder. No DDL, nothing to declare. APPROVED by the founder, Oct 10, 2026.
+  "364_occasion_descriptions_prod.sql",
+  // 365 — hotel_cache LiteAPI static-content columns (ledger 2026-10-10-s1-d1-liteapi): six nullable columns,
+  // no DEFAULT/CHECK, and a UNIQUE index on (provider, provider_hotel_id) — empty at creation because the
+  // column is born NULL on every row. Declared in shared/schema.ts. APPROVED by Leon, Oct 10, 2026.
+  "365_hotel_cache_liteapi.sql",
+  // 366 — LiteAPI hotel margin bands (ledger 2026-10-10-s1-d2-liteapi-rates). DATA ONLY: two fee_bands rows,
+  // insert-if-missing (hotel_margin_public 0.12, hotel_margin_bundle 0.06). Nothing to declare.
+  // HELD: merges only with "Migration 366 SQL approved — Leon" on the S1-d-2 PR.
+  "366_hotel_margin_bands.sql",
+  // 367 — transport fee bands: transport_platform_commission + affiliate_transport_margin (ledger
+  // 2026-10-10-tc0-transport-commission-band; LD 8).
+  // DATA ONLY: INSERT … ON CONFLICT DO NOTHING, band_key first. Nothing to declare. APPROVED by Leon on the
+  // TC-0 PR (#1394), Oct 10, 2026.
+  "367_transport_fee_bands.sql",
+  // 368 — TC-3a: the ride as a plan item (ledger 2026-10-11-tc3a-ride-item): itinerary_items exit pin
+  // (two nullable columns), transport_legs superseded_at / superseded_by_item_id (nullable; P0's
+  // origin='superseded' marker moved over), and the new service_transport_facts table (born empty, UNIQUE
+  // service_id, FK CASCADE). All declared in shared/schema.ts. APPROVED — "Migration 368 SQL approved — Leon"
+  // on #1401.
+  "368_ride_item_and_transport_facts.sql",
+  // 369 — TC-3 ride seed (ledger 2026-10-11-tc3-ride-seed): service_transport_facts.fact_sources + notes
+  // (jsonb, nullable) and the Sagano / Hozugawa / Eizan "Kirara" rides under the reserved "Traveloure
+  // Transport" account — every value from the official read, located from six OSM nodes and active
+  // (service_route_points.osm_node_id). Migration 369 SQL approved by Leon — comment 00:42Z on #1405.
+  "369_tc3_ride_seed.sql",
+  // 371 — liteapi_bookings (ledger 2026-10-10-s1-d3a-liteapi-booking): a new table born empty, a UNIQUE on
+  // prebook_id and a partial UNIQUE of one live booking per item (safe: no row exists at creation), plus a
+  // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are the TC-3 lane's.
+  // APPROVED — "Migration 371 SQL approved — Leon" on #1402.
+  "371_liteapi_bookings.sql",
 ] as const;

@@ -2,6 +2,7 @@ import { db } from "./db";
 import { expertServiceCategories, expertServiceOfferings, users, localExpertForms } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
+import { demoSeedDatabaseAllowed, demoSeedDatabaseSkipMessage } from "./seeds/lib/demo-seed-gate";
 
 const expertServiceData = [
   {
@@ -432,6 +433,10 @@ export async function seedMockExperts() {
     console.log(demoSeedSkipMessage("seedMockExperts"));
     return;
   }
+  if (!demoSeedDatabaseAllowed()) {
+    console.log(demoSeedDatabaseSkipMessage("seedMockExperts"));
+    return;
+  }
 
   console.log("Seeding mock experts for testing...");
 
@@ -659,6 +664,10 @@ export async function seedProviderServices() {
   // path.
   if (!demoSeedsAllowed()) {
     console.log(demoSeedSkipMessage("seedProviderServices"));
+    return;
+  }
+  if (!demoSeedDatabaseAllowed()) {
+    console.log(demoSeedDatabaseSkipMessage("seedProviderServices"));
     return;
   }
 

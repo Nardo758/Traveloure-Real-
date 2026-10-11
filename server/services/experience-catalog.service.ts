@@ -526,7 +526,8 @@ class ExperienceCatalogService {
       }
     }
 
-    return hotels.map(h => {
+    // The row's own provider names its source; a row that names none is not shown (no fallback label).
+    return hotels.filter((h): h is typeof h & { provider: string } => !!h.provider).map(h => {
       const media = h.media as { url?: string }[] | null;
       const firstImage = media && media.length > 0 ? media[0].url : null;
       const rawData = h.rawData as { bookingUrl?: string; affiliateUrl?: string } | null;
@@ -534,7 +535,7 @@ class ExperienceCatalogService {
       return {
         id: h.id,
         type: "hotel" as const,
-        provider: h.provider || "amadeus",
+        provider: h.provider,
         externalId: h.hotelId,
         title: h.name,
         description: h.address,
@@ -901,7 +902,7 @@ class ExperienceCatalogService {
           .where(eq(hotelCache.id, id))
           .limit(1);
 
-        if (!hotel) return null;
+        if (!hotel || !hotel.provider) return null;
 
         const media = hotel.media as { url?: string }[] | null;
         const firstImage = media && media.length > 0 ? media[0].url : null;
@@ -909,7 +910,7 @@ class ExperienceCatalogService {
         return {
           id: hotel.id,
           type: "hotel",
-          provider: hotel.provider || "amadeus",
+          provider: hotel.provider,
           externalId: hotel.hotelId,
           title: hotel.name,
           description: hotel.address,

@@ -133,6 +133,7 @@ export function WorkstationDays(props: WorkstationDaysProps) {
             open={isOpen}
             onOpenChange={(o) => setOpenDays((s) => ({ ...s, [d.dayNum]: o }))}
             aside={props.dayAside ? props.dayAside(d.dayNum) : null}
+            feasibility={d.feasibility ?? null}
           >
             {acts.map((a, i) => {
               const prev = i > 0 ? acts[i - 1] : null;

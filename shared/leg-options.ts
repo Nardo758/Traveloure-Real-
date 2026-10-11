@@ -16,7 +16,7 @@
  * each option carries its own provenance. No I/O.
  */
 import { haversineMeters } from "./geo";
-import { ROUTED_WALK_MAX_METERS, toRouteFacts, type RouteAnswer, type RoutingMode } from "./routing-engine";
+import { ROUTED_WALK_MAX_METERS, TRANSIT_UNAVAILABLE_REASON, toRouteFacts, type RouteAnswer, type RoutingMode } from "./routing-engine";
 import { LEG_MODE_STORED, normalizeLegMode } from "./travel-speeds";
 
 /** D2: never more than this many options on one leg, the default included. */
@@ -116,7 +116,8 @@ export function routedLegOptions(leg: {
         distanceM: Number(raw.distanceMeters ?? (i === 0 ? leg.distanceMeters ?? 0 : 0)),
         line: raw.line ?? null,
         fare: raw.fare ?? null,
-        provenance: { source: raw.reason || String(leg.source), checkedAt },
+        // The P0 fallback marker is a reason, not a source: such an entry's provenance is the row's.
+        provenance: { source: raw.reason && raw.reason !== TRANSIT_UNAVAILABLE_REASON ? raw.reason : String(leg.source), checkedAt },
       }),
     });
   });

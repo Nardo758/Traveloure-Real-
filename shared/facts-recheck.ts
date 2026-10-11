@@ -9,9 +9,21 @@ import { findingLine, type Finding } from "./optimizer-lead";
 export const FACTS_RECHECK_DAYS_BEFORE = 3;
 export const FACTS_RECHECK_NOTICE_TYPE = "trip_recheck_conflict";
 
+/**
+ * The kinds a re-check reports. FD-3 (ledger `2026-10-10-fd3-feasibility`, ruling 1): the last-entry,
+ * visit-end and last-ride checks join the set, so a stored official fact that moved is re-read at T-3.
+ */
+const RECHECK_CONFLICT_KINDS: ReadonlySet<string> = new Set([
+  "closed_on_arrival",
+  "after_last_admission",
+  "closes_before_visit_end",
+  "last_service_missed",
+  "timed_entry_conflict",
+]);
+
 /** The findings a re-check reports: a stop reached while closed, or a timed entry that clashes. */
 export function recheckConflicts(findings: readonly Finding[]): Finding[] {
-  return findings.filter((f) => (f.kind === "closed_on_arrival" || f.kind === "timed_entry_conflict") && f.count > 0);
+  return findings.filter((f) => RECHECK_CONFLICT_KINDS.has(f.kind) && f.count > 0);
 }
 
 export const RECHECK_BANNER_SWAP = "Swap";

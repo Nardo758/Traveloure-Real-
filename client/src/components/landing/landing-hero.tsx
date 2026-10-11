@@ -17,19 +17,18 @@
  * "Where do you want to begin?" pills: the nav's BROWSE and FIND HELP sections (the same eight
  * destinations the removed entry tiles carried), read from nav-config, never retyped.
  *
- * Typed search: STATIC CURATED titles (decision-maker ruled — no UGC; source of truth is
- * LANDING_SPEC.md §Typed-search titles). Rotates via the shared useRotation hook (8s,
- * pause on hover/focus, still under prefers-reduced-motion); stops the moment the input
- * focuses; submits to /services?q=&location= and NEVER writes trip context.
+ * Typed search: REMOVED by H1 (ledger `2026-10-08-h1-home-copy`) with its dev note and its curated
+ * titles — search moves to the nav in its own lane. LANDING_SPEC.md §Typed-search titles is
+ * historical.
  *
- * "Plan my trip" calls the SAME handler the old hero used — setPlanningOpen(true) via the
- * onPlanTrip prop → EnhancedPlanningModal (preserve-exactly, LANDING_SPEC.md).
+ * "Start a plan" calls the SAME handler the old hero used — the onPlanTrip prop opens the ONE
+ * planning entry (`usePlanning().open`).
  */
 import { Fragment, useState, type ReactNode } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Search, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
@@ -58,18 +57,6 @@ import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTIO
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
-// Source of truth: docs/design/LANDING_SPEC.md §Typed-search titles (ruled: static
-// curated, market-spread, no UGC). Edit the spec first, then mirror here.
-const TYPED_SEARCH_TITLES = [
-  "A rainy-day tea itinerary in Kyoto",
-  "Porto wine cellars a local would pick",
-  "Sunset sailing out of Cartagena's old port",
-  "Street food after dark in Mumbai",
-  "Edinburgh closes and hidden courtyards",
-  "A slow morning in Goa's spice villages",
-  "Block-printing with a maker in Jaipur",
-  "Bogotá coffee farms in a day",
-];
 
 type LandingHeroData = LandingHeroPayload;
 
@@ -233,7 +220,7 @@ function useBillboardCopy() {
       t("hero.billboard.slotHiddenGem", "Hidden gem").toUpperCase(),
       t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase(),
     ] as const,
-    startThisPlan: t("hero.billboard.startThisPlan", "Start this plan"),
+    startThisPlan: t("hero.startAPlan", "Start a plan"),
     // The handle is substituted here as well, so the label is right before i18n initialises.
     planWith: (handle: string) =>
       String(t("hero.billboard.planWith", { handle, defaultValue: "Plan with @{{handle}}" })).replace("{{handle}}", handle),
@@ -324,7 +311,7 @@ function CuratedTileCard({
             if (source) onStartPlan(source);
           }}
           className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          style={{ background: "var(--earn-coral-ink)" }}
+          style={{ background: "var(--coral-fill)" }}
           data-testid={`hero-billboard-start-${tile.key}`}
         >
           {copy.startThisPlan}
@@ -385,7 +372,7 @@ function OverrideTileCard({
             if (source) onStartPlan(source);
           }}
           className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white"
-          style={{ background: "var(--earn-coral-ink)" }}
+          style={{ background: "var(--coral-fill)" }}
           data-testid={`hero-billboard-plan-with-${tile.key}`}
         >
           {copy.planWith(override.handle)}
@@ -467,7 +454,7 @@ function GemTileCard({
           if (source) onStartPlan(source);
         }}
         className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: "var(--earn-coral-ink)" }}
+        style={{ background: "var(--coral-fill)" }}
         data-testid={`hero-billboard-plan-gem-${tile.key}`}
       >
         {copy.planAroundGem}
@@ -524,7 +511,7 @@ function BookableTileCard({
       actions={<Link
         href={`/services/${encodeURIComponent(slot.listing.id)}`}
         className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: "var(--earn-coral-ink)" }}
+        style={{ background: "var(--coral-fill)" }}
         data-testid={`hero-billboard-book-${tile.key}`}
       >
         {copy.bookNow}
@@ -570,15 +557,6 @@ export function LandingHeroContent({
   marketSelection?: BillboardMarketSelection;
 }) {
   const { t } = useTranslation("nav");
-  const [, navigate] = useLocation();
-  // Typed search — rotation stops on hover AND the moment the input focuses.
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchHovered, setSearchHovered] = useState(false);
-  const [typedValue, setTypedValue] = useState("");
-  const titleIndex = useRotation(TYPED_SEARCH_TITLES.length, {
-    paused: searchFocused || searchHovered,
-  });
-  const currentTitle = TYPED_SEARCH_TITLES[titleIndex];
   const wantedSlots = hero?.wanted ?? [];
   const [wantedFocused, setWantedFocused] = useState(false);
   const [wantedHovered, setWantedHovered] = useState(false);
@@ -586,14 +564,6 @@ export function LandingHeroContent({
     paused: wantedSlots.length <= 1 || wantedFocused || wantedHovered,
   });
   const wanted = wantedSlots[wantedIndex] ?? null;
-
-  const submitSearch = () => {
-    const q = typedValue.trim() || currentTitle;
-    const params = new URLSearchParams({ q });
-    if (hero?.city) params.set("location", hero.city);
-    // Browses Services; never writes trip context (LANDING_SPEC.md).
-    navigate(`/services?${params.toString()}`);
-  };
 
   const marketNames = OPERATING_MARKETS.slice(0, 4);
   const tiles = resolveBillboardTiles();
@@ -616,7 +586,8 @@ export function LandingHeroContent({
         className="mx-auto grid max-w-[1180px] items-center gap-10 py-12 lg:grid-cols-2"
         style={{ paddingBottom: 34 }}
       >
-        {/* Left: pitch + typed search + CTAs */}
+        {/* Left: pitch + CTAs. H1 (ledger `2026-10-08-h1-home-copy`): the typed search and its dev
+            note are gone — search moves to the nav in its own lane. */}
         <div>
           <span
             className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]"
@@ -640,46 +611,10 @@ export function LandingHeroContent({
           <p className="mb-[18px] mt-3 max-w-[500px] text-[17px]" style={{ color: "color-mix(in srgb, var(--earn-ink) 85%, var(--earn-ground))" }}>
             {t(
               "hero.subhead",
-              "Tell us the occasion and where in the world you want it. We build the plan around it, and someone who lives there does the rest.",
+              "Tell us the occasion and the city. We build the plan around it, and someone who lives there does the rest.",
             )}
           </p>
 
-          <div
-            className="flex max-w-[520px] items-center gap-2.5 border-b-[1.5px] px-0.5 py-2.5"
-            style={{ borderColor: "var(--earn-ink)" }}
-            onMouseEnter={() => setSearchHovered(true)}
-            onMouseLeave={() => setSearchHovered(false)}
-          >
-            <Search className="h-4 w-4 shrink-0" style={{ color: "var(--earn-muted)" }} />
-            <input
-              type="text"
-              value={typedValue}
-              placeholder={currentTitle}
-              onChange={(e) => setTypedValue(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitSearch();
-              }}
-              aria-label="Search services"
-              className="w-full bg-transparent text-[16px] outline-none placeholder:opacity-80"
-              style={{ color: "var(--earn-ink)" }}
-              data-testid="hero-typed-search"
-            />
-            <span
-              className="ml-auto whitespace-nowrap text-[10.5px] tracking-[0.06em]"
-              style={{ fontFamily: EARN_MONO, color: "var(--earn-faint)" }}
-            >
-              ↵ to browse
-            </span>
-          </div>
-          <p
-            className="mb-[18px] mt-1.5 text-[11px]"
-            style={{ fontFamily: EARN_MONO, color: "var(--earn-faint)" }}
-          >
-            Curated searches from our {OPERATING_MARKETS.length} markets. Stops the moment you
-            focus. Browses Services; never writes to your trip.
-          </p>
 
           <div className="flex gap-2.5">
             {/* Coral 1 of 3 (ruled): the primary Plan-my-trip CTA. Same handler as ever. */}
@@ -687,11 +622,11 @@ export function LandingHeroContent({
               type="button"
               onClick={onPlanTrip}
               className="inline-flex items-center gap-2 rounded-[10px] px-[18px] py-3 text-[14px] font-semibold text-white"
-              style={{ background: "var(--earn-coral-ink)" }}
+              style={{ background: "var(--coral-fill)" }}
               data-testid="button-plan-trip"
             >
               <Sparkles className="h-4 w-4" />
-              {t("hero.startPlanning", "Start planning")}
+              {t("hero.startAPlan", "Start a plan")}
             </button>
             <Link
               href="/experts"

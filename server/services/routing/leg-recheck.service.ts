@@ -26,7 +26,7 @@ import { FACTS_RECHECK_NOTICE_TYPE } from "@shared/facts-recheck";
 import { classifyLegRecheck, legRecheckDedupeKey, legRecheckLine, LEG_RECHECK_KIND, type LegCheckStatus } from "@shared/leg-recheck";
 import { storage } from "../../storage";
 import { routingAdapter } from "./index";
-import { departureWallClock } from "./plan-legs";
+import { departureWallClock, legDepartureWallClock } from "./plan-legs";
 import { tripGetsRoutedLegs, tripLegsShown } from "./plan-routed-legs.service";
 
 export interface RecheckLeg {
@@ -51,6 +51,11 @@ export interface LegRecheckResult {
   broken: number;
   notified: number;
   paused: boolean;
+  /**
+   * P0 ruling 6 (ledger `2026-10-10-p0-legs-baseline`): pairs the plan should have a leg for and shows
+   * none — COUNTED, never written (9b D6: the re-check never writes a leg). Present only when > 0.
+   */
+  missing?: number;
   skipped?: "not_routed" | "dates_not_confirmed" | "no_adapter";
 }
 
@@ -58,6 +63,8 @@ export interface LegRecheckDeps {
   adapter: () => RoutingAdapter | null;
   qualifies: (tripId: string) => Promise<boolean>;
   legs: (tripId: string) => Promise<RecheckLeg[]>;
+  /** P0 ruling 6: how many desired pairs show no leg (this day, or the whole plan). Read only. */
+  missingPairs?: (tripId: string, dayNumber: number | null) => Promise<number>;
   /** §15: stamp `leg_checked_at = at` only when it is NULL or older than `since`; the prior stamp, or `false` when not claimed. */
   claim: (legId: string, since: Date, at: Date) => Promise<{ claimed: false } | { claimed: true; prior: Date | null }>;
   /** Put a claim back (the call learned nothing). Conditional on our own stamp. */
@@ -89,15 +96,19 @@ export async function recheckPlanLegs(input: LegRecheckInput, deps: LegRecheckDe
   if (!(await deps.qualifies(input.tripId))) return { ...result, skipped: "not_routed" };
   const adapter = deps.adapter();
   if (!adapter) return { ...result, skipped: "no_adapter" };
+  if (deps.missingPairs) {
+    const missing = await deps.missingPairs(input.tripId, input.dayNumber ?? null).catch(() => 0);
+    if (missing > 0) result.missing = missing;
+  }
   const legs = (await deps.legs(input.tripId)).filter((l) => input.dayNumber == null || l.dayNumber === input.dayNumber);
   for (const leg of legs) {
     const at = input.now;
     const c = await deps.claim(leg.id, input.since, at);
     if (!c.claimed) continue;
-    const departAt =
-      input.startDate && leg.wallClock
-        ? zonedWallClockToInstant(addCalendarDays(input.startDate.slice(0, 10), leg.dayNumber - 1), leg.wallClock, input.timezone)
-        : null;
+    // P0 ruling 3: no time of day ⇒ a fixed local 10:00 on the trip day, never server-now.
+    const departAt = input.startDate
+      ? zonedWallClockToInstant(addCalendarDays(input.startDate.slice(0, 10), leg.dayNumber - 1), legDepartureWallClock(leg.wallClock), input.timezone)
+      : null;
     const outcome = await adapter.route({ lat: leg.fromLat, lng: leg.fromLng }, { lat: leg.toLat, lng: leg.toLng }, leg.mode, departAt);
     const status = classifyLegRecheck(
       leg.wasMin,
@@ -170,6 +181,14 @@ export const defaultLegRecheckDeps: LegRecheckDeps = {
   adapter: () => routingAdapter(),
   qualifies: (tripId) => tripGetsRoutedLegs(tripId),
   legs: shownRecheckLegs,
+  async missingPairs(tripId, dayNumber) {
+    const { planLegGapsByDay } = await import("./plan-legs-engine.service");
+    const gaps = await planLegGapsByDay(tripId);
+    if (dayNumber != null) return gaps.get(dayNumber) ?? 0;
+    let total = 0;
+    gaps.forEach((n) => (total += n));
+    return total;
+  },
   async claim(legId, since, at) {
     const [prev] = await db.select({ checkedAt: transportLegs.legCheckedAt }).from(transportLegs).where(eq(transportLegs.id, legId)).limit(1);
     if (!prev) return { claimed: false };

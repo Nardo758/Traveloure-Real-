@@ -136,7 +136,7 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
   test('P4 Plan around it opens the planning pop-up', async ({ page }) => {
     await openEvents(page);
     await page.getByTestId('events-plan-underway').click();
-    await expect(page.getByTestId('plan-modal')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('plan-entry')).toBeVisible({ timeout: 10_000 });
   });
 
   test('P5 a month-level season is a band, never a day', async ({ page }) => {
@@ -174,7 +174,7 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
     await mockEventPage(page);
     await page.goto(`${BASE_URL}/events/fixture-underway`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.getByTestId('event-detail-plan').click();
-    await expect(page.getByTestId('plan-modal')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('plan-entry')).toBeVisible({ timeout: 10_000 });
     const pens = await page.evaluate(() => Object.keys(sessionStorage).map((k) => sessionStorage.getItem(k) ?? ''));
     const pen = pens.map((v) => { try { return JSON.parse(v); } catch { return null; } }).find((v) => v && v.startDate);
     expect(pen?.startDate).toBe(plus(-1));

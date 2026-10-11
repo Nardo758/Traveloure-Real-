@@ -953,7 +953,7 @@ export default function ExpertsPage() {
         const ctaConfig: Record<string, { heading: string; body: string; cta: string; href: string }> = {
           travel_expert: {
             heading: "Are You a Trip Planner?",
-            body: "Help travellers design itineraries and craft unforgettable journeys. Earn money sharing your expertise on the Traveloure platform.",
+            body: "Help travelers design itineraries and craft unforgettable journeys. Earn money sharing your expertise on the Traveloure platform.",
             cta: "Become a Trip Planner",
             href: "/become-expert?type=travel_expert",
           },

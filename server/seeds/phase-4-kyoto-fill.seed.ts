@@ -14,6 +14,7 @@
  * Run: `tsx server/seeds/phase-4-kyoto-fill.seed.ts`
  */
 
+import { teamSeededGemTags } from "@shared/content-tiers";
 import { db } from "../db";
 import { travelPulseHiddenGems, providerServices } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -268,6 +269,7 @@ export async function seedPhase4KyotoFill(): Promise<{
     }
 
     await db.insert(travelPulseHiddenGems).values({
+      ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
       placeName: gem.placeName,
       placeType: gem.placeType,

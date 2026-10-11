@@ -11,11 +11,11 @@ import {
 } from "./maps-url-builder";
 import { eq } from "drizzle-orm";
 import { getTrafficAwareDrivingRoute } from "./routes.service";
-import { defaultRoutedMode, routeHourBucket, type RoutingAdapter } from "@shared/routing-engine";
+import { TRANSIT_UNAVAILABLE_REASON, defaultRoutedMode, routeHourBucket, routeLegKey, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
-import type { RouteRunMemo } from "./routing/route-memo";
-import { departureWallClock } from "./routing/plan-legs";
+import { routeWithTransitFallback, type RouteRunMemo } from "./routing/route-memo";
+import { departureWallClock, legDepartureWallClock, planDayIsPast } from "./routing/plan-legs";
 
 export interface ActivityLocation {
   id: string;
@@ -46,6 +46,8 @@ export interface VersionRoutingContext {
   /** The plan's first day and zone, for a real departure instant; null ⇒ no departure sent. */
   tripStart: string | null;
   timezone: string | null;
+  /** Test seam: "now" for the past-day rule (P0 ruling 3). */
+  now?: () => Date;
 }
 
 interface TransportAlternative {
@@ -300,13 +302,21 @@ async function computeRoutedVersionLeg(
 ): Promise<TransportLegResult | null> {
   const origin = { lat: from.lat, lng: from.lng, placeId: from.placeId ?? null };
   const destination = { lat: to.lat, lng: to.lng, placeId: to.placeId ?? null };
-  const mode = defaultRoutedMode(origin, destination, routing.hasTransitCoverage);
+  // P0 ruling 3 (ledger `2026-10-10-p0-legs-baseline`): a day already over is never routed.
+  if (planDayIsPast(routing.tripStart, dayNumber, routing.timezone, routing.now ? routing.now() : new Date())) return null;
+  const desiredMode = defaultRoutedMode(origin, destination, routing.hasTransitCoverage);
   const wallClock = departureWallClock({ startTime: from.scheduledTime || null, endTime: null, durationMinutes: from.durationMinutes ?? null });
-  const departAt =
-    routing.tripStart && wallClock ? zonedWallClockToInstant(addCalendarDays(routing.tripStart, dayNumber - 1), wallClock, routing.timezone) : null;
-  const r = await routing.memo.route({ origin, destination, mode, departAt, hourBucket: routeHourBucket(wallClock) }, routing.adapter);
-  if (r.outcome.kind !== "ok") return null;
-  const route = r.outcome.route;
+  // No time of day ⇒ a fixed local 10:00 on the trip day (never server-now); the bucket stays the leg's own.
+  const departAt = routing.tripStart
+    ? zonedWallClockToInstant(addCalendarDays(routing.tripStart, dayNumber - 1), legDepartureWallClock(wallClock), routing.timezone)
+    : null;
+  const hourBucket = routeHourBucket(wallClock);
+  const asked = await routeWithTransitFallback(routing.memo, routing.adapter, { origin, destination, mode: desiredMode, departAt, hourBucket });
+  if (asked.outcome.kind !== "ok") return null;
+  const route = asked.outcome.route;
+  const mode = asked.mode;
+  // The leg key stays the DESIRED one (P0 ruling 2), so the plan's pair diff keeps a fallback drive.
+  const r = { legKey: routeLegKey(origin, destination, desiredMode, hourBucket) };
   return {
     fromActivityId: from.id,
     fromName: from.name,
@@ -324,7 +334,7 @@ async function computeRoutedVersionLeg(
     estimatedDurationMinutes: route.durationMin,
     estimatedCostUsd: null,
     alternativeModes: [
-      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: route.provenance.source, line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
+      { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: asked.transitUnavailable ? TRANSIT_UNAVAILABLE_REASON : route.provenance.source, line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
     ],
     energyCost: 0,
     routeProvider: route.provenance.source === "stub" ? "stub" : "google_routes",

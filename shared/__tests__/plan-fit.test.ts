@@ -169,10 +169,12 @@ test("P11: the event basis key and the compare view's lead sentence", () => {
   assert.equal(fitBasisKey(scored(10, "matrix")), "matrix");
   assert.equal(fitBasisKey(scored(10, "est")), "est_straight_line");
   assert.equal(fitBasisKey(unscored), null);
+  // Copy pin (held-batch-1 item 17, board copy ruled Oct 9, 2026).
   assert.equal(
     compareIntroLine(9, 12),
-    "Plan-fit = how much travelling your days would take from each place. Lower is easier. Based on 9 of 12 stops that have a location.",
+    "Plan-fit scores each place against the 9 of your 12 stops that have a location, day by day. Pick one and the days get built around it.",
   );
+  assert.equal(compareIntroLine(24, 24), "Plan-fit scores each place against your 24 stops, day by day. Pick one and the days get built around it.");
   assert.match(compareIntroLine(0, 0), /Add a few things/);
   assert.doesNotMatch(compareIntroLine(0, 0), /\d/);
 });

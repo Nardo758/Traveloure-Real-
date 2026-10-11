@@ -25,6 +25,7 @@
  * Run standalone: `tsx server/seeds/popular-cities-content.seed.ts`
  */
 
+import { teamSeededGemTags } from "@shared/content-tiers";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
 import { and, eq, isNull, or } from "drizzle-orm";
@@ -1833,6 +1834,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
     }
 
     await db.insert(travelPulseHiddenGems).values({
+      ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
       country: gem.country,
       placeName: gem.placeName,

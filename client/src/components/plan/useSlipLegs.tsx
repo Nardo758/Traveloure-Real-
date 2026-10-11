@@ -51,6 +51,7 @@ export function useSlipLegs(data: SlipLegsData | null | undefined, tripId?: stri
               legId={leg.legId}
               mode={leg.mode}
               route={leg.route}
+              transitUnavailable={leg.transitUnavailable === true}
               timeZone={timeZone}
               onOpen={tripId && canEditItems ? () => setOpenLeg({ ...leg, title }) : null}
             />

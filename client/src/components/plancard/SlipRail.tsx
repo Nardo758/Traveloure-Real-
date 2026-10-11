@@ -338,6 +338,7 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
               />
             )}
           </DatesGate>
+          {draft.datesPanel}
           <RailNote testId="slip-draft-note">
             Offered only on an empty plan — one row of any status and this becomes Optimize.
           </RailNote>

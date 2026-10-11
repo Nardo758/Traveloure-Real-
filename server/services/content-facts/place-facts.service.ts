@@ -18,6 +18,7 @@ import { db } from "../../db";
 import { contentSources, itineraryItems, placeFacts } from "@shared/schema";
 import {
   asFactOrigin,
+  PAGE_READ_ORIGINS,
   factProvenanceLine,
   isConfirmableFact,
   isFactStale,
@@ -37,6 +38,9 @@ import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
 import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea } from "@shared/place-name-gate";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
+import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
+import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
 import { getTavilyClient } from "../tavily-client";
 import { claudeService } from "../claude.service";
@@ -44,7 +48,24 @@ import { assertRobotsAllowed } from "../../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 import { loadPartnerHosts } from "../partner-hosts.service";
 
-export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
+export async function recordFacts(input: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
+  // FD-3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact passes the ONE admission rule or is not
+  // stored — an unsourced last admission or last train never reaches a finding (rulings 1/3).
+  const drafts = input.filter((d) => {
+    // SS-1b ruling 1 (ledger `2026-10-10-ss1b-official-refresh`): a market-level refresh fact is stored only
+    // with its source id, its official https URL, an official license and a verbatim quote — never unsourced.
+    if (d.origin === REFRESH_ORIGIN) {
+      const r = admitRefreshFact(d);
+      if (!r.ok) {
+        console.info(`[place-facts] refused official_refresh fact_type=${d.factType} reason=${r.reason} source_id=${d.sourceId ?? "none"}`);
+        return false;
+      }
+    }
+    if (!isFeasibilityFactType(d.factType)) return true;
+    const verdict = admitFeasibilityFact(d);
+    if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
+    return verdict.ok;
+  });
   if (!drafts.length) return 0;
   await db.insert(placeFacts).values(
     drafts.map((d) => ({
@@ -63,9 +84,14 @@ export async function recordFacts(drafts: FactDraft[], ctx: { planId: string | n
       license: d.license,
       fetchedAt: d.fetchedAt,
       expiresAt: d.expiresAt,
+      verifiedAt: d.verifiedAt ?? null,
       costCents: String(d.costCents),
       planId: ctx.planId,
       itineraryItemId: ctx.itemId,
+      // FD-2 (ledger `2026-10-09-fd2-content-tier-tags`): the tag pair is born with the row, from its own
+      // origin and license through the ONE rule; an origin with no ruled tag stays untagged (§13).
+      sourceClass: placeFactTags(d.origin, d.license, d.factType)?.sourceClass ?? null,
+      reuseClass: placeFactTags(d.origin, d.license, d.factType)?.reuseClass ?? null,
     })),
   );
   return drafts.length;
@@ -77,7 +103,7 @@ type FactRow = typeof placeFacts.$inferSelect;
  * R-u (surface step 3): a place ID an earlier answer to this SAME query text already resolved — a
  * free shortcut to the ID (no API call at all). Never the cache key itself: the key is the ID.
  */
-async function knownPlaceIdForQuery(query: string): Promise<string | null> {
+export async function knownPlaceIdForQuery(query: string): Promise<string | null> {
   const [hit] = await db
     .select({ placeRef: placeFacts.placeRef })
     .from(placeFacts)
@@ -622,7 +648,7 @@ export async function fetchFreshFactsForItem(input: {
   return { recorded, outcome: adapter.lastOutcome ?? "no_facts", sourceId: source.id, refused: adapter.lastRefused };
 }
 
-function defaultTavilyExtractDeps(): TavilyExtractDeps {
+export function defaultTavilyExtractDeps(): TavilyExtractDeps {
   return {
     client: (usage) => getTavilyClient({ usage }),
     complete: (opts) => claudeService.completeJson(opts),
@@ -685,6 +711,11 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
       costCents: "0",
       planId: fact.planId,
       itineraryItemId: fact.itineraryItemId,
+      // FD-2: the expert's confirmation is local and ours; when it confirms an OFFICIAL fact it quotes that
+      // fact, and expires with it (ruling 8, `isLiveLocal`).
+      sourceClass: "local",
+      reuseClass: "reusable",
+      officialSourceFactId: fact.license === "official" ? fact.id : null,
     });
     const claimed = await tx
       .update(placeFacts)
@@ -712,4 +743,108 @@ export async function pendingFactLookups(tripId: string, now: Date = new Date())
   } catch {
     return [];
   }
+}
+
+/**
+ * FD-3 (ledger `2026-10-10-fd3-feasibility`; rulings 1–3, 6): the facts the feasibility checks read, for
+ * ONE plan, behind the caller's own plan gate (the findings reader and the plancard). Read here, the one
+ * reader of `place_facts` (content-facts C5).
+ *
+ *   · hours — per item, the plan's own hours rows PLUS official rows stored for the item's place id by
+ *     any plan (the registry's stored facts, ruling 2), in the ONE precedence (`resolveFactPrecedence`:
+ *     official first for a hard fact). Only rows carrying Google-shaped `weekdayDescriptions` are read; a
+ *     text-only crawled row is never parsed (ruling 1). Stale rows still count (R-v caveat).
+ *   · lastAdmission — per item, the first official `last_admission` row, unexpired.
+ *   · lastServices — every official `last_service` row in the plan's market with a station point,
+ *     unexpired; the caller matches them to a ride by distance.
+ * Every row must be TAGGED (`source_class` set): an untagged fact never reaches a finding (FD-2 ruling 3).
+ */
+export interface FeasibilityHours {
+  weekdayDescriptions: string[];
+  checkedAt: string | null;
+  /** A hard closure counts only from an official source the registry may publish (R-p) — unchanged. */
+  official: boolean;
+}
+export interface FeasibilityFacts {
+  hours: Map<string, FeasibilityHours>;
+  lastAdmission: Map<string, unknown>;
+  lastServices: Array<{ lat: number; lng: number; value: unknown }>;
+}
+
+export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
+  const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
+  // The item → place id map, from the plan's own Places rows.
+  const placeOf = new Map<string, string>();
+  for (const r of own) {
+    if (r.itineraryItemId && r.placeRefKind === "place_id" && r.placeRef && !placeOf.has(r.itineraryItemId)) placeOf.set(r.itineraryItemId, r.placeRef);
+  }
+  const placeIds = Array.from(new Set(placeOf.values()));
+  const stored = placeIds.length
+    ? await db
+        .select()
+        .from(placeFacts)
+        .where(
+          and(
+            eq(placeFacts.placeRefKind, "place_id"),
+            inArray(placeFacts.placeRef, placeIds),
+            inArray(placeFacts.factType, ["hours", "last_admission"]),
+            // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
+            inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
+            eq(placeFacts.license, "official"),
+            isNull(placeFacts.supersededBy),
+            sql`${placeFacts.sourceClass} IS NOT NULL`,
+          ),
+        )
+    : [];
+  const sources = await sourcesFor([...own, ...stored]);
+  const byItem = new Map<string, FactRow[]>();
+  for (const r of own) {
+    if (!r.itineraryItemId) continue;
+    byItem.set(r.itineraryItemId, [...(byItem.get(r.itineraryItemId) ?? []), r]);
+  }
+  placeOf.forEach((placeId, itemId) => {
+    const extra = stored.filter((r) => r.placeRef === placeId && !(byItem.get(itemId) ?? []).some((x) => x.id === r.id));
+    if (extra.length) byItem.set(itemId, [...(byItem.get(itemId) ?? []), ...extra]);
+  });
+
+  const hours = new Map<string, FeasibilityHours>();
+  const lastAdmission = new Map<string, unknown>();
+  byItem.forEach((rows, itemId) => {
+    const ranked = resolveFactPrecedence(
+      rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
+      "hours",
+    );
+    const h = ranked.find((r) => r.factType === "hours" && Array.isArray((r.value as any)?.weekdayDescriptions));
+    if (h) {
+      const v = toView(h, now, sources);
+      hours.set(itemId, {
+        weekdayDescriptions: ((h.value as any).weekdayDescriptions as unknown[]).map(String),
+        checkedAt: h.fetchedAt ? new Date(h.fetchedAt as any).toISOString() : null,
+        official: h.origin !== "places_api" && v?.publishable === true,
+      });
+    }
+    const la = ranked.find((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
+    if (la) lastAdmission.set(itemId, la.value);
+  });
+
+  const services = market
+    ? await db
+        .select()
+        .from(placeFacts)
+        .where(
+          and(
+            eq(placeFacts.factType, "last_service"),
+            eq(placeFacts.market, market),
+            eq(placeFacts.license, "official"),
+            isNull(placeFacts.supersededBy),
+            sql`${placeFacts.sourceClass} IS NOT NULL`,
+            sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
+          ),
+        )
+    : [];
+  const lastServices = services
+    .filter((r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok)
+    .map((r) => ({ lat: Number(r.placeLat), lng: Number(r.placeLng), value: r.value }))
+    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  return { hours, lastAdmission, lastServices };
 }

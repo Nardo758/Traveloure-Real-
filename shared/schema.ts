@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, bigint, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HANDLE_MAX_LENGTH } from "./handle";
@@ -3967,13 +3967,18 @@ export const destinationSeasons = pgTable("destination_seasons", {
   
   sourceType: varchar("source_type", { length: 20 }).default("system"),
   
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Destination Calendar schemas and types
 export const insertDestinationEventSchema = createInsertSchema(destinationEvents).omit({ id: true, createdAt: true, updatedAt: true, reviewedAt: true });
-export const insertDestinationSeasonSchema = createInsertSchema(destinationSeasons).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDestinationSeasonSchema = createInsertSchema(destinationSeasons).omit({ id: true, createdAt: true, updatedAt: true, sourceClass: true, reuseClass: true });
 
 export type DestinationEvent = typeof destinationEvents.$inferSelect;
 export type InsertDestinationEvent = z.infer<typeof insertDestinationEventSchema>;
@@ -4204,7 +4209,18 @@ export const hotelCache = pgTable("hotel_cache", {
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
-});
+  // 365 (ledger 2026-10-10-s1-d1-liteapi): LiteAPI static content. Nullable, no DEFAULT/CHECK. Written only by
+  // the nightly LiteAPI sync (server/services/liteapi-sync.service.ts); rates are never stored here.
+  providerHotelId: varchar("provider_hotel_id", { length: 100 }),
+  hotelTypeId: integer("hotel_type_id"),
+  guestRating: decimal("guest_rating", { precision: 4, scale: 2 }),
+  mainImageUrl: text("main_image_url"),
+  fetchedAt: timestamp("fetched_at"),
+  contentUpdatedAt: timestamp("content_updated_at"),
+}, (table) => ({
+  // 365: empty at creation (provider_hotel_id is born NULL; NULLs never collide). The sync's upsert key.
+  providerHotelUniq: uniqueIndex("uq_hotel_cache_provider_hotel").on(table.provider, table.providerHotelId),
+}));
 
 export const hotelOfferCache = pgTable("hotel_offer_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -4954,6 +4970,15 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   // specific Moment and therefore cannot replace a Moment's representative photo.
   momentKey: varchar("moment_key", { length: 30 }),
 
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
+  authorLabel: varchar("author_label", { length: 120 }),
+  verifiedBy: varchar("verified_by"),
+  verifiedAt: timestamp("verified_at"),
+  expiresAt: timestamp("expires_at"),
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),
@@ -5033,6 +5058,13 @@ export const cityNeighborhoods = pgTable("city_neighborhoods", {
   // = shared/neighborhood-claims.ts DAYPARTS; NULL = the default (evening). Admin-editable.
   defaultDaypart: varchar("default_daypart", { length: 20 }),
 
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
+  authorLabel: varchar("author_label", { length: 120 }),
+  authoredAt: timestamp("authored_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -5423,7 +5455,7 @@ export const cityMediaCache = pgTable("city_media_cache", {
 });
 
 export const insertTravelPulseCitySchema = createInsertSchema(travelPulseCities).omit({ id: true, lastUpdated: true, createdAt: true });
-export const insertTravelPulseHiddenGemSchema = createInsertSchema(travelPulseHiddenGems).omit({ id: true, detectedAt: true, lastUpdated: true });
+export const insertTravelPulseHiddenGemSchema = createInsertSchema(travelPulseHiddenGems).omit({ id: true, detectedAt: true, lastUpdated: true, sourceClass: true, reuseClass: true, authorLabel: true, verifiedBy: true, verifiedAt: true, expiresAt: true });
 export const insertTravelPulseLiveActivitySchema = createInsertSchema(travelPulseLiveActivity).omit({ id: true, occurredAt: true });
 export const insertTravelPulseDiscoveryScoreSchema = createInsertSchema(travelPulseDiscoveryScores).omit({ id: true, lastActivityAt: true, createdAt: true });
 export const insertTravelPulseCityAlertSchema = createInsertSchema(travelPulseCityAlerts).omit({ id: true, createdAt: true });
@@ -5984,11 +6016,22 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Optimize and Build-around never move or remove it. No DEFAULT, no CHECK; written ONLY by the
   // owner's lock rail and the Moment default, and omitted from `insertItineraryItemSchema` (§19).
   lockedAt: timestamp("locked_at"),
+  // TC-3a (migration 368; ledger `2026-10-11-tc3a-ride-item`): a RIDE item's exit pin — where the ride
+  // leaves the traveler. The boarding pin is the item's own `latitude`/`longitude`; when an exit pin is
+  // present the legs engine routes the FOLLOWING leg from it. Nullable, no DEFAULT/CHECK/index. Written
+  // only by the ride service (`ride-item.service.ts`); omitted from the insert schema and stripped from
+  // every generic write. NULL = not a ride, or a ride that ends where it starts.
+  exitLatitude: decimal("exit_latitude", { precision: 10, scale: 7 }),
+  exitLongitude: decimal("exit_longitude", { precision: 10, scale: 7 }),
   // Migration 343 (step 5): the optimizer run and version an ADOPTED day came from. Written only by
   // apply-days. NULL = not adopted from a version. No DEFAULT/CHECK/index/FK.
   sourceRunId: varchar("source_run_id"),
   sourceVariantId: varchar("source_variant_id"),
 
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -6343,7 +6386,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -8134,6 +8177,13 @@ export const transportLegs = pgTable("transport_legs", {
   // Writer: the stay re-route. NULL = no Google coordinate recorded on the leg.
   coordSource: varchar("coord_source", { length: 20 }),
   coordFetchedAt: timestamp("coord_fetched_at"),
+  // TC-3a (migration 368): a SUPERSEDED leg — kept, hidden, never deleted. Set with `proposal_status` NULL
+  // (which every trip reader already skips). `superseded_by_item_id` names the ride item that replaced it,
+  // so removing the ride restores exactly the legs it superseded; NULL there with `superseded_at` set =
+  // superseded by the engine's re-route of a legacy leg (P0 ruling 7) — never restored. Nullable, no
+  // DEFAULT/CHECK/index/FK.
+  supersededAt: timestamp("superseded_at"),
+  supersededByItemId: varchar("superseded_by_item_id"),
   // Migration 357 (ledger `2026-10-07-step9a-routing-engine`, step 9a ruling 3): the routing source that
   // computed this leg — `google_routes` | `stub`. NULL = not a routing-engine leg. A traveler sees an
   // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
@@ -10127,6 +10177,14 @@ export const localKnowledgeNuggets = pgTable("local_knowledge_nuggets", {
   webGapUrl: text("web_gap_url"),
   webGapCheckedAt: timestamp("web_gap_checked_at"),
 
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
+  verifiedAt: timestamp("verified_at"),
+  expiresAt: timestamp("expires_at"),
+  officialSourceFactId: varchar("official_source_fact_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -10227,7 +10285,7 @@ export const insertVisaRequirementsCacheSchema = createInsertSchema(visaRequirem
 export type VisaRequirementsCache = typeof visaRequirementsCache.$inferSelect;
 export type InsertVisaRequirementsCache = z.infer<typeof insertVisaRequirementsCacheSchema>;
 
-export const insertCityNeighborhoodSchema = createInsertSchema(cityNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCityNeighborhoodSchema = createInsertSchema(cityNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true, sourceClass: true, reuseClass: true, authorLabel: true, authoredAt: true });
 export type CityNeighborhood = typeof cityNeighborhoods.$inferSelect;
 export type InsertCityNeighborhood = z.infer<typeof insertCityNeighborhoodSchema>;
 
@@ -10368,6 +10426,11 @@ export const cityEvents = pgTable("city_events", {
   // index, no backfill. The town the venue is really in when it is not the market city ("Osaka" for
   // a Kyoto-market show at Kyocera Dome). NULL = NOT KNOWN, never "same as the market" (§13).
   venueLocality: varchar("venue_locality", { length: 100 }),
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   withdrawnAt: timestamp("withdrawn_at"),
 }, (table) => [
@@ -11087,6 +11150,11 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
   lastVerifiedAt: timestamp("last_verified_at"),
   active: boolean("active").notNull().default(true),
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -11184,7 +11252,7 @@ export const boardItems = pgTable("board_items", {
   boardTripUnique: unique("board_items_board_trip_unique").on(table.boardId, table.readyMadeTripId),
 }));
 
-export const insertReadyMadeTripSchema = createInsertSchema(readyMadeTrips).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertReadyMadeTripSchema = createInsertSchema(readyMadeTrips).omit({ id: true, createdAt: true, updatedAt: true, sourceClass: true, reuseClass: true });
 export type ReadyMadeTrip = typeof readyMadeTrips.$inferSelect;
 export type InsertReadyMadeTrip = z.infer<typeof insertReadyMadeTripSchema>;
 export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({
@@ -11409,6 +11477,9 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   name: varchar("name", { length: 255 }).notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // TC-3 seed (migration 369): the OpenStreetMap node the coordinates were read from. Nullable; NULL = not
+  // from an OSM node (an owner's own placement). Where set, "© OpenStreetMap contributors" applies.
+  osmNodeId: bigint("osm_node_id", { mode: "number" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -11416,6 +11487,40 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+/**
+ * TC-3a (migration 368; ledger `2026-10-11-tc3a-ride-item`): the facts a TRANSPORT catalog row carries that
+ * `provider_services` has no column for — one row per service (UNIQUE), FK CASCADE. A service is a ride in
+ * the catalog exactly when it has a row here. `official_source` is REQUIRED (FD-3's admission rule: nothing
+ * seeds without the official page it was read from); every other fact is NULL until an official read
+ * confirms it, and NULL is never rendered as "no rule". Pins live in `service_route_points` (first =
+ * boarding, last = exit). Born empty; table and index declared here per the deploy-push durability rule.
+ */
+export const serviceTransportFacts = pgTable("service_transport_facts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  weatherRule: text("weather_rule"),
+  weatherFallbackMode: varchar("weather_fallback_mode", { length: 20 }),
+  luggageRule: text("luggage_rule"),
+  passValidity: text("pass_validity"),
+  paymentConstraints: text("payment_constraints"),
+  officialLink: text("official_link"),
+  officialSource: text("official_source").notNull(),
+  verifiedAt: timestamp("verified_at"),
+  bookingWindowDays: integer("booking_window_days"),
+  osmAttribution: boolean("osm_attribution"),
+  // TC-3 seed (migration 369; ledger `2026-10-11-tc3-ride-seed`): `fact_sources` maps every seeded field
+  // (a column name, or `notes.<key>`) to { url, quote } from the official read — no entry, no value.
+  // `notes` holds the facts no column carries (fares in yen, calendar caveat, duration conflict, child
+  // height, pairing note …). Both nullable, no DEFAULT; NULL = nothing seeded.
+  factSources: jsonb("fact_sources"),
+  notes: jsonb("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("service_transport_facts_service_id_uniq").on(table.serviceId),
+]);
+export type ServiceTransportFacts = typeof serviceTransportFacts.$inferSelect;
 
 /**
  * D-25 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`; punchlist D-25 = option A).
@@ -12230,6 +12335,10 @@ export const planOptions = pgTable("plan_options", {
   expertRecommendation: text("expert_recommendation"),
   expertRecommendedBy: varchar("expert_recommended_by"),
   sourceImpressionId: varchar("source_impression_id"),
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   setPositionUniq: uniqueIndex("plan_options_set_position_uniq").on(table.setId, table.position),
@@ -12301,6 +12410,13 @@ export const placeFacts = pgTable("place_facts", {
   planId: varchar("plan_id").references(() => trips.id, { onDelete: "set null" }),
   itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "set null" }),
   supersededBy: varchar("superseded_by"),
+  // FD-2 (migration 361; ledger `2026-10-09-fd2-content-tier-tags`): content-tier tags. Nullable, no
+  // DEFAULT/CHECK/index; value sets in shared/content-tiers.ts. NULL source_class = UNTAGGED (never reaches a draft).
+  // Server-stamped only — omitted from the insert schema (§19).
+  sourceClass: varchar("source_class", { length: 16 }),
+  reuseClass: varchar("reuse_class", { length: 24 }),
+  authorLabel: varchar("author_label", { length: 120 }),
+  officialSourceFactId: varchar("official_source_fact_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   refIdx: index("idx_place_facts_ref").on(table.placeRefKind, table.placeRef),
@@ -12356,3 +12472,64 @@ export const planDayRetimes = pgTable("plan_day_retimes", {
   createdAt: timestamp("created_at").notNull(),
 });
 export type PlanDayRetime = typeof planDayRetimes.$inferSelect;
+
+// FD-1 (migration 363; ledger `2026-10-09-fd1-free-draft-cap`): one row per counted FREE draft. Born empty;
+// NO FK to trips (deleting a plan never refunds a draft). `rail` / `status` are app-enforced in
+// shared/free-draft-cap.ts (no CHECK). ONE writer: server/services/free-draft-cap.service.ts. No insert
+// schema exists — nothing client-facing writes this table (§19). Indexes declared here (deploy-push rule).
+export const freeDraftRuns = pgTable("free_draft_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  guestKey: varchar("guest_key"),
+  tripId: varchar("trip_id"),
+  rail: varchar("rail", { length: 32 }),
+  status: varchar("status", { length: 16 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userCreatedIdx: index("idx_free_draft_runs_user_created").on(table.userId, table.createdAt),
+  guestCreatedIdx: index("idx_free_draft_runs_guest_created").on(table.guestKey, table.createdAt),
+  tripUniq: uniqueIndex("uq_free_draft_runs_trip").on(table.tripId).where(sql`status <> 'released'`),
+}));
+export type FreeDraftRun = typeof freeDraftRuns.$inferSelect;
+
+// S1-d-3a (migration 371; ledger `2026-10-10-s1-d3a-liteapi-booking`): one row per LiteAPI prebook. Nuitée is
+// merchant of record (the Payment SDK takes the card), so no PaymentIntent and no platform_revenue row hang
+// off this. NO FK (a paid booking outlives the plan it came from), NO DEFAULT/CHECK on status (value set ONCE
+// in shared/liteapi-booking.ts). ONE writer: server/services/liteapi-booking.service.ts.
+export const liteapiBookings = pgTable("liteapi_bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull(),
+  itineraryItemId: varchar("itinerary_item_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  hotelCacheId: varchar("hotel_cache_id"),
+  providerHotelId: varchar("provider_hotel_id", { length: 64 }).notNull(),
+  env: varchar("env", { length: 16 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  offerId: text("offer_id").notNull(),
+  prebookId: varchar("prebook_id", { length: 128 }).notNull(),
+  transactionId: varchar("transaction_id", { length: 128 }).notNull(),
+  liteapiBookingId: varchar("liteapi_booking_id", { length: 128 }),
+  hotelConfirmationCode: varchar("hotel_confirmation_code", { length: 128 }),
+  checkin: date("checkin").notNull(),
+  checkout: date("checkout").notNull(),
+  adults: integer("adults").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  commissionCents: integer("commission_cents"),
+  processingFeeCents: integer("processing_fee_cents"),
+  cancellationPolicy: jsonb("cancellation_policy"),
+  failureReason: text("failure_reason"),
+  claimedAt: timestamp("claimed_at"),
+  bookedAt: timestamp("booked_at"),
+  cancellingAt: timestamp("cancelling_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncStatus: varchar("last_sync_status", { length: 32 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  prebookUniq: uniqueIndex("uq_liteapi_bookings_prebook").on(table.prebookId),
+  liveItemUniq: uniqueIndex("uq_liteapi_bookings_live_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling')`),
+  statusIdx: index("idx_liteapi_bookings_status").on(table.status),
+}));
+export type LiteapiBooking = typeof liteapiBookings.$inferSelect;

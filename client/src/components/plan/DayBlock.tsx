@@ -10,6 +10,8 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { usePlanRowLook } from "./row-look";
+import { feasibilityLine, type DayFeasibility } from "@shared/plan-feasibility";
+import { localTeaserLine, type LocalTeaser } from "@shared/free-draft-cap";
 
 export interface DayBlockProps {
   /** Stable key for testids — the plan day number, or the slot key for an event-only slot. */
@@ -28,10 +30,25 @@ export interface DayBlockProps {
   domId?: string;
   /** Board look: the day's image as a thumbnail, drawn beside the header while the day is closed. */
   thumb?: ReactNode;
+  /**
+   * FD-3 (ledger `2026-10-10-fd3-feasibility`, §3d): the server's per-day counts of what the feasibility
+   * checks could read. Drawn as ONE muted line at the top of the OPEN day — the words are
+   * `feasibilityLine` (shared), so the slip, the Trip Card and the versions board can never disagree.
+   * Absent ⇒ no line.
+   */
+  feasibility?: DayFeasibility | null;
+  /**
+   * FD-5 (ledger `2026-10-10-fd5-coverage-targets`): a FREE plan's count-only teaser for the day, already
+   * gated server-side by the coverage targets. Drawn beside the feasibility line in the words of
+   * `localTeaserLine` (shared). Absent or zero ⇒ nothing.
+   */
+  localTeaser?: LocalTeaser | null;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, children }: DayBlockProps) {
+  const feasibilityText = feasibilityLine(feasibility);
+  const teaserText = localTeaserLine(localTeaser);
   const look = usePlanRowLook();
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;
@@ -75,6 +92,8 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
         {aside ? <div className="px-4 pb-2 text-xs" data-testid={`slip-day-aside-${dayKey}`}>{aside}</div> : null}
         {isOpen ? (
           <div className="pb-1" data-testid={`slip-day-body-${dayKey}`}>
+            <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
+            <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             {children}
           </div>
         ) : null}
@@ -109,9 +128,31 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
       {isOpen ? (
         <div data-testid={`slip-day-body-${dayKey}`}>
           {photo ? <div className="px-3 pt-1 pb-2">{photo}</div> : null}
+          <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
+          <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           {children}
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** FD-3: the day's feasibility line, or nothing. One testid on every surface. */
+export function DayFeasibilityLine({ dayKey, text, className }: { dayKey: string; text: string | null; className?: string }) {
+  if (!text) return null;
+  return (
+    <p className={className} data-testid={`slip-day-feasibility-${dayKey}`}>
+      {text}
+    </p>
+  );
+}
+
+/** FD-5: the day's count-only local teaser, or nothing. One testid on every surface. */
+export function DayLocalTeaserLine({ dayKey, text, className }: { dayKey: string; text: string | null; className?: string }) {
+  if (!text) return null;
+  return (
+    <p className={className} data-testid={`slip-day-local-teaser-${dayKey}`}>
+      {text}
+    </p>
   );
 }

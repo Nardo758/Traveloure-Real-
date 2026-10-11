@@ -2,15 +2,11 @@
  * journey-handoff.spec.ts — Lane 3 of the persona-coverage dispatch: the traveler -> expert
  * advisory grant, expert edits, and the §12 pending-advisor negative pins.
  *
- * Prereq (Phase 0 ground truth): the Gion expert's local_expert_forms row is seeded
- * identity-verified but `status='pending'` by design (scripts/seed-personas.ts's
- * "Verification pre-seed" — it stands in for external identity/KYB only, never for a human admin
- * review). `POST /api/trips/:id/expert-advisor` gates the grant on `isExpertApproved()`
- * (server/services/booking-actions.service.ts), which checks `local_expert_forms.status =
- * 'approved'` specifically — a DIFFERENT column from identity_verification_status. So this suite
- * first drives the REAL admin-approval flow (ci-admin, the same pattern
- * supply-provider.spec.ts:219 uses) before attempting the grant; the grant would otherwise 404
- * with "Expert not found or not approved" against the seed's default pending state.
+ * Prereq: scripts/seed-personas.ts seeds the Gion expert's local_expert_forms row ROUTABLE —
+ * `status='approved'`, `stripe_connect_status='complete'` beside the verified Identity (B3, ledger
+ * `2026-10-09-b3-expert-routability`, R402). The admin-approval step below therefore no longer changes
+ * the row; it stays in the body because it still exercises the real admin route
+ * (PATCH /api/admin/expert-applications/:id/status), and it asserts the row ends `approved`.
  *
  * Grant flow: traveler POST /api/trips/:id/expert-advisor {expertUserId, message} (creates
  * trip_expert_advisors status='pending', server/routes/booking-actions.ts:645) -> expert POST
@@ -20,13 +16,17 @@
  * /trips/:tripId/expert-notes (private Build notes) -> 403; GET /trips/:tripId/commission ->
  * 200 (read surfaces keep granting `pending`, write surfaces do not).
  *
- * origin:'expert' is asserted on a FRESH item the accepted expert creates (POST
- * /api/trips/:tripId/itinerary-items, trips.routes.ts:1426) — deliberately sending a
- * client-supplied `origin:'traveler'` in the body to prove the server ignores it and stamps its
- * own derivation from the actor's trip role (never client-supplied, §12/D2).
+ * Expert edits follow LD 62 (step 7b, R324): on a traveler's plan an accepted advisor's item add is
+ * FILED as an `expert_suggestions` row and answered 202 (server/routes.ts, the monolith's POST
+ * /api/trips/:tripId/itinerary-items) — nothing is written to the plan until the OWNER accepts it
+ * (POST /api/trips/:tripId/expert-suggestions/:id/accept, server/routes/handoff.routes.ts). The accept
+ * writes the item and stamps `origin:'expert'`, `suggested_by:'expert'` server-side
+ * (server/services/expert-suggestions.service.ts); the expert's POST deliberately sends
+ * `origin:'traveler'` to prove a client-supplied origin is never trusted (§12/D2). Ledger
+ * `2026-10-10-jh1-journey-handoff`.
  *
  * Delivered note: the expert PATCHes that same item with `expertNote` (the traveler-facing
- * per-item note, §21) -> the owning traveler's TRIP SLIP (/plans/:id, SlipView.tsx) renders it
+ * per-item note, §21; LD 62 keeps the expert's own note a direct write) -> the owning traveler's TRIP SLIP (/plans/:id, SlipView.tsx) renders it
  * in `slip-expert-note` behind a "Note from {expertName}" label — the two-surface model:
  * delivered expert work lives on the slip; the Trip Card (/trip/:id) is the snapshot surface
  * with the "Not final yet" guard. (Step 9 asserted the Card's
@@ -171,8 +171,9 @@ test.describe("journey-handoff — traveler grants the Gion expert, expert edits
     });
     expect(advisorRowAccepted?.status, "assignment must be accepted before the expert can write").toBe("accepted");
 
-    // ── Expert creates an item — origin is server-stamped 'expert', a client-supplied
-    //    origin:'traveler' is proven ignored (never trusted from the body) ───────────────────
+    // ── Expert adds an item — under LD 62 (step 7b) an advisor's add on a traveler's plan is FILED
+    //    as a suggestion (202) and written only by the owner's accept, which stamps origin 'expert'
+    //    server-side. A client-supplied origin:'traveler' is sent to prove it is never trusted. ───
     const createItemRes = await expertCtx.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, {
       data: {
         title: "Afternoon walk through Gion's stone-paved lanes",
@@ -180,18 +181,51 @@ test.describe("journey-handoff — traveler grants the Gion expert, expert edits
         origin: "traveler", // deliberately wrong — the server must ignore this
       },
     });
-    const createdItem = createItemRes.ok() ? await createItemRes.json().catch(() => null) : null;
-    const [itemRow] = await rows<{ id: string; origin: string; title: string }>(
-      `SELECT id, origin, title FROM itinerary_items WHERE id = $1`,
-      [createdItem?.id ?? "00000000-0000-0000-0000-000000000000"],
+    const filedBody = createItemRes.status() === 202 ? await createItemRes.json().catch(() => null) : null;
+    const filed = await rows<{ id: string; status: string; kind: string; expert_id: string }>(
+      `SELECT id, status, kind, expert_id FROM expert_suggestions WHERE trip_id = $1`,
+      [tripId],
+    );
+    const [itemsBeforeAccept] = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM itinerary_items WHERE trip_id = $1`,
+      [tripId],
     );
     report.record({
-      action: "expert creates an item; origin is server-stamped 'expert' despite a client-supplied origin:'traveler'",
-      ui: `POST status ${createItemRes.status()}`,
-      db: JSON.stringify(itemRow),
-      verdict: createItemRes.status() === 201 && itemRow?.origin === "expert" ? "PASS" : "FAIL",
+      action: "expert adds an item; it is FILED as a suggestion (LD 62), nothing is written to the plan yet",
+      ui: `POST status ${createItemRes.status()}, suggested=${filedBody?.suggested}`,
+      db: `expert_suggestions=${JSON.stringify(filed)} itinerary_items=${itemsBeforeAccept?.n}`,
+      verdict:
+        createItemRes.status() === 202 &&
+        filedBody?.suggested === true &&
+        filed.length === 1 &&
+        filed[0].status === "pending" &&
+        filed[0].kind === "add" &&
+        filed[0].expert_id === gionExpertUserId &&
+        itemsBeforeAccept?.n === 0
+          ? "PASS"
+          : "FAIL",
     });
-    expect(itemRow?.id, "created item must exist before writing a note on it").toBeTruthy();
+    expect(filed.length, "the expert's add must be filed as exactly one suggestion").toBe(1);
+
+    // ── The owner accepts the suggestion; the server writes the item, stamped origin 'expert' ──
+    const acceptSuggestionRes = await page.request.post(
+      `${BASE_URL}/api/trips/${tripId}/expert-suggestions/${filed[0].id}/accept`,
+    );
+    const accepted = acceptSuggestionRes.ok() ? await acceptSuggestionRes.json().catch(() => null) : null;
+    const [itemRow] = await rows<{ id: string; origin: string; suggested_by: string | null; title: string }>(
+      `SELECT id, origin, suggested_by, title FROM itinerary_items WHERE id = $1`,
+      [accepted?.result?.id ?? "00000000-0000-0000-0000-000000000000"],
+    );
+    report.record({
+      action: "owner accepts the suggestion (POST .../expert-suggestions/:id/accept); the item is written with origin 'expert' despite the client-supplied origin:'traveler'",
+      ui: `POST status ${acceptSuggestionRes.status()}`,
+      db: JSON.stringify(itemRow),
+      verdict:
+        acceptSuggestionRes.status() === 200 && itemRow?.origin === "expert" && itemRow?.suggested_by === "expert"
+          ? "PASS"
+          : "FAIL",
+    });
+    expect(itemRow?.id, "the accepted item must exist before writing a note on it").toBeTruthy();
     const itemId = itemRow.id;
 
     // ── Expert writes a delivered (traveler-facing) note on that item ───────────────────────

@@ -46,6 +46,7 @@
  * CART ROWS ONLY. It never writes `routing_status` — the transition endpoints own that, and
  * they call in here afterwards.
  */
+import { stampItemSourceClass } from "@shared/content-tiers";
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../db";
 import { cartItems, customVenues, itineraryItems, providerServices, trips } from "@shared/schema";
@@ -909,12 +910,13 @@ export async function materializeCartLinesAsItems(
         const [created] = await tx
           .insert(itineraryItems)
           .values({
-            ...buildPlanItemValues({
+            // FD-2 ruling 9: a catalog line on the traveler's plan is public (stamped from its origin).
+            ...stampItemSourceClass(buildPlanItemValues({
               tripId,
               line,
               subject: resolved.subject,
               tripStartDate: trip.startDate ?? null,
-            }),
+            })),
             // LD 39: the cart IS the `ready_for_checkout` projection of this table, so a line
             // sitting in the cart IS that state — this is a READ of the row that already exists,
             // not a routing TRANSITION (those belong to routing.routes.ts, which is why
@@ -1030,12 +1032,12 @@ export async function convertCartLinesToItems(
         const [created] = await tx
           .insert(itineraryItems)
           .values(
-            buildPlanItemValues({
+            stampItemSourceClass(buildPlanItemValues({
               tripId,
               line,
               subject: resolved.subject,
               tripStartDate: trip.startDate ?? null,
-            }) as any,
+            })) as any,
           )
           .returning({ id: itineraryItems.id });
         // THE MOVE. This module is the single writer of `cart_items` (LD 39), so the delete is

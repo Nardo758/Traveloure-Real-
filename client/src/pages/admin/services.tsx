@@ -608,7 +608,7 @@ export default function AdminServices() {
               <Tag className="w-4 h-4" /> Edit Affinity Tags
             </DialogTitle>
             <DialogDescription>
-              Set which traveller contexts surface <strong>{selectedService?.serviceName}</strong> in the marketplace.
+              Set which traveler contexts surface <strong>{selectedService?.serviceName}</strong> in the marketplace.
               Tagged services override category inference and receive a relevance boost.
             </DialogDescription>
           </DialogHeader>

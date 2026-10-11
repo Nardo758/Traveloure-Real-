@@ -18,7 +18,7 @@ import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
 import { JOB_CADENCE } from "./internal.routes";
-import { listGemCandidates, approveGemCandidate, rejectGemCandidate } from "../services/gem-promotion.service";
+import { listGemCandidates, approveGemCandidate, rejectGemCandidate, verifyGem } from "../services/gem-promotion.service";
 import { MOMENTS } from "../services/landing-moments";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, isPayoutStale } from "../config/payout.config";
@@ -8191,6 +8191,8 @@ router.post("/api/admin/leads/:expertRequestId/confirm", isAuthenticated, async 
     try {
       await confirmLeadAssignmentHandler(req.params.expertRequestId, req, res);
     } catch (error: any) {
+      // B3 ruling 1: the one advisor author refuses a NEW non-routable expert; say so, never a 500.
+      if (error?.code === "expert_not_routable") return res.status(409).json({ error: error.message, code: error.code });
       res.status(500).json({ error: error.message });
     }
   });
@@ -8201,6 +8203,8 @@ router.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, asyn
     try {
       await confirmLeadAssignmentHandler(req.params.requestId, req, res);
     } catch (error: any) {
+      // B3 ruling 1: the one advisor author refuses a NEW non-routable expert; say so, never a 500.
+      if (error?.code === "expert_not_routable") return res.status(409).json({ error: error.message, code: error.code });
       res.status(500).json({ error: error.message });
     }
   });
@@ -8281,6 +8285,23 @@ router.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req
     } catch (err) {
       console.error("[Gem Candidates] list error:", err);
       res.status(500).json({ message: "Failed to fetch gem candidates" });
+    }
+  });
+
+  // POST /api/admin/gems/:id/verify — FD-2 ruling 3 (ledger `2026-10-09-fd2-content-tier-tags`). A person
+  // verifies an untagged (e.g. AI-written) gem; the session's admin becomes its author. No body is read (§19).
+  router.post("/api/admin/gems/:id/verify", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const result = await verifyGem({ gemId: req.params.id, verifierUserId: user.id });
+      if (!result.ok) return res.status(result.status).json({ message: result.message });
+      res.json({ gem: result.gem });
+    } catch (err) {
+      console.error("[admin] verify gem failed:", err);
+      res.status(500).json({ message: "Could not verify the gem" });
     }
   });
 

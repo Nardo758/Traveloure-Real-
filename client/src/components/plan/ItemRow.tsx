@@ -543,13 +543,16 @@ function BoardItemRow(
   );
 }
 
-/** The board's facts line: the day's hours in teal, the provenance after it in the faint grey. */
+/** The board's facts line: the day's hours in teal-ink, the provenance after it in muted grey. */
 function BoardFactsText({ text }: { text: string }) {
   const { lead, source } = factsLineParts(text);
+  // The line is read ONCE, whole, by assistive tech (and by any reader of the markup); the two
+  // coloured halves are presentation only.
   return (
     <>
-      <span>{lead}</span>
-      {source ? <span className="font-normal text-[color:var(--slip-muted)]"> · {source}</span> : null}
+      <span className="sr-only">{text}</span>
+      <span aria-hidden="true">{lead}</span>
+      {source ? <span aria-hidden="true" className="font-normal text-[color:var(--slip-muted)]"> · {source}</span> : null}
     </>
   );
 }

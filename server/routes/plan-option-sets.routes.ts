@@ -15,6 +15,7 @@
  *   GET    /api/trips/:tripId/where-to-stay                       smoke 4 item 5 — the post-draft panel
  *   POST   /api/trips/:tripId/where-to-stay                       bind: stay here / own / skip
  *   POST   /api/trips/:tripId/stay-pick/seen                      S1: the card showed a changed pick (ledger 2026-10-09-s1-one-stay)
+ *   GET    /api/trips/:tripId/stay-pick/link                      FU-S1-2: the picked stay's link, when its card is opened
  *
  * §14: the actor is the session; no body carries an identity, a price or a coordinate the server
  * could read from a source row. §19: every body is a `.strict()` object. LD 40: a set, option or
@@ -300,7 +301,7 @@ const stayBody = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("stay_here"),
-      hotel: z.object({ kind: z.enum(["platform", "hotel_cache", "affiliate"]), id: z.string().min(1).max(64) }).strict(),
+      hotel: z.object({ kind: z.enum(["platform", "hotel_cache", "affiliate", "liteapi"]), id: z.string().min(1).max(64) }).strict(),
     })
     .strict(),
   z
@@ -340,6 +341,97 @@ router.post("/api/trips/:tripId/where-to-stay", isAuthenticated, async (req: any
 // (`.strict()` empty object, §19); owner or managing assistant (the "choose" role); anyone else and an absent
 // plan get the same 404 (LD 40).
 const staySeenBody = z.object({}).strict();
+// FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the picked stay's ONE link, fetched lazily when its
+// card is opened — at most one Google Details call, never stored. Plan read gate; one 404 otherwise.
+router.get("/api/trips/:tripId/stay-pick/link", isAuthenticated, async (req: any, res) => {
+  try {
+    const { pickedStayLink } = await import("../services/stay-link.service");
+    const out = await pickedStayLink(req.params.tripId, getUserId(req));
+    if (!out) return res.status(404).json({ code: "not_found", message: "No such plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[stay-pick/link]", err);
+    res.status(500).json({ code: "internal", message: "Could not load the stay link" });
+  }
+});
+
+// S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`): live rates for one LiteAPI stay on the card — a live
+// call, never stored, behind the plan read gate (one 404 otherwise, LD 40). Over the daily cap, off, an
+// error or a timeout answer `{ state: "unavailable" }` with 200 — the card says so; it is never an error.
+router.get("/api/trips/:tripId/stays/:stayId/rates", isAuthenticated, async (req: any, res) => {
+  try {
+    const { stayRates } = await import("../services/liteapi-rates.service");
+    const out = await stayRates({ tripId: req.params.tripId, userId: getUserId(req), stayId: req.params.stayId });
+    if (out.state === "not_found") return res.status(404).json({ code: "not_found", message: "No such stay on this plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[stay-rates]", err);
+    res.json({ state: "unavailable" });
+  }
+});
+
+// S1-d-3a (ledger `2026-10-10-s1-d3a-liteapi-booking`): booking the chosen LiteAPI stay. OWNER ONLY (booking
+// pays — LD 52); anyone else and an absent plan, item or stay are ONE 404 (LD 40). Every body is an empty
+// `.strict()` object (§19): the offer, the price, the holder and the transaction id are all server-derived (§14).
+const stayBookingBody = z.object({}).strict();
+const STAY_BOOKING_STATUS: Record<string, number> = {
+  not_found: 404,
+  booking_unavailable: 409,
+  already_booked: 409,
+  dates_needed: 409,
+  party_needed: 409,
+  unavailable: 409,
+  no_prebook: 409,
+  holder_incomplete: 409,
+  not_confirmed: 409,
+};
+function sendStayBooking(res: any, out: { state: string }) {
+  const code = STAY_BOOKING_STATUS[out.state];
+  if (code === 404) return res.status(404).json({ code: "not_found", message: "No such stay on this plan" });
+  res.status(code ?? 200).json(out);
+}
+router.get("/api/trips/:tripId/items/:itemId/stay-booking", isAuthenticated, async (req: any, res) => {
+  try {
+    const { stayBookingView } = await import("../services/liteapi-booking.service");
+    const out = await stayBookingView({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) });
+    if (!out) return res.status(404).json({ code: "not_found", message: "No such stay on this plan" });
+    res.json(out);
+  } catch (err) {
+    console.error("[stay-booking]", err);
+    res.status(500).json({ code: "internal", message: "Could not read the booking" });
+  }
+});
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/prebook", isAuthenticated, async (req: any, res) => {
+  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { prebookStay } = await import("../services/liteapi-booking.service");
+    sendStayBooking(res, await prebookStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+  } catch (err) {
+    console.error("[stay-booking prebook]", err);
+    res.status(500).json({ code: "internal", message: "Could not prepare the booking" });
+  }
+});
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/book", isAuthenticated, async (req: any, res) => {
+  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { bookStay } = await import("../services/liteapi-booking.service");
+    sendStayBooking(res, await bookStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+  } catch (err) {
+    console.error("[stay-booking book]", err);
+    res.status(500).json({ code: "internal", message: "Could not complete the booking" });
+  }
+});
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/cancel", isAuthenticated, async (req: any, res) => {
+  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  try {
+    const { cancelStay } = await import("../services/liteapi-booking.service");
+    sendStayBooking(res, await cancelStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+  } catch (err) {
+    console.error("[stay-booking cancel]", err);
+    res.status(500).json({ code: "internal", message: "Could not cancel the booking" });
+  }
+});
+
 router.post("/api/trips/:tripId/stay-pick/seen", isAuthenticated, async (req: any, res) => {
   if (!staySeenBody.safeParse(req.body ?? {}).success) return badBody(res);
   try {

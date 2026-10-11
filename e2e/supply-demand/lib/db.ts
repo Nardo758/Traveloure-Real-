@@ -119,7 +119,10 @@ export async function seedExpertIdentityVerification(userId: string): Promise<{ 
   await db().query(
     `UPDATE local_expert_forms
         SET identity_verification_status = 'verified',
-            identity_verified_at = NOW()
+            identity_verified_at = NOW(),
+            -- B3 (sanctioned): Connect onboarding is held for Stripe in CI too; a routable expert
+            -- (approved + verified + payable) is what every hire rail now requires.
+            stripe_connect_status = 'complete'
       WHERE user_id = $1`,
     [userId],
   );

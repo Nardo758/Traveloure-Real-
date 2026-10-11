@@ -19,7 +19,8 @@ export interface MomentConfig {
   label: string;
   eyebrow: string;
   headline: string;
-  pieces: [string, string, string];
+  /** Exactly two points (H1, ledger `2026-10-08-h1-home-copy`): eyebrow + one-line headline + 2 points, ≤ 35 words, no named local. */
+  pieces: [string, string];
   experienceType: string; // coarse machine key the CTA prefills
   /**
    * The `experience_types` SLUG this moment is an instance of — the ONE runtime occasion
@@ -49,13 +50,11 @@ export const MOMENTS: MomentConfig[] = [
     // loosened to make a stock image appear expert-supplied.
     key: "wedding",
     label: "Wedding",
-    eyebrow: "A wedding weekend in Kyoto",
-    headline:
-      "Three days, one plan — the rehearsal dinner Friday, the ceremony at three, the brunch nobody has to organize.",
+    eyebrow: "A wedding in Kyoto",
+    headline: "Ceremony, dinner and the shrine's rules, handled by a local.",
     pieces: [
-      "A local who knows which temple garden will hold a ceremony, and the hour the light is right for it.",
-      "Welcome drinks Friday, hair and makeup at seven, the reception at six — each its own event on one plan, one guest list.",
-      "Guests arriving from four countries land on the same slip, each with their own room and their own RSVP.",
+      "Someone walks the venue with you and keeps vendors on time.",
+      "Guests get one plan: where to be, and when.",
     ],
     // One of the five frozen coarse keys the AI chooser accepts (ruling 2026-09-01-moment-key).
     experienceType: "wedding",
@@ -67,11 +66,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "proposal",
     label: "Proposal",
     eyebrow: "A proposal in Kyoto",
-    headline: "The spot, the photographer, the dinner after — and the ring stays your secret.",
+    headline: "The spot, the photographer, the dinner after — the ring stays your secret.",
     pieces: [
-      "Yuki picks the lane in Gion no guide lists — and the hour it empties.",
-      "A photographer waits out of sight; you never see the camera.",
-      "Kaiseki booked for after, the counter seat held.",
+      "A quiet lane in Gion, at the hour it empties.",
+      "A photographer out of sight; kaiseki booked for after.",
     ],
     experienceType: "event",
     experienceSlug: "proposal",
@@ -81,11 +79,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "golf",
     label: "Golf trip",
     eyebrow: "A golf trip in Scotland",
-    headline: "Four rounds in the right order, on the courses worth the trip — and a car that runs the bags between links.",
+    headline: "Four rounds on the courses worth the trip, in the right order.",
     pieces: [
-      "A local who knows which courses are worth your four rounds — and the order that plays each at its best hour.",
-      "A driver runs the bags between links so no one carries a bag off the 18th to a train.",
-      "Tee times booked in sequence, the whisky bar after each round already on the list.",
+      "Tee times booked in sequence, each at its best hour.",
+      "A driver runs the bags between links.",
     ],
     experienceType: "travel",
     // Golf has its own seeded row since ledger `2026-09-04-golf-occasion-and-housekeeping`. It
@@ -99,11 +96,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "girls_trip",
     label: "Girls' trip",
     eyebrow: "A girls' trip in Cartagena",
-    headline: "The rooftop before it fills, the boat that skips the crowded cay, the table for eight that never says no.",
+    headline: "The rooftop before it fills, and a table for eight.",
     pieces: [
-      "A local who reads the night — which rooftop is worth it Thursday, which is dead — so you never waste a sunset.",
-      "A private boat runs you to the island the day-tour flotillas don't reach, lunch aboard.",
-      "Dinner for eight held at the courtyard place that “doesn't take groups,” the late table yours.",
+      "A private boat to the island the day tours don't reach.",
+      "Dinner held where they “don't take groups.”",
     ],
     experienceType: "travel",
     experienceSlug: "girls-trip",
@@ -113,11 +109,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "anniversary",
     label: "Anniversary",
     eyebrow: "An anniversary in Porto",
-    headline: "The cellar that isn't on the tour, the river at the hour it turns gold, dinner where they remember your year.",
+    headline: "The cellar that isn't on the tour, and the river at golden hour.",
     pieces: [
-      "A local who opens the family cellar that runs no public tastings — a vintage from the year you married, poured for you two.",
-      "A boat down the Douro timed to the light, not the schedule the day-trips run on.",
-      "The corner table at the place with no sign held for 8pm, the port after already chosen.",
+      "A family cellar pours a vintage from the year you married.",
+      "The corner table held for 8pm.",
     ],
     experienceType: "event",
     // The COUPLES anniversary (`anniversary-trip`), not the wedding-anniversary party
@@ -129,11 +124,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "honeymoon",
     label: "Honeymoon",
     eyebrow: "A honeymoon in Goa",
-    headline: "The beach the resorts can't sell you, the cook who comes to you, the morning nobody schedules.",
+    headline: "The beach the resorts can't sell you, and a cook who comes to you.",
     pieces: [
-      "A local who sends you to the south-Goa cove the package tours never reach — and the shack that grills the morning's catch.",
-      "A private cook sets dinner on the sand for two, the menu built around what the boats brought in.",
-      "One day left deliberately empty — a boat on call if you want it, nothing booked if you don't.",
+      "A south-Goa cove the package tours never reach.",
+      "Dinner on the sand from the morning's catch.",
     ],
     experienceType: "travel",
     // Ledger `2026-09-03-occasion-hygiene`: `honeymoon` is now a real `experience_types` row, so
@@ -146,11 +140,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "milestone_birthday",
     label: "Milestone birthday",
     eyebrow: "A milestone birthday in Mumbai",
-    headline: "The city's best night, engineered — the table, the car, the after-party you didn't know existed.",
+    headline: "The city's best night: the table, the car, the after-party.",
     pieces: [
-      "A local who builds the night around the one restaurant worth the wait — and gets you in on a Saturday.",
-      "A car holds between the dinner, the bar, and the rooftop so the group never stands on a curb.",
-      "The private room at the place that “only does members” blocked for your name, cake in on cue.",
+      "A Saturday table at the one restaurant worth the wait.",
+      "A car waits between stops; cake arrives on cue.",
     ],
     experienceType: "event",
     // Seeded by ledger `2026-09-03-occasion-switches`: `milestone-birthday` is now a real
@@ -163,11 +156,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "family_occasion",
     label: "Family occasion",
     eyebrow: "A family occasion in Jaipur",
-    headline: "Three generations, one palace courtyard, and a plan that moves at everyone's pace.",
+    headline: "Three generations, one palace courtyard, at everyone's pace.",
     pieces: [
-      "A local who opens a heritage haveli's courtyard for the family dinner — the host family cooking, not a banquet hall.",
-      "Cars sized to the group carry grandparents and kids the same route, no one left standing in the heat.",
-      "The fort visit booked for the cool hour, a guide who slows for the elders, the evening table held after.",
+      "Dinner in a heritage haveli's courtyard, cooked by the host family.",
+      "The fort at the cool hour, with an unhurried guide.",
     ],
     experienceType: "event",
     // Ratified and seeded by ledger `2026-09-03-occasion-switches` — the row this Moment's CTA

@@ -17,6 +17,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/traveloure";
 process.env.STRIPE_SECRET_KEY ??= "sk_test_dummy";
@@ -71,6 +72,8 @@ async function seedEarner(id: string, handle: string): Promise<void> {
     role: "local_expert",
     handle,
   } as any);
+  // B3 (sanctioned fixture edit): an expert storefront is public only for an approved, non-seed application.
+  await insertRoutableExpertForm(id);
   // The storefront 404s with no approved inventory — give each earner one
   // approved active listing so the page is publishable at all.
   await db.insert(providerServices).values({

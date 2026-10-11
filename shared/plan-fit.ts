@@ -186,9 +186,15 @@ export function easiestIndex(fits: readonly PlanFit[]): number | null {
   return firsts.length === 1 ? firsts[0] : null;
 }
 
-/** The compare view's lead sentence; states the located count, never a figure it does not have. */
+/**
+ * The compare view's lead sentence (rev 15 board copy — held-batch-1 item 17, decision-maker Oct 9, 2026);
+ * states the located count, never a figure it does not have. The board's "Optimize later gives you a version
+ * for each" is NOT said: it is true only while a flag the page cannot read is on (item 20, dropped).
+ */
 export function compareIntroLine(located: number, total: number): string {
-  const base = "Plan-fit = how much travelling your days would take from each place. Lower is easier.";
-  if (total === 0) return `${base} Add a few things to your days to see how each place fits.`;
-  return `${base} Based on ${located} of ${total} ${total === 1 ? "stop" : "stops"} that ${total === 1 ? "has" : "have"} a location.`;
+  const tail = "day by day. Pick one and the days get built around it.";
+  if (total === 0) return "Plan-fit scores each place against your stops, day by day. Add a few things to your days to see how each place fits.";
+  const stops = (n: number) => `${n} ${n === 1 ? "stop" : "stops"}`;
+  if (located === total) return `Plan-fit scores each place against your ${stops(total)}, ${tail}`;
+  return `Plan-fit scores each place against the ${located} of your ${stops(total)} that ${located === 1 ? "has" : "have"} a location, ${tail}`;
 }

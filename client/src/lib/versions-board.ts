@@ -17,6 +17,7 @@ import {
   retimeIsFree,
   retimeLine,
   type BadgeKey,
+  type RunCharge,
   type BoardStop,
   type DayDiff,
 } from "@shared/version-board";
@@ -26,13 +27,15 @@ export interface BoardVersion {
   label: string;
   name: string;
   badge: BadgeKey | null;
+  /** Held-batch-1 item 22: the server's strict winner by S1's tiebreak; absent on an older payload ⇒ false. */
+  recommended?: boolean;
   anchor: { name: string; lat: number | null; lng: number | null } | null;
   stops: BoardStop[];
   days: DayDiff[];
 }
 
 export interface VersionsBoardView {
-  run: { comparisonId: string; runId: string | null; runAt: string } | null;
+  run: { comparisonId: string; runId: string | null; runAt: string; charge?: RunCharge | null } | null;
   plan: { stops: BoardStop[] };
   versions: BoardVersion[];
   retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean> };
@@ -226,4 +229,96 @@ export function dropOnPlanDay(
     return { action: "retime", order: next, swapIn: null };
   }
   return { action: "retime", order, swapIn: { variantItemId: drag.variantItemId } };
+}
+
+// ── THE OPTIMIZED BOARD (slip conformance, boards rev 15; ledger `2026-10-08-slip-optimized-board`) ──
+
+/** A version's totals for its card, read off the shared diffs (never re-derived): a zero is shown as
+ *  the board shows it, because each count is a real answer from the diff. */
+export function versionTotals(days: readonly DayDiff[]): { unchanged: number; moved: number; dropped: number; added: number } {
+  let unchanged = 0;
+  let moved = 0;
+  let dropped = 0;
+  let added = 0;
+  for (const d of days) {
+    if (d.identical) unchanged++;
+    moved += d.moved.length;
+    dropped += d.dropped.length;
+    added += d.added.length;
+  }
+  return { unchanged, moved, dropped, added };
+}
+
+/** The card's chips: "4 days unchanged · 2 stops moved · 0 dropped" (+ "N added" only when any). */
+export function versionTotalChips(t: ReturnType<typeof versionTotals>): { key: string; text: string; warn?: boolean }[] {
+  const out: { key: string; text: string; warn?: boolean }[] = [
+    { key: "unchanged", text: `${t.unchanged} ${t.unchanged === 1 ? "day" : "days"} unchanged` },
+    { key: "moved", text: `${t.moved} ${t.moved === 1 ? "stop" : "stops"} moved` },
+    { key: "dropped", text: `${t.dropped} dropped`, warn: t.dropped > 0 },
+  ];
+  if (t.added > 0) out.push({ key: "added", text: `${t.added} added` });
+  return out;
+}
+
+/** A day's short label: the weekday when the plan's machine date is known, else "Day N" (§13). */
+export function boardDayLabel(dayNumber: number, dateIso: string | null | undefined): string {
+  if (dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    const d = new Date(`${dateIso}T12:00:00Z`);
+    if (Number.isFinite(d.getTime())) return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+  }
+  return `Day ${dayNumber}`;
+}
+
+const COUNT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+/** The board's headline: "Three ways to spend these five days" — numbers past ten stay digits. */
+export function optimizedHeadline(versions: number, days: number): string {
+  const w = (n: number) => COUNT_WORDS[n] ?? String(n);
+  const ways = w(versions);
+  return `${ways.charAt(0).toUpperCase()}${ways.slice(1)} ${versions === 1 ? "way" : "ways"} to spend ${days === 1 ? "this day" : `these ${w(days)} days`}`;
+}
+
+// ── THE VERSIONS BOARDS (slip conformance, boards rev 15; ledger `2026-10-08-slip-versions-board`) ──
+
+/** The phone By-day headline: "One day, three ways". */
+export function byDayHeadline(versions: number): string {
+  const w = COUNT_WORDS[versions] ?? String(versions);
+  return `One day, ${w} ${versions === 1 ? "way" : "ways"}`;
+}
+
+/** "Wed 11" — the weekday and the day of the month from the plan's machine date, else "Day N" (§13). */
+export function boardDayDateLabel(dayNumber: number, dateIso: string | null | undefined): string {
+  if (dateIso && /^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    const d = new Date(`${dateIso}T12:00:00Z`);
+    if (Number.isFinite(d.getTime())) return `${d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })} ${d.getUTCDate()}`;
+  }
+  return `Day ${dayNumber}`;
+}
+
+/** The desktop "Your plan" header: "2 days picked · 3 from draft". */
+export function yourPlanSummary(picked: number, totalDays: number): string {
+  const fromDraft = Math.max(0, totalDays - picked);
+  return `${picked} ${picked === 1 ? "day" : "days"} picked · ${fromDraft} from draft`;
+}
+
+/** Held-batch-1 item 22: the label on the one strictly-winning version (server-decided). */
+export const VERSION_RECOMMENDED_LABEL = "Recommended";
+
+/**
+ * Held-batch-1 item 23: what the run cost, said on the board's header. The server sends `charge` to
+ * the plan's owner only, and NULL when no toll row explains the run — both render NO line (§13,
+ * never "free"). The free full re-run is retired (R-ac): what stays free for 24 h after a paid run is
+ * re-timing a day, so that is what the line offers, and only while the window is open.
+ */
+export function runChargeLine(
+  charge: RunCharge | null | undefined,
+  opts: { windowEndsAt: string | null; now: Date; formatDate: (iso: string) => string; formatTime: (iso: string) => string },
+): string | null {
+  if (!charge) return null;
+  if (charge.basis === "trip_pass") return "Included with your Trip Pass";
+  if (charge.basis === "free_rerun") return "Free re-run";
+  const amount = (charge.amountCents / 100).toFixed(2);
+  const money = charge.currency.toLowerCase() === "usd" ? `$${amount}` : `${charge.currency.toUpperCase()} ${amount}`;
+  const paid = `Paid ${opts.formatDate(charge.at)} · ${money}`;
+  const ends = opts.windowEndsAt ? new Date(opts.windowEndsAt).getTime() : NaN;
+  return Number.isFinite(ends) && opts.now.getTime() < ends ? `${paid} · free re-times until ${opts.formatTime(opts.windowEndsAt!)}` : paid;
 }

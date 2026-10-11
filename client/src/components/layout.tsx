@@ -1,5 +1,5 @@
 import { type CSSProperties } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useRecentlyViewed } from "@/hooks/use-recently-viewed";
 import { useLocale } from "@/hooks/use-locale";
@@ -126,7 +126,8 @@ const AUTH_NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>
 // `name`/`title` is KEPT, because it is both the translation fallback and the source of this
 // file's data-testid values (`link-nav-*`, `link-mobile-*`, `nav-dropdown-*`) — translating a
 // name in place would have renamed selectors the Playwright suites depend on.
-const navItems = navGroupsConfig.map((group) => ({
+// H1: a `hidden` group is not drawn — desktop bar and mobile sheet both read this list.
+const navItems = navGroupsConfig.filter((group) => !group.hidden).map((group) => ({
   name: group.name,
   i18nKey: group.i18nKey,
   // R2 (cosmetic-public-surfaces dispatch, A2): carried through ONLY for the desktop trigger's
@@ -581,9 +582,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // drawn as a sign-in CTA (§13 — an unresolved answer is not a negative answer).
   const { user, isLoading: isAuthLoading, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
-  // The footer's "Start a plan" opens the SAME planning modal the landing hero opens.
+  // The nav's, the phone menu's and the footer's "Start a plan" all start a NEW plan in PlanEntry (E2).
   const { open: openPlanning } = usePlanning();
   const [location] = useLocation();
+  const search = useSearch();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -677,6 +679,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
     wasOpenRef.current = isMobileMenuOpen;
   }, [isMobileMenuOpen]);
+
+  // Mobile-nav (Chrome smoke at 390 wide, ledger `2026-10-10-mobile-nav-close`): the phone menu and any open
+  // desktop dropdown close on EVERY route change — path or query (the group links on /experiences change only
+  // the query) — however the change happened: a menu link, a link elsewhere on the page, Back/Forward, or a
+  // programmatic navigation. A menu item's own onClick closing it is not the only path to a new route.
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setOpenMenu(null);
+  }, [location, search]);
 
   const isActive = (path: string) => location === path;
   // A dropdown page lights its parent group (footer-pages ruling): the ONE rule, nav-config.
@@ -814,7 +825,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </DropdownMenu>
                   <Button
                     size="sm"
-                    className="text-sm text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                    className="text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                     onClick={() => openSignInModal()}
                     data-testid="button-sign-in"
                   >
@@ -831,6 +842,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                 </>
               )}
+
+              {/* H1 (ledger `2026-10-08-h1-home-copy`): the nav's primary — "Start a plan" on the coral
+                  fill, for every visitor. E2 (ledger `2026-10-09-e2-plan-entry`, which landed second and
+                  wires it): it STARTS A NEW PLAN — `newPlan: true` opens PlanEntry even while a plan is
+                  bound (a bare open would edit the bound plan). No door is recorded; `PLAN_DOORS` is a
+                  closed list. The phone menu's and the footer's "Start a plan" do the same. */}
+              <Button
+                size="sm"
+                className="hidden xl:inline-flex text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
+                onClick={() => openPlanning({ newPlan: true })}
+                data-testid="button-nav-start-plan"
+              >
+                {START_PLAN_LABEL}
+              </Button>
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
               <div className="flex items-center xl:hidden">
@@ -858,7 +883,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* TEST 7 — Mobile menu: id for aria-controls, role=dialog, aria-modal, focus-trapped */}
-        <AnimatePresence>
+        {/* Mobile-nav (ledger `2026-10-10-mobile-nav-close`): keyed on the route so a navigation REMOUNTS the
+            presence. Without it, a route change landing on /experiences left the closing panel mid-exit —
+            the menu state was already closed, but framer-motion never finished the exit, so the panel stayed
+            drawn over the page at full height. A route change drops any exiting panel at once. */}
+        <AnimatePresence key={`${location}?${search}`}>
           {isMobileMenuOpen && (
             <motion.div
               id="mobile-menu"
@@ -875,10 +904,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   the list into an accordion is out of scope (FOLLOWUPS.md); moving the one control
                   a signed-out visitor is most likely to want is not. Signed-out only — a signed-in
                   visitor's identity/logout stays where it already was, at the panel's foot. */}
+              <div className="px-4 pt-3">
+                <Button
+                  className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    openPlanning({ newPlan: true });
+                  }}
+                  data-testid="button-mobile-start-plan"
+                >
+                  {START_PLAN_LABEL}
+                </Button>
+              </div>
               {!user && (
                 <div className="px-4 pt-3">
                   <Button
-                    className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                    className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       openSignInModal();
@@ -1003,7 +1044,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </Link>
                     ))}
                     <Button
-                      className="w-full mt-1 text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                      className="w-full mt-1 text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         openSignInModal();
@@ -1099,10 +1140,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       </li>
                     ) : (
                       <li key={`action-${link.action}`}>
-                        {/* No source ⇒ the modal opens on step 1 (Occasion), exactly as the hero does. */}
+                        {/* E2: "Start a plan" starts a NEW plan in PlanEntry, never the bound plan's edit window. */}
                         <button
                           type="button"
-                          onClick={() => openPlanning()}
+                          onClick={() => openPlanning({ newPlan: true })}
                           className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
                           data-testid="button-footer-start-plan"
                         >

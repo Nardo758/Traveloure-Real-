@@ -22,6 +22,7 @@
  *   · PROVENANCE (§14/§19): titles, coordinates and prices are copied from the SOURCE ROW server-side;
  *     only a `custom` option's title and pin come from the body, and a half pin is refused.
  */
+import { stampItemSourceClass, optionSourceClass } from "@shared/content-tiers";
 import crypto from "node:crypto";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { and, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
@@ -230,6 +231,8 @@ export async function createOptionSet(input: {
           locationPrecision: incumbent.latitude && incumbent.longitude ? "exact" : null,
           addedByUserId: input.userId,
           addedByRole: role === "advisor" ? "expert" : role === "delegate" ? "delegate" : "traveler",
+          // FD-2: an incumbent carries its item's own class.
+          sourceClass: optionSourceClass({ sourceKind: "incumbent", incumbentSourceClass: (incumbent as any).sourceClass }),
         })
         .returning();
       options.push(opt);
@@ -314,7 +317,8 @@ export async function addOption(input: { tripId: string; setId: string; userId: 
     if (position == null) {
       throw new OptionSetError(409, "set_full", `A comparison holds up to ${OPTION_SET_CAP} places`, { cap: OPTION_SET_CAP });
     }
-    const [row] = await tx.insert(planOptions).values({ id: crypto.randomUUID(), setId: set.id, position, ...values }).returning();
+    // FD-2: the source class is derived from the option's own facts, never taken from the caller.
+    const [row] = await tx.insert(planOptions).values({ id: crypto.randomUUID(), setId: set.id, position, ...values, sourceClass: optionSourceClass(values as any) }).returning();
     return row;
   });
 
@@ -400,14 +404,15 @@ export async function chooseOptionTx(
       const [created] = await tx
         .insert(itineraryItems)
         .values(
-          stripItineraryItemRoutingFields({
+          // FD-2 ruling 9: an expert-recommended option is a local input.
+          stampItemSourceClass(stripItineraryItemRoutingFields({
             tripId: input.tripId,
             dayNumber: claimed.dayNumber ?? 1,
             itemType: claimed.categoryKey === "accommodation" ? "accommodation" : "activity",
             userExperienceId: claimed.userExperienceId ?? null,
             origin: role === "delegate" ? "assistant" : "traveler",
             ...itemFields,
-          }) as any,
+          }), { fromLocalInput: opt.expertRecommendedBy != null || opt.sourceClass === "local" }) as any,
         )
         .returning({ id: itineraryItems.id });
       await tx.update(planOptionSets).set({ itineraryItemId: created.id }).where(eq(planOptionSets.id, claimed.id));
@@ -497,6 +502,7 @@ export async function promoteAnchor(input: { tripId: string; itemId: string; use
         locationPrecision: rowPoint ? "exact" : "places_fact",
         providerServiceId: item.providerServiceId ?? null,
         addedByUserId: input.userId, addedByRole: "traveler",
+        sourceClass: optionSourceClass({ sourceKind: "incumbent", incumbentSourceClass: (item as any).sourceClass }), // FD-2
       });
     }
     return { setId, fromCategory: prev?.categoryKey ?? null, toCategory, unchanged: false };

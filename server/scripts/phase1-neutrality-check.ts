@@ -54,8 +54,8 @@ async function main() {
   // Skip rows that aren't called through the commission resolver: deposit + transport-only.
   const skip = new Set([
     "platform_deposit_rate",          // FEE-3: pricing.service.ts reads it directly (now via fee_bands.platform_deposit)
-    "platform_transport_commission",  // transport-booking-options.service.ts reads directly
-    "affiliate_margin_12go",
+    "platform_transport_commission",  // dormant: the transport commission is the transport_platform_commission band (TC-0)
+    "affiliate_margin_12go",          // dormant: the four route-search margins are the affiliate_transport_margin band (TC-0)
     "affiliate_margin_omio",
     "affiliate_margin_discovercars",
     "affiliate_margin_kiwi",

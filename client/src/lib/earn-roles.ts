@@ -138,7 +138,7 @@ export const EARN_ROLES: EarnRole[] = [
     key: "trip_planner",
     label: "Trip Planner",
     track: "remote",
-    blurb: "Design personalised itineraries and guide travellers through every step of their journey",
+    blurb: "Design personalized itineraries and guide travelers through every step of their journey",
     signupPath: "/become-expert?type=travel_expert",
   },
   {

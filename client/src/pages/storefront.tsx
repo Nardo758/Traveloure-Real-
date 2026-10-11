@@ -149,6 +149,11 @@ interface StorefrontEarner {
   /** Whether this earner can be invited onto a traveler's plan (server's `isExpertHireable`). */
   acceptsPlanShares?: boolean;
   /**
+   * B3 ruling 3: false ⇔ an approved expert who is not routable yet (Identity or Connect
+   * incomplete). The page stays; the request/book door does not. Absent ⇒ open (older payload).
+   */
+  bookingOpen?: boolean;
+  /**
    * The business behind a PROVIDER storefront (ledger `2026-09-23-storefront-business-identity`):
    * its own name and type, and the Stripe-derived business verification. NULL/false on an expert
    * storefront and wherever the provider stated none (§13).
@@ -692,6 +697,8 @@ export default function StorefrontPage() {
   }
 
   const { earner, away } = data;
+  // B3 ruling 3: no request/book door for an expert who is not routable yet — read like vacation mode.
+  const bookingClosed = earner.bookingOpen === false;
   if (legacyId && earner.handle) {
     return <Redirect to={`/s/${earner.handle}${search ? `?${search}` : ""}`} />;
   }
@@ -1004,6 +1011,11 @@ export default function StorefrontPage() {
         {/* The owner sees no panel on their own page, so their content takes the full width. */}
         <div className={`mt-6 grid grid-cols-1 gap-6 items-start ${isOwnStorefront ? "" : "lg:grid-cols-[minmax(0,1fr)_360px]"}`}>
           <div id={PANEL_ANCHOR_ID} className="lg:col-start-2 lg:row-start-1 lg:sticky lg:top-6">
+            {bookingClosed && !isOwnStorefront ? (
+              <p className="rounded-xl border border-border p-4 text-sm text-muted-foreground" data-testid="storefront-booking-closed">
+                This expert isn't taking requests yet.
+              </p>
+            ) : (
             <StorefrontBookingPanel
               earner={{
                 name: displayName,
@@ -1044,6 +1056,7 @@ export default function StorefrontPage() {
                 />
               }
             />
+            )}
           </div>
 
           <div className="lg:col-start-1 lg:row-start-1 min-w-0">
@@ -1183,7 +1196,7 @@ export default function StorefrontPage() {
                   // Vacation mode: the CTA stops promising "book" while the owner is away —
                   // the listing itself stays visible and clickable (its detail page carries
                   // the same honest away state and disables the actual booking action).
-                  const cta = away ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+                  const cta = away || bookingClosed ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
                   const tripQuery = planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : "";
                   const serviceHref = `/services/${s.id}${tripQuery}`;
                   // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
@@ -1191,10 +1204,10 @@ export default function StorefrontPage() {
                   // withholds itself rather than promising "Book" on an away storefront (§13).
                   // The label is mapped FROM the resolved action only (ledger
                   // `2026-09-25-provider-action-buttons`): no listing column is read here.
-                  const actionLabel = away ? null : storefrontOfferingActionLabel(s.buyAction);
+                  const actionLabel = away || bookingClosed ? null : storefrontOfferingActionLabel(s.buyAction);
                   // The resolver offers NO booking verb (not live / provider hid the CTA): the
                   // card offers Message about this listing, and no buy button at all.
-                  const messageOnly = !away && offeringActionIsMessageOnly(s.buyAction);
+                  const messageOnly = !away && !bookingClosed && offeringActionIsMessageOnly(s.buyAction);
                   const nextAvailableText = offeringShowsNextAvailable(s.buyAction) ? formatNextAvailable(s.nextAvailable) : null;
                   return (
                     <StorefrontOfferingCard
@@ -1352,8 +1365,9 @@ export default function StorefrontPage() {
         </div>
       </div>
 
-      {/* The phone layout's pinned bar — the panel's price and its one action (hidden from `lg:`). */}
-      <StorefrontBookingBar
+      {/* The phone layout's pinned bar — the panel's price and its one action (hidden from `lg:`).
+          B3 ruling 3: no bar when the expert is not taking requests (the panel says so instead). */}
+      {!bookingClosed && <StorefrontBookingBar
         earner={{
           name: displayName,
           handle: earner.handle ?? "",
@@ -1370,7 +1384,7 @@ export default function StorefrontPage() {
         servicesAnchorId={SERVICES_ANCHOR_ID}
         panelAnchorId={PANEL_ANCHOR_ID}
         planEntry={null}
-      />
+      />}
     </div>
   );
 }

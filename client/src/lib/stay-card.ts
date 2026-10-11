@@ -1,0 +1,172 @@
+/**
+ * THE ONE-STAY CARD'S WORDS (S1 "one stay on the plan", Locked Decision 64; brief
+ * `docs/planning/briefs/s1-one-stay.md` ruling 6 — the card is the Conformance lane's Compare PR).
+ *
+ * Reads the server's `stay` block on `GET /api/trips/:tripId/where-to-stay` and computes nothing:
+ * the pick, "scored N of M nearby" and `changed` are the server's (stay-pick.service.ts is the ONE
+ * writer). Every sentence the card says lives here (§18 rule 1).
+ *
+ * §13: a routed plan with no pick yet draws NO card (never "no stay found"); "scored N of M" is
+ * said only when both numbers are known and M > 0; no price and no commission is ever shown — the
+ * payload carries none (ruling 5).
+ *
+ * "View on hotel's site" needs the hotel's own domain, which `StayHotel` does not carry yet — it
+ * arrives with FU-S1-2's rail. Until then the link slot is the Maps fallback: a Google Maps search
+ * for the hotel's name and the plan's city, labelled with its attribution beside it.
+ */
+import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
+import type { StayCloseness } from "@shared/stay-pick";
+import type { StayLink } from "@shared/stay-link";
+import { buildGoogleMapsDeepLink } from "@/lib/maps";
+import { cancellationLine, type StayRatesState } from "@shared/liteapi-rates";
+import { localTime } from "@shared/city-events";
+import { slipZoneAbbrev } from "@/lib/slip-zone-label";
+import { formatMoneyCents } from "@/lib/optimization-preview";
+import { serviceDetailHref } from "@/lib/trip-target";
+
+export const STAY_PICK_TITLE = "Our pick for your days";
+export const STAY_PICK_SUBTITLE = "Closest to your stops on most days, by travel time.";
+export const STAY_STRAIGHT_LINE_TITLE = "Closest to your stops";
+export const STAY_STRAIGHT_LINE_SUBTITLE = "By straight line. Optimize scores stays by travel time to your stops.";
+export const STAY_CHANGED_LINE = "Updated for your latest stops.";
+export const STAY_HERE_LABEL = "Stay here";
+export const STAY_SWAP_LEAD = "Rather pick yourself?";
+/** The link slot until FU-S1-2 serves the hotel's own site. */
+export const STAY_MAP_LINK_LABEL = "View on map";
+/** Shown beside every link that opens Google Maps. */
+export const GOOGLE_MAPS_ATTRIBUTION = "Google Maps";
+/** FU-S1-2: the hotel's own site, whether the provider typed it (`own`) or Google names it (`google`). */
+export const STAY_SITE_LINK_LABEL = "View on hotel's site";
+/** S1-b: a stay listed on Traveloure opens its own listing page — never "Book": the card shows no price. */
+export const STAY_SEE_ROOMS_LABEL = "See rooms";
+
+/**
+ * S1-b (decision-maker, Oct 10, 2026; ledger `2026-10-10-s1b-provider-stays`): the ONE link a stay card draws.
+ * A stay LISTED ON TRAVELOURE (`platform`) opens its listing page carrying the plan's id ("See rooms"), where a
+ * room is added to the plan with dates and checkout runs from the plan — no Google link and no attribution.
+ * This AMENDS FU-S1-2 (R393) for `platform` stays only: their card no longer sends the traveler to the
+ * provider's own site — the listing page is the booking surface for provider stays and may carry that site. Every other stay — `hotel_cache` (Amadeus / Booking.com data) and `affiliate` — keeps
+ * FU-S1-2's link exactly (`stayLinkView`), Google Maps attribution included.
+ */
+export type StayCardLink =
+  | { kind: "listing"; href: string; label: string; attributed: false; external: false }
+  | ({ external: true } & ReturnType<typeof stayLinkView>);
+export function stayCardLink(
+  hotel: { kind: string; id: string; name: string; stayLink?: StayLink | null },
+  opts: { tripId?: string | null; city?: string | null; openedStayLink?: StayLink | null },
+): StayCardLink {
+  if (hotel.kind === "platform") {
+    return { kind: "listing", href: serviceDetailHref(hotel.id, opts.tripId), label: STAY_SEE_ROOMS_LABEL, attributed: false, external: false };
+  }
+  return { external: true, ...stayLinkView(opts.openedStayLink ?? hotel.stayLink, stayMapsHref(hotel.name, opts.city)) };
+}
+
+/**
+ * FU-S1-2 (R393) on the card: the ONE link a stay card draws, read from S1's `stayLink` and never built
+ * here. `own` is the provider's site and carries no attribution; `google` (Google's website for the hotel)
+ * and `maps` come from Google and always carry "Google Maps" beside them. A card with no `stayLink` (a
+ * payload from before R393) keeps the Maps fallback, which is also Google and also attributed.
+ */
+export function stayLinkView(link: StayLink | null | undefined, fallbackHref: string): { href: string; label: string; kind: StayLink["kind"]; attributed: boolean } {
+  if (link?.kind === "own") return { href: link.url, label: STAY_SITE_LINK_LABEL, kind: "own", attributed: false };
+  if (link?.kind === "google") return { href: link.url, label: STAY_SITE_LINK_LABEL, kind: "google", attributed: true };
+  if (link?.kind === "maps") return { href: link.url, label: STAY_MAP_LINK_LABEL, kind: "maps", attributed: true };
+  return { href: fallbackHref, label: STAY_MAP_LINK_LABEL, kind: "maps", attributed: true };
+}
+
+/** "Scored 21 of 34 nearby" — null unless both counts are known and the total is positive. */
+export function stayScoredLine(scored: number | null | undefined, total: number | null | undefined): string | null {
+  if (typeof scored !== "number" || typeof total !== "number" || !Number.isFinite(scored) || !Number.isFinite(total)) return null;
+  if (total <= 0 || scored < 0) return null;
+  return `Scored ${Math.min(scored, total)} of ${total} nearby`;
+}
+
+/**
+ * The Maps fallback for the link slot: a name search for the hotel in the plan's city, built by the ONE
+ * canonical Maps builder (`@/lib/maps`; the trip-card-honesty guard). It is always a Google Maps link,
+ * because the attribution beside it says "Google Maps".
+ */
+export function stayMapsHref(name: string, city?: string | null): string {
+  const query = [name.trim(), (city ?? "").trim()].filter(Boolean).join(", ");
+  return buildGoogleMapsDeepLink([{ name: query }]);
+}
+
+/**
+ * "Close to N of M days" (R394, ruling Oct 9, 2026): read from S1's own `closeness` and never computed
+ * here. A day is close when the stay is within the configured routed minutes (paid) or straight-line
+ * kilometres (free) of every located stop that day; M = days with a located stop. The free tier says it
+ * is by straight line. Absent, null or no located day ⇒ no line (§13) — never "0 of 0".
+ */
+export const STAY_CLOSE_STRAIGHT_SUFFIX = "by straight line";
+export function stayClosenessLine(c: StayCloseness | null | undefined): string | null {
+  if (!c) return null;
+  const { closeDays, locatedDays, basis } = c;
+  if (!Number.isInteger(closeDays) || !Number.isInteger(locatedDays) || locatedDays <= 0 || closeDays < 0) return null;
+  const base = `Close to ${Math.min(closeDays, locatedDays)} of ${locatedDays} ${locatedDays === 1 ? "day" : "days"}`;
+  return basis === "straight_line" ? `${base} ${STAY_CLOSE_STRAIGHT_SUFFIX}` : base;
+}
+
+export type StayCardHotel = StayHotel & { closeness?: StayCloseness | null };
+export type StayCardModel =
+  | { tier: "routed"; hotels: [StayCardHotel]; scoredLine: string | null; changed: boolean }
+  | { tier: "straight_line"; hotels: StayCardHotel[]; scoredLine: null; changed: false };
+
+/** What the card draws, or null when it draws nothing (no stay block, no pick, no hotels). */
+export function stayCardModel(stay: WhereToStayStay | null | undefined): StayCardModel | null {
+  if (!stay) return null;
+  if (stay.tier === "routed") {
+    if (!stay.pick) return null;
+    return { tier: "routed", hotels: [{ ...stay.pick, closeness: stay.closeness ?? null }], scoredLine: stayScoredLine(stay.scoredCount, stay.candidateCount), changed: !!stay.changed };
+  }
+  const hotels = (stay.hotels ?? []).slice(0, 3);
+  return hotels.length ? { tier: "straight_line", hotels, scoredLine: null, changed: false } : null;
+}
+
+/**
+ * S1-d-2 (ledger `2026-10-10-s1-d2-liteapi-rates`): live rates on the card, LiteAPI stays only. The
+ * default card shows the control and NO price (SC3/SC7); the panel opens only after a tap and reads the
+ * server's answer — the card computes no price, margin or floor. Rates are never stored.
+ */
+export const STAY_RATES_SEE = "See rates";
+export const STAY_RATES_LOADING = "Checking rates…";
+export const STAY_RATES_UNAVAILABLE = "Rates unavailable right now";
+export const STAY_RATES_DATES_NEEDED = "Set your dates to see rates";
+export const STAY_RATES_PARTY_NEEDED = "Add who's coming to see rates";
+export const STAY_RATES_CHILDREN_NOT_PRICED = "Children are not included in this price";
+
+/** What the panel draws after a tap. `loading` until the server answers. */
+export type StayRatesView = { state: "loading" } | StayRatesState;
+
+/** The free-cancellation deadline in the plan's own zone: "Oct 12, 14:00 JST". null when it cannot be said. */
+export function stayDeadlineLocal(iso: string, timezone: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  try {
+    const day = new Intl.DateTimeFormat("en-US", { timeZone: timezone, month: "short", day: "numeric" }).format(at);
+    const abbrev = slipZoneAbbrev(timezone, at);
+    return `${day}, ${localTime(at, timezone)}${abbrev ? ` ${abbrev}` : ""}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The panel's lines for an answered state; null for `loading` (the caller draws the loading line). */
+export function stayRatesLines(v: StayRatesView):
+  | { kind: "message"; text: string }
+  | { kind: "offer"; price: string; party: string; board: string | null; cancellation: string | null; payAtProperty: string[]; childrenNote: string | null }
+  | null {
+  if (v.state === "loading") return null;
+  if (v.state === "unavailable") return { kind: "message", text: STAY_RATES_UNAVAILABLE };
+  if (v.state === "dates_needed") return { kind: "message", text: STAY_RATES_DATES_NEEDED };
+  if (v.state === "party_needed") return { kind: "message", text: STAY_RATES_PARTY_NEEDED };
+  const o = v.offer;
+  return {
+    kind: "offer",
+    price: `${formatMoneyCents(o.amountCents, o.currency)} total`,
+    party: `for ${o.adults} ${o.adults === 1 ? "adult" : "adults"}`,
+    board: o.boardName,
+    cancellation: cancellationLine(o, { checkin: v.checkin, timezone: v.timezone, local: stayDeadlineLocal }),
+    payAtProperty: o.payAtProperty.map((t) => `Plus ${formatMoneyCents(t.amountCents, t.currency)} payable at the property (${t.label})`),
+    childrenNote: o.childrenNotPriced ? STAY_RATES_CHILDREN_NOT_PRICED : null,
+  };
+}
