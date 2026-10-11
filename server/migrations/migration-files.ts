@@ -1993,6 +1993,6 @@ export const MIGRATION_FILES = [
   // 369 — TC-3 ride seed (ledger 2026-10-11-tc3-ride-seed): service_transport_facts.fact_sources + notes
   // (jsonb, nullable) and the Sagano / Hozugawa / Eizan "Kirara" rides under the reserved "Traveloure
   // Transport" account — every value from the official read, located from six OSM nodes and active
-  // (service_route_points.osm_node_id). Approved by Leon — comment 00:42Z on #1405.
+  // (service_route_points.osm_node_id). Migration 369 SQL approved by Leon — comment 00:42Z on #1405.
   "369_tc3_ride_seed.sql",
 ] as const;
