@@ -82,7 +82,7 @@ reclassified as a new registered migration or an approval to change main.
 ## Per-rule disposition and evidence
 
 The full individual-rule table (including each cancel code) remains in
-[`automation-part10-final-report.md`](automation-part10-final-report.md#per-rule-final-report).
+[`automation-part10-final-report.md`](automation-part10-final-report.md#per-rule-disposition).
 The following index records all rule groups without changing their proof scope.
 
 | Rule | Disposition | Evidence / boundary |
