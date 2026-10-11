@@ -18,6 +18,7 @@ import {
   offerIdFromRates,
   parseBook,
   parsePrebook,
+  sspFromRates,
 } from "../liteapi-booking";
 
 test("LB1 offer id from the re-quote", () => {
@@ -36,6 +37,18 @@ test("LB2 prebook", () => {
   assert.deepEqual(parsePrebook({ data: { ...d, price: 0 } }), { ok: false, reason: "no_price" });
   assert.deepEqual(parsePrebook({ data: { ...d, price: 280 } }), { ok: false, reason: "below_ssp" });
   assert.ok(parsePrebook({ data: { ...d, suggestedSellingPrice: undefined } }).ok, "no SSP stated ⇒ the price stands");
+  // The founder's sandbox prebook states no SSP: the re-quote's SSP is the floor.
+  const bare = { ...d, suggestedSellingPrice: undefined };
+  assert.ok(parsePrebook({ data: bare }, { amount: 300, currency: "USD" }).ok);
+  assert.deepEqual(parsePrebook({ data: { ...bare, price: 299 } }, { amount: 300, currency: "USD" }), { ok: false, reason: "below_ssp" });
+  assert.deepEqual(parsePrebook({ data: bare }, { amount: 300, currency: "EUR" }), { ok: false, reason: "below_ssp" }, "another currency cannot be floored");
+});
+
+test("LB2b the re-quote's SSP", () => {
+  assert.deepEqual(sspFromRates({ data: [{ roomTypes: [{ suggestedSellingPrice: { amount: 300, currency: "usd" } }] }] }), { amount: 300, currency: "USD" });
+  assert.deepEqual(sspFromRates({ data: [{ roomTypes: [{ suggestedSellingPrice: [{ amount: "310.5", currency: "USD" }] }] }] }), { amount: 310.5, currency: "USD" });
+  assert.deepEqual(sspFromRates({ data: [{ roomTypes: [{ rates: [{ retailRate: { suggestedSellingPrice: [{ amount: 280, currency: "USD" }] } }] }] }] }), { amount: 280, currency: "USD" });
+  assert.equal(sspFromRates({ data: [{ roomTypes: [{}] }] }), null);
 });
 
 test("LB3 book", () => {

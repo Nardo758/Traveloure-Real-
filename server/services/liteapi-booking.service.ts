@@ -31,6 +31,7 @@ import {
   bookIsConfirmed,
   bookingStatusOf,
   offerIdFromRates,
+  sspFromRates,
   parseBook,
   parsePrebook,
 } from "@shared/liteapi-booking";
@@ -147,6 +148,7 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
   const client = deps.client(cfg);
   const timeoutMs = deps.timeoutMs();
   let offerId: string | null = null;
+  let quotedSsp: ReturnType<typeof sspFromRates> = null;
   try {
     const marginPercent = Math.round((await deps.marginFraction()) * 10_000) / 100;
     const quoted = await gatedLiteapiRatesCall(
@@ -171,6 +173,7 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
     );
     if ("refused" in quoted) return { state: "unavailable" };
     offerId = offerIdFromRates(quoted.value);
+    quotedSsp = sspFromRates(quoted.value);
   } catch (err: any) {
     console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable" };
@@ -179,7 +182,7 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
 
   let parsed;
   try {
-    parsed = parsePrebook(await client.prebook({ offerId }));
+    parsed = parsePrebook(await client.prebook({ offerId }), quotedSsp);
   } catch (err: any) {
     console.warn(`[liteapi-booking] prebook ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable" };

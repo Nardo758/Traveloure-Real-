@@ -36,7 +36,8 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
 ## How it behaves
 - **Owner only** for every step (booking pays — LD 52); anything else is one 404.
 - **Prebook:** re-quotes the plan's confirmed dates and stated adults on the d-2 rates rail (same gate and cap),
-  takes that answer's `offerId`, prebooks with `usePaymentSdk: true`, refuses a price below the SSP, and writes
+  takes that answer's `offerId`, prebooks with `usePaymentSdk: true`, refuses a price below the SSP — read from
+  that same re-quote's `suggestedSellingPrice`, since the prebook answer carries none — and writes
   the row (`prebooked`) with the prebookId/transactionId pair **before** answering. The SDK's secret key is
   returned to the owner's page and never stored.
 - **Book:** the latest `prebooked` row for the item; the holder is the session user (first name, last name and
@@ -52,13 +53,16 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
   reports disagreement, stranded `booking` claims and day-old `prebooked` rows. It never writes `status`.
 
 ## Stated limits
-- **The LiteAPI field names are from the vendor's v3 docs, not verified against sandbox from here** (no network):
-  `roomTypes[0].offerId`, prebook `prebookId`/`transactionId`/`secretKey`/`price`/`suggestedSellingPrice`, book
-  `bookingId`/`status`/`hotelConfirmationCode`/`clientCommission`/`processingFee`. An unstated field is NULL; a
-  missing id is refused. The d-3b sandbox book-and-cancel smoke is where they are confirmed.
+- **The LiteAPI field names are verified against sandbox 2026-10-09 (founder run, `test_kyoto.py`):** rates
+  `offerId`/`offerRetailRate`/`suggestedSellingPrice`/`commission[]`; prebook (`usePaymentSdk: true`)
+  `prebookId`/`transactionId`/`secretKey`/`price`/`commission`/`priceDifferencePercent`; book
+  `status` (CONFIRMED)/`bookingId`/`hotelConfirmationCode`/`clientCommission`/`processingFee`/`sandbox`; cancel
+  `PUT /bookings/{id}` ⇒ `CANCELLED` with refund amount and fee. The prebook carries no SSP, so the floor is the
+  re-quote's. An unstated field is NULL; a missing id is refused. d-3b's sandbox book-and-cancel test re-proves
+  them in CI.
 - **A `booking` claim with no LiteAPI id** (payment taken, book answer lost) is reported by the sync for a person
-  to resolve; nothing books it again.
-- **Children** are not booked as guests yet (no ages recorded); the party booked is the stated adults.
+  to resolve; nothing books it again. Held, by ruling.
+- **Children** are not booked as guests yet (no ages recorded); the party booked is the stated adults. Held, by ruling.
 - **The voucher** is plain text/HTML from the row's own facts; its wording is d-3b's to review.
 
 ## Tests

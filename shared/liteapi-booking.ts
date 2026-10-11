@@ -35,6 +35,22 @@ export function offerIdFromRates(body: any): string | null {
   return str(body?.data?.[0]?.roomTypes?.[0]?.offerId);
 }
 
+/**
+ * The suggested selling price from the re-quote's cheapest room type (verified against sandbox 2026-10-09,
+ * founder run: `roomTypes[].suggestedSellingPrice`), read as `{ amount, currency }` or an array of them;
+ * the d-2 rate-level `retailRate.suggestedSellingPrice` is the fallback. null when unstated.
+ */
+export function sspFromRates(body: any): { amount: number; currency: string } | null {
+  const rt = body?.data?.[0]?.roomTypes?.[0];
+  for (const v of [rt?.suggestedSellingPrice, rt?.rates?.[0]?.retailRate?.suggestedSellingPrice]) {
+    const one = Array.isArray(v) ? v[0] : v;
+    const amount = money(one?.amount);
+    const currency = ccy(one?.currency);
+    if (amount !== null && amount > 0 && currency) return { amount, currency };
+  }
+  return null;
+}
+
 export interface PrebookFacts {
   prebookId: string;
   transactionId: string;
@@ -48,11 +64,12 @@ export interface PrebookFacts {
 export type PrebookParse = { ok: true; facts: PrebookFacts } | { ok: false; reason: "no_prebook" | "no_payment_sdk" | "no_price" | "below_ssp" };
 
 /**
- * Pure: a `/rates/prebook` answer (`usePaymentSdk: true`) → what is stored and what the SDK needs. A price
- * below LiteAPI's suggested selling price in the same currency is refused (`below_ssp`); an SSP in another
- * currency cannot be compared honestly and is refused too.
+ * Pure: a `/rates/prebook` answer (`usePaymentSdk: true`) → what is stored and what the SDK needs. The prebook
+ * answer states no SSP (founder sandbox run, 2026-10-09), so the floor is the RE-QUOTE's SSP, passed in; a
+ * prebook-level `suggestedSellingPrice` is honoured too if LiteAPI ever states one. A price below the SSP is
+ * refused (`below_ssp`); an SSP in another currency cannot be compared honestly and is refused too.
  */
-export function parsePrebook(body: any): PrebookParse {
+export function parsePrebook(body: any, quotedSsp: { amount: number; currency: string } | null = null): PrebookParse {
   const d = body?.data;
   const prebookId = str(d?.prebookId);
   if (!prebookId) return { ok: false, reason: "no_prebook" };
@@ -62,8 +79,9 @@ export function parsePrebook(body: any): PrebookParse {
   const price = money(d?.price);
   const currency = ccy(d?.currency);
   if (price === null || price <= 0 || !currency) return { ok: false, reason: "no_price" };
-  const ssp = money(d?.suggestedSellingPrice);
-  if (ssp !== null && ssp > price) return { ok: false, reason: "below_ssp" };
+  const prebookSsp = money(d?.suggestedSellingPrice);
+  if (prebookSsp !== null && prebookSsp > price) return { ok: false, reason: "below_ssp" };
+  if (quotedSsp && (quotedSsp.currency !== currency || quotedSsp.amount > price)) return { ok: false, reason: "below_ssp" };
   const policy = d?.roomTypes?.[0]?.rates?.[0]?.cancellationPolicies ?? d?.cancellationPolicies ?? null;
   return { ok: true, facts: { prebookId, transactionId, secretKey, amountCents: toCents(price), currency, cancellationPolicy: policy ?? null } };
 }

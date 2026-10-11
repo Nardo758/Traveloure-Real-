@@ -32,10 +32,12 @@ const id = (k: string) => `lbk-${RUN}-${k}`;
 const CITY = `Bookcity${RUN}`;
 const sandbox = { apiKey: "k", env: "sandbox" as const, dataBaseUrl: "https://api.test/v3.0", bookBaseUrl: "https://book.test/v3.0", maxRps: 1000, staleAfterDays: 2 };
 const production = { ...sandbox, env: "production" as const };
-const rates = { data: [{ hotelId: `${RUN}-lp`, roomTypes: [{ offerId: `offer-${RUN}`, rates: [{ retailRate: { total: [{ amount: 300, currency: "USD" }] } }] }] }] };
+// Shapes as the founder's sandbox run (2026-10-09) returned them: the SSP rides on the room type, and the
+// prebook answer states none of its own.
+const rates = { data: [{ hotelId: `${RUN}-lp`, roomTypes: [{ offerId: `offer-${RUN}`, suggestedSellingPrice: { amount: 300, currency: "USD" }, rates: [{ retailRate: { total: [{ amount: 300, currency: "USD" }] } }] }] }] };
 let prebookN = 0;
 const prebookAnswer = (over: Record<string, unknown> = {}) => ({
-  data: { prebookId: `pb-${RUN}-${++prebookN}`, transactionId: `tx-${RUN}-${prebookN}`, secretKey: "sk-secret", price: 312.5, suggestedSellingPrice: 300, currency: "USD", ...over },
+  data: { prebookId: `pb-${RUN}-${++prebookN}`, transactionId: `tx-${RUN}-${prebookN}`, secretKey: "sk-secret", price: 312.5, currency: "USD", priceDifferencePercent: 0, ...over },
 });
 
 function fakes(opts: { env?: "sandbox" | "production"; prebook?: any; book?: () => any; cancel?: () => any; get?: () => any } = {}) {
@@ -120,7 +122,7 @@ test("B1 not_found for a stranger and a non-LiteAPI stay; production ⇒ booking
 });
 
 test("B2/B3 prebook re-quotes server-side, stores the pair before the SDK, never the secret; below SSP is refused", async () => {
-  const low = fakes({ prebook: prebookAnswer({ price: 280, suggestedSellingPrice: 300 }) });
+  const low = fakes({ prebook: prebookAnswer({ price: 280 }) }); // below the re-quote's SSP of 300
   assert.deepEqual(await prebookStay(q("s1"), low.deps), { state: "unavailable" });
   assert.equal(await row("s1"), undefined, "nothing stored below the SSP");
 
