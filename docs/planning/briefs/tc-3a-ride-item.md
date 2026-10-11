@@ -85,3 +85,14 @@ Source of record: `docs/planning/briefs/tc-3-reads/nine-site-read-2026-10-10-v2.
   rows (holiday dates are not in the read).
 - Eizan departures: the ◆ marks per train (not Wed/Thu) and which dates are holidays.
 - Sagano beyond Dec 29; seat capacities; Hozugawa luggage; Sagano general weather rule.
+
+### Seed amendments (decision-maker, Oct 11, 2026)
+- **`service_route_points.osm_node_id` — ACCEPTED**, covered by Leon's 369 approval.
+- **Fares in `notes.fare` with `price` NULL — correct for now** (no currency column). **Held follow-up:** add
+  `price_cents` + `currency` to `service_transport_facts` with the next sidecar migration, so the swap card reads a
+  typed value rather than a note.
+- **Gaps left empty are correct.** Two can close cheaply later, not for the foliage MVP: Eizan's ◆ designations and
+  Sagano's 81/82 vs 91/92 train numbers are both in the operators' PDFs (a Chrome read), and Japanese public
+  holidays come from the nager-date adapter already in the trend engine.
+- **Queue:** #1401 lands as R428; this seed (#1405), retargeted to `main`, lands as R429 (Events' d-3a moves to R430).
+
