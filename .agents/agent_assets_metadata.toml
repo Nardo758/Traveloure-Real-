@@ -510,3 +510,17 @@ mtime_ms = 1791699308053
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/791e3295-8331-4a75-af7e-6db9135ad975/edcd341e-cd04-4e88-9c28-06e228c8239e"
 storage_version_token = "1791699446479157"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "2TVlXtMojtOc9934mkWZg"
+uri = "file://reports/automation-clock-safety-proposals.md"
+type = "text"
+title = "Clock scenario and development safety proposals"
+description = "Read-only drain evidence, missed 1h ledger, timezone, owned sweep proposal, visibility gaps, and held reconciliation/migration/provider proof plans. No runtime changes."
+logical_id = "8e059c7b-e7b0-4f39-8b64-0f81cf12d007"
+content_hash = "sha256:47b73a2cb4f2e9341e0aa785abeeddfcf76745592caef75d08925b131c4b1cd6"
+size = 16872
+mtime_ms = 1791716064747
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/8e059c7b-e7b0-4f39-8b64-0f81cf12d007/35d62061-f2b1-410f-9e51-00e34b7ccbf6"
+storage_version_token = "1791716202896101"
+content_type = "text/markdown"
