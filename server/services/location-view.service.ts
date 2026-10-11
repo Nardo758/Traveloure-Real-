@@ -20,6 +20,7 @@
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
 import { notConciergePoolListingSql } from "./expert-routability";
+import { notRideListingSql } from "./ride-listings";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
@@ -546,6 +547,8 @@ class LocationViewService {
           eq(providerServices.approvalStatus, "approved"),
           // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
           await notConciergePoolListingSql(providerServices.userId),
+          // TC-3 catalog rides are not city-page listings (ledger `2026-10-11-tc3-ride-seed`).
+          notRideListingSql(providerServices.id),
           // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
           // fallback for rows that predate the server-side derivation (see cityScopePredicate).
           cityScopePredicate(cityName),
