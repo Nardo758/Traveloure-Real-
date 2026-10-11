@@ -1987,12 +1987,12 @@ export const MIGRATION_FILES = [
   // 368 — TC-3a: the ride as a plan item (ledger 2026-10-11-tc3a-ride-item): itinerary_items exit pin
   // (two nullable columns), transport_legs superseded_at / superseded_by_item_id (nullable; P0's
   // origin='superseded' marker moved over), and the new service_transport_facts table (born empty, UNIQUE
-  // service_id, FK CASCADE). All declared in shared/schema.ts. HELD — merges only with
-  // "Migration 368 SQL approved — Leon" on the TC-3a PR.
+  // service_id, FK CASCADE). All declared in shared/schema.ts. APPROVED — "Migration 368 SQL approved — Leon"
+  // on #1401.
   "368_ride_item_and_transport_facts.sql",
   // 369 — TC-3 ride seed (ledger 2026-10-11-tc3-ride-seed): service_transport_facts.fact_sources + notes
   // (jsonb, nullable) and the Sagano / Hozugawa / Eizan "Kirara" rides under the reserved "Traveloure
-  // Transport" account — every value from the official read, unlocated and paused until the OSM node ids
-  // land. HELD: merges only with "Migration 369 SQL approved — Leon" on its PR.
+  // Transport" account — every value from the official read, located from six OSM nodes and active
+  // (service_route_points.osm_node_id). HELD: merges only with "Migration 369 SQL approved — Leon" on its PR.
   "369_tc3_ride_seed.sql",
 ] as const;

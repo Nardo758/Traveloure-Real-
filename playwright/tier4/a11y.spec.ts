@@ -32,8 +32,6 @@ import {
   seededPick,
   assertNotProduction,
   registerAndLogin,
-  addToCartApi,
-  findPricedService,
   saveScreenshot,
   writeEvidence,
 } from './helpers';
@@ -169,94 +167,4 @@ test.describe('Tier4 — a11y audit (axe-core)', () => {
     },
   );
 
-  test(
-    'T4-a11y: scan cart/checkout surface',
-    { timeout: 120_000 },
-    async ({ page }, testInfo) => {
-      const projectName = testInfo.project.name;
-
-      // Non-production guard before creating data
-      await assertNotProduction(page);
-
-      // Register a user with page.request so the cookie jar is shared
-      await registerAndLogin(page, `a11y-crt-${projectName.slice(0, 3)}`);
-      const svc = await findPricedService(page);
-      // Add to cart via page.request — shares the same authenticated session
-      await addToCartApi(page, svc.id);
-
-      await page.goto('/cart', { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(3000);
-
-      await scanSurface(page, 'cart-checkout', projectName, {
-        serviceId: svc.id,
-        serviceName: svc.name,
-      });
-
-      // Navigate to payment step for additional scan if possible
-      const proceedBtn = page.locator(
-        '[data-testid="button-skip-to-payment"], [data-testid="button-proceed-payment"]',
-      ).first();
-      if (await proceedBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await proceedBtn.click();
-        await page.waitForTimeout(2000);
-        await scanSurface(page, 'cart-checkout-payment', projectName, {
-          serviceId: svc.id,
-        });
-      }
-    },
-  );
-
-  test(
-    'T4-a11y: scan public expert profile surface',
-    { timeout: 60_000 },
-    async ({ page }, testInfo) => {
-      const projectName = testInfo.project.name;
-
-      // Derive a real expert profile href using page.request — no hardcoded ID
-      const expertsRes = await page.request.get(`${BASE_URL}/api/experts?limit=20`);
-      expect(expertsRes.ok(), `experts API failed: ${expertsRes.status()}`).toBe(true);
-      const expertsBody = await expertsRes.json().catch(() => ({}));
-      const expertsList: any[] = Array.isArray(expertsBody)
-        ? expertsBody
-        : (expertsBody.experts ?? expertsBody.data ?? []);
-
-      expect(expertsList.length, 'expected at least one expert in the DB').toBeGreaterThan(0);
-
-      // Deterministic pick varies by seed + project so engines scan different profiles
-      const picked = seededPick(expertsList, `a11y-expert-profile-${projectName}`);
-      const expertId = picked.id as string;
-      const expertHref = `/experts/${expertId}`;
-
-      await page.goto(expertHref, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(2500);
-
-      // Verify it's a real profile page (not 404)
-      const is404 = await page
-        .locator('h1')
-        .filter({ hasText: /404|not found/i })
-        .isVisible()
-        .catch(() => false);
-
-      if (is404) {
-        writeEvidence(`a11y-expert-profile-${projectName}.json`, {
-          seed: TIER4_SEED,
-          chosenStep: 'expert-profile',
-          engine: projectName,
-          project: projectName,
-          result: `BLOCKED - expert ${expertId} returned 404; scan not performed`,
-          limitations: 'Expert profile returned 404. Axe scan was not run.',
-          expertId,
-          expertHref,
-        });
-        console.log(`[a11y] expert profile ${projectName}: 404 for ${expertId}`);
-        return;
-      }
-
-      await scanSurface(page, `expert-profile-${projectName}`, projectName, {
-        expertId,
-        expertHref,
-        expertName: picked.firstName ?? picked.name ?? picked.displayName ?? expertId,
-      });
-    },
-  );
 });

@@ -220,6 +220,20 @@ jobs:
           # ci-* users above, so login will succeed.
           PW_AUTH_SETUP: '1'
 
+      - name: Deprecated route redirects (SS-2 Phase D pin 3)
+        # Ledger `2026-10-10-ss2d-pins`. The redirect table: a static half that reads App.tsx (each
+        # retired path is still a <Redirect> to its ruled target) and a browser half against this
+        # production server (each one lands, or — for a target that needs sign-in — does not 404).
+        run: |
+          if [ ! -f "playwright/tests/deprecated-route-redirects.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/deprecated-route-redirects.spec.ts"
+            exit 1
+          fi
+          npx playwright test deprecated-route-redirects --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
