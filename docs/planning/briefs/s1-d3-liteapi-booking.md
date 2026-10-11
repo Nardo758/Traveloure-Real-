@@ -80,17 +80,14 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
 - **"Booked · <code>"**: at confirm the code is written onto the item's existing `confirmation_number`, so the
   slip's ONE booking line (`slipItemBookingLine`) reads "booked · #<code>"; cancel clears only that code. The
   d-3a `liteapiBookedLine` helper had no reader and is deleted (§18c).
-- **Sandbox e2e** (`playwright/tests/journeys/j-stay-book-sandbox.spec.ts`, job `stay-book-sandbox-gate.yml`):
-  a QA-domain account, a Kyoto plan with confirmed dates and two adults, the real Kyoto static sync, then
-  Book → the server's price → the SDK mounts → book through our rail → the booking line → immediate cancel.
-  **It runs only when the repository secret `LITEAPI_SANDBOX_API_KEY` is configured**; without it the job
-  warns that nothing was proven. It does not type a card into Nuitée's SDK — if sandbox requires that before
-  book, the book step fails and says so. The production smoke clicks nothing priced.
-- **Stated limit:** the SDK script URL and constructor options are from LiteAPI's Payment SDK docs, not read
-  from this environment; the e2e's mount step is what proves them.
+- **Sandbox e2e — SPLIT OUT (decision-maker, Oct 11, 2026: "approve the split").** Book-and-cancel was never
+  exercised against live sandbox: every sandbox hotel tried priced below its SSP and was refused, so the spec
+  could only skip, and the spec-arming gate refuses an armed spec that skipped. The spec
+  (`j-stay-book-sandbox.spec.ts`) and its workflow live in a follow-up draft PR that lands only on a green,
+  non-skipped run. Until then the SDK script URL and options (from LiteAPI's Payment SDK docs), the SDK mount,
+  `book` after the SDK, and cancel are UNPROVEN against sandbox; the db tests prove our rail against a stub.
 - Tests: `client/src/lib/__tests__/stay-booking.test.ts` SB1–SB5 (build.yml); B1/B4/B6 extended for
   `bookable` and the code on the item.
 - **Below SSP is refused (decision-maker, Oct 11, 2026).** The refusal is named (`unavailable`, `reason: below_ssp`)
-  and the sheet says so. The sandbox e2e marks book-and-cancel **skipped** — not passed — when every hotel it tries
-  is below SSP, naming the hotels; book and cancel are proven in CI only once a sandbox hotel prices at or above
-  its SSP.
+  and the sheet says so. Book and cancel are proven in CI only once a sandbox hotel prices at or above its SSP
+  (the follow-up e2e).
