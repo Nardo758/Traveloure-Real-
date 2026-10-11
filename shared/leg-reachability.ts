@@ -74,7 +74,11 @@ export function wallClockMinutes(text: string | null | undefined): number | null
   return h >= 0 && h <= 23 && mi >= 0 && mi <= 59 ? h * 60 + mi : null;
 }
 
-function departure(i: ReachItem): { at: number; basis: DepartureBasis } | null {
+/**
+ * When a stop is LEFT, in minutes after midnight, and how that was read. ONE rule (§18 rule 1): the reachability
+ * check below and the ride recommender (shared/ride-recommender.ts, TC-3b) both read the gap through it.
+ */
+export function departure(i: ReachItem): { at: number; basis: DepartureBasis } | null {
   const start = wallClockMinutes(i.startTime);
   const end = wallClockMinutes(i.endTime);
   if (end != null && (start == null || end >= start)) return { at: end, basis: "end_time" };

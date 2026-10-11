@@ -12,6 +12,7 @@ import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
 import { localTeasersForTrip } from "../services/local-teaser.service";
+import { rideRecommendationsForTrip } from "../services/ride-recommender.service";
 import { loadDayFeasibility } from "../services/optimizer-lead.service";
 import {
   insertItineraryChangeSchema,
@@ -895,6 +896,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       console.error(`[plancard] day feasibility failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
       return new Map();
     });
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the plan OWNER's ride swaps — on a paid plan, per day, up
+    // to three "a better way there" suggestions over its routed legs (the first serving records `offered`); on a free
+    // plan, a count-only `rideTeaser`. Never fails the read; an empty answer is no key (§13).
+    const rides = await rideRecommendationsForTrip(tripId, userId);
 
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
@@ -904,7 +909,15 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       days: applyGooglePins(plan.days as any[], placeFacts as any).map((d: any) => {
         const t = localTeasers.get(d.dayNumber);
         const f = feasibility.get(d.dayNumber);
-        return { ...d, ...(t ? { localTeaser: t } : {}), ...(f ? { feasibility: f } : {}) };
+        const rt = rides.teasers.get(d.dayNumber);
+        const rs = rides.suggestions.get(d.dayNumber);
+        return {
+          ...d,
+          ...(t ? { localTeaser: t } : {}),
+          ...(f ? { feasibility: f } : {}),
+          ...(rt && rt.rides > 0 ? { rideTeaser: rt } : {}),
+          ...(rs && rs.length ? { rideSuggestions: rs.map(({ score: _score, ...s }) => s) } : {}),
+        };
       }),
       changeLog: plan.plancard.changeLog,
       metrics: plan.plancard.metrics,

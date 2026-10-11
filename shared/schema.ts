@@ -12533,3 +12533,23 @@ export const liteapiBookings = pgTable("liteapi_bookings", {
   statusIdx: index("idx_liteapi_bookings_status").on(table.status),
 }));
 export type LiteapiBooking = typeof liteapiBookings.$inferSelect;
+
+// TC-3b (ledger `2026-10-11-tc3b-ride-recommender`; migration 370, HELD): the ride recommender's acceptance
+// log — `offered` / `accepted` / `skipped` once per trip × corridor × ride service (the UNIQUE index is the
+// dedupe). Born empty. NO FK (the log outlives the plan, item or listing), NO DEFAULT/CHECK on `event` (value
+// set ONCE in shared/transport-option-events.ts). ONE writer: server/services/transport-option-events.service.ts.
+export const transportOptionEvents = pgTable("transport_option_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull(),
+  corridorKey: varchar("corridor_key", { length: 160 }).notNull(),
+  serviceId: varchar("service_id").notNull(),
+  event: varchar("event", { length: 16 }).notNull(),
+  dayNumber: integer("day_number"),
+  legId: varchar("leg_id"),
+  occasion: varchar("occasion", { length: 50 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  onceUniq: uniqueIndex("uq_transport_option_events_once").on(table.tripId, table.corridorKey, table.serviceId, table.event),
+  serviceIdx: index("idx_transport_option_events_service").on(table.serviceId, table.event),
+}));
+export type TransportOptionEvent = typeof transportOptionEvents.$inferSelect;

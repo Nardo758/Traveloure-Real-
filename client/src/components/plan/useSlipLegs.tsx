@@ -8,12 +8,17 @@
  * Step 9c (ledger `2026-10-07-step9c-leg-options`): a routed leg opens its `LegSheet` for whoever may
  * change the plan's items (D3; the owner alone books — D4); a shown leg with no routed facts draws as a
  * minutes-only line (D5), so the day-end list can retire (FU-9C-1).
+ *
+ * TC-3c (ledger `2026-10-11-tc3c-better-way-line`): under a routed leg, the server's "A better way there" ride swap
+ * for that pair, when it sent one (`RideSwapLine`).
  */
 import { useCallback, useState, type ReactNode } from "react";
 import { LegRow } from "./LegRow";
 import { LegSheet } from "./LegSheet";
 import { TRAVEL_TIMES_PAUSED_LINE, pausedLinePair, slipLegBetween, type SlipLegView } from "@/lib/slip-legs";
 import { canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
+import { rideSuggestionFor } from "@/lib/ride-suggestions";
+import { RideSwapLine } from "./RideSwapLine";
 
 type SlipLegsData = {
   days?: any[];
@@ -34,6 +39,8 @@ export function useSlipLegs(data: SlipLegsData | null | undefined, tripId?: stri
   const render = useCallback(
     (prev: { id: string; title?: string; name?: string }, next: { id: string; title?: string; name?: string }, _dayIndex: number): ReactNode | null => {
       const leg = slipLegBetween(days, prev.id, next.id);
+      // TC-3c: the server's ride swap for this exact pair (owner-only there), drawn under its routed leg.
+      const ride = leg?.kind === "routed" && tripId ? rideSuggestionFor(days, prev.id, next.id) : null;
       const pair = paused ? pausedLinePair(days) : null;
       const showPaused = !!pair && pair[0] === prev.id && pair[1] === next.id;
       if (!leg && !showPaused) return null;
@@ -56,11 +63,12 @@ export function useSlipLegs(data: SlipLegsData | null | undefined, tripId?: stri
               onOpen={tripId && canEditItems ? () => setOpenLeg({ ...leg, title }) : null}
             />
           ) : null}
+          {ride && tripId ? <RideSwapLine tripId={tripId} suggestion={ride} isOwner={viewer === "owner"} /> : null}
           {leg?.kind === "unrouted" ? <LegRow kind="unrouted" legId={leg.legId} mode={leg.mode} minutes={leg.minutes} /> : null}
         </>
       );
     },
-    [days, timeZone, paused, tripId, canEditItems],
+    [days, timeZone, paused, tripId, canEditItems, viewer],
   );
   // The ONE sheet for the slip's legs, kept in step with the latest payload while open.
   const live = openLeg ? slipLegBetween(days, openLeg.fromId, openLeg.toId) : null;

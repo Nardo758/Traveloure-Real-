@@ -2000,4 +2000,15 @@ export const MIGRATION_FILES = [
   // status index. No FK, no DEFAULT on status, no CHECK. Declared in shared/schema.ts. 368–370 are the TC-3 lane's.
   // APPROVED — "Migration 371 SQL approved — Leon" on #1402.
   "371_liteapi_bookings.sql",
+  // 370 — TC-3b: transport_option_events (ledger 2026-10-11-tc3b-ride-recommender): a new table born empty —
+  // offered / accepted / skipped per trip × corridor × ride service, a UNIQUE on those four (safe: no row
+  // exists at creation) and a (service_id, event) index. No FK, no DEFAULT/CHECK on event. Declared in
+  // shared/schema.ts. Registered after 371 because 371 may already be stamped where this lands; registry
+  // order is authoritative. HELD for Leon's approval comment on the TC-3b PR.
+  "370_transport_option_events.sql",
+  // 372 — TC-3b ride hard-filter facts (ledger 2026-10-11-tc3b-ride-recommender; ruling 4). DATA ONLY:
+  // service_transport_facts.notes.filters (passes / payment / luggage) for the five seeded rides, derived only from
+  // each row's own fact_sources entries; guarded by NOT (notes ? 'filters'). Nothing to declare.
+  // HELD for Leon's approval comment on the TC-3b PR.
+  "372_ride_notes_filters.sql",
 ] as const;
