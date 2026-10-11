@@ -27,8 +27,8 @@ npm run test:e2e:headed
 # Debug specific test with inspector
 npm run test:e2e:debug
 
-# Run only Phase 1 tests
-npm run test:e2e:phase1
+# Run only the Phase 4–7 tests
+npm run test:e2e:phase4-7
 
 # View HTML report of last test run
 npm run test:e2e:report
@@ -50,12 +50,8 @@ playwright/
 ├── utils/
 │   ├── auth.ts                   # Login/logout helpers
 │   ├── navigation.ts             # Route navigation helpers
-│   ├── forms.ts                  # Form filling helpers
 │   └── assertions.ts             # Common assertions
 ├── tests/
-│   ├── phase-1-expert-setup.spec.ts              # Expert profile setup (21 experts)
-│   ├── phase-2-provider-setup.spec.ts            # Provider setup (12 providers)
-│   ├── phase-3-traveler-flows.spec.ts            # Traveler trip creation (5 trips)
 │   └── phase-4-7-advanced-flows.spec.ts          # Collaboration, EA, transport, booking
 ├── docs/
 │   ├── README.md                 # This file
@@ -251,9 +247,6 @@ import { loginAs, logout, isLoggedIn, acceptTerms } from '../utils/auth';
 
 // Navigation
 import { navigateToDashboard, navigateTo, expectRoute } from '../utils/navigation';
-
-// Forms
-import { fillExpertProfile, createService, createTrip } from '../utils/forms';
 
 // Assertions
 import { verifyDashboardLoaded, verifyServiceListing, verifyElementVisible } from '../utils/assertions';

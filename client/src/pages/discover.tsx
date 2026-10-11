@@ -32,7 +32,6 @@ import {
   Star,
   Clock,
   DollarSign,
-  X,
   Camera,
   Car,
   UtensilsCrossed,
@@ -997,12 +996,8 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const urlParams = new URLSearchParams(searchString);
   const showExperts = urlParams.get("showExperts") === "true";
   const expertHandoffDestination = urlParams.get("destination") || "";
-  const expertHandoffCountry = urlParams.get("country") || "";
   const expertHandoffExperienceType = urlParams.get("experienceType") || "";
   const expertHandoffTripId = urlParams.get("tripId") || "";
-  const expertHandoffStartDate = urlParams.get("startDate") || "";
-  const expertHandoffEndDate = urlParams.get("endDate") || "";
-  const isFromQuickStart = urlParams.get("source") === "quick-start";
   const [tripCtx] = useTripContext();
   const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
   
@@ -1051,9 +1046,6 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
-  
-  // Expert handoff state
-  const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
   // Surface pages are PINNED by their route. The legacy tabbed Discover shell —
   // ?tab= switching, the TabsList, and the `articles` tab — was removed
@@ -1293,7 +1285,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   });
   const catalogActivities = (catalogActivityData?.items ?? []).map(catalogItemToUnifiedResult);
   
-  // Auto-scroll to experts section when coming from quick-start
+  // Auto-scroll to the experts section when the URL asks for it (showExperts=true)
   useEffect(() => {
     if (showExperts && expertsSectionRef.current) {
       setTimeout(() => {
@@ -1660,45 +1652,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
           </div>
         </section>
 
-        {/* Expert Handoff Banner - shown when coming from quick-start */}
-        {showExpertHandoffBanner && (
-          <section className="bg-[color:var(--earn-gold-wash)] border-b py-4">
-            <div className={pageContainerClass("content")}>
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col sm:flex-row items-center justify-between gap-4"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
-                    <Sparkles className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">
-                      Your AI itinerary for {expertHandoffDestination}{expertHandoffCountry ? `, ${expertHandoffCountry}` : ""} is ready!
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {expertHandoffStartDate && expertHandoffEndDate
-                        ? `${expertHandoffStartDate} to ${expertHandoffEndDate} • `
-                        : ""}
-                      Connect with a local expert below to refine your trip
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowExpertHandoffBanner(false)}
-                  data-testid="button-dismiss-handoff-banner"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </motion.div>
-            </div>
-          </section>
-        )}
-
-        {/* Matched Experts Section - shown when coming from quick-start with showExperts */}
+        {/* Matched Experts Section — shown when the URL carries showExperts=true */}
         {showExperts && (
           <section ref={expertsSectionRef} className="py-8 bg-muted/30">
             <div className={pageContainerClass("content")}>
@@ -1792,7 +1746,6 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                           onClick={() => {
                             const params = new URLSearchParams();
                             if (expertHandoffTripId) params.set("tripId", expertHandoffTripId);
-                            params.set("source", "quick-start");
                             // Locked Decision 40 (lane 3): handle-keyed when the row carries one;
                             // the id route only while it does not.
                             setLocation(
