@@ -23,9 +23,10 @@ import { itineraryItems, providerServices, serviceRoutePoints, serviceTransportF
 import { addCalendarDays } from "@shared/plan-timing";
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
+import { departuresForDate } from "./ride-catalog.service";
 
 export type InsertRideResult =
-  | { ok: true; itemId: string; supersededLegIds: string[] }
+  | { ok: true; itemId: string; supersededLegIds: string[]; corridor: { fromItemId: string; toItemId: string } | null }
   | { ok: false; code: "not_found" | "not_a_ride" | "no_pins" | "no_departure" | "bad_position"; message: string };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -46,19 +47,17 @@ function plusMinutes(hhmm: string, minutes: number | null | undefined): string |
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
 
-/** The departures a catalog ride offers on a date: that day's slots, else its earliest start time. */
+/** The departures a catalog ride offers on a date: that day's slots, else its earliest start time (ONE rule —
+ *  `departuresForDate`, ride-catalog.service.ts, which the TC-3b recommender reads too). */
 export async function rideDepartures(serviceId: string, dateIso: string | null): Promise<string[]> {
-  if (dateIso) {
-    const slots = await db
-      .select({ startTime: vendorAvailabilitySlots.startTime, status: vendorAvailabilitySlots.status })
-      .from(vendorAvailabilitySlots)
-      .where(and(eq(vendorAvailabilitySlots.serviceId, serviceId), eq(vendorAvailabilitySlots.date, dateIso)));
-    const open = slots.filter((s) => (s.status ?? "available") === "available" && s.startTime && HHMM.test(String(s.startTime).slice(0, 5)));
-    if (slots.length) return open.map((s) => String(s.startTime).slice(0, 5));
-  }
-  const [svc] = await db.select({ earliest: providerServices.earliestStartTime }).from(providerServices).where(eq(providerServices.id, serviceId)).limit(1);
-  const e = svc?.earliest ? String(svc.earliest).slice(0, 5) : null;
-  return e && HHMM.test(e) ? [e] : [];
+  const slots = dateIso
+    ? await db
+        .select({ startTime: vendorAvailabilitySlots.startTime, status: vendorAvailabilitySlots.status })
+        .from(vendorAvailabilitySlots)
+        .where(and(eq(vendorAvailabilitySlots.serviceId, serviceId), eq(vendorAvailabilitySlots.date, dateIso)))
+    : [];
+  const [svc] = slots.length ? [null] : await db.select({ earliest: providerServices.earliestStartTime }).from(providerServices).where(eq(providerServices.id, serviceId)).limit(1);
+  return departuresForDate(slots, svc?.earliest ?? null);
 }
 
 export async function insertRide(input: {
@@ -158,9 +157,9 @@ export async function insertRide(input: {
         .returning({ id: transportLegs.id });
       supersededLegIds = rows.map((r) => r.id);
     }
-    return { bad: false as const, itemId: ride.id, supersededLegIds };
+    return { bad: false as const, itemId: ride.id, supersededLegIds, corridor: prevId && nextId ? { fromItemId: prevId, toItemId: nextId } : null };
   });
   if (out.bad) return { ok: false, code: "bad_position", message: "That item isn't on this day of the plan" };
   enqueuePlanLegRecompute(input.tripId);
-  return { ok: true, itemId: out.itemId, supersededLegIds: out.supersededLegIds };
+  return { ok: true, itemId: out.itemId, supersededLegIds: out.supersededLegIds, corridor: out.corridor };
 }

@@ -40,25 +40,22 @@ import { db } from "../db";
 import { users } from "@shared/schema";
 import type { UserTransportPrefs } from "./transport-leg-calculator";
 import { updateUserPreferences } from "./user-preferences-writer";
+import {
+  BUDGET_BAND_VALUES, MOBILITY_VALUES, PACE_VALUES, TRANSPORT_PREFERENCE_VALUES,
+  type BudgetBand, type Mobility, type Pace, type TransportPreference,
+} from "@shared/traveler-profile-values";
+import { applyTripProfileOverlay } from "@shared/trip-profile-overlay";
+import { readTripProfileOverlay } from "./trip-profile-overlay.service";
+// The value sets live in shared/traveler-profile-values.ts (one home); re-exported so every importer is unchanged.
+export { BUDGET_BAND_VALUES, MOBILITY_VALUES, PACE_VALUES, TRANSPORT_PREFERENCE_VALUES };
+export type { BudgetBand, Mobility, Pace, TransportPreference };
 
 // ─── Vocabularies (single source — reused by the PATCH route's zod schema) ─────────────────────
-
-export const TRANSPORT_PREFERENCE_VALUES = ["time", "cost", "comfort", "scenic"] as const;
-export type TransportPreference = (typeof TRANSPORT_PREFERENCE_VALUES)[number];
-
-export const PACE_VALUES = ["relaxed", "moderate", "packed"] as const;
-export type Pace = (typeof PACE_VALUES)[number];
-
-export const BUDGET_BAND_VALUES = ["budget", "moderate", "luxury"] as const;
-export type BudgetBand = (typeof BUDGET_BAND_VALUES)[number];
 
 export const DIETARY_VALUES = [
   "vegetarian", "vegan", "halal", "kosher", "gluten_free", "dairy_free", "nut_free",
 ] as const;
 export type DietaryTag = (typeof DIETARY_VALUES)[number];
-
-export const MOBILITY_VALUES = ["standard", "limited", "wheelchair"] as const;
-export type Mobility = (typeof MOBILITY_VALUES)[number];
 
 /** Mirrors trips.routes.ts / routes.ts's FEEDBACK_CHIPS allow-list exactly (kept in sync by hand
  *  — those routes are outside this work package's file ownership). */
@@ -345,6 +342,24 @@ export async function getTravelerProfile(userId: string): Promise<TravelerProfil
   };
 
   return { explicit, derived, effective: mergeTravelerProfile(explicit, derived) };
+}
+
+/**
+ * TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the profile a PLAN reads — the account profile with the trip's
+ * own overlay (`trips.preferences.profileOverlay`) applied over `effective`. ONE helper for both profile read sites
+ * (the optimizer and the leg mode scorer, §18 rule 1). No trip, or an overlay read that fails, ⇒ the account
+ * profile unchanged.
+ */
+export async function getTravelerProfileForTrip(userId: string, tripId: string | null | undefined): Promise<TravelerProfile> {
+  const profile = await getTravelerProfile(userId);
+  if (!tripId) return profile;
+  try {
+    const overlay = await readTripProfileOverlay(tripId);
+    return { ...profile, effective: applyTripProfileOverlay(profile.effective, overlay) };
+  } catch (err) {
+    console.warn(`[traveler-profile] trip overlay not read for ${tripId}:`, (err as Error).message);
+    return profile;
+  }
 }
 
 /** The PATCH route's tri-state contract, per field: present+value → set; present+null → clear;

@@ -46,7 +46,7 @@ import type { ResolvedLeg } from "@shared/leg-resolution";
 import { loadLegResolver, tripMarketSlug } from "./travel-time.service";
 import { WITHIN_WALK_METERS } from "./anchor-scoring";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
-import { getTravelerProfile, effectiveProfileToTransportPrefs } from "./traveler-profile.service";
+import { getTravelerProfileForTrip, effectiveProfileToTransportPrefs } from "./traveler-profile.service";
 import { propagateActivitySchedule } from "./activity-schedule.service";
 
 /** The `proposal_status` vocabulary (mirrors the migration-154 DB CHECK). */
@@ -342,7 +342,8 @@ export async function generateTripTransportLegs(
   let transportPrefs: Partial<UserTransportPrefs> = {};
   if (trip.userId) {
     try {
-      const profile = await getTravelerProfile(trip.userId);
+      // TC-3b: the trip's own profile overlay applies over the account profile (one helper, both read sites).
+      const profile = await getTravelerProfileForTrip(trip.userId, tripId);
       transportPrefs = effectiveProfileToTransportPrefs(profile.effective);
     } catch (err) {
       console.warn("[TripTransportLegs] traveler profile fetch failed (non-critical):", (err as Error).message);
