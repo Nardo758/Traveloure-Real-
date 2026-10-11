@@ -1,7 +1,7 @@
 # TC-3b — the ride recommender and the trip profile overlay
 
 Ledger `2026-10-11-tc3b-ride-recommender` (R434). TC-3 brief rev 1, lane TC-3b. Decision-maker
-rulings 1–4, Oct 11, 2026. Migrations 370 and 372 are HELD for Leon's approval comments on the PR.
+rulings 1–4, Oct 11, 2026. Migration 370 (Migration 370 SQL approved by Leon — comment 17:33Z on #1416). Migration 372 (Migration 372 SQL approved by Leon — comment 17:33Z on #1416).
 
 ## Phase 0 (read-only) — what the code already had
 
@@ -56,10 +56,3 @@ Walking range 1,200 m; 400 m for limited mobility.
 - Eizan has no seeded departures, so it is never offered.
 - Pass, payment and luggage filtering waits for a later lane that reads 372's `notes.filters`.
 - No UI. TC-3c draws "A better way there" on the LegRow and the swap card (Arashiyama only).
-
-## TC-3c minimal (stacked PR) — "A better way there"
-
-Ledger `2026-10-11-tc3c-better-way-line` (R435). Under a routed leg, `RideSwapLine` (`client/src/components/plan/RideSwapLine.tsx`,
-mounted by `useSlipLegs`) draws the server's suggestion for exactly that pair and opens the swap card. Swap = the
-existing ride route; "Not this time" = the dismiss. Copy: `client/src/lib/ride-suggestions.ts`. "Arashiyama only"
-holds by data (only Sagano and Hozugawa have departures), so no client-side corridor rule was added.

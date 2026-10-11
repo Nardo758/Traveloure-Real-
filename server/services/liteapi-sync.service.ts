@@ -34,6 +34,8 @@ export interface LiteapiSyncTargetResult {
   market: string;
   mode: "full" | "incremental";
   pages: number;
+  /** Rows LiteAPI returned across every page (live, deleted and unusable alike). */
+  rowsProcessed: number;
   upserted: number;
   lapsed: number;
   skipped: number;
@@ -45,6 +47,12 @@ export interface LiteapiSyncResult {
   skipped?: "not_configured";
   env?: LiteapiEnv;
   targets: LiteapiSyncTargetResult[];
+  /**
+   * The run's sums across targets, as top-level numbers: the job heartbeat's allowlist
+   * (`summarizeJobResult`, and `summarize()` in scripts/ci/post-internal-jobs.sh) keeps numeric leaves
+   * and skips arrays, so the per-target counts never reached `last_result`. Absent on a skip.
+   */
+  totals?: { pages: number; rowsProcessed: number; upserted: number; lapsed: number; skipped: number };
   error?: string;
 }
 
@@ -146,7 +154,7 @@ export async function runLiteapiSync(now: Date = new Date(), deps: LiteapiSyncDe
   const client = deps.client(cfg);
   const targets: LiteapiSyncTargetResult[] = [];
   for (const t of deps.targets) {
-    const r: LiteapiSyncTargetResult = { market: t.market, mode: "full", pages: 0, upserted: 0, lapsed: 0, skipped: 0, completed: false };
+    const r: LiteapiSyncTargetResult = { market: t.market, mode: "full", pages: 0, rowsProcessed: 0, upserted: 0, lapsed: 0, skipped: 0, completed: false };
     targets.push(r);
     try {
       const mark = await completedSyncWatermark(t.cityName, cfg.env, cfg.staleAfterDays);
@@ -156,6 +164,7 @@ export async function runLiteapiSync(now: Date = new Date(), deps: LiteapiSyncDe
       for (let offset = 0; ; offset += deps.pageSize) {
         const page = await client.listHotels({ countryCode: t.countryCode, cityName: t.cityName, offset, limit: deps.pageSize, lastUpdatedAt });
         r.pages += 1;
+        r.rowsProcessed += page.data.length;
         const live: NonNullable<ReturnType<typeof liteapiHotelRow>>[] = [];
         const gone: string[] = [];
         for (const h of page.data) {
@@ -180,5 +189,7 @@ export async function runLiteapiSync(now: Date = new Date(), deps: LiteapiSyncDe
     }
   }
   const failed = targets.find((x) => x.error);
-  return { env: cfg.env, targets, ...(failed ? { error: `${failed.market}: ${failed.error}` } : {}) };
+  const totals = { pages: 0, rowsProcessed: 0, upserted: 0, lapsed: 0, skipped: 0 };
+  for (const t of targets) for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += t[k];
+  return { env: cfg.env, targets, totals, ...(failed ? { error: `${failed.market}: ${failed.error}` } : {}) };
 }
