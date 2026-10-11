@@ -1550,6 +1550,8 @@ This document captures architectural decisions to maintain consistency across co
     SPA catch-alls, which were answering Stripe's verification fetch with the SPA's 200-HTML "404
     – Lost at Sea?" page — the file itself remains an operator drop-in, and the dashboard
     registration remains the operator step this clause rules it to be.**
+    **AMENDED — LITEAPI HOTEL BOOKINGS (ledger `2026-10-11-ld64-d3a-wording-held`).** (c)'s "affiliate purchases
+    never see wallets" holds for them: "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 44. **THE PLATFORM'S BOOKING AGENT IS THE AI COPILOT FIRST; A HUMAN OR A PARTNER API MAKES THE
     PURCHASE; BROWSER CONTROL IS READ-ONLY (decision-maker ratified Sep 5, 2026, evening — ledger
@@ -1698,6 +1700,8 @@ This document captures architectural decisions to maintain consistency across co
     `itinerary_items` row atomically, keyed on `itinerary_item_id` + `trip_id`, and never a second
     item; the unlinked legacy create is kept byte-for-byte, and the `origin` question above stays
     open — this lane does not decide it.
+    **AMENDED — LITEAPI IS PHASE 2's FIRST PARTNER (ledger `2026-10-11-ld64-d3a-wording-held`), closing the
+    seventh open question above:** "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
     OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows
@@ -2679,14 +2683,12 @@ This document captures architectural decisions to maintain consistency across co
     optional `fee_bands` rows with fallback 0 (sell at SSP). No CUG rate is requested. `LITEAPI_RATES_DAILY_CAP`
     is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
     default card shows "See rates" and no price; the item row and booking are d-3.
-    **AMENDED — S1-d-3a: WORDING HELD FOR FOUNDER REVIEW (ledger `2026-10-11-ld64-d3a-wording-held`).** The
-    S1-d-3a amendment text merged with R430 while still marked FOUNDER WORDING REVIEW and is withdrawn here
-    until Leon approves its wording — it stated a commercial position (who is merchant of record) as settled
-    text. Not withdrawn: migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402), the code on
-    `main` (sandbox only, `liteapiBookingEnabled`), and the build record in ledger
-    `2026-10-10-s1-d3a-liteapi-booking` and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`.
-    The replacement wording, including the LD 43(c)/44(b)(c) merchant-of-record sentence, is a PROPOSAL in
-    the fix PR's body for Leon's wording; it is not text of this file until he approves it.
+    **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
+    ledger `2026-10-10-s1-d3a-liteapi-booking`, wording ledger `2026-10-11-ld64-d3a-wording-held`).** In Leon's words:
+    "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
+    The rail itself is recorded in the d-3a ledger row and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`;
+    migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
+    (`liteapiBookingEnabled`).
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
