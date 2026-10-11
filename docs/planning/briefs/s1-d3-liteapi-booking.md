@@ -25,7 +25,7 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
 | Piece | Where |
 |---|---|
 | Table | `server/migrations/371_liteapi_bookings.sql`; `shared/schema.ts` `liteapiBookings` (table + 3 indexes) |
-| Pure rules | `shared/liteapi-booking.ts` — `LITEAPI_PAYMENT_METHOD`, statuses, `offerIdFromRates`, `parsePrebook` (SSP floor), `parseBook`, `bookingStatusOf`, `liteapiBookedLine` |
+| Pure rules | `shared/liteapi-booking.ts` — `LITEAPI_PAYMENT_METHOD`, statuses, `offerIdFromRates`, `parsePrebook` (SSP floor), `parseBook`, `bookingStatusOf` |
 | Gate | `server/config/liteapi.config.ts` `liteapiBookingEnabled` (sandbox only) |
 | Client | `server/services/liteapi-client.ts` — `prebook`, `book` via the ONE `bookRequestBody`, `getBooking`, `cancelBooking` (PUT) |
 | Service | `server/services/liteapi-booking.service.ts` — `prebookStay`, `bookStay`, `cancelStay`, `stayBookingView`, `resolveChosenLiteapiStay` |
@@ -69,3 +69,24 @@ item-sheet UI + smoke. Phase 0 map: the S1-d-3 Phase 0 report (Oct 10, 2026).
 - `shared/__tests__/liteapi-booking.test.ts` LB1–LB5 (whole-directory job).
 - `server/__tests__/liteapi-booking.db.test.ts` B1–B9 (wired into `suite-server-tests.yml`).
 - `scripts/check-liteapi-payment-method.cjs --self-test` (8 cases).
+
+## d-3b — the item-sheet "Book" and the sandbox e2e (ledger `2026-10-11-s1-d3b-stay-book-ui`)
+- **"Book"** (`StayBookButton`) draws in the item sheet beside "Book this for me" only for the owner, on a stay
+  the server's `GET …/stay-booking` calls `bookable` (booking on — sandbox — AND the item resolves to a chosen
+  LiteAPI stay), with no live booking. Clicking it prebooks; the dialog shows the server's re-quoted price and
+  dates BEFORE "Continue to payment" mounts Nuitée's Payment SDK (`client/src/lib/liteapi-payment-sdk.ts`, the
+  ONE loader). The SDK returns the traveler to `/plans/:tripId/stays/:itemId/booked`, which posts `book` once
+  and says what came back. The page sends empty bodies only: no offer, price, card or payment method.
+- **"Booked · <code>"**: at confirm the code is written onto the item's existing `confirmation_number`, so the
+  slip's ONE booking line (`slipItemBookingLine`) reads "booked · #<code>"; cancel clears only that code. The
+  d-3a `liteapiBookedLine` helper had no reader and is deleted (§18c).
+- **Sandbox e2e** (`playwright/tests/journeys/j-stay-book-sandbox.spec.ts`, job `stay-book-sandbox-gate.yml`):
+  a QA-domain account, a Kyoto plan with confirmed dates and two adults, the real Kyoto static sync, then
+  Book → the server's price → the SDK mounts → book through our rail → the booking line → immediate cancel.
+  **It runs only when the repository secret `LITEAPI_SANDBOX_API_KEY` is configured**; without it the job
+  warns that nothing was proven. It does not type a card into Nuitée's SDK — if sandbox requires that before
+  book, the book step fails and says so. The production smoke clicks nothing priced.
+- **Stated limit:** the SDK script URL and constructor options are from LiteAPI's Payment SDK docs, not read
+  from this environment; the e2e's mount step is what proves them.
+- Tests: `client/src/lib/__tests__/stay-booking.test.ts` SB1–SB5 (build.yml); B1/B4/B6 extended for
+  `bookable` and the code on the item.
