@@ -27,10 +27,10 @@ import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
 import { legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
 import { tripGetsRoutedLegs, tripLegsShown } from "./plan-routed-legs.service";
-import { desiredPlanLegs, diffPlanLegs, legPairKey, selectedModeOf, type AirportStop, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
+import { desiredPlanLegs, diffPlanLegs, legPairKey, planLegsSkipReason, selectedModeOf, type AirportStop, type PlanLegsSkipReason, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
 export type PlanLegsResult =
-  | { skipped: "engine_off" | "free_plan" | "no_trip" | "dates_not_confirmed" }
+  | { skipped: PlanLegsSkipReason }
   | {
       skipped?: undefined;
       /** Calls the adapter actually made. */
@@ -210,15 +210,14 @@ export async function computePlanLegs(
   deps: { adapter?: RoutingAdapter | null; qualifies?: boolean; now?: () => Date } = {},
 ): Promise<PlanLegsResult> {
   const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
-  if (!adapter) return { skipped: "engine_off" };
-  const qualifies = deps.qualifies ?? (await tripGetsRoutedLegs(tripId));
-  if (!qualifies) return { skipped: "free_plan" };
-  const trip = await storage.getTrip(tripId);
-  if (!trip) return { skipped: "no_trip" };
+  const qualifies = adapter ? (deps.qualifies ?? (await tripGetsRoutedLegs(tripId))) : false;
+  const trip = adapter && qualifies ? await storage.getTrip(tripId) : undefined;
   // Ledger `2026-10-08-e1-zero-questions` (E1 ruling 7): a plan whose dates nobody chose has no real
   // departure instants, so nothing is routed against its placeholder window — the same skip the
-  // day-of re-check takes (`leg-recheck.service.ts`). Setting dates re-runs the compute.
-  if (!trip.datesConfirmedAt) return { skipped: "dates_not_confirmed" };
+  // day-of re-check takes (`leg-recheck.service.ts`). Setting dates re-runs the compute. The order is
+  // the ONE `planLegsSkipReason` (P0-b item 1), which the plan card's `legsSkipped` also reads.
+  const skipReason = planLegsSkipReason({ engineOn: !!adapter, qualifies, tripExists: !!trip, datesConfirmed: !!trip?.datesConfirmedAt });
+  if (skipReason || !adapter || !trip) return { skipped: skipReason ?? "no_trip" };
 
   const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt } = await loadPlanLegContext(tripId, trip);
   // P0 ruling 3: a day that is already over is never routed — its legs are frozen (not asked, not
