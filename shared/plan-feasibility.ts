@@ -19,6 +19,12 @@ export interface DayFeasibility {
   rides: number;
   /** Rides with a stored official last departure near their start, for that date. */
   ridesChecked: number;
+  /**
+   * P0 legs ruling 2 (ledger `2026-10-10-p0-legs-baseline`): legs the routing engine looked for and
+   * found no route for (transit and the drive fallback both) — the pair shows no leg. Present only
+   * when > 0, and only where the engine could answer (a routed plan with chosen dates, day not over).
+   */
+  noRoute?: number;
 }
 
 const ofStops = (k: number, n: number) => `${k} of ${n} ${n === 1 ? "stop" : "stops"}`;
@@ -37,6 +43,7 @@ export function feasibilityLine(d: DayFeasibility | null | undefined): string | 
   if (d.rides > 0) {
     parts.push(d.ridesChecked > 0 ? `last trains checked for ${d.ridesChecked} of ${d.rides} ${d.rides === 1 ? "ride" : "rides"}` : "last trains not checked");
   }
+  if (d.noRoute && d.noRoute > 0) parts.push(`no route found for ${d.noRoute} ${d.noRoute === 1 ? "leg" : "legs"}`);
   return parts.join(" · ");
 }
 

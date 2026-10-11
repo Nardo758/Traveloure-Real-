@@ -17,13 +17,13 @@ const rows = [
   { id: "kyoto_city_transport", homepage: "https://city.kyoto.lg.jp/", covers: ["transport.local"], doesNotCover: ["transport.local.fares"] },
   { id: "kyoto_travel", homepage: "https://kyoto.travel/", covers: ["stop.hours"], doesNotCover: [] },
 ];
-const station = { kind: "station" as const, slug: "gion-shijo" };
+const station = { kind: "station" as const, stationSlug: "gion-shijo", osmNodeId: 1234567890 };
 const place = { kind: "place" as const, placeId: "ChIJ8cM8zdaoAWARPR27azYdlsA" };
 
 test("ST1 — a clean config, and the shipped config", () => {
   const ok: ContentSourceTargets = {
     keihan: [{ label: "Keihan — last trains, Gion-Shijo", url: "https://www.keihan.co.jp/traffic/", need: "transport.local.last_service", anchor: station }],
-    kyoto_city_transport: [{ label: "Subway — last trains", url: "https://www2.city.kyoto.lg.jp/kotsu/", need: "transport.local.last_service", anchor: { kind: "station", slug: "shijo" } }],
+    kyoto_city_transport: [{ label: "Subway — last trains", url: "https://www2.city.kyoto.lg.jp/kotsu/", need: "transport.local.last_service", anchor: { kind: "station", stationSlug: "shijo", osmNodeId: 987654321 } }],
     kyoto_travel: [{ label: "Kiyomizu-dera", url: "https://kyoto.travel/en/shrine_temple/132.html", need: "stop.hours", anchor: place }],
   };
   assert.deepEqual(validateTargets(ok, rows), []);
@@ -59,9 +59,13 @@ test("ST5 — anchors fit their need", () => {
     validateTargets({ [id]: [{ label: "x", url: id === "keihan" ? "https://www.keihan.co.jp/" : "https://kyoto.travel/", need, anchor }] }, rows).map((p) => p.problem);
   assert.deepEqual(t("transport.local.last_service", place), ["anchor_need_mismatch"]);
   assert.deepEqual(t("stop.hours", station, "kyoto_travel"), ["anchor_need_mismatch"]);
-  assert.deepEqual(t("transport.local.last_service", { kind: "station", slug: "Gion Shijo" }), ["bad_anchor"]);
+  assert.deepEqual(t("transport.local.last_service", { kind: "station", stationSlug: "Gion Shijo", osmNodeId: 1 }), ["bad_anchor"]);
+  assert.deepEqual(t("transport.local.last_service", { kind: "station", stationSlug: "gion-shijo" }), ["bad_anchor"], "no OSM node ⇒ no anchor");
+  assert.deepEqual(t("transport.local.last_service", { kind: "station", stationSlug: "gion-shijo", osmNodeId: "123" }), ["bad_anchor"], "a node id is a number");
+  assert.deepEqual(t("transport.local.last_service", { kind: "station", stationSlug: "gion-shijo", osmNodeId: 0 }), ["bad_anchor"]);
+  assert.deepEqual(t("transport.local.last_service", { kind: "station", slug: "gion-shijo", osmNodeId: 1 }), ["bad_anchor"], "the key is stationSlug");
   assert.deepEqual(t("stop.hours", { kind: "place", placeId: "x" }, "kyoto_travel"), ["bad_anchor"]);
-  assert.deepEqual(t("transport.local.last_service", { kind: "station", slug: "gion-shijo", lat: 35 }), [], "extra keys are ignored, never read");
+  assert.deepEqual(t("transport.local.last_service", { kind: "station", stationSlug: "gion-shijo", osmNodeId: 1, lat: 35 }), [], "extra keys are ignored, never read");
   assert.deepEqual(
     validateTargets({ keihan: [{ label: " ", url: "https://www.keihan.co.jp/", need: "transport.local.last_service", anchor: station }] }, rows).map((p) => p.problem),
     ["no_label"],

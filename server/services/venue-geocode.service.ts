@@ -86,3 +86,38 @@ export async function resolveVenueFromOsm(
     return "unreachable";
   }
 }
+
+const NOMINATIM_LOOKUP_URL = "https://nominatim.openstreetmap.org/lookup";
+
+/**
+ * SS-1b (decision-maker, Oct 10, 2026; ledger `2026-10-10-ss1b-official-refresh`): a station's point, from
+ * the OpenStreetMap node the targets config names — the same Nominatim path, user agent, attribution and
+ * two-way name rule as a venue, never Google Places. The node id is given, so this is a LOOKUP of that one
+ * node, not a search; the station slug's words must still name the node (a mistyped node id never stands in
+ * for another station). Same answers as `resolveVenueFromOsm`: a point, `null` (OSM answered, no such node
+ * or it does not name this station) or `"unreachable"`. Never throws.
+ */
+export async function resolveOsmNode(
+  q: { osmNodeId: number; name: string },
+  fetchImpl: FetchLike = (url, init) => fetch(url, init) as any,
+): Promise<VenueCoordinate | null | "unreachable"> {
+  if (!Number.isSafeInteger(q.osmNodeId) || q.osmNodeId <= 0 || !venueIsLookupable(q.name)) return null;
+  const url = `${NOMINATIM_LOOKUP_URL}?${new URLSearchParams({ osm_ids: `N${q.osmNodeId}`, format: "jsonv2", namedetails: "1" })}`;
+  try {
+    const res = await fetchImpl(url, {
+      headers: { "User-Agent": NOMINATIM_USER_AGENT, "Accept-Language": "en" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return "unreachable";
+    const [hit] = (await res.json()) as any[];
+    if (!hit || String(hit.osm_type ?? "").toLowerCase() !== "node" || Number(hit.osm_id) !== q.osmNodeId) return null;
+    const names = [hit.namedetails?.["name:en"], hit.name, hit.namedetails?.name].filter((n): n is string => typeof n === "string" && n.length > 0);
+    const matchedName = names.find((n) => namesMatchBothWays(q.name, n));
+    const lat = Number(hit.lat);
+    const lng = Number(hit.lon);
+    if (!matchedName || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng, matchedName, attribution: OSM_ATTRIBUTION };
+  } catch {
+    return "unreachable";
+  }
+}

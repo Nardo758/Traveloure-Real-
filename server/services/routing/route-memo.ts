@@ -59,3 +59,39 @@ export class RouteRunMemo {
     }
   }
 }
+
+export interface FallbackLegResult {
+  outcome: RouteOutcome;
+  /** The mode the answer is for: the asked mode, or `drive` when transit had no route. */
+  mode: RoutingMode;
+  /** True when the answer is a drive asked because transit had no route (P0 ruling 2). */
+  transitUnavailable: boolean;
+  calls: number;
+  reused: number;
+}
+
+/**
+ * P0 legs ruling 2 (ledger `2026-10-10-p0-legs-baseline`): ask the leg in its mode; a TRANSIT ask Google
+ * answers with no route is asked ONCE more as a drive, and the caller labels the row. Transit and drive
+ * both without a route ⇒ `no_route` (the pair gets no leg — E8). A paused ask stays paused (no fallback
+ * call is made under a cap). The ONE fallback, shared by the plan writer and the version legs (§18 rule 1).
+ */
+export async function routeWithTransitFallback(
+  memo: RouteRunMemo,
+  adapter: RoutingAdapter,
+  input: { origin: RoutePoint; destination: RoutePoint; mode: RoutingMode; departAt: Date | null; hourBucket: number | null },
+): Promise<FallbackLegResult> {
+  const first = await memo.route(input, adapter);
+  const tally = { calls: first.reused ? 0 : 1, reused: first.reused ? 1 : 0 };
+  if (first.outcome.kind !== "no_route" || input.mode !== "transit") {
+    return { outcome: first.outcome, mode: input.mode, transitUnavailable: false, ...tally };
+  }
+  const drive = await memo.route({ ...input, mode: "drive" }, adapter);
+  return {
+    outcome: drive.outcome,
+    mode: "drive",
+    transitUnavailable: drive.outcome.kind === "ok",
+    calls: tally.calls + (drive.reused ? 0 : 1),
+    reused: tally.reused + (drive.reused ? 1 : 0),
+  };
+}

@@ -269,22 +269,6 @@ test.describe("Finalize booking chooser", () => {
     await capture(page, "09-trip-card-v2");
   });
 
-  test("Travel expert continuation sends one request and closes the chooser", async ({ page }) => {
-    const tripId = await registerAndTrip(page);
-    const finalize = await openFinalize(page, tripId);
-    const expertRequest = page.waitForResponse(
-      (response) => response.url().includes("/api/expert-requests") && response.request().method() === "POST",
-      { timeout: 15_000 },
-    );
-    await finalize.click();
-    await expect(page.getByTestId("finalize-modal")).toBeVisible({ timeout: 10_000 });
-    await page.getByTestId("finalize-option-expert").click();
-    await page.getByTestId("finalize-continue").click();
-    const response = await expertRequest;
-    expect(response.status(), `expert request failed: ${await response.text()}`).toBeLessThan(300);
-    await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
-  });
-
   test("keeps the booking agent enabled for a supplier-ready stop and sends one request", async ({ page }) => {
     const tripId = await registerAndTrip(page);
     const product = await pickAffiliateProduct();

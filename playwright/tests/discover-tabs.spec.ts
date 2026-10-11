@@ -367,33 +367,8 @@ test.describe('/services — add to cart', () => {
   });
 });
 
-// ── 5. Expert handoff banner (quick-start → /services carries the params) ────
-
-test.describe('/services — expert handoff banner', () => {
-  test('banner is visible when source=quick-start&showExperts=true', async ({ page }) => {
-    await gotoPath(page, '/services?source=quick-start&showExperts=true');
-
-    await expect(page.getByTestId('button-dismiss-handoff-banner')).toBeVisible();
-    await expect(page.getByTestId('text-matched-experts-title')).toBeVisible();
-  });
-
-  test('banner is absent on a plain surface page (no query params)', async ({ page }) => {
-    await gotoPath(page, '/destinations');
-
-    // Conditionally rendered (React && short-circuit) — absent means NOT in the DOM.
-    await expect(page.getByTestId('button-dismiss-handoff-banner')).not.toBeAttached();
-  });
-
-  test('dismissing the banner removes it from the page', async ({ page }) => {
-    await gotoPath(page, '/services?source=quick-start&showExperts=true');
-
-    await expect(page.getByTestId('button-dismiss-handoff-banner')).toBeVisible();
-    await page.getByTestId('button-dismiss-handoff-banner').click();
-    await page.waitForTimeout(500);
-
-    await expect(page.getByTestId('button-dismiss-handoff-banner')).not.toBeAttached();
-  });
-});
+// ── 5. (retired) The quick-start handoff banner went with /quick-start (LD 42 D14; ledger
+//    `2026-10-10-ss2c-quickstart-banner`). ────────────────────────────────────────────
 
 // ── 6. Mobile viewport — surfaces stay legible with no tab bar ───────────────
 
