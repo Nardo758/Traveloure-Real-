@@ -57,3 +57,23 @@ Sources:
 
 No NEXT-DAY CHECK is marked PROVEN. Future proof or release execution requires
 separate founder authorization; this ledger does not authorize either.
+
+## Part 10 follow-up: requested genuine start
+
+**Start status: BLOCKED / NOT STARTED. NEXT-DAY CHECK remains OPEN.**
+
+Both approved development inbox setting names are present; values are not
+printed. The existing approved controller only runs immediately eligible,
+controlled-clock disposable proofs. Its owner kills a test at three minutes
+and always removes the schema. Starting that path cannot retain a genuine
+next-day scenario. No fake start is substituted.
+
+| Requested scenario | Scenario ID | Real start | Exact due | What must be checked | Status |
+|---|---|---|---|---|---|
+| Fresh genuine next-day cart reminder | Not created | Not established | Not established; calculate from actual stored start only | Prior real 1h step; live cart/sequence/account/email/consent/zone; unpaid readable rails and UNKNOWN holds; local cap/window; actual scheduler time and delivered receipt | OPEN, blocked on approved QA start/retain mode |
+
+The exact QA-only adaptation and touch list are in
+`automation-part10-remediation-proposals.md`. After its approval and successful
+actual fixture creation, record scenario ID, real database start, exact due
+instant and checks, then mark WAITING. Do not initialize provider transport,
+send an email or claim NEXT-DAY PROVEN during start-only setup.

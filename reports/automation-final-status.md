@@ -75,9 +75,25 @@ not represented as a current blocker.
 | Email-client/authenticated browser certification | 5, 9–10 / release | Separately authorized rendering and authenticated journey proof; payload tests do not prove browser middleware/navigation | Founder approves proof scope | Open / Deferred |
 | Production commit/configuration/scheduler/first delivery | 10 / release | Ordered checklist below, only after separate release authorization, with recorded approvals and evidence | Founder authorizes; human release operator executes | Deferred; no production actions or reads in this update |
 | Merge decision ledger | 10 / merge | Append row with approved reviewed head at actual human merge | Human merger / founder | Deferred; no premature ledger row |
+| Committed pre-handoff attempt / uncertain-acceptance repair proposal | 6, 8–10 | Approve dispatcher-only design, reproduce before/after and two clean loops; no automatic second handoff | Founder | Open; proposal only, no runtime edits |
+| Additional generated security merge conflicts | 10 / integration | Main-owner-approved reconciliation, then regenerate all four outputs and check | Founder / main owner | Open; no force-resolution |
+| Genuine real-clock start-path gap | 4, 9–10 | Approve QA-only start/retain mode; create a real server-clock fixture and record genuine due times | Founder | Open; NOT STARTED, not falsely WAITING |
 
 The heartbeat numbering collision is explicitly recorded; it is not silently
 reclassified as a new registered migration or an approval to change main.
+Refreshed main is `e8dabc1d61f6666117bf43ff9fde4caa939ebf1f`; its maximum
+registered/numeric file is 368. Proposed draft name is
+`369_job_heartbeats_nullable_success.sql`, provisional and still held; no
+file rename or registry edit occurred.
+
+The new dispatcher, both-version main reconciliation, exact touch lists and
+proof plans are in
+[`automation-part10-remediation-proposals.md`](automation-part10-remediation-proposals.md).
+Resend's official documentation confirms 24-hour idempotency-key retention;
+the current row-based key already exists. The proposed repair is a committed
+intent plus fail-closed uncertain-attempt hold, not an assumption of permanent
+provider dedupe. All runtime proposals await approval; reconciliation also
+awaits main-owner review. No new Parts started.
 
 ## Per-rule disposition and evidence
 
