@@ -1,4 +1,4 @@
--- 372 — place_lookup_outcomes (PF-1; ledger `2026-10-11-pf1-lookup-outcomes`; decision-maker rulings 1–4, Oct 11,
+-- 373 — place_lookup_outcomes (PF-1; ledger `2026-10-11-pf1-lookup-outcomes`; decision-maker rulings 1–4, Oct 11,
 -- 2026). HELD for Leon's approval comment on the PR. The number is provisional until merge-main.
 --
 -- One row per (plan item, lookup run): what the Places lookup did with that item — attached, unmatched, capped,

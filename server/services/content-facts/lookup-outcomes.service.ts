@@ -1,6 +1,6 @@
 /**
  * PF-1 — `place_lookup_outcomes`: the ONE writer, the retention prune and the two admin reads (decision-maker
- * rulings 1–4, Oct 11, 2026; ledger `2026-10-11-pf1-lookup-outcomes`; migration 372).
+ * rulings 1–4, Oct 11, 2026; ledger `2026-10-11-pf1-lookup-outcomes`; migration 373).
  *
  *   · ONE batch INSERT per lookup run. It NEVER throws: a failed write is logged and the lookup it describes
  *     is unaffected (§15b — the record may not break the operation it records).
