@@ -1990,4 +1990,9 @@ export const MIGRATION_FILES = [
   // service_id, FK CASCADE). All declared in shared/schema.ts. APPROVED — "Migration 368 SQL approved — Leon"
   // on #1401.
   "368_ride_item_and_transport_facts.sql",
+  // 369 — TC-3 ride seed (ledger 2026-10-11-tc3-ride-seed): service_transport_facts.fact_sources + notes
+  // (jsonb, nullable) and the Sagano / Hozugawa / Eizan "Kirara" rides under the reserved "Traveloure
+  // Transport" account — every value from the official read, located from six OSM nodes and active
+  // (service_route_points.osm_node_id). Approved by Leon — comment 00:42Z on #1405.
+  "369_tc3_ride_seed.sql",
 ] as const;

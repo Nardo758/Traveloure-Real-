@@ -20,6 +20,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 // concierge-fee expert-share re-split is skipped when the listing owner is not a person.
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
+import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
 import { bornBundleComponentRows, readBundleComponentRows } from "./services/bundle-component-states.service";
@@ -3211,6 +3212,8 @@ export class DatabaseStorage implements IStorage {
       eq(providerServices.approvalStatus, "approved"),
       // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
       await notConciergePoolListingSql(providerServices.userId),
+      // TC-3 catalog rides surface only as rides, never in browse (ledger `2026-10-11-tc3-ride-seed`).
+      notRideListingSql(providerServices.id),
     ];
     if (categoryId) {
       conditions.push(eq(providerServices.categoryId, categoryId));
@@ -4073,7 +4076,8 @@ export class DatabaseStorage implements IStorage {
     // Price/rating filters now run in SQL (decimal columns compare numerically), not Node.
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const notPool = await notConciergePoolListingSql(providerServices.userId);
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool];
+    // TC-3 catalog rides surface only as rides, never in search (ledger `2026-10-11-tc3-ride-seed`).
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id)];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
@@ -4163,6 +4167,7 @@ export class DatabaseStorage implements IStorage {
             eq(providerServices.status, "active"),
             eq(providerServices.approvalStatus, "approved"),
             notPool,
+            notRideListingSql(providerServices.id),
             sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) > 0.2`,
           ))
           .orderBy(sqlOp`similarity(${providerServices.serviceName}, ${filters.query}) DESC`)

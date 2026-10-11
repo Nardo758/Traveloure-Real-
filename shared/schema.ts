@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, bigint, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HANDLE_MAX_LENGTH } from "./handle";
@@ -11477,6 +11477,9 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   name: varchar("name", { length: 255 }).notNull(),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // TC-3 seed (migration 369): the OpenStreetMap node the coordinates were read from. Nullable; NULL = not
+  // from an OSM node (an owner's own placement). Where set, "© OpenStreetMap contributors" applies.
+  osmNodeId: bigint("osm_node_id", { mode: "number" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -11506,6 +11509,12 @@ export const serviceTransportFacts = pgTable("service_transport_facts", {
   verifiedAt: timestamp("verified_at"),
   bookingWindowDays: integer("booking_window_days"),
   osmAttribution: boolean("osm_attribution"),
+  // TC-3 seed (migration 369; ledger `2026-10-11-tc3-ride-seed`): `fact_sources` maps every seeded field
+  // (a column name, or `notes.<key>`) to { url, quote } from the official read — no entry, no value.
+  // `notes` holds the facts no column carries (fares in yen, calendar caveat, duration conflict, child
+  // height, pairing note …). Both nullable, no DEFAULT; NULL = nothing seeded.
+  factSources: jsonb("fact_sources"),
+  notes: jsonb("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
