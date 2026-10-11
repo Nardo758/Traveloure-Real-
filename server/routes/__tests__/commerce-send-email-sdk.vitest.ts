@@ -183,6 +183,41 @@ async function fixture() {
 }
 
 describe.each([1, 2])("fresh randomized SDK boundary loop %i", () => {
+  it("full production sender never reads either QA setting and keeps the account recipient", async () => {
+    const id = randomUUID();
+    const [account] = await database!.db.insert(users).values({
+      id, email: `${id}@traveloure-qa.test`,
+      termsAcceptedAt: new Date(), privacyAcceptedAt: new Date(),
+    }).returning();
+    const originalProcess = process;
+    const qaReads: string[] = [];
+    const guardedEnv = new Proxy(originalProcess.env, {
+      get(target, property) {
+        if (property === "SIGNUP_QA_TEST_INBOX" || property === "ITINERARY_OUTCOME_TEST_EMAIL") {
+          qaReads.push(property);
+          throw new Error("Production SDK path tried to read a development QA setting");
+        }
+        if (property === "NODE_ENV" || property === "ENVIRONMENT") return "production";
+        return Reflect.get(target, property);
+      },
+    });
+    const guardedProcess = Object.create(originalProcess);
+    Object.defineProperty(guardedProcess, "env", { value: guardedEnv });
+    vi.stubGlobal("process", guardedProcess);
+    try {
+      const result = await email.sendEmail({
+        to: account.email!, subject: "Production recipient guard fixture",
+        html: "<p>Mocked transport only.</p>",
+      });
+      expect(result).toMatchObject({ ok: true, id: "mock_sdk_receipt_not_delivery" });
+      expect(sdkSend).toHaveBeenCalledOnce();
+      expect(sdkSend.mock.calls[0][0]).toMatchObject({ to: account.email });
+      expect(qaReads).toEqual([]);
+    } finally {
+      vi.stubGlobal("process", originalProcess);
+    }
+  });
+
   it("failed commerce check reaches the adapter but never SDK send", async () => {
     const f = await fixture();
     verification.commerceSendVerification.beforeCheck = async () => { throw new Error("fixture check failure"); };

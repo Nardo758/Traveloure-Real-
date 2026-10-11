@@ -14,7 +14,7 @@ payment/checkout edit, flag change, merge or migration registration.
 | Exact development monitored-inbox allowlist | Fixed / satisfied in isolated proof | 2; no domain wildcard or recipient substitution; missing/invalid settings deny all |
 | Bulk and single claims | Satisfied | 2; ten disallowed families held; mixed recipients held; approved generic recipients use mocked transport only |
 | Immediate enqueue/fallback and late recipient changes | Satisfied | 2; no non-QA handoff; pre-attempt live-row check; generic SDK final guard |
-| Production never reads QA inbox settings | Satisfied for pure environment boundary | 2; throwing proxy; preserves own recipient. Stronger full-SDK production proof proposed below |
+| Production never reads QA inbox settings | Satisfied for pure and full mocked SDK paths | 2 fresh SDK loops; either QA read throws; own account recipient preserved |
 | Human-visible uncertainty | Fixed / satisfied | 2; dead, processing, failed/reset and malformed rows appear; known sent/non-invoked excluded; query failure throws |
 | Malformed non-invocation marker | Fixed in development only | 2; explicit development claim fence; no blind retry |
 | Truthful rendering | Fixed / satisfied | 2; address-free held summary; no “never delivered” or retry endpoint in uncertainty section |
@@ -23,8 +23,8 @@ payment/checkout edit, flag change, merge or migration registration.
 | Approved overdue invocation | Executed, no delivery | Exactly once, `2026-10-11T13:02:33.726Z`; candidates 1, enqueued 0, duplicates 0, skipped 1 |
 | Owned heartbeat constraint | Applied as approved | Owned nullable YES; public nullable NO; no held migration applied/registered |
 | Genuine next-day delivery | Open | WAITING; no receipt, missing prior 1h delivery; future invocations unscheduled |
-| Guard batch | Open | Fresh 77/78; test-wiring guard fails on two new unit suites |
-| Golden suite | Open | Fresh 141/143 reported entries; one stale static signup assertion and its parent fail |
+| Guard batch | Fixed / satisfied | Fresh 78/78; final multiline CI wiring rechecked; 33 pre-existing orphan debts unchanged |
+| Golden suite | Fixed / satisfied | Fresh 143/143 reported entries; no QA harness imports or signup-writer setting reads permitted |
 | Typecheck | Baseline count retained | Fresh 117, same file/code multiset, zero touched-module diagnostics; full message text differs; not globally clean |
 
 ## Actual sweep, not a synthetic due-time proof
@@ -52,14 +52,24 @@ UNKNOWN rails still prevent proof. No future timer or mail authorization exists.
   The retained-execution branch is excluded from disposable loops; the fresh
   loop branch is excluded from actual retained execution. No skipped branch is
   claimed as a clean scenario rule.
-- Existing SDK-boundary proof: **16/16**, mocked Resend; no real-provider claim.
+- Expanded SDK-boundary proof: **18/18**, mocked Resend; no real-provider claim.
+  Both fresh production-sender loops passed. Details:
+  `automation-part10-evidence/dev-verification-sdk.json`.
 - Two randomized native evidence files:
   `automation-part10-evidence/dev-clock-safety-1.json` and `-2.json`.
 - Typecheck: `automation-part10-evidence/dev-clock-safety-typecheck.json`.
   Baseline files were not changed or raised; type-message property ordering
   differs and exact full-text equality is not claimed.
-- Golden: `automation-part1-evidence/golden-1-6d1e8d01-6862-469e-9159-160e5b0f5992/results.json`.
-- Guards: `automation-part1-evidence/golden-1-b1ab05de-3163-4e12-9271-b5425bcdca1a/results.json`.
+- Latest golden: `automation-part1-evidence/golden-1-fac45f7e-8066-4dd5-979a-57822bfcd30f/results.json`.
+- Latest guards: `automation-part1-evidence/golden-1-f7e63fe8-0768-4d42-908d-3aba45df505f/results.json`.
+- Final CI commands executed in separate owned schemas: original cart/provider
+  group **8/8**; new safety group **6 pass, 0 fail, 1 conditional retained-execution
+  skip**. Each safety/native scenario still runs two fresh loops internally.
+  The real-clock invocation was not repeated. Separate runner calls prevent
+  global queue-drain assertions from interfering with cart-clock fixtures.
+- Latest typecheck: `automation-part10-evidence/dev-verification-typecheck.json`;
+  117, same file/code multiset, no changed-module diagnostics. Exact normalized
+  message equality remains false; no globally clean build claimed.
 - Local human-readable held-intent proof: each native JSON contains five held
   examples, without addresses. Actual retained-scenario summary is zero held.
 - Public development active queue count zero: approved monitored inboxes zero,
@@ -85,9 +95,9 @@ Reports/evidence and this ledger only in addition to those approved files.
 No main cart-projection, payment, checkout, application schema/registry,
 production, direct-sender or feature-flag file was changed.
 
-## Proposed verification-only extension — NOT implemented
+## Verification-only extension — approved and completed
 
-Permission needed for:
+Founder approved these three files:
 
 1. `.github/workflows/build.yml`: wire the four new suites into the existing
    provider-free isolated job. No new scheduler or workflow service.
@@ -99,7 +109,7 @@ Permission needed for:
    full-SDK production-path cases asserting own recipient unchanged and that
    reads of either QA setting throw. Still owned DB; no real provider.
 
-Then fresh wiring/guard/golden/SDK/typecheck evidence. No production, real email,
+Fresh wiring/guard/golden/SDK/typecheck evidence is recorded above. No production, real email,
 restart, normal sending activation, preference correction, second retained sweep
 or migration registration implied.
 

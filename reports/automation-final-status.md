@@ -305,10 +305,20 @@ without rerunning the sweep.
 | Dev recipient guard and uncertainty visibility | Implemented; two clean isolated loops, address-free report | No normal-app restart authorized; direct senders remain separate |
 | Clock preference completeness | quietStart/quietEnd absent; timezone remains Asia/Kolkata | Separate fixture decision; no automatic data correction |
 | Clock prior-step / real delivery | WAITING, zero outbox/receipt, actual 1h cadence missed | Separate real QA delivery/chronological proof authorization |
-| Explicit new test CI wiring | Guards 77/78: two orphan unit suites | Founder approval for build.yml verification-only extension |
-| Stale signup literal-name test | Golden 141/143: child assertion and parent fail | Approve production-no-read replacement and stronger mocked SDK proof |
+| Explicit new test CI wiring | FIXED: fresh guards 78/78; final wiring check passes | Approved three-file extension completed; 33 existing orphan debts unchanged |
+| Stale signup literal-name test | FIXED: fresh golden 143/143; full mocked SDK 18/18 | Two production-path loops prohibit both QA setting reads and preserve account recipient |
 | Typecheck full-text identity | 117, same file/code multiset, no touched-module diagnostics; textual type ordering differs | Reported transparently; baseline not raised, not globally clean |
 | UNKNOWN rails / main conflict / held migration / real-provider proof | Remain open and held | Existing separate approvals; no implementation implied |
 
 **DEV-CLOSED WITH BLOCKERS. RELEASE HELD.** No global/production change,
 merge, registered migration, flag, real email, restart or new Part.
+
+Latest verification-only evidence: golden
+`automation-part1-evidence/golden-1-fac45f7e-8066-4dd5-979a-57822bfcd30f/results.json`;
+guards
+`automation-part1-evidence/golden-1-f7e63fe8-0768-4d42-908d-3aba45df505f/results.json`;
+SDK `automation-part10-evidence/dev-verification-sdk.json`;
+typecheck `automation-part10-evidence/dev-verification-typecheck.json`.
+Both final CI runner commands executed: cart/provider 8/8; safety 6 pass,
+zero fail, one disclosed retained-only conditional skip. Two fresh loops
+inside the native and production-recipient proofs. No repeated real-clock sweep.

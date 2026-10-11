@@ -13,6 +13,7 @@ import { users, emailOutbox } from "../../shared/schema";
 import { _outboxTestHooks, _nextRetryAfter, deliverQueuedEmail } from "../services/email-outbox.service";
 import { enqueueSignupWelcome, deliverSignupWelcome, welcomeSuppressionReason } from "../services/signup-welcome-outbox.service";
 import { resolveSignupQaRecipient } from "../../scripts/verification/signup-qa-recipient";
+import { developmentRecipientAllowed } from "../services/email.service";
 
 const enabled = process.env.NODE_ENV === "test" && process.env.RUN_SIGNUP_WELCOME_DB_TESTS === "1";
 const fixtureIds: string[] = [];
@@ -50,17 +51,27 @@ describe("signup welcome pure guards and main wiring", () => {
     assert.match(source, /generationNoticeKey/);
     assert.match(source, /itinerary-outbox-\$\{outboxId\}/);
   });
-  it("production app send path never imports or reads the QA inbox", () => {
+  it("signup writers never read QA settings; production sender never reads them or imports a QA harness", () => {
     for (const path of [
       "server/index.ts",
       "server/replit_integrations/auth/emailAuth.ts",
       "server/services/signup-welcome-outbox.service.ts",
       "server/services/email-outbox.service.ts",
-      "server/services/email.service.ts",
     ]) {
       const source = readFileSync(path, "utf8");
       assert.doesNotMatch(source, /SIGNUP_QA_TEST_INBOX|signup-qa-(recipient|server)/, path);
     }
+    const sender = readFileSync("server/services/email.service.ts", "utf8");
+    assert.doesNotMatch(sender, /signup-qa-(recipient|server)/);
+    const inaccessible = new Proxy({ NODE_ENV: "production" }, {
+      get(target, property) {
+        if (property === "SIGNUP_QA_TEST_INBOX" || property === "ITINERARY_OUTCOME_TEST_EMAIL") {
+          throw new Error("Production sender tried to read a development QA setting");
+        }
+        return target[property as keyof typeof target];
+      },
+    });
+    assert.equal(developmentRecipientAllowed(guardAccount.email, inaccessible), true);
   });
   it("production recipient resolution returns the account address without reading the inbox", () => {
     const accountAddress = "guard@traveloure-qa.test";

@@ -1,6 +1,6 @@
 {
   "loop": 1,
-  "scenarioId": "94f592f4-b702-42ea-b62c-91756d039e00",
+  "scenarioId": "477f47b4-f8c2-4131-ae00-cd8e8b27dd8e",
   "blockedFamilies": 10,
   "held": {
     "total": 5,
@@ -10,7 +10,7 @@
         "emailType": "cart_reminder_1h",
         "status": "dead",
         "phase": "intent",
-        "ageSeconds": 0.188909,
+        "ageSeconds": 0.171581,
         "lastError": null,
         "providerMessageId": null
       },
@@ -19,7 +19,7 @@
         "emailType": "cart_reminder_1h",
         "status": "processing",
         "phase": "intent",
-        "ageSeconds": 0.163212,
+        "ageSeconds": 0.16058,
         "lastError": null,
         "providerMessageId": null
       },
@@ -28,7 +28,7 @@
         "emailType": "cart_reminder_1h",
         "status": "failed",
         "phase": "intent",
-        "ageSeconds": 0.135883,
+        "ageSeconds": 0.150904,
         "lastError": null,
         "providerMessageId": null
       },
@@ -37,7 +37,7 @@
         "emailType": "cart_item_changed",
         "status": "pending",
         "phase": "malformed",
-        "ageSeconds": 0.115277,
+        "ageSeconds": 0.141842,
         "lastError": null,
         "providerMessageId": null
       },
@@ -46,7 +46,7 @@
         "emailType": "cart_item_changed",
         "status": "pending",
         "phase": "not_invoked",
-        "ageSeconds": 0.104841,
+        "ageSeconds": 0.136881,
         "lastError": null,
         "providerMessageId": null
       }
