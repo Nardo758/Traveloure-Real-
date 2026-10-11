@@ -12,7 +12,9 @@
  *     option's `hotel_cache` row → a LiteAPI row in this plan's city (ruling 4).
  *   · THE OFFER ID NEVER COMES FROM THE BROWSER (§14): prebook re-quotes the plan's own dates and party on
  *     the d-2 rates rail (same gate, same cap), and the PREBOOK's price is what the SDK charges and the page
- *     shows before it opens. Below LiteAPI's SSP is refused.
+ *     shows before it opens. THE BOOKING MARGIN is `bookingMarginFraction` (decision-maker, Oct 11, 2026):
+ *     max(band, SSP / net − 1) from the re-quote's own answer; above the band, ONE more re-quote at that
+ *     margin, whose offer is prebooked. Refused only when the SSP is unstated or in another currency.
  *   · CLAIM BEFORE EVERY EXTERNAL CALL (§15/§15b): `prebooked → booking` before book, `confirmed →
  *     cancelling` before cancel, each one atomic conditional. A definite LiteAPI refusal ends the claim; an
  *     answer we cannot read leaves it for the sync to DETECT — the sync never books (ruling).
@@ -32,6 +34,7 @@ import {
   bookingStatusOf,
   offerIdFromRates,
   sspFromRates,
+  bookingMarginFraction,
   parseBook,
   parsePrebook,
 } from "@shared/liteapi-booking";
@@ -149,11 +152,9 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
 
   const client = deps.client(cfg);
   const timeoutMs = deps.timeoutMs();
-  let offerId: string | null = null;
-  let quotedSsp: ReturnType<typeof sspFromRates> = null;
-  try {
-    const marginPercent = Math.round((await deps.marginFraction()) * 10_000) / 100;
-    const quoted = await gatedLiteapiRatesCall(
+  // One rates request at a given margin (LiteAPI prices the offer id it returns at that margin).
+  const quote = async (marginPercent: number) => {
+    const out = await gatedLiteapiRatesCall(
       async () => {
         const body = await withTimeout(
           client.hotelRates({
@@ -173,12 +174,41 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       },
       { userId: input.userId ?? null, env: cfg.env, deps: deps.gate },
     );
+    return out;
+  };
+  let offerId: string | null = null;
+  let quotedSsp: ReturnType<typeof sspFromRates> = null;
+  try {
+    const band = await deps.marginFraction();
+    const bandPercent = Math.round(band * 10_000) / 100;
+    const quoted = await quote(bandPercent);
     if ("refused" in quoted) {
       console.warn(`[liteapi-booking] re-quote ${input.itemId} refused: rates ${quoted.refused}`);
       return { state: "unavailable", reason: "rates_paused" };
     }
     offerId = offerIdFromRates(quoted.value);
-    quotedSsp = sspFromRates(quoted.value);
+    if (offerId) {
+      // The booking margin (decision-maker, Oct 11, 2026): max(band, SSP / net − 1) from THIS answer, so the
+      // booked price is never below the SSP nor below our band. Refused only for an unstated SSP or one in
+      // another currency.
+      const m = bookingMarginFraction(quoted.value, band);
+      if (!m.ok) {
+        console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${m.reason}`);
+        return { state: "unavailable", reason: m.reason };
+      }
+      quotedSsp = m.ssp;
+      if (m.percent > bandPercent) {
+        // The band alone prices under the SSP: re-quote ONCE at the floor margin and prebook that offer.
+        const raised = await quote(m.percent);
+        if ("refused" in raised) {
+          console.warn(`[liteapi-booking] floor re-quote ${input.itemId} refused: rates ${raised.refused}`);
+          return { state: "unavailable", reason: "rates_paused" };
+        }
+        offerId = offerIdFromRates(raised.value);
+        quotedSsp = sspFromRates(raised.value) ?? m.ssp;
+        console.info(`[liteapi-booking] ${input.itemId}: margin ${bandPercent}% → ${m.percent}% to meet the SSP`);
+      }
+    }
   } catch (err: any) {
     console.warn(`[liteapi-booking] re-quote ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable", reason: "rates_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };

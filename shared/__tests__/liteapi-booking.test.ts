@@ -6,6 +6,7 @@
  *   LB3 book: LiteAPI's id, status and confirmation code; commission and processing fee in cents, null when unstated
  *   LB4 confirmed only on CONFIRMED; the booked line needs a code
  *   LB5 the one payment method is TRANSACTION_ID; live statuses are the three that hold an item
+ *   LB6 the booking margin: max(band, SSP / net − 1), rounded up; refused only for no SSP / another currency
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -18,6 +19,7 @@ import {
   parseBook,
   parsePrebook,
   sspFromRates,
+  bookingMarginFraction,
 } from "../liteapi-booking";
 
 test("LB1 offer id from the re-quote", () => {
@@ -75,4 +77,40 @@ test("LB4 confirmed and the status read", () => {
 test("LB5 the one payment method and the live set", () => {
   assert.equal(LITEAPI_PAYMENT_METHOD, "TRANSACTION_ID");
   assert.deepEqual([...LITEAPI_LIVE_STATUSES], ["booking", "confirmed", "cancelling"]);
+});
+
+test("LB6 the booking margin", () => {
+  const body = (o: { retail?: number; ssp?: any; commission?: number; ccy?: string }) => ({
+    data: [
+      {
+        roomTypes: [
+          {
+            offerId: "o",
+            offerRetailRate: o.retail === undefined ? undefined : { amount: o.retail, currency: o.ccy ?? "USD" },
+            suggestedSellingPrice: o.ssp,
+            commission: o.commission === undefined ? undefined : [{ amount: o.commission, currency: "USD" }],
+          },
+        ],
+      },
+    ],
+  });
+  // The band already clears the SSP ⇒ the band.
+  const a = bookingMarginFraction(body({ retail: 336, ssp: { amount: 300, currency: "USD" }, commission: 36 }), 0.12);
+  assert.ok(a.ok && a.percent === 12);
+  // Net 250 (retail 280 − commission 30), SSP 300 ⇒ 20%, above a 12% band.
+  const b = bookingMarginFraction(body({ retail: 280, ssp: { amount: 300, currency: "USD" }, commission: 30 }), 0.12);
+  assert.ok(b.ok && b.percent === 20 && b.fraction === 0.2);
+  // No commission stated ⇒ net = retail / (1 + band); rounded UP so the price is never under the SSP.
+  const c = bookingMarginFraction(body({ retail: 270, ssp: { amount: 300, currency: "USD" } }), 0);
+  assert.ok(c.ok && c.percent === 11.12 && 270 * (1 + c.fraction) >= 300);
+  // Never below the band, even when the SSP is far under the price.
+  const d = bookingMarginFraction(body({ retail: 500, ssp: { amount: 100, currency: "USD" }, commission: 0 }), 0.12);
+  assert.ok(d.ok && d.percent === 12);
+  // The rate-level fields are the fallback.
+  const e = bookingMarginFraction({ data: [{ roomTypes: [{ suggestedSellingPrice: { amount: 300, currency: "USD" }, rates: [{ retailRate: { total: [{ amount: 250, currency: "USD" }] } }] }] }] }, 0);
+  assert.ok(e.ok && e.percent === 20);
+  // Refused by name only for these.
+  assert.deepEqual(bookingMarginFraction(body({ retail: 280 }), 0.12), { ok: false, reason: "no_ssp" });
+  assert.deepEqual(bookingMarginFraction(body({ retail: 280, ssp: { amount: 300, currency: "EUR" } }), 0.12), { ok: false, reason: "ssp_currency" });
+  assert.deepEqual(bookingMarginFraction(body({ ssp: { amount: 300, currency: "USD" } }), 0.12), { ok: false, reason: "no_price" });
 });
