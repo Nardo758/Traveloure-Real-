@@ -1034,20 +1034,15 @@ class StripePaymentService {
       { signatureVerified: true },
       async () => {
         for (const bookingId of bookingIdList) {
-          // Idempotency: skip bookings that are already confirmed
-          const existing = await db.execute(sql`
-            SELECT status FROM bookings WHERE id = ${bookingId} LIMIT 1
-          `);
-          const currentStatus = (existing.rows?.[0] as any)?.status;
-          if (currentStatus === 'confirmed') {
-            console.log(`[webhook] booking ${bookingId} already confirmed — skipping`);
-            continue;
-          }
-
           const confirmationCode = this.generateConfirmationCode();
 
+          // Claim confirmation in the UPDATE itself, not in an earlier SELECT.
+          // PostgreSQL rechecks this predicate after a concurrent writer commits;
+          // only the winner may enqueue an email with its confirmation code.
+          // Preserve the legacy acceptance rule (anything except confirmed).
+          let claimed;
           if (isDeposit === 'true') {
-            await db.execute(sql`
+            claimed = await db.execute(sql`
               UPDATE bookings SET
                 status = 'confirmed',
                 payment_status = 'succeeded',
@@ -1055,9 +1050,11 @@ class StripePaymentService {
                 confirmation_code = ${confirmationCode},
                 deposit_paid = true
               WHERE id = ${bookingId}
+                AND status IS DISTINCT FROM 'confirmed'
+              RETURNING confirmation_code
             `);
           } else {
-            await db.execute(sql`
+            claimed = await db.execute(sql`
               UPDATE bookings SET
                 status = 'confirmed',
                 payment_status = 'succeeded',
@@ -1066,7 +1063,15 @@ class StripePaymentService {
                 deposit_paid = true,
                 balance_paid = true
               WHERE id = ${bookingId}
+                AND status IS DISTINCT FROM 'confirmed'
+              RETURNING confirmation_code
             `);
+          }
+
+          const confirmed = claimed.rows?.[0] as { confirmation_code: string } | undefined;
+          if (!confirmed) {
+            console.log(`[webhook] booking ${bookingId} already confirmed or missing — skipping`);
+            continue;
           }
 
           console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
@@ -1088,7 +1093,7 @@ class StripePaymentService {
               bookingId,
               bookingTitle: row.title || 'Your booking',
               bookingDate: row.booking_date ?? null,
-              confirmationCode,
+              confirmationCode: confirmed.confirmation_code,
             });
           }
         }
