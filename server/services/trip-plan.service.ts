@@ -47,6 +47,7 @@ import { isSupplySlot } from "@shared/ai-place-text";
 import { db } from "../db";
 import { storage } from "../storage";
 import { providerServices, serviceBookings, tripExpertAdvisors, tripTransactions } from "@shared/schema";
+import { rideServiceIdsAmong } from "./ride-listings";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
@@ -878,6 +879,9 @@ export async function assembleTripPlan(
 
   const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
 
+  // ST-1: which items are catalog rides (the ride service's own test — a `service_transport_facts` row).
+  const rideServiceIds = await rideServiceIdsAmong(items.map((i: any) => i.providerServiceId).filter((id: unknown): id is string => typeof id === "string"));
+
   const buildActivity = (item: any): TripPlanActivity => {
     const title = item.title;
     const startTime = item.startTime || null;
@@ -966,6 +970,8 @@ export async function assembleTripPlan(
       // R-ah (migration 342): the item is LOCKED ("Keep this") — present only when true, so the
       // lock survives a reload and the row can offer "Unlock".
       ...((item as any).lockedAt ? { locked: true as const } : {}),
+      // ST-1 (ledger `2026-10-12-st1-stop-time-edit`): a catalog ride's time is the operator's departure.
+      ...(item.providerServiceId && rideServiceIds.has(item.providerServiceId) ? { ride: true as const } : {}),
       // R-w (ledger `2026-10-03-rw-ai-place-text`): a venue-less AI item is a SUPPLY SLOT — derived
       // from the row by the ONE predicate (`isSupplySlot`), present only when true, full level only.
       ...(isSupplySlot(item as any) ? { supplySlot: true as const } : {}),

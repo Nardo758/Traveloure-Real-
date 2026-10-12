@@ -66,6 +66,9 @@ import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
 import { AnchorPanel, ANCHOR_PANEL_ADD_PLACES } from "@/components/plan/AnchorPanel";
 import { LegRow } from "@/components/plan/LegRow";
+import { useStopTimeEdit } from "@/components/plan/StopTimeEdit";
+import { stopTimeRule } from "@shared/stop-time-edit";
+import { planDayIsPast } from "@shared/plan-timing";
 import { airportLegLine, airportLegModes, showsAirportLeg } from "@shared/airport-leg";
 import { manifestFor } from "@shared/group-manifest";
 import { anchorSurfaces, isLodgingItem, replaceStayQuestion, type WhereToStayView } from "@shared/where-to-stay";
@@ -824,7 +827,18 @@ function SlipDayItem({
     routingStatus: a.routingStatus ?? null,
     bookingId: a.booking?.id ?? null,
   });
-  const actions = useSlipItemActions({ tripId, itemId: a.id, tools, dayNumber, dayItemIds, groupItemIds });
+  // ST-1 (ledger `2026-10-12-st1-stop-time-edit`): ONE time rule for the in-place editor and the ⋯ → Swap
+  // form. "Past" is the shared `planDayIsPast`, read on the row's own date (the day is day 1 of itself).
+  const timeRule = stopTimeRule({
+    ride: a.ride === true,
+    pastDay: planDayIsPast(dateIso, 1, timeZone, new Date()),
+    booked: !!a.booking?.id,
+    locked: a.locked === true,
+  });
+  const actions = useSlipItemActions({ tripId, itemId: a.id, tools, dayNumber, dayItemIds, groupItemIds, timeRule });
+  // Owner only, and never on a fixed travel/anchor row (its time is the flight's or the tool's).
+  const timeEditable = isOwner && !anchorFrom && !travel;
+  const timeEdit = useStopTimeEdit({ tripId, itemId: a.id, time: a.time, rule: timeRule });
   const promote = usePromoteAnchor(tripId, a.id);
   const setAsStay = useSetAsStay(tripId, a.id);
   const [confirmStay, setConfirmStay] = useState(false);
@@ -877,6 +891,7 @@ function SlipDayItem({
       facts={facts}
       dateIso={dateIso}
       timeZone={timeZone}
+      timeEdit={timeEditable ? timeEdit : null}
       mode={canEditItems ? "edit" : "read"}
       role={isExpertViewer ? "expert" : "traveler"}
       bookingState={slipItemBookingLine(a)}
