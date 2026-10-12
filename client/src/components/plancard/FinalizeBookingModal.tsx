@@ -128,7 +128,8 @@ export function FinalizeBookingModal({
         // R323 (step 7b): the expert lane is the ONE handoff door — "Book these for me", every
         // stop not yet booked ticked. The chooser quotes, holds and sends; this modal sends nothing.
         onOpenChange(false);
-        openHandoffChooser({ kind: "book", itemIds: activities.filter((i) => !i.booking?.id).map((i) => i.id) });
+        // BP-1: an item whose path is `none` (a past day, an area, nothing bookable) is never ticked.
+        openHandoffChooser({ kind: "book", itemIds: activities.filter((i) => !i.booking?.id && (i as any).bookingPath !== "none").map((i) => i.id) });
       } else if (lane === "concierge") {
         onOpenChange(false);
         // The concierge surface owns the priced quote; hand it the intent (server derives price).
