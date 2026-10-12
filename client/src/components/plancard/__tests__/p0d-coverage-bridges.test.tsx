@@ -3,7 +3,7 @@
  *
  *   PD1 item 1: the 330f594a shape (routed bridges + 8 gaps) ⇒ the card shows no all-clear, the unchecked
  *       line with the count, and the 8 stops; a complete routed plan keeps the all-clear; a free plan says
- *       travel times come with Optimize (plain and board tone alike)
+ *       travel times come with Optimize (plain and board tone alike); a response with no coverage gets none
  *   PD2 item 2: the ONE formatter — "Fushimi Inari → Tofuku-ji · around Soba Restaurant"
  *   PD3 item 2: the slip names a bridge in its slot; the Trip Card draws the same bridge with the same name
  *   PD4 item 3: the card's leg count is stop-to-stop legs + bridges; stay legs are in neither
@@ -43,6 +43,8 @@ describe("P0-d", () => {
     }
     const earned = text(renderToString(<OptimizerLead findings={[]} coverage={{ complete: true, unlocated: [] }} routedPlan hasPricedItems={false} fee={fee} onClick={() => {}} />));
     assert.ok(earned.includes(LEAD_ZERO), "a complete routed plan keeps the all-clear");
+    const unknown = text(renderToString(<OptimizerLead findings={[]} hasPricedItems={false} fee={fee} onClick={() => {}} />));
+    assert.ok(!unknown.includes(LEAD_ZERO) && unknown.includes(SOME_TRAVEL_TIMES_UNCHECKED), "no coverage answer ⇒ no all-clear");
   });
 
   it("PD2 the one formatter names a bridge by its endpoints and what it goes round", () => {

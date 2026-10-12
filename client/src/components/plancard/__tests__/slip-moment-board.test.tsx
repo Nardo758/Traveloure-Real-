@@ -82,7 +82,7 @@ describe("Moment board", () => {
     assert.deepEqual(findingBadge(findings[0]), { badge: "2", rest: "stops are reached when they're closed" });
     assert.equal(findingBadge(findings[1]).badge, "↓");
     const moment = renderToString(
-      React.createElement(OptimizerLead, { tone: "board", findings: [], hasPricedItems: false, fee, onClick: () => {}, title: "Make the evening flow", noStay: true }),
+      React.createElement(OptimizerLead, { tone: "board", findings: [], coverage: { complete: true, unlocated: [] }, hasPricedItems: false, fee, onClick: () => {}, title: "Make the evening flow", noStay: true }),
     );
     assert.match(text(moment), /Make the evening flow/);
     assert.ok(text(moment).includes(LEAD_ZERO_NO_STAY));
