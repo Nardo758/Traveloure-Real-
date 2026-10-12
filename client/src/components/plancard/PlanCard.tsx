@@ -30,7 +30,7 @@ import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
 import { planMapAnchor } from "@/lib/map-scene";
 import { slipAdvisorName } from "@/lib/slip-rail";
 import { UpNextHero } from "./UpNextHero";
-import { TripCardDays } from "./TripCardDays";
+import { TripCardDays, cardLegCount } from "./TripCardDays";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
@@ -825,7 +825,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           budget={budgetDisplay}
           days={days}
           totalActivities={totalActivities}
-          totalLegs={totalLegs}
+          // P0-d item 3 (ledger `2026-10-12-p0d-coverage-bridges`): on the Trip Card the hero counts the legs the
+          // day panel draws — stop-to-stop legs and bridges, stay legs in neither (`cardLegCount`).
+          totalLegs={cardSurface ? cardLegCount(days) : totalLegs}
           totalMinutes={totalMinutes}
           statsLabels={templateConfig.statsLabels}
           finalDress={finalDress}

@@ -12,6 +12,9 @@ import type { OptimizationFeeQuote, TripOptimizationPreview } from "@/lib/optimi
 
 export interface OptimizerLeadData {
   findings: NonNullable<TripOptimizationPreview["findings"]> | undefined;
+  /** P0-d item 1: the preview's leg coverage and routed-plan answer, read beside the findings. */
+  coverage: TripOptimizationPreview["coverage"];
+  routedPlan: boolean | undefined;
   hasPricedItems: boolean;
   fee: OptimizationFeeQuote | null;
   realised: unknown | null;
@@ -33,6 +36,8 @@ export function useOptimizerLeadData(tripId: string, enabled: boolean): Optimize
   });
   return {
     findings: enabled ? preview?.findings : undefined,
+    coverage: enabled ? preview?.coverage : undefined,
+    routedPlan: enabled ? preview?.routedPlan : undefined,
     hasPricedItems: !!preview?.hasPricedItems,
     fee: enabled ? fee ?? null : null,
     realised: plan?.lastOptimizedAt ? plan.optimizationDelta ?? null : null,
