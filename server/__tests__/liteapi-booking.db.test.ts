@@ -15,6 +15,8 @@
  *   B7 a definite LiteAPI refusal fails the booking; an unreadable answer leaves the claim for the sync
  *   B8 the sync records LiteAPI's status and never changes ours; it reports disagreement and stranded claims
  *   B9 a missing holder name is refused, never invented
+ *   B10 (S1-d-3c) a prebook below its OWN SSP ⇒ ONE re-quote at the margin that floor needs and ONE more prebook;
+ *       a second answer below its floor is refused — never more than two prebook calls
  *
  * DISPOSABLE DB ONLY.
  */
@@ -41,14 +43,14 @@ const prebookAnswer = (over: Record<string, unknown> = {}) => ({
   data: { prebookId: `pb-${RUN}-${++prebookN}`, transactionId: `tx-${RUN}-${prebookN}`, secretKey: "sk-secret", price: 312.5, currency: "USD", priceDifferencePercent: 0, ...over },
 });
 
-function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; prebook?: any; book?: () => any; cancel?: () => any; get?: () => any } = {}) {
+function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; prebook?: any | ((q: any, n: number) => any); book?: () => any; cancel?: () => any; get?: () => any } = {}) {
   const calls: Record<string, any[]> = { rates: [], prebook: [], book: [], cancel: [], get: [] };
   const deps: StayBookingDeps = {
     config: () => (opts.env === "production" ? production : sandbox),
     client: () =>
       ({
         hotelRates: async (q: any) => (calls.rates.push(q), opts.rates ? opts.rates(q) : rates),
-        prebook: async (q: any) => (calls.prebook.push(q), opts.prebook ?? prebookAnswer()),
+        prebook: async (q: any) => (calls.prebook.push(q), typeof opts.prebook === "function" ? opts.prebook(q, calls.prebook.length) : opts.prebook ?? prebookAnswer()),
         book: async (q: any) => {
           // The body the real client sends is built by the ONE builder; assert its payment method there.
           const { bookRequestBody } = await import("../services/liteapi-client");
@@ -131,6 +133,7 @@ test("B2/B3 prebook re-quotes server-side, stores the pair before the SDK, never
   const low = fakes({ prebook: prebookAnswer({ price: 280 }) }); // the prebook's guard: below the re-quote's SSP of 300
   assert.deepEqual(await prebookStay(q("s1"), low.deps), { state: "unavailable", reason: "below_ssp" });
   assert.equal(await row("s1"), undefined, "nothing stored below the SSP");
+  assert.equal(low.calls.prebook.length, 2, "S1-d-3c: one re-prebook, then refused — never a third");
 
   // No SSP stated ⇒ refused by name; nothing prebooked, nothing stored.
   const bare = { data: [{ hotelId: `${RUN}-lp`, roomTypes: [{ offerId: `offer-${RUN}`, rates: [{ retailRate: { total: [{ amount: 300, currency: "USD" }] } }] }] }] };
@@ -260,4 +263,31 @@ test("B9 a missing holder name is refused, never invented", async () => {
   assert.equal(f.calls.book.length, 0);
   const r = ((await db.execute(sql`SELECT status FROM liteapi_bookings WHERE itinerary_item_id = ${id("anon")}`)) as any).rows[0];
   assert.equal(r.status, "prebooked");
+});
+
+test("B10 a prebook below its own SSP is re-quoted once and prebooked once more, then refused", async () => {
+  // CI shape: the re-quote's SSP agrees with the price, the prebook's own SSP is a few cents higher.
+  const quoteAt = (m: number) => ({
+    data: [{ roomTypes: [{ offerId: `offer-m${m}-${RUN}`, offerRetailRate: { amount: 202.27, currency: "USD" }, suggestedSellingPrice: { amount: 202.27, currency: "USD" } }] }],
+  });
+  const lifted = fakes({
+    rates: (rq: any) => quoteAt(rq.marginPercent),
+    prebook: (_q: any, n: number) => prebookAnswer(n === 1 ? { price: 202.27, suggestedSellingPrice: 202.3 } : { price: 202.31, suggestedSellingPrice: 202.3 }),
+  });
+  const ok: any = await prebookStay(q("s1"), lifted.deps);
+  assert.equal(ok.state, "prebooked");
+  assert.equal(ok.amountCents, 20231);
+  assert.deepEqual(lifted.calls.rates.map((c: any) => c.marginPercent), [12, 12.02], "the second quote is at max(band, floor / net − 1): net 202.27 / 1.12 ⇒ 12.017% ⇒ 12.02%");
+  assert.equal(lifted.calls.prebook.length, 2);
+  assert.deepEqual(lifted.calls.prebook[1], { offerId: `offer-m12.02-${RUN}` }, "the floor re-quote's offer is the one prebooked");
+  assert.equal((await row("s1")).offer_id, `offer-m12.02-${RUN}`);
+  await db.execute(sql`DELETE FROM liteapi_bookings WHERE itinerary_item_id = ${id("s1")}`);
+
+  const still = fakes({
+    rates: (rq: any) => quoteAt(rq.marginPercent),
+    prebook: () => prebookAnswer({ price: 202.27, suggestedSellingPrice: 202.3 }),
+  });
+  assert.deepEqual(await prebookStay(q("s1"), still.deps), { state: "unavailable", reason: "below_ssp" });
+  assert.equal(still.calls.prebook.length, 2, "never more than two prebook calls");
+  assert.equal(await row("s1"), undefined);
 });

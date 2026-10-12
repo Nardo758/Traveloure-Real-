@@ -7,6 +7,8 @@
  *   LB4 confirmed only on CONFIRMED; the booked line needs a code
  *   LB5 the one payment method is TRANSACTION_ID; live statuses are the three that hold an item
  *   LB6 the booking margin: max(band, SSP / net − 1), rounded up; refused only for no SSP / another currency
+ *   LB7 (S1-d-3c) the prebook's own SSP is the floor, the re-quote's only when it states none; the one
+ *       re-prebook margin is max(band, floor / net − 1), rounded up and always above the margin tried
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,6 +22,10 @@ import {
   parsePrebook,
   sspFromRates,
   bookingMarginFraction,
+  prebookSspFloor,
+  prebookFloorPercent,
+  quoteRetail,
+  prebookDiagnostic,
 } from "../liteapi-booking";
 
 test("LB1 offer id from the re-quote", () => {
@@ -113,4 +119,29 @@ test("LB6 the booking margin", () => {
   assert.deepEqual(bookingMarginFraction(body({ retail: 280 }), 0.12), { ok: false, reason: "no_ssp" });
   assert.deepEqual(bookingMarginFraction(body({ retail: 280, ssp: { amount: 300, currency: "EUR" } }), 0.12), { ok: false, reason: "ssp_currency" });
   assert.deepEqual(bookingMarginFraction(body({ ssp: { amount: 300, currency: "USD" } }), 0.12), { ok: false, reason: "no_price" });
+});
+
+test("LB7 the prebook's own SSP is the floor; the one re-prebook margin", () => {
+  // CI run 38258094086: the re-quote said 327.31, the prebook for the same offer said 284.58 at a price of 284.60.
+  const b = { data: { prebookId: "p", transactionId: "t", secretKey: "s", price: 284.6, currency: "USD", suggestedSellingPrice: 284.58 } };
+  assert.deepEqual(prebookSspFloor(b, { amount: 327.31, currency: "USD" }), { amount: 284.58, currency: "USD" });
+  assert.ok(parsePrebook(b, { amount: 327.31, currency: "USD" }).ok, "the prebook's own SSP decides");
+  const bare = { data: { ...b.data, suggestedSellingPrice: undefined } };
+  assert.deepEqual(prebookSspFloor(bare, { amount: 300, currency: "USD" }), { amount: 300, currency: "USD" }, "falls back to the re-quote's");
+  assert.equal(prebookSspFloor(bare, null), null);
+
+  // 202.27 against its own 202.30 at 15%: net 175.89, needed 15.017% ⇒ 15.02%.
+  const shy = { data: { price: 202.27, currency: "USD", suggestedSellingPrice: 202.3 } };
+  assert.deepEqual(prebookFloorPercent(shy, null, 15, 0.12), { ok: true, percent: 15.02 });
+  // The band wins when it is higher; the result is always above the margin already tried.
+  assert.deepEqual(prebookFloorPercent(shy, null, 15, 0.2), { ok: true, percent: 20 });
+  assert.deepEqual(prebookFloorPercent({ data: { price: 100, currency: "USD", suggestedSellingPrice: 100 } }, null, 10, 0), { ok: true, percent: 10.01 });
+  assert.deepEqual(prebookFloorPercent({ data: { currency: "USD", suggestedSellingPrice: 1 } }, null, 12, 0.12), { ok: false, reason: "no_price" });
+  assert.deepEqual(prebookFloorPercent({ data: { price: 280, currency: "USD" } }, null, 12, 0.12), { ok: false, reason: "no_ssp" });
+  assert.deepEqual(prebookFloorPercent({ data: { price: 280, currency: "USD" } }, { amount: 300, currency: "EUR" }, 12, 0.12), { ok: false, reason: "ssp_currency" });
+
+  // The diagnostic reads the facts it was given and invents none.
+  assert.deepEqual(quoteRetail({ data: [{ roomTypes: [{ offerRetailRate: { amount: 202.27, currency: "usd" } }] }] }), { amount: 202.27, currency: "USD" });
+  assert.equal(quoteRetail({}), null);
+  assert.match(prebookDiagnostic({}, shy, 15), /requote retail=none .*prebook price=202\.27 prebook ssp=202\.3 currency=USD margin=15%/);
 });
