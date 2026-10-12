@@ -29,12 +29,15 @@ export function BoardRowFrame({
   timeTestId,
   dot,
   menu = null,
+  timeSlot = null,
   children,
 }: {
   time: string | null;
   timeTestId?: string;
   dot: BoardDot;
   menu?: ReactNode;
+  /** ST-1: the owner's time button replaces the plain time text (it carries `timeTestId` itself). */
+  timeSlot?: ReactNode;
   children: ReactNode;
 }) {
   const fixed = dot === "anchor";
@@ -45,9 +48,9 @@ export function BoardRowFrame({
     >
       <div
         className={`pt-0.5 text-[13px] font-semibold tabular-nums ${fixed ? "text-[color:var(--slip-teal-ink)]" : "text-[color:var(--slip-navy)]"}`}
-        data-testid={time ? timeTestId : undefined}
+        data-testid={!timeSlot && time ? timeTestId : undefined}
       >
-        {time}
+        {timeSlot ?? time}
       </div>
       <div className="flex flex-col items-center" aria-hidden="true">
         <div className={BOARD_DOT_CLASS[dot]} />
