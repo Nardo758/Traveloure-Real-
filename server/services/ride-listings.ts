@@ -19,11 +19,17 @@ export function notRideListingSql(serviceIdColumn: SQL | { getSQL(): SQL }): SQL
   return sql`NOT EXISTS (SELECT 1 FROM ${serviceTransportFacts} WHERE ${serviceTransportFacts.serviceId} = ${serviceIdColumn})`;
 }
 
+/** The listing ids among `ids` that are catalog rides (have a `service_transport_facts` row). */
+export async function rideServiceIdsAmong(ids: readonly string[]): Promise<Set<string>> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  if (unique.length === 0) return new Set();
+  const r = await db.execute(sql`SELECT service_id FROM service_transport_facts WHERE service_id IN (${sql.join(unique.map((i) => sql`${i}`), sql`, `)})`);
+  return new Set((r.rows as Array<{ service_id: string }>).map((x) => x.service_id));
+}
+
 /** The same exclusion over rows already read. */
 export async function withoutRideListings<T>(rows: readonly T[], idOf: (row: T) => string): Promise<T[]> {
   if (rows.length === 0) return [];
-  const ids = rows.map(idOf);
-  const r = await db.execute(sql`SELECT service_id FROM service_transport_facts WHERE service_id IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})`);
-  const rides = new Set((r.rows as Array<{ service_id: string }>).map((x) => x.service_id));
+  const rides = await rideServiceIdsAmong(rows.map(idOf));
   return rides.size ? rows.filter((row) => !rides.has(idOf(row))) : [...rows];
 }
