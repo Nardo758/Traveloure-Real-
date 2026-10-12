@@ -20,8 +20,18 @@
  * Last step before merge: run it, then `node scripts/check-decision-guards.cjs --require-assigned` and
  * check its EXIT CODE (never through a pipe that hides it), commit, and let CI re-run on that head.
  *
+ * POST-MERGE STAMPING (CI-1 Phase 1, decision-maker rulings Oct 12, 2026). PRs merge with their rows still `R?`;
+ * `.github/workflows/ledger-stamp.yml` runs `--stamp` on main after each merge, which:
+ *   · moves every `R?` row to the END of the ledger, in file order (a concurrent merge may have left one above a
+ *     numbered row; ascending-contiguous must hold without a merge-main push);
+ *   · numbers them as above and appends `; merged <sha7>` to each one's citation cell — the first-parent commit on
+ *     main that added the row (ruling 2: no new column);
+ *   · replaces `R?` with the number on any CLAUDE.md line that names that row's slug.
+ * It never touches any other file, and the workflow refuses a commit that changes anything but those two.
+ *
  * Usage:  node scripts/assign-r-numbers.cjs            # dry run: print the mapping
  *         node scripts/assign-r-numbers.cjs --write    # rewrite docs/DECISIONS.md
+ *         node scripts/assign-r-numbers.cjs --stamp    # post-merge: move last, number, merged sha, CLAUDE.md
  *         node scripts/assign-r-numbers.cjs --self-test
  * Node built-ins only.
  */
@@ -31,8 +41,33 @@ const { lintRNumbers, rowCells, ROW_ID_PREFIX_RE } = require("./check-decision-g
 
 const LEDGER = path.resolve(__dirname, "..", "docs", "DECISIONS.md");
 
-/** Pure: ledger text → { text, assigned: [{id, n}], refused: [id] }. */
-function assign(ledgerText) {
+/** True for a ledger row still carrying the `R?` heading or citation. */
+function isPlaceholderRow(line) {
+  if (!ROW_ID_PREFIX_RE.test(line)) return false;
+  const cells = rowCells(line);
+  return /^\*\*R\? —/.test(cells[3] ?? "") || /^numeric citation R\?(?![\w])/.test(cells[cells.length - 1] ?? "");
+}
+
+/** Pure: every `R?` row moved after the last ledger row, in file order. No `R?` row ⇒ text unchanged. */
+function moveUnassignedToEnd(ledgerText) {
+  const lines = ledgerText.split("\n");
+  const moving = [];
+  const kept = [];
+  for (const line of lines) (isPlaceholderRow(line) ? moving : kept).push(line);
+  if (!moving.length) return ledgerText;
+  let last = -1;
+  kept.forEach((line, i) => {
+    if (ROW_ID_PREFIX_RE.test(line)) last = i;
+  });
+  kept.splice(last + 1, 0, ...moving);
+  return kept.join("\n");
+}
+
+/**
+ * Pure: ledger text → { text, assigned: [{id, n}], refused: [id] }.
+ * opts.mergedSha(id) → a short sha or null; when it answers, `; merged <sha>` is appended to that row's citation cell.
+ */
+function assign(ledgerText, opts = {}) {
   const r = lintRNumbers(ledgerText);
   const frozen = new Set();
   for (const line of ledgerText.split("\n")) {
@@ -60,10 +95,25 @@ function assign(ledgerText) {
     // citation is the LAST cell. Prose inside the row may quote the placeholder itself, so the
     // citation is rewritten only at the start of the last cell — never at its first occurrence.
     const at = line.lastIndexOf(cells[cells.length - 1]);
-    const tail = line.slice(at).replace(/^numeric citation R\?(?![\w])/, `numeric citation R${n}`);
+    let tail = line.slice(at).replace(/^numeric citation R\?(?![\w])/, `numeric citation R${n}`);
+    const sha = opts.mergedSha ? opts.mergedSha(p[1]) : null;
+    if (sha) tail = tail.replace(/\s*\|\s*$/, `; merged ${sha} |`);
     return (line.slice(0, at).replace("**R? —", `**R${n} —`)) + tail;
   });
   return { text: lines.join("\n"), assigned, refused };
+}
+
+/** Pure: replace `R?` with the assigned number on CLAUDE.md lines that name the row's slug. Other lines untouched. */
+function stampClaudeMd(text, assigned) {
+  return text
+    .split("\n")
+    .map((line) => {
+      for (const { id, n } of assigned) {
+        if (line.includes(id)) line = line.replace(/\bR\?(?![\w])/g, `R${n}`);
+      }
+      return line;
+    })
+    .join("\n");
 }
 
 function selfTest() {
@@ -88,23 +138,70 @@ function selfTest() {
     && lintRNumbers(prose.text, {}).failures.length === 0;
   // A4: idempotent — a second run assigns nothing.
   const ok4 = assign(a.text).assigned.length === 0;
-  if (!(ok1 && ok2 && ok3 && ok4 && ok5)) {
-    console.error("SELF-TEST FAILED", { ok1, ok2, ok3, ok4, ok5, assigned: a.assigned, failures: after.failures });
+  // A6 (CI-1): an R? row a concurrent merge left above a numbered row is moved to the end, then numbered; the result
+  // is ascending and lints clean.
+  const mixed = [
+    "| 2026-01-02-a | 2026-01-02 | [advisory] | **R5 — A.** | numeric citation R5 |",
+    "| 2026-01-03-late | 2026-01-03 | [advisory] | **R? — Late.** | numeric citation R?; refs |",
+    "| 2026-01-04-b | 2026-01-04 | [advisory] | **R6 — B.** | numeric citation R6 |",
+    "",
+    "trailing prose",
+  ].join("\n");
+  const moved = assign(moveUnassignedToEnd(mixed), { mergedSha: (id) => (id === "2026-01-03-late" ? "abc1234" : null) });
+  const movedLines = moved.text.split("\n");
+  const ok6 = movedLines[2] === "| 2026-01-03-late | 2026-01-03 | [advisory] | **R7 — Late.** | numeric citation R7; refs; merged abc1234 |"
+    && movedLines[3] === "" && movedLines[4] === "trailing prose"
+    && lintRNumbers(moved.text, {}).failures.length === 0;
+  // A7: no R? row ⇒ the move is a no-op and the merged-sha option writes nothing.
+  const ok7 = moveUnassignedToEnd(a.text) === a.text && assign(a.text, { mergedSha: () => "fff0000" }).text === a.text;
+  // A8: CLAUDE.md — R? becomes the number only on a line naming the slug.
+  const md = stampClaudeMd("x (ledger `2026-01-03-late`, R?)\ny R? elsewhere", [{ id: "2026-01-03-late", n: 7 }]);
+  const ok8 = md === "x (ledger `2026-01-03-late`, R7)\ny R? elsewhere";
+  if (!(ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8)) {
+    console.error("SELF-TEST FAILED", { ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, assigned: a.assigned, failures: after.failures, moved: moved.text });
     process.exit(1);
   }
-  console.log("self-test OK (next past highest cited, file order, frozen skipped, half-placeholder refused, quoted placeholder in prose untouched, idempotent)");
+  console.log("self-test OK (next past highest cited, file order, frozen skipped, half-placeholder refused, quoted placeholder in prose untouched, idempotent, R? moved last + merged sha, no-op without R?, CLAUDE.md slug lines only)");
   process.exit(0);
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-const text = fs.readFileSync(LEDGER, "utf8");
-const { text: out, assigned, refused } = assign(text);
+/** The first-parent commit on the current branch that added the row's line, or null when history does not reach it. */
+function mergedShaFromGit(id) {
+  const { execFileSync } = require("child_process");
+  try {
+    const out = execFileSync("git", ["log", "--first-parent", "--format=%h", "--abbrev=7", "-S", `| ${id} |`, "--", "docs/DECISIONS.md"], {
+      cwd: path.resolve(__dirname, ".."),
+      encoding: "utf8",
+    }).trim().split("\n").filter(Boolean);
+    return out.length ? out[out.length - 1] : null;
+  } catch {
+    return null;
+  }
+}
+
+const stamp = process.argv.includes("--stamp");
+const text0 = fs.readFileSync(LEDGER, "utf8");
+const text = stamp ? moveUnassignedToEnd(text0) : text0;
+const { text: out, assigned, refused } = assign(text, stamp ? { mergedSha: mergedShaFromGit } : {});
 for (const id of refused) console.error(`REFUSED ${id}: heading and citation disagree on R? — fix the row by hand.`);
 for (const { id, n } of assigned) console.log(`R${n}  ${id}`);
 if (!assigned.length && !refused.length) console.log("no R? rows to number");
 if (refused.length) process.exit(1);
-if (process.argv.includes("--write") && assigned.length) {
+if ((process.argv.includes("--write") || stamp) && assigned.length) {
   fs.writeFileSync(LEDGER, out);
   console.log(`wrote ${assigned.length} number(s) to docs/DECISIONS.md`);
+}
+if (stamp && assigned.length) {
+  for (const { id } of assigned) {
+    if (!mergedShaFromGit(id)) console.error(`WARNING ${id}: no first-parent commit on this branch adds the row; no merged sha written.`);
+  }
+  const CLAUDE_MD = path.resolve(__dirname, "..", "CLAUDE.md");
+  const md = fs.readFileSync(CLAUDE_MD, "utf8");
+  const mdOut = stampClaudeMd(md, assigned);
+  if (mdOut !== md) {
+    fs.writeFileSync(CLAUDE_MD, mdOut);
+    console.log("stamped CLAUDE.md lines naming the numbered slugs");
+  }
 }

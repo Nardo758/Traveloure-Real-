@@ -1,6 +1,10 @@
 {
-  "_comment": "Machine-readable declaration of required branch-protection status checks for `main`. Applied automatically by enforce-branch-protection.yml on every push to main. To add a new required check: (1) add it to CI_GATES.md Tier 1 table, (2) add the exact status context string here, (3) add the required-check comment block to the workflow YAML.",
+  "_comment": "Machine-readable declaration of the required status checks for `main`, applied as a REPOSITORY RULESET by enforce-branch-protection.yml on every push to main that touches it (CI-1 Phase 1, ledger `2026-10-12-ci1-post-merge-stamp`: classic branch protection moved to a ruleset whose sole bypass actor is the Ledger Stamp GitHub App). To add a new required check: (1) add it to CI_GATES.md Tier 1 table, (2) add the exact status context string here, (3) add the required-check comment block to the workflow YAML.",
   "branch": "main",
+  "ruleset": {
+    "name": "main — required status checks",
+    "_bypass": "The only bypass actor is the Ledger Stamp GitHub App, read from the repository variable LEDGER_STAMP_APP_ID (actor_type Integration, bypass_mode always). No other actor is ever added here."
+  },
   "required_status_checks": {
     "strict": false,
     "contexts": [
