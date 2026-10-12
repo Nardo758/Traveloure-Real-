@@ -70,8 +70,8 @@ export function PlanCardHeader({
   const cells = [
     { label: "Days", value: metrics.days },
     { label: "Activities", value: metrics.activities },
-    { label: "Transit legs", value: metrics.legs },
-    { label: "Transit time", value: metrics.transitTime },
+    { label: "Travel legs", value: metrics.legs },
+    { label: "Travel time", value: metrics.transitTime },
   ];
 
   return (

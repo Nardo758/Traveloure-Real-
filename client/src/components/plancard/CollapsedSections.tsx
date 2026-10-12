@@ -13,6 +13,7 @@ import { ChevronDown, MessageSquare, Map as MapIcon, Route, Wallet, History, Sho
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { TransportSection } from "./TransportSection";
+import { cardDayPanelLine, cardLegCount } from "./TripCardDays";
 import type { PlanCardChange, PlanCardDay } from "./plancard-types";
 import type { TripPlanBooking } from "@shared/trip-plan";
 import { Link } from "wouter";
@@ -49,6 +50,12 @@ interface CollapsedSectionsProps {
    * component-local reach for the nearest-looking endpoint).
    */
   expertTravelerNote?: string | null;
+  /**
+   * P0-e additions 5 and 8 (ledger `2026-10-12-p0e-findings-and-gaps`): on the Trip Card the maps
+   * header reads the selected day's own line ("Thu Nov 12 · 2 legs · 6 stops"), the transport count is
+   * the card's leg count, and the budget strip is not drawn.
+   */
+  cardSurface?: boolean;
 }
 
 function SectionShell({
@@ -101,10 +108,11 @@ export function CollapsedSections({
   days,
   bookings,
   expertTravelerNote,
+  cardSurface = false,
 }: CollapsedSectionsProps) {
   const activitiesCount = day?.activities?.length ?? 0;
-  const transportCount = day?.transports?.length ?? 0;
-  const hasBudget = totalCostNum != null && totalCostNum > 0 || (budgetNum != null && budgetNum > 0);
+  const transportCount = cardSurface && day ? cardLegCount([day]) : day?.transports?.length ?? 0;
+  const hasBudget = !cardSurface && (totalCostNum != null && totalCostNum > 0 || (budgetNum != null && budgetNum > 0));
   const budgetPercent =
     budgetNum && budgetNum > 0 && totalCostNum != null ? Math.min(100, Math.round((totalCostNum / budgetNum) * 100)) : null;
 
@@ -140,7 +148,7 @@ export function CollapsedSections({
         <SectionShell
           icon={<MapIcon className="w-3.5 h-3.5 text-blue-500" />}
           title="Open in maps"
-          meta={`${activitiesCount} stop${activitiesCount !== 1 ? "s" : ""} · Day ${day.dayNum}`}
+          meta={cardSurface ? cardDayPanelLine(day) : `${activitiesCount} stop${activitiesCount !== 1 ? "s" : ""} · Day ${day.dayNum}`}
           testId={`collapsed-map-${tripId}`}
         >
           <div className="flex gap-2 flex-wrap pt-2">
