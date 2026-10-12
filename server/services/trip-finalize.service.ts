@@ -31,6 +31,7 @@ import { dominantVariant, finalCardDays, type FinalCardMeta } from "@shared/trip
 import { versionLabel } from "@shared/version-board";
 import type { PhotoView } from "@shared/place-photos";
 import { logItemTransition } from "./item-transition-log.service";
+import { planDayIsPast } from "./routing/plan-legs";
 
 /** Trip-level plan fields frozen into the snapshot and folded into the fingerprint. */
 const SNAPSHOT_TRIP_FIELDS = [
@@ -291,4 +292,57 @@ async function finalCardPhotos(tripId: string): Promise<Record<string, PhotoView
   const out: Record<string, PhotoView> = {};
   for (const [id, p] of Object.entries(resolved)) if (p && p.source !== "google_live") out[id] = p;
   return out;
+}
+
+export interface FinalRefreshResult {
+  /** The snapshot row was rewritten (false when no final exists or nothing changed). */
+  refreshed: boolean;
+  /** Days whose items came from the live plan (every day not yet past). */
+  liveDays: number[];
+}
+
+/**
+ * P0-c item 3 (ledger `2026-10-12-p0c-hotfix`; LD 69): the Trip Card renders the latest final's FROZEN
+ * snapshot, so a stop edited after Make final kept its old time on the card (production 330f594a: the
+ * item said 17:35, a snapshot taken five days earlier said 17:30). After every plan-legs recompute the
+ * latest final's items are regenerated from the live plan for EVERY DAY NOT YET PAST (in the plan's zone,
+ * the engine's own `planDayIsPast`); a past day keeps its frozen items, because what happened is not
+ * rewritten. An item with no day counts as not past.
+ *
+ * The second and last writer of `trip_finals` beside `finalizeTrip`, under the same trip-row lock. It
+ * rewrites the latest version IN PLACE: no new version, no `finalized_at` flip, no diary row, and the
+ * `content_hash` is kept — it fingerprints the plan as it was made final, which is what "Make it final
+ * again" and the idempotent re-final rule compare against. The card meta's per-day sources are re-derived
+ * from the merged items (`finalCardDays`); the stored photos are kept. IDEMPOTENT: when the merged items
+ * equal the stored ones nothing is written. Never on read — called from the engine's debounced recompute.
+ */
+export async function refreshTripFinalLiveDays(tripId: string, now: Date = new Date()): Promise<FinalRefreshResult> {
+  return db.transaction(async (tx) => {
+    const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for("update");
+    if (!trip) return { refreshed: false, liveDays: [] };
+    const [latest] = await tx
+      .select()
+      .from(tripFinals)
+      .where(eq(tripFinals.tripId, tripId))
+      .orderBy(desc(tripFinals.version))
+      .limit(1);
+    if (!latest) return { refreshed: false, liveDays: [] };
+    const start = (trip as any).startDate ? String((trip as any).startDate) : null;
+    const tz = (trip as any).timezone ?? null;
+    const past = (dayNumber: number | null) => dayNumber != null && planDayIsPast(start, dayNumber, tz, now);
+    const snap = (latest.snapshot ?? {}) as { trip?: unknown; items?: any[]; card?: FinalCardMeta };
+    const frozen = (snap.items ?? []).filter((it) => past(it.dayNumber ?? null));
+    const live = ((await tx.select().from(itineraryItems).where(eq(itineraryItems.tripId, tripId))) as any[]).filter(
+      (it) => !past(it.dayNumber ?? null),
+    );
+    const items = orderItems([...frozen, ...live] as any[]);
+    const liveDays = Array.from(new Set(live.map((it) => it.dayNumber).filter((d): d is number => typeof d === "number"))).sort((a, b) => a - b);
+    if (stableStringify(items) === stableStringify(snap.items ?? [])) return { refreshed: false, liveDays };
+    const card: FinalCardMeta = { ...(snap.card ?? { builtFrom: null, photos: {} }), days: finalCardDays(items) } as FinalCardMeta;
+    await tx
+      .update(tripFinals)
+      .set({ snapshot: { ...snap, items, card } })
+      .where(and(eq(tripFinals.id, latest.id), eq(tripFinals.version, latest.version)));
+    return { refreshed: true, liveDays };
+  });
 }

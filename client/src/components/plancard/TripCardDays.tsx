@@ -51,6 +51,7 @@ import type { FinalCardMeta } from "@shared/trip-card-final";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
 import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
+import { legRuleClass } from "@/lib/leg-rule";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -133,7 +134,7 @@ export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTranspor
   if (routed) {
     return (
       <>
-        <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`} data-leg-source={routed.route.provenance.source}>
+        <p className={`ml-6 ${legRuleClass(true)} pl-3 py-1 text-xs text-muted-foreground`} data-testid={`card-leg-${(leg as any).id}`} data-leg-source={routed.route.provenance.source}>
           {routedLegLine({ mode: routed.mode, route: routed.route }, timeZone ?? null)}
         </p>
         <LegLiveTier leg={leg} ride={ride} />
@@ -143,7 +144,7 @@ export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTranspor
   if (!label) return <LegLiveTier leg={leg} ride={ride} />;
   return (
     <>
-      <p className="ml-6 border-l-2 border-dashed border-border pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-${(leg as any).id}`}>
+      <p className={`ml-6 ${legRuleClass(false)} pl-3 py-1 text-xs text-muted-foreground`} data-testid={`card-leg-${(leg as any).id}`}>
         {label}
         {showMinutes && Number.isFinite(minutes) && minutes > 0 ? estimatedMinutesSuffix(minutes) : ""}
       </p>
