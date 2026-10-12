@@ -105,15 +105,12 @@ test("A1 a leg's affiliate options carry the marker, never the token", async () 
   await populateBookingOptionsForLeg(LEG, "Kyoto", 2);
   const rows = (await db.execute(sql`SELECT source, external_url, affiliate_code FROM transport_booking_options
     WHERE transport_leg_id = ${LEG} AND booking_type = 'affiliate'`)).rows as any[];
-  const partners = rows.filter((r) => ["12go", "omio", "discovercars", "kiwi"].includes(r.source));
-  assert.equal(partners.length, 4, "all four route-search partners for a 150 km leg");
+  // TC-2 (sanctioned Oct 12, 2026): the every-leg partner list is retired; with no registry rows the
+  // leg resolver stores no affiliate row for this leg. The token assertions are unchanged.
+  assert.equal(rows.length, 0, "no affiliate row for a leg without registry rows");
   for (const r of rows) {
     assert.ok(!String(r.external_url ?? "").includes(TOKEN), `${r.source} link holds no token`);
     assert.ok(!String(r.affiliate_code ?? "").includes(TOKEN), `${r.source} code holds no token`);
-  }
-  for (const r of partners) {
-    assert.ok(String(r.external_url).includes(MARKER), `${r.source} link carries the marker`);
-    assert.equal(r.affiliate_code, MARKER);
   }
 });
 

@@ -9,7 +9,7 @@
  *   TA5 a city whose OSM node is not read is left out — no option, never a guessed centre
  *   TA6 the redirect wraps the clean target with our marker; no https template or no {url} ⇒ nothing
  *   TA7 ACCEPTANCE: the ordering function takes no fee, margin or commission input (signature and inputs)
- *   TA8 the production config: classes, the two Kiwitaxi paths (clean), ITM's 12Go slug, KIX's left unread
+ *   TA8 the production config: classes, the two Kiwitaxi paths (clean), both airports' 12Go slugs, the sanctioned radii
  *
  * Run: npx tsx --test shared/__tests__/tc2-transport-affiliate.test.ts
  */
@@ -124,7 +124,10 @@ test("TA8 the production config as read", () => {
   assert.deepEqual(PROD.kiwitaxiRoutes.map((r) => r.path), ["/en/japan/kansai-airport-kyoto-train-station", "/en/japan/itami-airport-kyoto-train-station"]);
   for (const r of PROD.kiwitaxiRoutes) assert.doesNotMatch(r.path, /[?#]/, "the clean path, never ?ref=sf");
   assert.equal(PROD.airports.find((a) => a.iata === "ITM")?.twelveGoSlug, "osaka-airport");
-  assert.equal(PROD.airports.find((a) => a.iata === "KIX")?.twelveGoSlug, null, "KIX's slug was not in the read");
+  assert.equal(PROD.airports.find((a) => a.iata === "KIX")?.twelveGoSlug, "kansai-airport", "Chrome's coverage read");
+  assert.deepEqual(Object.fromEntries(PROD.cities.map((c) => [c.key, c.radiusKm])),
+    { kyoto: 15, osaka: 15, nara: 8, tokyo: 25, kanazawa: 10, hiroshima: 12 }, "the sanctioned radii");
+  for (const a of PROD.airports) assert.equal(a.radiusKm, 3);
   assert.ok(!PROD.twelveGoPairs.some((p) => p.from === "ITM"), "ITM's 12Go row is a taxi only");
   assert.ok(!PROD.cities.some((c) => c.key === "kinosaki"));
 });

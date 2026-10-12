@@ -86,7 +86,7 @@ class AffiliateScraperService {
       maxPages?: number;
       scrapeInterval?: number;
     };
-    /** TC-2 decision 1 (migration 375). */
+    /** TC-2 decision 1 (migration 376). */
     license?: string | null;
     attribution?: string | null;
     publicOk?: boolean | null;

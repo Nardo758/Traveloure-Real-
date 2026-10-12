@@ -2022,5 +2022,5 @@ export const MIGRATION_FILES = [
   // 375 — affiliate partner licence, attribution and public_ok (TC-2 Phase 1 decision 1, ledger
   // 2026-10-12-tc2-affiliate-legs). Three additive nullable columns on affiliate_partners; no DEFAULT,
   // CHECK, index, FK or backfill; declared in shared/schema.ts. HELD for the decision-maker's SQL approval.
-  "375_affiliate_partner_licence.sql",
+  "376_affiliate_partner_licence.sql",
 ] as const;

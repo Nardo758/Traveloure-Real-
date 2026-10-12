@@ -5,7 +5,7 @@
  *
  *   · Registry gate (decisions 1 and 2): a partner renders only when its `affiliate_partners` row — found by
  *     its website host (`AFFILIATE_PARTNER_HOSTS`) — is approved, active, states a licence and an attribution
- *     (migration 375) and carries an https redirect template with `{url}`. Any one missing ⇒ the partner
+ *     (migration 376) and carries an https redirect template with `{url}`. Any one missing ⇒ the partner
  *     offers nothing; the health entry says why.
  *   · Party size from the plan (`partyTotal`); never a literal 1. Unknown ⇒ "set your party size".
  *   · The link is the partner's redirect with our marker wrapping the clean target (never the API token).

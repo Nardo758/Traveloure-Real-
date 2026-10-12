@@ -5,11 +5,12 @@
  *
  *   · Cities: each a named OpenStreetMap node ("© OpenStreetMap contributors" wherever its point renders) and a
  *     radius. A city whose node is not yet read (`osmNodeId: null`) is left out by `usableCity`, so neither
- *     partner is offered for it — never a guessed centre. The radii are PROPOSED and await the decision-maker's
- *     sanction; Kyoto's must contain Arashiyama (~9 km west of the centre) and exclude Nara (~35 km south).
+ *     partner is offered for it — never a guessed centre. The radii are SANCTIONED (decision-maker, Oct 12, 2026:
+ *     Kyoto 15 km, Osaka 15, Nara 8, Tokyo 25, Kanazawa 10, Hiroshima 12, airports 3); Kyoto's contains Arashiyama
+ *     (~9 km west of the centre) and excludes Nara (~35 km south).
  *   · Airports: the IATA anchors' own points (`server/data/iata-airports.json`), KIX and ITM.
  *   · 12Go slugs: `12go.asia/en/travel/<from>/<to>`. ITM is `osaka-airport` (`osaka-itami-airport` 404s); ITM's
- *     12Go row is a taxi only, so no 12Go pair leaves ITM. KIX's slug was not in the read and is left null.
+ *     12Go row is a taxi only, so no 12Go pair leaves ITM. KIX's slug is `kansai-airport` (Chrome's coverage read: 12go.asia/en/travel/kansai-airport/kyoto).
  *   · Kiwitaxi: KIX and ITM → Kyoto Station, the clean path only (never `?ref=sf`); the three classes from
  *     kiwitaxi.com/en/japan/kansai-airport-kyoto-train-station, "Choose a Car class", read 12 Oct 2026. Larger
  *     classes are named in the FAQ with no limits, so they are not configured.
@@ -27,7 +28,7 @@ export const TRANSPORT_AFFILIATE_CONFIG: TransportAffiliateConfig = {
     { key: "hiroshima", name: "Hiroshima", twelveGoSlug: "hiroshima", osmNodeId: null, point: null, radiusKm: 12 },
   ],
   airports: [
-    { iata: "KIX", point: { lat: 34.4273, lng: 135.244 }, radiusKm: 3, twelveGoSlug: null },
+    { iata: "KIX", point: { lat: 34.4273, lng: 135.244 }, radiusKm: 3, twelveGoSlug: "kansai-airport" },
     { iata: "ITM", point: { lat: 34.7809, lng: 135.4408 }, radiusKm: 3, twelveGoSlug: "osaka-airport" },
   ],
   twelveGoPairs: [

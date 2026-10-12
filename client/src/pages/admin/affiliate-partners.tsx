@@ -69,7 +69,7 @@ interface PartnerFormData {
   description?: string;
   logoUrl?: string;
   commissionRate?: number;
-  /** TC-2 decision 1 (migration 375): a partner missing a license or attribution does not render on a leg. */
+  /** TC-2 decision 1 (migration 376): a partner missing a license or attribution does not render on a leg. */
   license?: string;
   attribution?: string;
   publicOk?: "yes" | "no" | "";

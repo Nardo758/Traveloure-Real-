@@ -6826,7 +6826,7 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
   rejectionReason: text("rejection_reason"),
-  // Migration 375 (TC-2 Phase 1 decision 1, ledger `2026-10-12-tc2-affiliate-legs`): the partner's licence,
+  // Migration 376 (TC-2 Phase 1 decision 1, ledger `2026-10-12-tc2-affiliate-legs`): the partner's licence,
   // the attribution shown beside its option, and whether it may appear publicly. Nullable, no
   // DEFAULT/CHECK/index/FK. A partner missing licence or attribution does not render (`affiliatePartnerRefusal`).
   license: varchar("license", { length: 40 }),

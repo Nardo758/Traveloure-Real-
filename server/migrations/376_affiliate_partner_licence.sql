@@ -1,5 +1,5 @@
--- 375 — an affiliate partner states its licence, its attribution and whether it may show publicly
--- (TC-2 Phase 1, decision 1; ledger `2026-10-12-tc2-affiliate-legs`). HELD — Migration 375 SQL awaits
+-- 376 — an affiliate partner states its licence, its attribution and whether it may show publicly
+-- (TC-2 Phase 1, decision 1; ledger `2026-10-12-tc2-affiliate-legs`). HELD — Migration 376 SQL awaits
 -- the decision-maker's comment on its PR.
 --
 -- Three additive, NULLABLE columns on `affiliate_partners`, declared in `shared/schema.ts` (deploy-push
