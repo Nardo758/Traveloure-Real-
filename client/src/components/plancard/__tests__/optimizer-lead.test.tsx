@@ -51,7 +51,7 @@ describe("OptimizerLead", () => {
   });
 
   it("R3 zero findings", () => {
-    const html = render({ findings: [] });
+    const html = render({ findings: [], coverage: { complete: true, unlocated: [] } });
     assert.match(text(html), new RegExp(LEAD_ZERO.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(html, /optimizer-lead-versions/);
     assert.match(text(html), /Optimize · \$5\.99/);

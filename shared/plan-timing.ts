@@ -188,6 +188,19 @@ export function calendarDayOf(instant: Date, timezone: string | null | undefined
   return `${String(w.y).padStart(4, "0")}-${String(w.mo).padStart(2, "0")}-${String(w.d).padStart(2, "0")}`;
 }
 
+/**
+ * P0 legs ruling 3: is this trip day already over in the plan's zone (UTC when it has none)? A past day
+ * is never routed: its legs are frozen — nothing asked, nothing recomputed, nothing deleted. No start
+ * date ⇒ not past (the caller's own dates gate decides). Moved here from
+ * `server/services/routing/plan-legs.ts` (which re-exports it) so the slip, the findings coverage and
+ * the leg engine read ONE "past" (ledger `2026-10-12-p0d-coverage-bridges`; §18 rule 1).
+ */
+export function planDayIsPast(tripStart: string | null | undefined, dayNumber: number, timezone: string | null | undefined, now: Date): boolean {
+  const day = addCalendarDays(tripStart ? String(tripStart).slice(0, 10) : null, dayNumber - 1);
+  if (!day) return false;
+  return day < calendarDayOf(now, timezone);
+}
+
 // ── A TIME OF DAY, not just a day (lane L9, ledger `2026-09-07-trip-card-one-page`) ────────────
 //
 // TWO LANES, ONE MODULE, AND THIS IS THE SEAM. L10 (above) needs the moment a plan STARTS — a

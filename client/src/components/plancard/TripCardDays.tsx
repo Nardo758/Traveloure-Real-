@@ -22,7 +22,7 @@
  */
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { routedLegLine } from "@shared/routing-engine";
-import { routedLegBetween } from "@/lib/slip-legs";
+import { bridgeArrivingAt, bridgeLabelFor, routedLegBetween, type BridgeInfo } from "@/lib/slip-legs";
 import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -81,14 +81,41 @@ type DayTransport = NonNullable<PlanCardDay["transports"]>[number];
  * plan's legs name their stops, and the engine also writes stay ↔ first/last legs, so a leg is matched
  * to its PAIR by id. A day whose legs name none of its stops (a version's legs, keyed to version items)
  * keeps the position pairing it always had.
+ *
+ * P0-d item 2 (ledger `2026-10-12-p0d-coverage-bridges`): with no leg of its own, the slot draws the
+ * BRIDGE arriving at the next stop from an earlier one — the slip's own rule (`bridgeArrivingAt`), so a
+ * bridge is drawn on the card where the slip draws it, and named the same way.
  */
-export function cardLegAfter(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): DayTransport | null {
+export function cardSlotLeg(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): { leg: DayTransport; bridge: BridgeInfo | null } | null {
   const from = acts[idx]?.id;
   const to = acts[idx + 1]?.id;
-  const ids = new Set(acts.map((a) => a.id));
-  const named = legs.some((l: any) => ids.has(l.fromActivityId ?? l.from) || ids.has(l.toActivityId ?? l.to));
-  if (!named) return legs[idx] ?? null;
-  return legs.find((l: any) => (l.fromActivityId ?? l.from) === from && (l.toActivityId ?? l.to) === to) ?? null;
+  const ids = acts.map((a) => a.id);
+  const idSet = new Set(ids);
+  const named = legs.some((l: any) => idSet.has(l.fromActivityId ?? l.from) || idSet.has(l.toActivityId ?? l.to));
+  if (!named) return legs[idx] ? { leg: legs[idx], bridge: null } : null;
+  const own = legs.find((l: any) => (l.fromActivityId ?? l.from) === from && (l.toActivityId ?? l.to) === to);
+  if (own) return { leg: own, bridge: null };
+  const hit = bridgeArrivingAt(legs as any[], ids, idx + 1);
+  return hit ? { leg: hit.leg as DayTransport, bridge: hit.bridge } : null;
+}
+
+/** The leg drawn after stop `idx` (its own or a bridge) — `cardSlotLeg`'s leg. */
+export function cardLegAfter(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): DayTransport | null {
+  return cardSlotLeg(legs, acts, idx)?.leg ?? null;
+}
+
+/**
+ * P0-d item 3: the card's leg count — stop-to-stop legs and bridges, every slot the day panel draws a leg
+ * in; stay legs are in neither (the panel is the day's stops). The hero reads this, so the two agree.
+ */
+export function cardLegCount(days: ReadonlyArray<Pick<PlanCardDay, "activities" | "transports">>): number {
+  let n = 0;
+  for (const d of days) {
+    const acts = (d.activities ?? []).filter((a) => !isStayActivity(a));
+    const legs = [...(d.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0));
+    for (let i = 0; i < acts.length - 1; i++) if (cardSlotLeg(legs as DayTransport[], acts, i)) n++;
+  }
+  return n;
 }
 
 /**
@@ -411,6 +438,11 @@ export function TripCardDays(props: TripCardDaysProps) {
                 {isToday && upNext?.leaveBy && upNext.upNextActivity?.id === a.id ? (
                   <p className="pl-2 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`card-leave-by-${a.id}`}>
                     Leave by {upNext.leaveBy}
+                  </p>
+                ) : null}
+                {idx < acts.length - 1 && cardSlotLeg(legs, acts, idx)?.bridge ? (
+                  <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-bridge-${(cardSlotLeg(legs, acts, idx)!.leg as any).id}`}>
+                    {bridgeLabelFor(acts, cardSlotLeg(legs, acts, idx)!.bridge!, acts[idx + 1].id)}
                   </p>
                 ) : null}
                 {idx < acts.length - 1 && cardLegAfter(legs, acts, idx) ? (

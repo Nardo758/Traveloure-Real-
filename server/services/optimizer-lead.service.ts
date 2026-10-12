@@ -35,7 +35,10 @@ import {
   type DayPath,
   type Finding,
   type HoursFact,
+  planLegCoverage,
+  type LegCoverage,
 } from "@shared/optimizer-lead";
+import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip } from "./content-facts/place-facts.service";
 import { lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "@shared/feasibility-facts";
 import { isRideMode, type DayFeasibility } from "@shared/plan-feasibility";
@@ -145,6 +148,29 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   return { findings, hasPricedItems };
 }
 
+
+/**
+ * P0-d item 1 (ledger `2026-10-12-p0d-coverage-bridges`): does every consecutive pair of stops on every
+ * day not yet past have a routed leg? The stops are the ENGINE's own (`loadPlanLegContext` — its order,
+ * its points, the stay excluded) and the legs are the ones the traveler sees (`tripLegsShown`), each
+ * routed by the ONE `legIsRouted`. `routedPlan` is the plan's own `planGetsRoutedLegs` answer — a free
+ * plan never earns the all-clear. Read only; no routing call is made here.
+ */
+export async function loadLegCoverage(tripId: string, now: Date = new Date()): Promise<{ coverage: LegCoverage; routedPlan: boolean }> {
+  const trip = await storage.getTrip(tripId);
+  if (!trip) return { coverage: { complete: false, unlocated: [] }, routedPlan: false };
+  const { loadPlanLegContext } = await import("./routing/plan-legs-engine.service");
+  const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
+  const [ctx, legs, routedPlan] = await Promise.all([loadPlanLegContext(tripId, trip), tripLegsShown(tripId), tripGetsRoutedLegs(tripId)]);
+  const start = trip.startDate ? String(trip.startDate).slice(0, 10) : null;
+  const stopList = ctx.stops.filter((s) => !(ctx.stay && s.id === ctx.stay.id));
+  const coverage = planLegCoverage(
+    stopList.map((s) => ({ id: s.id, title: s.name, dayNumber: s.dayNumber, located: !!s.point })),
+    legs.map((l: any) => ({ dayNumber: l.dayNumber, fromId: l.fromActivityId ?? null, toId: l.toActivityId ?? null, routed: legIsRouted(l) })),
+    (day) => planDayIsPast(start, day, trip.timezone ?? null, now),
+  );
+  return { coverage, routedPlan };
+}
 
 // ── FD-3: the feasibility context, shared by the findings and the day line (ledger `2026-10-10-fd3-feasibility`) ──
 
