@@ -24,6 +24,7 @@
  * Repeat-pair rails stays spec-ahead-of-code (D1): `sourceAttribution` accommodates it; the
  * detection logic is NOT built here.
  */
+import { resolveCommissionOverride } from "./commission-override";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import type { FeeRateSource } from "@shared/schema";
@@ -172,7 +173,8 @@ export interface ResolvedProviderRate {
  * Resolve the provider commission rate for one booking line.
  *
  * Precedence, deliberately ordered so `fee_bands` is the floor of authority:
- *   1. Per-entity override (`users.commission_override_expert_share_percent`) — the negotiated-rate
+ *   1. Per-entity override (`users.commission_override_platform_fee_percent`, else the deprecated
+ *      `users.commission_override_expert_share_percent` — `resolveCommissionOverride`) — the negotiated-rate
  *      case. It wins, but ONLY through here, and it is stamped `rate_source='entity_override'` with
  *      no `band_id`, so the ledger never attributes an overridden rate to a band that did not
  *      produce it.
@@ -186,17 +188,22 @@ export async function resolveProviderRate(input: ProviderRateInput): Promise<Res
   const { categoryId, providerId, isRails = false } = input;
 
   // ── 1. Per-entity override — provenance, not a parallel authority (D0) ──────────────────────
+  // FE-1 (a): the platform-fee column wins over the deprecated expert-share column; the ONE rule is
+  // `resolveCommissionOverride` (shared with commission.ts).
   if (providerId) {
     const res = await db.execute(sql`
-      SELECT CAST(commission_override_expert_share_percent AS FLOAT) AS pct
+      SELECT CAST(commission_override_platform_fee_percent AS FLOAT) AS platform_fee_pct,
+             CAST(commission_override_expert_share_percent AS FLOAT) AS expert_share_pct
         FROM users WHERE id = ${providerId} LIMIT 1
     `);
-    const pct = (res.rows?.[0] as { pct: number | null } | undefined)?.pct;
-    if (pct !== null && pct !== undefined && Number.isFinite(pct) && pct >= 0 && pct <= 100) {
-      const providerShareRate = Number(pct) / 100;
+    const row = res.rows?.[0] as { platform_fee_pct: number | null; expert_share_pct: number | null } | undefined;
+    const override = resolveCommissionOverride(
+      row ? { platformFeePercent: row.platform_fee_pct, expertSharePercent: row.expert_share_pct } : null,
+    );
+    if (override) {
       return {
-        platformRate: 1 - providerShareRate,
-        providerShareRate,
+        platformRate: override.platformRate,
+        providerShareRate: override.earnerShareRate,
         bandId: null,
         bandKey: null,
         rateSource: "entity_override",
