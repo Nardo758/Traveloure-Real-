@@ -130,6 +130,8 @@ export default function PlanVersionsPage() {
           <OptimizerLead
             drafted={(plan.data.days ?? []).some((d) => (d.activities ?? []).length > 0)}
             findings={leadData.findings}
+            coverage={leadData.coverage}
+            routedPlan={leadData.routedPlan}
             hasPricedItems={leadData.hasPricedItems}
             fee={leadData.fee}
             realised={leadData.realised as any}

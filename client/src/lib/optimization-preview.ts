@@ -29,7 +29,7 @@
  * the traveler presses Optimize and confirms.
  */
 
-import type { Finding } from "@shared/optimizer-lead";
+import type { Finding, LegCoverage } from "@shared/optimizer-lead";
 
 // ── Server shapes (mirrors of what the two endpoints return) ─────────────────────────────────
 
@@ -54,6 +54,10 @@ export interface TripOptimizationPreviewComputed {
   findings?: Finding[];
   /** A real price exists on the plan (a listing or a booking) — gates the cost delta line. */
   hasPricedItems?: boolean;
+  /** P0-d item 1: every pair of stops on the days ahead has a routed leg; absent ⇒ no all-clear. */
+  coverage?: LegCoverage;
+  /** P0-d item 1: the plan earns routed legs (`planGetsRoutedLegs`); a free plan never gets the all-clear. */
+  routedPlan?: boolean;
 }
 
 export interface TripOptimizationPreviewRefused {
@@ -62,6 +66,8 @@ export interface TripOptimizationPreviewRefused {
   /** Surface step 4: the findings ride a refused score too. */
   findings?: Finding[];
   hasPricedItems?: boolean;
+  coverage?: LegCoverage;
+  routedPlan?: boolean;
 }
 
 export type TripOptimizationPreview =
