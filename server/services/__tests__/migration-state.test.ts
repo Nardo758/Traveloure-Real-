@@ -67,6 +67,7 @@ test("M6: /api/health carries the state on its ok branch and a failed read is nu
   // migration state on the same ok branch; its read is caught too, so it can never fail the probe.
   // Step 9c D6 (ledger `2026-10-07-step9c-leg-options`; sanctioned): `mapsCaps` sits beside the flags and egress.
   // Item 3 (ledger `2026-10-10-health-hotel-supply`; sanctioned): `supply` follows the trend-score age.
-  assert.match(block, /status: "ok", db: true, timestamp: new Date\(\)\.toISOString\(\), build, flags, egress, mapsCaps, migrations, trendScores, supply \}/);
+  // P0-b item 6 (ledger `2026-10-11-p0b-routing-follow-ups`): `keys` (key-present booleans) follows `mapsCaps`.
+  assert.match(block, /status: "ok", db: true, timestamp: new Date\(\)\.toISOString\(\), build, flags, egress, mapsCaps, keys, migrations, trendScores, supply \}/);
   assert.match(block, /FROM trend_scores`\)[\s\S]*?\.catch\(\(\) => null\)/);
 });

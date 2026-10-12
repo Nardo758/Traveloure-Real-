@@ -5021,7 +5021,7 @@ export const travelTimeMatrix = pgTable("travel_time_matrix", {
   marketSlug: varchar("market_slug", { length: 40 }).notNull(),
   originSlug: varchar("origin_slug", { length: 100 }).notNull(),
   destSlug: varchar("dest_slug", { length: 100 }).notNull(),
-  // App-enforced: walk | transit (shared/travel-time.ts TRAVEL_MODES). No CHECK.
+  // App-enforced: walk | transit | drive (shared/travel-time.ts TRAVEL_MODES; drive only where matrixModesFor asks it). No CHECK.
   mode: varchar("mode", { length: 10 }).notNull(),
   // NULL = the Routes API returned no route for this pair and mode — never a guessed number (§13).
   durationSeconds: integer("duration_seconds"),
@@ -12492,6 +12492,31 @@ export const freeDraftRuns = pgTable("free_draft_runs", {
 }));
 export type FreeDraftRun = typeof freeDraftRuns.$inferSelect;
 
+// PF-1 (migration 373; ledger `2026-10-11-pf1-lookup-outcomes`): one row per (plan item, Places lookup run) — what
+// the lookup did with the item. Ids only, no title or query text. NO FK (the evidence outlives the plan), NO
+// CHECK/DEFAULT on outcome (value set ONCE in shared/place-lookup-outcomes.ts). ONE writer:
+// server/services/content-facts/lookup-outcomes.service.ts. Retention: config window, pruned by facts-recheck.
+export const placeLookupOutcomes = pgTable("place_lookup_outcomes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull(),
+  runStartedAt: timestamp("run_started_at").notNull(),
+  tripId: varchar("trip_id").notNull(),
+  itineraryItemId: varchar("itinerary_item_id").notNull(),
+  runTrigger: varchar("run_trigger", { length: 32 }),
+  dayNumber: integer("day_number"),
+  outcome: varchar("outcome", { length: 16 }).notNull(),
+  reason: varchar("reason", { length: 64 }),
+  placeId: varchar("place_id", { length: 255 }),
+  cache: varchar("cache", { length: 8 }),
+  costCents: integer("cost_cents"),
+  latencyMs: integer("latency_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tripRunIdx: index("idx_place_lookup_outcomes_trip_run").on(table.tripId, table.runStartedAt),
+  createdIdx: index("idx_place_lookup_outcomes_created").on(table.createdAt),
+}));
+export type PlaceLookupOutcomeRecord = typeof placeLookupOutcomes.$inferSelect;
+
 // S1-d-3a (migration 371; ledger `2026-10-10-s1-d3a-liteapi-booking`): one row per LiteAPI prebook. Nuitée is
 // merchant of record (the Payment SDK takes the card), so no PaymentIntent and no platform_revenue row hang
 // off this. NO FK (a paid booking outlives the plan it came from), NO DEFAULT/CHECK on status (value set ONCE
@@ -12533,3 +12558,23 @@ export const liteapiBookings = pgTable("liteapi_bookings", {
   statusIdx: index("idx_liteapi_bookings_status").on(table.status),
 }));
 export type LiteapiBooking = typeof liteapiBookings.$inferSelect;
+
+// TC-3b (ledger `2026-10-11-tc3b-ride-recommender`; migration 370, HELD): the ride recommender's acceptance
+// log — `offered` / `accepted` / `skipped` once per trip × corridor × ride service (the UNIQUE index is the
+// dedupe). Born empty. NO FK (the log outlives the plan, item or listing), NO DEFAULT/CHECK on `event` (value
+// set ONCE in shared/transport-option-events.ts). ONE writer: server/services/transport-option-events.service.ts.
+export const transportOptionEvents = pgTable("transport_option_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull(),
+  corridorKey: varchar("corridor_key", { length: 160 }).notNull(),
+  serviceId: varchar("service_id").notNull(),
+  event: varchar("event", { length: 16 }).notNull(),
+  dayNumber: integer("day_number"),
+  legId: varchar("leg_id"),
+  occasion: varchar("occasion", { length: 50 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  onceUniq: uniqueIndex("uq_transport_option_events_once").on(table.tripId, table.corridorKey, table.serviceId, table.event),
+  serviceIdx: index("idx_transport_option_events_service").on(table.serviceId, table.event),
+}));
+export type TransportOptionEvent = typeof transportOptionEvents.$inferSelect;

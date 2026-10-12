@@ -69,7 +69,7 @@ import {
 import { draftBasisInputs } from "../services/plan-option-sets.service";
 import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "../services/content-facts/covering-events";
-import { healthFlags, healthEgressFlags, healthMapsCaps } from "../services/runtime-flags";
+import { healthFlags, healthEgressFlags, healthMapsCaps, healthKeyPresence } from "../services/runtime-flags";
 import { readHotelSupply } from "../services/hotel-supply.service";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -375,6 +375,8 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
     // Step 9c D6 (ledger `2026-10-07-step9c-leg-options`): each Maps caller's effective daily cap, beside the switches.
     const mapsCaps = healthMapsCaps();
     const egress = healthEgressFlags();
+    // P0-b item 6: whether the Maps key is SET — a boolean, never the value.
+    const keys = healthKeyPresence();
     try {
       const ok = await dbHealthCheck();
       if (ok) {
@@ -393,12 +395,12 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
         // Item 3 (ledger `2026-10-10-health-hotel-supply`): rankable hotel supply per live market, report
         // only. A failed read is `null` (§13) and never fails the health answer.
         const supply = { hotels: await readHotelSupply().catch(() => null) };
-        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, migrations, trendScores, supply });
+        res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys, migrations, trendScores, supply });
       } else {
-        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps });
+        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys });
       }
     } catch {
-      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps });
+      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys });
     }
   });
 
@@ -5014,6 +5016,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         // A5: the drafted stops' facts (hours, dining basics, coordinates) — cache first, then the
         // Places spine when it is switched on. Fire-and-forget: it never blocks or fails the draft.
         void enrichPlanItems({
+          trigger: "draft",
           tripId: resolvedTripId,
           market: snapshot.trip.marketSlug ?? null,
           city: destination,

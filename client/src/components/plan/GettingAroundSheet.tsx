@@ -8,7 +8,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { GETTING_AROUND_EMPTY, gettingAroundDays, gettingAroundHeader } from "@/lib/getting-around";
 
-type PlanData = { days?: any[]; trip?: { timezone?: string | null } | null; routedLegs?: boolean };
+type PlanData = { days?: any[]; trip?: { timezone?: string | null } | null; routedLegs?: boolean; legsSkipped?: string };
 
 export function GettingAroundSheet({ tripId }: { tripId: string }) {
   const { data } = useQuery<PlanData>({

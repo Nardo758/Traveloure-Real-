@@ -22,11 +22,18 @@ export interface DestinationTransportProfile {
   trafficSeverity: number;
   cyclingInfrastructure: number;
   specialNotes: string[];
+  /**
+   * P0-b item 8: does the routing API answer TRANSIT requests here? Absent = yes. `false` (Kyoto —
+   * Google's Routes API has no transit coverage in Japan) ⇒ the engine never asks transit and labels
+   * its drive fallback `transit_api_uncovered`. A fact about the API, not about the city's trains.
+   */
+  apiTransitCoverage?: boolean;
 }
 
 export const TRANSPORT_PROFILES: Record<string, DestinationTransportProfile> = {
   kyoto: {
     destinationSlug: "kyoto",
+    apiTransitCoverage: false,
     defaultCurrency: "USD",
     walkabilityScore: 75,
     publicTransitQuality: 90,

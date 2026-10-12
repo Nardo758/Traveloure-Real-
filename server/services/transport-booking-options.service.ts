@@ -142,7 +142,10 @@ export async function populateBookingOptionsForLeg(
   }
 
   // 3. DEEP LINK OPTIONS — Rideshare apps
-  const rideshareApps = getRideshareAppsForDestination(destination);
+  // V-1b (ledger `2026-10-12-v1b-google-version-legs`): a deep link carries both ends' coordinates in a
+  // stored URL, so a leg with a Google-sourced end (`coord_source='google'`) gets NO ride deep link —
+  // that would be a stored copy of a Google point (LD 57).
+  const rideshareApps = leg.coordSource === "google" ? [] : getRideshareAppsForDestination(destination);
   for (const app of rideshareApps) {
     const priceRange = estimateRidesharePrice(app, leg.distanceMeters);
     options.push({

@@ -39,8 +39,12 @@ export default defineConfig({
    * `Number(undefined)` is NaN and `Number("")` is 0, so both fall through `||` to
    * 1: an unset or empty value can never hand Playwright a zero worker count. */
   workers: process.env.CI ? Number(process.env.PW_WORKERS) || 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  /* Reporter to use. See https://playwright.dev/docs/test-reporters
+   * Under CI a JSON report is ALSO written to playwright-json/results.json: the spec-arming gate
+   * (scripts/check-spec-arming.cjs, ledger 2026-10-11-spec-arming-verified) reads it from a
+   * `playwright-json*` artifact to refuse an armed spec that skipped itself inside a green run.
+   * A workflow that ARMS a spec uploads that directory; the rest may ignore it. */
+  reporter: process.env.CI ? [['html'], ['json', { outputFile: 'playwright-json/results.json' }]] : 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */

@@ -16,8 +16,19 @@
  */
 import { haversineMeters, WALK_METERS_PER_MIN } from "./geo";
 
-export const TRAVEL_MODES = ["walk", "transit"] as const;
+export const TRAVEL_MODES = ["walk", "transit", "drive"] as const;
 export type TravelMode = (typeof TRAVEL_MODES)[number];
+
+/**
+ * The modes a market's matrix refresh asks for (P0-b A4 ruling, ledger
+ * `2026-10-11-p0b-routing-follow-ups`). Where the routing API has no transit for the market
+ * (`apiTransitCoverage: false`) it asks DRIVE instead of TRANSIT — the mode the plan's legs show
+ * there — so plan-fit reads a real drive cell rather than a transit cell no leg can display.
+ * Same refresh regime (R228) for every mode.
+ */
+export function matrixModesFor(transitApiUncovered: boolean): readonly TravelMode[] {
+  return transitApiUncovered ? ["walk", "drive"] : ["walk", "transit"];
+}
 
 /** A neighbourhood centroid as `city_neighborhoods` holds it. */
 export interface Centroid {

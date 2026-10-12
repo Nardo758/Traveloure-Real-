@@ -15,6 +15,17 @@ import { slipLegBetween, unroutedLegLine } from "./slip-legs";
 export const GETTING_AROUND_EMPTY = "No stops on this plan yet.";
 export const GETTING_AROUND_PENDING = "not worked out yet";
 export const GETTING_AROUND_OPTIMIZE_HEADER = "Travel times come with Optimize";
+/**
+ * P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): the header says WHY a plan's legs are not
+ * worked out, from the server's `legsSkipped` (the engine's own skip reason). A free plan keeps the
+ * Optimize line; `no_trip` cannot reach a rendered plan and draws the Optimize line too.
+ */
+export const GETTING_AROUND_ENGINE_OFF_HEADER = "Travel times aren't being worked out right now.";
+export const GETTING_AROUND_DATES_HEADER = "Set your dates to work out travel times.";
+/** P0-b item 2: a gap whose stop has no point on the map — say which, never guess a route (§13). */
+export function gettingAroundUnlocatedLine(stop: string): string {
+  return `${GETTING_AROUND_PENDING} — ${stop} isn't on the map`;
+}
 
 export interface GettingAroundGap {
   key: string;
@@ -29,6 +40,8 @@ export interface GettingAroundDay {
 }
 
 const stopName = (a: any): string => String(a?.name ?? a?.title ?? "Stop");
+const finite = (v: unknown): boolean => v != null && v !== "" && Number.isFinite(Number(v));
+const hasPoint = (a: any): boolean => finite(a?.lat) && finite(a?.lng);
 
 export function gettingAroundDays(days: readonly any[] | null | undefined, timeZone: string | null): GettingAroundDay[] {
   const out: GettingAroundDay[] = [];
@@ -45,14 +58,26 @@ export function gettingAroundDays(days: readonly any[] | null | undefined, timeZ
       const key = `${from.id}>${to.id}`;
       if (leg?.kind === "routed") gaps.push({ key, title, kind: "routed", line: routedLegLine({ mode: leg.mode, route: leg.route }, timeZone) });
       else if (leg?.kind === "unrouted") gaps.push({ key, title, kind: "unrouted", line: unroutedLegLine(leg.mode, leg.minutes) });
-      else gaps.push({ key, title, kind: "pending", line: GETTING_AROUND_PENDING });
+      else {
+        const unlocated = [from, to].find((a) => !hasPoint(a));
+        gaps.push({ key, title, kind: "pending", line: unlocated ? gettingAroundUnlocatedLine(stopName(unlocated)) : GETTING_AROUND_PENDING });
+      }
     }
     out.push({ dayNumber, gaps });
   }
   return out.sort((a, b) => a.dayNumber - b.dayNumber);
 }
 
-/** The header line, or null on a plan that earns routed legs. */
-export function gettingAroundHeader(plan: { routedLegs?: boolean } | null | undefined): string | null {
+/** The header line: why legs are skipped, null on a plan whose legs are worked out. */
+export function gettingAroundHeader(plan: { routedLegs?: boolean; legsSkipped?: string } | null | undefined): string | null {
+  switch (plan?.legsSkipped) {
+    case "engine_off":
+      return GETTING_AROUND_ENGINE_OFF_HEADER;
+    case "dates_not_confirmed":
+      return GETTING_AROUND_DATES_HEADER;
+    case "free_plan":
+    case "no_trip":
+      return GETTING_AROUND_OPTIMIZE_HEADER;
+  }
   return plan?.routedLegs === true ? null : GETTING_AROUND_OPTIMIZE_HEADER;
 }

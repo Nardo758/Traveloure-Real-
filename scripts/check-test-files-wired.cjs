@@ -25,6 +25,7 @@
  *   statically declared `testDir`/`testMatch`
  * - direct paths, directory prefixes, basic shell globs (`*`, `**`, `?`)
  * - `npm test`, `npm run <script>`, and recursively referenced npm scripts
+ * - the explicit test-file arguments to `run-messaging-gate.mjs`
  * - YAML inline and block-scalar `run:` commands, shell continuations, and
  *   multiple commands separated by newlines, `&&`, `||`, `;`, `|` or a redirect
  *
@@ -40,8 +41,9 @@
  *
  * CANNOT DETECT
  * - generated/eval'd commands, shell variables that contain selectors, custom
- *   test launchers, reusable workflows/actions, matrix-expanded selectors, or
- *   test discovery changed at runtime
+ *   test launchers other than the explicitly supported `run-messaging-gate.mjs`,
+ *   reusable workflows/actions, matrix-expanded selectors, or test discovery
+ *   changed at runtime
  * - config values that are computed rather than literal `testDir`/`testMatch`
  * - shell glob features beyond `*`, `**`, and `?`
  * - PROSE THAT NAMES A RUNNER WAS A BLIND SPOT UNTIL 2026-09-15 (V-30). A
@@ -339,6 +341,9 @@ function parseRunner(tokens) {
   if (!head || !RUNNERS.has(head.name)) return null;
   const kind = head.name;
   const args = tokens.slice(head.index + 1);
+  if (kind === "node" && args[0] === "scripts/verification/run-messaging-gate.mjs") {
+    return { kind: "node", args: ["--test", ...args.slice(1)] };
+  }
   if ((kind === "tsx" || kind === "node") && !args.includes("--test")) return null;
   if (kind === "vitest" && args[0] !== "run") return null;
   if (kind === "playwright" && args[0] !== "test") return null;
@@ -562,6 +567,20 @@ function selfTest() {
         "client/unreferenced.test.ts",
       ],
     },
+    {
+      // The isolated messaging launcher executes these explicit test-file
+      // arguments with tsx --test; follow those files, not the launcher itself.
+      name: "isolated messaging launcher reaches its explicit test files",
+      commands: [
+        "node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/prose-only.test.ts",
+      ],
+      reachable: ["server/__tests__/prose-only.test.ts"],
+      orphans: [
+        "server/direct.test.ts",
+        "shared/directory/covered.test.ts",
+        "client/unreferenced.test.ts",
+      ],
+    },
   ];
 
   // RATCHET fixtures (2026-09-15, `2026-09-15-orphan-ratchet`). The comparison is
@@ -690,6 +709,11 @@ function selfTest() {
     `self-test OK (${total}/${total} fixtures — ${cases.length} reachability, ${ratchetCases.length} ratchet)`,
   );
 }
+
+// Exported for scripts/check-decision-guards.cjs, which asks whether a test file a ledger row names is
+// reachable from CI by THIS predicate rather than restating it (ledger `2026-10-12-gw1-guard-tags`).
+module.exports = { collectTests, inventory, workflowCommands, ROOT };
+if (require.main !== module) return;
 
 if (process.argv.includes("--self-test")) {
   selfTest();

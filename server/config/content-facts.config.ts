@@ -114,3 +114,19 @@ export function freshFetchDayCapCents(): number {
 export function factQuoteMaxChars(): number {
   return envNumber("CONTENT_FACT_QUOTE_MAX_CHARS", 300);
 }
+
+/**
+ * PF-1 ruling 2 (ledger `2026-10-11-pf1-lookup-outcomes`): how long a `place_lookup_outcomes` row is kept, in
+ * days. The daily facts-recheck job deletes older rows. Env-overridable; a non-positive or unreadable value
+ * falls back to the default, never to "keep nothing".
+ */
+export function placeLookupOutcomeRetentionDays(): number {
+  const n = envNumber("PLACE_LOOKUP_OUTCOME_RETENTION_DAYS", 90);
+  return n > 0 ? Math.floor(n) : 90;
+}
+
+/** PF-1 ruling 3: the default window the admin counts read, in days (capped at the retention window). */
+export function placeLookupOutcomeCountsDays(): number {
+  const n = envNumber("PLACE_LOOKUP_OUTCOME_COUNTS_DAYS", 7);
+  return Math.min(n > 0 ? Math.floor(n) : 7, placeLookupOutcomeRetentionDays());
+}

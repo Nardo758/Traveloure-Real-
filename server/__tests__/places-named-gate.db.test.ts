@@ -19,6 +19,15 @@
  *       second plan's facts come from that cache at 0 cost, with the original fetch's own checkedAt
  *   G13 R-u: the allocator reaches ≥ 2 named items on EVERY day within the cap (round-robin across
  *       days before any day's third)
+ *   G15 PF-1 (ledger `2026-10-11-pf1-lookup-outcomes`): every item a run touches gets ONE outcome row —
+ *       attached / unmatched / capped(draft_cap) / skipped(no_named_tokens | area_title) — ids only, one
+ *       run id, the trigger stored; the log lines print the same enum (ruling 4)
+ *   G16 PF-1: a Maps-gate refusal is `capped` with maps_id_lookup or maps_details; a thrown lookup is
+ *       `error` with a code, never the message
+ *   G17 PF-1: retention prunes rows past the config window; counts group by outcome/reason in a window;
+ *       the plan view gives each item's LATEST outcome with its CURRENT title (null once deleted)
+ *   G18 PF-1: a failed outcome write never fails the lookup; a failed prune is the facts-recheck job's
+ *       error but the re-check still runs
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -28,6 +37,8 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { enrichPlanItems, lookupOrder, pendingFactLookups, type EnrichItem } from "../services/content-facts/place-facts.service";
+import { latestLookupOutcomesForPlan, lookupOutcomeCounts, pruneLookupOutcomes, recordLookupOutcomes } from "../services/content-facts/lookup-outcomes.service";
+import { runFactsRecheck } from "../jobs/factsRecheck";
 import { PlacesAdapter } from "../services/content-facts/places-adapter";
 import { matchNamesItem, namedPlaceTokens } from "@shared/place-name-gate";
 
@@ -127,6 +138,7 @@ before(async () => {
 after(async () => {
   try {
     await db.execute(sql`DELETE FROM place_facts WHERE plan_id IN (${TRIP}, ${TRIP2}) OR place_ref LIKE ${`png-${RUN}-%`}`);
+    await db.execute(sql`DELETE FROM place_lookup_outcomes WHERE trip_id LIKE ${`png-${RUN}-%`}`);
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${TRIP2}`);
     await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP2}`);
     await db.execute(sql`DELETE FROM ai_generated_itineraries WHERE trip_id = ${TRIP}`);
@@ -254,8 +266,10 @@ test("G6: each item logs its day and outcome; skips log a reason", async () => {
   // Smoke 5: every line carries plan_id and item_id (opaque ids, never a title).
   assert.ok(facts.some((l) => l.includes(`lookup plan_id=${TRIP} item_id=${id("l1")} day=1 outcome=attached `)), facts.join("\n"));
   assert.ok(facts.some((l) => l.includes(`lookup plan_id=${TRIP} item_id=${id("l2")} day=2 outcome=unmatched `)), facts.join("\n"));
-  assert.ok(facts.some((l) => l.includes(`skipped plan_id=${TRIP} item_id=${id("l3")} day=3 reason=cap`)), facts.join("\n"));
-  assert.ok(facts.some((l) => l.includes(`skipped plan_id=${TRIP} item_id=${id("l4")} day=3 reason=unnamed`)), facts.join("\n"));
+  // PF-1 ruling 4: the old merged `cap` / `unnamed` are split — this cap is the draft's own cap, and this
+  // skip names no place at all.
+  assert.ok(facts.some((l) => l.includes(`capped plan_id=${TRIP} item_id=${id("l3")} day=3 reason=draft_cap`)), facts.join("\n"));
+  assert.ok(facts.some((l) => l.includes(`skipped plan_id=${TRIP} item_id=${id("l4")} day=3 reason=no_named_tokens`)), facts.join("\n"));
   // Every item that stored a fact has a lookup line naming it.
   const r = await db.execute(sql`SELECT DISTINCT itinerary_item_id AS item FROM place_facts WHERE plan_id = ${TRIP} AND itinerary_item_id IN (${id("l1")}, ${id("l2")}, ${id("l3")})`);
   for (const row of r.rows as Array<{ item: string }>) assert.ok(facts.some((l) => l.includes(`item_id=${row.item} `)), `no line for ${row.item}`);
@@ -428,4 +442,161 @@ test("G14 smoke 9 S9-7: Google's addressComponents area replaces the AI's area �
   const fact = (await db.execute(sql`SELECT value, origin FROM place_facts WHERE plan_id = ${TRIP} AND itinerary_item_id = ${nijo.id} AND fact_type = 'address' AND superseded_by IS NULL`)).rows[0] as any;
   assert.equal(fact.origin, "places_api");
   assert.equal(fact.value.area, "Nakagyo Ward, Kyoto");
+});
+
+
+const outcomeRows = async (tripId: string, itemIds: string[]) =>
+  (await db.execute(sql`SELECT * FROM place_lookup_outcomes WHERE trip_id = ${tripId} AND itinerary_item_id IN (${sql.join(itemIds.map((i) => sql`${i}`), sql`, `)}) ORDER BY itinerary_item_id`)).rows as any[];
+
+test("G15 PF-1: one outcome row per item touched — ids only, one run, the trigger, the log's own enum", async () => {
+  process.env.PLACES_LOOKUPS_PER_DRAFT = "2";
+  const items: EnrichItem[] = [
+    { id: id("o1"), title: `Ryozen Kannon ${RUN}`, type: "attraction", dayNumber: 1 },
+    { id: id("o2"), title: `Shoren-in ${RUN}`, type: "attraction", dayNumber: 2 },
+    { id: id("o3"), title: `Honen-in ${RUN}`, type: "attraction", dayNumber: 3 },
+    { id: id("o4"), title: "Lunch at Traditional Restaurant", type: "lunch", dayNumber: 3 },
+    { id: id("o5"), title: "Higashiyama District", type: "attraction", dayNumber: 1 },
+  ];
+  await insertItems(items);
+  const lines: string[] = [];
+  const orig = console.info;
+  console.info = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+  let r;
+  try {
+    const { adapter } = placesFake((q) => (q.startsWith("Shoren") ? `Somewhere Else Entirely ${RUN}` : q.split(",")[0]));
+    r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter], trigger: "draft" });
+  } finally {
+    console.info = orig;
+    delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+  }
+  const rows = await outcomeRows(TRIP, items.map((i) => i.id));
+  const by = new Map(rows.map((x) => [x.itinerary_item_id, x]));
+  assert.equal(rows.length, 5, "one row per item");
+  assert.deepEqual([by.get(id("o1")).outcome, by.get(id("o1")).reason], ["attached", null]);
+  assert.deepEqual([by.get(id("o2")).outcome, by.get(id("o2")).reason], ["unmatched", null]);
+  assert.deepEqual([by.get(id("o3")).outcome, by.get(id("o3")).reason], ["capped", "draft_cap"]);
+  assert.deepEqual([by.get(id("o4")).outcome, by.get(id("o4")).reason], ["skipped", "no_named_tokens"]);
+  assert.deepEqual([by.get(id("o5")).outcome, by.get(id("o5")).reason], ["skipped", "area_title"]);
+  assert.equal(new Set(rows.map((x) => x.run_id)).size, 1, "one run");
+  assert.equal(rows[0].run_id, r!.runId);
+  for (const x of rows) assert.equal(x.run_trigger, "draft");
+  assert.ok(by.get(id("o1")).place_id, "an attached row names its place id");
+  assert.equal(by.get(id("o1")).cache, "miss");
+  // Ids only: no title text anywhere in a row.
+  const blob = JSON.stringify(rows);
+  for (const t of ["Ryozen", "Shoren", "Honen", "Lunch", "Higashiyama"]) assert.doesNotMatch(blob, new RegExp(t), t);
+  // The log prints the same words the rows store (ruling 4).
+  const logs = lines.filter((l) => l.startsWith("[place-facts]"));
+  assert.ok(logs.some((l) => l.includes(`skipped plan_id=${TRIP} item_id=${id("o5")} day=1 reason=area_title`)), logs.join("\n"));
+  assert.ok(logs.some((l) => l.includes(`item_id=${id("o2")} day=2 outcome=unmatched `)), logs.join("\n"));
+});
+
+test("G16 PF-1: a Maps-gate refusal is capped with its reason; a thrown lookup is an error code, not a message", async () => {
+  delete process.env.PLACES_LOOKUPS_PER_DRAFT;
+  const items: EnrichItem[] = [
+    { id: id("m1"), title: `Ninna-ji ${RUN}`, type: "attraction", dayNumber: 1 },
+    { id: id("m2"), title: `Myoshin-ji ${RUN}`, type: "attraction", dayNumber: 2 },
+  ];
+  await insertItems(items);
+  const { adapter } = placesFake((q) => q.split(",")[0]);
+  // Ninna-ji: the IDs-only search refused. Myoshin-ji: the ID resolves, then the billed Details call is refused.
+  const gate = async <T,>(key: "places_id_lookup" | "places_details", call: () => Promise<T>) => {
+    if (key === "places_id_lookup") {
+      const v = await call();
+      return String(v).length && refuseIdFor.has(seen++) ? { refused: "cap" } : { value: v };
+    }
+    return { refused: "cap" };
+  };
+  let seen = 0;
+  const refuseIdFor = new Set([0]);
+  await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter], placesGate: gate as any, trigger: "facts_recheck" });
+  const rows = new Map((await outcomeRows(TRIP, items.map((i) => i.id))).map((x) => [x.itinerary_item_id, x]));
+  assert.deepEqual([rows.get(id("m1")).outcome, rows.get(id("m1")).reason], ["capped", "maps_id_lookup"]);
+  assert.deepEqual([rows.get(id("m2")).outcome, rows.get(id("m2")).reason], ["capped", "maps_details"]);
+  assert.equal(rows.get(id("m1")).run_trigger, "facts_recheck");
+
+  // A lookup that throws is `error` with the error's code — never its message.
+  const boom: EnrichItem = { id: id("m3"), title: "Kurama-dera", type: "attraction", dayNumber: 3 };
+  await insertItems([boom]);
+  const thrower = {
+    name: "places",
+    covers: () => true,
+    attribution: () => ({ sourceName: "x", sourceUrl: null, license: "restricted" as const }),
+    fetch: async () => {
+      throw Object.assign(new Error("Kurama-dera, Kyoto timed out"), { code: "ETIMEDOUT" });
+    },
+  };
+  await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items: [boom], adapters: [thrower as any] });
+  const [err] = await outcomeRows(TRIP, [boom.id]);
+  assert.deepEqual([err.outcome, err.reason, err.run_trigger], ["error", "ETIMEDOUT", null]);
+});
+
+test("G17 PF-1: retention prunes past the window; counts group in a window; the plan view is latest-per-item", async () => {
+  const PLAN = id("ret-plan");
+  const keep: EnrichItem = { id: id("r1"), title: "Okutan", type: "dinner", dayNumber: 1 };
+  const gone = id("r2-deleted");
+  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, event_type)
+    VALUES (${PLAN}, ${OWNER}, ${`Ret plan ${RUN}`}, ${CITY}, '2027-11-11', '2027-11-12', 'draft', 'vacation')`);
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, origin) VALUES (${keep.id}, ${PLAN}, 1, ${keep.title}, 'dinner', 'ai')`);
+  const now = new Date("2026-10-11T12:00:00Z");
+  const day = 24 * 60 * 60 * 1000;
+  const base = { day: 1, placeId: null, cache: null, costCents: null, latencyMs: null };
+  await recordLookupOutcomes({ runId: id("run-old"), runStartedAt: new Date(now.getTime() - 120 * day), trigger: "draft" }, [
+    { ...base, tripId: PLAN, itemId: keep.id, outcome: "skipped", reason: "no_named_tokens" },
+  ]);
+  await recordLookupOutcomes({ runId: id("run-new"), runStartedAt: new Date(now.getTime() - 2 * day), trigger: "facts_recheck" }, [
+    { ...base, tripId: PLAN, itemId: keep.id, outcome: "unmatched", reason: null },
+    { ...base, tripId: PLAN, itemId: gone, outcome: "no_place", reason: null, day: 2 },
+  ]);
+  // Rows are stamped created_at = now() by the DB; age the "old" run's row to match its run start.
+  await db.execute(sql`UPDATE place_lookup_outcomes SET created_at = run_started_at WHERE trip_id = ${PLAN}`);
+
+  const view = await latestLookupOutcomesForPlan(PLAN);
+  assert.deepEqual(view.map((v) => [v.itemId, v.outcome, v.itemTitle]), [
+    [keep.id, "unmatched", "Okutan"],
+    [gone, "no_place", null],
+  ], "latest per item; a deleted item has no title rather than an invented one");
+
+  const counts = await lookupOutcomeCounts(7, now);
+  const mine = (await db.execute(sql`SELECT outcome, count(*)::int AS n FROM place_lookup_outcomes WHERE trip_id = ${PLAN} AND created_at >= ${new Date(now.getTime() - 7 * day)} GROUP BY outcome`)).rows as any[];
+  for (const m of mine) assert.ok(counts.counts.some((c) => c.outcome === m.outcome && c.count >= m.n), m.outcome);
+  assert.equal(counts.days, 7);
+
+  process.env.PLACE_LOOKUP_OUTCOME_RETENTION_DAYS = "90";
+  try {
+    const before = (await db.execute(sql`SELECT count(*)::int AS n FROM place_lookup_outcomes WHERE trip_id = ${PLAN}`)).rows[0] as any;
+    assert.equal(before.n, 3);
+    const deleted = await pruneLookupOutcomes(now);
+    assert.ok(deleted >= 1);
+    const left = (await db.execute(sql`SELECT run_id FROM place_lookup_outcomes WHERE trip_id = ${PLAN}`)).rows as any[];
+    assert.deepEqual(left.map((x) => x.run_id).sort(), [id("run-new"), id("run-new")], "only the run inside the window survives");
+  } finally {
+    delete process.env.PLACE_LOOKUP_OUTCOME_RETENTION_DAYS;
+    await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${PLAN}`);
+    await db.execute(sql`DELETE FROM trips WHERE id = ${PLAN}`);
+  }
+});
+
+test("G18 PF-1: a failed outcome write never throws; a failed prune is the job's error and the re-check still runs", async () => {
+  const n = await recordLookupOutcomes({ runId: id("run-bad"), runStartedAt: new Date(), trigger: null }, [
+    { tripId: null as any, itemId: id("x"), day: 1, outcome: "attached", reason: null, placeId: null, cache: null, costCents: null, latencyMs: null },
+  ]);
+  assert.equal(n, 0, "the write failed, and said so by returning 0 — no throw");
+
+  let relooked = 0;
+  const r = await runFactsRecheck(new Date(), {
+    pruneLookupOutcomes: async () => {
+      throw new Error("db down");
+    },
+    candidates: async () => [{ id: id("rc"), userId: OWNER, destination: CITY, marketSlug: "kyoto" }],
+    relookup: async () => {
+      relooked += 1;
+    },
+    findings: async () => [],
+    notifyOnce: async () => false,
+    legRecheck: async () => ({ checked: 0, changed: 0, broken: 0, notified: 0 }) as any,
+  });
+  assert.equal(relooked, 1, "the re-check ran");
+  assert.equal(r.checked, 1);
+  assert.match(r.error ?? "", /lookup-outcomes prune failed: db down/);
 });

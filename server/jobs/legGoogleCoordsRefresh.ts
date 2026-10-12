@@ -21,6 +21,11 @@
  * trip ends today or later; the engine re-reads the plan's facts and computes only the missing pairs. A
  * past trip loses the legs and nothing recomputes.
  *
+ * V-1b (ledger `2026-10-12-v1b-google-version-legs`; decision-maker ruling (a), Oct 12, 2026): VERSION legs
+ * (`variant_id` set, no `trip_id`) whose end was a Google point carry the same stamp. A version is a stored
+ * run, so it is never re-routed and no call is billed: an expired Google-sourced version leg is DELETED and
+ * the version's maps cache rebuilt without it (a day with any Google end has no link). CLEAR ONLY.
+ *
  * Never throws for one plan (a failed plan is counted); only a failed candidate scan is an `error`,
  * which never stamps a success heartbeat. Idempotent: a second run the same day finds nothing due.
  * Registered as `POST /internal/jobs/leg-google-coords` (daily `JOB_CADENCE` + `BUCKET_ROUTES`).
@@ -36,6 +41,8 @@ export interface LegGoogleCoordsResult {
   failed: number;
   /** Step 9b D10: plans whose cleared ENGINE legs were queued for one recompute. */
   recomputeQueued: number;
+  /** V-1b: expired Google-sourced VERSION legs deleted (never re-routed); present only when > 0. */
+  versionLegsCleared?: number;
   error?: string;
 }
 
@@ -56,6 +63,10 @@ export interface LegGoogleCoordsDeps {
   queueRecompute: (tripId: string, now: Date) => Promise<boolean>;
   /** Count the plan's Google-sourced legs still due after the reroute. */
   stillDue: (tripId: string, dueBefore: Date) => Promise<number>;
+  /** V-1b: delete expired Google-sourced VERSION legs; the versions and days they were on. */
+  clearExpiredVersionLegs: (expiredBefore: Date) => Promise<Array<{ variantId: string; dayNumber: number }>>;
+  /** V-1b: rebuild one version's maps cache from its remaining legs (Google days get no link). */
+  rebuildVersionMaps: (variantId: string, dayNumber: number) => Promise<void>;
 }
 
 const DAY_MS = 86_400_000;
@@ -64,7 +75,7 @@ export const defaultLegGoogleCoordsDeps: LegGoogleCoordsDeps = {
   async candidates(dueBefore) {
     const r = await db.execute(sql`
       SELECT DISTINCT trip_id FROM transport_legs
-      WHERE coord_source = 'google'
+      WHERE coord_source = 'google' AND trip_id IS NOT NULL
         AND (coord_fetched_at IS NULL OR coord_fetched_at <= ${dueBefore.toISOString()}::timestamptz)
       ORDER BY trip_id`);
     return ((r as any).rows ?? []).map((x: any) => String(x.trip_id));
@@ -81,6 +92,7 @@ export const defaultLegGoogleCoordsDeps: LegGoogleCoordsDeps = {
     if (!it) return;
     const { enrichPlanItems } = await import("../services/content-facts/place-facts.service");
     await enrichPlanItems({
+      trigger: "leg_coords",
       tripId,
       market: it.market_slug ?? null,
       city: it.destination ?? null,
@@ -119,6 +131,21 @@ export const defaultLegGoogleCoordsDeps: LegGoogleCoordsDeps = {
         AND (coord_fetched_at IS NULL OR coord_fetched_at <= ${dueBefore.toISOString()}::timestamptz)`);
     return Number(((r as any).rows ?? [])[0]?.n ?? 0);
   },
+  async clearExpiredVersionLegs(expiredBefore) {
+    const r = await db.execute(sql`
+      DELETE FROM transport_legs
+      WHERE variant_id IS NOT NULL AND coord_source = 'google'
+        AND (coord_fetched_at IS NULL OR coord_fetched_at <= ${expiredBefore.toISOString()}::timestamptz)
+      RETURNING variant_id, day_number`);
+    return (((r as any).rows ?? []) as Array<{ variant_id: string; day_number: number }>).map((x) => ({
+      variantId: String(x.variant_id),
+      dayNumber: Number(x.day_number),
+    }));
+  },
+  async rebuildVersionMaps(variantId, dayNumber) {
+    const { regenerateMapsUrlsFromLegs } = await import("../services/transport-leg-calculator");
+    await regenerateMapsUrlsFromLegs(variantId, dayNumber);
+  },
 };
 
 export async function runLegGoogleCoordsRefresh(
@@ -153,6 +180,25 @@ export async function runLegGoogleCoordsRefresh(
       result.failed += 1;
       console.error(`[leg-google-coords] plan ${tripId} failed:`, (err as Error)?.message ?? err);
     }
+  }
+  // V-1b: version legs — clear only (a stored run is never re-routed, no billed call), then rebuild
+  // each affected version's maps cache once. A failure here is counted, never thrown.
+  try {
+    const cleared = await deps.clearExpiredVersionLegs(expiredBefore);
+    if (cleared.length > 0) result.versionLegsCleared = cleared.length;
+    const firstDay = new Map<string, number>();
+    for (const c of cleared) if (!firstDay.has(c.variantId)) firstDay.set(c.variantId, c.dayNumber);
+    for (const [variantId, dayNumber] of Array.from(firstDay.entries())) {
+      try {
+        await deps.rebuildVersionMaps(variantId, dayNumber);
+      } catch (err) {
+        result.failed += 1;
+        console.error(`[leg-google-coords] version ${variantId} maps rebuild failed:`, (err as Error)?.message ?? err);
+      }
+    }
+  } catch (err) {
+    result.failed += 1;
+    console.error(`[leg-google-coords] version-leg clear failed:`, (err as Error)?.message ?? err);
   }
   return result;
 }

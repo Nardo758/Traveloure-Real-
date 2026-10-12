@@ -93,7 +93,7 @@ before(async () => {
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'PLE', 'traveler', 'traveler')`);
   for (const t of [FREE, PAID, TWIN, OPT]) {
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-      VALUES (${t}, ${owner}, 'PLE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
+      VALUES (${t}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
     await stops(t);
   }
   for (const t of [PAID, TWIN]) {
@@ -316,7 +316,7 @@ test("E14: after an Optimize run, the plan's legs come from its own version legs
 test("E15: a plan whose dates nobody confirmed builds no legs and says why (E1 ruling 7)", async () => {
   const UNDATED = id("undated");
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
-    VALUES (${UNDATED}, ${owner}, 'PLE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
+    VALUES (${UNDATED}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
   try {
     await stops(UNDATED);
     await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${UNDATED}-pass`}, ${UNDATED}, 'trip_pass', 'active', 'manual')`);

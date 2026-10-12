@@ -1550,6 +1550,8 @@ This document captures architectural decisions to maintain consistency across co
     SPA catch-alls, which were answering Stripe's verification fetch with the SPA's 200-HTML "404
     – Lost at Sea?" page — the file itself remains an operator drop-in, and the dashboard
     registration remains the operator step this clause rules it to be.**
+    **AMENDED — LITEAPI HOTEL BOOKINGS (ledger `2026-10-11-ld64-d3a-wording-held`).** (c)'s "affiliate purchases
+    never see wallets" holds for them: "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 44. **THE PLATFORM'S BOOKING AGENT IS THE AI COPILOT FIRST; A HUMAN OR A PARTNER API MAKES THE
     PURCHASE; BROWSER CONTROL IS READ-ONLY (decision-maker ratified Sep 5, 2026, evening — ledger
@@ -1698,6 +1700,8 @@ This document captures architectural decisions to maintain consistency across co
     `itinerary_items` row atomically, keyed on `itinerary_item_id` + `trip_id`, and never a second
     item; the unlinked legacy create is kept byte-for-byte, and the `origin` question above stays
     open — this lane does not decide it.
+    **AMENDED — LITEAPI IS PHASE 2's FIRST PARTNER (ledger `2026-10-11-ld64-d3a-wording-held`), closing the
+    seventh open question above:** "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
 
 45. **THE AI CONCIERGE IS AN ACTOR ON THE PLAN, NOT A PLACE; THE CONSOLE IS ONE SPINE WITH EVERY
     OTHER TAB A VIEW (decision-maker ratified Sep 7, 2026 — ledger rows
@@ -2465,6 +2469,15 @@ This document captures architectural decisions to maintain consistency across co
     what the refresh stored. A station's point comes from the OSM node its anchor names (`{ stationSlug, osmNodeId }`),
     resolved once through the city-event venue path (LD 59) and stored with "© OpenStreetMap contributors" — never
     from Places; a station OSM does not confirm is stored unplaced, never guessed.
+    **AMENDED — EACH PLACES LOOKUP OUTCOME IS A ROW (decision-maker PF-1 rulings 1–4, Oct 11, 2026; ledger
+    `2026-10-11-pf1-lookup-outcomes`; migration 373).** `place_lookup_outcomes` (new table, NO FK —
+    it outlives the plan — NO CHECK, declared in `shared/schema.ts`) holds one row per (plan item, run): outcome
+    (`attached` | `unmatched` | `capped` | `skipped` | `no_place` | `error`), reason (`no_named_tokens` | `area_title` |
+    `no_adapter`; `draft_cap` | `maps_id_lookup` | `maps_details`; an error's code, never its message), trigger, place
+    id, cache, cost, latency — ids only. The log lines print the same words from ONE value set
+    (`shared/place-lookup-outcomes.ts`). ONE writer, one INSERT per run, never failing the lookup (§15b); retention is
+    config (90 days), pruned by the daily `facts-recheck`; `/admin/content-sources` shows counts and a plan-id view of
+    each item's latest outcome. Migration 373 SQL approved by Leon — comment 20:09Z on #1419.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
@@ -2646,6 +2659,9 @@ This document captures architectural decisions to maintain consistency across co
     recomputed). The marker now lives in `superseded_at` (migration 368, TC-3a — the held follow-up is closed;
     `origin` is provenance, not lifecycle). `resolveMarketSlug` has a configured alias pass. The engine flag `TRAVEL_TIME_SERVICE_ENABLED`
     is set by Leon in Deployments after the deploy carrying P0.
+    **AMENDED BY P0-b (decision-maker, Oct 11, 2026 — ledger `2026-10-11-p0b-routing-follow-ups`).**
+    "P0 ruling 7 amended: legacy confirmed legs are superseded once on the first engine run — re-routed where
+    routable, retired where the pair has an unlocated stop. No unsourced leg shows on a routed plan."
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**
@@ -2680,13 +2696,11 @@ This document captures architectural decisions to maintain consistency across co
     is checked before every call on `api_usage_logs`; over it the card says "Rates unavailable right now". The
     default card shows "See rates" and no price; the item row and booking are d-3.
     **AMENDED — S1-d-3a, BOOKING THE CHOSEN STAY ON NUITÉE'S RAIL (decision-maker S1-d-3 rulings, Oct 10, 2026 —
-    ledger `2026-10-10-s1-d3a-liteapi-booking`; brief `docs/planning/briefs/s1-d3-liteapi-booking.md`; migration
-    371, APPROVED by Leon Oct 11, 2026 — "Migration 371 SQL approved — Leon" on #1402; FOUNDER WORDING REVIEW).** Nuitée is merchant of record:
-    its Payment SDK takes the card and we send only `payment.method = TRANSACTION_ID`
-    (`scripts/check-liteapi-payment-method.cjs`). One `liteapi_bookings` row per prebook, written before the SDK
-    opens; owner-only; the offer is re-quoted server-side and never taken from the browser; confirmed flips the
-    item to `purchased` and inserts the voucher in one transaction; cancel is a `confirmed → cancelling` claim with
-    no refund row; the daily sync records LiteAPI's status and never books. Sandbox only (`liteapiBookingEnabled`).
+    ledger `2026-10-10-s1-d3a-liteapi-booking`, wording ledger `2026-10-11-ld64-d3a-wording-held`).** In Leon's words:
+    "For LiteAPI hotel bookings, Nuitée is the merchant of record: the traveler pays through Nuitée’s payment SDK, Traveloure takes no payment and holds no funds, and Traveloure’s earnings are the margin inside the rate, paid out by Nuitée after checkout. LiteAPI is Phase 2’s first partner under LD 44." (Merchant-of-record sentence approved by Leon — comment 14:13Z on #1409.)
+    The rail itself is recorded in the d-3a ledger row and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`;
+    migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
+    (`liteapiBookingEnabled`).
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;
@@ -2772,6 +2786,34 @@ This document captures architectural decisions to maintain consistency across co
     approved, `booking_mode='hidden'` (never a cart line), and never in browse: `notRideListingSql` /
     `withoutRideListings` (`server/services/ride-listings.ts`) gate the four public list readers. The refresh interval
     is set in `/admin/content-sources`, never on the ride row.
+    **AMENDED — TC-3b, THE RECOMMENDER AND THE TRIP PROFILE OVERLAY (decision-maker rulings 1–4, Oct 11, 2026;
+    ledger `2026-10-11-tc3b-ride-recommender`; migrations 370 and 372).** For the plan's OWNER only, a paid plan
+    (`planGetsRoutedLegs`) gets at most three "a better way there" ride swaps per day (`days[].rideSuggestions`), one
+    per routed leg. A free plan gets a count-only `days[].rideTeaser` from straight-line corridors, with no Maps call.
+    A ride fits when it boards within walking range of the stop left (1,200 m; 400 m for limited mobility), exits
+    within range of the stop reached, and departs that date (the ONE departure rule, `departuresForDate`) in time.
+    Unconfirmed dates ⇒ nothing. Never on a leg into a stop with a stored `last_admission` fact, a corridor the owner
+    skipped this trip, or a ride's own legs. Hard filters hide: mobility, a child under the ride's stated minimum
+    height, the booking lead time. Soft ranking (pace, budget, scenic, return pair) only reorders, never by
+    commission. Pure core `shared/ride-recommender.ts`. The free draft never inserts a ride.
+    `transport_option_events` (370, new, no FK; Migration 370 SQL approved by Leon — comment 17:33Z on #1416) records `offered` once per trip × corridor × service at first
+    serving, `accepted` from the ride route, and `skipped` from the owner-only
+    `POST /api/trips/:tripId/ride-suggestions/dismiss`, which also closes the corridor for the trip. The trip-level
+    `trips.preferences.profileOverlay` is written by the owner-only `PUT /api/trips/:tripId/profile-overlay`
+    (`skippedCorridors` by the dismiss alone), merged over the account profile at both profile read sites through
+    `getTravelerProfileForTrip`, never copied to the account, and never set by the general trip rails (§19). 372 (Migration 372 SQL approved by Leon — comment 17:33Z on #1416) adds
+    `notes.filters` (passes, payment, luggage) derived only from each seeded row's `fact_sources`. Pass, payment and
+    luggage filtering is not yet wired.
+
+69. LD 69 — Two time tiers. Planning (slip, versions, Optimize) shows close-enough times, stored and tier-labelled. Live (Trip Card, on the day) shows exact times only: fetched at the moment from a timetable source, or a deep link to one; never a stored estimate presented as exact. Where no exact source exists for a market, the Trip Card shows the labelled estimate plus a live-directions link and the operator's first/last-service facts.
+    (Decision-maker, Oct 11, 2026 — ledger `2026-10-11-tc4-live-directions`; TC-4 rulings 1–5. FOUNDER WORDING
+    REVIEW on the PR.) The server builds each leg's `liveDirections.url` (`server/services/live-directions.service.ts`,
+    through `buildGoogleNavUrl`; provider per city in `server/config/live-directions.config.ts`, Google Maps for
+    every city), only when both ends are located; it alone sends `travelmode=transit`, and only where
+    `apiTransitCoverage` is false — R321's no-mode rule stands for every other Maps link. Beside it, the earliest
+    last departure, that day, from an official station within 1.2 km of the stop the leg LEAVES; none ⇒ nothing.
+    An unrouted leg's minutes read "est."; a routed leg keeps its "checked" provenance as a planning estimate.
+    The owner sees "A better way there" read-only on the card, and the card's read records no `offered`.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
@@ -3368,6 +3410,10 @@ authority beyond that.
   reference. If provenance is needed, say the session wrote it.
 - **Blocked permission checks.** A permission check that fires is a stop. Ask, every time. An approval granted
   on one PR is not permission on the next, and a prior waiver is not precedent.
+- **Founder wording review is a merge gate (decision-maker, Oct 11, 2026 — ledger
+  `2026-10-11-ld64-d3a-wording-held`).** A PR carrying a FOUNDER WORDING REVIEW block does not merge until
+  Leon's "wording approved" comment is on it, whatever its queue number says: it is skipped and re-queued.
+  A migration approval on the same PR does not clear it.
 
 ## Service Model: Canonical Table
 

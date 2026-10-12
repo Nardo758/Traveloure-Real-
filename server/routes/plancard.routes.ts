@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { routingAdapter } from "../services/routing/index";
+import { planLegsSkipReason, type PlanLegsSkipReason } from "../services/routing/plan-legs";
 import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service";
 import { routingPausedToday } from "../services/maps-billing/maps-billing.service";
 
@@ -11,6 +12,8 @@ import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
 import { localTeasersForTrip } from "../services/local-teaser.service";
+import { rideRecommendationsForTrip } from "../services/ride-recommender.service";
+import { liveLegFactsForTrip } from "../services/live-directions.service";
 import { loadDayFeasibility } from "../services/optimizer-lead.service";
 import {
   insertItineraryChangeSchema,
@@ -60,6 +63,17 @@ async function routedLegsFor(tripId: string): Promise<boolean> {
     return !!routingAdapter() && (await tripGetsRoutedLegs(tripId));
   } catch {
     return false;
+  }
+}
+
+/** P0-b item 1: the engine's skip reason for this plan, or null when its legs are worked out. */
+async function legsSkippedFor(tripId: string, datesConfirmed: boolean): Promise<PlanLegsSkipReason | null> {
+  try {
+    const engineOn = !!routingAdapter();
+    const qualifies = await tripGetsRoutedLegs(tripId);
+    return planLegsSkipReason({ engineOn, qualifies, tripExists: true, datesConfirmed });
+  } catch {
+    return null;
   }
 }
 
@@ -871,6 +885,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const readyMadeSource = await readyMadeProvenanceForTrip(tripId);
     // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): does the engine route this plan?
     const routedLegs = await routedLegsFor(tripId);
+    // P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): WHY this plan's legs are not worked out,
+    // through the engine's own `planLegsSkipReason` — present only when something skips it.
+    // P0-c item 1: the trip DTO lives at `plan.plancard.trip` — `plan.trip` does not exist, so the old read saw
+    // every plan as unconfirmed and reported `dates_not_confirmed` beside legs the engine had worked out.
+    const legsSkipped = await legsSkippedFor(tripId, plan.plancard.trip?.datesConfirmed === true);
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
     // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
     const localTeasers = await localTeasersForTrip(tripId);
@@ -878,6 +897,17 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // counts only, every plan. Never fails the read: a failed count is no line, never a claimed "checked".
     const feasibility = await loadDayFeasibility(tripId).catch((err) => {
       console.error(`[plancard] day feasibility failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
+      return new Map();
+    });
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the plan OWNER's ride swaps — on a paid plan, per day, up
+    // to three "a better way there" suggestions over its routed legs (the first serving records `offered`); on a free
+    // plan, a count-only `rideTeaser`. Never fails the read; an empty answer is no key (§13).
+    const rides = await rideRecommendationsForTrip(tripId, userId, new Date(), { recordOffered: render !== "final" });
+    // TC-4 (LD 69; ledger `2026-10-11-tc4-live-directions`): per leg with both ends located, the live-directions deep
+    // link and the earliest last departure near the stop the leg leaves. Every viewer this gate admits; never fails
+    // the read — a failed read is no key on any leg (§13), never a claimed link.
+    const liveLegs = await liveLegFactsForTrip(tripId, plan.days as any[]).catch((err) => {
+      console.error(`[plancard] live legs failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
       return new Map();
     });
 
@@ -889,7 +919,18 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       days: applyGooglePins(plan.days as any[], placeFacts as any).map((d: any) => {
         const t = localTeasers.get(d.dayNumber);
         const f = feasibility.get(d.dayNumber);
-        return { ...d, ...(t ? { localTeaser: t } : {}), ...(f ? { feasibility: f } : {}) };
+        const rt = rides.teasers.get(d.dayNumber);
+        const rs = rides.suggestions.get(d.dayNumber);
+        return {
+          ...d,
+          ...(liveLegs.size && Array.isArray(d.transports)
+            ? { transports: d.transports.map((tr: any) => (liveLegs.has(tr?.id) ? { ...tr, ...liveLegs.get(tr.id) } : tr)) }
+            : {}),
+          ...(t ? { localTeaser: t } : {}),
+          ...(f ? { feasibility: f } : {}),
+          ...(rt && rt.rides > 0 ? { rideTeaser: rt } : {}),
+          ...(rs && rs.length ? { rideSuggestions: rs.map(({ score: _score, ...s }) => s) } : {}),
+        };
       }),
       changeLog: plan.plancard.changeLog,
       metrics: plan.plancard.metrics,
@@ -937,6 +978,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       ...((await travelTimesPausedFor(tripId, routedLegs)) ? { travelTimesPaused: true } : {}),
       // Step 9b D8: PRESENT ONLY WHEN TRUE — the plan's legs are recomputed by the engine after an edit.
       ...(routedLegs ? { routedLegs: true } : {}),
+      ...(legsSkipped ? { legsSkipped } : {}),
       // See the note above. ADDITIVE: existing consumers ignore the key.
       expertAssigned,
       // A5 — see the note above.

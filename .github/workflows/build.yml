@@ -51,12 +51,44 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Predicate fixtures run first (§18d): 7 reachability + 5 ratchet. A wrong predicate
+      # Predicate fixtures run first (§18d): 8 reachability + 5 ratchet. A wrong predicate
       # is invisible by construction, so the fixtures gate the scan and not the reverse.
       - name: Test-file reachability predicate self-test
         run: node scripts/check-test-files-wired.cjs --self-test
       - name: Test-file reachability ratchet (prints the inventory; fails on drift)
         run: node scripts/check-test-files-wired.cjs
+
+  legacy-webhook-confirmation:
+    name: legacy-webhook-confirmation (isolated PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgres://${{ 'postgres' }}:${{ 'postgres' }}@localhost:5432/traveloure
+      NODE_ENV: test
+      SESSION_SECRET: ci-test-secret-not-for-production
+      STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgres://${{ 'postgres' }}:${{ 'postgres' }}@localhost:5432/traveloure
+          seed-ci-users: 'false'
+      # The target is an ephemeral CI database with a fixed local URL. Its identity
+      # fingerprint authorizes the runner to clone an empty, disposable test schema.
+      - name: Authorize isolated schema for the disposable CI database
+        run: |
+          fingerprint="$(psql "$DATABASE_URL" -Atc "SELECT md5(current_database() || ':' || coalesce(inet_server_addr()::text, 'local'))")"
+          echo "MESSAGING_DEV_FINGERPRINT=$fingerprint" >> "$GITHUB_ENV"
+      - name: Legacy webhook confirmation concurrency regressions
+        run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/legacy-webhook-confirmation.db.test.ts
 
   build:
     name: build (vite + esbuild bundle)

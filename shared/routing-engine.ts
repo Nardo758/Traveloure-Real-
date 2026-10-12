@@ -150,6 +150,45 @@ export const TRANSIT_UNAVAILABLE_REASON = "transit_unavailable";
 export const NO_TRANSIT_DRIVE_NOTE = "No transit found — drive shown";
 
 /**
+ * P0-b item 8: a market whose profile carries `apiTransitCoverage: false` (Kyoto — Google's Routes API has
+ * no transit coverage in Japan) is never asked transit; its default-transit legs are asked as a drive and
+ * labelled with this reason — distinct from `transit_unavailable`, which is a transit ask that came back
+ * empty. The line it reads is ruled wording.
+ */
+export const TRANSIT_API_UNCOVERED_REASON = "transit_api_uncovered";
+export const TRANSIT_API_UNCOVERED_NOTE = "Taxi/drive time shown — train and bus times aren't available here yet.";
+
+/**
+ * The ONE reading of a market's transit routing (§18 rule 1): `hasTransitCoverage` feeds
+ * `defaultRoutedMode`; `transitApiUncovered` says a drive leg there stands in for transit the API cannot
+ * answer. A market with no rail/bus mode at all is neither — it drives because it has no transit.
+ */
+export function marketTransitRouting(profile: {
+  availableModes?: ReadonlyArray<{ mode: string; available?: boolean }> | null;
+  apiTransitCoverage?: boolean;
+} | null | undefined): { hasTransitCoverage: boolean; transitApiUncovered: boolean } {
+  const rail = marketHasTransitCoverage(profile?.availableModes);
+  const uncovered = rail && profile?.apiTransitCoverage === false;
+  return { hasTransitCoverage: rail && !uncovered, transitApiUncovered: uncovered };
+}
+
+/**
+ * The `alternative_modes[0].reason` a routed leg is written with: the transit-fallback marker, else the
+ * API-uncovered marker for an unpicked drive in an uncovered market, else the route's own source.
+ */
+export function routedLegReason(input: {
+  transitUnavailable: boolean;
+  transitApiUncovered: boolean;
+  mode: RoutingMode;
+  picked: boolean;
+  source: string;
+}): string {
+  if (input.transitUnavailable) return TRANSIT_UNAVAILABLE_REASON;
+  if (input.transitApiUncovered && input.mode === "drive" && !input.picked) return TRANSIT_API_UNCOVERED_REASON;
+  return input.source;
+}
+
+/**
  * P0 legs ruling 3: a leg with no time of day departs at this LOCAL wall clock on its trip day — never
  * server-now. The hour bucket is unchanged ("no time ⇒ its own bucket"); only the departure time sent
  * moves, so route keys stay as they were.

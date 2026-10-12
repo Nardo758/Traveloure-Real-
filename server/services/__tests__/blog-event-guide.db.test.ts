@@ -23,6 +23,7 @@ import { BlogError, createPost, getPublishedBySlug, publishPost } from "../blog-
 import { loadEventGuideFacts, rankStayNear } from "../blog-event-facts.service";
 import { checkEventGuideDraft, draftEventWeekendGuide, eventGuideSlug, promptFacts } from "../blog-event-guide.service";
 import { lettersOnlyId } from "../../__tests__/fixtures/letters-only-id";
+import { numbersInFacts } from "@shared/draft-facts-check";
 
 // Letters only: fixture titles carry RUN, and a digit run like "12" would read as a number the facts
 // contain, defeating the "an invented number is refused" check.
@@ -104,8 +105,21 @@ test("E5: the check refuses an invented number, any link, and another market; th
   const day = String(Number(facts.event.firstDate.slice(8)));
   const ok = checkEventGuideDraft({ title: facts.event.title, body: `On ${day} at ${facts.event.startTime}, stay close by.` }, facts);
   assert.ok(!("error" in ok), JSON.stringify(ok));
-  assert.deepEqual(checkEventGuideDraft({ title: "t", body: "Tickets from $85." }, facts), { error: "event_guide_unknown_number" });
-  assert.deepEqual(checkEventGuideDraft({ title: "t", body: "Gion is 12 minutes away." }, facts), { error: "event_guide_unknown_number" });
+  // The "invented" numbers are chosen OUTSIDE the facts' own numbers: the fixture dates are now + 30 days
+  // read in Kyoto time, so a fixed "12" collided with the neighbouring event's day whenever that day was the
+  // 12th, and the refusal under test silently became an allowed fact.
+  const allowed = numbersInFacts(promptFacts(facts));
+  const invented = (from: number) => {
+    let n = from;
+    while (allowed.has(String(n))) n++;
+    return n;
+  };
+  assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Tickets from $${invented(85)}.` }, facts), { error: "event_guide_unknown_number" });
+  assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Gion is ${invented(12)} minutes away.` }, facts), { error: "event_guide_unknown_number" });
+  // A measurement is refused even when its number happens to be a fact (a date, a time): public posts never
+  // state a distance or a duration (ruling 2026-09-30-public-content-facts-rank-only).
+  assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Gion is ${invented(12)} km away.` }, facts), { error: "event_guide_unknown_number" });
+  assert.deepEqual(checkEventGuideDraft({ title: "t", body: `Gion is ${day} minutes away.` }, facts), { error: "event_guide_unknown_number" });
   assert.deepEqual(checkEventGuideDraft({ title: "t", body: "Buy at https://viagogo.com/x" }, facts), { error: "event_guide_foreign_link" });
   assert.deepEqual(checkEventGuideDraft({ title: "t", body: "Then fly on to Goa." }, facts), { error: "event_guide_unknown_market" });
   assert.equal(JSON.stringify(promptFacts(facts)).includes(EV), false, "the row id is not a fact");

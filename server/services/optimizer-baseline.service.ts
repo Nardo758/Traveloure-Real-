@@ -49,6 +49,8 @@ import { db } from "../db";
 import { itineraryItems, providerServices } from "@shared/schema";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
+import { rowCoordinatesTrusted } from "@shared/ai-place-text";
+import { factPointsForTrip, factsForTrip } from "./content-facts/place-facts.service";
 import type { FixedCommitment, ItineraryItem as OptimizerBaselineItem } from "../itinerary-optimizer";
 
 export type { OptimizerBaselineItem };
@@ -158,6 +160,13 @@ function toNumber(value: string | number | null | undefined): number | undefined
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** A real lat/lng pair or nothing — a half coordinate is no point (§13). */
+function toPoint(lat: string | number | null | undefined, lng: string | number | null | undefined): { lat: number; lng: number } | null {
+  const a = toNumber(lat);
+  const b = toNumber(lng);
+  return a != null && b != null ? { lat: a, lng: b } : null;
+}
+
 /**
  * Load the optimizer's inputs from a trip. The caller is responsible for authorizing the trip
  * FIRST (`authorizeTripLogistics`) — this function performs no authorization and must never be
@@ -182,6 +191,33 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
   const baselineItems: OptimizerBaselineItem[] = [];
   const fixedCommitments: FixedCommitment[] = [];
   let expertProtected = 0;
+
+  // V-1: a stop is located the way the slip locates it — its own row point only when
+  // `rowCoordinatesTrusted` (an AI stop whose location is only an area carries a ward/city centroid,
+  // never a place), then the linked listing's point (our own durable data, authoritative for a
+  // linked stop), then Google's cached `location` fact. The fact point is read only when some stop
+  // has no durable point, and rides on `placesPoint` — in memory for the run, never saved (LD 57).
+  const durablePoint = (item: (typeof rows)[number]["item"], service: (typeof rows)[number]["service"]) =>
+    (rowCoordinatesTrusted(item) ? toPoint(item.latitude, item.longitude) : null) ??
+    toPoint(service?.latitude ?? null, service?.longitude ?? null);
+  const needsFacts = rows.some(({ item, service }) => !durablePoint(item, service));
+  const factPoints = needsFacts
+    ? await factPointsForTrip(tripId).catch((err) => {
+        console.warn("[optimizer-baseline] place-fact points unavailable (non-critical):", (err as Error).message);
+        return new Map<string, { lat: number; lng: number }>();
+      })
+    : new Map<string, { lat: number; lng: number }>();
+  // V-1b (ledger `2026-10-12-v1b-google-version-legs`): a Google point carries the fact's fetch time,
+  // so a version leg ending at it is stamped `coord_source='google'` like a plan leg (R311). Found the
+  // way the plan-leg engine finds it: the unexpired Places `location` fact whose value IS the point.
+  const factViews = factPoints.size > 0 ? await factsForTrip(tripId).catch(() => ({} as Record<string, any[]>)) : {};
+  const fetchedAtFor = (itemId: string, p: { lat: number; lng: number }): Date | null => {
+    const g = ((factViews as Record<string, any[]>)[itemId] ?? []).find(
+      (f: any) => !f.stale && f.factType === "location" && f.origin === "places_api" && Number(f.value?.lat) === p.lat && Number(f.value?.lng) === p.lng,
+    );
+    const at = g?.checkedAt ? new Date(g.checkedAt) : null;
+    return at && Number.isFinite(at.getTime()) ? at : null;
+  };
 
   for (const { item, service } of rows) {
     // D3: expert work joins the constraint class WHATEVER its routing status — an in_planning
@@ -222,12 +258,16 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
       // §13: the service's REAL aggregate or nothing. A free-text item has no rating source.
       rating: service?.averageRating ? toNumber(service.averageRating) : undefined,
       location: item.locationName ?? undefined,
-      // Real coordinates only (ledger 2026-08-22-optimizer-catalog-honesty): the item's own pin,
-      // else the linked catalog row's (migration-129 real columns). Both are real sources; an
-      // unlocated free-text item stays undefined — never geocoded or guessed here (§13). These
-      // flow onto the baseline variant items so `calculateTransportLegs` can actually run.
-      latitude: toNumber(item.latitude ?? service?.latitude ?? null),
-      longitude: toNumber(item.longitude ?? service?.longitude ?? null),
+      // Real coordinates only (ledger 2026-08-22-optimizer-catalog-honesty): the item's own TRUSTED
+      // pin, else the linked catalog row's (migration-129 real columns). Both are durable sources and
+      // flow onto the baseline variant items so `calculateTransportLegs` can run. An unlocated stop
+      // stays undefined here — never geocoded or guessed (§13).
+      ...(() => {
+        const durable = durablePoint(item, service);
+        if (durable) return { latitude: durable.lat, longitude: durable.lng };
+        const fact = factPoints.get(item.id);
+        return fact ? { placesPoint: fact, placesFetchedAt: fetchedAtFor(item.id, fact) } : {};
+      })(),
       // Missing stays missing. The optimizer may research an explicit duration, but this adapter
       // never fabricates one merely to make schedule arithmetic convenient.
       duration: item.durationMinutes ?? undefined,

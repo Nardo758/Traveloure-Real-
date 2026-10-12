@@ -14,6 +14,10 @@
  * fixed speed per mode. So a green §3 A4 test proves the compare view reads the matrix when one
  * exists, never what a real matrix says about Kyoto.
  *
+ * P0-b A4 ruling (ledger `2026-10-11-p0b-routing-follow-ups`): Kyoto's refresh asks WALK and DRIVE
+ * (`matrixModesFor` — Google's Routes API has no transit in Japan), so this stand-in no longer
+ * invents Kyoto transit times: it answers WALK and DRIVE only and refuses any other mode.
+ *
  * Refuses any database that is not local (house disposable-DB guard) — it must never write a
  * stand-in matrix where a real one could be read by a traveler.
  *
@@ -37,9 +41,8 @@ const { refreshMarketMatrix } = await import("../../server/services/travel-time-
 type Element = import("../../server/services/travel-time-matrix.service").RouteMatrixElement;
 const { pool } = await import("../../server/db");
 
-/** Stand-in speeds (km/h). Not Google's; stated above. Transit adds a fixed wait. */
-const SPEED_KMH: Record<string, number> = { WALK: 4.8, TRANSIT: 18 };
-const TRANSIT_WAIT_S = 6 * 60;
+/** Stand-in speeds (km/h). Not Google's; stated above. */
+const SPEED_KMH: Record<string, number> = { WALK: 4.8, DRIVE: 40 };
 
 function metersBetween(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
   const R = 6_371_000;
@@ -52,13 +55,14 @@ function metersBetween(a: { latitude: number; longitude: number }, b: { latitude
 
 async function standInFetch(body: any): Promise<Element[]> {
   const mode = String(body.travelMode);
-  const speed = (SPEED_KMH[mode] ?? SPEED_KMH.WALK) * (1000 / 3600);
+  if (!(mode in SPEED_KMH)) throw new Error(`[matrix-standin] Kyoto asks WALK and DRIVE only; refusing ${mode}`);
+  const speed = SPEED_KMH[mode] * (1000 / 3600);
   const at = (w: any) => w.waypoint.location.latLng;
   const out: Element[] = [];
   body.origins.forEach((o: any, oi: number) =>
     body.destinations.forEach((d: any, di: number) => {
       const meters = Math.round(metersBetween(at(o), at(d)));
-      const seconds = Math.round(meters / speed) + (mode === "TRANSIT" && oi !== di ? TRANSIT_WAIT_S : 0);
+      const seconds = Math.round(meters / speed);
       out.push({ originIndex: oi, destinationIndex: di, duration: `${seconds}s`, distanceMeters: meters, condition: "ROUTE_EXISTS" });
     }),
   );

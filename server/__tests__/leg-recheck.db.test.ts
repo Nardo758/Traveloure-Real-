@@ -10,7 +10,7 @@
  *   K6  dates not chosen ⇒ skipped (D9); a free plan ⇒ skipped (R-e) — no adapter call either way
  *   K7  day-of timing: due only in the 06:00 local hour of a trip day; the plan's zone, else its market's
  *   K8  the T-3 job runs the leg pass for each plan and reports its counts
- *   K9  legIsRouted: engine leg; confirmed non-est leg; confirmed straight-line leg is not; no minutes is not
+ *   K9  legIsRouted: engine leg is routed; an unsourced leg is not, confirmed or not (P0-b item 5); no minutes is not
  *   K10 registration: `legs-dayof-recheck` is hourly on the roster, its route runs through `runJob`, and
  *       the cron script's hourly bucket posts it
  *
@@ -196,7 +196,8 @@ test("K8: the T-3 job runs the leg pass per plan and reports it", async () => {
 
 test("K9: legIsRouted — the D4 rule", () => {
   assert.equal(legIsRouted({ source: "google_routes", estimatedDurationMinutes: 20 }), true);
-  assert.equal(legIsRouted({ source: null, proposalStatus: "confirmed", estimatedDurationMinutes: 20, recommendedMode: "walking", alternativeModes: [] }), true, "an expert's own minutes");
+  // P0-b item 5 (sanctioned Oct 11, 2026): an unsourced leg is not routed, confirmed or not.
+  assert.equal(legIsRouted({ source: null, proposalStatus: "confirmed", estimatedDurationMinutes: 20, recommendedMode: "walking", alternativeModes: [] }), false, "an unsourced confirmed leg is est.");
   assert.equal(
     legIsRouted({ source: null, proposalStatus: "confirmed", estimatedDurationMinutes: 20, recommendedMode: "walking", alternativeModes: [{ mode: "walking", reason: "est." }] }),
     false,

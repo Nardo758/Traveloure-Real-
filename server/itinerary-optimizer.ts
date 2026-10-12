@@ -42,9 +42,9 @@ import {
   AnchorConstraint,
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
-import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
+import { calculateTransportLegs, type ActivityLocation, type UserTransportPrefs } from "./services/transport-leg-calculator";
 import {
-  getTravelerProfile,
+  getTravelerProfileForTrip,
   recordDislikeFeedback,
   buildTravelerProfilePromptSection,
   effectiveProfileToTransportPrefs,
@@ -55,6 +55,8 @@ import {
 import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
 import { reconcileVariantWithBaseline } from "./services/optimizer-variant-reconciliation.service";
 import { loadRankedAnchors } from "./services/anchor-candidates";
+import { sanityMetricRows, versionSanityFlags } from "./services/version-sanity";
+import { optimizerDinnerFromMinutes, optimizerLatestStopStartMinutes } from "./config/optimizer-sanity.config";
 import { pickAutoAnchors } from "./services/anchor-candidates-map";
 import type { AnchorScore } from "./services/anchor-scoring";
 import {
@@ -173,6 +175,14 @@ export interface ItineraryItem {
    *  computation has something real to run on. */
   latitude?: number;
   longitude?: number;
+  /** V-1: the stop's Google Places `location` fact, set ONLY when it has no durable point
+   *  (`latitude`/`longitude` stay unset). IN MEMORY FOR THE RUN ONLY (LD 57): it may score an anchor,
+   *  but it is never written onto a version stop, a plan item or an anchor — such a stop saves with
+   *  NULL coordinates and the board locates it at read time through `sourceItemId`. */
+  placesPoint?: { lat: number; lng: number };
+  /** V-1b (ledger `2026-10-12-v1b-google-version-legs`): the Places fact's fetch time for `placesPoint`,
+   *  when known — a version leg ending at that point is stamped with it (R311). In memory only. */
+  placesFetchedAt?: Date | null;
   /** Lane 6 residue (drop policy a): true for a `ready_for_checkout` trip item — schedule-movable
    *  but NEVER droppable by a variant. A generated variant that omits one is invalid and is
    *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
@@ -977,11 +987,17 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         const anchorStops = baselineItems.map((it) => {
           const lat = it.latitude != null ? parseFloat(String(it.latitude)) : NaN;
           const lng = it.longitude != null ? parseFloat(String(it.longitude)) : NaN;
+          const durable = Number.isFinite(lat) && Number.isFinite(lng);
+          // V-1: a stop only Google locates still counts when scoring the other anchors, but
+          // is never an anchor itself (its point would be saved on the version — LD 57).
+          const point = durable ? { lat, lng } : it.placesPoint ?? null;
           return {
             id: String(it.id),
             name: (it as any).title ?? (it as any).name ?? "Stop",
-            lat: Number.isFinite(lat) ? lat : null,
-            lng: Number.isFinite(lng) ? lng : null,
+            serviceType: it.serviceType ?? null,
+            anchorEligible: durable,
+            lat: point?.lat ?? null,
+            lng: point?.lng ?? null,
           };
         });
         const ranked = await loadRankedAnchors(destination, anchorStops, { limit: 5 });
@@ -1010,7 +1026,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // degrades to "no profile signal", never a failed optimization.
     let travelerProfile: TravelerProfile | null = null;
     try {
-      travelerProfile = await getTravelerProfile(userId);
+      // TC-3b: the trip's own profile overlay applies over the account profile (one helper, both read sites).
+      travelerProfile = await getTravelerProfileForTrip(userId, tripId);
     } catch (err) {
       console.warn("[Optimizer] Traveler profile fetch failed (non-critical):", (err as Error).message);
     }
@@ -1036,6 +1053,16 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     const variantC = selectThirdVariantStrategy(variantA, variantB);
 
     // The entry stamp identifies this attempt and is never refreshed by preprocessing.
+
+    // V-1b (ledger `2026-10-12-v1b-google-version-legs`): the in-memory Google points of plan stops that
+    // have no durable point, by plan item id — only those with a known fetch time, because a leg ending
+    // at one must be stamped `coord_source='google'` with it (R311). Never saved on a version stop.
+    const googlePointByPlanItem = new Map<string, { lat: number; lng: number; fetchedAt: Date }>();
+    for (const b of baselineItems) {
+      if (b.planItemId && b.placesPoint && b.placesFetchedAt) {
+        googlePointByPlanItem.set(b.planItemId, { lat: b.placesPoint.lat, lng: b.placesPoint.lng, fetchedAt: b.placesFetchedAt });
+      }
+    }
 
     const baselineVariant = await db
       .insert(itineraryVariants)
@@ -1203,19 +1230,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         .where(eq(itineraryVariantItems.variantId, baselineVariant[0].id))
         .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
 
-      const baselineActivitiesWithCoords = baselineVariantItems
-        .filter((item) => item.latitude != null && item.longitude != null)
-        .map((item, idx) => ({
-          id: item.id,
-          name: item.name || `Stop ${idx + 1}`,
-          lat: parseFloat(item.latitude as unknown as string),
-          lng: parseFloat(item.longitude as unknown as string),
-          scheduledTime: item.startTime || "",
-          durationMinutes: item.duration,
-          dayNumber: item.dayNumber,
-          order: item.sortOrder ?? idx,
-          placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
-        }));
+      // V-1b: a stop only Google locates routes from its in-memory point (stamped on the leg, R311).
+      const baselineActivitiesWithCoords = versionLegStops(baselineVariantItems, googlePointByPlanItem, versionRouting);
 
       if (baselineActivitiesWithCoords.length > 0) {
         await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs, versionRouting?.ctx ?? null);
@@ -1596,6 +1612,16 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         geocodeBudget,
       );
 
+      // V-1: the version's sanity checks, after coordinates resolve. FLAG ONLY — C1 holds, so
+      // nothing is moved, dropped or re-timed here; each flag type becomes one metric row below.
+      const sanityFlags = versionSanityFlags(reorderedItems, {
+        dinnerFromMinutes: optimizerDinnerFromMinutes(),
+        latestStartMinutes: optimizerLatestStopStartMinutes(),
+      });
+      for (const f of sanityFlags) {
+        console.warn(`[optimizer] variant "${variant.name}": ${f.key} (${f.count}) — ${f.stopNames.join(", ")}`);
+      }
+
       // Lane 6 residue R1 (drop policy a, rulings 4/15): a variant that omits any in-checkout
       // (`ready_for_checkout`) baseline item is INVALID — rejected here, before any row is
       // persisted. Match is the same two-key predicate the strip/dedupe use (`providerServiceId`
@@ -1884,6 +1910,9 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         });
       }
 
+      // V-1: one row per sanity flag type — the run summary the board reads.
+      metricsToInsert.push(...sanityMetricRows(newVariant.id, sanityFlags));
+
       // Batch-insert all metrics in one round-trip
       await db.insert(itineraryVariantMetrics).values(metricsToInsert);
 
@@ -1895,19 +1924,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
           .where(eq(itineraryVariantItems.variantId, newVariant.id))
           .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
 
-        const activitiesWithCoords = variantItems
-          .filter((item) => item.latitude != null && item.longitude != null)
-          .map((item, idx) => ({
-            id: item.id,
-            name: item.name || `Stop ${idx + 1}`,
-            lat: parseFloat(item.latitude as unknown as string),
-            lng: parseFloat(item.longitude as unknown as string),
-            scheduledTime: item.startTime || "",
-            durationMinutes: item.duration,
-            dayNumber: item.dayNumber,
-            order: item.sortOrder ?? idx,
-            placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
-          }));
+        // V-1b: a stop only Google locates routes from its in-memory point (stamped on the leg, R311).
+        const activitiesWithCoords = versionLegStops(variantItems, googlePointByPlanItem, versionRouting);
 
         if (activitiesWithCoords.length > 0) {
           await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs, versionRouting?.ctx ?? null);
@@ -1945,6 +1963,51 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
   } finally {
     if (deadlineTimer) clearTimeout(deadlineTimer);
   }
+}
+
+/**
+ * V-1b (ledger `2026-10-12-v1b-google-version-legs`): the stops a version's legs are paired over — a
+ * saved version stop's own point, else (for a stop kept from the plan) its plan item's in-memory Google
+ * point, marked with the fact's fetch time so the leg is stored `coord_source='google'` (R311) and no
+ * maps link or ride deep link is built from it. The point never reaches the version stop row (LD 57).
+ */
+export function versionLegStops(
+  items: ReadonlyArray<{
+    id: string;
+    name: string | null;
+    latitude: unknown;
+    longitude: unknown;
+    startTime: string | null;
+    duration: number | null;
+    dayNumber: number;
+    sortOrder: number | null;
+    sourceItemId: string | null;
+  }>,
+  googlePointByPlanItem: ReadonlyMap<string, { lat: number; lng: number; fetchedAt: Date }>,
+  versionRouting?: { placeIdFor: (sourceItemId: string | null | undefined) => string | null } | null,
+): ActivityLocation[] {
+  const out: ActivityLocation[] = [];
+  items.forEach((item, idx) => {
+    const saved = item.latitude != null && item.longitude != null
+      ? { lat: parseFloat(item.latitude as string), lng: parseFloat(item.longitude as string), googleFetchedAt: null as Date | null }
+      : null;
+    const g = !saved && item.sourceItemId ? googlePointByPlanItem.get(item.sourceItemId) : undefined;
+    const point = saved ?? (g ? { lat: g.lat, lng: g.lng, googleFetchedAt: g.fetchedAt } : null);
+    if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return;
+    out.push({
+      id: item.id,
+      name: item.name || `Stop ${idx + 1}`,
+      lat: point.lat,
+      lng: point.lng,
+      scheduledTime: item.startTime || "",
+      durationMinutes: item.duration,
+      dayNumber: item.dayNumber,
+      order: item.sortOrder ?? idx,
+      placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
+      ...(point.googleFetchedAt ? { googleFetchedAt: point.googleFetchedAt } : {}),
+    });
+  });
+  return out;
 }
 
 export interface UpsellSuggestion {
