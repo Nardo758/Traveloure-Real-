@@ -639,6 +639,7 @@ async function lookUpStayPlace(tripId: string, itemId: string | null): Promise<v
       .limit(1);
     if (!row) return;
     await enrichPlanItems({
+      trigger: "where_to_stay",
       tripId,
       market: row.marketSlug ?? null,
       city: row.destination ?? null,

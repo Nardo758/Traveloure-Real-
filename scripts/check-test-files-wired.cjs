@@ -710,6 +710,11 @@ function selfTest() {
   );
 }
 
+// Exported for scripts/check-decision-guards.cjs, which asks whether a test file a ledger row names is
+// reachable from CI by THIS predicate rather than restating it (ledger `2026-10-12-gw1-guard-tags`).
+module.exports = { collectTests, inventory, workflowCommands, ROOT };
+if (require.main !== module) return;
+
 if (process.argv.includes("--self-test")) {
   selfTest();
   process.exit(0);

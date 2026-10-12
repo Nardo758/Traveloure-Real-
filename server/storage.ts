@@ -183,6 +183,7 @@ import { itineraryItemRebuildDeletable, itineraryItemNotMachineProtected } from 
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { resolveTripTimezone } from "./services/trip-timezone";
 import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
+import { preferencesKeepingStoredOverlay, stripClientProfileOverlay } from "./services/trip-profile-overlay.service";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
@@ -1608,6 +1609,11 @@ export class DatabaseStorage implements IStorage {
     const { datesConfirmedAt: _clientSuppliedDatesConfirmedAt, ...mintValues } = trip as InsertTrip &
       { userId: string; datesConfirmedAt?: unknown };
     const datesConfirmedAt = options?.datesChosenByTraveler ? new Date() : null;
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): the trip profile overlay has its own two writers
+    // (trip-profile-overlay.service.ts); a mint body never carries one (§19 layer 2).
+    if (mintValues.preferences && typeof mintValues.preferences === "object") {
+      mintValues.preferences = stripClientProfileOverlay(mintValues.preferences as Record<string, unknown>);
+    }
     const [newTrip] = await db
       .insert(trips)
       .values({ ...mintValues, marketSlug, timezone, datesConfirmedAt, trackingNumber })
@@ -1704,6 +1710,12 @@ export class DatabaseStorage implements IStorage {
       Partial<InsertTrip> & { datesConfirmedAt?: unknown; stayPick?: unknown };
     if (safeUpdates.startDate !== undefined || safeUpdates.endDate !== undefined) {
       derived.datesConfirmedAt = new Date();
+    }
+    // TC-3b (ledger `2026-10-11-tc3b-ride-recommender`): a `preferences` write keeps the STORED profile overlay
+    // and drops any client-sent one — one SQL expression, no read-modify-write (§19 layer 2; §15).
+    if (safeUpdates.preferences !== undefined) {
+      const incoming = safeUpdates.preferences && typeof safeUpdates.preferences === "object" ? (safeUpdates.preferences as Record<string, unknown>) : {};
+      (safeUpdates as any).preferences = preferencesKeepingStoredOverlay(incoming);
     }
     if (safeUpdates.startDate === undefined) {
       const [updatedTrip] = await db

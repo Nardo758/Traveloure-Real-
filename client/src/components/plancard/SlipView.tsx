@@ -72,6 +72,8 @@ import { anchorSurfaces, isLodgingItem, replaceStayQuestion, type WhereToStayVie
 import { itemFactsLine } from "@/lib/place-facts";
 import { ITEM_MENU_LABELS, ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { ItemSheet } from "@/components/plan/ItemSheet";
+import { StayBookButton } from "@/components/plan/StayBookButton";
+import { showsStayBook, useStayBooking } from "@/lib/stay-booking";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
@@ -98,7 +100,7 @@ import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHo
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { isLocated } from "@/components/plancard/MapControlCenter";
 import { areaShading, planMapAnchor, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
-import type { VersionsBoardView } from "@/lib/versions-board";
+import { versionMapAnchorKind, type VersionsBoardView } from "@/lib/versions-board";
 import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
@@ -829,6 +831,11 @@ function SlipDayItem({
   const toggleLock = useToggleItemLock(tripId, a.id, !!a.locked);
   // Step 6 R-ap: the stop's ItemSheet — title tap, ⋯ → Details. Its photo is read only while open.
   const [sheetOpen, setSheetOpen] = useState(false);
+  // S1-d-3b (ledger `2026-10-11-s1-d3b-stay-book-ui`): a stay's "Book" — read only when the owner opens the sheet.
+  // The SERVER decides which items are bookable stays (`bookable`: the item's chosen option set → a LiteAPI hotel);
+  // the page never guesses from the item's name or type, which a chosen hotel's name need not reveal.
+  const { data: stayRead } = useStayBooking(tripId, a.id, sheetOpen && isOwner);
+  const stayBook = showsStayBook({ isOwner, read: stayRead }) && !a.booking?.id;
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);
@@ -923,18 +930,22 @@ function SlipDayItem({
           isOwner && itemBookingAction(a) ? (
             <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
           ) : isOwner && !a.booking?.id ? (
-            // R323 (step 7b, §12 step 1): "Book this for me" opens the ONE handoff chooser.
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setSheetOpen(false);
-                openHandoffChooser({ kind: "book", itemIds: [a.id] });
-              }}
-              data-testid={`item-sheet-book-for-me-${a.id}`}
-            >
-              {ITEM_MENU_LABELS.bookForMe}
-            </Button>
+            <>
+              {/* S1-d-3b (S1-d-3 ruling 3): "Book" on a bookable stay, beside "Book this for me". */}
+              {stayBook ? <StayBookButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
+              {/* R323 (step 7b, §12 step 1): "Book this for me" opens the ONE handoff chooser. */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSheetOpen(false);
+                  openHandoffChooser({ kind: "book", itemIds: [a.id] });
+                }}
+                data-testid={`item-sheet-book-for-me-${a.id}`}
+              >
+                {ITEM_MENU_LABELS.bookForMe}
+              </Button>
+            </>
           ) : null
         }
       />
@@ -1828,7 +1839,7 @@ export function useSlipViewModel({
     label: v.label,
     stops: v.stops,
     days: v.days,
-    anchor: v.anchor ? { kind: "stay", name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
+    anchor: v.anchor ? { kind: versionMapAnchorKind(v.anchor), name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
   }));
   const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null; bufferBefore?: number | null; bufferAfter?: number | null }>>({
     queryKey: [`/api/trips/${tripId}/anchors`],

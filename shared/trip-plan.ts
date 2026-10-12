@@ -544,6 +544,8 @@ export interface TripPlanLegRouted {
   provenance: { source: string; checkedAt: string };
   /** P0 ruling 2: present only on a drive the engine fell back to because transit had no route. */
   transitUnavailable?: true;
+  /** P0-b item 8: present only on a drive standing in for transit the routing API cannot answer (Kyoto). */
+  transitApiUncovered?: true;
 }
 
 export interface TripPlanDay {
@@ -574,6 +576,16 @@ export interface TripPlanDay {
    * `feasibilityLine` (shared/plan-feasibility.ts). ABSENT when not computed.
    */
   feasibility?: import("./plan-feasibility").DayFeasibility;
+  /**
+   * OPTIONAL (TC-3b, ledger `2026-10-11-tc3b-ride-recommender`): on a FREE plan, for its owner, how many of the
+   * day's stop-to-stop corridors a catalog ride could replace. A count only. ABSENT when not computed or zero (§13).
+   */
+  rideTeaser?: { rides: number };
+  /**
+   * OPTIONAL (TC-3b): on a PAID plan, for its owner, at most three "a better way there" ride swaps over the day's
+   * routed legs, best first (shared/ride-recommender.ts). ABSENT when there are none.
+   */
+  rideSuggestions?: Array<Omit<import("./ride-recommender").RideSuggestion, "score">>;
   /** LEGACY placement of this day's legs; the same objects also appear in `TripPlan.legs`. */
   transports: TripPlanLeg[];
 }

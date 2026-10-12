@@ -19,7 +19,7 @@
  */
 import { useEffect, useState } from "react";
 import { Bike, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
-import { NO_TRANSIT_DRIVE_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
+import { NO_TRANSIT_DRIVE_NOTE, TRANSIT_API_UNCOVERED_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
 import { Link } from "wouter";
 import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@shared/airport-leg";
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
@@ -324,7 +324,8 @@ export interface RoutedLegRowProps {
   kind: "routed";
   legId: string;
   mode: RoutingMode;
-  route: RouteAnswer;
+  /** `transitApiUncovered` (P0-b item 8): a drive standing in for transit the routing API cannot answer. */
+  route: RouteAnswer & { transitApiUncovered?: true };
   timeZone: string | null;
   onOpen?: (() => void) | null;
   /** P0 ruling 2: a drive shown because transit had no route — said on the row. */
@@ -367,6 +368,10 @@ function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable
         {transitUnavailable ? (
           <span className="font-medium" data-testid={`slip-leg-no-transit-${legId}`}>
             {NO_TRANSIT_DRIVE_NOTE} ·{" "}
+          </span>
+        ) : route.transitApiUncovered ? (
+          <span className="font-medium" data-testid={`slip-leg-api-uncovered-${legId}`}>
+            {TRANSIT_API_UNCOVERED_NOTE}{" "}
           </span>
         ) : null}
         <span data-testid={`slip-leg-routed-line-${legId}`}>{routedLegLine({ mode, route }, timeZone)}</span>

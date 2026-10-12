@@ -595,6 +595,8 @@ export async function assertReadyMadeComplete(
         toActivityId: transportLegs.toActivityId,
         proposalStatus: transportLegs.proposalStatus,
         userSelectedMode: transportLegs.userSelectedMode,
+        // P0-b item 9 (a): `isPickedLeg` reads the recommended mode too.
+        recommendedMode: transportLegs.recommendedMode,
       })
       .from(transportLegs)
       .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId))),
@@ -623,6 +625,8 @@ export async function readyMadeReadiness(
         toActivityId: transportLegs.toActivityId,
         proposalStatus: transportLegs.proposalStatus,
         userSelectedMode: transportLegs.userSelectedMode,
+        // P0-b item 9 (a): `isPickedLeg` reads the recommended mode too.
+        recommendedMode: transportLegs.recommendedMode,
         estimatedDurationMinutes: transportLegs.estimatedDurationMinutes,
       })
       .from(transportLegs)

@@ -41,6 +41,8 @@ import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
 import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
 import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
+import { lookupErrorCode, type PlaceLookupCapReason, type PlaceLookupOutcomeRow, type PlaceLookupSkipReason, type PlaceLookupTrigger } from "@shared/place-lookup-outcomes";
+import { recordLookupOutcomes } from "./lookup-outcomes.service";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
 import { getTavilyClient } from "../tavily-client";
 import { claudeService } from "../claude.service";
@@ -179,15 +181,24 @@ function namedByDay(items: readonly EnrichItem[], city: string | null): Map<numb
   const byDay = new Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>>();
   for (const item of items) {
     const tokens = namedPlaceTokens(item, city);
-    if (tokens.size === 0) continue;
-    // Smoke 7: a title naming an area ("… District", "… Photo Stop", "… Walk") is never looked up.
-    if (titleNamesAnArea(item.title)) continue;
+    if (unnamedSkipReason(item, city, tokens) !== null) continue;
     const day = item.dayNumber ?? 1;
     const list = byDay.get(day) ?? [];
     list.push({ item, tokens });
     byDay.set(day, list);
   }
   return byDay;
+}
+
+/**
+ * Pure. Why an item is never looked up, or null when it is (PF-1 ruling 4 splits the old `unnamed`):
+ * `no_named_tokens` — nothing in the title or location names a specific place; `area_title` — smoke 7, a
+ * title naming an area ("… District", "… Photo Stop", "… Walk") is never looked up.
+ */
+export function unnamedSkipReason(item: EnrichItem, city: string | null, tokens: ReadonlySet<string> = namedPlaceTokens(item, city)): Extract<PlaceLookupSkipReason, "no_named_tokens" | "area_title"> | null {
+  if (tokens.size === 0) return "no_named_tokens";
+  if (titleNamesAnArea(item.title)) return "area_title";
+  return null;
 }
 
 /**
@@ -225,8 +236,8 @@ export function attachedDisplayName(kept: readonly FactDraft[]): string | null {
  * No query text and no title, so the log carries no traveler content — only opaque ids.
  *
  * SMOKE 4 (P1, ledger `2026-10-02-smoke4-draft-fixes`): `attached` (facts recorded), `unmatched` (a
- * place came back but did not name the item) or `none` (no place came back); skips log one
- * `skipped` line each with their reason.
+ * place came back but did not name the item) or `no_place` (no place came back — PF-1 renamed `none`); skips
+ * log one `skipped` line and caps one `capped` line, each with its reason (PF-1 ruling 4).
  *
  * SMOKE 5 (ledger `2026-10-03-smoke5-fixes`): every line now carries `plan_id` and `item_id`. Before
  * this a line could not be tied to the item it was about, so Ryoan-ji's three stored facts had no
@@ -239,7 +250,7 @@ function logLookup(
   cache: "hit" | "miss",
   startedMs: number,
   day: number,
-  outcome: "attached" | "unmatched" | "none",
+  outcome: "attached" | "unmatched" | "no_place",
   extra: { facts: number; hours: boolean; renamed: boolean },
 ): void {
   const placeId = drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? "none";
@@ -251,12 +262,16 @@ function logLookup(
   );
 }
 
-function logSkipped(ids: { planId: string; itemId: string }, day: number, reason: "unnamed" | "cap" | "no_adapter"): void {
+/** PF-1 ruling 4: a skipped item names its gate reason; a capped one names which cap — the same enum the table stores. */
+function logSkipped(ids: { planId: string; itemId: string }, day: number, reason: PlaceLookupSkipReason): void {
   console.info(`[place-facts] skipped plan_id=${ids.planId} item_id=${ids.itemId} day=${day} reason=${reason}`);
 }
+function logCapped(ids: { planId: string; itemId: string }, day: number, reason: PlaceLookupCapReason): void {
+  console.info(`[place-facts] capped plan_id=${ids.planId} item_id=${ids.itemId} day=${day} reason=${reason}`);
+}
 
-function outcomeOf(drafts: readonly FactDraft[], kept: readonly FactDraft[]): "attached" | "unmatched" | "none" {
-  return kept.length ? "attached" : drafts.length ? "unmatched" : "none";
+function outcomeOf(drafts: readonly FactDraft[], kept: readonly FactDraft[]): "attached" | "unmatched" | "no_place" {
+  return kept.length ? "attached" : drafts.length ? "unmatched" : "no_place";
 }
 
 /**
@@ -355,9 +370,24 @@ export async function enrichPlanItems(input: {
   adapters?: SourceAdapter[];
   draftId?: string | null;
   placesGate?: PlacesCallGate;
-}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number; areas: number }> {
-  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0, areas: 0 };
+  /** PF-1: which caller started this run, stored on each outcome row (absent ⇒ NULL, "not stated"). */
+  trigger?: PlaceLookupTrigger | null;
+}): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number; areas: number; runId: string }> {
+  const run = { runId: crypto.randomUUID(), runStartedAt: new Date(), trigger: input.trigger ?? null };
+  const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0, areas: 0, runId: run.runId };
   const ids = (item: EnrichItem) => ({ planId: input.tripId, itemId: item.id });
+  // PF-1: one outcome row per item this run touched, written in ONE batch at the end (never throws).
+  const outcomes: PlaceLookupOutcomeRow[] = [];
+  const note = (item: EnrichItem, day: number, outcome: PlaceLookupOutcomeRow["outcome"], reason: string | null, extra: Partial<PlaceLookupOutcomeRow> = {}) =>
+    outcomes.push({ tripId: input.tripId, itemId: item.id, day, outcome, reason, placeId: null, cache: null, costCents: null, latencyMs: null, ...extra });
+  const skip = (item: EnrichItem, day: number, reason: PlaceLookupSkipReason) => {
+    logSkipped(ids(item), day, reason);
+    note(item, day, "skipped", reason);
+  };
+  const capped = (item: EnrichItem, day: number, reason: PlaceLookupCapReason) => {
+    logCapped(ids(item), day, reason);
+    note(item, day, "capped", reason);
+  };
   const progress = input.draftId ? new LookupProgress(input.draftId) : null;
   const gate = input.placesGate ?? (input.adapters ? ungatedPlacesCall : mapsGatedPlacesCall);
   try {
@@ -365,7 +395,10 @@ export async function enrichPlanItems(input: {
     const byDay = namedByDay(input.items, input.city);
     const named = new Set(Array.from(byDay.values()).flat().map((e) => e.item));
     summary.unnamed = input.items.length - named.size;
-    for (const it of input.items) if (!named.has(it)) logSkipped(ids(it), it.dayNumber ?? 1, "unnamed");
+    for (const it of input.items) {
+      if (named.has(it)) continue;
+      skip(it, it.dayNumber ?? 1, unnamedSkipReason(it, input.city) ?? "no_named_tokens");
+    }
     await progress?.start(Array.from(named).map((i) => i.id));
     const scheduler = new LookupScheduler(byDay);
     for (let next = scheduler.next(); next; next = scheduler.next()) {
@@ -377,7 +410,7 @@ export async function enrichPlanItems(input: {
         const need = needForItemType(item.type);
         const adapters = sourcesForNeed(need, input.market, input.adapters);
         if (!adapters.length) {
-          logSkipped(ids(item), day, "no_adapter");
+          skip(item, day, "no_adapter");
           continue;
         }
         // P2 (smoke 4): the visited place only — a two-place "A Alternative: B" title searched whole
@@ -398,7 +431,7 @@ export async function enrichPlanItems(input: {
           const resolve = adapter.resolvePlaceId.bind(adapter);
           const out = await gate("places_id_lookup", () => resolve(req));
           if ("refused" in out) {
-            logSkipped(ids(item), day, "cap");
+            capped(item, day, "maps_id_lookup");
             continue;
           }
           placeId = out.value;
@@ -409,14 +442,14 @@ export async function enrichPlanItems(input: {
           drafts = cached;
           cache = "hit";
         } else if (capReached) {
-          logSkipped(ids(item), day, "cap");
+          capped(item, day, "draft_cap");
           continue;
         } else if (placeId && adapter.fetchByPlaceId) {
           const fetchById = adapter.fetchByPlaceId.bind(adapter);
           const id = placeId;
           const out = await gate("places_details", () => fetchById(id, req));
           if ("refused" in out) {
-            logSkipped(ids(item), day, "cap");
+            capped(item, day, "maps_details");
             continue;
           }
           summary.looked += 1;
@@ -443,9 +476,17 @@ export async function enrichPlanItems(input: {
         const area = attachedArea(kept);
         if (area && (await adoptGoogleArea(input.tripId, item, area))) summary.areas += 1;
         scheduler.report(day, { attached: kept.length > 0, hasHours });
-        logLookup(ids(item), drafts, cache, started, day, outcomeOf(drafts, kept), { facts: recorded, hours: hasHours, renamed });
+        const outcome = outcomeOf(drafts, kept);
+        logLookup(ids(item), drafts, cache, started, day, outcome, { facts: recorded, hours: hasHours, renamed });
+        note(item, day, outcome, null, {
+          placeId: placeId ?? drafts.find((d) => d.placeRefKind === "place_id")?.placeRef ?? null,
+          cache,
+          costCents: drafts.reduce((n, d) => n + (cache === "hit" ? 0 : d.costCents ?? 0), 0),
+          latencyMs: Date.now() - started,
+        });
       } catch (err) {
         console.error(`[place-facts] lookup failed plan_id=${input.tripId} item_id=${item.id} day=${day}:`, (err as Error)?.message ?? err);
+        note(item, day, "error", lookupErrorCode(err));
       } finally {
         await progress?.done(item.id);
       }
@@ -454,6 +495,7 @@ export async function enrichPlanItems(input: {
     console.error(`[place-facts] enrichment failed plan_id=${input.tripId}:`, (err as Error)?.message ?? err);
   } finally {
     await progress?.finish();
+    await recordLookupOutcomes(run, outcomes);
   }
   return summary;
 }
@@ -771,6 +813,31 @@ export interface FeasibilityFacts {
   lastServices: Array<{ lat: number; lng: number; value: unknown }>;
 }
 
+/**
+ * Every official, unexpired, admitted `last_service` row in a market that has a station point — the ONE read of
+ * them (FD-3; TC-4 ledger `2026-10-11-tc4-live-directions`). Callers match rows to a stop by distance: the
+ * optimizer lead's inferred ride and the Trip Card's last-departure line, both from the stop a leg LEAVES.
+ */
+export async function lastServicesForMarket(market: string, now: Date = new Date()): Promise<Array<{ lat: number; lng: number; value: unknown }>> {
+  const services = await db
+    .select()
+    .from(placeFacts)
+    .where(
+      and(
+        eq(placeFacts.factType, "last_service"),
+        eq(placeFacts.market, market),
+        eq(placeFacts.license, "official"),
+        isNull(placeFacts.supersededBy),
+        sql`${placeFacts.sourceClass} IS NOT NULL`,
+        sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
+      ),
+    );
+  return services
+    .filter((r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok)
+    .map((r) => ({ lat: Number(r.placeLat), lng: Number(r.placeLng), value: r.value }))
+    .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
+}
+
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
   // The item → place id map, from the plan's own Places rows.
@@ -827,24 +894,6 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
     if (la) lastAdmission.set(itemId, la.value);
   });
 
-  const services = market
-    ? await db
-        .select()
-        .from(placeFacts)
-        .where(
-          and(
-            eq(placeFacts.factType, "last_service"),
-            eq(placeFacts.market, market),
-            eq(placeFacts.license, "official"),
-            isNull(placeFacts.supersededBy),
-            sql`${placeFacts.sourceClass} IS NOT NULL`,
-            sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
-          ),
-        )
-    : [];
-  const lastServices = services
-    .filter((r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok)
-    .map((r) => ({ lat: Number(r.placeLat), lng: Number(r.placeLng), value: r.value }))
-    .filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  const lastServices = market ? await lastServicesForMarket(market, now) : [];
   return { hours, lastAdmission, lastServices };
 }
