@@ -14,8 +14,8 @@
  * guard-shaped; prose parts name nothing. A guard is wired when a workflow `run:` names it, when it is a
  * test file `scripts/check-test-files-wired.cjs` finds reachable (or a runner config passed by
  * `--config`/`-c` names it, or matches it by literal `testDir` + `testMatch`), or when it is a workflow job
- * id or workflow file. `[guarded: none …]` and `[unguarded since R<n> — re-pin needed]` are printed on
- * every run, never failed. NEGATIVE SPACE: a guard named only inside a sentence is not read; `[tested: …]`
+ * id or workflow file. `[guarded: none …]`, `[retired with R<n> — surface removed]` and
+ * `[unguarded since R<n> — re-pin needed]` are printed on every run, never failed. NEGATIVE SPACE: a guard named only inside a sentence is not read; `[tested: …]`
  * and a bare `[guarded]` are other notations and stay unread; the check is that the guard RUNS, never
  * that it covers the ruling.
  *
@@ -240,10 +240,12 @@ function parseLedger(text) {
     // GW-1: a row whose guard was deleted and not re-pinned says so in its tag. It is reported on
     // every run (never a silent baseline) and is not a failure — the re-pin lane owes it.
     if (any) {
-      const unguarded = (leadingTag(rowCells(line)[2] ?? "") || "").match(/^\[unguarded since (R\d+) — re-pin needed\]$/);
-      if (unguarded) {
+      const head = leadingTag(rowCells(line)[2] ?? "") || "";
+      const unguarded = head.match(/^\[unguarded since (R\d+) — re-pin needed\]$/);
+      const retired = head.match(/^\[retired with (R\d+) — surface removed\]$/);
+      if (unguarded || retired) {
         ids.push(any[1]);
-        entries.push({ id: any[1], guards: [], deferred: null, none: false, loose: true, unguardedSince: unguarded[1] });
+        entries.push({ id: any[1], guards: [], deferred: null, none: false, loose: true, unguardedSince: unguarded?.[1], retiredWith: retired?.[1] });
         continue;
       }
     }
@@ -401,6 +403,10 @@ function lintLedger({ ledgerText, workflowText, requireAssigned = false, knownDu
 
   const wiring = { workflowText, tests, reachable, workflowFiles, jobIds, configs };
   for (const e of entries) {
+    if (e.retiredWith) {
+      notes.push(`Ruling ${e.id}: retired with ${e.retiredWith} — surface removed; the row stays as history.`);
+      continue;
+    }
     if (e.unguardedSince) {
       notes.push(`Ruling ${e.id}: UNGUARDED since ${e.unguardedSince} — re-pin needed.`);
       continue;
@@ -579,10 +585,12 @@ function selfTest() {
   ].every((t) => gw(t).failures.length === 1);
   const gwNone = gw("[guarded: none — and that is the finding]");
   const gwUng = gw("[unguarded since R354 — re-pin needed]");
+  const gwRet = gw("[retired with R354 — surface removed]");
   const gwTested = lint({ ledgerText: [loose("g", "[guarded: real-guard]"), loose("t", "[tested: `x.test.ts` — 5 proofs]")].join("\n"), workflowText, ...wiring });
   const ok18 = gwPass && gwFail
     && gwNone.failures.length === 0 && gwNone.notes.some((n) => n.includes("no guard"))
     && gwUng.failures.length === 0 && gwUng.notes.some((n) => n.includes("UNGUARDED since R354"))
+    && gwRet.failures.length === 0 && gwRet.notes.some((n) => n.includes("retired with R354"))
     && gwTested.failures.length === 0;
   if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16 || !ok17 || !ok18) {
     console.error("SELF-TEST FAILED", {
@@ -593,7 +601,7 @@ function selfTest() {
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline, [guarded:] tags with text after them incl. reachable tests, job ids, runner configs, prose parts, none and unguarded)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline, [guarded:] tags with text after them incl. reachable tests, job ids, runner configs, prose parts, none, retired and unguarded)");
   process.exit(0);
 }
 
