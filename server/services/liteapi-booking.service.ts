@@ -37,6 +37,7 @@ import {
   bookingMarginFraction,
   parseBook,
   parsePrebook,
+  prebookDiagnostic,
 } from "@shared/liteapi-booking";
 import {
   liteapiBookingEnabled,
@@ -177,6 +178,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
     return out;
   };
   let offerId: string | null = null;
+  let offerQuote: any = null;
+  let marginUsed = 0;
   let quotedSsp: ReturnType<typeof sspFromRates> = null;
   try {
     const band = await deps.marginFraction();
@@ -187,6 +190,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       return { state: "unavailable", reason: "rates_paused" };
     }
     offerId = offerIdFromRates(quoted.value);
+    offerQuote = quoted.value;
+    marginUsed = bandPercent;
     if (offerId) {
       // The booking margin (decision-maker, Oct 11, 2026): max(band, SSP / net − 1) from THIS answer, so the
       // booked price is never below the SSP nor below our band. Refused only for an unstated SSP or one in
@@ -205,6 +210,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
           return { state: "unavailable", reason: "rates_paused" };
         }
         offerId = offerIdFromRates(raised.value);
+        offerQuote = raised.value;
+        marginUsed = m.percent;
         quotedSsp = sspFromRates(raised.value) ?? m.ssp;
         console.info(`[liteapi-booking] ${input.itemId}: margin ${bandPercent}% → ${m.percent}% to meet the SSP`);
       }
@@ -221,7 +228,9 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
 
   let parsed;
   try {
-    parsed = parsePrebook(await client.prebook({ offerId }), quotedSsp);
+    const prebookBody = await client.prebook({ offerId });
+    console.info(`[liteapi-booking] prebook ${input.itemId}: ${prebookDiagnostic(offerQuote, prebookBody, marginUsed)}`);
+    parsed = parsePrebook(prebookBody, quotedSsp);
   } catch (err: any) {
     console.warn(`[liteapi-booking] prebook ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable", reason: "prebook_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };

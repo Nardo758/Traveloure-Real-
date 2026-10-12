@@ -61,6 +61,29 @@ function moneyOf(v: unknown): { amount: number; currency: string } | null {
   return amount !== null && amount > 0 && currency ? { amount, currency } : null;
 }
 
+/**
+ * The re-quote's retail price for the cheapest room type — `offerRetailRate`, else the rate's `retailRate.total`
+ * (the same order `bookingMarginFraction` reads). null when unstated (§13).
+ */
+export function quoteRetail(body: any): { amount: number; currency: string } | null {
+  const rt = body?.data?.[0]?.roomTypes?.[0];
+  return moneyOf(rt?.offerRetailRate) ?? moneyOf(rt?.rates?.[0]?.retailRate?.total);
+}
+
+/**
+ * S1-d-3c diagnostic: the facts compared at prebook, as one log line. Reads the re-quote that produced the offer
+ * and the raw prebook answer; computes nothing that is acted on.
+ */
+export function prebookDiagnostic(quoteBody: any, prebookBody: any, marginPercent: number): string {
+  const r = quoteRetail(quoteBody);
+  const q = sspFromRates(quoteBody);
+  const d = prebookBody?.data;
+  const p = money(d?.price);
+  const ps = money(d?.suggestedSellingPrice);
+  const f = (v: number | null | undefined) => (v === null || v === undefined ? "none" : String(v));
+  return `requote retail=${f(r?.amount)} ${r?.currency ?? ""} requote ssp=${f(q?.amount)} ${q?.currency ?? ""} prebook price=${f(p)} prebook ssp=${f(ps)} currency=${ccy(d?.currency) ?? "none"} margin=${marginPercent}%`;
+}
+
 export type BookingMargin =
   | { ok: true; fraction: number; percent: number; ssp: { amount: number; currency: string } }
   | { ok: false; reason: "no_ssp" | "ssp_currency" | "no_price" };
