@@ -423,3 +423,18 @@ export const STRIPE_DISPUTE_NEVER_FLIPPED_STATUSES: readonly string[] = [
 
 /** A won dispute restores ONLY a row the dispute itself flipped (`disputed`). */
 export const STRIPE_DISPUTE_WON_RESTORE_FROM_STATUSES: readonly string[] = ["disputed"];
+
+/**
+ * ── LEGACY `bookings` rail (§15c): the statuses a payment signal may CONFIRM ─────────────────────
+ * A different table from every list above. `payment_intent.succeeded` confirms a legacy booking only
+ * from a status in which no payment has been taken yet: `pending_payment` (born by process-cart),
+ * `pending` (the column default — historical rows born with it are pre-payment rows) and
+ * `payment_failed` (nothing was captured; a retry on the same PaymentIntent is a real Stripe flow and
+ * must confirm). Decision-maker ruling, Oct 12, 2026.
+ *
+ * NEVER `canceled`, `refunded`, `expired`, a dispute status or `confirmed`: a success signal that
+ * arrives for such a row is a LATE signal. It is not allowed to resurrect the booking (§15c rule 3);
+ * the webhook raises one admin alert and `scanLegacyRail` (§17) reports the drift the next day.
+ * The webhook's UPDATE carries this list in its WHERE clause, so the transition itself is the guard.
+ */
+export const LEGACY_PREPAYMENT_STATUSES = ["pending_payment", "pending", "payment_failed"] as const;

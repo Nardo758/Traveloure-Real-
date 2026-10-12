@@ -24,7 +24,7 @@ import Stripe from 'stripe';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { handleStripePaymentSuccess } from './stripe.service';
-import { enqueueBookingConfirmationEmail } from './email-outbox.service';
+import { kickLegacyConfirmationDelivery, persistLegacyBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
 import { resolveSavedCardChargeId } from './saved-card-choice';
@@ -34,7 +34,7 @@ import { resolveSavedCardChargeId } from './saved-card-choice';
 import { deriveClaimedSlotIds, deriveClaimedSlotUnits } from './checkout-claim.service';
 import { travelerChargeForRow } from './traveler-charge';
 import { computeRefundBreakdown, travelerFeeChargedOf } from './refund-breakdown';
-import { APP_REFUND_REFUSED_FROM_STATUSES } from '../utils/booking-from-states';
+import { APP_REFUND_REFUSED_FROM_STATUSES, LEGACY_PREPAYMENT_STATUSES } from '../utils/booking-from-states';
 import { REFUND_ATTEMPT_KEY, REFUND_RECORD_KEY } from '../../shared/booking-refund-record';
 import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
@@ -1034,71 +1034,98 @@ class StripePaymentService {
       { signatureVerified: true },
       async () => {
         for (const bookingId of bookingIdList) {
-          const confirmationCode = this.generateConfirmationCode();
+          // Claim confirmation in the UPDATE itself, not in an earlier SELECT: PostgreSQL rechecks
+          // the predicate after a concurrent writer commits, so exactly one delivery wins. The
+          // predicate admits only the PRE-PAYMENT statuses (§15c — a late signal never resurrects a
+          // cancelled, refunded or expired row). The winner's traveler notice is persisted in the
+          // SAME transaction, so a confirmed booking always carries its confirmation email row.
+          const confirmationOutboxId = await db.transaction(async (tx) => {
+            const confirmationCode = this.generateConfirmationCode();
+            let claimed;
+            if (isDeposit === 'true') {
+              claimed = await tx.execute(sql`
+                UPDATE bookings SET
+                  status = 'confirmed',
+                  payment_status = 'succeeded',
+                  confirmed_at = NOW(),
+                  confirmation_code = ${confirmationCode},
+                  deposit_paid = true
+                WHERE id = ${bookingId}
+                  AND status IN (${sql.join(LEGACY_PREPAYMENT_STATUSES.map(s => sql`${s}`), sql`, `)})
+                RETURNING confirmation_code
+              `);
+            } else {
+              claimed = await tx.execute(sql`
+                UPDATE bookings SET
+                  status = 'confirmed',
+                  payment_status = 'succeeded',
+                  confirmed_at = NOW(),
+                  confirmation_code = ${confirmationCode},
+                  deposit_paid = true,
+                  balance_paid = true
+                WHERE id = ${bookingId}
+                  AND status IN (${sql.join(LEGACY_PREPAYMENT_STATUSES.map(s => sql`${s}`), sql`, `)})
+                RETURNING confirmation_code
+              `);
+            }
+            if (!claimed.rows?.[0]) return null;
+            return persistLegacyBookingConfirmationEmail(tx, bookingId);
+          });
 
-          // Claim confirmation in the UPDATE itself, not in an earlier SELECT.
-          // PostgreSQL rechecks this predicate after a concurrent writer commits;
-          // only the winner may enqueue an email with its confirmation code.
-          // Preserve the legacy acceptance rule (anything except confirmed).
-          let claimed;
-          if (isDeposit === 'true') {
-            claimed = await db.execute(sql`
-              UPDATE bookings SET
-                status = 'confirmed',
-                payment_status = 'succeeded',
-                confirmed_at = NOW(),
-                confirmation_code = ${confirmationCode},
-                deposit_paid = true
-              WHERE id = ${bookingId}
-                AND status IS DISTINCT FROM 'confirmed'
-              RETURNING confirmation_code
-            `);
-          } else {
-            claimed = await db.execute(sql`
-              UPDATE bookings SET
-                status = 'confirmed',
-                payment_status = 'succeeded',
-                confirmed_at = NOW(),
-                confirmation_code = ${confirmationCode},
-                deposit_paid = true,
-                balance_paid = true
-              WHERE id = ${bookingId}
-                AND status IS DISTINCT FROM 'confirmed'
-              RETURNING confirmation_code
-            `);
-          }
-
-          const confirmed = claimed.rows?.[0] as { confirmation_code: string } | undefined;
-          if (!confirmed) {
-            console.log(`[webhook] booking ${bookingId} already confirmed or missing — skipping`);
+          if (confirmationOutboxId === null) {
+            await this.reportUnclaimedLegacyPaymentSignal(bookingId, paymentIntent.id);
             continue;
           }
 
           console.log(`[webhook] confirmed booking ${bookingId} via payment_intent.succeeded (pi=${paymentIntent.id})`);
-
-          // Fire-and-forget confirmation email — must not block the webhook response
-          const bookingDetails = await db.execute(sql`
-            SELECT b.title, b.booking_date, u.email, u.first_name, u.last_name
-            FROM bookings b
-            JOIN users u ON u.id = b.user_id
-            WHERE b.id = ${bookingId}
-            LIMIT 1
-          `).catch(() => null);
-
-          const row = bookingDetails?.rows?.[0] as any;
-          if (row?.email) {
-            enqueueBookingConfirmationEmail({
-              toEmail: row.email,
-              userName: [row.first_name, row.last_name].filter(Boolean).join(' ') || '',
-              bookingId,
-              bookingTitle: row.title || 'Your booking',
-              bookingDate: row.booking_date ?? null,
-              confirmationCode: confirmed.confirmation_code,
-            });
-          }
+          // Committed: try the traveler's confirmation once now. The outbox drain is the guarantee.
+          kickLegacyConfirmationDelivery(confirmationOutboxId);
         }
       },
     );
+  }
+
+  /**
+   * A success signal the legacy claim did not take. `confirmed` is a duplicate delivery and a
+   * missing row has nothing to confirm; both are skipped quietly. Any OTHER status (cancelled,
+   * refunded, expired, disputed) is a LATE payment signal (§15c rule 3): the booking is not
+   * resurrected, an error is logged, and ONE `admin_notifications` row
+   * (`legacy_late_payment_signal`) records it per booking and PaymentIntent — a redelivered event
+   * adds none, because the check and the insert run under one transaction-scoped advisory lock on
+   * that pair. `scanLegacyRail` (§17) reports the same drift on its next daily pass. Never throws:
+   * the alert must not fail the webhook that carries other bookings.
+   */
+  private async reportUnclaimedLegacyPaymentSignal(bookingId: string, paymentIntentId: string) {
+    try {
+      const current = await db.execute(sql`SELECT status FROM bookings WHERE id = ${bookingId}`);
+      const status = (current.rows?.[0] as { status: string | null } | undefined)?.status;
+      if (current.rows?.length === 0 || status === 'confirmed') {
+        console.log(`[webhook] booking ${bookingId} already confirmed or missing — skipping`);
+        return;
+      }
+      logger.error({ bookingId, paymentIntentId, status },
+        '[webhook] legacy booking received a payment success signal after leaving pre-payment; not confirmed');
+      const metadata = { bookingId, paymentIntentId, status };
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`legacy_late_payment_signal:${bookingId}:${paymentIntentId}`}))`);
+        await tx.execute(sql`
+          INSERT INTO admin_notifications (type, message, reason, metadata)
+          SELECT 'legacy_late_payment_signal',
+                 ${`Booking ${bookingId} was paid (PaymentIntent ${paymentIntentId}) while ${status ?? 'without a status'}. It was not confirmed. Check whether to refund the charge.`},
+                 'payment_after_terminal_status',
+                 ${JSON.stringify(metadata)}::jsonb
+          WHERE NOT EXISTS (
+            SELECT 1 FROM admin_notifications
+            WHERE type = 'legacy_late_payment_signal'
+              AND metadata->>'bookingId' = ${bookingId}
+              AND metadata->>'paymentIntentId' = ${paymentIntentId}
+          )
+        `);
+      });
+    } catch (err) {
+      logger.error({ err, bookingId, paymentIntentId },
+        '[webhook] late legacy payment signal could not be recorded in admin_notifications — this log line is the only record');
+    }
   }
 
   /**
