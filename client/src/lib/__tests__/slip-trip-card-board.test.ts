@@ -28,8 +28,13 @@ test("T3: provenance keeps its testid with the line as its first text (the P5 pi
   assert.match(days, /data-testid="card-provenance">\s*\{provenance\}/);
 });
 
-test("T4: the board facts line is read whole once; the coloured halves are presentation", () => {
-  const fn = row.slice(row.indexOf("function BoardFactsText"));
-  assert.match(fn, /<span className="sr-only">\{text\}<\/span>/);
-  assert.equal((fn.slice(0, 600).match(/aria-hidden="true"/g) ?? []).length, 2);
+// Sanctioned 2026-10-12 (P0-e addition 7): the hidden whole copy printed the hours twice to any reader of
+// the page text; the line is now its two visible halves, read in order.
+test("T4: the board facts line is printed once; its two visible halves read in order", () => {
+  const fn = row.slice(row.indexOf("function BoardFactsText"), row.indexOf("function BoardFactsText") + 900);
+  assert.doesNotMatch(fn, /sr-only/);
+  assert.doesNotMatch(fn, /aria-hidden/);
+  const lead = fn.indexOf("<span>{lead}</span>");
+  const source = fn.indexOf("· {source}</span>");
+  assert.ok(lead > 0 && source > lead, "the hours first, then the source");
 });

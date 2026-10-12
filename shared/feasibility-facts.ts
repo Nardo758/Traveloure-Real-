@@ -69,7 +69,7 @@ export function parseLastAdmission(v: unknown): LastAdmissionValue | null {
   return { byWeekday: out };
 }
 
-function inSeason(season: { from: string; to: string } | null | undefined, dateIso: string): boolean {
+export function inSeason(season: { from: string; to: string } | null | undefined, dateIso: string): boolean {
   if (!season) return true;
   const md = dateIso.slice(5, 10);
   return season.from <= season.to ? md >= season.from && md <= season.to : md >= season.from || md <= season.to;
@@ -80,6 +80,44 @@ export function lastAdmissionMinutes(v: LastAdmissionValue, dateIso: string): nu
   if (!ISO_DATE.test(dateIso) || !inSeason(v.season, dateIso)) return null;
   const weekday = new Date(`${dateIso}T00:00:00Z`).getUTCDay();
   return hhmmMinutes(v.byWeekday[String(weekday) as keyof LastAdmissionValue["byWeekday"]] ?? null);
+}
+
+/**
+ * P0-e item 2 (decision-maker, Oct 12, 2026; ledger `2026-10-12-p0e-findings-and-gaps`): the last-entry
+ * minute for ONE date from every stored candidate, in precedence order — the first whose season covers the
+ * date and states that weekday. The loader used to keep only the first fact, so a winter-only fact hid the
+ * summer one on a summer date. Pure; null ⇒ nothing applies (§13).
+ */
+export function lastAdmissionForDate(candidates: readonly unknown[], dateIso: string): number | null {
+  for (const c of candidates) {
+    const v = parseLastAdmission(c);
+    const m = v ? lastAdmissionMinutes(v, dateIso) : null;
+    if (m !== null) return m;
+  }
+  return null;
+}
+
+/**
+ * P0-e item 2: an official `hours` fact may carry `season {from: "MM-DD", to: "MM-DD"}` inside its value
+ * (no migration). Pure; a missing season covers every date; a malformed one covers none, never a guess.
+ */
+export function hoursSeason(value: unknown): { from: string; to: string } | null | "invalid" {
+  const season = (value as any)?.season;
+  if (season == null) return null;
+  if (typeof season !== "object" || !MMDD.test(String(season.from ?? "")) || !MMDD.test(String(season.to ?? ""))) return "invalid";
+  return { from: season.from, to: season.to };
+}
+
+/**
+ * Pure. The hours fact for ONE date from the candidates in precedence order (official first, the Places
+ * weekly list last): the first whose season covers the date. None ⇒ null (that stop's hours are unchecked).
+ */
+export function hoursFactForDate<T extends { season?: { from: string; to: string } | null }>(candidates: readonly T[], dateIso: string | null): T | null {
+  for (const c of candidates) {
+    if (!c.season) return c;
+    if (dateIso && ISO_DATE.test(dateIso) && inSeason(c.season, dateIso)) return c;
+  }
+  return null;
 }
 
 // ── last_service ─────────────────────────────────────────────────────────────────────────────────

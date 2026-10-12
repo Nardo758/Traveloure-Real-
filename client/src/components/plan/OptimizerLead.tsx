@@ -16,7 +16,7 @@
  */
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadCoverageLine, leadDeltaLine, unlocatedStopLines, type Finding, type LegCoverage } from "@shared/optimizer-lead";
+import { FREE_PLAN_COVERAGE_FOOTER, LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, findingStopLines, leadCoverageLine, leadDeltaLine, unlocatedStopGroups, type Finding, type LegCoverage } from "@shared/optimizer-lead";
 import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
 
 /** P0-d: no coverage answer is an incomplete one — never an all-clear (§13). */
@@ -152,17 +152,16 @@ function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fe
       <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="optimizer-lead-eyebrow">
         {LEAD_EYEBROW}
       </p>
-      {none && zeroGap ? (
-        <CoverageGap line={zeroGap} stops={unlocatedStopLines(coverage)} tone="plain" />
-      ) : none ? (
+      {none && !zeroGap ? (
         <p className="text-sm text-foreground" data-testid="optimizer-lead-zero">
           {LEAD_ZERO}
         </p>
-      ) : known ? (
+      ) : known && !none ? (
         <ul className="space-y-1">
           {findings!.map((f) => (
             <li key={f.kind} className="text-sm text-foreground" data-testid={`optimizer-finding-${f.kind}`} data-count={f.count}>
               {findingLine(f)}
+              <FindingStops finding={f} className="text-[11px] text-muted-foreground" />
               {f.caveat ? (
                 <span className="block text-[11px] text-muted-foreground" data-testid={`optimizer-finding-caveat-${f.kind}`}>
                   {f.caveat}
@@ -172,6 +171,8 @@ function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fe
           ))}
         </ul>
       ) : null}
+      {/* P0-e item 1: the coverage line shows whenever coverage is incomplete — beside any findings. */}
+      {known && zeroGap ? <CoverageGap line={zeroGap} coverage={coverage} freePlan={routedPlan === false} tone="plain" /> : null}
       {delta ? (
         <p className="text-sm font-medium text-foreground" data-testid="optimizer-lead-delta">
           {delta}
@@ -288,13 +289,11 @@ function BoardOptimizerLead({
           {intro}
         </p>
       ) : null}
-      {none && zeroGap ? (
-        <CoverageGap line={zeroGap} stops={unlocatedStopLines(coverage)} tone="board" />
-      ) : none ? (
+      {none && !zeroGap ? (
         <p className="text-sm text-white" data-testid="optimizer-lead-zero">
           {noStay ? LEAD_ZERO_NO_STAY : LEAD_ZERO}
         </p>
-      ) : known ? (
+      ) : known && !none ? (
         <ul className="space-y-2">
           {findings!.map((f) => {
             const { badge, rest } = findingBadge(f);
@@ -306,6 +305,7 @@ function BoardOptimizerLead({
                 <span>
                   {badge === "↓" ? null : <span className="sr-only">{badge} </span>}
                   {rest}
+                  <FindingStops finding={f} className={quiet} />
                   {f.caveat ? (
                     <span className={`block ${quiet}`} data-testid={`optimizer-finding-caveat-${f.kind}`}>
                       {f.caveat}
@@ -317,6 +317,8 @@ function BoardOptimizerLead({
           })}
         </ul>
       ) : null}
+      {/* P0-e item 1: the coverage line shows whenever coverage is incomplete — beside any findings. */}
+      {known && zeroGap ? <CoverageGap line={zeroGap} coverage={coverage} freePlan={routedPlan === false} tone="board" /> : null}
       {delta ? (
         <p className="text-sm font-medium text-white" data-testid="optimizer-lead-delta">
           {delta}
@@ -349,26 +351,54 @@ function BoardOptimizerLead({
 }
 
 /**
- * P0-d item 1: the line the card says instead of the all-clear, with the stops off the map listed under
- * it ("Day 2 · Soba Restaurant"). The words are `leadCoverageLine`'s and `unlocatedStopLines`' (one home).
+ * P0-d item 1: the line the card says instead of the all-clear. P0-e (decision-maker, Oct 12, 2026): it
+ * shows beside any findings (item 1), the stops off the map split by kind — real places "we'll put these
+ * on the map", placeholders "pick a spot, or let Optimize suggest one nearby" (item 4) — and a free plan
+ * carries the straight-line footer. Every word is `@shared/optimizer-lead`'s (one home).
  */
-function CoverageGap({ line, stops, tone }: { line: string; stops: string[]; tone: "plain" | "board" }) {
+function CoverageGap({ line, coverage, freePlan, tone }: { line: string; coverage: LegCoverage | null | undefined; freePlan: boolean; tone: "plain" | "board" }) {
   const main = tone === "board" ? "text-sm text-white" : "text-sm text-foreground";
   const sub = tone === "board" ? "text-xs text-[color:var(--slip-on-navy-muted)]" : "text-xs text-muted-foreground";
+  const groups = unlocatedStopGroups(coverage);
   return (
     <div data-testid="optimizer-lead-coverage">
       <p className={main} data-testid="optimizer-lead-coverage-line">
         {line}
       </p>
-      {stops.length ? (
-        <ul className="mt-1 space-y-0.5">
-          {stops.map((s, i) => (
-            <li key={`${i}-${s}`} className={sub} data-testid="optimizer-lead-unlocated-stop">
-              {s}
-            </li>
-          ))}
-        </ul>
+      {groups.map((g) => (
+        <div key={g.kind} className="mt-1" data-testid={`optimizer-lead-unlocated-${g.kind}`}>
+          <p className={sub} data-testid={`optimizer-lead-unlocated-head-${g.kind}`}>
+            {g.heading}
+          </p>
+          <ul className="space-y-0.5">
+            {g.lines.map((s, i) => (
+              <li key={`${i}-${s}`} className={sub} data-testid="optimizer-lead-unlocated-stop">
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+      {freePlan ? (
+        <p className={`mt-1 ${sub}`} data-testid="optimizer-lead-coverage-footer">
+          {FREE_PLAN_COVERAGE_FOOTER}
+        </p>
       ) : null}
     </div>
+  );
+}
+
+/** P0-e item 2: the stops an hours finding counts, one line each ("Ginkaku-ji Temple · Day 2 starts after closing (5:00 PM)"). */
+function FindingStops({ finding, className }: { finding: Finding; className: string }) {
+  const lines = findingStopLines(finding);
+  if (!lines.length) return null;
+  return (
+    <span className="block" data-testid={`optimizer-finding-stops-${finding.kind}`}>
+      {lines.map((l, i) => (
+        <span key={`${i}-${l}`} className={`block ${className}`} data-testid="optimizer-finding-stop">
+          {l}
+        </span>
+      ))}
+    </span>
   );
 }

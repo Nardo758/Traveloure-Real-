@@ -51,3 +51,15 @@ export function siblingDayIso(
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/**
+ * P0-e addition 5 (ledger `2026-10-12-p0e-findings-and-gaps`): the Trip Card's day label inside the
+ * selected-day panel header — "Thu Nov 12" (no dot between weekday and date, the way the header reads
+ * "Thu Nov 12 · 2 legs · 6 stops"). No machine date ⇒ the plan's own "Day N" (§13).
+ */
+export function cardPanelDayLabel(day: { dayNum: number | null; dateIso?: string | null }): string {
+  const d = parseTripDate(day.dateIso ?? null);
+  if (d) return `${WKD[d.getDay()]} ${MON[d.getMonth()]} ${d.getDate()}`;
+  if (day.dayNum == null) return SLIP_UNDATED_SLOT_HEADING;
+  return `Day ${day.dayNum}`;
+}

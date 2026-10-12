@@ -777,6 +777,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   // Step 6: the Trip Card surface (the page's frozen-final read-out) — the only mount that renders
   // `TripCardDays` and drops planning controls.
   const cardSurface = routingReadOnly && !embedded && stage === "full";
+  // P0-e addition 5: the card's day chips own the selected day; the panels below follow it.
+  const onCardDayChange = (dayNum: number) => {
+    const i = days.findIndex((d) => d.dayNum === dayNum);
+    if (i >= 0) setSelectedDay(i);
+  };
   // "X of Y located" for the selected day — the map's own predicate (§18 rule 1); null ⇒ no label.
   const mapLocatedLabel = locatedCountLabel(day?.activities);
 
@@ -971,6 +976,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                   advisorName={advisorName}
                   isOwner={isOwner}
                   readyMadeSource={plancardData?.readyMadeSource ?? null}
+                  onOpenDayChange={onCardDayChange}
                 />
               </>
             ) : (
@@ -1092,6 +1098,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               days={days}
               bookings={plancardData?.bookings}
               expertTravelerNote={plancardData?.trip?.expertTravelerNote}
+              cardSurface={cardSurface}
             />
 
             {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window.

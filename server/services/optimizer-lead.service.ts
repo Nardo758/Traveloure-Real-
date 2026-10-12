@@ -40,7 +40,9 @@ import {
 } from "@shared/optimizer-lead";
 import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip } from "./content-facts/place-facts.service";
-import { lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "@shared/feasibility-facts";
+import { loadMarketAreaNames } from "./content-facts/market-areas";
+import { unnamedPlaceReason } from "@shared/place-name-gate";
+import { hoursFactForDate, lastAdmissionForDate, lastServiceMinutes, parseLastService, SERVICE_DAY_START_MIN } from "@shared/feasibility-facts";
 import { isRideMode, type DayFeasibility } from "@shared/plan-feasibility";
 import { parseDayHours } from "@shared/optimizer-lead";
 import { haversineMeters } from "@shared/geo";
@@ -161,11 +163,25 @@ export async function loadLegCoverage(tripId: string, now: Date = new Date()): P
   if (!trip) return { coverage: { complete: false, unlocated: [] }, routedPlan: false };
   const { loadPlanLegContext } = await import("./routing/plan-legs-engine.service");
   const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
-  const [ctx, legs, routedPlan] = await Promise.all([loadPlanLegContext(tripId, trip), tripLegsShown(tripId), tripGetsRoutedLegs(tripId)]);
+  const city = (trip.destination ?? "").split(",")[0].trim() || null;
+  const [ctx, legs, routedPlan, items, areaNames] = await Promise.all([
+    loadPlanLegContext(tripId, trip),
+    tripLegsShown(tripId),
+    tripGetsRoutedLegs(tripId),
+    storage.getItineraryItems(tripId),
+    loadMarketAreaNames((trip as any).marketSlug ?? null, city),
+  ]);
   const start = trip.startDate ? String(trip.startDate).slice(0, 10) : null;
   const stopList = ctx.stops.filter((s) => !(ctx.stay && s.id === ctx.stay.id));
+  // P0-e item 4: an off-map stop is a PLACEHOLDER when it names no place — the ONE decision the Places
+  // lookup gate reads (`unnamedPlaceReason`), so the card and the lookup never disagree about a stop.
+  const byId = new Map(items.map((it: any) => [it.id, it]));
+  const placeholder = (id: string, title: string) => {
+    const it: any = byId.get(id);
+    return unnamedPlaceReason({ title: it?.title ?? title, locationName: it?.locationName ?? null }, city, areaNames) !== null;
+  };
   const coverage = planLegCoverage(
-    stopList.map((s) => ({ id: s.id, title: s.name, dayNumber: s.dayNumber, located: !!s.point })),
+    stopList.map((s) => ({ id: s.id, title: s.name, dayNumber: s.dayNumber, located: !!s.point, ...(s.point ? {} : { placeholder: placeholder(s.id, s.name) }) })),
     legs.map((l: any) => ({ dayNumber: l.dayNumber, fromId: l.fromActivityId ?? null, toId: l.toActivityId ?? null, routed: legIsRouted(l) })),
     (day) => planDayIsPast(start, day, trip.timezone ?? null, now),
   );
@@ -191,7 +207,7 @@ type FeasibilityItem = {
 
 interface FeasibilityContext {
   hours: Map<string, HoursFact>;
-  timed: Array<{ id: string; dayNumber: number; dateIso: string | null; startTime: string | null; endTime: string | null; durationMinutes: number | null }>;
+  timed: Array<{ id: string; title: string; dayNumber: number; dateIso: string | null; startTime: string | null; endTime: string | null; durationMinutes: number | null }>;
   /** Item → the last-entry minute that applies on its date (ruling 1). */
   lastEntry: Map<string, number>;
   /** Every ride the plan takes; `lastDepartures` empty ⇒ not checked (ruling 2). */
@@ -204,22 +220,24 @@ interface FeasibilityContext {
  */
 async function feasibilityContext(tripId: string, items: FeasibilityItem[], start: string | null, market: string | null): Promise<FeasibilityContext> {
   const facts = await feasibilityFactsForTrip(tripId, market);
-  const hours = new Map<string, HoursFact>();
-  facts.hours.forEach((h, itemId) => hours.set(itemId, h));
   const timed = items
     .filter((r) => r.dayNumber != null)
     .map((r) => ({
       id: r.id,
+      title: r.title,
       dayNumber: r.dayNumber!,
       dateIso: start ? addDays(start, r.dayNumber! - 1) : null,
       startTime: r.startTime ?? null,
       endTime: r.endTime ?? null,
       durationMinutes: r.durationMinutes ?? null,
     }));
+  // P0-e item 2: the hours and the last entry that apply on THIS stop's date, from every stored candidate.
+  const hours = new Map<string, HoursFact>();
   const lastEntry = new Map<string, number>();
   for (const it of timed) {
-    const v = parseLastAdmission(facts.lastAdmission.get(it.id));
-    const m = v && it.dateIso ? lastAdmissionMinutes(v, it.dateIso) : null;
+    const h = hoursFactForDate(facts.hours.get(it.id) ?? [], it.dateIso);
+    if (h) hours.set(it.id, h);
+    const m = it.dateIso ? lastAdmissionForDate(facts.lastAdmission.get(it.id) ?? [], it.dateIso) : null;
     if (m !== null) lastEntry.set(it.id, m);
   }
 
