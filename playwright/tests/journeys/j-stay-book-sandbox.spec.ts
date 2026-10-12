@@ -33,6 +33,9 @@ async function payWithSandboxCard(page: import("@playwright/test").Page, contain
   const numberSel = 'input[name="number"], input[name="cardnumber"], input[autocomplete="cc-number"]';
   const deadline = Date.now() + 60_000;
   let cardFrame: import("@playwright/test").Frame | null = null;
+  // The SDK is a Stripe Payment Element in an accordion: when it offers more than one method (run 38279220948
+  // showed Klarna and Amazon Pay beside card), the card fields exist only once "Card" is selected.
+  const paymentFrames = () => page.frames().filter((f) => f.url().includes("componentName=payment"));
   while (!cardFrame && Date.now() < deadline) {
     for (const f of page.frames()) {
       if (await f.locator(numberSel).count().catch(() => 0)) {
@@ -40,10 +43,17 @@ async function payWithSandboxCard(page: import("@playwright/test").Page, contain
         break;
       }
     }
-    if (!cardFrame) await page.waitForTimeout(1_000);
+    if (!cardFrame) {
+      for (const f of paymentFrames()) {
+        const card = f.locator('[data-value="card"], button:has-text("Card"), [role="radio"]:has-text("Card"), [role="button"]:has-text("Card")').first();
+        if (await card.count().catch(() => 0)) await card.click({ timeout: 5_000 }).catch(() => {});
+      }
+      await page.waitForTimeout(1_000);
+    }
   }
   if (!cardFrame) {
-    console.log(`[sandbox-pay] no card-number field in any frame; frames: ${page.frames().map((f) => f.url()).join(" | ")}`);
+    console.log(`[sandbox-pay] no card-number field in any frame; frames: ${page.frames().map((f) => f.url().slice(0, 120)).join(" | ")}`);
+    for (const f of paymentFrames()) console.log(`[sandbox-pay] payment frame text: ${(await f.locator("body").innerText().catch(() => "")).slice(0, 600)}`);
     console.log(`[sandbox-pay] container: ${(await page.locator(container).innerHTML().catch(() => "")).slice(0, 2000)}`);
     throw new Error("the Payment SDK drew no card-number field within 60 s");
   }
