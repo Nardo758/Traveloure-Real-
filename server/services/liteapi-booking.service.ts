@@ -365,6 +365,9 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
     // ("still waiting for the hotel's answer") and the sync finds it by our client reference.
     if (err instanceof LiteapiTimeoutError) console.warn(`[liteapi-booking] book ${input.itemId}: ${err.message} — left waiting for the sync`);
     const definite = err instanceof LiteapiError && err.status >= 400 && err.status < 500;
+    // One line per book that did not answer CONFIRMED: LiteAPI's status and its own message (the text stored as
+    // failure_reason), so a refused book says why in the server log.
+    if (!(err instanceof LiteapiTimeoutError)) console.warn(`[liteapi-booking] book ${input.itemId} ${definite ? "refused" : "unanswered"}: ${err instanceof LiteapiError ? `${err.status} ` : ""}${String(err?.message ?? err).slice(0, 300)}`);
     await db
       .update(liteapiBookings)
       .set({ status: definite ? "failed" : "booking", failureReason: String(err?.message ?? err).slice(0, 300), updatedAt: new Date() })
@@ -378,6 +381,7 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
   }
   if (!bookIsConfirmed(facts)) {
     const failed = facts.status === "FAILED";
+    console.warn(`[liteapi-booking] book ${input.itemId}: LiteAPI answered ${facts.status || "no status"}`);
     await db
       .update(liteapiBookings)
       .set({ status: failed ? "failed" : "booking", liteapiBookingId: facts.liteapiBookingId, lastSyncStatus: facts.status || null, updatedAt: new Date() })
