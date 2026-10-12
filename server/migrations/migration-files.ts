@@ -2019,4 +2019,9 @@ export const MIGRATION_FILES = [
   // transport_legs.user_selected_mode where nobody checked the leg, it equals recommended_mode and the leg is not
   // superseded. Idempotent (a cleared row no longer matches). Migration 374 SQL approved by Leon — comment 01:02Z on #1424.
   "374_reset_echoed_leg_mode.sql",
+  // 375 — FE-1 (a), ledger 2026-10-12-fe1-fee-integrity: users.commission_override_platform_fee_percent,
+  // the per-earner override stated as the platform fee (additive nullable numeric(5,2), no default /
+  // CHECK / index / backfill). Both resolvers prefer it over the old expert-share column, which stays
+  // readable. HELD FOR LEON'S COMMENT on the PR.
+  "375_users_platform_fee_override.sql",
 ] as const;

@@ -135,7 +135,8 @@ export function ExpertMatchCard({
   const responseTime = expert.responseTime || expert.expertForm?.responseTime || null;
   const reviewsCount = expert.reviewsCount || null;
   const tripsCount = expert.tripsCount || null;
-  const verified = expert.verified !== false;
+  // FE-1 (c): verified only when the data says so — an absent flag is not a verification.
+  const verified = expert.verified === true;
   const superExpert = expert.superExpert || false;
 
   const specialties = expert.specialties || expert.specializations?.slice(0, 2) || [];
