@@ -46,9 +46,8 @@ import {
   liteapiCurrency,
   liteapiGuestNationality,
   liteapiRatesTimeoutMs,
-  type LiteapiConfig,
-} from "../config/liteapi.config";
-import { createLiteapiClient, LiteapiError, type LiteapiClient } from "./liteapi-client";
+  type LiteapiConfig, liteapiPrebookTimeoutMs, liteapiBookTimeoutMs } from "../config/liteapi.config";
+import { createLiteapiClient, LiteapiError, LiteapiTimeoutError, type LiteapiClient } from "./liteapi-client";
 import { gatedLiteapiRatesCall, type LiteapiRatesGateDeps } from "./liteapi-rates-gate";
 import { publicMarginFraction } from "./liteapi-rates.service";
 import { verifyTripOwnership } from "../utils/trip-ownership";
@@ -59,6 +58,9 @@ export interface StayBookingDeps {
   gate?: LiteapiRatesGateDeps;
   marginFraction: () => Promise<number>;
   timeoutMs: () => number;
+  /** S1-d-3c: hard client timeouts on the booking host (config, never literals). */
+  prebookTimeoutMs?: () => number;
+  bookTimeoutMs?: () => number;
 }
 
 export const defaultStayBookingDeps: StayBookingDeps = {
@@ -66,6 +68,8 @@ export const defaultStayBookingDeps: StayBookingDeps = {
   client: (cfg) => createLiteapiClient(cfg),
   marginFraction: publicMarginFraction,
   timeoutMs: () => liteapiRatesTimeoutMs(),
+  prebookTimeoutMs: () => liteapiPrebookTimeoutMs(),
+  bookTimeoutMs: () => liteapiBookTimeoutMs(),
 };
 
 type Refusal =
@@ -230,8 +234,9 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
   }
 
   let parsed;
+  const prebookTimeout = (deps.prebookTimeoutMs ?? liteapiPrebookTimeoutMs)();
   try {
-    const prebookBody = await client.prebook({ offerId });
+    const prebookBody = await client.prebook({ offerId }, { timeoutMs: prebookTimeout });
     console.info(`[liteapi-booking] prebook ${input.itemId}: ${prebookDiagnostic(offerQuote, prebookBody, marginUsed)}`);
     parsed = parsePrebook(prebookBody, quotedSsp);
     if (!parsed.ok && parsed.reason === "below_ssp") {
@@ -251,7 +256,7 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
         offerQuote = again.value;
         marginUsed = fl.percent;
         quotedSsp = sspFromRates(again.value) ?? quotedSsp;
-        const secondBody = await client.prebook({ offerId });
+        const secondBody = await client.prebook({ offerId }, { timeoutMs: prebookTimeout });
         console.info(`[liteapi-booking] prebook ${input.itemId} (retry): ${prebookDiagnostic(offerQuote, secondBody, marginUsed)}`);
         parsed = parsePrebook(secondBody, quotedSsp);
       }
@@ -351,8 +356,14 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
 
   let answer: any;
   try {
-    answer = await deps.client(cfg).book({ prebookId: pre.prebookId, transactionId: pre.transactionId, clientReference: pre.id, holder });
+    answer = await deps.client(cfg).book(
+      { prebookId: pre.prebookId, transactionId: pre.transactionId, clientReference: pre.id, holder },
+      { timeoutMs: (deps.bookTimeoutMs ?? liteapiBookTimeoutMs)() },
+    );
   } catch (err: any) {
+    // S1-d-3c: a timeout is UNKNOWN, never failed — a charge may exist (LD 43/44). The row stays `booking`
+    // ("still waiting for the hotel's answer") and the sync finds it by our client reference.
+    if (err instanceof LiteapiTimeoutError) console.warn(`[liteapi-booking] book ${input.itemId}: ${err.message} — left waiting for the sync`);
     const definite = err instanceof LiteapiError && err.status >= 400 && err.status < 500;
     await db
       .update(liteapiBookings)
