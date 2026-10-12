@@ -19,7 +19,7 @@
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
 import type { ReactNode } from "react";
-import { CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
 import {
   DropdownMenu,
@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { FactView } from "@shared/content-facts";
 import type { PlanCardActivity } from "@/components/plancard/plancard-types";
-import { factsLineParts, itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
+import { factsLineParts, itemClosingWarning, itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
 import { CHECKING_HOURS_LABEL } from "@/lib/plancard-refetch";
 import { AnchorRow, anchorLabel } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
@@ -137,9 +137,11 @@ export function ItemRow(props: ItemRowProps) {
   const { item: a, facts, dateIso = null, timeZone = null, mode, anchor = null, menu = null, highlighted = false } = props;
   const place = itemPlaceLine(facts, a, timeZone);
   const factsLine = itemFactsLine(facts, dateIso, timeZone);
+  // P0-e addition 7: the planned time against the shown hours fact's closing time, named with its source.
+  const closing = itemClosingWarning(facts, dateIso, { time: a.time, endTime: (a as any).endTime, durationMinutes: (a as any).durationMinutes }, timeZone);
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
   const look = usePlanRowLook();
-  if (look === "board") return <BoardItemRow {...props} place={place} factsLine={factsLine} showMenu={!!showMenu} />;
+  if (look === "board") return <BoardItemRow {...props} place={place} factsLine={factsLine} closing={closing} showMenu={!!showMenu} />;
 
   const titleLine = (
     <p className={`font-medium flex items-start gap-1.5 ${props.visited?.checked ? "text-muted-foreground line-through" : "text-foreground"}`}>
@@ -217,6 +219,7 @@ export function ItemRow(props: ItemRowProps) {
           {CHECKING_HOURS_LABEL}
         </p>
       ) : null}
+      {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
       {props.bookingState ? (
         <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-booking-${a.id}`}>
           {props.bookingState}
@@ -396,10 +399,11 @@ function BoardItemRow(
   props: ItemRowProps & {
     place: ReturnType<typeof itemPlaceLine>;
     factsLine: ReturnType<typeof itemFactsLine>;
+    closing: ReturnType<typeof itemClosingWarning>;
     showMenu: boolean;
   },
 ) {
-  const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine } = props;
+  const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine, closing } = props;
   const time = anchor ? (anchor.time !== undefined ? anchor.time : a.time || null) : a.time || null;
   const title = anchor ? anchor.title || a.name : a.name;
   const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine, withExpert: !!props.pen });
@@ -494,6 +498,7 @@ function BoardItemRow(
           {CHECKING_HOURS_LABEL}
         </p>
       ) : null}
+      {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
       {props.bookingState ? (
         // The Handoff board draws a booked stop as a teal pill; every other booking note stays a line.
         <p
@@ -553,16 +558,32 @@ function BoardItemRow(
   );
 }
 
+/** P0-e addition 7: the row's closing warning, with its source's link when the fact carries one. */
+function ClosingWarning({ id, closing }: { id: string; closing: NonNullable<ReturnType<typeof itemClosingWarning>> }) {
+  return (
+    <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`slip-item-closing-${id}`}>
+      <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+      {closing.sourceUrl ? (
+        <a href={closing.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+          {closing.text}
+        </a>
+      ) : (
+        closing.text
+      )}
+    </p>
+  );
+}
+
 /** The board's facts line: the day's hours in teal-ink, the provenance after it in muted grey. */
 function BoardFactsText({ text }: { text: string }) {
   const { lead, source } = factsLineParts(text);
-  // The line is read ONCE, whole, by assistive tech (and by any reader of the markup); the two
-  // coloured halves are presentation only.
+  // P0-e addition 7: the line is drawn ONCE — the two coloured halves read in order ("Thu · 8:30 AM –
+  // 5:00 PM · Google Maps · checked 4 Oct"). A hidden whole copy beside them printed the hours twice
+  // to any reader of the page text.
   return (
     <>
-      <span className="sr-only">{text}</span>
-      <span aria-hidden="true">{lead}</span>
-      {source ? <span aria-hidden="true" className="font-normal text-[color:var(--slip-muted)]"> · {source}</span> : null}
+      <span>{lead}</span>
+      {source ? <span className="font-normal text-[color:var(--slip-muted)]"> · {source}</span> : null}
     </>
   );
 }

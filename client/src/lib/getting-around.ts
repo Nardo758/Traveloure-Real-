@@ -10,7 +10,7 @@
  * from. Pure; no calls.
  */
 import { routedLegLine } from "@shared/routing-engine";
-import { slipLegBetween, unroutedLegLine } from "./slip-legs";
+import { bridgeLabelFor, slipLegBetween, unroutedLegLine } from "./slip-legs";
 import { TRAVEL_TIMES_COME_WITH_OPTIMIZE } from "@shared/optimizer-lead";
 
 export const GETTING_AROUND_EMPTY = "No stops on this plan yet.";
@@ -56,7 +56,9 @@ export function gettingAroundDays(days: readonly any[] | null | undefined, timeZ
       const from = stops[i];
       const to = stops[i + 1];
       const leg = slipLegBetween([d], String(from.id), String(to.id));
-      const title = `${stopName(from)} → ${stopName(to)}`;
+      // P0-e item 3: a bridge around an unlocated stop is named by its real endpoints and the stops it goes
+      // round — the same formatter the slip and the Trip Card use ("Fushimi Inari → Tofuku-ji · around Soba Restaurant").
+      const title = leg?.bridge ? bridgeLabelFor(stops, leg.bridge, String(to.id)) : `${stopName(from)} → ${stopName(to)}`;
       const key = `${from.id}>${to.id}`;
       if (leg?.kind === "routed") gaps.push({ key, title, kind: "routed", line: routedLegLine({ mode: leg.mode, route: leg.route }, timeZone) });
       else if (leg?.kind === "unrouted") gaps.push({ key, title, kind: "unrouted", line: unroutedLegLine(leg.mode, leg.minutes) });
