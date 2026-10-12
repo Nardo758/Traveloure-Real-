@@ -44,6 +44,7 @@ import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { isItineraryFollowup } from "./itinerary-followup-email";
+import { LegacyBookingEmailPersistenceError } from "./legacy-booking-email-persistence-error";
 import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
@@ -91,6 +92,8 @@ const LEASE_MS = 10 * 60 * 1000;
  */
 export const _outboxTestHooks: {
   sendEmailFn?: (params: SendEmailParams) => Promise<SendEmailResult>;
+  /** Replaces the post-commit legacy confirmation kick (tests that inspect the durable row). */
+  legacyConfirmationKickFn?: (outboxId: number) => void;
 } = {};
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -458,6 +461,86 @@ async function attemptDelivery(
 }
 
 // ── Booking confirmation shortcut ─────────────────────────────────────────────
+
+type OutboxTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Called only by a winning legacy confirmation UPDATE in the SAME transaction.
+ * Persist before commit; the existing drain owns delivery, never this writer.
+ * Unlike the best-effort enqueue shortcut, any persistence failure must roll
+ * back confirmation so an authoritative payment retry can safely try again.
+ */
+export async function persistLegacyBookingConfirmationEmail(
+  tx: OutboxTransaction,
+  bookingId: string,
+): Promise<number> {
+  try {
+    const result = await tx.execute(sql`
+      SELECT b.title, b.booking_date, b.confirmation_code,
+             u.email, u.first_name, u.last_name
+      FROM bookings b
+      LEFT JOIN users u ON u.id = b.user_id
+      WHERE b.id = ${bookingId} AND b.status = 'confirmed'
+    `);
+    const row = result.rows[0] as {
+      title: string | null;
+      booking_date: string | null;
+      confirmation_code: string | null;
+      email: string | null;
+      first_name: string | null;
+      last_name: string | null;
+    } | undefined;
+    if (!row?.confirmation_code) {
+      throw new Error("Confirmed booking could not be read with its stored confirmation code");
+    }
+    const toEmail = row.email?.trim() || "";
+    const payload = buildBookingConfirmationEmailPayload({
+      toEmail,
+      userName: [row.first_name, row.last_name].filter(Boolean).join(" "),
+      bookingId,
+      bookingTitle: row.title || "Your booking",
+      bookingDate: row.booking_date ?? null,
+      confirmationCode: row.confirmation_code,
+    });
+    const missingRecipient = !toEmail;
+    const [inserted] = await tx.insert(emailOutbox).values({
+      emailType: "booking_confirmation",
+      toEmail,
+      subject: payload.subject,
+      html: payload.html,
+      textBody: payload.text,
+      status: missingRecipient ? "dead" : "pending",
+      attemptCount: 0,
+      maxAttempts: 6,
+      lastError: missingRecipient
+        ? "Traveler email missing at payment confirmation; confirmation was not deliverable."
+        : null,
+      metadata: {
+        bookingId,
+        confirmationCode: row.confirmation_code,
+        source: "legacy_booking_payment",
+        ...(missingRecipient ? { deliveryBlocked: true, deliveryError: "traveler_email_missing" } : {}),
+      },
+    }).returning({ id: emailOutbox.id });
+    return inserted.id;
+  } catch (error) {
+    throw new LegacyBookingEmailPersistenceError(bookingId, error);
+  }
+}
+
+/**
+ * After the confirming transaction COMMITS, try the row once now so the traveler hears at once in
+ * the normal case. Never awaited and never throws: `deliverQueuedEmail` claims the row with an
+ * atomic conditional, so this and the 5-minute drain cannot both send it, and a kick lost to a
+ * process death leaves a `pending` row the drain still delivers — the drain stays the guarantee.
+ */
+export function kickLegacyConfirmationDelivery(outboxId: number): void {
+  if (_outboxTestHooks.legacyConfirmationKickFn) {
+    _outboxTestHooks.legacyConfirmationKickFn(outboxId);
+    return;
+  }
+  void deliverQueuedEmail(outboxId);
+}
 
 /**
  * Enqueue a booking confirmation email via the outbox so it is retried

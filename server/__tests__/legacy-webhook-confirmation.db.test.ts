@@ -6,6 +6,8 @@
  */
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import path from "node:path";
+import { spawn } from "node:child_process";
 import { after, test } from "node:test";
 import Stripe from "stripe";
 import { eq, sql } from "drizzle-orm";
@@ -32,20 +34,27 @@ https.request = forbidNetwork as typeof https.request;
 globalThis.fetch = forbidNetwork as typeof fetch;
 
 const { db, pool } = await import("../db");
-const { bookings, users, emailOutbox, paymentIntents, providerEarnings, platformRevenue } =
+const { bookings, users, emailOutbox, paymentIntents, providerEarnings, platformRevenue, adminNotifications } =
   await import("../../shared/schema");
 const { stripePaymentService } = await import("../services/stripe-payment.service");
 const { bookingService } = await import("../services/booking.service");
-const { _outboxTestHooks } = await import("../services/email-outbox.service");
+const { _outboxTestHooks, drainOutbox } = await import("../services/email-outbox.service");
+const { isLegacyBookingEmailPersistenceError } = await import("../services/legacy-booking-email-persistence-error");
 
 const sends: Array<{ to: string | string[]; text?: string }> = [];
 _outboxTestHooks.sendEmailFn = async (params) => {
   sends.push({ to: params.to, text: params.text });
   return { ok: true, id: `simulated_${crypto.randomUUID()}` };
 };
+// The writers try a committed confirmation once at once (ruling (2)). Most cases inspect the
+// durable row BEFORE any delivery, so the kick is recorded here instead of run; the cases that prove
+// the immediate delivery remove this hook.
+const kicked: number[] = [];
+_outboxTestHooks.legacyConfirmationKickFn = (outboxId) => { kicked.push(outboxId); };
 
 after(async () => {
   delete _outboxTestHooks.sendEmailFn;
+  delete _outboxTestHooks.legacyConfirmationKickFn;
   stripePrototype.retrieve = previousRetrieve;
   http.request = previousHttp;
   https.request = previousHttps;
@@ -83,8 +92,9 @@ async function fixture(deposit = false) {
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
 async function assertConfirmation(f: Fixture, pageWon = false, deposit = false) {
-  // Both authoritative writers retain fire-and-forget enqueue semantics. Poll
-  // boundedly for the actual persisted sent row, not a fixed sleep or acceptance.
+  // Traveler notices are already durable at writer return. Delivery belongs
+  // solely to the existing drain, including after a confirmation process dies.
+  await drainOutbox();
   let rows: typeof emailOutbox.$inferSelect[] = [];
   for (let attempt = 0; attempt < 200; attempt++) {
     rows = await db.select().from(emailOutbox).where(sql`
@@ -136,28 +146,32 @@ async function assertConfirmation(f: Fixture, pageWon = false, deposit = false) 
  * No SQL result or confirmation/outbox/ledger writer is mocked.
  */
 async function concurrentWebhooks(f: Fixture, count: number) {
-  const execute = db.execute.bind(db);
+  const transaction = db.transaction.bind(db);
   const dialect = new PgDialect();
   let arrived = 0;
   let release!: () => void;
   const barrier = new Promise<void>(resolve => { release = resolve; });
   const deadline = setTimeout(release, 5000);
-  db.execute = (async (query: Parameters<typeof db.execute>[0]) => {
-    const rendered = dialect.sqlToQuery(query.getSQL());
-    if (/UPDATE\s+bookings\s+SET/i.test(rendered.sql) && rendered.params.includes(f.bookingId)) {
-      arrived++;
-      if (arrived === count) release();
-      await barrier;
-    }
-    return execute(query);
-  }) as typeof db.execute;
+  db.transaction = ((action, config) => transaction(async (tx) => {
+    const execute = tx.execute.bind(tx);
+    tx.execute = (async (query: Parameters<typeof tx.execute>[0]) => {
+      const rendered = dialect.sqlToQuery(query.getSQL());
+      if (/UPDATE\s+bookings\s+SET/i.test(rendered.sql) && rendered.params.includes(f.bookingId)) {
+        arrived++;
+        if (arrived === count) release();
+        await barrier;
+      }
+      return execute(query);
+    }) as typeof tx.execute;
+    return action(tx);
+  }, config)) as typeof db.transaction;
   try {
     await Promise.all(Array.from({ length: count }, f.webhook));
     assert.equal(arrived, count, "all webhook claims reached the same race");
   } finally {
     clearTimeout(deadline);
     release();
-    db.execute = execute;
+    db.transaction = transaction;
   }
 }
 
@@ -249,3 +263,393 @@ test("already-confirmed booking retains its code, flags, and existing financial 
   assert.equal(rows.length, 0);
   assert.equal(sends.filter(send => [send.to].flat().includes(f.email)).length, 0);
 });
+
+async function travelerRows(f: Fixture) {
+  return db.select().from(emailOutbox).where(sql`
+    ${emailOutbox.metadata}->>'bookingId' = ${f.bookingId}
+    AND ${emailOutbox.emailType} = 'booking_confirmation'
+  `);
+}
+
+async function assertRolledBack(f: Fixture) {
+  const [booking] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+  assert.equal(booking.status, "pending_payment");
+  assert.equal(booking.paymentStatus, "pending");
+  assert.equal(booking.confirmationCode, null);
+  assert.equal(booking.confirmedAt, null);
+  assert.equal(booking.depositPaid, false);
+  assert.equal((await travelerRows(f)).length, 0);
+  assert.equal((await db.select().from(providerEarnings)
+    .where(eq(providerEarnings.sourceId, f.bookingId))).length, 0);
+  assert.equal((await db.select().from(platformRevenue)
+    .where(eq(platformRevenue.sourceId, f.bookingId))).length, 0);
+  assert.equal(sends.filter(send => [send.to].flat().includes(f.email)).length, 0);
+}
+
+async function assertDurablePending(f: Fixture) {
+  const rows = await travelerRows(f);
+  const [booking] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+  assert.equal(booking.status, "confirmed");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, "pending");
+  assert.equal(rows[0].attemptCount, 0);
+  assert.equal((rows[0].metadata as { confirmationCode: string }).confirmationCode, booking.confirmationCode);
+  assert.equal(sends.filter(send => [send.to].flat().includes(f.email)).length, 0,
+    "no traveler transport before the drain");
+  return booking;
+}
+
+/** Simulate a failing detail query using a real PostgreSQL error inside the winning transaction. */
+async function failDetailQuery(f: Fixture, action: () => Promise<unknown>) {
+  const transaction = db.transaction.bind(db);
+  const dialect = new PgDialect();
+  let failures = 0;
+  db.transaction = ((work, config) => transaction(async (tx) => {
+    const execute = tx.execute.bind(tx);
+    tx.execute = (async (query: Parameters<typeof tx.execute>[0]) => {
+      const rendered = dialect.sqlToQuery(query.getSQL());
+      if (/SELECT\s+b\.title,\s*b\.booking_date,\s*b\.confirmation_code/i.test(rendered.sql)
+        && rendered.params.includes(f.bookingId)) {
+        failures++;
+        return execute(sql`SELECT 1 / 0`);
+      }
+      return execute(query);
+    }) as typeof tx.execute;
+    return work(tx);
+  }, config)) as typeof db.transaction;
+  try {
+    await assert.rejects(action, isLegacyBookingEmailPersistenceError);
+    assert.equal(failures, 1, "failed the actual transactional detail-query boundary");
+  } finally {
+    db.transaction = transaction;
+  }
+}
+
+/** Reject only this owned fixture's traveler insert; no persistence result is mocked. */
+async function failTravelerInsert(f: Fixture, action: () => Promise<unknown>, expectsRejection = true) {
+  await db.execute(sql`
+    CREATE FUNCTION fixture_reject_traveler_email() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.email_type = 'booking_confirmation' THEN
+        RAISE EXCEPTION 'simulated traveler outbox persistence failure';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    CREATE TRIGGER fixture_reject_traveler_email
+      BEFORE INSERT ON email_outbox
+      FOR EACH ROW EXECUTE FUNCTION fixture_reject_traveler_email();
+  `);
+  try {
+    if (expectsRejection) await assert.rejects(action, isLegacyBookingEmailPersistenceError);
+    else await action();
+    await assertRolledBack(f);
+  } finally {
+    await db.execute(sql`
+      DROP TRIGGER fixture_reject_traveler_email ON email_outbox;
+      DROP FUNCTION fixture_reject_traveler_email();
+    `);
+  }
+}
+
+/** Kill an actual writer process at a proved native transaction boundary. */
+async function crashWriter(f: Fixture, writer: "webhook" | "page", point: "before_commit" | "after_commit") {
+  const child = spawn(process.execPath, [
+    "--require", path.resolve("scripts/verification/messaging-schema-preload.cjs"),
+    "--import", "tsx",
+    path.resolve("server/__tests__/fixtures/legacy-confirmation-crash-worker.ts"),
+    writer, point, JSON.stringify({ bookingId: f.bookingId, travelerId: f.travelerId, pi: f.pi }),
+  ], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  const ready = new Promise<void>((resolve, reject) => {
+    child.stdout.on("data", chunk => {
+      output += chunk;
+      if (output.includes(`CRASH_POINT_READY=${point}`)) resolve();
+    });
+    child.stderr.on("data", chunk => { output += chunk; });
+    child.once("error", reject);
+    child.once("exit", () => reject(new Error(`Crash worker exited before kill point: ${output}`)));
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      ready,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Crash worker readiness timeout: ${output}`)), 20000);
+      }),
+    ]);
+    if (point === "after_commit") await assertDurablePending(f);
+    child.kill("SIGKILL");
+    const result = await exited;
+    assert.equal(result.signal, "SIGKILL", "actual writer process was killed");
+  } finally {
+    clearTimeout(timer);
+    child.kill("SIGKILL");
+    await exited;
+  }
+}
+
+for (const writer of ["webhook", "page"] as const) {
+  test(`${writer}: detail lookup failure rolls back and authoritative retry saves one code`, async () => {
+    const f = await fixture();
+    const action = writer === "webhook" ? f.webhook : f.pageWriter;
+    await failDetailQuery(f, action);
+    await assertRolledBack(f);
+    await action();
+    const before = await assertDurablePending(f);
+    await f.webhook();
+    const [afterRetry] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+    assert.equal(afterRetry.confirmationCode, before.confirmationCode);
+    await assertConfirmation(f, writer === "page");
+  });
+
+  test(`${writer}: outbox insert failure never sends and rolls back until persistence recovers`, async () => {
+    const f = await fixture();
+    const action = writer === "webhook" ? f.webhook : f.pageWriter;
+    await failTravelerInsert(f, action);
+    await action();
+    await assertDurablePending(f);
+    await f.webhook();
+    await assertConfirmation(f, writer === "page");
+  });
+
+  for (const point of ["before_commit", "after_commit"] as const) {
+    test(`${writer}: SIGKILL ${point} recovers through the authoritative writer or existing drain`, async () => {
+      const f = await fixture();
+      await crashWriter(f, writer, point);
+      if (point === "before_commit") {
+        await assertRolledBack(f);
+        await (writer === "webhook" ? f.webhook() : f.pageWriter());
+      }
+      const before = await assertDurablePending(f);
+      const earningsBefore = await db.select().from(providerEarnings)
+        .where(eq(providerEarnings.sourceId, f.bookingId));
+      const revenueBefore = await db.select().from(platformRevenue)
+        .where(eq(platformRevenue.sourceId, f.bookingId));
+      // A different, surviving process owns this drain; redelivery must not
+      // create another code, traveler email, or earning for the committed row.
+      await f.webhook();
+      await assertConfirmation(f, writer === "page");
+      const [afterRetry] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+      assert.equal(afterRetry.confirmationCode, before.confirmationCode);
+      assert.deepEqual(afterRetry.confirmedAt, before.confirmedAt);
+      assert.deepEqual(await db.select().from(providerEarnings)
+        .where(eq(providerEarnings.sourceId, f.bookingId)), earningsBefore);
+      assert.deepEqual(await db.select().from(platformRevenue)
+        .where(eq(platformRevenue.sourceId, f.bookingId)), revenueBefore);
+    });
+  }
+
+  test(`${writer}: a missing recipient is durable and visibly blocked, never sent`, async () => {
+    const f = await fixture();
+    await db.update(users).set({ email: null }).where(eq(users.id, f.travelerId));
+    await (writer === "webhook" ? f.webhook() : f.pageWriter());
+    await f.webhook();
+    const rows = await travelerRows(f);
+    const [booking] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+    assert.equal(booking.status, "confirmed");
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "dead");
+    assert.equal(rows[0].attemptCount, 0);
+    assert.equal(rows[0].toEmail, "");
+    assert.match(rows[0].lastError!, /Traveler email missing/);
+    assert.equal((rows[0].metadata as { confirmationCode: string }).confirmationCode, booking.confirmationCode);
+    assert.equal((rows[0].metadata as { deliveryBlocked: boolean }).deliveryBlocked, true);
+    await drainOutbox();
+    assert.equal(sends.filter(send => [send.to].flat().includes("")).length, 0,
+      "dead row is not delivered to an invented recipient");
+    assert.equal(sends.filter(send => [send.to].flat().includes(f.email)).length, 0);
+    assert.equal((await travelerRows(f))[0].status, "dead");
+    const earnings = await db.select().from(providerEarnings)
+      .where(eq(providerEarnings.sourceId, f.bookingId));
+    assert.equal(earnings.length, writer === "page" ? 1 : 0);
+    if (earnings.length) assert.equal(Number(earnings[0].amount), 80);
+  });
+}
+
+test("failed simulated transport retries the same durable row and stored code", async () => {
+  const f = await fixture();
+  await f.webhook();
+  const before = await assertDurablePending(f);
+  const sender = _outboxTestHooks.sendEmailFn;
+  let failedCalls = 0;
+  _outboxTestHooks.sendEmailFn = async () => {
+    failedCalls++;
+    return { ok: false, error: "simulated transport outage" };
+  };
+  try {
+    await drainOutbox();
+    const rows = await travelerRows(f);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "failed");
+    assert.equal(rows[0].attemptCount, 1);
+    assert.equal(failedCalls, 1);
+    assert.equal((rows[0].metadata as { confirmationCode: string }).confirmationCode, before.confirmationCode);
+    await f.webhook();
+    assert.equal((await travelerRows(f)).length, 1);
+    await db.update(emailOutbox).set({ retryAfter: new Date(0) }).where(eq(emailOutbox.id, rows[0].id));
+  } finally {
+    _outboxTestHooks.sendEmailFn = sender;
+  }
+  await assertConfirmation(f);
+});
+
+function responseCapture() {
+  return {
+    statusCode: 200,
+    body: null as any,
+    status(code: number) { this.statusCode = code; return this; },
+    json(body: unknown) { this.body = body; return this; },
+  };
+}
+
+test("browser response boundary reports retryable 503 for native outbox persistence failure", async () => {
+  const { default: router } = await import("../routes/bookings");
+  const layer = router.stack.find((entry: any) => entry.route?.path === "/confirm-payment")!;
+  const handler = layer.route!.stack.at(-1)!.handle;
+  const f = await fixture();
+  const request = {
+    body: { bookingId: f.bookingId, paymentIntentId: f.pi.id },
+    user: { claims: { sub: f.travelerId } },
+  };
+  await failTravelerInsert(f, async () => {
+    const response = responseCapture();
+    await handler(request as any, response as any, () => {});
+    assert.equal(response.statusCode, 503);
+    assert.equal(response.body.error, "booking_confirmation_persistence_failed");
+    assert.equal(response.body.retryable, true);
+    assert.match(response.body.message, /please do not pay again/);
+  }, false);
+  const recovered = responseCapture();
+  await handler(request as any, recovered as any, () => {});
+  assert.equal(recovered.statusCode, 200);
+  await f.webhook();
+  await assertConfirmation(f, true);
+});
+
+test("signed webhook response boundary rejects a failed save and accepts the same event on retry", async () => {
+  const { createPlatformStripeWebhookHandler } = await import("../routes/bookings");
+  const f = await fixture();
+  // This runner supplies no real webhook secret. Signing is local and synthetic.
+  assert.equal(process.env.STRIPE_WEBHOOK_SECRET_TEST, undefined);
+  const secret = "whsec_fixture_persistence_only";
+  process.env.STRIPE_WEBHOOK_SECRET_TEST = secret;
+  try {
+    const handler = createPlatformStripeWebhookHandler();
+    const payload = JSON.stringify({
+      id: `evt_fixture_${crypto.randomUUID()}`, object: "event",
+      type: "payment_intent.succeeded", data: { object: f.pi },
+    });
+    const signature = probe.webhooks.generateTestHeaderString({ payload, secret });
+    const request = { rawBody: Buffer.from(payload), headers: { "stripe-signature": signature } };
+    await failTravelerInsert(f, async () => {
+      const response = responseCapture();
+      await handler(request, response);
+      assert.equal(response.statusCode, 500);
+      assert.match(response.body.error, /delivery can be retried/);
+    }, false);
+    const recovered = responseCapture();
+    await handler(request, recovered);
+    assert.equal(recovered.statusCode, 200);
+    assert.equal(recovered.body.received, true);
+    await assertConfirmation(f);
+    const duplicate = responseCapture();
+    await handler(request, duplicate);
+    assert.equal(duplicate.statusCode, 200);
+    await assertConfirmation(f);
+  } finally {
+    delete process.env.STRIPE_WEBHOOK_SECRET_TEST;
+  }
+});
+
+async function lateSignalAlerts(f: Fixture) {
+  return db.select().from(adminNotifications).where(sql`
+    ${adminNotifications.type} = 'legacy_late_payment_signal'
+    AND ${adminNotifications.metadata}->>'bookingId' = ${f.bookingId}
+    AND ${adminNotifications.metadata}->>'paymentIntentId' = ${f.pi.id}
+  `);
+}
+
+// §15c, decision-maker ruling Oct 12, 2026: only pre-payment statuses may be confirmed by a success
+// signal — `pending_payment`, `pending` (the column default) and `payment_failed` (a retry on the
+// same PaymentIntent is a real Stripe flow).
+for (const status of ["pending", "payment_failed"] as const) {
+  test(`a ${status} booking is a pre-payment row and confirms on the success signal`, async () => {
+    const f = await fixture();
+    await db.update(bookings).set({ status }).where(eq(bookings.id, f.bookingId));
+    await f.webhook();
+    await assertDurablePending(f);
+    assert.equal((await lateSignalAlerts(f)).length, 0);
+    await assertConfirmation(f);
+  });
+}
+
+// A success signal for a row that has LEFT pre-payment is a late signal: never confirmed, no traveler
+// notice, an error log and exactly ONE admin alert per booking and PaymentIntent — a redelivered or
+// concurrently duplicated event adds none.
+for (const status of ["canceled", "refunded", "disputed"] as const) {
+  test(`late signal on a ${status} booking: not confirmed, one admin alert per event`, async () => {
+    const f = await fixture();
+    await db.update(bookings).set({ status }).where(eq(bookings.id, f.bookingId));
+    const [before] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+    await f.webhook();
+    await Promise.all([f.webhook(), f.webhook()]);
+    await f.webhook();
+    const [afterSignals] = await db.select().from(bookings).where(eq(bookings.id, f.bookingId));
+    assert.deepEqual(afterSignals, before, "the booking is not resurrected");
+    assert.equal((await travelerRows(f)).length, 0, "no traveler confirmation is persisted");
+    const alerts = await lateSignalAlerts(f);
+    assert.equal(alerts.length, 1, "exactly one admin alert for this booking and PaymentIntent");
+    assert.equal(alerts[0].reason, "payment_after_terminal_status");
+    assert.deepEqual(alerts[0].metadata, { bookingId: f.bookingId, paymentIntentId: f.pi.id, status });
+    // A different PaymentIntent on the same booking is a different event.
+    const second = { ...f.pi, id: `pi_fixture_${crypto.randomUUID().replaceAll("-", "")}` } as Stripe.PaymentIntent;
+    await stripePaymentService.handlePaymentSucceeded(second);
+    assert.equal((await db.select().from(adminNotifications).where(sql`
+      ${adminNotifications.type} = 'legacy_late_payment_signal'
+      AND ${adminNotifications.metadata}->>'bookingId' = ${f.bookingId}
+    `)).length, 2);
+  });
+}
+
+test("an already-confirmed booking is a duplicate delivery, not a late signal", async () => {
+  const f = await fixture();
+  await f.webhook();
+  await f.webhook();
+  assert.equal((await lateSignalAlerts(f)).length, 0);
+  await assertConfirmation(f);
+});
+
+// Ruling (2): after the confirming transaction commits, the writer tries the row once at once, so the
+// traveler hears without waiting for the 5-minute drain; the drain remains the guarantee.
+for (const writer of ["webhook", "page"] as const) {
+  test(`${writer}: the committed confirmation is kicked once and delivered without the drain`, async () => {
+    const f = await fixture();
+    const kicksBefore = kicked.length;
+    await (writer === "webhook" ? f.webhook() : f.pageWriter());
+    const [row] = await travelerRows(f);
+    assert.deepEqual(kicked.slice(kicksBefore), [row.id], "one kick, for the committed row, after the writer returns");
+
+    const g = await fixture();
+    delete _outboxTestHooks.legacyConfirmationKickFn;
+    try {
+      await (writer === "webhook" ? g.webhook() : g.pageWriter());
+      let rows: typeof emailOutbox.$inferSelect[] = [];
+      for (let attempt = 0; attempt < 200; attempt++) {
+        rows = await travelerRows(g);
+        if (rows[0]?.status === "sent") break;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].status, "sent", "delivered by the kick, no drain called");
+      assert.equal(rows[0].attemptCount, 1);
+      assert.equal(sends.filter(send => [send.to].flat().includes(g.email)).length, 1);
+    } finally {
+      _outboxTestHooks.legacyConfirmationKickFn = (outboxId) => { kicked.push(outboxId); };
+    }
+  });
+}
