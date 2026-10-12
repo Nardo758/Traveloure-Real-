@@ -47,20 +47,27 @@ interface Draft {
   licenseClass: string;
   termsUrl: string;
   notes: string;
+  /** SS-1b: the official refresh reads a source only when both are stated. Blank = not stated. */
+  refreshIntervalDays: string;
+  costCeilingCentsPerDay: string;
 }
 
 const EMPTY: Draft = {
   id: "", name: "", homepage: "", market: "", adapter: "manual", covers: [], doesNotCover: [],
-  licenseClass: "official", termsUrl: "", notes: "",
+  licenseClass: "official", termsUrl: "", notes: "", refreshIntervalDays: "", costCeilingCentsPerDay: "",
 };
 
 const orNull = (s: string) => (s.trim() === "" ? null : s.trim());
+/** A whole number typed in the form; blank ⇒ null (not stated). Anything else is sent as-is for the server to refuse. */
+const intOrNull = (s: string) => (s.trim() === "" ? null : Number(s.trim()));
 
 function fromRow(r: ContentSource): Draft {
   return {
     id: r.id, name: r.name, homepage: r.homepage ?? "", market: r.market ?? "", adapter: r.adapter,
     covers: r.covers ?? [], doesNotCover: r.doesNotCover ?? [], licenseClass: r.licenseClass,
     termsUrl: r.termsUrl ?? "", notes: r.notes ?? "",
+    refreshIntervalDays: r.refreshIntervalDays == null ? "" : String(r.refreshIntervalDays),
+    costCeilingCentsPerDay: r.costCeilingCentsPerDay == null ? "" : String(r.costCeilingCentsPerDay),
   };
 }
 
@@ -100,6 +107,7 @@ export default function AdminContentSources() {
         name: draft.name, homepage: orNull(draft.homepage), market: orNull(draft.market), adapter: draft.adapter,
         covers: draft.covers, doesNotCover: draft.doesNotCover, licenseClass: draft.licenseClass,
         termsUrl: orNull(draft.termsUrl), notes: orNull(draft.notes),
+        refreshIntervalDays: intOrNull(draft.refreshIntervalDays), costCeilingCentsPerDay: intOrNull(draft.costCeilingCentsPerDay),
       };
       return editingId
         ? apiRequest("PATCH", `/api/admin/content-sources/${editingId}`, body)
@@ -179,6 +187,16 @@ export default function AdminContentSources() {
             <div className="grid md:grid-cols-2 gap-4">
               <NeedPicker label="Covers" value={draft.covers} onChange={(covers) => setDraft({ ...draft, covers })} testId="covers" />
               <NeedPicker label="Does not cover" value={draft.doesNotCover} onChange={(doesNotCover) => setDraft({ ...draft, doesNotCover })} testId="does-not-cover" />
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="cs-refresh">Refresh every (days)</Label>
+                <Input id="cs-refresh" inputMode="numeric" value={draft.refreshIntervalDays} onChange={(e) => setDraft({ ...draft, refreshIntervalDays: e.target.value })} placeholder="blank = not refreshed" data-testid="input-source-refresh-days" />
+              </div>
+              <div>
+                <Label htmlFor="cs-ceiling">Refresh cost ceiling (cents per day)</Label>
+                <Input id="cs-ceiling" inputMode="numeric" value={draft.costCeilingCentsPerDay} onChange={(e) => setDraft({ ...draft, costCeilingCentsPerDay: e.target.value })} placeholder="blank = not refreshed" data-testid="input-source-cost-ceiling" />
+              </div>
             </div>
             <div>
               <Label htmlFor="cs-notes">Notes</Label>

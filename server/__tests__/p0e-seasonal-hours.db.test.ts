@@ -13,7 +13,8 @@
  *   SH5 addition 7: the row's facts carry both seasons and the Places list; the row shows the season
  *       covering its date, and its closing warning names that fact's source
  *   SH6 the row's warning prefers the last entry covering its date ("Last entry 4:30 PM · …")
- *   SH7 the extractor admits a season on an hours row; a malformed one stores no structured hours
+ *   SH7 the extractor admits a season on an hours row; a malformed one stores no structured hours, nor
+ *       one whose quote does not print the stated times; structured hours keep the lines as their text
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test --test-force-exit server/__tests__/p0e-seasonal-hours.db.test.ts
@@ -42,7 +43,7 @@ const { loadOptimizerFindings, loadLegCoverage } = await import("../services/opt
 const { findingStopLines } = await import("@shared/optimizer-lead");
 const { factsForTrip } = await import("../services/content-facts/place-facts.service");
 const { itemClosingWarning, itemFactsLine } = await import("../../client/src/lib/place-facts");
-const { structuredFields } = await import("../services/content-facts/tavily-extract-adapter");
+const { structuredFields, admitExtractedFacts } = await import("../services/content-facts/tavily-extract-adapter");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `p0e-${RUN}-${s}`;
@@ -172,4 +173,8 @@ test("SH7 the extractor admits a season on an hours row; a malformed one stores 
   assert.deepEqual(structuredFields("hours", { weekdayDescriptions: lines, season: { from: "03-01", to: "11-30" } }, "8:30–17:00"), { weekdayDescriptions: lines, season: { from: "03-01", to: "11-30" } });
   assert.deepEqual(structuredFields("hours", { weekdayDescriptions: lines }, "8:30–17:00"), { weekdayDescriptions: lines });
   assert.equal(structuredFields("hours", { weekdayDescriptions: lines, season: { from: "March", to: "11-30" } }, "8:30–17:00"), null);
+  assert.equal(structuredFields("hours", { weekdayDescriptions: lines }, "Open in the morning, all year"), null, "the quote must print the times");
+  const page = "銀閣寺 Ginkaku-ji Hours 8:30–17:00 (March 1 – November 30). Please enjoy the garden.";
+  const { facts } = admitExtractedFacts({ facts: [{ factType: "hours", text: "Open daily from early morning", quote: "8:30–17:00", fields: { weekdayDescriptions: lines, season: { from: "03-01", to: "11-30" } } }] }, { allowed: ["hours"], page, quoteMax: 300 });
+  assert.equal(facts[0].text, lines.join("; "), "the stored text is the weekly lines, not the model's prose");
 });

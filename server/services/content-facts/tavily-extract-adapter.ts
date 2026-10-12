@@ -389,7 +389,9 @@ export function admitExtractedFacts(
     // every line parses. Free text alone is never turned into a time (ruling 1).
     const fields = structuredFields(factType, f?.fields, quote);
     if (fields === "refused") { refused.push({ factType, reason: "bad_fields" }); continue; }
-    facts.push({ factType: factType as FactType, text, quote, ...(fields ? { fields } : {}) });
+    // P0-e item 2: structured hours store the weekly lines as their text, never the model's prose.
+    const kept = factType === "hours" && fields && Array.isArray((fields as any).weekdayDescriptions) ? ((fields as any).weekdayDescriptions as string[]).join("; ").slice(0, FACT_TEXT_MAX) : text;
+    facts.push({ factType: factType as FactType, text: kept, quote, ...(fields ? { fields } : {}) });
   }
   return { facts, refused };
 }
@@ -405,7 +407,7 @@ export interface ExtractedFact {
 const STRUCTURED_FIELDS_INSTRUCTION =
   "For factType last_admission, add fields {byWeekday:{\"0\"..\"6\": \"HH:MM\" 24-hour, 0 = Sunday}, season?:{from:\"MM-DD\",to:\"MM-DD\"}} — the LATEST ENTRY time the page states, with the quote containing that time. " +
   "For factType last_service, add fields {operator, line, station, direction?, lastDeparture:\"HH:MM\", weekdays:[0-6], validFrom:\"YYYY-MM-DD\", validTo:\"YYYY-MM-DD\"} — the LAST DEPARTURE the page states, with the quote containing that time. " +
-  "For factType hours you may add fields {weekdayDescriptions:[\"Monday: 9:00 AM – 5:00 PM\", …], season?:{from:\"MM-DD\",to:\"MM-DD\"}} using exactly that line form — \"Monday: Closed\" for a closed day, \"Monday: Open 24 hours\" for all day — with season only when the page states the hours apply to part of the year, and the quote containing the stated times. Omit fields you cannot read from the page.";
+  "For factType hours you may add fields {weekdayDescriptions:[\"Monday: 9:00 AM – 5:00 PM\", …], season?:{from:\"MM-DD\",to:\"MM-DD\"}} using exactly that line form — \"Monday: Closed\" for a closed day, \"Monday: Open 24 hours\" for all day — with season only when the page states the hours apply to part of the year. For hours the quote is ONLY the opening times as printed on the page (for example \"8:30–17:00\"), never the surrounding prose. Omit fields you cannot read from the page.";
 
 /** Pure. The fact's structured fields: an object to store, null for none, or "refused". */
 export function structuredFields(factType: string, raw: unknown, quote: string): Record<string, unknown> | null | "refused" {
@@ -428,8 +430,37 @@ export function structuredFields(factType: string, raw: unknown, quote: string):
     // covers. A malformed season stores no structured hours at all — never all-year by accident.
     const season = hoursSeason(raw);
     if (season === "invalid") return null;
+    // Every opening and closing time the lines state must be printed in the quote, so the stored hours
+    // are the page's own times and nothing the model wrote around them.
+    if (!hoursTimesInQuote(strings, quote)) return null;
     return season ? { weekdayDescriptions: strings, season } : { weekdayDescriptions: strings };
   }
   return null;
 }
 const HOURS_WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * Pure. Each time the weekly lines state (opening and closing) is printed in the quote, in 24-hour form
+ * ("17:00", "8:30" or "08:30"), as the line writes it ("5:00"), or — on the hour — as the hour alone
+ * ("9–17"). "Closed" and "Open 24 hours" state none.
+ */
+export function hoursTimesInQuote(lines: readonly string[], quote: string): boolean {
+  const q = quote.normalize("NFKC");
+  for (let wd = 0; wd < 7; wd++) {
+    const h = parseDayHours(lines, wd);
+    if (!h || h.kind !== "ranges") continue;
+    for (const [open, close] of h.ranges) {
+      for (const m of [open, close]) {
+        const mm = ((m % 1440) + 1440) % 1440;
+        const hh = Math.floor(mm / 60);
+        const min = String(mm % 60).padStart(2, "0");
+        const h12 = hh % 12 === 0 ? 12 : hh % 12;
+        const forms = [`${hh}:${min}`, `${String(hh).padStart(2, "0")}:${min}`, `${h12}:${min}`];
+        // A time on the hour may be printed as the hour alone ("9–17").
+        if (min === "00") forms.push(`${hh}`, `${h12}`);
+        if (!forms.some((f) => new RegExp(`(^|[^0-9])${f}([^0-9]|$)`).test(q))) return false;
+      }
+    }
+  }
+  return true;
+}
