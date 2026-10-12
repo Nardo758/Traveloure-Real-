@@ -14,10 +14,17 @@ import {
   type AnchorType,
   type StopPoint,
 } from "./anchor-scoring";
+import { isDiningServiceType } from "./version-sanity";
 
 /** A trip stop that also carries a display name — the basis for an `activity` anchor. */
 export interface NamedStop extends StopPoint {
   name: string;
+  /** V-1: the stop's optimizer serviceType, when the caller knows it. A dining stop is scored
+   *  against but never offered as an activity anchor — a restaurant is not a place to build days around. */
+  serviceType?: string | null;
+  /** V-1: false for a stop located only by an in-memory Google point (LD 57). It counts when
+   *  scoring other anchors, but is never itself an anchor, whose point is saved on the version. */
+  anchorEligible?: boolean;
 }
 
 /**
@@ -124,6 +131,7 @@ export function stopsToActivityCandidates(stops: NamedStop[]): AnchorCandidate[]
   const out: AnchorCandidate[] = [];
   for (const s of stops) {
     if (s.lat == null || s.lng == null) continue;
+    if (s.anchorEligible === false || isDiningServiceType(s.serviceType)) continue;
     out.push({ id: s.id, type: "activity", name: s.name, lat: s.lat, lng: s.lng });
   }
   return out;

@@ -263,6 +263,12 @@ test("C5: no Places fact reaches a public route", async () => {
     // `last_service` rows (`lastServicesForMarket` — never a Places fact) behind the plan card's gate. What leaves is
     // operator, line or station, and the stated last departure per leg; no Places fact is read.
     "server/services/live-directions.service.ts",
+    // V-1 (ledger `2026-10-11-v1-version-sanity`, LD 57): the optimizer's baseline and the versions board read the
+    // `location` fact only, through `factPointsForTrip`, behind the trip's own gate (the optimizer run; the board read).
+    // The point is held in memory only and is never written onto a version stop, a plan item or an anchor.
+    // What leaves is a board pin or an anchor score — never fact text.
+    "server/services/optimizer-baseline.service.ts",
+    "server/services/version-board.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

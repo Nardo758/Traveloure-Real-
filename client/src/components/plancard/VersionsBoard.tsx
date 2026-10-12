@@ -54,6 +54,9 @@ import {
   versionTotals,
   VERSION_RECOMMENDED_LABEL,
   runChargeLine,
+  versionAnchorIsStay,
+  versionFlagLines,
+  versionMapAnchorKind,
   type BoardDrag,
   type DayPicks,
   type VersionsBoardView,
@@ -197,7 +200,8 @@ export function VersionsBoard({
     label: v.label,
     stops: v.stops,
     days: v.days,
-    anchor: v.anchor ? { kind: "stay", name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
+    // V-1: the stored anchor kind — only a hotel is a stay; a neighbourhood or activity is a venue.
+    anchor: v.anchor ? { kind: versionMapAnchorKind(v.anchor), name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
   }));
   const cards = chooseCards(view);
   const strip = pickStrip(view, picks);
@@ -233,7 +237,9 @@ export function VersionsBoard({
   const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): the same per-day line the slip's DayBlock draws, on Your plan.
   const feasibilityOf = new Map(sortedDays.map((d) => [d.dayNum, feasibilityLine(d.feasibility)] as const));
-  const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name);
+  // V-1: "built around one place to stay" only when every version's anchor is a hotel.
+  const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name && versionAnchorIsStay(v.anchor));
+  const stayAnchor = stay && versionAnchorIsStay(stay.anchor) ? stay.anchor : null;
   // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
   // re-parenting it — a remount re-sizes the map mid-drag on the By day board (kyoto-slice §6 step 5).
   const map = (
@@ -373,6 +379,14 @@ export function VersionsBoard({
                     </span>
                   ))}
                 </div>
+                {/* V-1: the run's sanity flags — said, never acted on (C1). */}
+                {versionFlagLines(v?.flags).length > 0 ? (
+                  <ul className="space-y-1 text-xs text-[color:var(--coral-text)]" data-testid={`versions-flags-${c.label}`}>
+                    {versionFlagLines(v?.flags).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -492,9 +506,9 @@ export function VersionsBoard({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink)]">Your plan</p>
                 <p className="slip-display text-lg font-semibold leading-tight text-[color:var(--slip-ink)]">{yourPlanSummary(strip.length, allDays.length)}</p>
               </div>
-              {stay?.anchor ? (
+              {stayAnchor ? (
                 <p className="max-w-[45%] text-right text-[11px] text-[color:var(--slip-teal-ink)]" data-testid="versions-stay">
-                  Stays at {stay.anchor.name}
+                  Stays at {stayAnchor.name}
                 </p>
               ) : null}
             </div>
@@ -664,9 +678,9 @@ export function VersionsBoard({
               );
             })}
           </div>
-          {stay?.anchor ? (
+          {stay && stayAnchor ? (
             <p className="text-xs text-[color:var(--slip-muted)]" data-testid="versions-stay">
-              Where you stay follows Version {stay.label}: {stay.anchor.name} — you can change it afterwards.
+              Where you stay follows Version {stay.label}: {stayAnchor.name} — you can change it afterwards.
             </p>
           ) : null}
           <button

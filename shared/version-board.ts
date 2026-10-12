@@ -297,7 +297,9 @@ export function retimeIsFree(input: { runAt: Date | string | null; now: Date; us
 }
 
 /** The board's line about re-times, said BEFORE one happens. */
-export function retimeLine(input: { free: boolean; remaining: number; feeLabel: string | null }): string {
+export function retimeLine(input: { free: boolean; remaining: number; feeLabel: string | null; unlimited?: boolean }): string {
+  // V-1: a Trip Pass holder's re-times are unlimited inside the window — no count is shown.
+  if (input.free && input.unlimited) return "Re-timing a day is free";
   if (input.free) return `Re-timing a day is free · ${input.remaining} left`;
   return input.feeLabel ? `Re-timing now is a paid run · Optimize · ${input.feeLabel}` : "Re-timing now is a paid run";
 }
