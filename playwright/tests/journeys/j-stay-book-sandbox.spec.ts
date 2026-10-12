@@ -76,7 +76,10 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
 
     // One FRESH Kyoto plan per hotel tried: a comparison holds a capped number of places and a chosen place
     // becomes the plan's own, so a new plan is the honest way to offer the next hotel.
+    // A weekday night 60–90 days out (S1-d-3c): the first Tuesday on or after day 60, checking out Wednesday.
+    // The Oct 12 runs drew a Friday 60 days out and three of six hotels had no offer for it; the gate is not loosened.
     const start = new Date(Date.now() + 60 * 86_400_000);
+    start.setUTCDate(start.getUTCDate() + ((2 - start.getUTCDay() + 7) % 7));
     const end = new Date(start.getTime() + 86_400_000);
     const d = (x: Date) => x.toISOString().slice(0, 10);
     async function planWithItem(): Promise<{ tripId: string; itemId: string; setId: string }> {
