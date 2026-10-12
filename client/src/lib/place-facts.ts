@@ -9,7 +9,7 @@
  */
 import { canonicalAreaLine, containsCjk } from "@shared/place-address";
 import type { FactView } from "@shared/content-facts";
-import { hoursFactForDate } from "@shared/feasibility-facts";
+import { hoursFactForDate, lastAdmissionForDate } from "@shared/feasibility-facts";
 import { clockLabel, rowClosingMinute } from "@shared/optimizer-lead";
 import { unverifiedAreaText } from "@shared/ai-place-text";
 
@@ -110,7 +110,8 @@ function rowMinutes(t: string | null | undefined): number | null {
  * P0-e addition 7 (decision-maker, Oct 12, 2026): the row's closing warning — the planned time against
  * the closing time of the hours fact the row SHOWS, whatever its source, named with that source:
  * "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)", or "Closes 5:00 PM · Ginkaku-ji
- * official site · checked 12 Oct" when the official fact is the one shown. Warns when the stop is reached
+ * official site · checked 12 Oct" when the official fact is the one shown. A last-entry fact covering the
+ * date is preferred: arriving after it reads "Last entry 4:30 PM · …". Otherwise warns when the stop is reached
  * after the day's last close, or open on arrival and closing before the visit ends (its end time, else
  * its duration). No shown fact, no time, or an unreadable line ⇒ null (§13).
  */
@@ -120,10 +121,20 @@ export function itemClosingWarning(
   item: { time?: string | null; endTime?: string | null; durationMinutes?: number | null },
   timeZone?: string | null,
 ): { text: string; sourceUrl: string | null } | null {
-  const hours = shownHoursFact(facts, dateIso);
-  if (!hours || !dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  if (!dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
   const start = rowMinutes(item.time);
   if (start === null) return null;
+  // P0-e item 2 (decision-maker, Oct 12, 2026): a last-entry fact covering the date is preferred — arriving
+  // after it reads "Last entry 4:30 PM · …" (arriving AT it is still in). Otherwise the closing rule below.
+  for (const f of facts ?? []) {
+    if (f.factType !== "last_admission") continue;
+    const last = lastAdmissionForDate([f.value], dateIso);
+    if (last === null) continue;
+    if (start <= last) break;
+    return sourcedWarning(`Last entry ${clockLabel(last)}`, f, timeZone);
+  }
+  const hours = shownHoursFact(facts, dateIso);
+  if (!hours) return null;
   const endClock = rowMinutes(item.endTime);
   const end =
     endClock !== null ? (endClock <= start ? endClock + 1440 : endClock)
@@ -132,10 +143,15 @@ export function itemClosingWarning(
   const lines = Array.isArray(hours.value?.weekdayDescriptions) ? (hours.value.weekdayDescriptions as unknown[]).map(String) : [];
   const close = rowClosingMinute(lines, new Date(`${dateIso}T12:00:00Z`).getUTCDay(), start, end);
   if (close === null) return null;
-  const checked = factCheckedLabel(hours.checkedAt, timeZone) ?? provenanceCheckedLabel(hours.provenance);
-  const parts = [`Closes ${clockLabel(close)}`, sourceName(hours.provenance)];
+  return sourcedWarning(`Closes ${clockLabel(close)}`, hours, timeZone);
+}
+
+/** The warning's lead, then the fact's own source and check date, and its caveat when stale. */
+function sourcedWarning(lead: string, fact: FactView, timeZone?: string | null): { text: string; sourceUrl: string | null } {
+  const checked = factCheckedLabel(fact.checkedAt, timeZone) ?? provenanceCheckedLabel(fact.provenance);
+  const parts = [lead, sourceName(fact.provenance)];
   if (checked) parts.push(`checked ${checked}`);
-  return { text: parts.join(" · ") + (hours.stale ? " (may have changed)" : ""), sourceUrl: hours.sourceUrl };
+  return { text: parts.join(" · ") + (fact.stale ? " (may have changed)" : ""), sourceUrl: fact.sourceUrl };
 }
 
 export function itemFactsLine(

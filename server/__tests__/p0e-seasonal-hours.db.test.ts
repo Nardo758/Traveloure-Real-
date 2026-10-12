@@ -12,6 +12,8 @@
  *   SH4 an off-map placeholder ("Late Dinner in Shimogyo") and an off-map real place are told apart
  *   SH5 addition 7: the row's facts carry both seasons and the Places list; the row shows the season
  *       covering its date, and its closing warning names that fact's source
+ *   SH6 the row's warning prefers the last entry covering its date ("Last entry 4:30 PM · …")
+ *   SH7 the extractor admits a season on an hours row; a malformed one stores no structured hours
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test --test-force-exit server/__tests__/p0e-seasonal-hours.db.test.ts
@@ -40,6 +42,7 @@ const { loadOptimizerFindings, loadLegCoverage } = await import("../services/opt
 const { findingStopLines } = await import("@shared/optimizer-lead");
 const { factsForTrip } = await import("../services/content-facts/place-facts.service");
 const { itemClosingWarning, itemFactsLine } = await import("../../client/src/lib/place-facts");
+const { structuredFields } = await import("../services/content-facts/tavily-extract-adapter");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `p0e-${RUN}-${s}`;
@@ -148,8 +151,25 @@ test("SH5 the row reads the season covering its date and warns from that fact", 
   const w = (await factsForTrip(winter))[`${winter}-g`] ?? [];
   assert.equal(w.filter((f) => f.factType === "hours").length, 3, "both official seasons and the Places list reach the row");
   assert.match(itemFactsLine(w, "2027-01-11", "Asia/Tokyo")!.text, /^Mon · 9:00 AM – 4:30 PM · /);
-  assert.match(itemClosingWarning(w, "2027-01-11", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Closes 4:30 PM · /);
+  // The winter last entry (16:00, stored for this place by the other plan) is preferred over the 16:30 close.
+  assert.match(itemClosingWarning(w, "2027-01-11", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Last entry 4:00 PM · /);
+  assert.match(itemClosingWarning(w.filter((f) => f.factType !== "last_admission"), "2027-01-11", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Closes 4:30 PM · /);
   const s = (await factsForTrip(summer))[`${summer}-g`] ?? [];
   assert.match(itemFactsLine(s, "2027-07-12", "Asia/Tokyo")!.text, /^Mon · 8:30 AM – 5:00 PM · /);
-  assert.match(itemClosingWarning(s, "2027-07-12", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Closes 5:00 PM · /);
+  assert.match(itemClosingWarning(s.filter((f) => f.factType !== "last_admission"), "2027-07-12", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Closes 5:00 PM · /);
+});
+
+test("SH6 the row's warning prefers the last entry covering its date", async () => {
+  const s = (await factsForTrip(summer))[`${summer}-g`] ?? [];
+  assert.equal(s.filter((f) => f.factType === "last_admission").length, 2, "both seasonal last-entry rows reach the row");
+  assert.match(itemClosingWarning(s, "2027-07-12", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Last entry 4:30 PM · /);
+  // Arriving at the last entry is still in; the visit then runs past the 17:00 close.
+  assert.match(itemClosingWarning(s, "2027-07-12", { time: "16:30", durationMinutes: 45 }, "Asia/Tokyo")!.text, /^Closes 5:00 PM · /);
+});
+
+test("SH7 the extractor admits a season on an hours row; a malformed one stores no structured hours", () => {
+  const lines = ["Monday: 8:30 AM – 5:00 PM", "Tuesday: Closed"];
+  assert.deepEqual(structuredFields("hours", { weekdayDescriptions: lines, season: { from: "03-01", to: "11-30" } }, "8:30–17:00"), { weekdayDescriptions: lines, season: { from: "03-01", to: "11-30" } });
+  assert.deepEqual(structuredFields("hours", { weekdayDescriptions: lines }, "8:30–17:00"), { weekdayDescriptions: lines });
+  assert.equal(structuredFields("hours", { weekdayDescriptions: lines, season: { from: "March", to: "11-30" } }, "8:30–17:00"), null);
 });

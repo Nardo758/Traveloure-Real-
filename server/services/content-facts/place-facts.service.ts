@@ -641,7 +641,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
   // (`shownHoursFact`); a text-only crawled row is still a view, for the expert's confirm control.
   const tagged = rows.filter((r) => r.sourceClass != null);
   const placeOf = placeIdsOf(tagged);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
   const sources = await sourcesFor([...rows, ...stored]);
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
@@ -651,6 +651,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     byItem.set(r.itineraryItemId, list);
   }
   const officialByItem = withStoredOfficial([], placeOf, stored);
+  // `withStoredOfficial` attaches the stored rows of every requested type; hours below reads only hours.
   const out: Record<string, FactView[]> = {};
   const itemIds = new Set<string>([...Array.from(byItem.keys()), ...Array.from(officialByItem.keys())]);
   itemIds.forEach((itemId) => {
@@ -660,7 +661,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     // Hours: official first; a seasonal official fact covers part of the year, so the next hours fact
     // (another season, or Google's weekly list) is kept behind it and the row shows the one covering its
     // date (`shownHoursFact`). A fact with no season closes the list, as before.
-    const hourRows = [...list.filter((r) => r.factType === "hours"), ...(officialByItem.get(itemId) ?? []).filter((x) => !list.some((r) => r.id === x.id))];
+    const hourRows = [...list.filter((r) => r.factType === "hours"), ...(officialByItem.get(itemId) ?? []).filter((x) => x.factType === "hours" && !list.some((r) => r.id === x.id))];
     const rankedHours = officialHoursBeforePlaces(rankFactsByOrigin(hourRows, now));
     const shown = new Set<string>();
     for (const r of rankedHours) {
@@ -675,6 +676,22 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
       // does not close the list — the first all-year weekly list does.
       if (Array.isArray((r.value as any)?.weekdayDescriptions) && officialSeason(r) === null) break;
     }
+    // Last entry (P0-e item 2): every admitted, unexpired official row — the plan's own and those stored for
+    // the place — the same set the findings read, each season-aware, so the row's warning picks the one
+    // covering its date (`lastAdmissionForDate`). Old rows without a season count as before.
+    const entryRows = [...list.filter((r) => r.factType === "last_admission"), ...(officialByItem.get(itemId) ?? []).filter((x) => x.factType === "last_admission" && !list.some((r) => r.id === x.id))];
+    const entryRanked = resolveFactPrecedence(entryRows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })), "last_admission") as FactRow[];
+    const entryShown = new Set<string>();
+    for (const r of entryRanked) {
+      if (isFactStale(r, now) || !admitFeasibilityFact(r).ok) continue;
+      const key = JSON.stringify([r.sourceId, (r.value as any)?.byWeekday ?? null, (r.value as any)?.season ?? null]);
+      if (entryShown.has(key)) continue;
+      const v = toView(r, now, sources);
+      if (!v) continue;
+      entryShown.add(key);
+      views.push(v);
+    }
+    seen.add("last_admission");
     for (const r of rankFactsByOrigin(list.filter((x) => x.factType !== "hours"), now)) {
       if (seen.has(r.factType)) continue;
       const v = toView(r, now, sources);

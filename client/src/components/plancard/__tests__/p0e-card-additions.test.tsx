@@ -8,6 +8,7 @@
  *   PA4 5b: every stop-to-stop leg on the card is labelled "From → To"
  *   PA5 7: the closing warning reads the SHOWN hours fact — Google with its caveat, official when shown
  *   PA6 7: the hours line is printed once
+ *   PA8 7: a last-entry fact covering the date is preferred ("Last entry 4:30 PM · …")
  *   PA7 8: no budget strip on the card; other surfaces keep theirs
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/p0e-card-additions.test.tsx
@@ -127,6 +128,14 @@ describe("P0-e card additions", () => {
       assert.equal((text(html).match(/8:30 AM – 5:00 PM/g) ?? []).length, 1, "the hours print once");
     });
   }
+
+  it("PA8 a last-entry fact covering the date is preferred, arriving at it is still in", () => {
+    const entry = { factType: "last_admission", need: "stop.hours", value: { byWeekday: { "4": "16:30" }, season: { from: "03-01", to: "11-30" }, quote: "Last entry 16:30" }, origin: "official_refresh", sourceUrl: "https://www.shokoku-ji.jp/en/ginkakuji/", provenance: "Ginkaku-ji official site · checked 12 Oct", checkedAt: "2026-10-12T09:00:00Z", stale: false, publishable: true } as any;
+    assert.equal(itemClosingWarning([entry, googleHours], "2026-11-12", { time: "16:45" }, "Asia/Tokyo")?.text, "Last entry 4:30 PM · Ginkaku-ji official site · checked 12 Oct");
+    assert.equal(itemClosingWarning([entry, googleHours], "2026-11-12", { time: "16:30" }, "Asia/Tokyo"), null, "at the last entry is still in");
+    // Out of the last entry's season, the closing rule answers.
+    assert.equal(itemClosingWarning([entry, googleHours], "2026-12-10", { time: "17:10" }, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)");
+  });
 
   it("PA7 no budget strip on the card; other surfaces keep theirs", () => {
     const props = { tripId: "t", tripDestination: "Kyoto", day: thu, changeLog: [], isViewer: true, allowTransportActions: false, totalCostNum: 400, budgetNum: 1000 } as any;

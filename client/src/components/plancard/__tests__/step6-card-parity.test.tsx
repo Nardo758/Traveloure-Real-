@@ -29,6 +29,7 @@ const FIXTURE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.
 const payload = JSON.parse(readFileSync(FIXTURE, "utf8"));
 const days: any[] = [...payload.days].sort((a, b) => a.dayNum - b.dayNum);
 const all = days.flatMap((d) => d.activities ?? []);
+const text = (html: string) => decode(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 const decode = (s: string) => s.replace(/<!-- -->/g, "").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
 
 function render(now: Date): string {
@@ -83,7 +84,9 @@ test("P3 time, title and facts line are the payload's", () => {
     for (const a of d.activities) {
       assert.ok(html.includes(a.name.replace(/&/g, "&")), `title ${a.name}`);
       const line = itemFactsLine(payload.placeFacts?.[a.id], d.dateIso, payload.trip.timezone);
-      if (line) assert.ok(html.includes(line.text), `facts line for ${a.name}`);
+      // Sanctioned 2026-10-12 (P0-e addition 7): the line prints once, in two halves, so it is compared
+      // against the tag-stripped, whitespace-collapsed text (slip-main-rows MR1's text()).
+      if (line) assert.ok(text(html).includes(line.text.replace(/\s+/g, " ")), `facts line for ${a.name}`);
     }
   }
 });
