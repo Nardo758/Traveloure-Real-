@@ -6,7 +6,8 @@
  * Resolution order (first match wins):
  *   Tier 1 — AI-sourced       → platform 1.00 (constant; per-source band not yet seeded)
  *   Tier 2 — Affiliate        → platform 0.70 / partner 0.30 (constant; per-partner bands seeded dormant)
- *   Tier 3 — Per-expert EXP-OVR → users.commission_override_expert_share_percent (override-wins)
+ *   Tier 3 — Per-expert EXP-OVR → users.commission_override_platform_fee_percent, else the deprecated
+ *            users.commission_override_expert_share_percent (override-wins; resolveCommissionOverride)
  *   Tier 4 — Provider line item → policy-aware band (beta_flat OR tiered category band)
  *   Tier 5 — Expert / default  → fee_bands.expert_standard
  *   Tier 6 — Safety net        → constants EXPERT_SHARE_RATE / PLATFORM_FEE_RATE
@@ -26,6 +27,7 @@
  * DO NOT add new hardcoded rate literals in other files — call resolveCommissionRates().
  */
 
+import { resolveCommissionOverride } from "./commission-override";
 import { db } from "../db";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/schema";
@@ -637,22 +639,26 @@ export async function resolveCommissionRates(
     };
   }
 
-  // Tier 3 — Per-expert override (EXP-OVR). Override always wins.
+  // Tier 3 — Per-expert override (EXP-OVR). Override always wins. FE-1 (a): the platform-fee column
+  // wins over the deprecated expert-share column — the ONE rule is `resolveCommissionOverride`.
   if (expertId) {
     try {
       const [row] = await db
-        .select({ override: users.commissionOverrideExpertSharePercent })
+        .select({
+          platformFee: users.commissionOverridePlatformFeePercent,
+          expertShare: users.commissionOverrideExpertSharePercent,
+        })
         .from(users)
         .where(eq(users.id, expertId))
         .limit(1);
-      const raw = row?.override;
-      const pct = raw === null || raw === undefined ? null : Number(raw);
-      if (pct !== null && Number.isFinite(pct) && pct >= 0 && pct <= 100) {
-        const expertShareRate = pct / 100;
+      const override = resolveCommissionOverride(
+        row ? { platformFeePercent: row.platformFee, expertSharePercent: row.expertShare } : null,
+      );
+      if (override) {
         const insuranceFields = await resolveInsuranceFromCategory(category);
         return {
-          expertShareRate,
-          platformFeeRate: 1 - expertShareRate, // fee-literal-ok: computed from expertShareRate, not hardcoded
+          expertShareRate: override.earnerShareRate,
+          platformFeeRate: override.platformRate,
           ...insuranceFields,
         };
       }

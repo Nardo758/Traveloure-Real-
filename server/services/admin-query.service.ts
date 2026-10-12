@@ -210,8 +210,13 @@ export async function getAllUsersBasic() {
 }
 
 export async function getUserCommissionOverrides(userIds: string[]) {
-  return db.select({ id: users.id, override: users.commissionOverrideExpertSharePercent })
-    .from(users).where(inArray(users.id, userIds));
+  // FE-1 (a): both columns, for display. The platform-fee one is the editable override; the
+  // expert-share one is deprecated and shown read-only.
+  return db.select({
+    id: users.id,
+    platformFee: users.commissionOverridePlatformFeePercent,
+    expertShare: users.commissionOverrideExpertSharePercent,
+  }).from(users).where(inArray(users.id, userIds));
 }
 
 export async function updateUserRole(
@@ -276,12 +281,13 @@ export async function getUserVerificationStatus(userId: string) {
 }
 
 export async function getUserCommissionOverride(userId: string) {
-  return db.select({ id: users.id, prev: users.commissionOverrideExpertSharePercent })
+  return db.select({ id: users.id, prev: users.commissionOverridePlatformFeePercent })
     .from(users).where(eq(users.id, userId)).limit(1).then(r => r[0] ?? null);
 }
 
+/** FE-1 (a): writes ONLY the platform-fee override; the deprecated expert-share column is never written. */
 export async function setUserCommissionOverride(userId: string, value: string | null) {
-  return db.update(users).set({ commissionOverrideExpertSharePercent: value }).where(eq(users.id, userId));
+  return db.update(users).set({ commissionOverridePlatformFeePercent: value }).where(eq(users.id, userId));
 }
 
 export async function insertNotification(values: {
