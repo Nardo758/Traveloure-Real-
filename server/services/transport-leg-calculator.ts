@@ -31,6 +31,19 @@ export interface ActivityLocation {
   placeId?: string | null;
   /** Step 9a: minutes at the stop, for the departure hour. */
   durationMinutes?: number | null;
+  /**
+   * V-1b (ledger `2026-10-12-v1b-google-version-legs`; LD 57 as extended to legs, R311): set ONLY when
+   * this point is a Google Places fact held in memory (never saved on the version stop) — the fact's
+   * fetch time. A leg with such an end is stored `coord_source='google'` with the older fetch time, so
+   * the daily `leg-google-coords` job clears it once expired; no maps link and no ride deep link is
+   * ever built from it.
+   */
+  googleFetchedAt?: Date | null;
+}
+
+/** V-1b: is this point an in-memory Google Places point (never to be stored outside a stamped leg)? */
+export function isGooglePoint(a: Pick<ActivityLocation, "googleFetchedAt">): boolean {
+  return a.googleFetchedAt instanceof Date && Number.isFinite(a.googleFetchedAt.getTime());
 }
 
 /**
@@ -90,6 +103,9 @@ export interface TransportLegResult {
   userSelectedMode?: string | null;
   /** Step 9a: the routing source that computed the leg (`transport_legs.source`); absent otherwise. */
   source?: string | null;
+  /** V-1b: `google` when either end is an in-memory Google point, with the OLDER fetch time (R311). */
+  coordSource?: "google" | null;
+  coordFetchedAt?: Date | null;
 }
 
 export interface UserTransportPrefs {
@@ -192,6 +208,19 @@ export async function calculateTransportLegs(
   for (const pair of buildSameDayActivityPairs(activities)) {
     const leg = await computeRoutedVersionLeg(pair.from, pair.to, pair.dayNumber, pair.legOrder, routing);
     if (leg) allLegs.push(leg);
+  }
+
+  // V-1b: a leg with a Google-sourced end is stamped the way a plan leg is (R311) — through the ONE
+  // stamp the plan-leg engine uses, never a second copy of the rule (§18 rule 1). Imported lazily: the
+  // engine imports this module, so a static import would be a cycle.
+  const googleEnds = new Map(activities.filter(isGooglePoint).map((a) => [a.id, a.googleFetchedAt as Date]));
+  if (googleEnds.size > 0) {
+    const { googleCoordStamp } = await import("./routing/plan-legs-engine.service");
+    for (const leg of allLegs) {
+      const from = googleEnds.get(leg.fromActivityId);
+      const to = googleEnds.get(leg.toActivityId);
+      if (from || to) Object.assign(leg, googleCoordStamp(from, to));
+    }
   }
 
   await persistTransportLegs(variantId, allLegs, destination);
@@ -480,6 +509,8 @@ async function persistTransportLegs(
       linkedProductUrl: leg.linkedProductUrl ?? null,
       // Step 9a: a routed version leg names its source and the source's own answer time.
       ...(leg.source ? { source: leg.source, calculatedAt: new Date(leg.routeRetrievedAt) } : {}),
+      // V-1b: a Google-sourced end says so, with its fetch time, so the daily job can clear it.
+      ...(leg.coordSource === "google" ? { coordSource: "google", coordFetchedAt: leg.coordFetchedAt ?? null } : {}),
     }))
   );
 }
@@ -501,6 +532,9 @@ async function generateAndCacheMapsUrls(
 
   for (const [dayNumStr, dayActivities] of Object.entries(dayGroups)) {
     const dayNum = parseInt(dayNumStr);
+    // V-1b: no link for a day holding an in-memory Google point — a link would store that point in
+    // the cache (LD 57). The day shows no link rather than a stored Google point.
+    if (dayActivities.some(isGooglePoint)) continue;
     const sorted = dayActivities.sort((a, b) => a.order - b.order);
     const points: ActivityPoint[] = sorted.map(a => ({ lat: a.lat, lng: a.lng, name: a.name }));
 
@@ -584,6 +618,8 @@ export async function regenerateMapsUrlsFromLegs(
 
   for (const [dayNumStr, dayLegs] of Object.entries(dayGroups)) {
     const dayNum = parseInt(dayNumStr);
+    // V-1b: a day whose legs carry any Google-sourced end gets no link (LD 57, R311).
+    if (dayLegs.some((l) => l.coordSource === "google")) continue;
     const sorted = dayLegs.sort((a, b) => a.legOrder - b.legOrder);
     const dominantMode = getDominantModeFromRows(sorted);
 

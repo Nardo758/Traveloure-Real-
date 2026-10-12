@@ -211,6 +211,23 @@ export async function computePlanLegs(
   tripId: string,
   deps: { adapter?: RoutingAdapter | null; qualifies?: boolean; now?: () => Date } = {},
 ): Promise<PlanLegsResult> {
+  const result = await computePlanLegsCore(tripId, deps);
+  // P0-c item 3 (ledger `2026-10-12-p0c-hotfix`; LD 69): at the end of every recompute — skipped or not —
+  // the Trip Card's frozen snapshot takes the live plan's items for every day not yet past. Runs inside the
+  // same debounced call, never on read; a failed refresh never fails the recompute (§15b).
+  try {
+    const { refreshTripFinalLiveDays } = await import("../trip-finalize.service");
+    await refreshTripFinalLiveDays(tripId, deps.now ? deps.now() : new Date());
+  } catch (err: any) {
+    console.warn(`[routing] trip card refresh failed for ${tripId}: ${String(err?.message ?? err).slice(0, 200)}`);
+  }
+  return result;
+}
+
+async function computePlanLegsCore(
+  tripId: string,
+  deps: { adapter?: RoutingAdapter | null; qualifies?: boolean; now?: () => Date } = {},
+): Promise<PlanLegsResult> {
   const adapter = deps.adapter !== undefined ? deps.adapter : routingAdapter();
   const qualifies = deps.qualifies ?? (await tripGetsRoutedLegs(tripId));
   const trip = adapter && qualifies ? await storage.getTrip(tripId) : undefined;

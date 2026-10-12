@@ -124,15 +124,6 @@ const ROW_ANY_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|\s*\d{4}-\d{2}-\d
  */
 const KNOWN_DUPLICATE_IDS = {
   "113": "frozen numeric collision — the Workstation-vs-Catalog ruling (Aug 14) and the Replit-stream audit record (Aug 17)",
-  "2026-09-07-concierge-conversation-trip-id": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-concierge-page-is-a-door": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-ask-ai-drawer-paid-task": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-trip-cart-leaves-sidebar": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-my-events-folds-into-my-plans": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-trip-card-loses-tab-shell": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-console-one-grammar": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-home-owns-time-axis": "LD 45 ruling rows written twice; the second copy moved the note out of the tag cell",
-  "2026-09-07-slip-canvas-unrecoverable": "record row written twice; the second copy moved the note out of the tag cell",
 };
 
 /** The bracketed tag at the head of a tag cell (balanced), or null. */

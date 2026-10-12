@@ -50,7 +50,7 @@ import { itineraryItems, providerServices } from "@shared/schema";
 import { itineraryItemIsExpertWork } from "@shared/itinerary-item-expert";
 import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
-import { factPointsForTrip } from "./content-facts/place-facts.service";
+import { factPointsForTrip, factsForTrip } from "./content-facts/place-facts.service";
 import type { FixedCommitment, ItineraryItem as OptimizerBaselineItem } from "../itinerary-optimizer";
 
 export type { OptimizerBaselineItem };
@@ -207,6 +207,17 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
         return new Map<string, { lat: number; lng: number }>();
       })
     : new Map<string, { lat: number; lng: number }>();
+  // V-1b (ledger `2026-10-12-v1b-google-version-legs`): a Google point carries the fact's fetch time,
+  // so a version leg ending at it is stamped `coord_source='google'` like a plan leg (R311). Found the
+  // way the plan-leg engine finds it: the unexpired Places `location` fact whose value IS the point.
+  const factViews = factPoints.size > 0 ? await factsForTrip(tripId).catch(() => ({} as Record<string, any[]>)) : {};
+  const fetchedAtFor = (itemId: string, p: { lat: number; lng: number }): Date | null => {
+    const g = ((factViews as Record<string, any[]>)[itemId] ?? []).find(
+      (f: any) => !f.stale && f.factType === "location" && f.origin === "places_api" && Number(f.value?.lat) === p.lat && Number(f.value?.lng) === p.lng,
+    );
+    const at = g?.checkedAt ? new Date(g.checkedAt) : null;
+    return at && Number.isFinite(at.getTime()) ? at : null;
+  };
 
   for (const { item, service } of rows) {
     // D3: expert work joins the constraint class WHATEVER its routing status — an in_planning
@@ -255,7 +266,7 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
         const durable = durablePoint(item, service);
         if (durable) return { latitude: durable.lat, longitude: durable.lng };
         const fact = factPoints.get(item.id);
-        return fact ? { placesPoint: fact } : {};
+        return fact ? { placesPoint: fact, placesFetchedAt: fetchedAtFor(item.id, fact) } : {};
       })(),
       // Missing stays missing. The optimizer may research an explicit duration, but this adapter
       // never fabricates one merely to make schedule arithmetic convenient.
