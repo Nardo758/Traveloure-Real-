@@ -60,7 +60,10 @@ export function StayBookButton({ tripId, itemId, hotelName }: { tripId: string; 
         {STAY_BOOK_WORDS.book}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid={`stay-book-dialog-${itemId}`}>
+        {/* z-[111]: this dialog opens from the item SHEET, whose overlay sits at z-[100] (sheet.tsx); at the dialog's
+            default z-50 the sheet's overlay covered "Continue to payment" (sandbox run 38273025684). Same class as
+            the Select-under-a-Sheet fix (select.tsx z-[110]). */}
+        <DialogContent className="z-[111] max-h-[90vh] overflow-y-auto" data-testid={`stay-book-dialog-${itemId}`}>
           <DialogHeader>
             <DialogTitle>{hotelName}</DialogTitle>
             <DialogDescription>

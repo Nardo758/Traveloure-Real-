@@ -35,6 +35,16 @@ export const LITEAPI_CURRENCY_DEFAULT = "USD";
 export const LITEAPI_GUEST_NATIONALITY_DEFAULT = "US";
 export const LITEAPI_RATES_TIMEOUT_MS_DEFAULT = 8000;
 
+/**
+ * S1-d-3c (decision-maker, Oct 12, 2026): hard client timeouts on the two booking-host calls. A prebook moves no
+ * money and is simply refused when it times out; a timed-out BOOK is never called failed — a charge may exist, so it
+ * stays "still waiting for the hotel's answer" and the sync reconciles it by our client reference (LD 43/44).
+ *   · `LITEAPI_PREBOOK_TIMEOUT_MS` — default below.
+ *   · `LITEAPI_BOOK_TIMEOUT_MS` — default below.
+ */
+export const LITEAPI_PREBOOK_TIMEOUT_MS_DEFAULT = 30_000;
+export const LITEAPI_BOOK_TIMEOUT_MS_DEFAULT = 60_000;
+
 function intEnv(raw: string | undefined, fallback: number): number {
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 && (raw ?? "").trim() !== "" ? n : fallback;
@@ -46,6 +56,14 @@ export function liteapiRatesDailyCap(env: NodeJS.ProcessEnv = process.env): numb
 export function liteapiRatesTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const n = intEnv(env.LITEAPI_RATES_TIMEOUT_MS, LITEAPI_RATES_TIMEOUT_MS_DEFAULT);
   return n > 0 ? n : LITEAPI_RATES_TIMEOUT_MS_DEFAULT;
+}
+export function liteapiPrebookTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = intEnv(env.LITEAPI_PREBOOK_TIMEOUT_MS, LITEAPI_PREBOOK_TIMEOUT_MS_DEFAULT);
+  return n > 0 ? n : LITEAPI_PREBOOK_TIMEOUT_MS_DEFAULT;
+}
+export function liteapiBookTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const n = intEnv(env.LITEAPI_BOOK_TIMEOUT_MS, LITEAPI_BOOK_TIMEOUT_MS_DEFAULT);
+  return n > 0 ? n : LITEAPI_BOOK_TIMEOUT_MS_DEFAULT;
 }
 export function liteapiCurrency(env: NodeJS.ProcessEnv = process.env): string {
   const v = (env.LITEAPI_CURRENCY ?? "").trim().toUpperCase();

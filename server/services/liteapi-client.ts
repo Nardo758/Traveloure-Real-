@@ -65,6 +65,16 @@ export class LiteapiError extends Error {
   }
 }
 
+/**
+ * S1-d-3c: LiteAPI gave no answer within the call's hard timeout. Deliberately NOT a `LiteapiError` — it is not
+ * a refusal: a timed-out book may have been made, so callers treat it as unknown, never as failed.
+ */
+export class LiteapiTimeoutError extends Error {
+  constructor(public path: string, public timeoutMs: number) {
+    super(`LiteAPI ${path} gave no answer within ${timeoutMs} ms`);
+  }
+}
+
 export interface LiteapiClientDeps {
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -93,18 +103,53 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
     return request(`${cfg.dataBaseUrl}${path}?${qs.toString()}`, path);
   }
 
-  async function request(url: string, path: string, payload?: unknown, method?: "PUT"): Promise<any> {
+  /**
+   * One HTTP exchange. With `timeoutMs` the whole exchange (headers and body) is bounded: the request is aborted
+   * and `LiteapiTimeoutError` thrown — raced as well, so a transport that ignores the abort still cannot hang the
+   * caller. A timeout is never retried (a book must not be sent twice).
+   */
+  async function exchange(url: string, init: RequestInit, path: string, timeoutMs?: number): Promise<{ res: Response; body: any }> {
+    if (!timeoutMs || timeoutMs <= 0) {
+      const res = await doFetch(url, init);
+      return { res, body: await res.json().catch(() => null) };
+    }
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctrl.abort();
+        reject(new LiteapiTimeoutError(path, timeoutMs));
+      }, timeoutMs);
+    });
+    try {
+      return await Promise.race([
+        (async () => {
+          const res = await doFetch(url, { ...init, signal: ctrl.signal });
+          return { res, body: await res.json().catch(() => null) };
+        })().catch((err) => {
+          if (ctrl.signal.aborted) throw new LiteapiTimeoutError(path, timeoutMs);
+          throw err;
+        }),
+        expired,
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function request(url: string, path: string, payload?: unknown, method?: "PUT", timeoutMs?: number): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       await pace();
-      const res = await doFetch(
+      const { res, body } = await exchange(
         url,
         method === "PUT"
           ? { method: "PUT", headers: { "X-API-Key": cfg.apiKey, accept: "application/json" } }
           : payload === undefined
             ? { headers: { "X-API-Key": cfg.apiKey, accept: "application/json" } }
             : { method: "POST", headers: { "X-API-Key": cfg.apiKey, accept: "application/json", "content-type": "application/json" }, body: JSON.stringify(payload) },
+        path,
+        timeoutMs,
       );
-      const body: any = await res.json().catch(() => null);
       const limited = res.status === 429 || body?.error?.code === 4290;
       if (limited && attempt < LITEAPI_RETRIES) {
         await sleep(LITEAPI_BACKOFF_START_MS * 2 ** attempt);
@@ -152,12 +197,19 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
       });
     },
     /** S1-d-3a: prebook one offer for the Nuitée Payment SDK. The answer carries prebookId + transactionId. */
-    async prebook(q: { offerId: string }): Promise<any> {
-      return request(`${cfg.bookBaseUrl}/rates/prebook`, "/rates/prebook", { offerId: q.offerId, usePaymentSdk: true });
+    async prebook(q: { offerId: string }, opts: { timeoutMs?: number } = {}): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/rates/prebook`, "/rates/prebook", { offerId: q.offerId, usePaymentSdk: true }, undefined, opts.timeoutMs);
     },
     /** S1-d-3a: book a prebook the SDK has paid — through the ONE body builder. */
-    async book(q: { prebookId: string; transactionId: string; clientReference: string; holder: LiteapiHolder }): Promise<any> {
-      return request(`${cfg.bookBaseUrl}/rates/book`, "/rates/book", bookRequestBody(q));
+    async book(q: { prebookId: string; transactionId: string; clientReference: string; holder: LiteapiHolder }, opts: { timeoutMs?: number } = {}): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/rates/book`, "/rates/book", bookRequestBody(q), undefined, opts.timeoutMs);
+    },
+    /**
+     * S1-d-3c: LiteAPI's bookings carrying one client reference (our row id) — how the sync finds a book that
+     * timed out before LiteAPI's booking id came back. `GET /bookings?clientReference=` (LiteAPI "List bookings").
+     */
+    async listBookingsByClientReference(clientReference: string): Promise<any> {
+      return request(`${cfg.bookBaseUrl}/bookings?clientReference=${encodeURIComponent(clientReference)}`, "/bookings?clientReference");
     },
     /** S1-d-3a: read one booking (the sync — it detects, never books). */
     async getBooking(bookingId: string): Promise<any> {
