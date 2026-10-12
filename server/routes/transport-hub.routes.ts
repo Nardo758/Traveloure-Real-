@@ -14,6 +14,7 @@ import { db } from "../db";
 import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg, getDestinationTransportOptions, resolveDestinationTransportOptionLink } from "../services/transport-booking-options.service";
+import { affiliatePartnerIdForSource, isLegAffiliateOptionId, syncLegAffiliateOptions } from "../services/transport-affiliate.service";
 import { z } from "zod";
 import { resolveViewerTransportBookings } from "../services/transport-viewer-booking.service";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -298,13 +299,22 @@ router.get(
         const destination = (leg.destinationProfile as string | null) || leg.toName.split(",")[0];
         await populateBookingOptionsForLeg(legId, destination, 1);
         options = await storage.getBookingOptionsByLegId(legId);
+      } else {
+        // TC-2 Phase 1 (ledger `2026-10-12-tc2-affiliate-legs`): the partner options are the current answer
+        // of the ONE leg resolver — a leg cached under the old every-leg list is brought up to the route map
+        // and the registry gate on read. Booked rows are never touched.
+        await syncLegAffiliateOptions(legId);
+        options = await storage.getBookingOptionsByLegId(legId);
       }
 
       // §16: affiliate/deep-link options never ship their externalUrl to the client. The
       // booking-agent rail re-resolves the URL from the transport_booking_options row by id
       // (transportOptionId) — the card only needs to know a bookable link exists.
       // AF-1: the same projection drops `affiliateCode` too.
-      const safeOptions = options.map((opt: any) => toClientTransportOption(opt));
+      // TC-2 Phase 1: the partner options shown are the resolver's own rows; an affiliate row stored before it
+      // (the old every-leg list) is hidden here, never deleted.
+      const shown = options.filter((opt: any) => opt.bookingType !== "affiliate" || isLegAffiliateOptionId(opt.id, legId));
+      const safeOptions = shown.map((opt: any) => toClientTransportOption(opt));
 
       res.json({ legId, options: safeOptions });
     } catch (err) {
@@ -449,8 +459,10 @@ router.post(
       // Log click event for affiliate tracking.
       try {
         const isAiGeneratedAffiliate = option.bookingType === "affiliate";
+        // TC-2 Phase 1: the click records the partner's REAL `affiliate_partners` id (the column is a foreign
+        // key; the source string never was one), NULL when the partner has no registry row.
         await storage.createAffiliateClick({
-          partnerId: option.source,
+          partnerId: (await affiliatePartnerIdForSource(option.source)) ?? undefined,
           userId: userId || undefined,
           referrer: referrer || undefined,
           userAgent: userAgent || undefined,
@@ -538,7 +550,7 @@ router.post("/api/transport-options/click", isAuthenticated, async (req, res) =>
     if (!link) return res.status(404).json({ error: "Transfer option not found" });
     try {
       await storage.createAffiliateClick({
-        partnerId: link.source,
+        partnerId: (await affiliatePartnerIdForSource(link.source)) ?? undefined,
         userId: getUserId(req) || undefined,
         referrer: req.get("referrer") || undefined,
         userAgent: req.get("user-agent") || undefined,

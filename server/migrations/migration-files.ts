@@ -2024,4 +2024,8 @@ export const MIGRATION_FILES = [
   // CHECK / index / backfill). Both resolvers prefer it over the old expert-share column, which stays
   // readable. HELD FOR LEON'S COMMENT on the PR.
   "375_users_platform_fee_override.sql",
+  // 376 — affiliate partner licence, attribution and public_ok (TC-2 Phase 1 decision 1, ledger
+  // 2026-10-12-tc2-affiliate-legs). Three additive nullable columns on affiliate_partners; no DEFAULT,
+  // CHECK, index, FK or backfill; declared in shared/schema.ts. Migration 376 SQL approved by Leon — comment 19:42Z on #1438.
+  "376_affiliate_partner_licence.sql",
 ] as const;
