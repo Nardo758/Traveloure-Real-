@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 
 const BUSBUD_API = "https://www.busbud.com/api";
@@ -55,8 +56,8 @@ export async function searchBusbud(params: BusbudSearchParams): Promise<CatalogI
             duration: d.duration ? `${Math.round(d.duration / 60)} hours` : null,
             categories: ["ground-transport", "bus"],
             tags: ["busbud", "bus", operator?.full_name?.toLowerCase() || "bus"],
-            bookingUrl: `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(params.origin.toLowerCase())}/${encodeURIComponent(params.destination.toLowerCase())}?ref=${token}`,
-            affiliateUrl: d.url || `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(params.origin.toLowerCase())}/${encodeURIComponent(params.destination.toLowerCase())}?ref=${token}`,
+            bookingUrl: `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(params.origin.toLowerCase())}/${encodeURIComponent(params.destination.toLowerCase())}?ref=${getTravelpayoutsMarker()}`,
+            affiliateUrl: d.url || `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(params.origin.toLowerCase())}/${encodeURIComponent(params.destination.toLowerCase())}?ref=${getTravelpayoutsMarker()}`,
             source: "travelpayouts/busbud",
             lastUpdated: new Date(),
           } as CatalogItem;
@@ -87,8 +88,8 @@ export async function searchBusbud(params: BusbudSearchParams): Promise<CatalogI
     duration: null,
     categories: ["ground-transport", "bus"],
     tags: ["busbud", "bus", "ground-transport"],
-    bookingUrl: `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(origin.toLowerCase())}/${encodeURIComponent(dest.toLowerCase())}?ref=${token}`,
-    affiliateUrl: `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(origin.toLowerCase())}/${encodeURIComponent(dest.toLowerCase())}?ref=${token}`,
+    bookingUrl: `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(origin.toLowerCase())}/${encodeURIComponent(dest.toLowerCase())}?ref=${getTravelpayoutsMarker()}`,
+    affiliateUrl: `https://www.busbud.com/en/bus-tickets/${encodeURIComponent(origin.toLowerCase())}/${encodeURIComponent(dest.toLowerCase())}?ref=${getTravelpayoutsMarker()}`,
     source: "travelpayouts/busbud",
     lastUpdated: new Date(),
   } as CatalogItem];

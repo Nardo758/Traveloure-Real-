@@ -15,6 +15,12 @@
  *   B7 a definite LiteAPI refusal fails the booking; an unreadable answer leaves the claim for the sync
  *   B8 the sync records LiteAPI's status and never changes ours; it reports disagreement and stranded claims
  *   B9 a missing holder name is refused, never invented
+ *   B11 (S1-d-3c) hard timeouts: a timed-out prebook stores nothing; a timed-out BOOK is unknown, never failed —
+ *       the row stays `booking` ("still waiting") and the book is sent once
+ *   B12 (S1-d-3c) the sync finds a claim with no LiteAPI id by our client reference and records LiteAPI's id and
+ *       status as facts — never our status; another reference's booking is not taken for ours
+ *   B10 (S1-d-3c) a prebook below its OWN SSP ⇒ ONE re-quote at the margin that floor needs and ONE more prebook;
+ *       a second answer below its floor is refused — never more than two prebook calls
  *
  * DISPOSABLE DB ONLY.
  */
@@ -25,7 +31,7 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { prebookStay, bookStay, cancelStay, stayBookingView, type StayBookingDeps } from "../services/liteapi-booking.service";
 import { runLiteapiBookingSync } from "../jobs/liteapiBookingSync";
-import { LiteapiError } from "../services/liteapi-client";
+import { LiteapiError, LiteapiTimeoutError } from "../services/liteapi-client";
 import { LITEAPI_PAYMENT_METHOD } from "@shared/liteapi-booking";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -41,14 +47,14 @@ const prebookAnswer = (over: Record<string, unknown> = {}) => ({
   data: { prebookId: `pb-${RUN}-${++prebookN}`, transactionId: `tx-${RUN}-${prebookN}`, secretKey: "sk-secret", price: 312.5, currency: "USD", priceDifferencePercent: 0, ...over },
 });
 
-function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; prebook?: any; book?: () => any; cancel?: () => any; get?: () => any } = {}) {
-  const calls: Record<string, any[]> = { rates: [], prebook: [], book: [], cancel: [], get: [] };
+function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; prebook?: any | ((q: any, n: number) => any); list?: (ref: string) => any; book?: () => any; cancel?: () => any; get?: () => any } = {}) {
+  const calls: Record<string, any[]> = { rates: [], prebook: [], book: [], cancel: [], get: [], list: [] };
   const deps: StayBookingDeps = {
     config: () => (opts.env === "production" ? production : sandbox),
     client: () =>
       ({
         hotelRates: async (q: any) => (calls.rates.push(q), opts.rates ? opts.rates(q) : rates),
-        prebook: async (q: any) => (calls.prebook.push(q), opts.prebook ?? prebookAnswer()),
+        prebook: async (q: any) => (calls.prebook.push(q), typeof opts.prebook === "function" ? opts.prebook(q, calls.prebook.length) : opts.prebook ?? prebookAnswer()),
         book: async (q: any) => {
           // The body the real client sends is built by the ONE builder; assert its payment method there.
           const { bookRequestBody } = await import("../services/liteapi-client");
@@ -57,6 +63,7 @@ function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; 
         },
         cancelBooking: async (bid: string) => (calls.cancel.push(bid), opts.cancel ? opts.cancel() : { data: { bookingId: bid, status: "CANCELLED" } }),
         getBooking: async (bid: string) => (calls.get.push(bid), opts.get ? opts.get() : { data: { bookingId: bid, status: "CONFIRMED" } }),
+        listBookingsByClientReference: async (ref: string) => (calls.list.push(ref), opts.list ? opts.list(ref) : { data: [] }),
       }) as any,
     gate: { dailyCap: () => 10, countToday: async () => 0, record: async () => {} },
     marginFraction: async () => 0.12,
@@ -131,6 +138,7 @@ test("B2/B3 prebook re-quotes server-side, stores the pair before the SDK, never
   const low = fakes({ prebook: prebookAnswer({ price: 280 }) }); // the prebook's guard: below the re-quote's SSP of 300
   assert.deepEqual(await prebookStay(q("s1"), low.deps), { state: "unavailable", reason: "below_ssp" });
   assert.equal(await row("s1"), undefined, "nothing stored below the SSP");
+  assert.equal(low.calls.prebook.length, 2, "S1-d-3c: one re-prebook, then refused — never a third");
 
   // No SSP stated ⇒ refused by name; nothing prebooked, nothing stored.
   const bare = { data: [{ hotelId: `${RUN}-lp`, roomTypes: [{ offerId: `offer-${RUN}`, rates: [{ retailRate: { total: [{ amount: 300, currency: "USD" }] } }] }] }] };
@@ -260,4 +268,76 @@ test("B9 a missing holder name is refused, never invented", async () => {
   assert.equal(f.calls.book.length, 0);
   const r = ((await db.execute(sql`SELECT status FROM liteapi_bookings WHERE itinerary_item_id = ${id("anon")}`)) as any).rows[0];
   assert.equal(r.status, "prebooked");
+});
+
+test("B10 a prebook below its own SSP is re-quoted once and prebooked once more, then refused", async () => {
+  // CI shape: the re-quote's SSP agrees with the price, the prebook's own SSP is a few cents higher.
+  const quoteAt = (m: number) => ({
+    data: [{ roomTypes: [{ offerId: `offer-m${m}-${RUN}`, offerRetailRate: { amount: 202.27, currency: "USD" }, suggestedSellingPrice: { amount: 202.27, currency: "USD" } }] }],
+  });
+  const lifted = fakes({
+    rates: (rq: any) => quoteAt(rq.marginPercent),
+    prebook: (_q: any, n: number) => prebookAnswer(n === 1 ? { price: 202.27, suggestedSellingPrice: 202.3 } : { price: 202.31, suggestedSellingPrice: 202.3 }),
+  });
+  const ok: any = await prebookStay(q("s1"), lifted.deps);
+  assert.equal(ok.state, "prebooked");
+  assert.equal(ok.amountCents, 20231);
+  assert.deepEqual(lifted.calls.rates.map((c: any) => c.marginPercent), [12, 12.02], "the second quote is at max(band, floor / net − 1): net 202.27 / 1.12 ⇒ 12.017% ⇒ 12.02%");
+  assert.equal(lifted.calls.prebook.length, 2);
+  assert.deepEqual(lifted.calls.prebook[1], { offerId: `offer-m12.02-${RUN}` }, "the floor re-quote's offer is the one prebooked");
+  assert.equal((await row("s1")).offer_id, `offer-m12.02-${RUN}`);
+  await db.execute(sql`DELETE FROM liteapi_bookings WHERE itinerary_item_id = ${id("s1")}`);
+
+  const still = fakes({
+    rates: (rq: any) => quoteAt(rq.marginPercent),
+    prebook: () => prebookAnswer({ price: 202.27, suggestedSellingPrice: 202.3 }),
+  });
+  assert.deepEqual(await prebookStay(q("s1"), still.deps), { state: "unavailable", reason: "below_ssp" });
+  assert.equal(still.calls.prebook.length, 2, "never more than two prebook calls");
+  assert.equal(await row("s1"), undefined);
+});
+
+test("B11 a timed-out prebook stores nothing; a timed-out book is still waiting, never failed", async () => {
+  const before = Number(((await db.execute(sql`SELECT count(*)::int AS n FROM liteapi_bookings WHERE itinerary_item_id = ${id("s3")}`)) as any).rows[0].n);
+  const slowPre = fakes({ prebook: () => { throw new LiteapiTimeoutError("/rates/prebook", 30_000); } });
+  assert.deepEqual(await prebookStay(q("s3"), slowPre.deps), { state: "unavailable", reason: "prebook_error" });
+  assert.equal(slowPre.calls.prebook.length, 1);
+  const after = Number(((await db.execute(sql`SELECT count(*)::int AS n FROM liteapi_bookings WHERE itinerary_item_id = ${id("s3")}`)) as any).rows[0].n);
+  assert.equal(after, before, "a prebook that never answered stores nothing");
+
+  assert.equal((await prebookStay(q("s3"), fakes().deps)).state, "prebooked");
+  const slowBook = fakes({ book: () => { throw new LiteapiTimeoutError("/rates/book", 60_000); } });
+  const out = await bookStay(q("s3"), slowBook.deps);
+  assert.equal(out.state, "pending", "unknown, never failed — a charge may exist");
+  assert.equal(slowBook.calls.book.length, 1, "sent once");
+  const r = await row("s3");
+  assert.equal(r.status, "booking");
+  assert.equal(r.liteapi_booking_id, null);
+  assert.match(r.failure_reason, /no answer within 60000 ms/);
+  assert.equal(await itemStatus("s3"), "in_planning");
+});
+
+test("B12 the sync finds a timed-out book by our client reference and records facts only", async () => {
+  const waiting = await row("s3");
+  const other = await row("s4");
+  assert.equal(waiting.status, "booking");
+  assert.equal(other.status, "booking");
+  const f = fakes({
+    list: (ref: string) =>
+      ref === waiting.id
+        ? { data: [{ bookingId: `bk-late-${RUN}`, status: "confirmed", clientReference: waiting.id }, { bookingId: `bk-not-ours-${RUN}`, status: "CONFIRMED", clientReference: "someone-else" }] }
+        : { data: [{ bookingId: `bk-not-ours-${RUN}`, status: "CONFIRMED", clientReference: "someone-else" }] },
+  });
+  const out = await runLiteapiBookingSync({ config: f.deps.config, client: f.deps.client });
+  assert.equal(out.error, undefined);
+  assert.ok(f.calls.list.includes(waiting.id) && f.calls.list.includes(other.id));
+  assert.ok(out.foundByReference >= 1);
+  const w = await row("s3");
+  assert.equal(w.status, "booking", "the sync never changes our status");
+  assert.equal(w.liteapi_booking_id, `bk-late-${RUN}`);
+  assert.equal(w.last_sync_status, "CONFIRMED");
+  assert.ok(out.disagree.some((d) => d.id === waiting.id && d.ours === "booking" && d.theirs === "CONFIRMED"));
+  const o = await row("s4");
+  assert.equal(o.liteapi_booking_id, null, "another reference's booking is never taken for ours");
+  assert.ok(out.strandedBooking >= 1, "a claim LiteAPI does not hold stays reported");
 });

@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
@@ -51,8 +52,8 @@ export async function searchKiwiTaxi(params: KiwiTaxiSearchParams): Promise<Cata
           duration: t.duration ? `${Math.round(t.duration / 60)} min` : null,
           categories: ["transfer", "airport-transfer"],
           tags: ["kiwitaxi", "transfer", t.vehicle?.class?.toLowerCase() || "standard"],
-          bookingUrl: t.booking_url || `https://kiwitaxi.com/transfer/${encodeURIComponent(params.from)}/${encodeURIComponent(params.to)}?api_key=${token}`,
-          affiliateUrl: t.booking_url || `https://kiwitaxi.com/transfer/${encodeURIComponent(params.from)}/${encodeURIComponent(params.to)}?api_key=${token}`,
+          bookingUrl: t.booking_url || `https://kiwitaxi.com/transfer/${encodeURIComponent(params.from)}/${encodeURIComponent(params.to)}?api_key=${getTravelpayoutsMarker()}`,
+          affiliateUrl: t.booking_url || `https://kiwitaxi.com/transfer/${encodeURIComponent(params.from)}/${encodeURIComponent(params.to)}?api_key=${getTravelpayoutsMarker()}`,
           source: "travelpayouts/kiwitaxi",
           lastUpdated: new Date(),
         } as CatalogItem));
