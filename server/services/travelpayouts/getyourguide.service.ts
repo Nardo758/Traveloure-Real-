@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
@@ -53,8 +54,8 @@ export async function searchGetYourGuide(params: GetYourGuideSearchParams): Prom
           duration: t.duration ? `${Math.round(t.duration / 60)}h` : null,
           categories: ["activity", "tour", t.category || "experience"],
           tags: ["getyourguide", t.category || "tour"],
-          bookingUrl: t.url || `https://www.getyourguide.com/s/?q=${encodeURIComponent(city)}&partner_id=${token}`,
-          affiliateUrl: t.url ? `${t.url}?partner_id=${token}` : null,
+          bookingUrl: t.url || `https://www.getyourguide.com/s/?q=${encodeURIComponent(city)}&partner_id=${getTravelpayoutsMarker()}`,
+          affiliateUrl: t.url ? `${t.url}?partner_id=${getTravelpayoutsMarker()}` : null,
           source: "travelpayouts/getyourguide",
           lastUpdated: new Date(),
         } as CatalogItem));

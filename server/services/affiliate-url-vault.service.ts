@@ -24,6 +24,7 @@
  */
 import crypto from "crypto";
 import { sharedCache } from "./shared-cache.service";
+import { scrubTravelpayoutsToken } from "./travelpayouts/travelpayouts-client";
 
 const VAULT_NAMESPACE = "affiliate-url-vault";
 const VAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24h — same as the TP feed cache the items came from
@@ -61,7 +62,9 @@ export async function resolveBookingToken(token: string): Promise<VaultedBooking
   if (!entries || !Array.isArray(entries)) return null;
   const entry = entries[index];
   if (!entry || typeof entry.url !== "string" || !entry.url) return null;
-  return entry;
+  // AF-2: a vaulted link minted before the fix may hold the API token; the booking request it seeds
+  // must not store it.
+  return { ...entry, url: scrubTravelpayoutsToken(entry.url) };
 }
 
 /** DTO fields that carry partner URLs and must never reach the client (§16). */

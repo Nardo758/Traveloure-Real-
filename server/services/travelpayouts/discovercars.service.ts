@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
@@ -76,8 +77,8 @@ export async function searchDiscoverCars(params: DiscoverCarsSearchParams): Prom
         c.fuel_type || "petrol",
         c.air_conditioning ? "AC" : "",
       ].filter(Boolean),
-      bookingUrl: c.booking_url || `https://www.discovercars.com/car-hire/${encodeURIComponent(params.pickupLocation)}?affiliate=${token}`,
-      affiliateUrl: c.booking_url || `https://www.discovercars.com/car-hire/${encodeURIComponent(params.pickupLocation)}?affiliate=${token}`,
+      bookingUrl: c.booking_url || `https://www.discovercars.com/car-hire/${encodeURIComponent(params.pickupLocation)}?affiliate=${getTravelpayoutsMarker()}`,
+      affiliateUrl: c.booking_url || `https://www.discovercars.com/car-hire/${encodeURIComponent(params.pickupLocation)}?affiliate=${getTravelpayoutsMarker()}`,
       source: "travelpayouts/discovercars",
       lastUpdated: new Date(),
     } as CatalogItem));
