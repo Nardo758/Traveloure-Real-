@@ -18,6 +18,9 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 // Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
 import "@/styles/slip-tokens.css";
 import { Link, useLocation } from "wouter";
+import { bookingControls } from "@shared/booking-path";
+import { serviceDetailHref } from "@/lib/trip-target";
+import { AffiliateBookButton } from "./AffiliateBookButton";
 import { format } from "date-fns";
 import {
   Anchor,
@@ -863,6 +866,9 @@ function SlipDayItem({
   // the page never guesses from the item's name or type, which a chosen hotel's name need not reveal.
   const { data: stayRead } = useStayBooking(tripId, a.id, sheetOpen && isOwner);
   const stayBook = showsStayBook({ isOwner, read: stayRead }) && !a.booking?.id;
+  // BP-1: which booking controls the sheet draws, from the item's resolved path (`@shared/booking-path`). An
+  // unresolved path keeps the pre-BP-1 sheet (the stay's Book and "Book this for me") — no new claim either way.
+  const sheetControls = a.bookingPath ? bookingControls(a.bookingPath) : { primaryBook: true, bookForMe: true };
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);
@@ -892,8 +898,8 @@ function SlipDayItem({
         onFindHost: onFindHost ? () => onFindHost(findHostCategory(a.type)) : undefined,
         onBuildAround: promotable ? promote : undefined,
         onSetAsStay: canSetAsStay ? (replacingStay ? () => setConfirmStay(true) : setAsStay) : undefined,
-        // R323 (step 7b): the ONE handoff door, with this stop ticked. Owner only — the ask is theirs.
-        onBookForMe: isOwner ? () => openHandoffChooser({ kind: "book", itemIds: [a.id] }) : undefined,
+        // BP-1 (ledger `2026-10-12-bp1-booking-path`, ruling 3): "Book this for me" is never on the slip row —
+        // it lives in the item sheet, under the item's own Book control, and in the leg sheet.
       }
     : null;
   // R323 (§12 step 3): an expert's change to this stop arrives as a suggestion ON the row.
@@ -957,10 +963,20 @@ function SlipDayItem({
         bookingAction={
           isOwner && itemBookingAction(a) ? (
             <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
-          ) : isOwner && !a.booking?.id ? (
+          ) : isOwner && !a.booking?.id && sheetControls.bookForMe ? (
             <>
-              {/* S1-d-3b (S1-d-3 ruling 3): "Book" on a bookable stay, beside "Book this for me". */}
-              {stayBook ? <StayBookButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
+              {/* BP-1 (ruling 3): the item's own Book control first — the listing on a platform item; on an
+                  affiliate item the stay's "Book" (S1-d-3b) or the partner's agent button — then "Book this for
+                  me" second. On a concierge item "Book this for me" is the only control; on `none`, nothing. */}
+              {sheetControls.primaryBook && a.bookingPath === "platform" && a.providerServiceId ? (
+                <Button size="sm" asChild data-testid={`item-sheet-book-${a.id}`}>
+                  <Link href={serviceDetailHref(a.providerServiceId, tripId)}>Book</Link>
+                </Button>
+              ) : null}
+              {sheetControls.primaryBook && stayBook ? <StayBookButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
+              {sheetControls.primaryBook && a.bookingPath === "affiliate" && !stayBook ? (
+                <AffiliateBookButton activity={a as any} testId={`item-sheet-affiliate-book-${a.id}`} />
+              ) : null}
               {/* R323 (step 7b, §12 step 1): "Book this for me" opens the ONE handoff chooser. */}
               <Button
                 size="sm"
