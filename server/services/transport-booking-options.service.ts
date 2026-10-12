@@ -12,7 +12,7 @@
 import { db } from "../db";
 import { transportBookingOptions, transportLegs, itineraryVariants, providerServices } from "@shared/schema";
 import { eq, and, ilike, sql } from "drizzle-orm";
-import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts/travelpayouts-client";
+import { getTravelpayoutsMarker } from "./travelpayouts/travelpayouts-client";
 import { buildPartnerizeTrackingLink } from "./partnerize/partnerize-client";
 import { metersPerMinute } from "@shared/travel-speeds";
 import { readBand } from "./fee-resolution.service";
@@ -314,33 +314,33 @@ export async function resolveAffiliateTransportMargin(): Promise<number> {
 // Affiliate URL builders
 // ============================================================================
 
-function buildTwelveGoUrl(fromName: string, toName: string, token: string | null): string {
+function buildTwelveGoUrl(fromName: string, toName: string, marker: string): string {
   const f = encodeURIComponent(fromName.toLowerCase().replace(/\s+/g, "-"));
   const t = encodeURIComponent(toName.toLowerCase().replace(/\s+/g, "-"));
-  const ref = token ? `?z=${token}` : "";
+  const ref = `?z=${marker}`;
   return `https://12go.asia/en/travel/${f}/${t}${ref}`;
 }
 
-function buildOmioUrl(fromName: string, toName: string, token: string | null): string {
+function buildOmioUrl(fromName: string, toName: string, marker: string): string {
   const f = encodeURIComponent(fromName);
   const t = encodeURIComponent(toName);
-  const ref = token ? `&ref=${token}` : "";
+  const ref = `&ref=${marker}`;
   return `https://www.omio.com/results/${f}/${t}?sortBy=best${ref}`;
 }
 
-function buildDiscoverCarsUrl(destination: string, token: string | null): string {
+function buildDiscoverCarsUrl(destination: string, marker: string): string {
   const loc = encodeURIComponent(destination);
   const today = new Date();
   const nextWeek = new Date(today.getTime() + 7 * 86_400_000);
   const fmt = (d: Date) => d.toISOString().split("T")[0];
-  const aff = token ? `&affiliate_id=${token}` : "";
+  const aff = `&affiliate_id=${marker}`;
   return `https://www.discovercars.com/car-hire/${loc}?pickup_date=${fmt(today)}&dropoff_date=${fmt(nextWeek)}${aff}`;
 }
 
-function buildKiwiUrl(fromName: string, toName: string, token: string | null): string {
+function buildKiwiUrl(fromName: string, toName: string, marker: string): string {
   const f = encodeURIComponent(fromName);
   const t = encodeURIComponent(toName);
-  const ref = token ? `&source=${token}` : "";
+  const ref = `&source=${marker}`;
   return `https://www.kiwi.com/en/search/results/${f}/${t}${ref}`;
 }
 
@@ -455,7 +455,10 @@ async function findAffiliateTransportOptions(
   distanceMeters: number,
   travelers: number
 ): Promise<any[]> {
-  const token = getTravelpayoutsToken();
+  // AF-1 (ledger `2026-10-12-af1-transport-token-leak`): the public affiliate marker (partner id), the
+  // same one the destination-level options use — never the secret API token, which these links and the
+  // stored `affiliate_code` used to carry to the browser and to the partner.
+  const marker = getTravelpayoutsMarker();
   const results: any[] = [];
 
   // 12Go — trains, buses, ferries, shuttles (strong Asia + global coverage)
@@ -473,8 +476,8 @@ async function findAffiliateTransportOptions(
     pricePerPerson: true,
     currency: "USD",
     estimatedMinutes: null,
-    urlWithAffiliate: buildTwelveGoUrl(fromName, toName, token),
-    affiliateCode: token ?? "traveloure",
+    urlWithAffiliate: buildTwelveGoUrl(fromName, toName, marker),
+    affiliateCode: marker,
     revenueRate: go12Margin,
   });
 
@@ -491,8 +494,8 @@ async function findAffiliateTransportOptions(
     pricePerPerson: true,
     currency: "EUR",
     estimatedMinutes: null,
-    urlWithAffiliate: buildOmioUrl(fromName, toName, token),
-    affiliateCode: token ?? "traveloure",
+    urlWithAffiliate: buildOmioUrl(fromName, toName, marker),
+    affiliateCode: marker,
     revenueRate: omioMargin,
   });
 
@@ -510,8 +513,8 @@ async function findAffiliateTransportOptions(
       pricePerPerson: false,
       currency: "USD",
       estimatedMinutes: null,
-      urlWithAffiliate: buildDiscoverCarsUrl(destination, token),
-      affiliateCode: token ?? "traveloure",
+      urlWithAffiliate: buildDiscoverCarsUrl(destination, marker),
+      affiliateCode: marker,
       revenueRate: dcMargin,
     });
   }
@@ -530,8 +533,8 @@ async function findAffiliateTransportOptions(
       pricePerPerson: true,
       currency: "USD",
       estimatedMinutes: null,
-      urlWithAffiliate: buildKiwiUrl(fromName, toName, token),
-      affiliateCode: token ?? "traveloure",
+      urlWithAffiliate: buildKiwiUrl(fromName, toName, marker),
+      affiliateCode: marker,
       revenueRate: kiwiMargin,
     });
   }

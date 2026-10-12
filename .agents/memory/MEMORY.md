@@ -4,7 +4,6 @@
 - [Expert Workspace surfacing](expert-workspace-surfacing.md) — workspace requires assigned trips API; GET /api/expert/assigned-trips was missing and sidebar had no Assigned Trips link
 - [Phase 1b neighborhood system](phase-1b-neighborhoods.md) — cityNeighborhoods table + neighborhood columns on gems/services; backfill is Haversine proximity; verify check [B] is a false-negative on empty dev DB.
 - [Optimization fee gate](optimization-fee-gate.md) — G3+G4: preview endpoint + Stripe payment gate before full LLM optimizer; complexity tier drives fee; 24h free-rerun via optimized_at on itinerary_comparisons.
-- [Transport commerce layer](transport-commerce-layer.md) — findTransportProviders + findAffiliateTransportOptions both implemented; all rates from booking_fee_configs (migration 031); old Travelpayouts/DiscoverCars/Nomad widgets removed.
 - [Auth user shape mismatch](auth-user-shape.md) — Replit Auth sessions have user.id; email-auth sessions have user.claims.sub — any route that extracts userId must check both.
 - [serviceBookings transport inserts](service-bookings-transport.md) — transport bookings insert into service_bookings; serviceId/travelerId/providerId are nullable (schema + DB altered); use correct Drizzle column names (not userId/serviceProviderId).
 - [Route module mount gap](route-mount-gap.md) — paymentsRoutes (and possibly others) imported in routes.ts but never app.use()'d; always verify mounts when a route returns HTML 404

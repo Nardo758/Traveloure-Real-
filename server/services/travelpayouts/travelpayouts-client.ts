@@ -17,6 +17,18 @@ export function getTravelpayoutsMarker(): string {
 }
 
 /**
+ * AF-1 (ledger `2026-10-12-af1-transport-token-leak`): the secret API token must never leave the server.
+ * Per-leg transport options written before AF-1 stored it in `transport_booking_options.external_url`
+ * and `affiliate_code`; rows on disk are not rewritten, so every stored value is passed through this on
+ * read and every occurrence of the token becomes the public marker. No token configured ⇒ unchanged.
+ */
+export function scrubTravelpayoutsToken<T extends string | null | undefined>(value: T): T {
+  const token = getTravelpayoutsToken();
+  if (!token || typeof value !== "string" || !value.includes(token)) return value;
+  return value.split(token).join(getTravelpayoutsMarker()) as T;
+}
+
+/**
  * MONEY_MAP F-5 — sub_id-based attribution token.
  *
  * Travelpayouts' `marker.SubID` convention returns a suffixed sub_id verbatim on
