@@ -59,7 +59,14 @@ export const users = pgTable("users", {
   // Per-expert commission override (EXP-OVR.P1) — expert keeps this %; platform takes 100-x%.
   // NULL = use booking_fee_configs category default. Honors §6.9 beta-recruitment terms.
   // Resolved server-side in commission.ts:resolveCommissionRates before the category lookup.
+  // DEPRECATED, READ-ONLY (FE-1, ledger 2026-10-12-fe1-fee-integrity): still read as the fallback
+  // by both resolvers; the admin UI no longer writes it. The override is now stated as the platform
+  // fee in commission_override_platform_fee_percent below.
   commissionOverrideExpertSharePercent: decimal("commission_override_expert_share_percent", { precision: 5, scale: 2 }),
+  // FE-1 (a), migration 375: the per-earner override stated as the PLATFORM FEE (%). When set it
+  // wins over the old expert-share column: platform rate = value/100, earner share = 1 − that.
+  // NULL = no override. Written only by the admin PATCH /api/admin/users/:id/commission-override.
+  commissionOverridePlatformFeePercent: decimal("commission_override_platform_fee_percent", { precision: 5, scale: 2 }), // money-derive-ok: §18 rule 4 — admin-only per-earner override, set by the requireAdmin-guarded commission-override PATCH, never by a client-reachable insert schema
   // Listing Engine publish-gate (Step 1). Admins flip providerVerificationStatus to "verified"
   // and backgroundCheckConfirmed to true after manual review. Until then any category with
   // requiresBackgroundCheck=true or insuranceBand >= 2 blocks publish and returns HTTP 422.

@@ -1,0 +1,11 @@
+-- 375 — FE-1 (a): a per-earner override stated as the PLATFORM FEE, not the earner's share.
+-- Ledger `2026-10-12-fe1-fee-integrity`. HELD FOR LEON'S COMMENT on the PR before merge.
+--
+-- users.commission_override_expert_share_percent (EXP-OVR) states the earner's share; the platform
+-- fee is 100 minus it, which is the opposite of how every fee_bands rate and the admin's own
+-- vocabulary state a commission. This adds the override in the platform-fee direction. The old
+-- column stays READABLE (both resolvers fall back to it) and is never written by the admin UI again.
+--
+-- Additive, nullable, NO DEFAULT, NO CHECK, NO index, NO backfill (NULL = no override stated;
+-- production holds no overrides today). Declared in shared/models/auth.ts.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS commission_override_platform_fee_percent numeric(5,2);

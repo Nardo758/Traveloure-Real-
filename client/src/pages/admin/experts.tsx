@@ -48,6 +48,8 @@ interface ExpertApplication {
   // EXP-OVR.P3: admin-editable per-expert commission override (expert-share %).
   // null = use category default. Honors §6.9 beta-recruitment terms.
   commissionOverrideExpertSharePercent?: string | null;
+  // FE-1 (a): the editable override, stated as the platform fee (%). Wins over the deprecated column.
+  commissionOverridePlatformFeePercent?: string | null;
   createdAt: string;
   // Local Expert fields
   neighborhoods?: string[];
@@ -130,16 +132,19 @@ function RejectionReasonEditor({
 }
 
 // EXP-OVR.P3: inline editor for the per-expert commission override.
-// Empty input = clear override (uses category default). Value is the expert's
-// share % (e.g. 80 = expert keeps 80%, platform takes 20%).
+// FE-1 (a): the value is the PLATFORM FEE % (e.g. 20 = platform takes 20%, earner keeps 80%).
+// Empty input = clear override (uses the fee policy). The old earner's-share column is shown
+// read-only beside it and is never written from here.
 function CommissionOverrideEditor({
   userId,
   currentValue,
+  deprecatedExpertShare,
   onSave,
   isSaving,
 }: {
   userId: string;
   currentValue: string | null;
+  deprecatedExpertShare: string | null;
   onSave: (value: number | null) => void;
   isSaving: boolean;
 }) {
@@ -158,8 +163,13 @@ function CommissionOverrideEditor({
     onSave(null);
   };
   return (
+    <div className="space-y-1">
+    <label className="block text-[11px] text-gray-500" htmlFor={`input-override-${userId}`}>
+      Platform fee (%) — override
+    </label>
     <div className="flex items-center gap-1.5" data-testid={`override-editor-${userId}`}>
       <input
+        id={`input-override-${userId}`}
         type="number"
         min={0}
         max={100}
@@ -170,7 +180,7 @@ function CommissionOverrideEditor({
         className={`w-16 h-7 px-2 text-xs border rounded ${valid ? "border-gray-300" : "border-red-500"}`}
         data-testid={`input-override-${userId}`}
       />
-      <span className="text-xs text-gray-400">% expert</span>
+      <span className="text-xs text-gray-400">% platform</span>
       <button
         type="button"
         onClick={handleSave}
@@ -187,11 +197,17 @@ function CommissionOverrideEditor({
           disabled={isSaving}
           className="text-xs px-1.5 py-1 rounded text-gray-500 hover:text-red-600"
           data-testid={`button-clear-override-${userId}`}
-          title="Clear override (use category default)"
+          title="Clear override (use the fee policy)"
         >
           ×
         </button>
       )}
+    </div>
+    {deprecatedExpertShare !== null && deprecatedExpertShare !== undefined && (
+      <p className="text-[11px] text-gray-400" data-testid={`override-deprecated-${userId}`}>
+        Earner's share — deprecated, read-only: {String(parseFloat(deprecatedExpertShare))}%
+      </p>
+    )}
     </div>
   );
 }
@@ -224,7 +240,7 @@ export default function AdminExperts() {
   const overrideMutation = useMutation({
     mutationFn: async ({ userId, value }: { userId: string; value: number | null }) => {
       return apiRequest("PATCH", `/api/admin/users/${userId}/commission-override`, {
-        commissionOverrideExpertSharePercent: value,
+        commissionOverridePlatformFeePercent: value,
       });
     },
     onSuccess: () => {
@@ -667,7 +683,8 @@ export default function AdminExperts() {
                           <td className="py-3 px-2" data-testid={`cell-override-${expert.id}`}>
                             <CommissionOverrideEditor
                               userId={expert.userId}
-                              currentValue={expert.commissionOverrideExpertSharePercent ?? null}
+                              currentValue={expert.commissionOverridePlatformFeePercent ?? null}
+                              deprecatedExpertShare={expert.commissionOverrideExpertSharePercent ?? null}
                               onSave={(v) => overrideMutation.mutate({ userId: expert.userId, value: v })}
                               isSaving={overrideMutation.isPending}
                             />
