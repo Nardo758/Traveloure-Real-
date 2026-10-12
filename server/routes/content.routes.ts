@@ -8665,11 +8665,10 @@ router.get("/api/affiliate/categories", async (_req, res) => {
   // is the convention, not a new one. The public READS below are unchanged.
   // Create affiliate partner
 
-/**
- * TC-2 decision 1 (migration 375, ledger `2026-10-12-tc2-affiliate-legs`): the partner's licence, attribution
- * and public answer, from an admin body. A blank string is NULL (not stated); a value of the wrong shape is
- * dropped rather than stored, so it can never read as stated.
- */
+// TC-2 decision 1 (migration 375, ledger `2026-10-12-tc2-affiliate-legs`): the partner's license, attribution
+// and public answer, from an admin body. A blank string is NULL (not stated); a value of the wrong shape is
+// dropped rather than stored, so it can never read as stated. (Line comments on purpose: a block comment here
+// pairs with an earlier "/*" inside a string in source-reading pins.)
 function affiliateRegistryFields(body: any): { license?: string | null; attribution?: string | null; publicOk?: boolean | null } {
   const out: { license?: string | null; attribution?: string | null; publicOk?: boolean | null } = {};
   const text = (v: unknown, max: number) => (typeof v === "string" ? (v.trim() ? v.trim().slice(0, max) : null) : v === null ? null : undefined);
