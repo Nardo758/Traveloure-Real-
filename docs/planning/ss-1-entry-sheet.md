@@ -59,9 +59,11 @@ or target flag the refresh honours) is its own change, not made here.
 
 ## Staged facts — `last_service` (not loaded)
 
-**Day type matters.** The JR West pages read were the **Sunday** timetable; **the weekday timetable was NOT
-READ**, so no weekday JR West fact is staged. Where this message did not state a day type, the column says so —
-confirm it from the file before loading. Times past midnight are kept as written (`24:01`, `0:04`).
+**Day type matters.** Day types come from the nine-site read (`kyoto-nine-site-read-2026-10-10.md` §5–9). The JR
+West pages read were the **Sunday** timetable (2026年10月11日(日)); **the weekday timetable was NOT READ**, so no
+weekday JR West fact is staged. The subway, Hankyu and Keihan tables list weekday and Saturday/holiday separately,
+and every staged time is the same on both. JR Central's PDFs are a basic timetable and state no day type. Times past
+midnight are kept as written (`24:01`, `0:04`).
 
 These are **staged, not written**: a `last_service` fact is admitted only through `admitFeasibilityFact` (an
 https official source URL and a quote that prints the time) once its row is active — and the JR West / Hankyu /
@@ -69,24 +71,29 @@ Keihan rows are HELD (above).
 
 | Source row | From | Toward | Last departure | Day type |
 |---|---|---|---|---|
-| `kyoto_city_transport` | Kyoto (Karasuma line) | Kokusaikaikan | 23:47 | not stated — confirm |
-| `kyoto_city_transport` | Kyoto (Karasuma line) | Takeda | 24:01 | not stated — confirm |
-| `kyoto_city_transport` | Shijo (Karasuma line) | Kokusaikaikan / Takeda | 23:50 / 23:57 (direction order as given — confirm) | not stated — confirm |
-| `kyoto_city_transport` | Sanjo-Keihan (Tozai line) | Rokujizo | 23:58 | not stated — confirm |
-| `kyoto_city_transport` | Sanjo-Keihan (Tozai line) | Uzumasa-Tenjingawa | 23:49 | not stated — confirm |
+| `kyoto_city_transport` | Kyoto (Karasuma line) | Kokusaikaikan | 23:47 | weekday and Sat/holiday (the same time on both) |
+| `kyoto_city_transport` | Kyoto (Karasuma line) | Takeda | 24:01 | weekday and Sat/holiday (the same time on both) |
+| `kyoto_city_transport` | Shijo (Karasuma line) | Kokusaikaikan / Takeda | 23:50 / 23:57 | weekday and Sat/holiday (the same time on both) |
+| `kyoto_city_transport` | Sanjo-Keihan (Tozai line) | Rokujizo | 23:58 | weekday and Sat/holiday (the same time on both) |
+| `kyoto_city_transport` | Sanjo-Keihan (Tozai line) | Uzumasa-Tenjingawa | 23:49 | weekday and Sat/holiday (the same time on both) |
 | `jr_west` | Kyoto (Sagano line) | Sonobe | 23:46 | **Sunday** |
 | `jr_west` | Saga-Arashiyama | Kyoto | 23:22 | **Sunday** |
 | `jr_west` | Inari | Kyoto | 0:04 | **Sunday** |
-| `hankyu` | Kyoto-kawaramachi | Osaka-umeda | 23:15 | not stated — confirm |
-| `hankyu` | Kyoto-kawaramachi | Katsura | 0:10 | not stated — confirm |
-| `hankyu` | Arashiyama | Katsura | 23:51 | not stated — confirm |
-| `keihan` | Gion-shijo | Demachiyanagi | 24:28 | not stated — confirm |
-| `keihan` | Gion-shijo | Yodoyabashi | 24:11 | not stated — confirm |
-| `keihan` | Fushimi-inari | Demachiyanagi | 24:20 | not stated — confirm |
-| `keihan` | Fushimi-inari | Yodoyabashi | 24:18 | not stated — confirm |
-| `jr_central` | Kyoto (Tokaido Shinkansen, east) | Nagoya | 22:46 | not stated — confirm |
-| `jr_central` | Kyoto (Tokaido Shinkansen, east) | Tokyo | 21:38 | not stated — confirm |
-| `jr_central` | Kyoto (Tokaido Shinkansen, west) | (last westbound) | 23:32 | not stated — confirm |
+| `hankyu` | Kyoto-kawaramachi | Osaka-umeda | 23:15 | 平日 and 土曜・休日 (the same time on both) |
+| `hankyu` | Kyoto-kawaramachi | Katsura | 0:10 | 平日 and 土曜・休日 (the same time on both) |
+| `hankyu` | Arashiyama | Katsura | 23:51 | 平日 and 土曜・休日 (the same time on both) |
+| `keihan` | Gion-shijo | Demachiyanagi | 24:28 | 平日 and 土曜・休日 (the same time on both) |
+| `keihan` | Gion-shijo | Yodoyabashi | 24:11 | 平日 and 土曜・休日 (the same time on both) |
+| `keihan` | Fushimi-inari | Demachiyanagi | 24:20 | 平日 and 土曜・休日 (the same time on both) |
+| `keihan` | Fushimi-inari | Yodoyabashi | 24:18 | 平日 and 土曜・休日 (the same time on both) |
+| `jr_central` | Kyoto (Tokaido Shinkansen, east) | Nagoya | 22:46 | not stated by the source — a basic timetable “as of March 2026” (extra trains vary by season, event and day of week) |
+| `jr_central` | Kyoto (Tokaido Shinkansen, east) | Tokyo | 21:38 | not stated by the source — a basic timetable “as of March 2026” (extra trains vary by season, event and day of week) |
+| `jr_central` | Kyoto (Tokaido Shinkansen, west) | (last westbound) | 23:32 | not stated by the source — a basic timetable “as of March 2026” (extra trains vary by season, event and day of week) |
+
+Where the last train ends short of the direction named, the file says so: Keihan's last trains toward Yodoyabashi
+(24:11, 24:18) are labelled 「淀」 (they run to Yodo); Fushimi-inari's 24:20 toward Demachiyanagi is labelled
+「三条」; Gion-shijo's 24:20 and 24:28 are labelled 「三条」 and become locals to Demachiyanagi at Sanjo; Hankyu's
+0:10 runs to Katsura.
 
 Notes on the proposals (each is Leon's to change):
 - **Ids** are what `server/config/content-source-targets.config.ts` keys on. A target naming an id no row
