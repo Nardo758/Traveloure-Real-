@@ -23,6 +23,7 @@
  * INDEPENDENT: reopen→re-finalize with no edits flips (diary + notify) but writes no new version;
  * an edit while already-finalized writes a new version without a flip.
  */
+import { resolvePlanBookingPaths } from "./booking-path.service";
 import crypto from "crypto";
 import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../db";
@@ -174,7 +175,15 @@ export async function finalizeTrip(tripId: string, actorId: string): Promise<Fin
     // Step 6 (spec §9): per-day {source_run_id, source_variant_id}, the version the plan was built
     // from, and the stored photo references. Outside the fingerprint (below) by construction.
     const card = await finalCardMeta(tx, tripId, ordered as any[], photos);
-    const snapshot = { trip: snapshotTrip, items: snapshotItems, card };
+    // BP-1 (ledger `2026-10-12-bp1-booking-path`): each item's booking path, frozen with the plan like every other
+    // snapshot fact. Outside the fingerprint (below) — it is a derived reading, not the plan's content — and kept
+    // as-is by the live-days refresh, which spreads the snapshot. A failed read freezes nothing (§15b): the card
+    // then reads the live path, never a guessed one.
+    const bookingPaths = await resolvePlanBookingPaths(trip as any, ordered as any[]).then(
+      (m) => Object.fromEntries(m),
+      () => null,
+    );
+    const snapshot = { trip: snapshotTrip, items: snapshotItems, card, ...(bookingPaths ? { bookingPaths } : {}) };
 
     const contentHash = planContentHash(trip as any, ordered as any[]);
 

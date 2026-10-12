@@ -36,6 +36,13 @@ test("BP5: an area title, a placeholder, a past day or no named place ⇒ none",
   assert.equal(resolveBookingPath({ ...base, title: "" }), "none");
 });
 
+test("BP5b: a past day is none on EVERY path", () => {
+  assert.equal(resolveBookingPath({ ...base, liveListing: true, dayIsPast: true }), "none");
+  for (const kind of ["transport_pair", "liteapi_stay", "partner_product"] as const) {
+    assert.equal(resolveBookingPath({ ...base, partnerCoverage: kind, dayIsPast: true }), "none", kind);
+  }
+});
+
 test("BP6: a non-live listing falls through to the next rule", () => {
   // liveListing false is how the server reports an attached listing that is paused or unapproved.
   assert.equal(resolveBookingPath({ ...base, liveListing: false, partnerCoverage: "transport_pair" }), "affiliate");

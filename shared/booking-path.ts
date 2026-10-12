@@ -5,12 +5,14 @@
  * time by this ONE pure resolver (§18 rule 1) from facts the server has already resolved. The only persistence is
  * the Trip Card's existing final snapshot, like every other snapshot fact.
  *
+ *   · a PAST DAY — `none`, whatever else is true (decision-maker correction, Oct 12, 2026): nothing on a past day is
+ *                 bookable. A booked item keeps showing its booked status, which is a different field.
  *   · platform  — a LIVE platform listing is attached to the item.
  *   · affiliate — an active partner covers the item by STRUCTURE, never by name-matching: a transport pair from
  *                 TC-2's config, a stay bookable through LiteAPI, or (activities) the partner's own product id on
  *                 the item. The server decides coverage; this module only reads the answer.
  *   · concierge — neither of the above, and the item names a REAL place: not a placeholder, not an area title
- *                 ("Gion Walk", "Fushimi Sake District" — the ONE rule in `place-name-gate.ts`), not a past day.
+ *                 ("Gion Walk", "Fushimi Sake District" — the ONE rule in `place-name-gate.ts`).
  *                 The agent finds the contact channel; nothing here asks for one.
  *   · none      — anything else. No Book control at all.
  *
@@ -41,14 +43,15 @@ export interface BookingPathInput {
 }
 
 /** Pure. Does the item name one real place a person could contact? */
-export function namesRealPlace(input: Pick<BookingPathInput, "title" | "locationName" | "city" | "placeholder" | "dayIsPast">): boolean {
-  if (input.placeholder || input.dayIsPast) return false;
+export function namesRealPlace(input: Pick<BookingPathInput, "title" | "locationName" | "city" | "placeholder">): boolean {
+  if (input.placeholder) return false;
   if (titleNamesAnArea(input.title)) return false;
   return namedPlaceTokens({ title: input.title, locationName: input.locationName ?? null }, input.city ?? null).size > 0;
 }
 
 /** Pure. The ONE booking-path decision. */
 export function resolveBookingPath(input: BookingPathInput): BookingPath {
+  if (input.dayIsPast) return "none";
   if (input.liveListing) return "platform";
   if (input.partnerCoverage) return "affiliate";
   if (namesRealPlace(input)) return "concierge";
