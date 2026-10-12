@@ -16,12 +16,20 @@
  */
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadDeltaLine, type Finding } from "@shared/optimizer-lead";
+import { LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadCoverageLine, leadDeltaLine, unlocatedStopLines, type Finding, type LegCoverage } from "@shared/optimizer-lead";
 import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
 
 export interface OptimizerLeadProps {
   /** The preview's findings; `undefined` while it is being read (the card then shows no finding lines). */
   findings: readonly Finding[] | undefined;
+  /**
+   * P0-d item 1 (ledger `2026-10-12-p0d-coverage-bridges`): the preview's leg coverage and whether the plan
+   * earns routed legs. With no findings the all-clear shows only when `leadCoverageLine` says it is
+   * earned; otherwise that line shows, with the stops off the map listed. Absent (a response from before
+   * P0-d) keeps the findings-only zero line.
+   */
+  coverage?: LegCoverage;
+  routedPlan?: boolean;
   hasPricedItems: boolean;
   fee: OptimizationFeeQuote | null | undefined;
   /** After a paid run: the run record's realised delta. */
@@ -108,7 +116,7 @@ export function OptimizerLead(props: OptimizerLeadProps) {
   return <PlainOptimizerLead {...props} />;
 }
 
-function PlainOptimizerLead({ findings, hasPricedItems, fee, realised, onClick, testId = "slip-action-optimize", busy = false, disabledReason, ctaLabelOverride, drafted = true }: OptimizerLeadProps) {
+function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fee, realised, onClick, testId = "slip-action-optimize", busy = false, disabledReason, ctaLabelOverride, drafted = true }: OptimizerLeadProps) {
   // Smoke 9 S9-4: a plan with no draft yet has nothing to optimize — say so, disable the CTA, and
   // claim no findings and no "already works".
   if (!drafted) {
@@ -134,12 +142,15 @@ function PlainOptimizerLead({ findings, hasPricedItems, fee, realised, onClick, 
   });
   const known = findings !== undefined;
   const none = known && findings!.length === 0;
+  const zeroGap = coverage ? leadCoverageLine(coverage, !!routedPlan) : null;
   return (
     <section className="rounded-md border border-border p-3 space-y-2" data-testid="optimizer-lead">
       <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="optimizer-lead-eyebrow">
         {LEAD_EYEBROW}
       </p>
-      {none ? (
+      {none && zeroGap ? (
+        <CoverageGap line={zeroGap} stops={unlocatedStopLines(coverage)} tone="plain" />
+      ) : none ? (
         <p className="text-sm text-foreground" data-testid="optimizer-lead-zero">
           {LEAD_ZERO}
         </p>
@@ -197,6 +208,8 @@ function PlainOptimizerLead({ findings, hasPricedItems, fee, realised, onClick, 
  */
 function BoardOptimizerLead({
   findings,
+  coverage,
+  routedPlan,
   hasPricedItems,
   fee,
   realised,
@@ -253,6 +266,7 @@ function BoardOptimizerLead({
   });
   const known = findings !== undefined;
   const none = known && findings!.length === 0;
+  const zeroGap = coverage ? leadCoverageLine(coverage, !!routedPlan) : null;
   return (
     <section className={shell} data-testid="optimizer-lead" data-lead-tone="board">
       {title ? (
@@ -269,7 +283,9 @@ function BoardOptimizerLead({
           {intro}
         </p>
       ) : null}
-      {none ? (
+      {none && zeroGap ? (
+        <CoverageGap line={zeroGap} stops={unlocatedStopLines(coverage)} tone="board" />
+      ) : none ? (
         <p className="text-sm text-white" data-testid="optimizer-lead-zero">
           {noStay ? LEAD_ZERO_NO_STAY : LEAD_ZERO}
         </p>
@@ -324,5 +340,30 @@ function BoardOptimizerLead({
         {OPTIMIZE_RERUN_RULE}
       </p>
     </section>
+  );
+}
+
+/**
+ * P0-d item 1: the line the card says instead of the all-clear, with the stops off the map listed under
+ * it ("Day 2 · Soba Restaurant"). The words are `leadCoverageLine`'s and `unlocatedStopLines`' (one home).
+ */
+function CoverageGap({ line, stops, tone }: { line: string; stops: string[]; tone: "plain" | "board" }) {
+  const main = tone === "board" ? "text-sm text-white" : "text-sm text-foreground";
+  const sub = tone === "board" ? "text-xs text-[color:var(--slip-on-navy-muted)]" : "text-xs text-muted-foreground";
+  return (
+    <div data-testid="optimizer-lead-coverage">
+      <p className={main} data-testid="optimizer-lead-coverage-line">
+        {line}
+      </p>
+      {stops.length ? (
+        <ul className="mt-1 space-y-0.5">
+          {stops.map((s, i) => (
+            <li key={`${i}-${s}`} className={sub} data-testid="optimizer-lead-unlocated-stop">
+              {s}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }

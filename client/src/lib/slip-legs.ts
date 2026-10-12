@@ -34,7 +34,7 @@ type SlipLeg = {
   /** Step 9c D8: set only once a provider-confirmed host pickup exists (no column yet — never today). */
   hostPickupConfirmed?: boolean;
 };
-type SlipDay = { dayNumber?: number; dayNum?: number; activities?: Array<{ id: string }>; transports?: SlipLeg[] };
+type SlipDay = { dayNumber?: number; dayNum?: number; activities?: Array<{ id: string; name?: string | null; title?: string | null }>; transports?: SlipLeg[] };
 
 export interface RoutedLegView {
   legId: string;
@@ -60,7 +60,17 @@ export type SlipLegView =
     })
   | { kind: "unrouted"; legId: string; mode: RoutingMode | null; minutes: number };
 
-export function slipLegBetween(days: readonly SlipDay[] | null | undefined, prevId: string, nextId: string): SlipLegView | null {
+/**
+ * P0-d item 2: a slot's leg can be a BRIDGE — the engine's leg around a stop with no point, from the last
+ * located row before it to the next located one. `fromId` is where it really starts; `aroundIds` are the
+ * rows it goes round, in day order.
+ */
+export interface BridgeInfo {
+  fromId: string;
+  aroundIds: string[];
+}
+
+export function slipLegBetween(days: readonly SlipDay[] | null | undefined, prevId: string, nextId: string): (SlipLegView & { bridge?: BridgeInfo }) | null {
   const exact = legForPair(days, prevId, nextId);
   if (exact !== undefined) return exact;
   // P0 ruling 1 (ledger `2026-10-10-p0-legs-baseline`): the server bridges an unlocated stop — the leg
@@ -70,14 +80,56 @@ export function slipLegBetween(days: readonly SlipDay[] | null | undefined, prev
     const ids = (d.activities ?? []).map((a) => a.id);
     const at = ids.indexOf(nextId);
     if (at < 0 || ids[at - 1] !== prevId) continue;
-    const earlier = new Set(ids.slice(0, at - 1));
-    for (const l of d.transports ?? []) {
-      const from = l.fromActivityId ?? l.from;
-      const to = l.toActivityId ?? l.to;
-      if (to === nextId && from && earlier.has(from)) return legForPair([{ ...d, transports: [l] }], from, nextId) ?? null;
-    }
+    const hit = bridgeArrivingAt(d.transports ?? [], ids, at);
+    if (!hit) continue;
+    const view = legForPair([{ ...d, transports: [hit.leg] }], hit.bridge.fromId, nextId) ?? null;
+    return view ? { ...view, bridge: hit.bridge } : null;
   }
   return null;
+}
+
+/**
+ * P0-d item 2 — THE ONE BRIDGE RULE, read by the slip (`slipLegBetween`), the Trip Card's day panel
+ * (`cardSlotLeg`) and the card's leg count: in the slot before row `at`, with no leg of its own, the leg
+ * arriving at that row from an EARLIER row the same day. Null when there is none.
+ */
+export function bridgeArrivingAt<T extends { fromActivityId?: string | null; toActivityId?: string | null; from?: string; to?: string }>(
+  legs: readonly T[],
+  ids: readonly string[],
+  at: number,
+): { leg: T; bridge: BridgeInfo } | null {
+  const nextId = ids[at];
+  if (!nextId || at < 1) return null;
+  const earlier = ids.slice(0, at - 1);
+  for (const l of legs) {
+    const from = l.fromActivityId ?? l.from;
+    const to = l.toActivityId ?? l.to;
+    if (to !== nextId || !from) continue;
+    const i = earlier.indexOf(from);
+    if (i < 0) continue;
+    return { leg: l, bridge: { fromId: from, aroundIds: ids.slice(i + 1, at) } };
+  }
+  return null;
+}
+
+/**
+ * P0-d item 2 — the ONE formatter: a bridge is named by its endpoints and the stops it goes round,
+ * "Fushimi Inari → Tofuku-ji · around Soba Restaurant". A name that is not known is left out, never
+ * guessed (§13); with no around-name the line is the endpoints alone.
+ */
+export function bridgeLegLabel(fromName: string | null | undefined, toName: string | null | undefined, aroundNames: ReadonlyArray<string | null | undefined>): string {
+  const ends = [fromName, toName].map((x) => (x ?? "").trim()).filter(Boolean).join(" → ");
+  const around = aroundNames.map((x) => (x ?? "").trim()).filter(Boolean);
+  return around.length ? `${ends} · around ${around.join(", ")}` : ends;
+}
+
+/** P0-d item 2: the bridge's label, its names read off the rows the plan already holds. */
+export function bridgeLabelFor(rows: ReadonlyArray<{ id: string; name?: string | null; title?: string | null }>, bridge: BridgeInfo, toId: string): string {
+  const name = (id: string) => {
+    const r = rows.find((x) => x.id === id);
+    return r ? r.name ?? r.title ?? null : null;
+  };
+  return bridgeLegLabel(name(bridge.fromId), name(toId), bridge.aroundIds.map(name));
 }
 
 /** The leg shown for exactly this pair; `undefined` when the plan shows none for it. */

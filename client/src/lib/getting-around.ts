@@ -11,10 +11,12 @@
  */
 import { routedLegLine } from "@shared/routing-engine";
 import { slipLegBetween, unroutedLegLine } from "./slip-legs";
+import { TRAVEL_TIMES_COME_WITH_OPTIMIZE } from "@shared/optimizer-lead";
 
 export const GETTING_AROUND_EMPTY = "No stops on this plan yet.";
 export const GETTING_AROUND_PENDING = "not worked out yet";
-export const GETTING_AROUND_OPTIMIZE_HEADER = "Travel times come with Optimize";
+/** One home for the words (P0-d): the Optimize card's free-plan line reads the same constant. */
+export const GETTING_AROUND_OPTIMIZE_HEADER = TRAVEL_TIMES_COME_WITH_OPTIMIZE;
 /**
  * P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): the header says WHY a plan's legs are not
  * worked out, from the server's `legsSkipped` (the engine's own skip reason). A free plan keeps the

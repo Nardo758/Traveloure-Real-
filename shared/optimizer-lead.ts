@@ -509,6 +509,70 @@ export const LEAD_DRAFT_FIRST = "Draft first — Optimize works on a drafted pla
 export const LEAD_ZERO = "This draft already works · Optimize builds three versions around where you stay";
 export const LEAD_VERSIONS = "three versions built around where you stay";
 
+// ── P0-d item 1: the all-clear is earned by the legs, not by an empty findings list ───────────────
+// (ledger `2026-10-12-p0d-coverage-bridges`). An empty findings list said "This draft already works"
+// on a plan whose travel times were never checked — the 330f594a smoke: routed bridges around eight
+// unlocated stops, no finding, and an all-clear. The zero line now also needs every consecutive pair
+// of stops on every day not yet past to have a ROUTED leg; a free plan never gets it (ruling 1).
+
+export interface LegCoverage {
+  /** Every consecutive pair on every day not yet past has a routed leg of its own. */
+  complete: boolean;
+  /** The stops on those days that are not on the map, in day order ("Day 2 · Soba Restaurant"). */
+  unlocated: Array<{ day: number; title: string }>;
+}
+
+/**
+ * Pure. `stops` are the engine's own stop list (day order, the stay excluded); a pair is covered only
+ * by a routed leg FROM the first TO the second — a bridge around an unlocated stop covers no pair of
+ * its own, so a day with an unlocated stop is never complete. A past day is not judged (its legs are
+ * frozen). A day with one stop has no pair and is vacuously complete.
+ */
+export function planLegCoverage(
+  stops: ReadonlyArray<{ id: string; title: string; dayNumber: number; located: boolean }>,
+  legs: ReadonlyArray<{ dayNumber: number; fromId: string | null; toId: string | null; routed: boolean }>,
+  isPastDay: (dayNumber: number) => boolean,
+): LegCoverage {
+  const routedPairs = new Set(legs.filter((l) => l.routed && l.fromId && l.toId).map((l) => `${l.dayNumber}|${l.fromId}|${l.toId}`));
+  const byDay = new Map<number, typeof stops[number][]>();
+  for (const s of stops) {
+    if (isPastDay(s.dayNumber)) continue;
+    byDay.set(s.dayNumber, [...(byDay.get(s.dayNumber) ?? []), s]);
+  }
+  let complete = true;
+  const unlocated: LegCoverage["unlocated"] = [];
+  for (const day of Array.from(byDay.keys()).sort((a, b) => a - b)) {
+    const list = byDay.get(day)!;
+    for (const s of list) if (!s.located) unlocated.push({ day, title: s.title });
+    for (let i = 0; i < list.length - 1; i++) {
+      if (!routedPairs.has(`${day}|${list[i].id}|${list[i + 1].id}`)) complete = false;
+    }
+  }
+  return { complete, unlocated };
+}
+
+/** The free plan's line — the Getting around header's words, one home (ruling 1). */
+export const TRAVEL_TIMES_COME_WITH_OPTIMIZE = "Travel times come with Optimize";
+export const SOME_TRAVEL_TIMES_UNCHECKED = "Some travel times aren't checked yet";
+
+/**
+ * Pure. What the card says in place of the all-clear, or null when the all-clear is earned. A free
+ * plan says travel times come with Optimize; stops off the map are counted ("— 3 stops aren't on the
+ * map"); otherwise the unchecked line stands alone. Never "0 stops" (§13).
+ */
+export function leadCoverageLine(coverage: LegCoverage, routedPlan: boolean): string | null {
+  if (!routedPlan) return TRAVEL_TIMES_COME_WITH_OPTIMIZE;
+  if (coverage.complete && coverage.unlocated.length === 0) return null;
+  const n = coverage.unlocated.length;
+  if (n === 0) return SOME_TRAVEL_TIMES_UNCHECKED;
+  return `${SOME_TRAVEL_TIMES_UNCHECKED} — ${n} ${n === 1 ? "stop isn't" : "stops aren't"} on the map`;
+}
+
+/** Pure. The stops behind the count, one line each ("Day 2 · Soba Restaurant"). */
+export function unlocatedStopLines(coverage: LegCoverage | null | undefined): string[] {
+  return (coverage?.unlocated ?? []).map((s) => `Day ${s.day} · ${s.title}`);
+}
+
 /**
  * The ONE delta line — the COST delta (spec §8: "Cost delta only when ≥ 1 priced item exists;
  * otherwise omitted, never estimated"). Before a run no cost delta is known, so none is stated (the

@@ -23,7 +23,6 @@ import {
   type RoutingMode,
 } from "@shared/routing-engine";
 import { normalizeLegMode } from "@shared/travel-speeds";
-import { addCalendarDays, calendarDayOf } from "@shared/plan-timing";
 
 /**
  * P0 legs ruling 3 (ledger `2026-10-10-p0-legs-baseline`): the wall clock a routing call departs at —
@@ -34,16 +33,8 @@ export function legDepartureWallClock(wallClock: string | null | undefined): str
   return wallClock || DEFAULT_LEG_DEPARTURE_WALL_CLOCK;
 }
 
-/**
- * P0 legs ruling 3: is this trip day already over in the plan's zone (UTC when it has none)? A past day
- * is never routed: its legs are frozen — nothing asked, nothing recomputed, nothing deleted. No start
- * date ⇒ not past (the caller's own dates gate decides).
- */
-export function planDayIsPast(tripStart: string | null | undefined, dayNumber: number, timezone: string | null | undefined, now: Date): boolean {
-  const day = addCalendarDays(tripStart ? String(tripStart).slice(0, 10) : null, dayNumber - 1);
-  if (!day) return false;
-  return day < calendarDayOf(now, timezone);
-}
+/** P0 legs ruling 3 — moved to `@shared/plan-timing` (P0-d); re-exported so every caller keeps its import. */
+export { planDayIsPast } from "@shared/plan-timing";
 
 export interface PlanStop {
   id: string;

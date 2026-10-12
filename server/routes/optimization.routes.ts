@@ -36,7 +36,7 @@ import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
-import { loadOptimizerFindings } from "../services/optimizer-lead.service";
+import { loadLegCoverage, loadOptimizerFindings } from "../services/optimizer-lead.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "../utils/stripe-key";
 
@@ -226,10 +226,13 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
     // Surface step 4 (spec §8; R-f): what Optimize found in this draft — kinds and counts only, never
     // the re-sequenced order. Independent of the heuristic score, so a refused score still carries them.
     const { findings, hasPricedItems } = await loadOptimizerFindings(tripId);
+    // P0-d item 1 (ledger `2026-10-12-p0d-coverage-bridges`): the all-clear also needs every pair of
+    // stops on every day not yet past to have a routed leg; the card reads this beside the findings.
+    const { coverage, routedPlan } = await loadLegCoverage(tripId);
 
     if (!preview.computable) {
       // The heuristic's OWN reason, passed through unchanged — the client never restates it.
-      return res.json({ computable: false, reason: preview.reason, findings, hasPricedItems });
+      return res.json({ computable: false, reason: preview.reason, findings, hasPricedItems, coverage, routedPlan });
     }
 
     // Projected explicitly. `metrics` (the full internal object) and the three extrapolated
@@ -248,6 +251,8 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
       fixedCount: inputs.fixedCommitments.length,
       findings,
       hasPricedItems,
+      coverage,
+      routedPlan,
       // A7 (§F2 (4)): how many open comparisons a run would decide — never WHICH option wins. The
       // run decides only the stay comparison it builds its versions around, so this is 0 or 1.
       ...(versionPerOptionEnabled()

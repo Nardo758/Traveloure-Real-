@@ -15,7 +15,7 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { LegRow } from "./LegRow";
 import { LegSheet } from "./LegSheet";
-import { TRAVEL_TIMES_PAUSED_LINE, pausedLinePair, slipLegBetween, type SlipLegView } from "@/lib/slip-legs";
+import { TRAVEL_TIMES_PAUSED_LINE, bridgeLabelFor, pausedLinePair, slipLegBetween, type SlipLegView } from "@/lib/slip-legs";
 import { canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
 import { rideSuggestionFor } from "@/lib/ride-suggestions";
 import { RideSwapLine } from "./RideSwapLine";
@@ -44,9 +44,18 @@ export function useSlipLegs(data: SlipLegsData | null | undefined, tripId?: stri
       const pair = paused ? pausedLinePair(days) : null;
       const showPaused = !!pair && pair[0] === prev.id && pair[1] === next.id;
       if (!leg && !showPaused) return null;
-      const title = [prev.title ?? prev.name, next.title ?? next.name].filter(Boolean).join(" → ") || "This leg";
+      // P0-d item 2 (ledger `2026-10-12-p0d-coverage-bridges`): a bridge names its own endpoints and the
+      // stops it goes round — the ONE formatter, the same words the Trip Card draws.
+      const bridgeRows = leg?.bridge ? (days ?? []).find((d: any) => (d.activities ?? []).some((a: any) => a.id === next.id))?.activities ?? [] : [];
+      const bridgeLabel = leg?.bridge ? bridgeLabelFor(bridgeRows, leg.bridge, next.id) : null;
+      const title = bridgeLabel || [prev.title ?? prev.name, next.title ?? next.name].filter(Boolean).join(" → ") || "This leg";
       return (
         <>
+          {bridgeLabel ? (
+            <p className="ml-4 px-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`slip-leg-bridge-${leg!.legId}`}>
+              {bridgeLabel}
+            </p>
+          ) : null}
           {showPaused ? (
             <p className="ml-4 px-3 py-1 text-xs text-muted-foreground" data-testid="slip-travel-times-paused">
               {TRAVEL_TIMES_PAUSED_LINE}

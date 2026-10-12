@@ -539,6 +539,8 @@ function BuildCard({
           <OptimizerLead
             drafted={aiAction === "optimize"}
             findings={leadData.findings}
+            coverage={leadData.coverage}
+            routedPlan={leadData.routedPlan}
             hasPricedItems={leadData.hasPricedItems}
             fee={leadData.fee}
             realised={leadData.realised as any}
