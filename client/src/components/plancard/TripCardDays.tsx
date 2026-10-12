@@ -22,8 +22,8 @@
  */
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { routedLegLine } from "@shared/routing-engine";
-import { bridgeArrivingAt, bridgeLabelFor, routedLegBetween, type BridgeInfo } from "@/lib/slip-legs";
-import { Fragment, useState } from "react";
+import { bridgeArrivingAt, bridgeLabelFor, bridgeLegLabel, routedLegBetween, type BridgeInfo } from "@/lib/slip-legs";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AlertTriangle, Navigation } from "lucide-react";
@@ -34,7 +34,7 @@ import { ItemSheet } from "@/components/plan/ItemSheet";
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
-import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
+import { cardPanelDayLabel, dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { factCheckedLabel, itemFactsLine } from "@/lib/place-facts";
 import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine, estimatedMinutesSuffix, lastServiceLine, liveDirectionsLabel } from "@/lib/trip-card";
 import { rideSuggestionFor, rideSwapSummary, type RideSuggestionView } from "@/lib/ride-suggestions";
@@ -72,6 +72,11 @@ export interface TripCardDaysProps {
   isOwner: boolean;
   /** Test seam: "now" (defaults to the clock). Today is read in the plan's zone. */
   now?: Date;
+  /**
+   * P0-e addition 5: the day the card is showing, told to the page so the panels below the days (the
+   * "Open in maps" header) follow the selected day instead of staying on the page's own first day.
+   */
+  onOpenDayChange?: (dayNum: number) => void;
 }
 
 type DayTransport = NonNullable<PlanCardDay["transports"]>[number];
@@ -116,6 +121,26 @@ export function cardLegCount(days: ReadonlyArray<Pick<PlanCardDay, "activities" 
     for (let i = 0; i < acts.length - 1; i++) if (cardSlotLeg(legs as DayTransport[], acts, i)) n++;
   }
   return n;
+}
+
+/**
+ * P0-e addition 5 (ledger `2026-10-12-p0e-findings-and-gaps`): the selected day's panel header —
+ * "Thu Nov 12 · 2 legs · 6 stops". Legs are the card's own count for that day (`cardLegCount`: stop-to-stop
+ * legs and bridges, stays in neither), stops the day's stops with the stay left out, so the header and
+ * the hero count the same thing.
+ */
+export function cardDayPanelLine(day: Pick<PlanCardDay, "dayNum" | "dateIso" | "activities" | "transports">): string {
+  const legs = cardLegCount([day]);
+  const stops = (day.activities ?? []).filter((a) => !isStayActivity(a)).length;
+  return `${cardPanelDayLabel({ dayNum: day.dayNum, dateIso: day.dateIso ?? null })} · ${legs} ${legs === 1 ? "leg" : "legs"} · ${stops} ${stops === 1 ? "stop" : "stops"}`;
+}
+
+/**
+ * P0-e addition 5b: the "From → To" line over a stop-to-stop leg — the same words a bridge gets
+ * (`bridgeLegLabel`), read off the two stops the leg joins. A bridge keeps its own label.
+ */
+export function cardLegEndsLabel(fromName: string | null | undefined, toName: string | null | undefined): string {
+  return bridgeLegLabel(fromName, toName, []);
 }
 
 /**
@@ -200,6 +225,12 @@ export function TripCardDays(props: TripCardDaysProps) {
     const t = days.findIndex((d) => isCardToday(d, todayIso));
     return t >= 0 ? days[t].dayNum : days[order[0]]?.dayNum ?? null;
   });
+  // The page's callback is read through a ref so a new function each render never re-fires this.
+  const onOpenDayChange = useRef(props.onOpenDayChange);
+  onOpenDayChange.current = props.onOpenDayChange;
+  useEffect(() => {
+    if (openDay != null) onOpenDayChange.current?.(openDay);
+  }, [openDay]);
   const [sheetFor, setSheetFor] = useState<PlanCardActivity | null>(null);
   // R321 (S11-5): the card's sheet carries "Ask a local about this" (owner), recording the question
   // on the same `expert_interest` rail the slip uses.
@@ -443,6 +474,10 @@ export function TripCardDays(props: TripCardDaysProps) {
                 {idx < acts.length - 1 && cardSlotLeg(legs, acts, idx)?.bridge ? (
                   <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-bridge-${(cardSlotLeg(legs, acts, idx)!.leg as any).id}`}>
                     {bridgeLabelFor(acts, cardSlotLeg(legs, acts, idx)!.bridge!, acts[idx + 1].id)}
+                  </p>
+                ) : idx < acts.length - 1 && cardSlotLeg(legs, acts, idx) ? (
+                  <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-ends-${(cardSlotLeg(legs, acts, idx)!.leg as any).id}`}>
+                    {cardLegEndsLabel(a.name, acts[idx + 1].name)}
                   </p>
                 ) : null}
                 {idx < acts.length - 1 && cardLegAfter(legs, acts, idx) ? (

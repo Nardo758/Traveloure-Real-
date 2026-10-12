@@ -36,10 +36,11 @@ import { LookupScheduler } from "./lookup-scheduler.pure";
 import { gatedMapsCall } from "../maps-billing/maps-billing.service";
 import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
-import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea } from "@shared/place-name-gate";
+import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea, unnamedPlaceReason } from "@shared/place-name-gate";
+import { loadMarketAreaNames } from "./market-areas";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
-import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType } from "@shared/feasibility-facts";
 import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
 import { lookupErrorCode, type PlaceLookupCapReason, type PlaceLookupOutcomeRow, type PlaceLookupSkipReason, type PlaceLookupTrigger } from "@shared/place-lookup-outcomes";
 import { recordLookupOutcomes } from "./lookup-outcomes.service";
@@ -177,11 +178,11 @@ export interface EnrichItem {
 }
 
 /** Pure. The named items, grouped by plan day (absent day ⇒ day 1), in plan order within a day. */
-function namedByDay(items: readonly EnrichItem[], city: string | null): Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>> {
+function namedByDay(items: readonly EnrichItem[], city: string | null, areaNames: readonly string[] = []): Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>> {
   const byDay = new Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>>();
   for (const item of items) {
     const tokens = namedPlaceTokens(item, city);
-    if (unnamedSkipReason(item, city, tokens) !== null) continue;
+    if (unnamedSkipReason(item, city, tokens, areaNames) !== null) continue;
     const day = item.dayNumber ?? 1;
     const list = byDay.get(day) ?? [];
     list.push({ item, tokens });
@@ -193,12 +194,17 @@ function namedByDay(items: readonly EnrichItem[], city: string | null): Map<numb
 /**
  * Pure. Why an item is never looked up, or null when it is (PF-1 ruling 4 splits the old `unnamed`):
  * `no_named_tokens` — nothing in the title or location names a specific place; `area_title` — smoke 7, a
- * title naming an area ("… District", "… Photo Stop", "… Walk") is never looked up.
+ * title naming an area ("… District", "… Photo Stop", "… Walk"), or (P0-e item 4) one whose only
+ * distinctive words are the market's neighbourhood or ward names, is never looked up. Delegates to the
+ * ONE shared decision, `unnamedPlaceReason`, which the Optimize card's gap split also reads.
  */
-export function unnamedSkipReason(item: EnrichItem, city: string | null, tokens: ReadonlySet<string> = namedPlaceTokens(item, city)): Extract<PlaceLookupSkipReason, "no_named_tokens" | "area_title"> | null {
-  if (tokens.size === 0) return "no_named_tokens";
-  if (titleNamesAnArea(item.title)) return "area_title";
-  return null;
+export function unnamedSkipReason(
+  item: EnrichItem,
+  city: string | null,
+  tokens: ReadonlySet<string> = namedPlaceTokens(item, city),
+  areaNames: readonly string[] = [],
+): Extract<PlaceLookupSkipReason, "no_named_tokens" | "area_title"> | null {
+  return unnamedPlaceReason(item, city, areaNames, tokens);
 }
 
 /**
@@ -206,8 +212,8 @@ export function unnamedSkipReason(item: EnrichItem, city: string | null, tokens:
  * `2026-09-30-places-named-gate`): only items that NAME a place, round-robin ACROSS DAYS. The live
  * run uses the same `LookupScheduler`, which may pull a day's next item forward (smoke 5 item 7).
  */
-export function lookupOrder(items: readonly EnrichItem[], city: string | null): Array<{ item: EnrichItem; tokens: Set<string> }> {
-  const s = new LookupScheduler(namedByDay(items, city));
+export function lookupOrder(items: readonly EnrichItem[], city: string | null, areaNames: readonly string[] = []): Array<{ item: EnrichItem; tokens: Set<string> }> {
+  const s = new LookupScheduler(namedByDay(items, city, areaNames));
   const out: Array<{ item: EnrichItem; tokens: Set<string> }> = [];
   for (let n = s.next(); n; n = s.next()) out.push(n.entry);
   return out;
@@ -392,12 +398,13 @@ export async function enrichPlanItems(input: {
   const gate = input.placesGate ?? (input.adapters ? ungatedPlacesCall : mapsGatedPlacesCall);
   try {
     const cap = placesLookupsPerDraft();
-    const byDay = namedByDay(input.items, input.city);
+    const areaNames = await loadMarketAreaNames(input.market, input.city);
+    const byDay = namedByDay(input.items, input.city, areaNames);
     const named = new Set(Array.from(byDay.values()).flat().map((e) => e.item));
     summary.unnamed = input.items.length - named.size;
     for (const it of input.items) {
       if (named.has(it)) continue;
-      skip(it, it.dayNumber ?? 1, unnamedSkipReason(it, input.city) ?? "no_named_tokens");
+      skip(it, it.dayNumber ?? 1, unnamedSkipReason(it, input.city, undefined, areaNames) ?? "no_named_tokens");
     }
     await progress?.start(Array.from(named).map((i) => i.id));
     const scheduler = new LookupScheduler(byDay);
@@ -558,9 +565,84 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
  * The plan's facts per item: the FIRST fact of each type in the engine's order. Plan-scoped — the
  * caller has already authorized the viewer for this plan. Every view carries its provenance line.
  */
+/**
+ * The official rows stored for these place ids by ANY plan (the registry's stored facts, FD-3 ruling 2) —
+ * the ONE read both the feasibility checks and a row's shown hours use (P0-e addition 7).
+ */
+async function storedOfficialFacts(placeIds: string[], factTypes: string[]): Promise<FactRow[]> {
+  if (!placeIds.length) return [];
+  return db
+    .select()
+    .from(placeFacts)
+    .where(
+      and(
+        eq(placeFacts.placeRefKind, "place_id"),
+        inArray(placeFacts.placeRef, placeIds),
+        inArray(placeFacts.factType, factTypes),
+        // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
+        inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
+        eq(placeFacts.license, "official"),
+        isNull(placeFacts.supersededBy),
+        sql`${placeFacts.sourceClass} IS NOT NULL`,
+      ),
+    );
+}
+
+/** Each item's own rows plus the stored official rows for its place id, never twice. */
+function withStoredOfficial(own: FactRow[], placeOf: Map<string, string>, stored: FactRow[]): Map<string, FactRow[]> {
+  const byItem = new Map<string, FactRow[]>();
+  for (const r of own) {
+    if (!r.itineraryItemId) continue;
+    byItem.set(r.itineraryItemId, [...(byItem.get(r.itineraryItemId) ?? []), r]);
+  }
+  placeOf.forEach((placeId, itemId) => {
+    const extra = stored.filter((r) => r.placeRef === placeId && !(byItem.get(itemId) ?? []).some((x) => x.id === r.id));
+    if (extra.length) byItem.set(itemId, [...(byItem.get(itemId) ?? []), ...extra]);
+  });
+  return byItem;
+}
+
+/** The item → place id map, from the plan's own Places rows. */
+function placeIdsOf(own: FactRow[]): Map<string, string> {
+  const placeOf = new Map<string, string>();
+  for (const r of own) {
+    if (r.itineraryItemId && r.placeRefKind === "place_id" && r.placeRef && !placeOf.has(r.itineraryItemId)) placeOf.set(r.itineraryItemId, r.placeRef);
+  }
+  return placeOf;
+}
+
+/**
+ * P0-e addition 7: the engine's order (`rankFactsByOrigin`), with every official page-read hours fact moved
+ * ahead of Google's — "when the official hours fact exists it replaces the Google line". Platform-native
+ * and verified facts keep their place in front.
+ */
+function officialHoursBeforePlaces(ranked: FactRow[]): FactRow[] {
+  const isOfficial = (r: FactRow) => r.license === "official" && r.origin !== "places_api" && r.sourceClass != null;
+  const firstPlaces = ranked.findIndex((r) => r.origin === "places_api");
+  if (firstPlaces < 0) return ranked;
+  const officials = ranked.slice(firstPlaces).filter(isOfficial);
+  if (!officials.length) return ranked;
+  return [...ranked.slice(0, firstPlaces), ...officials, ...ranked.slice(firstPlaces).filter((r) => !isOfficial(r))];
+}
+
+/** P0-e addition 7: an official-licence hours fact's valid season, else null (the loader's own rule). */
+function officialSeason(r: FactRow): { from: string; to: string } | null {
+  if (r.origin === "places_api" || r.license !== "official") return null;
+  const season = hoursSeason(r.value);
+  return season && season !== "invalid" ? season : null;
+}
+
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
   const rows = await rowsForTrip(tripId);
-  const sources = await sourcesFor(rows);
+  // P0-e addition 7 (decision-maker, Oct 12, 2026): a row's hours are the SAME facts the feasibility checks
+  // read — the plan's own rows plus the official rows stored for the item's place id, official first
+  // (`resolveFactPrecedence`) — so an official hours fact replaces the Google line, and the row's closing
+  // warning and the findings read one fact. Only Google-shaped hours (`weekdayDescriptions`) are drawn
+  // (`shownHoursFact`); a text-only crawled row is still a view, for the expert's confirm control.
+  const tagged = rows.filter((r) => r.sourceClass != null);
+  const placeOf = placeIdsOf(tagged);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
+  const sources = await sourcesFor([...rows, ...stored]);
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
     if (!r.itineraryItemId) continue;
@@ -568,11 +650,49 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     list.push(r);
     byItem.set(r.itineraryItemId, list);
   }
+  const officialByItem = withStoredOfficial([], placeOf, stored);
+  // `withStoredOfficial` attaches the stored rows of every requested type; hours below reads only hours.
   const out: Record<string, FactView[]> = {};
-  byItem.forEach((list, itemId) => {
-    const seen = new Set<string>();
+  const itemIds = new Set<string>([...Array.from(byItem.keys()), ...Array.from(officialByItem.keys())]);
+  itemIds.forEach((itemId) => {
+    const list = byItem.get(itemId) ?? [];
+    const seen = new Set<string>(["hours"]);
     const views: FactView[] = [];
-    for (const r of rankFactsByOrigin(list, now)) {
+    // Hours: official first; a seasonal official fact covers part of the year, so the next hours fact
+    // (another season, or Google's weekly list) is kept behind it and the row shows the one covering its
+    // date (`shownHoursFact`). A fact with no season closes the list, as before.
+    const hourRows = [...list.filter((r) => r.factType === "hours"), ...(officialByItem.get(itemId) ?? []).filter((x) => x.factType === "hours" && !list.some((r) => r.id === x.id))];
+    const rankedHours = officialHoursBeforePlaces(rankFactsByOrigin(hourRows, now));
+    const shown = new Set<string>();
+    for (const r of rankedHours) {
+      // The same official fact stored by two plans is shown once.
+      const key = JSON.stringify([r.origin, r.sourceId, (r.value as any)?.weekdayDescriptions ?? (r.value as any)?.text ?? r.id, (r.value as any)?.season ?? null]);
+      if (shown.has(key)) continue;
+      const v = toView(r, now, sources);
+      if (!v) continue;
+      shown.add(key);
+      views.push(v);
+      // A text-only row (an expert may confirm it; the row never draws it as hours) or a seasonal one
+      // does not close the list — the first all-year weekly list does.
+      if (Array.isArray((r.value as any)?.weekdayDescriptions) && officialSeason(r) === null) break;
+    }
+    // Last entry (P0-e item 2): every admitted, unexpired official row — the plan's own and those stored for
+    // the place — the same set the findings read, each season-aware, so the row's warning picks the one
+    // covering its date (`lastAdmissionForDate`). Old rows without a season count as before.
+    const entryRows = [...list.filter((r) => r.factType === "last_admission"), ...(officialByItem.get(itemId) ?? []).filter((x) => x.factType === "last_admission" && !list.some((r) => r.id === x.id))];
+    const entryRanked = resolveFactPrecedence(entryRows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })), "last_admission") as FactRow[];
+    const entryShown = new Set<string>();
+    for (const r of entryRanked) {
+      if (isFactStale(r, now) || !admitFeasibilityFact(r).ok) continue;
+      const key = JSON.stringify([r.sourceId, (r.value as any)?.byWeekday ?? null, (r.value as any)?.season ?? null]);
+      if (entryShown.has(key)) continue;
+      const v = toView(r, now, sources);
+      if (!v) continue;
+      entryShown.add(key);
+      views.push(v);
+    }
+    seen.add("last_admission");
+    for (const r of rankFactsByOrigin(list.filter((x) => x.factType !== "hours"), now)) {
       if (seen.has(r.factType)) continue;
       const v = toView(r, now, sources);
       if (!v) continue;
@@ -796,7 +916,7 @@ export async function pendingFactLookups(tripId: string, now: Date = new Date())
  *     any plan (the registry's stored facts, ruling 2), in the ONE precedence (`resolveFactPrecedence`:
  *     official first for a hard fact). Only rows carrying Google-shaped `weekdayDescriptions` are read; a
  *     text-only crawled row is never parsed (ruling 1). Stale rows still count (R-v caveat).
- *   · lastAdmission — per item, the first official `last_admission` row, unexpired.
+ *   · lastAdmission — per item, every official `last_admission` row, unexpired (the caller picks per date).
  *   · lastServices — every official `last_service` row in the plan's market with a station point,
  *     unexpired; the caller matches them to a ride by distance.
  * Every row must be TAGGED (`source_class` set): an untagged fact never reaches a finding (FD-2 ruling 3).
@@ -806,10 +926,18 @@ export interface FeasibilityHours {
   checkedAt: string | null;
   /** A hard closure counts only from an official source the registry may publish (R-p) — unchanged. */
   official: boolean;
+  /** P0-e item 2: the official fact's own season, when it states one; absent ⇒ every date. */
+  season?: { from: string; to: string } | null;
 }
 export interface FeasibilityFacts {
-  hours: Map<string, FeasibilityHours>;
-  lastAdmission: Map<string, unknown>;
+  /**
+   * P0-e item 2 (ledger `2026-10-12-p0e-findings-and-gaps`): EVERY usable hours fact per item, in
+   * precedence order (official first, the Places weekly list last) — the caller picks the one for the
+   * plan date with `hoursFactForDate`. It used to be one fact per item, whatever the date.
+   */
+  hours: Map<string, FeasibilityHours[]>;
+  /** Likewise every unexpired, admitted `last_admission` value per item, in precedence order (`lastAdmissionForDate`). */
+  lastAdmission: Map<string, unknown[]>;
   lastServices: Array<{ lat: number; lng: number; value: unknown }>;
 }
 
@@ -840,58 +968,37 @@ export async function lastServicesForMarket(market: string, now: Date = new Date
 
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
-  // The item → place id map, from the plan's own Places rows.
-  const placeOf = new Map<string, string>();
-  for (const r of own) {
-    if (r.itineraryItemId && r.placeRefKind === "place_id" && r.placeRef && !placeOf.has(r.itineraryItemId)) placeOf.set(r.itineraryItemId, r.placeRef);
-  }
-  const placeIds = Array.from(new Set(placeOf.values()));
-  const stored = placeIds.length
-    ? await db
-        .select()
-        .from(placeFacts)
-        .where(
-          and(
-            eq(placeFacts.placeRefKind, "place_id"),
-            inArray(placeFacts.placeRef, placeIds),
-            inArray(placeFacts.factType, ["hours", "last_admission"]),
-            // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
-            inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
-            eq(placeFacts.license, "official"),
-            isNull(placeFacts.supersededBy),
-            sql`${placeFacts.sourceClass} IS NOT NULL`,
-          ),
-        )
-    : [];
+  const placeOf = placeIdsOf(own);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
   const sources = await sourcesFor([...own, ...stored]);
-  const byItem = new Map<string, FactRow[]>();
-  for (const r of own) {
-    if (!r.itineraryItemId) continue;
-    byItem.set(r.itineraryItemId, [...(byItem.get(r.itineraryItemId) ?? []), r]);
-  }
-  placeOf.forEach((placeId, itemId) => {
-    const extra = stored.filter((r) => r.placeRef === placeId && !(byItem.get(itemId) ?? []).some((x) => x.id === r.id));
-    if (extra.length) byItem.set(itemId, [...(byItem.get(itemId) ?? []), ...extra]);
-  });
+  const byItem = withStoredOfficial(own, placeOf, stored);
 
-  const hours = new Map<string, FeasibilityHours>();
-  const lastAdmission = new Map<string, unknown>();
+  const hours = new Map<string, FeasibilityHours[]>();
+  const lastAdmission = new Map<string, unknown[]>();
   byItem.forEach((rows, itemId) => {
     const ranked = resolveFactPrecedence(
       rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
       "hours",
     );
-    const h = ranked.find((r) => r.factType === "hours" && Array.isArray((r.value as any)?.weekdayDescriptions));
-    if (h) {
+    const hs: FeasibilityHours[] = [];
+    for (const h of ranked) {
+      if (h.factType !== "hours" || !Array.isArray((h.value as any)?.weekdayDescriptions)) continue;
       const v = toView(h, now, sources);
-      hours.set(itemId, {
+      const official = h.origin !== "places_api" && v?.publishable === true;
+      // P0-e item 2: only an OFFICIAL-licence fact may state a season (a Places list never does); a malformed
+      // season makes the fact unusable rather than all-year.
+      const season = h.origin !== "places_api" && h.license === "official" ? hoursSeason(h.value) : null;
+      if (season === "invalid") continue;
+      hs.push({
         weekdayDescriptions: ((h.value as any).weekdayDescriptions as unknown[]).map(String),
         checkedAt: h.fetchedAt ? new Date(h.fetchedAt as any).toISOString() : null,
-        official: h.origin !== "places_api" && v?.publishable === true,
+        official,
+        ...(season ? { season } : {}),
       });
     }
-    const la = ranked.find((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
-    if (la) lastAdmission.set(itemId, la.value);
+    if (hs.length) hours.set(itemId, hs);
+    const las = ranked.filter((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok).map((r) => r.value);
+    if (las.length) lastAdmission.set(itemId, las);
   });
 
   const lastServices = market ? await lastServicesForMarket(market, now) : [];

@@ -58,7 +58,7 @@ export const TEMPLATES: Record<string, TemplateConfig> = {
   travel: {
     activityLabel: "Activities",
     transportLabel: "Transport",
-    statsLabels: ["Days", "Activities", "Transit Legs", "Transit Time"],
+    statsLabels: ["Days", "Activities", "Travel Legs", "Travel Time"],
     activityTypes: { dining: "Dining", attraction: "Attraction", shopping: "Shopping", transport: "Transport" },
   },
   wedding: {
