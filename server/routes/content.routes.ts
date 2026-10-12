@@ -260,6 +260,7 @@ import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { sanitizeInput } from "../utils/sanitize";
+import { scrubTravelpayoutsToken } from "../services/travelpayouts/travelpayouts-client";
 
 const router = Router();
 
@@ -9190,7 +9191,8 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         // Otherwise: expected for registry items with no partner/product FK — insert already committed
       }
 
-      res.json({ url: affiliateUrl });
+      // AF-2: a stored product link from before the fix may hold the API token — never sent out.
+      res.json({ url: scrubTravelpayoutsToken(affiliateUrl) });
     } catch (err: any) {
       console.error("Affiliate redirect error:", err);
       res.status(500).json({ message: "Failed to process affiliate redirect" });

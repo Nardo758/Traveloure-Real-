@@ -48,6 +48,7 @@
 import {
   buildAttributionSubId,
   parseAttributionSubId,
+  scrubTravelpayoutsToken,
 } from "./travelpayouts/travelpayouts-client";
 
 /**
@@ -121,7 +122,10 @@ export function buildAttributedAffiliateUrl(input: {
   requestId: string | null | undefined;
   clickId?: string | null;
 }): AttributedAffiliateUrl {
-  const { affiliateUrl } = input;
+  // AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): links stored before the fix may hold the secret
+  // Travelpayouts API token; it is replaced by the public marker here, the ONE builder every outbound
+  // request link (the agent's /open, the request create, the concierge hand-off) passes through.
+  const affiliateUrl = scrubTravelpayoutsToken(input.affiliateUrl);
   const requestId = input.requestId ?? null;
   const clickId = input.clickId ?? null;
   const unchanged = (reason: AttributionSkipReason): AttributedAffiliateUrl => ({

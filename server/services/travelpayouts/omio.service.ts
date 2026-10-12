@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
 
@@ -66,8 +67,8 @@ export async function searchOmioRoutes(params: OmioSearchParams): Promise<Catalo
       duration: d.duration || null,
       categories: ["ground-transport", "train", "bus"],
       tags: ["omio", "train", "bus"],
-      bookingUrl: `https://www.omio.com/results/${encodeURIComponent(d.origin || d.from || "")}/${encodeURIComponent(d.destination || d.to || "")}?ref=${token}`,
-      affiliateUrl: `https://www.omio.com/results/${encodeURIComponent(d.origin || d.from || "")}/${encodeURIComponent(d.destination || d.to || "")}?ref=${token}`,
+      bookingUrl: `https://www.omio.com/results/${encodeURIComponent(d.origin || d.from || "")}/${encodeURIComponent(d.destination || d.to || "")}?ref=${getTravelpayoutsMarker()}`,
+      affiliateUrl: `https://www.omio.com/results/${encodeURIComponent(d.origin || d.from || "")}/${encodeURIComponent(d.destination || d.to || "")}?ref=${getTravelpayoutsMarker()}`,
       source: "travelpayouts/omio",
       lastUpdated: new Date(),
     } as CatalogItem));
