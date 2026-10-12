@@ -16,6 +16,7 @@ import { getTravelpayoutsMarker } from "./travelpayouts/travelpayouts-client";
 import { buildPartnerizeTrackingLink } from "./partnerize/partnerize-client";
 import { metersPerMinute } from "@shared/travel-speeds";
 import { readBand } from "./fee-resolution.service";
+import { syncLegAffiliateOptions } from "./transport-affiliate.service";
 import { AFFILIATE_TRANSPORT_MARGIN_BAND, TRANSPORT_PLATFORM_COMMISSION_BAND, declaredFallbackValue } from "./fee-band-requirements";
 
 export interface TransportBookingOption {
@@ -105,41 +106,9 @@ export async function populateBookingOptionsForLeg(
     });
   }
 
-  // 2. AFFILIATE OPTIONS — Partner platforms
-  const affiliateOptions = await findAffiliateTransportOptions(
-    destination,
-    leg.fromName,
-    leg.toName,
-    leg.distanceMeters,
-    travelers
-  );
-
-  for (const affiliate of affiliateOptions) {
-    options.push({
-      transportLegId: legId,
-      bookingType: "affiliate",
-      source: affiliate.partner,
-      title: affiliate.title,
-      description: affiliate.description,
-      modeType: affiliate.modeType,
-      iconType: getModeIcon(affiliate.modeType),
-      priceDisplay: affiliate.priceDisplay,
-      priceCentsLow: affiliate.priceCentsLow,
-      priceCentsHigh: affiliate.priceCentsHigh,
-      pricePerPerson: affiliate.pricePerPerson,
-      currency: affiliate.currency,
-      estimatedMinutes: affiliate.estimatedMinutes,
-      externalUrl: affiliate.urlWithAffiliate,
-      affiliateCode: affiliate.affiliateCode,
-      rating: affiliate.rating,
-      reviewCount: affiliate.reviewCount,
-      sortOrder: 1,
-      revenueType: "affiliate_margin",
-      revenueRate: affiliate.revenueRate,
-      isPartnerizeSourced: affiliate.isPartnerizeSourced,
-      partnerizePartnerId: affiliate.partnerizePartnerId,
-    });
-  }
+  // 2. AFFILIATE OPTIONS — TC-2 Phase 1 (ledger `2026-10-12-tc2-affiliate-legs`): the ONE leg resolver,
+  // `syncLegAffiliateOptions`, writes them after the rows below, gated by the partner registry and the route
+  // map; the old every-leg 12Go/Omio/DiscoverCars/Kiwi/Partnerize list is deleted (§18c).
 
   // 3. DEEP LINK OPTIONS — Rideshare apps
   // V-1b (ledger `2026-10-12-v1b-google-version-legs`): a deep link carries both ends' coordinates in a
@@ -187,13 +156,15 @@ export async function populateBookingOptionsForLeg(
   }
 
   // Save all options to database
-  await db.insert(transportBookingOptions).values(
-    options.map((opt) => ({
-      id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36),
-      ...opt,
-    }))
-  );
-
+  if (options.length) {
+    await db.insert(transportBookingOptions).values(
+      options.map((opt) => ({
+        id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36),
+        ...opt,
+      }))
+    );
+  }
+  await syncLegAffiliateOptions(legId);
 }
 
 /**
@@ -311,40 +282,6 @@ export async function resolveAffiliateTransportMargin(): Promise<number> {
 }
 
 // ============================================================================
-// Affiliate URL builders
-// ============================================================================
-
-function buildTwelveGoUrl(fromName: string, toName: string, marker: string): string {
-  const f = encodeURIComponent(fromName.toLowerCase().replace(/\s+/g, "-"));
-  const t = encodeURIComponent(toName.toLowerCase().replace(/\s+/g, "-"));
-  const ref = `?z=${marker}`;
-  return `https://12go.asia/en/travel/${f}/${t}${ref}`;
-}
-
-function buildOmioUrl(fromName: string, toName: string, marker: string): string {
-  const f = encodeURIComponent(fromName);
-  const t = encodeURIComponent(toName);
-  const ref = `&ref=${marker}`;
-  return `https://www.omio.com/results/${f}/${t}?sortBy=best${ref}`;
-}
-
-function buildDiscoverCarsUrl(destination: string, marker: string): string {
-  const loc = encodeURIComponent(destination);
-  const today = new Date();
-  const nextWeek = new Date(today.getTime() + 7 * 86_400_000);
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
-  const aff = `&affiliate_id=${marker}`;
-  return `https://www.discovercars.com/car-hire/${loc}?pickup_date=${fmt(today)}&dropoff_date=${fmt(nextWeek)}${aff}`;
-}
-
-function buildKiwiUrl(fromName: string, toName: string, marker: string): string {
-  const f = encodeURIComponent(fromName);
-  const t = encodeURIComponent(toName);
-  const ref = `&source=${marker}`;
-  return `https://www.kiwi.com/en/search/results/${f}/${t}${ref}`;
-}
-
-// ============================================================================
 // Phase 1 — Platform resolver
 // Queries provider_services for active transport providers matching the
 // destination and leg mode, reads commission from the transport_platform_commission band (TC-0).
@@ -433,154 +370,6 @@ async function findTransportProviders(
       return true;
     })
     .map((r) => ({ ...r, commissionRate }));
-}
-
-// ============================================================================
-// Phase 2 — Affiliate resolver
-// Builds deep-link options for 12Go, Omio, DiscoverCars, and Kiwi.
-// Margin rates are read from booking_fee_configs — no literals in this block.
-// ============================================================================
-
-/**
- * Builds affiliate booking options for a transport leg.
- * Partner selection is mode-aware:
- *   train/bus/transit/ferry/shuttle → 12Go + Omio
- *   car/taxi/shuttle/drive          → DiscoverCars
- *   flight (>100 km)                → Kiwi
- */
-async function findAffiliateTransportOptions(
-  destination: string,
-  fromName: string,
-  toName: string,
-  distanceMeters: number,
-  travelers: number
-): Promise<any[]> {
-  // AF-1 (ledger `2026-10-12-af1-transport-token-leak`): the public affiliate marker (partner id), the
-  // same one the destination-level options use — never the secret API token, which these links and the
-  // stored `affiliate_code` used to carry to the browser and to the partner.
-  const marker = getTravelpayoutsMarker();
-  const results: any[] = [];
-
-  // 12Go — trains, buses, ferries, shuttles (strong Asia + global coverage)
-  const go12Margin = await resolveAffiliateTransportMargin();
-  results.push({
-    partner: "12go",
-    title: `${fromName} → ${toName}`,
-    description: "Book trains, buses & ferries with 12Go",
-    modeType: "transit",
-    // No partner payload states a price for a route search, and no admin config holds one, so none
-    // is shown (ledger `2026-10-03-transport-price-literals` — "From $5" was a literal).
-    priceDisplay: "Compare prices",
-    priceCentsLow: null,
-    priceCentsHigh: null,
-    pricePerPerson: true,
-    currency: "USD",
-    estimatedMinutes: null,
-    urlWithAffiliate: buildTwelveGoUrl(fromName, toName, marker),
-    affiliateCode: marker,
-    revenueRate: go12Margin,
-  });
-
-  // Omio — trains, buses, coaches (Europe + global)
-  const omioMargin = await resolveAffiliateTransportMargin();
-  results.push({
-    partner: "omio",
-    title: `${fromName} → ${toName}`,
-    description: "Compare trains, buses & coaches with Omio",
-    modeType: "train",
-    priceDisplay: "Compare prices",
-    priceCentsLow: null,
-    priceCentsHigh: null,
-    pricePerPerson: true,
-    currency: "EUR",
-    estimatedMinutes: null,
-    urlWithAffiliate: buildOmioUrl(fromName, toName, marker),
-    affiliateCode: marker,
-    revenueRate: omioMargin,
-  });
-
-  // DiscoverCars — car rental for journeys likely to need a vehicle
-  if (distanceMeters > 5_000) {
-    const dcMargin = await resolveAffiliateTransportMargin();
-    results.push({
-      partner: "discovercars",
-      title: `Rent a car in ${destination}`,
-      description: "Compare 500+ rental providers with DiscoverCars",
-      modeType: "car",
-      priceDisplay: "Compare prices",
-      priceCentsLow: null,
-      priceCentsHigh: null,
-      pricePerPerson: false,
-      currency: "USD",
-      estimatedMinutes: null,
-      urlWithAffiliate: buildDiscoverCarsUrl(destination, marker),
-      affiliateCode: marker,
-      revenueRate: dcMargin,
-    });
-  }
-
-  // Kiwi — flights for long-distance legs (>100 km)
-  if (distanceMeters > 100_000) {
-    const kiwiMargin = await resolveAffiliateTransportMargin();
-    results.push({
-      partner: "kiwi",
-      title: `${fromName} → ${toName}`,
-      description: "Search flights with Kiwi.com",
-      modeType: "flight",
-      priceDisplay: "Compare prices",
-      priceCentsLow: null,
-      priceCentsHigh: null,
-      pricePerPerson: true,
-      currency: "USD",
-      estimatedMinutes: null,
-      urlWithAffiliate: buildKiwiUrl(fromName, toName, marker),
-      affiliateCode: marker,
-      revenueRate: kiwiMargin,
-    });
-  }
-
-  // Partnerize — synced brand campaigns (car rental, airport transfer, etc.)
-  // approved for the transportation category. Requires checkout on the
-  // brand's own site, so these are flagged for the "book with an expert"
-  // CTA alongside the direct link.
-  try {
-    const partnerizeRows = await db.execute(sql`
-      SELECT id, name, external_campaign_id, commission_rate, website_url
-      FROM affiliate_partners
-      WHERE source = 'partnerize'
-        AND is_active = true
-        AND category = 'transportation'
-      ORDER BY last_synced_at DESC NULLS LAST
-      LIMIT 3
-    `);
-    for (const row of (partnerizeRows.rows || []) as any[]) {
-      const url = buildPartnerizeTrackingLink(row.external_campaign_id, row.website_url, {
-        destination,
-      });
-      if (!url) continue;
-      results.push({
-        partner: "partnerize",
-        title: row.name,
-        description: `Book ${row.name} — completed on their site or via a booking expert`,
-        modeType: "car",
-        priceDisplay: "View pricing",
-        priceCentsLow: null,
-        priceCentsHigh: null,
-        pricePerPerson: false,
-        currency: "USD",
-        estimatedMinutes: null,
-        urlWithAffiliate: url,
-        affiliateCode: row.external_campaign_id,
-        revenueRate: row.commission_rate !== null && row.commission_rate !== undefined ? Number(row.commission_rate) / 100 : undefined,
-        isPartnerizeSourced: true,
-        partnerizePartnerId: row.id,
-      });
-    }
-  } catch (err) {
-    console.warn("[transport-booking-options] Partnerize option lookup failed, skipping:", err);
-  }
-
-  return results;
 }
 
 // ============================================================================

@@ -31,7 +31,8 @@ Implement `findTransportProviders(leg, partySize)`: query Tier 1 Private Transpo
 
 ## Phase 2 — Affiliate resolver (fill source)
 Implement `findAffiliateTransportOptions(leg)`: surface affiliate options from the providers preserved in Phase 0.3 (transfers/car + intercity). Return options with partner id, mode, price, deep-link, and **margin read from per-partner admin config**.
-- **Gate:** returns affiliate options for a representative leg; per-partner margin is config-driven; deep-links resolve. `tsc` clean.
+- **Gate:** returns affiliate options for a representative leg; the margin is the ONE `affiliate_transport_margin` band (TC-0 — there is no per-partner margin); deep-links resolve. `tsc` clean.
+  *(Corrected Oct 12, 2026 by the decision-maker's instruction in the TC-2 lane: this gate read "per-partner margin is config-driven", stale since TC-0 replaced the per-partner rows with the single band — ledger `2026-10-10-tc0-transport-commission-band`.)*
 
 ## Phase 3 — Unify + wire to the display layer
 Single resolver entry in `transport-booking-options.service.ts` that returns, per leg, an ordered list: platform-when-fit, then affiliate fill, per the ordering policy above. Wire a "book this leg" affordance in the PlanCard transport layer → per-leg options panel, rendering modes via `transport-modes.ts`.

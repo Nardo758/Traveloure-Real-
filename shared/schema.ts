@@ -6822,6 +6822,12 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   // no CHECK.
   pageExtractPermitted: boolean("page_extract_permitted"),
   termsCheckedAt: timestamp("terms_checked_at"),
+  // Migration 375 (TC-2 Phase 1 decision 1, ledger `2026-10-12-tc2-affiliate-legs`): the partner's licence,
+  // the attribution shown beside its option, and whether it may appear publicly. Nullable, no
+  // DEFAULT/CHECK/index/FK. A partner missing licence or attribution does not render (`affiliatePartnerReady`).
+  license: varchar("license", { length: 40 }),
+  attribution: varchar("attribution", { length: 300 }),
+  publicOk: boolean("public_ok"),
   submittedAt: timestamp("submitted_at"),
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),

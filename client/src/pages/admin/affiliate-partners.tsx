@@ -69,6 +69,21 @@ interface PartnerFormData {
   description?: string;
   logoUrl?: string;
   commissionRate?: number;
+  /** TC-2 decision 1 (migration 375): a partner missing licence or attribution does not render on a leg. */
+  license?: string;
+  attribution?: string;
+  publicOk?: "yes" | "no" | "";
+}
+
+/** The form's "May appear publicly" answer as the column holds it: yes/no, or NULL for not answered. */
+function partnerBody<T extends Partial<PartnerFormData>>(data: T): Omit<T, "publicOk" | "license" | "attribution"> & { publicOk?: boolean | null; license?: string | null; attribution?: string | null } {
+  const { publicOk, license, attribution, ...rest } = data;
+  return {
+    ...rest,
+    ...(license !== undefined ? { license: license.trim() || null } : {}),
+    ...(attribution !== undefined ? { attribution: attribution.trim() || null } : {}),
+    ...(publicOk !== undefined ? { publicOk: publicOk === "yes" ? true : publicOk === "no" ? false : null } : {}),
+  };
 }
 
 interface ReconciliationSummary {
@@ -143,7 +158,7 @@ export default function AdminAffiliatePartners() {
 
   const createMutation = useMutation({
     mutationFn: async (data: PartnerFormData) => {
-      return apiRequest("POST", "/api/admin/affiliate/partners", data);
+      return apiRequest("POST", "/api/admin/affiliate/partners", partnerBody(data));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
@@ -157,7 +172,7 @@ export default function AdminAffiliatePartners() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<PartnerFormData> }) => {
-      return apiRequest("PATCH", `/api/admin/affiliate/partners/${id}`, data);
+      return apiRequest("PATCH", `/api/admin/affiliate/partners/${id}`, partnerBody(data));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/affiliate/partners") });
@@ -1108,6 +1123,9 @@ function PartnerForm({
       description: initialData?.description || "",
       logoUrl: initialData?.logoUrl || "",
       commissionRate: initialData?.commissionRate ? parseFloat(initialData.commissionRate) : undefined,
+      license: (initialData as any)?.license || "",
+      attribution: (initialData as any)?.attribution || "",
+      publicOk: (initialData as any)?.publicOk === true ? "yes" : (initialData as any)?.publicOk === false ? "no" : "",
     },
   });
 
@@ -1244,12 +1262,59 @@ function PartnerForm({
                 />
               </FormControl>
               <p className="text-xs text-muted-foreground mt-1">
-                Use {"{url}"}, {"{tracking_id}"}, {"{product_url}"} as placeholders
+                Use {"{url}"}, {"{tracking_id}"}, {"{product_url}"} as placeholders. A plan leg's partner link uses
+                {" {marker}"} and {"{url}"} (the clean target path) and needs an https template.
               </p>
               <FormMessage />
             </FormItem>
           )}
         />
+
+        <div className="grid grid-cols-3 gap-4">
+          <FormField
+            control={form.control}
+            name="license"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Licence</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="e.g., Travelpayouts affiliate terms" data-testid="input-partner-license" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="attribution"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Attribution</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="Shown beside the partner's option" data-testid="input-partner-attribution" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="publicOk"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>May appear publicly</FormLabel>
+                <FormControl>
+                  <select {...field} className="w-full border rounded-md h-9 px-2 bg-background" data-testid="select-partner-public-ok">
+                    <option value="">Not answered</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <FormField
           control={form.control}

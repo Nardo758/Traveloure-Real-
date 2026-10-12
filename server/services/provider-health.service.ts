@@ -79,6 +79,12 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
   discovercars: { label: "DiscoverCars", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/kiwitaxi.service.ts: getTravelpayoutsToken()
   kiwitaxi: { label: "Kiwitaxi", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
+  // TC-2 Phase 1 (ledger `2026-10-12-tc2-affiliate-legs`): the plan-leg partner links. No API is called — the
+  // link is the partner's Travelpayouts redirect template around the clean target, built from its
+  // `affiliate_partners` row — so "configured" is the marker the redirect carries (always present); whether
+  // the registry row is ready is what each build reports (`empty` with `registry: <reason>`, or `ok`).
+  twelvego_link: { label: "12Go (plan-leg link)", isConfigured: () => true },
+  kiwitaxi_link: { label: "Kiwitaxi (plan-leg link)", isConfigured: () => true },
   // server/services/travelpayouts/gettransfer.service.ts: getTravelpayoutsToken()
   gettransfer: { label: "GetTransfer", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/tiqets.service.ts: getTravelpayoutsToken()

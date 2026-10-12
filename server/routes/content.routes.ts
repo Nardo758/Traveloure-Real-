@@ -8665,6 +8665,22 @@ router.get("/api/affiliate/categories", async (_req, res) => {
   // is the convention, not a new one. The public READS below are unchanged.
   // Create affiliate partner
 
+/**
+ * TC-2 decision 1 (migration 375, ledger `2026-10-12-tc2-affiliate-legs`): the partner's licence, attribution
+ * and public answer, from an admin body. A blank string is NULL (not stated); a value of the wrong shape is
+ * dropped rather than stored, so it can never read as stated.
+ */
+function affiliateRegistryFields(body: any): { license?: string | null; attribution?: string | null; publicOk?: boolean | null } {
+  const out: { license?: string | null; attribution?: string | null; publicOk?: boolean | null } = {};
+  const text = (v: unknown, max: number) => (typeof v === "string" ? (v.trim() ? v.trim().slice(0, max) : null) : v === null ? null : undefined);
+  const license = text(body?.license, 40);
+  if (license !== undefined) out.license = license;
+  const attribution = text(body?.attribution, 300);
+  if (attribution !== undefined) out.attribution = attribution;
+  if (body?.publicOk === true || body?.publicOk === false || body?.publicOk === null) out.publicOk = body.publicOk;
+  return out;
+}
+
 router.post("/api/admin/affiliate/partners", isAuthenticated, async (req, res) => {
     try {
       const { name, websiteUrl, category, affiliateTrackingId, affiliateLinkTemplate, description, logoUrl, commissionRate, scrapeConfig } = req.body;
@@ -8683,6 +8699,7 @@ router.post("/api/admin/affiliate/partners", isAuthenticated, async (req, res) =
         logoUrl,
         commissionRate,
         scrapeConfig,
+        ...affiliateRegistryFields(req.body),
       });
 
       res.status(201).json({ partner, message: "Partner created successfully" });
@@ -8737,9 +8754,10 @@ router.patch("/api/admin/affiliate/partners/:id", isAuthenticated, async (req, r
       const {
         approvalStatus, reviewedAt, reviewedBy, rejectionReason, submittedAt,
         pageExtractPermitted, termsCheckedAt,
+        license: _license, attribution: _attribution, publicOk: _publicOk,
         ...safeBody
       } = req.body ?? {};
-      const partner = await affiliateScraperService.updatePartner(req.params.id, safeBody);
+      const partner = await affiliateScraperService.updatePartner(req.params.id, { ...safeBody, ...affiliateRegistryFields(req.body) });
       if (!partner) {
         return res.status(404).json({ message: "Partner not found" });
       }
