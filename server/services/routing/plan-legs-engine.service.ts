@@ -204,7 +204,9 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
     if (!tripStart) return null;
     return zonedWallClockToInstant(addCalendarDays(tripStart, leg.dayNumber - 1), legDepartureWallClock(leg.wallClock), trip.timezone);
   };
-  return { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, hasTransitCoverage, transitApiUncovered };
+  // P0-d (ledger `2026-10-12-p0d-coverage-bridges`): `stops` and `stay` are returned so the findings'
+  // coverage check pairs the day's stops exactly as the engine does (§18 rule 1).
+  return { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, hasTransitCoverage, transitApiUncovered, stops, stay };
 }
 
 export async function computePlanLegs(
