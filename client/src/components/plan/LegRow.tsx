@@ -26,6 +26,7 @@ import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared
 import { planLegDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { unroutedLegLine } from "@/lib/slip-legs";
+import { legRuleClass, storedLegIsRouted } from "@/lib/leg-rule";
 
 /** The leg between two stops, as `GET /api/trips/:tripId/transport-legs` returns it (no user id). */
 export interface StopLeg {
@@ -49,6 +50,8 @@ export interface StopLeg {
   pickupPoint?: string | null;
   pickupTime?: string | null;
   checkedAt?: string | null;
+  /** P0-c item 4: the engine's provenance when it routed this leg; absent ⇒ unrouted (dashed rule). */
+  source?: string | null;
 }
 
 /**
@@ -139,7 +142,7 @@ export function StopLegRow({
   return (
     <div
       id={domIds ? planLegDomId(leg.id) : undefined}
-      className="ml-4 border-l-2 border-dashed border-border px-3 py-2 space-y-1.5"
+      className={`ml-4 ${legRuleClass(storedLegIsRouted(leg))} px-3 py-2 space-y-1.5`}
       data-testid={`leg-row-${leg.id}`}
       data-pair-id={pairId}
       data-leg-status={leg.proposalStatus ?? "none"}
@@ -378,7 +381,7 @@ function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable
       </span>
     </>
   );
-  const cls = "ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5";
+  const cls = `ml-4 ${legRuleClass(true)} px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5`;
   if (onOpen) {
     return (
       <button
@@ -403,7 +406,7 @@ function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable
 function UnroutedLegRow({ legId, mode, minutes }: UnroutedLegRowProps) {
   const Icon = (mode && ROUTED_MODE_ICON[mode]) || Car;
   return (
-    <p className="ml-4 border-l-2 border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5" data-testid={`slip-leg-unrouted-${legId}`}>
+    <p className={`ml-4 ${legRuleClass(false)} px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5`} data-testid={`slip-leg-unrouted-${legId}`}>
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
       <span>{unroutedLegLine(mode, minutes)}</span>
     </p>
@@ -413,7 +416,7 @@ function UnroutedLegRow({ legId, mode, minutes }: UnroutedLegRowProps) {
 function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false, routedMinutes }: AirportLegRowProps) {
   const minutes = typeof routedMinutes === "number" && routedMinutes > 0 ? Math.round(routedMinutes) : null;
   return (
-    <div className="px-3 py-2 border-l-2 border-dashed border-border ml-4 space-y-1" data-testid={`slip-leg-airport-${direction}`}>
+    <div className={`px-3 py-2 ${legRuleClass(minutes != null)} ml-4 space-y-1`} data-testid={`slip-leg-airport-${direction}`}>
       <p className="text-xs text-muted-foreground flex items-center gap-1.5">
         <Car className="w-3.5 h-3.5" aria-hidden="true" />
         <span data-testid={`slip-leg-airport-${direction}-line`}>{airportLegLine(direction, stayName, airport)}</span>
