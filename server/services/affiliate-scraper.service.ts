@@ -20,6 +20,7 @@ import { assertRobotsAllowed } from "../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT, ROBOTS_TXT_USER_AGENT_TOKEN } from "../config/robots-txt.config";
 import { claudeService } from "./claude.service";
 import { pageExtractAllowed } from "@shared/affiliate-extract";
+import { scrubTravelpayoutsToken } from "./travelpayouts/travelpayouts-client";
 
 /**
  * Refusal: this partner's program has not been recorded as allowing page extraction (ledger
@@ -659,7 +660,9 @@ ${truncatedHtml}`;
     if (data.productId) {
       const product = await this.getProductById(data.productId, gate);
       if (product) {
-        return { affiliateUrl: product.affiliateUrl || product.productUrl };
+        // AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): a stored link from before the fix may hold
+        // the API token; the click route returns this to the browser, so it is replaced by the marker.
+        return { affiliateUrl: scrubTravelpayoutsToken(product.affiliateUrl || product.productUrl) };
       }
     }
 

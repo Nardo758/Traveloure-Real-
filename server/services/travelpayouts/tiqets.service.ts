@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
 import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
@@ -114,8 +115,8 @@ function mapTiqetsProducts(products: any[], params: TiqetsSearchParams, token: s
     duration: null,
     categories: ["attraction", "ticket", p.category || "activity"].filter(Boolean),
     tags: p.tags || [],
-    bookingUrl: p.url ? `${p.url}?partner_id=${token}` : `https://www.tiqets.com/en/s/?q=${encodeURIComponent(p.title || "")}`,
-    affiliateUrl: p.url ? `${p.url}?partner_id=${token}` : null,
+    bookingUrl: p.url ? `${p.url}?partner_id=${getTravelpayoutsMarker()}` : `https://www.tiqets.com/en/s/?q=${encodeURIComponent(p.title || "")}`,
+    affiliateUrl: p.url ? `${p.url}?partner_id=${getTravelpayoutsMarker()}` : null,
     source: "travelpayouts/tiqets",
     lastUpdated: new Date(),
   } as CatalogItem));
