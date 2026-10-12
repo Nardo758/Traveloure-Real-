@@ -152,7 +152,7 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       // The price shown is the server's, before the SDK opens.
       await expect(page.getByTestId(`stay-book-price-${itemId}`)).toBeVisible();
       expect(pre.env).toBe("sandbox");
-      await page.getByTestId(`stay-book-continue-${itemId}`).click();
+      await page.getByTestId(`stay-book-continue-${itemId}`).click({ timeout: 30_000 });
       await expect(page.getByTestId(`stay-book-sdk-${itemId}`).locator("*").first()).toBeAttached({ timeout: 30_000 });
       priced = { tripId, itemId };
       break;
