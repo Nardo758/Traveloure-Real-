@@ -6,6 +6,8 @@ import { geocodeAddress, type GeocodeResult } from "../utils/geocode";
 
 export interface OptimizerGeocodeActivity {
   name: string;
+  /** Step 5 (migration 343): the plan item this version stop keeps, when the model tagged one. */
+  sourceItemId?: string;
   location?: string;
   providerServiceId?: string;
   latitude?: number;
@@ -15,8 +17,12 @@ export interface OptimizerGeocodeActivity {
 export interface OptimizerCoordinateSource {
   name: string;
   providerServiceId?: string;
+  /** The plan item this baseline stop IS (trip-backed loader only). */
+  planItemId?: string;
   latitude?: number | string | null;
   longitude?: number | string | null;
+  /** V-1: a Google Places point held in memory only (LD 57) — never copied onto an activity. */
+  placesPoint?: { lat: number; lng: number };
 }
 
 interface CacheEntry {
@@ -165,6 +171,11 @@ export async function resolveOptimizerActivityCoordinates(
   const cache = dependencies.cache ?? databaseCache;
   const geocode = dependencies.geocode ?? geocodeAddress;
   const now = dependencies.now ?? (() => new Date());
+  // V-1: a stop the model tagged with its plan item IS that item — its identity, not its
+  // (possibly reworded) title, so a renamed kept stop still finds its point.
+  const baselineByPlanItem = new Map(
+    baselineItems.filter((item) => item.planItemId).map((item) => [item.planItemId!, item]),
+  );
   const baselineByService = new Map(
     baselineItems.filter((item) => item.providerServiceId).map((item) => [item.providerServiceId!, item]),
   );
@@ -175,6 +186,12 @@ export async function resolveOptimizerActivityCoordinates(
   // Sequential within one variant; variants run in parallel, capping live Google calls at three.
   for (const activity of activities) {
     if (copyCoordinates(activity, activity)) continue;
+    const kept = activity.sourceItemId ? baselineByPlanItem.get(activity.sourceItemId) : undefined;
+    // The kept plan item's durable point (trusted row, else its listing — the loader's chain).
+    if (copyCoordinates(activity, kept)) continue;
+    // Located only by Google: saved with NULL coordinates and located at read time through
+    // `sourceItemId` (LD 57). No geocode is spent on a stop the place facts already locate.
+    if (kept?.placesPoint) continue;
     const catalog = activity.providerServiceId
       ? catalogCoordinates.get(activity.providerServiceId)
       : undefined;

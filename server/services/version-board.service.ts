@@ -23,7 +23,10 @@ import { stampItemSourceClass } from "@shared/content-tiers";
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { feeLedger, itineraryComparisons, itineraryItems, itineraryVariantItems, itineraryVariants, planDayRetimes, trips } from "@shared/schema";
+import { feeLedger, itineraryComparisons, itineraryItems, itineraryVariantItems, itineraryVariantMetrics, itineraryVariants, planDayRetimes, trips } from "@shared/schema";
+import { rowCoordinatesTrusted } from "@shared/ai-place-text";
+import { factPointsForTrip } from "./content-facts/place-facts.service";
+import { VERSION_SANITY_KEYS, type VersionSanityKey } from "./version-sanity";
 import {
   diffVersionDays,
   retimeIsFree,
@@ -146,6 +149,93 @@ function toBoardStop(r: typeof itineraryVariantItems.$inferSelect): BoardStop {
   };
 }
 
+type Point = { lat: number; lng: number };
+
+/**
+ * V-1: where the board draws a plan item, located the way the slip locates it — the row's own
+ * point only when `rowCoordinatesTrusted`, else Google's cached `location` fact (30-day, LD 57). READ
+ * ONLY: the apply and re-time paths never see these points, so a Google point is never written. Also
+ * returns each row's raw point, so a version stop that saved an untrusted (area-centroid) copy of it
+ * can be recognised and located properly.
+ */
+async function planPointsForRead(tripId: string): Promise<{ point: Map<string, Point>; untrustedRaw: Map<string, Point> }> {
+  const rows = await db
+    .select({
+      id: itineraryItems.id,
+      latitude: itineraryItems.latitude,
+      longitude: itineraryItems.longitude,
+      origin: itineraryItems.origin,
+      locationName: itineraryItems.locationName,
+      locationAddress: itineraryItems.locationAddress,
+    })
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, tripId));
+  const point = new Map<string, Point>();
+  const untrustedRaw = new Map<string, Point>();
+  const missing: string[] = [];
+  for (const r of rows) {
+    const lat = num(r.latitude);
+    const lng = num(r.longitude);
+    const raw = lat != null && lng != null ? { lat, lng } : null;
+    if (raw && rowCoordinatesTrusted(r)) point.set(r.id, raw);
+    else {
+      if (raw) untrustedRaw.set(r.id, raw);
+      missing.push(r.id);
+    }
+  }
+  if (missing.length) {
+    const facts = await factPointsForTrip(tripId).catch(() => new Map<string, Point>());
+    for (const id of missing) {
+      const f = facts.get(id);
+      if (f) point.set(id, f);
+    }
+  }
+  return { point, untrustedRaw };
+}
+
+/** A version stop's point: its saved one, unless that is a copy of its kept plan item's untrusted
+ *  (centroid) point; then, or when it saved none, its kept plan item's read-time point. */
+function locateVersionStop(stop: BoardStop, pts: { point: Map<string, Point>; untrustedRaw: Map<string, Point> }): BoardStop {
+  const kept = stop.sourceItemId ?? null;
+  const saved = stop.lat != null && stop.lng != null ? { lat: stop.lat, lng: stop.lng } : null;
+  const raw = kept ? pts.untrustedRaw.get(kept) : undefined;
+  const savedIsCentroid = !!saved && !!raw && raw.lat === saved.lat && raw.lng === saved.lng;
+  if (saved && !savedIsCentroid) return stop;
+  const p = kept ? pts.point.get(kept) ?? null : null;
+  return { ...stop, lat: p?.lat ?? null, lng: p?.lng ?? null };
+}
+
+/** V-1: a version's sanity flags, read from its metric rows (one per flag type). */
+export interface VersionFlag {
+  key: VersionSanityKey;
+  count: number;
+  stopNames: string[];
+}
+
+async function versionFlags(variantIds: string[]): Promise<Map<string, VersionFlag[]>> {
+  const out = new Map<string, VersionFlag[]>();
+  if (!variantIds.length) return out;
+  const rows = await db
+    .select({
+      variantId: itineraryVariantMetrics.variantId,
+      metricKey: itineraryVariantMetrics.metricKey,
+      value: itineraryVariantMetrics.value,
+      description: itineraryVariantMetrics.description,
+    })
+    .from(itineraryVariantMetrics)
+    .where(and(inArray(itineraryVariantMetrics.variantId, variantIds), inArray(itineraryVariantMetrics.metricKey, [...VERSION_SANITY_KEYS])));
+  for (const r of rows) {
+    const count = num(r.value);
+    if (count == null || count <= 0) continue;
+    const stopNames = (r.description ?? "").split(", ").map((x) => x.trim()).filter(Boolean);
+    out.set(r.variantId, [...(out.get(r.variantId) ?? []), { key: r.metricKey as VersionSanityKey, count, stopNames }]);
+  }
+  for (const [id, list] of Array.from(out.entries())) {
+    out.set(id, list.sort((a, b) => VERSION_SANITY_KEYS.indexOf(a.key) - VERSION_SANITY_KEYS.indexOf(b.key)));
+  }
+  return out;
+}
+
 /**
  * Past the free re-times, a re-time is the EXISTING paid optimizer run — this states its price from
  * the one fee resolver (`getFee`, §8 — no literal here) and the Trip Pass coverage the charge path
@@ -174,7 +264,10 @@ export interface VersionsBoardView {
     badge: BadgeKey | null;
     /** Held-batch-1 item 22: the strict winner by S1's tiebreak (`recommendedVersion`); at most one. */
     recommended: boolean;
-    anchor: { name: string; lat: number | null; lng: number | null } | null;
+    /** V-1: `type` is the stored anchor kind (hotel | neighborhood | activity), null when unknown. */
+    anchor: { name: string; type: string | null; lat: number | null; lng: number | null } | null;
+    /** V-1: the version's sanity flags; empty when none fired (or the run predates them). */
+    flags: VersionFlag[];
     stops: BoardStop[];
     days: DayDiff[];
   }>;
@@ -182,13 +275,17 @@ export interface VersionsBoardView {
 }
 
 export async function loadVersionsBoard(tripId: string, now = new Date(), viewerId: string | null = null): Promise<VersionsBoardView> {
-  const plan = await planStops(tripId);
+  const pts = await planPointsForRead(tripId);
+  const plan = (await planStops(tripId)).map((p) => {
+    const at = pts.point.get(p.id) ?? null;
+    return { ...p, lat: at?.lat ?? null, lng: at?.lng ?? null };
+  });
   const run = await latestRun(tripId);
   const limit = optimizerFreeRetimes();
   if (!run) return { run: null, plan: { stops: plan }, versions: [], retimes: { limit, used: {}, windowEndsAt: null, free: {} } };
   const items = (await versionStops(run.variants.map((v) => v.id))).filter((r) => !isStayPick(r as any));
   const versions = run.variants.map((v, i) => {
-    const stops = items.filter((r) => r.variantId === v.id).map(toBoardStop);
+    const stops = items.filter((r) => r.variantId === v.id).map((r) => locateVersionStop(toBoardStop(r), pts));
     return { v, i, stops };
   });
   const badges = versionBadges(versions.map((x) => ({ id: x.v.id, stops: x.stops })));
@@ -198,7 +295,8 @@ export async function loadVersionsBoard(tripId: string, now = new Date(), viewer
   const unlimited = await tripHasPass(tripId).catch(() => false);
   for (const x of versions) free[x.v.id] = retimeIsFree({ runAt: run.runAt, now, used: used[x.v.id] ?? 0, limit, unlimited });
   const anchorOf = (v: (typeof run.variants)[number]) =>
-    v.anchorName ? { name: v.anchorName, lat: num(v.anchorLat), lng: num(v.anchorLng) } : null;
+    v.anchorName ? { name: v.anchorName, type: v.anchorType ?? null, lat: num(v.anchorLat), lng: num(v.anchorLng) } : null;
+  const flags = await versionFlags(run.variants.map((v) => v.id));
   return {
     run: {
       comparisonId: run.comparisonId,
@@ -214,6 +312,7 @@ export async function loadVersionsBoard(tripId: string, now = new Date(), viewer
       badge: badges.get(v.id) ?? null,
       recommended: recommendedId === v.id,
       anchor: anchorOf(v),
+      flags: flags.get(v.id) ?? [],
       stops,
       days: diffVersionDays(plan, stops),
     })),
