@@ -228,6 +228,19 @@ export function bookIsConfirmed(f: BookFacts): boolean {
 }
 
 /** Pure: a cancel (or booking read) answer's status, upper-cased; null when it states none. */
+/**
+ * S1-d-3c: the booking a `GET /bookings?clientReference=` answer holds for OUR reference — its LiteAPI id and
+ * status — or null. Only an entry that names our reference exactly counts (one per row id); an answer in another
+ * shape finds nothing rather than a guess (§13). The list shape is read defensively (`data` an array, or
+ * `data.bookings`) and is proven against fakes only until a sandbox answer is recorded.
+ */
+export function bookingForClientReference(body: any, clientReference: string): { liteapiBookingId: string; status: string | null } | null {
+  const list: any[] = Array.isArray(body?.data) ? body.data : Array.isArray(body?.data?.bookings) ? body.data.bookings : [];
+  const hit = list.find((b) => str(b?.clientReference) === clientReference && str(b?.bookingId));
+  if (!hit) return null;
+  return { liteapiBookingId: str(hit.bookingId)!, status: str(hit.status)?.toUpperCase() ?? null };
+}
+
 export function bookingStatusOf(body: any): string | null {
   return str(body?.data?.status)?.toUpperCase() ?? null;
 }

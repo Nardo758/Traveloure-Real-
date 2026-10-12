@@ -15,6 +15,10 @@
  *   B7 a definite LiteAPI refusal fails the booking; an unreadable answer leaves the claim for the sync
  *   B8 the sync records LiteAPI's status and never changes ours; it reports disagreement and stranded claims
  *   B9 a missing holder name is refused, never invented
+ *   B11 (S1-d-3c) hard timeouts: a timed-out prebook stores nothing; a timed-out BOOK is unknown, never failed —
+ *       the row stays `booking` ("still waiting") and the book is sent once
+ *   B12 (S1-d-3c) the sync finds a claim with no LiteAPI id by our client reference and records LiteAPI's id and
+ *       status as facts — never our status; another reference's booking is not taken for ours
  *   B10 (S1-d-3c) a prebook below its OWN SSP ⇒ ONE re-quote at the margin that floor needs and ONE more prebook;
  *       a second answer below its floor is refused — never more than two prebook calls
  *
@@ -27,7 +31,7 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { prebookStay, bookStay, cancelStay, stayBookingView, type StayBookingDeps } from "../services/liteapi-booking.service";
 import { runLiteapiBookingSync } from "../jobs/liteapiBookingSync";
-import { LiteapiError } from "../services/liteapi-client";
+import { LiteapiError, LiteapiTimeoutError } from "../services/liteapi-client";
 import { LITEAPI_PAYMENT_METHOD } from "@shared/liteapi-booking";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -43,8 +47,8 @@ const prebookAnswer = (over: Record<string, unknown> = {}) => ({
   data: { prebookId: `pb-${RUN}-${++prebookN}`, transactionId: `tx-${RUN}-${prebookN}`, secretKey: "sk-secret", price: 312.5, currency: "USD", priceDifferencePercent: 0, ...over },
 });
 
-function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; prebook?: any | ((q: any, n: number) => any); book?: () => any; cancel?: () => any; get?: () => any } = {}) {
-  const calls: Record<string, any[]> = { rates: [], prebook: [], book: [], cancel: [], get: [] };
+function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; prebook?: any | ((q: any, n: number) => any); list?: (ref: string) => any; book?: () => any; cancel?: () => any; get?: () => any } = {}) {
+  const calls: Record<string, any[]> = { rates: [], prebook: [], book: [], cancel: [], get: [], list: [] };
   const deps: StayBookingDeps = {
     config: () => (opts.env === "production" ? production : sandbox),
     client: () =>
@@ -59,6 +63,7 @@ function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; 
         },
         cancelBooking: async (bid: string) => (calls.cancel.push(bid), opts.cancel ? opts.cancel() : { data: { bookingId: bid, status: "CANCELLED" } }),
         getBooking: async (bid: string) => (calls.get.push(bid), opts.get ? opts.get() : { data: { bookingId: bid, status: "CONFIRMED" } }),
+        listBookingsByClientReference: async (ref: string) => (calls.list.push(ref), opts.list ? opts.list(ref) : { data: [] }),
       }) as any,
     gate: { dailyCap: () => 10, countToday: async () => 0, record: async () => {} },
     marginFraction: async () => 0.12,
@@ -290,4 +295,49 @@ test("B10 a prebook below its own SSP is re-quoted once and prebooked once more,
   assert.deepEqual(await prebookStay(q("s1"), still.deps), { state: "unavailable", reason: "below_ssp" });
   assert.equal(still.calls.prebook.length, 2, "never more than two prebook calls");
   assert.equal(await row("s1"), undefined);
+});
+
+test("B11 a timed-out prebook stores nothing; a timed-out book is still waiting, never failed", async () => {
+  const before = Number(((await db.execute(sql`SELECT count(*)::int AS n FROM liteapi_bookings WHERE itinerary_item_id = ${id("s3")}`)) as any).rows[0].n);
+  const slowPre = fakes({ prebook: () => { throw new LiteapiTimeoutError("/rates/prebook", 30_000); } });
+  assert.deepEqual(await prebookStay(q("s3"), slowPre.deps), { state: "unavailable", reason: "prebook_error" });
+  assert.equal(slowPre.calls.prebook.length, 1);
+  const after = Number(((await db.execute(sql`SELECT count(*)::int AS n FROM liteapi_bookings WHERE itinerary_item_id = ${id("s3")}`)) as any).rows[0].n);
+  assert.equal(after, before, "a prebook that never answered stores nothing");
+
+  assert.equal((await prebookStay(q("s3"), fakes().deps)).state, "prebooked");
+  const slowBook = fakes({ book: () => { throw new LiteapiTimeoutError("/rates/book", 60_000); } });
+  const out = await bookStay(q("s3"), slowBook.deps);
+  assert.equal(out.state, "pending", "unknown, never failed — a charge may exist");
+  assert.equal(slowBook.calls.book.length, 1, "sent once");
+  const r = await row("s3");
+  assert.equal(r.status, "booking");
+  assert.equal(r.liteapi_booking_id, null);
+  assert.match(r.failure_reason, /no answer within 60000 ms/);
+  assert.equal(await itemStatus("s3"), "in_planning");
+});
+
+test("B12 the sync finds a timed-out book by our client reference and records facts only", async () => {
+  const waiting = await row("s3");
+  const other = await row("s4");
+  assert.equal(waiting.status, "booking");
+  assert.equal(other.status, "booking");
+  const f = fakes({
+    list: (ref: string) =>
+      ref === waiting.id
+        ? { data: [{ bookingId: `bk-late-${RUN}`, status: "confirmed", clientReference: waiting.id }, { bookingId: `bk-not-ours-${RUN}`, status: "CONFIRMED", clientReference: "someone-else" }] }
+        : { data: [{ bookingId: `bk-not-ours-${RUN}`, status: "CONFIRMED", clientReference: "someone-else" }] },
+  });
+  const out = await runLiteapiBookingSync({ config: f.deps.config, client: f.deps.client });
+  assert.equal(out.error, undefined);
+  assert.ok(f.calls.list.includes(waiting.id) && f.calls.list.includes(other.id));
+  assert.ok(out.foundByReference >= 1);
+  const w = await row("s3");
+  assert.equal(w.status, "booking", "the sync never changes our status");
+  assert.equal(w.liteapi_booking_id, `bk-late-${RUN}`);
+  assert.equal(w.last_sync_status, "CONFIRMED");
+  assert.ok(out.disagree.some((d) => d.id === waiting.id && d.ours === "booking" && d.theirs === "CONFIRMED"));
+  const o = await row("s4");
+  assert.equal(o.liteapi_booking_id, null, "another reference's booking is never taken for ours");
+  assert.ok(out.strandedBooking >= 1, "a claim LiteAPI does not hold stays reported");
 });
