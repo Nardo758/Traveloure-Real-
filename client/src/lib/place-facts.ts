@@ -9,6 +9,8 @@
  */
 import { canonicalAreaLine, containsCjk } from "@shared/place-address";
 import type { FactView } from "@shared/content-facts";
+import { hoursFactForDate } from "@shared/feasibility-facts";
+import { clockLabel, rowClosingMinute } from "@shared/optimizer-lead";
 import { unverifiedAreaText } from "@shared/ai-place-text";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -76,12 +78,72 @@ function sourceName(provenance: string): string {
  * (§13: no date, no weekday — the line is omitted rather than guessed), and only from an hours fact.
  * " (may have changed)" follows a stale fact. Null when there is nothing true to say.
  */
+/**
+ * P0-e addition 7: the hours fact a row shows for its date — the first hours fact (the server ranks
+ * official before Google) whose stated season covers the date; a fact with no season always does.
+ */
+export function shownHoursFact(facts: readonly FactView[] | undefined, dateIso: string | null): FactView | null {
+  const hours = (facts ?? [])
+    .filter((f) => f.factType === "hours" && Array.isArray(f.value?.weekdayDescriptions))
+    .map((f) => ({ f, season: f.origin === "places_api" ? null : seasonOf(f.value?.season) }));
+  return hoursFactForDate(hours, dateIso)?.f ?? null;
+}
+
+function seasonOf(v: unknown): { from: string; to: string } | null {
+  const x = v as { from?: unknown; to?: unknown } | null | undefined;
+  return x && typeof x.from === "string" && typeof x.to === "string" ? { from: x.from, to: x.to } : null;
+}
+
+/** "17:10" or "5:10 PM" → minutes after midnight; anything else ⇒ null. */
+function rowMinutes(t: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec((t ?? "").trim());
+  if (!m) return null;
+  let h = Number(m[1]);
+  const mi = Number(m[2]);
+  const mer = m[3]?.toUpperCase();
+  if (mer === "PM" && h < 12) h += 12;
+  if (mer === "AM" && h === 12) h = 0;
+  return h <= 23 && mi <= 59 ? h * 60 + mi : null;
+}
+
+/**
+ * P0-e addition 7 (decision-maker, Oct 12, 2026): the row's closing warning — the planned time against
+ * the closing time of the hours fact the row SHOWS, whatever its source, named with that source:
+ * "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)", or "Closes 5:00 PM · Ginkaku-ji
+ * official site · checked 12 Oct" when the official fact is the one shown. Warns when the stop is reached
+ * after the day's last close, or open on arrival and closing before the visit ends (its end time, else
+ * its duration). No shown fact, no time, or an unreadable line ⇒ null (§13).
+ */
+export function itemClosingWarning(
+  facts: readonly FactView[] | undefined,
+  dateIso: string | null,
+  item: { time?: string | null; endTime?: string | null; durationMinutes?: number | null },
+  timeZone?: string | null,
+): { text: string; sourceUrl: string | null } | null {
+  const hours = shownHoursFact(facts, dateIso);
+  if (!hours || !dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  const start = rowMinutes(item.time);
+  if (start === null) return null;
+  const endClock = rowMinutes(item.endTime);
+  const end =
+    endClock !== null ? (endClock <= start ? endClock + 1440 : endClock)
+      : item.durationMinutes != null && Number.isFinite(item.durationMinutes) && item.durationMinutes > 0 ? start + Math.round(item.durationMinutes)
+        : null;
+  const lines = Array.isArray(hours.value?.weekdayDescriptions) ? (hours.value.weekdayDescriptions as unknown[]).map(String) : [];
+  const close = rowClosingMinute(lines, new Date(`${dateIso}T12:00:00Z`).getUTCDay(), start, end);
+  if (close === null) return null;
+  const checked = factCheckedLabel(hours.checkedAt, timeZone) ?? provenanceCheckedLabel(hours.provenance);
+  const parts = [`Closes ${clockLabel(close)}`, sourceName(hours.provenance)];
+  if (checked) parts.push(`checked ${checked}`);
+  return { text: parts.join(" · ") + (hours.stale ? " (may have changed)" : ""), sourceUrl: hours.sourceUrl };
+}
+
 export function itemFactsLine(
   facts: readonly FactView[] | undefined,
   dateIso: string | null,
   timeZone?: string | null,
 ): { text: string; sourceUrl: string | null } | null {
-  const hours = facts?.find((f) => f.factType === "hours");
+  const hours = shownHoursFact(facts, dateIso);
   if (!hours || !dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
   const days = Array.isArray(hours.value?.weekdayDescriptions) ? (hours.value.weekdayDescriptions as unknown[]).map(String) : [];
   const dow = new Date(`${dateIso}T12:00:00Z`).getUTCDay();

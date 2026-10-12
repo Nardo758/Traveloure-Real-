@@ -10,6 +10,8 @@
  *   SH2 summer: the summer hours apply — open on arrival, but it closes before the visit ends
  *   SH3 summer: the summer last entry applies although the winter fact is stored first
  *   SH4 an off-map placeholder ("Late Dinner in Shimogyo") and an off-map real place are told apart
+ *   SH5 addition 7: the row's facts carry both seasons and the Places list; the row shows the season
+ *       covering its date, and its closing warning names that fact's source
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test --test-force-exit server/__tests__/p0e-seasonal-hours.db.test.ts
@@ -36,6 +38,8 @@ const { db, pool } = await import("../db");
 const { recordFacts } = await import("../services/content-facts/place-facts.service");
 const { loadOptimizerFindings, loadLegCoverage } = await import("../services/optimizer-lead.service");
 const { findingStopLines } = await import("@shared/optimizer-lead");
+const { factsForTrip } = await import("../services/content-facts/place-facts.service");
+const { itemClosingWarning, itemFactsLine } = await import("../../client/src/lib/place-facts");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `p0e-${RUN}-${s}`;
@@ -138,4 +142,14 @@ test("SH4 an off-map placeholder and an off-map real place are told apart", asyn
   const by = new Map(coverage.unlocated.map((s) => [s.title, s]));
   assert.equal(by.get("Late Dinner in Shimogyo")?.placeholder, true);
   assert.equal(by.get("Soba Restaurant Owariya")?.placeholder, undefined);
+});
+
+test("SH5 the row reads the season covering its date and warns from that fact", async () => {
+  const w = (await factsForTrip(winter))[`${winter}-g`] ?? [];
+  assert.equal(w.filter((f) => f.factType === "hours").length, 3, "both official seasons and the Places list reach the row");
+  assert.match(itemFactsLine(w, "2027-01-11", "Asia/Tokyo")!.text, /^Mon · 9:00 AM – 4:30 PM · /);
+  assert.match(itemClosingWarning(w, "2027-01-11", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Closes 4:30 PM · /);
+  const s = (await factsForTrip(summer))[`${summer}-g`] ?? [];
+  assert.match(itemFactsLine(s, "2027-07-12", "Asia/Tokyo")!.text, /^Mon · 8:30 AM – 5:00 PM · /);
+  assert.match(itemClosingWarning(s, "2027-07-12", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Closes 5:00 PM · /);
 });

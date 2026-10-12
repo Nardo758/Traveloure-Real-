@@ -526,6 +526,26 @@ export function findingLine(f: Finding): string {
 }
 
 /** Pure. Minutes after midnight (may pass 24h) → "5:00 PM". */
+/**
+ * P0-e addition 7 (ledger `2026-10-12-p0e-findings-and-gaps`): the closing minute a stop's row warns
+ * about — the SAME two rules the findings use: reached after the day's last close (`closed_on_arrival`'s
+ * `after_closing`), or open on arrival and closing before the visit ends (`closes_before_visit_end`).
+ * Pure; an unreadable line, a closed or 24-hour day, or arriving before opening ⇒ null (§13).
+ */
+export function rowClosingMinute(
+  descriptions: readonly string[] | null | undefined,
+  weekday: number,
+  startMin: number,
+  endMin: number | null,
+): number | null {
+  const h = parseDayHours(descriptions, weekday);
+  if (!h || h.kind !== "ranges") return null;
+  const range = h.ranges.find(([s, e]) => startMin >= s && startMin < e);
+  if (range) return endMin != null && endMin > range[1] ? range[1] : null;
+  const shut = shutReason(h.ranges, startMin);
+  return shut.reason === "after_closing" ? shut.atMin ?? null : null;
+}
+
 export function clockLabel(min: number): string {
   const m = ((Math.round(min) % 1440) + 1440) % 1440;
   const h = Math.floor(m / 60);

@@ -565,9 +565,84 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
  * The plan's facts per item: the FIRST fact of each type in the engine's order. Plan-scoped — the
  * caller has already authorized the viewer for this plan. Every view carries its provenance line.
  */
+/**
+ * The official rows stored for these place ids by ANY plan (the registry's stored facts, FD-3 ruling 2) —
+ * the ONE read both the feasibility checks and a row's shown hours use (P0-e addition 7).
+ */
+async function storedOfficialFacts(placeIds: string[], factTypes: string[]): Promise<FactRow[]> {
+  if (!placeIds.length) return [];
+  return db
+    .select()
+    .from(placeFacts)
+    .where(
+      and(
+        eq(placeFacts.placeRefKind, "place_id"),
+        inArray(placeFacts.placeRef, placeIds),
+        inArray(placeFacts.factType, factTypes),
+        // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
+        inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
+        eq(placeFacts.license, "official"),
+        isNull(placeFacts.supersededBy),
+        sql`${placeFacts.sourceClass} IS NOT NULL`,
+      ),
+    );
+}
+
+/** Each item's own rows plus the stored official rows for its place id, never twice. */
+function withStoredOfficial(own: FactRow[], placeOf: Map<string, string>, stored: FactRow[]): Map<string, FactRow[]> {
+  const byItem = new Map<string, FactRow[]>();
+  for (const r of own) {
+    if (!r.itineraryItemId) continue;
+    byItem.set(r.itineraryItemId, [...(byItem.get(r.itineraryItemId) ?? []), r]);
+  }
+  placeOf.forEach((placeId, itemId) => {
+    const extra = stored.filter((r) => r.placeRef === placeId && !(byItem.get(itemId) ?? []).some((x) => x.id === r.id));
+    if (extra.length) byItem.set(itemId, [...(byItem.get(itemId) ?? []), ...extra]);
+  });
+  return byItem;
+}
+
+/** The item → place id map, from the plan's own Places rows. */
+function placeIdsOf(own: FactRow[]): Map<string, string> {
+  const placeOf = new Map<string, string>();
+  for (const r of own) {
+    if (r.itineraryItemId && r.placeRefKind === "place_id" && r.placeRef && !placeOf.has(r.itineraryItemId)) placeOf.set(r.itineraryItemId, r.placeRef);
+  }
+  return placeOf;
+}
+
+/**
+ * P0-e addition 7: the engine's order (`rankFactsByOrigin`), with every official page-read hours fact moved
+ * ahead of Google's — "when the official hours fact exists it replaces the Google line". Platform-native
+ * and verified facts keep their place in front.
+ */
+function officialHoursBeforePlaces(ranked: FactRow[]): FactRow[] {
+  const isOfficial = (r: FactRow) => r.license === "official" && r.origin !== "places_api" && r.sourceClass != null;
+  const firstPlaces = ranked.findIndex((r) => r.origin === "places_api");
+  if (firstPlaces < 0) return ranked;
+  const officials = ranked.slice(firstPlaces).filter(isOfficial);
+  if (!officials.length) return ranked;
+  return [...ranked.slice(0, firstPlaces), ...officials, ...ranked.slice(firstPlaces).filter((r) => !isOfficial(r))];
+}
+
+/** P0-e addition 7: an official-licence hours fact's valid season, else null (the loader's own rule). */
+function officialSeason(r: FactRow): { from: string; to: string } | null {
+  if (r.origin === "places_api" || r.license !== "official") return null;
+  const season = hoursSeason(r.value);
+  return season && season !== "invalid" ? season : null;
+}
+
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
   const rows = await rowsForTrip(tripId);
-  const sources = await sourcesFor(rows);
+  // P0-e addition 7 (decision-maker, Oct 12, 2026): a row's hours are the SAME facts the feasibility checks
+  // read — the plan's own rows plus the official rows stored for the item's place id, official first
+  // (`resolveFactPrecedence`) — so an official hours fact replaces the Google line, and the row's closing
+  // warning and the findings read one fact. Only Google-shaped hours (`weekdayDescriptions`) are drawn
+  // (`shownHoursFact`); a text-only crawled row is still a view, for the expert's confirm control.
+  const tagged = rows.filter((r) => r.sourceClass != null);
+  const placeOf = placeIdsOf(tagged);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours"]);
+  const sources = await sourcesFor([...rows, ...stored]);
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
     if (!r.itineraryItemId) continue;
@@ -575,11 +650,32 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     list.push(r);
     byItem.set(r.itineraryItemId, list);
   }
+  const officialByItem = withStoredOfficial([], placeOf, stored);
   const out: Record<string, FactView[]> = {};
-  byItem.forEach((list, itemId) => {
-    const seen = new Set<string>();
+  const itemIds = new Set<string>([...Array.from(byItem.keys()), ...Array.from(officialByItem.keys())]);
+  itemIds.forEach((itemId) => {
+    const list = byItem.get(itemId) ?? [];
+    const seen = new Set<string>(["hours"]);
     const views: FactView[] = [];
-    for (const r of rankFactsByOrigin(list, now)) {
+    // Hours: official first; a seasonal official fact covers part of the year, so the next hours fact
+    // (another season, or Google's weekly list) is kept behind it and the row shows the one covering its
+    // date (`shownHoursFact`). A fact with no season closes the list, as before.
+    const hourRows = [...list.filter((r) => r.factType === "hours"), ...(officialByItem.get(itemId) ?? []).filter((x) => !list.some((r) => r.id === x.id))];
+    const rankedHours = officialHoursBeforePlaces(rankFactsByOrigin(hourRows, now));
+    const shown = new Set<string>();
+    for (const r of rankedHours) {
+      // The same official fact stored by two plans is shown once.
+      const key = JSON.stringify([r.origin, r.sourceId, (r.value as any)?.weekdayDescriptions ?? (r.value as any)?.text ?? r.id, (r.value as any)?.season ?? null]);
+      if (shown.has(key)) continue;
+      const v = toView(r, now, sources);
+      if (!v) continue;
+      shown.add(key);
+      views.push(v);
+      // A text-only row (an expert may confirm it; the row never draws it as hours) or a seasonal one
+      // does not close the list — the first all-year weekly list does.
+      if (Array.isArray((r.value as any)?.weekdayDescriptions) && officialSeason(r) === null) break;
+    }
+    for (const r of rankFactsByOrigin(list.filter((x) => x.factType !== "hours"), now)) {
       if (seen.has(r.factType)) continue;
       const v = toView(r, now, sources);
       if (!v) continue;
@@ -855,39 +951,10 @@ export async function lastServicesForMarket(market: string, now: Date = new Date
 
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
-  // The item → place id map, from the plan's own Places rows.
-  const placeOf = new Map<string, string>();
-  for (const r of own) {
-    if (r.itineraryItemId && r.placeRefKind === "place_id" && r.placeRef && !placeOf.has(r.itineraryItemId)) placeOf.set(r.itineraryItemId, r.placeRef);
-  }
-  const placeIds = Array.from(new Set(placeOf.values()));
-  const stored = placeIds.length
-    ? await db
-        .select()
-        .from(placeFacts)
-        .where(
-          and(
-            eq(placeFacts.placeRefKind, "place_id"),
-            inArray(placeFacts.placeRef, placeIds),
-            inArray(placeFacts.factType, ["hours", "last_admission"]),
-            // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
-            inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
-            eq(placeFacts.license, "official"),
-            isNull(placeFacts.supersededBy),
-            sql`${placeFacts.sourceClass} IS NOT NULL`,
-          ),
-        )
-    : [];
+  const placeOf = placeIdsOf(own);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
   const sources = await sourcesFor([...own, ...stored]);
-  const byItem = new Map<string, FactRow[]>();
-  for (const r of own) {
-    if (!r.itineraryItemId) continue;
-    byItem.set(r.itineraryItemId, [...(byItem.get(r.itineraryItemId) ?? []), r]);
-  }
-  placeOf.forEach((placeId, itemId) => {
-    const extra = stored.filter((r) => r.placeRef === placeId && !(byItem.get(itemId) ?? []).some((x) => x.id === r.id));
-    if (extra.length) byItem.set(itemId, [...(byItem.get(itemId) ?? []), ...extra]);
-  });
+  const byItem = withStoredOfficial(own, placeOf, stored);
 
   const hours = new Map<string, FeasibilityHours[]>();
   const lastAdmission = new Map<string, unknown[]>();
