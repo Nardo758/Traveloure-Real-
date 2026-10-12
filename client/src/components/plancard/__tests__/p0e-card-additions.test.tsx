@@ -19,14 +19,17 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PlanCardHeader } from "../PlanCardHeader";
-import { CollapsedSections } from "../CollapsedSections";
-import { TripCardDays, cardDayPanelLine, cardLegEndsLabel } from "../TripCardDays";
 import { ItemRow } from "@/components/plan/ItemRow";
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { itemClosingWarning, itemFactsLine } from "@/lib/place-facts";
 import type { FactView } from "@shared/content-facts";
 
 (globalThis as any).React = React;
+// CollapsedSections reaches `client/src/lib/navigate.ts`, which reads `navigator` when it loads; Node 20 (CI)
+// has no global navigator, so a stub is set before those modules are imported.
+if (typeof (globalThis as any).navigator === "undefined") (globalThis as any).navigator = { userAgent: "node" };
+const { CollapsedSections } = await import("../CollapsedSections");
+const { TripCardDays, cardDayPanelLine, cardLegEndsLabel } = await import("../TripCardDays");
 const text = (html: string) => html.replace(/<!--.*?-->/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 const withQuery = (el: React.ReactElement) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
