@@ -173,7 +173,18 @@ test("D7 — place_facts are born tagged from origin + license", async () => {
 test("D8 — ruling 8: the census counts expired local content and changes nothing", async () => {
   const g = await gem("c-expired", { sourceClass: "local", reuseClass: "reusable", expiresAt: new Date(Date.now() - 3_600_000) });
   const before = await gemRow(g);
-  const out = await runContentExpiryCensus();
+  // The shipped refresh config names `ginkakuji_official` (ledger `2026-10-12-ginkakuji-official-target`);
+  // the deploy precondition is its registry row, so the fixture supplies it — and removes only a row it inserted.
+  const inserted = await db.execute(sql`
+    INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, active)
+    VALUES ('ginkakuji_official', 'Ginkaku-ji official site', 'https://www.shokoku-ji.jp/', 'kyoto', 'tavily_extract', ARRAY['stop.hours'], ARRAY[]::text[], 'official', false)
+    ON CONFLICT (id) DO NOTHING RETURNING id`);
+  let out: Awaited<ReturnType<typeof runContentExpiryCensus>>;
+  try {
+    out = await runContentExpiryCensus();
+  } finally {
+    if (inserted.rows.length) await db.execute(sql`DELETE FROM content_sources WHERE id = 'ginkakuji_official'`);
+  }
   assert.deepEqual(out.errors, {});
   assert.ok((out.expiredLocal.travel_pulse_hidden_gems ?? 0) >= 1);
   assert.equal(typeof out.untaggedGems, "number");
