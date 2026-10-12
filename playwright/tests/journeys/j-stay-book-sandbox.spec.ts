@@ -14,13 +14,59 @@ import { BASE_URL, uid, assertDisposableDb } from "./_journey-helpers";
  * WHAT IT DRIVES, AND WHAT IT DOES NOT (§18d):
  *   · UI: the stay's item sheet draws "Book"; the server's re-quoted price is shown BEFORE the SDK opens;
  *     "Continue to payment" mounts Nuitée's Payment SDK in the dialog.
- *   · It does NOT type a card into Nuitée's SDK — its fields are Nuitée's, not ours. The book step is then
- *     sent through our own rail with the sandbox transaction id. If sandbox ever requires the card step to
- *     complete first, the book step fails here and says so (a `failed` state), rather than passing.
+ *   · It pays in Nuitée's SDK as a traveler would, typing LiteAPI's public SANDBOX test card into the SDK's own
+ *     fields (no field is ours). Sandbox refused a book sent without the card step (run 38274998493, `failed`).
+ *     The SDK returns to `/plans/:tripId/stays/:itemId/booked`, which posts book once; the test reads that answer.
  *   · Then the slip's existing booking line reads "booked · #<code>", and the immediate cancel clears it.
  *
  * Skipped unless LITEAPI_SANDBOX_E2E=1 (the job sets it only when the sandbox key is configured).
  */
+/** LiteAPI's public sandbox test card (Payment SDK docs). Never a real card; the SDK only accepts it in sandbox. */
+const SANDBOX_CARD = { number: "4242424242424242", expiry: "1234", cvc: "123", postal: "10001" };
+
+/**
+ * Types the sandbox test card into whichever frame of the SDK holds the card number, then presses the SDK's pay
+ * button. The selectors are the common card-field names (name / autocomplete), not a claim about the SDK's markup:
+ * on a miss it prints the frames and the container's buttons so the next run can name them.
+ */
+async function payWithSandboxCard(page: import("@playwright/test").Page, container: string): Promise<void> {
+  const numberSel = 'input[name="number"], input[name="cardnumber"], input[autocomplete="cc-number"]';
+  const deadline = Date.now() + 60_000;
+  let cardFrame: import("@playwright/test").Frame | null = null;
+  while (!cardFrame && Date.now() < deadline) {
+    for (const f of page.frames()) {
+      if (await f.locator(numberSel).count().catch(() => 0)) {
+        cardFrame = f;
+        break;
+      }
+    }
+    if (!cardFrame) await page.waitForTimeout(1_000);
+  }
+  if (!cardFrame) {
+    console.log(`[sandbox-pay] no card-number field in any frame; frames: ${page.frames().map((f) => f.url()).join(" | ")}`);
+    console.log(`[sandbox-pay] container: ${(await page.locator(container).innerHTML().catch(() => "")).slice(0, 2000)}`);
+    throw new Error("the Payment SDK drew no card-number field within 60 s");
+  }
+  const fill = async (sel: string, value: string) => {
+    const el = cardFrame!.locator(sel).first();
+    if (await el.count()) await el.fill(value);
+  };
+  await fill(numberSel, SANDBOX_CARD.number);
+  await fill('input[name="expiry"], input[name="exp-date"], input[autocomplete="cc-exp"]', SANDBOX_CARD.expiry);
+  await fill('input[name="cvc"], input[name="cvv"], input[autocomplete="cc-csc"]', SANDBOX_CARD.cvc);
+  await fill('input[name="postalCode"], input[name="postal"], input[autocomplete="postal-code"]', SANDBOX_CARD.postal);
+  // The pay button is the SDK's; look in the container first, then in every frame.
+  const payName = /pay|book|confirm|complete|submit/i;
+  const inPage = page.locator(container).getByRole("button", { name: payName });
+  if (await inPage.count()) return inPage.last().click({ timeout: 30_000 });
+  for (const f of page.frames()) {
+    const b = f.getByRole("button", { name: payName });
+    if (await b.count().catch(() => 0)) return b.last().click({ timeout: 30_000 });
+  }
+  console.log(`[sandbox-pay] no pay button; container: ${(await page.locator(container).innerHTML().catch(() => "")).slice(0, 2000)}`);
+  throw new Error("the Payment SDK drew no pay button");
+}
+
 const QA_DOMAIN = process.env.QA_ACCOUNT_EMAIL_DOMAIN ?? "";
 const ON = process.env.LITEAPI_SANDBOX_E2E === "1";
 
@@ -170,8 +216,12 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
     }
     const { tripId, itemId } = priced;
 
-    // Book through our rail (TRANSACTION_ID only — the server builds the body), then cancel at once.
-    const booked = await (await api.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking/book`, { data: {} })).json();
+    // Pay in Nuitée's SDK with LiteAPI's public sandbox test card, then the return page books ONCE through our rail
+    // (TRANSACTION_ID only — the server builds the body). The booking is cancelled at once.
+    const bookAnswer = page.waitForResponse((r) => r.url().endsWith(`/items/${itemId}/stay-booking/book`), { timeout: 180_000 });
+    await payWithSandboxCard(page, `#liteapi-payment-${itemId}`);
+    const booked = await (await bookAnswer).json();
+    await expect(page.getByTestId("stay-booked-result")).toHaveAttribute("data-state", booked.state);
     try {
       expect(booked.state, JSON.stringify(booked)).toBe("confirmed");
       expect(typeof booked.hotelConfirmationCode === "string" || booked.hotelConfirmationCode === null).toBe(true);
