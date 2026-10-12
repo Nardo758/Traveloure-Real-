@@ -110,9 +110,10 @@ jobs:
 
       - name: Book then cancel (sandbox, QA account)
         if: env.HAS_KEY == 'true'
-        # The JSON report is what the spec-arming gate reads: a skipped book-and-cancel is refused there with the
+        # ONE attempt (--retries=0): retrying a book-and-cancel after a hang could leave a second sandbox booking
+        # uncancelled. The JSON report is what the spec-arming gate reads: a skipped book-and-cancel is refused there with the
         # spec's own reason (ledger 2026-10-11-spec-arming-verified), so this run's success alone proves nothing.
-        run: npx playwright test playwright/tests/journeys/j-stay-book-sandbox.spec.ts --project=chromium --workers=1 --reporter=list,json
+        run: npx playwright test playwright/tests/journeys/j-stay-book-sandbox.spec.ts --project=chromium --workers=1 --retries=0 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/results.json
           # The spec's setup sets hotel_margin_public to migration 366's seeded rate on this disposable database.
@@ -124,7 +125,7 @@ jobs:
           QA_ACCOUNT_EMAIL_DOMAIN: traveloure-qa.test
 
       - name: Server's LiteAPI lines (the re-quote, the floor margin, each prebook refusal)
-        if: failure() && env.HAS_KEY == 'true'
+        if: always() && env.HAS_KEY == 'true'
         run: grep -E "liteapi-booking|liteapi-rates" /tmp/server.log || echo "no LiteAPI lines in the server log"
 
       - name: Upload the Playwright JSON report (read by the spec-arming gate)
