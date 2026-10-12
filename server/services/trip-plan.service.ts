@@ -37,6 +37,8 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
+import { resolvePlanBookingPaths, readFrozenBookingPaths } from "./booking-path.service";
+import type { BookingPath } from "@shared/booking-path";
 import { routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
 import { legOptionsChecked, routedLegOptions } from "@shared/leg-options";
 import { tripGetsRoutedLegs } from "./routing/plan-routed-legs.service";
@@ -882,6 +884,17 @@ export async function assembleTripPlan(
   // ST-1: which items are catalog rides (the ride service's own test — a `service_transport_facts` row).
   const rideServiceIds = await rideServiceIdsAmong(items.map((i: any) => i.providerServiceId).filter((id: unknown): id is string => typeof id === "string"));
 
+  // BP-1 (ledger `2026-10-12-bp1-booking-path`): how each item is booked — the ONE pure resolver over facts
+  // resolved once for the whole plan (`resolvePlanBookingPaths`). A snapshot render reads the final's FROZEN map;
+  // a past day is `none` either way. A failed read emits no path (§13: absent, never guessed) and never fails the
+  // plan read (§15b).
+  const bookingPaths = await resolvePlanBookingPaths(trip as any, items as any[], {
+    frozen: renderingSnapshot ? readFrozenBookingPaths(latestFinal!.snapshot) : null,
+  }).catch((err) => {
+    console.warn("[trip-plan] booking path resolve failed (non-fatal):", (err as any)?.message);
+    return new Map<string, BookingPath>();
+  });
+
   const buildActivity = (item: any): TripPlanActivity => {
     const title = item.title;
     const startTime = item.startTime || null;
@@ -943,6 +956,9 @@ export async function assembleTripPlan(
       // ONLY one with the column (the variant snapshot adapter below never sets this key). READ-only
       // pass-through; nothing here writes routing_status (contract §2).
       routingStatus: item.routingStatus,
+
+      // BP-1: present only when resolved (§13).
+      ...(bookingPaths.has(item.id) ? { bookingPath: bookingPaths.get(item.id)! } : {}),
 
       // Migration 277 (ledger 2026-09-03-item-event-link): the EVENT this item is scheduled
       // under. PRESENT ONLY when the row really carries a link, so an unlinked item — every item
