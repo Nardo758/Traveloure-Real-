@@ -42,7 +42,7 @@ import {
   AnchorConstraint,
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
-import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
+import { calculateTransportLegs, type ActivityLocation, type UserTransportPrefs } from "./services/transport-leg-calculator";
 import {
   getTravelerProfileForTrip,
   recordDislikeFeedback,
@@ -180,6 +180,9 @@ export interface ItineraryItem {
    *  but it is never written onto a version stop, a plan item or an anchor — such a stop saves with
    *  NULL coordinates and the board locates it at read time through `sourceItemId`. */
   placesPoint?: { lat: number; lng: number };
+  /** V-1b (ledger `2026-10-12-v1b-google-version-legs`): the Places fact's fetch time for `placesPoint`,
+   *  when known — a version leg ending at that point is stamped with it (R311). In memory only. */
+  placesFetchedAt?: Date | null;
   /** Lane 6 residue (drop policy a): true for a `ready_for_checkout` trip item — schedule-movable
    *  but NEVER droppable by a variant. A generated variant that omits one is invalid and is
    *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
@@ -1051,6 +1054,16 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
 
     // The entry stamp identifies this attempt and is never refreshed by preprocessing.
 
+    // V-1b (ledger `2026-10-12-v1b-google-version-legs`): the in-memory Google points of plan stops that
+    // have no durable point, by plan item id — only those with a known fetch time, because a leg ending
+    // at one must be stamped `coord_source='google'` with it (R311). Never saved on a version stop.
+    const googlePointByPlanItem = new Map<string, { lat: number; lng: number; fetchedAt: Date }>();
+    for (const b of baselineItems) {
+      if (b.planItemId && b.placesPoint && b.placesFetchedAt) {
+        googlePointByPlanItem.set(b.planItemId, { lat: b.placesPoint.lat, lng: b.placesPoint.lng, fetchedAt: b.placesFetchedAt });
+      }
+    }
+
     const baselineVariant = await db
       .insert(itineraryVariants)
       .values({
@@ -1217,19 +1230,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         .where(eq(itineraryVariantItems.variantId, baselineVariant[0].id))
         .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
 
-      const baselineActivitiesWithCoords = baselineVariantItems
-        .filter((item) => item.latitude != null && item.longitude != null)
-        .map((item, idx) => ({
-          id: item.id,
-          name: item.name || `Stop ${idx + 1}`,
-          lat: parseFloat(item.latitude as unknown as string),
-          lng: parseFloat(item.longitude as unknown as string),
-          scheduledTime: item.startTime || "",
-          durationMinutes: item.duration,
-          dayNumber: item.dayNumber,
-          order: item.sortOrder ?? idx,
-          placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
-        }));
+      // V-1b: a stop only Google locates routes from its in-memory point (stamped on the leg, R311).
+      const baselineActivitiesWithCoords = versionLegStops(baselineVariantItems, googlePointByPlanItem, versionRouting);
 
       if (baselineActivitiesWithCoords.length > 0) {
         await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs, versionRouting?.ctx ?? null);
@@ -1922,19 +1924,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
           .where(eq(itineraryVariantItems.variantId, newVariant.id))
           .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
 
-        const activitiesWithCoords = variantItems
-          .filter((item) => item.latitude != null && item.longitude != null)
-          .map((item, idx) => ({
-            id: item.id,
-            name: item.name || `Stop ${idx + 1}`,
-            lat: parseFloat(item.latitude as unknown as string),
-            lng: parseFloat(item.longitude as unknown as string),
-            scheduledTime: item.startTime || "",
-            durationMinutes: item.duration,
-            dayNumber: item.dayNumber,
-            order: item.sortOrder ?? idx,
-            placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
-          }));
+        // V-1b: a stop only Google locates routes from its in-memory point (stamped on the leg, R311).
+        const activitiesWithCoords = versionLegStops(variantItems, googlePointByPlanItem, versionRouting);
 
         if (activitiesWithCoords.length > 0) {
           await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs, versionRouting?.ctx ?? null);
@@ -1972,6 +1963,51 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
   } finally {
     if (deadlineTimer) clearTimeout(deadlineTimer);
   }
+}
+
+/**
+ * V-1b (ledger `2026-10-12-v1b-google-version-legs`): the stops a version's legs are paired over — a
+ * saved version stop's own point, else (for a stop kept from the plan) its plan item's in-memory Google
+ * point, marked with the fact's fetch time so the leg is stored `coord_source='google'` (R311) and no
+ * maps link or ride deep link is built from it. The point never reaches the version stop row (LD 57).
+ */
+export function versionLegStops(
+  items: ReadonlyArray<{
+    id: string;
+    name: string | null;
+    latitude: unknown;
+    longitude: unknown;
+    startTime: string | null;
+    duration: number | null;
+    dayNumber: number;
+    sortOrder: number | null;
+    sourceItemId: string | null;
+  }>,
+  googlePointByPlanItem: ReadonlyMap<string, { lat: number; lng: number; fetchedAt: Date }>,
+  versionRouting?: { placeIdFor: (sourceItemId: string | null | undefined) => string | null } | null,
+): ActivityLocation[] {
+  const out: ActivityLocation[] = [];
+  items.forEach((item, idx) => {
+    const saved = item.latitude != null && item.longitude != null
+      ? { lat: parseFloat(item.latitude as string), lng: parseFloat(item.longitude as string), googleFetchedAt: null as Date | null }
+      : null;
+    const g = !saved && item.sourceItemId ? googlePointByPlanItem.get(item.sourceItemId) : undefined;
+    const point = saved ?? (g ? { lat: g.lat, lng: g.lng, googleFetchedAt: g.fetchedAt } : null);
+    if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return;
+    out.push({
+      id: item.id,
+      name: item.name || `Stop ${idx + 1}`,
+      lat: point.lat,
+      lng: point.lng,
+      scheduledTime: item.startTime || "",
+      durationMinutes: item.duration,
+      dayNumber: item.dayNumber,
+      order: item.sortOrder ?? idx,
+      placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
+      ...(point.googleFetchedAt ? { googleFetchedAt: point.googleFetchedAt } : {}),
+    });
+  });
+  return out;
 }
 
 export interface UpsellSuggestion {
