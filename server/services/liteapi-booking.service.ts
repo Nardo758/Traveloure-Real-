@@ -121,6 +121,25 @@ export async function resolveChosenLiteapiStay(tripId: string, itemId: string): 
   return { hotelCacheId: h.id, providerHotelId: h.providerHotelId, hotelName: h.name ?? "your hotel" };
 }
 
+/**
+ * BP-1 (ledger `2026-10-12-bp1-booking-path`): which items of one plan are bookable LiteAPI stays — booking is on
+ * (sandbox only) AND the item resolves to a chosen LiteAPI stay. ONE rule with the sheet's own `bookable`
+ * (`stayBookingView`, below): both call `resolveChosenLiteapiStay`; this only pre-filters to the items that have a
+ * chosen accommodation option set, so a plan's read asks the chain once per stay, never once per item.
+ */
+export async function liteapiBookableItemIds(tripId: string, deps: Pick<StayBookingDeps, "config"> = defaultStayBookingDeps): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!liteapiBookingEnabled(deps.config())) return out;
+  const sets = await db
+    .select({ itemId: planOptionSets.itineraryItemId })
+    .from(planOptionSets)
+    .where(and(eq(planOptionSets.tripId, tripId), eq(planOptionSets.status, "chosen"), eq(planOptionSets.categoryKey, "accommodation")));
+  for (const s of sets) {
+    if (s.itemId && !out.has(s.itemId) && (await resolveChosenLiteapiStay(tripId, s.itemId)) !== null) out.add(s.itemId);
+  }
+  return out;
+}
+
 async function ownerOf(tripId: string, userId: string | null | undefined): Promise<boolean> {
   return !!userId && (await verifyTripOwnership(tripId, userId));
 }

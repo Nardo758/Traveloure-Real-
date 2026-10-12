@@ -34,6 +34,7 @@
  * "LEGACY ALIAS" and "§3 NAME" are the same value.
  */
 
+import type { BookingPath } from "./booking-path";
 import type { ContentOrigin } from "./content-origin";
 import type { RoutingStatus } from "./schema";
 
@@ -328,6 +329,13 @@ export interface TripPlanActivity {
    * the per-item badge and to decide which routing actions to offer the owner.
    */
   routingStatus?: RoutingStatus;
+
+  /**
+   * BP-1 (ledger `2026-10-12-bp1-booking-path`) — how this item is booked, from the ONE pure resolver
+   * (`@shared/booking-path`): `platform | affiliate | concierge | none`. PRESENT ONLY on the trip producer when it
+   * was resolved; absent means "not resolved", never `none`. A Trip Card render reads the final's frozen value.
+   */
+  bookingPath?: BookingPath;
 
   /**
    * ADDITIVE (migration 277, ledger `2026-09-03-item-event-link`) — `itinerary_items.user_experience_id`,
