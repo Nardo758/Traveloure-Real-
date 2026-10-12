@@ -36,10 +36,11 @@ import { LookupScheduler } from "./lookup-scheduler.pure";
 import { gatedMapsCall } from "../maps-billing/maps-billing.service";
 import { LookupProgress } from "./lookup-progress";
 import { pendingLookupItemIds } from "./lookup-progress.pure";
-import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea } from "@shared/place-name-gate";
+import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, titleNamesAnArea, unnamedPlaceReason } from "@shared/place-name-gate";
+import { loadMarketAreaNames } from "./market-areas";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
-import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType } from "@shared/feasibility-facts";
 import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
 import { lookupErrorCode, type PlaceLookupCapReason, type PlaceLookupOutcomeRow, type PlaceLookupSkipReason, type PlaceLookupTrigger } from "@shared/place-lookup-outcomes";
 import { recordLookupOutcomes } from "./lookup-outcomes.service";
@@ -177,11 +178,11 @@ export interface EnrichItem {
 }
 
 /** Pure. The named items, grouped by plan day (absent day ⇒ day 1), in plan order within a day. */
-function namedByDay(items: readonly EnrichItem[], city: string | null): Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>> {
+function namedByDay(items: readonly EnrichItem[], city: string | null, areaNames: readonly string[] = []): Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>> {
   const byDay = new Map<number, Array<{ item: EnrichItem; tokens: Set<string> }>>();
   for (const item of items) {
     const tokens = namedPlaceTokens(item, city);
-    if (unnamedSkipReason(item, city, tokens) !== null) continue;
+    if (unnamedSkipReason(item, city, tokens, areaNames) !== null) continue;
     const day = item.dayNumber ?? 1;
     const list = byDay.get(day) ?? [];
     list.push({ item, tokens });
@@ -193,12 +194,17 @@ function namedByDay(items: readonly EnrichItem[], city: string | null): Map<numb
 /**
  * Pure. Why an item is never looked up, or null when it is (PF-1 ruling 4 splits the old `unnamed`):
  * `no_named_tokens` — nothing in the title or location names a specific place; `area_title` — smoke 7, a
- * title naming an area ("… District", "… Photo Stop", "… Walk") is never looked up.
+ * title naming an area ("… District", "… Photo Stop", "… Walk"), or (P0-e item 4) one whose only
+ * distinctive words are the market's neighbourhood or ward names, is never looked up. Delegates to the
+ * ONE shared decision, `unnamedPlaceReason`, which the Optimize card's gap split also reads.
  */
-export function unnamedSkipReason(item: EnrichItem, city: string | null, tokens: ReadonlySet<string> = namedPlaceTokens(item, city)): Extract<PlaceLookupSkipReason, "no_named_tokens" | "area_title"> | null {
-  if (tokens.size === 0) return "no_named_tokens";
-  if (titleNamesAnArea(item.title)) return "area_title";
-  return null;
+export function unnamedSkipReason(
+  item: EnrichItem,
+  city: string | null,
+  tokens: ReadonlySet<string> = namedPlaceTokens(item, city),
+  areaNames: readonly string[] = [],
+): Extract<PlaceLookupSkipReason, "no_named_tokens" | "area_title"> | null {
+  return unnamedPlaceReason(item, city, areaNames, tokens);
 }
 
 /**
@@ -206,8 +212,8 @@ export function unnamedSkipReason(item: EnrichItem, city: string | null, tokens:
  * `2026-09-30-places-named-gate`): only items that NAME a place, round-robin ACROSS DAYS. The live
  * run uses the same `LookupScheduler`, which may pull a day's next item forward (smoke 5 item 7).
  */
-export function lookupOrder(items: readonly EnrichItem[], city: string | null): Array<{ item: EnrichItem; tokens: Set<string> }> {
-  const s = new LookupScheduler(namedByDay(items, city));
+export function lookupOrder(items: readonly EnrichItem[], city: string | null, areaNames: readonly string[] = []): Array<{ item: EnrichItem; tokens: Set<string> }> {
+  const s = new LookupScheduler(namedByDay(items, city, areaNames));
   const out: Array<{ item: EnrichItem; tokens: Set<string> }> = [];
   for (let n = s.next(); n; n = s.next()) out.push(n.entry);
   return out;
@@ -392,12 +398,13 @@ export async function enrichPlanItems(input: {
   const gate = input.placesGate ?? (input.adapters ? ungatedPlacesCall : mapsGatedPlacesCall);
   try {
     const cap = placesLookupsPerDraft();
-    const byDay = namedByDay(input.items, input.city);
+    const areaNames = await loadMarketAreaNames(input.market, input.city);
+    const byDay = namedByDay(input.items, input.city, areaNames);
     const named = new Set(Array.from(byDay.values()).flat().map((e) => e.item));
     summary.unnamed = input.items.length - named.size;
     for (const it of input.items) {
       if (named.has(it)) continue;
-      skip(it, it.dayNumber ?? 1, unnamedSkipReason(it, input.city) ?? "no_named_tokens");
+      skip(it, it.dayNumber ?? 1, unnamedSkipReason(it, input.city, undefined, areaNames) ?? "no_named_tokens");
     }
     await progress?.start(Array.from(named).map((i) => i.id));
     const scheduler = new LookupScheduler(byDay);
@@ -796,7 +803,7 @@ export async function pendingFactLookups(tripId: string, now: Date = new Date())
  *     any plan (the registry's stored facts, ruling 2), in the ONE precedence (`resolveFactPrecedence`:
  *     official first for a hard fact). Only rows carrying Google-shaped `weekdayDescriptions` are read; a
  *     text-only crawled row is never parsed (ruling 1). Stale rows still count (R-v caveat).
- *   · lastAdmission — per item, the first official `last_admission` row, unexpired.
+ *   · lastAdmission — per item, every official `last_admission` row, unexpired (the caller picks per date).
  *   · lastServices — every official `last_service` row in the plan's market with a station point,
  *     unexpired; the caller matches them to a ride by distance.
  * Every row must be TAGGED (`source_class` set): an untagged fact never reaches a finding (FD-2 ruling 3).
@@ -806,10 +813,18 @@ export interface FeasibilityHours {
   checkedAt: string | null;
   /** A hard closure counts only from an official source the registry may publish (R-p) — unchanged. */
   official: boolean;
+  /** P0-e item 2: the official fact's own season, when it states one; absent ⇒ every date. */
+  season?: { from: string; to: string } | null;
 }
 export interface FeasibilityFacts {
-  hours: Map<string, FeasibilityHours>;
-  lastAdmission: Map<string, unknown>;
+  /**
+   * P0-e item 2 (ledger `2026-10-12-p0e-findings-and-gaps`): EVERY usable hours fact per item, in
+   * precedence order (official first, the Places weekly list last) — the caller picks the one for the
+   * plan date with `hoursFactForDate`. It used to be one fact per item, whatever the date.
+   */
+  hours: Map<string, FeasibilityHours[]>;
+  /** Likewise every unexpired, admitted `last_admission` value per item, in precedence order (`lastAdmissionForDate`). */
+  lastAdmission: Map<string, unknown[]>;
   lastServices: Array<{ lat: number; lng: number; value: unknown }>;
 }
 
@@ -874,24 +889,32 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
     if (extra.length) byItem.set(itemId, [...(byItem.get(itemId) ?? []), ...extra]);
   });
 
-  const hours = new Map<string, FeasibilityHours>();
-  const lastAdmission = new Map<string, unknown>();
+  const hours = new Map<string, FeasibilityHours[]>();
+  const lastAdmission = new Map<string, unknown[]>();
   byItem.forEach((rows, itemId) => {
     const ranked = resolveFactPrecedence(
       rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
       "hours",
     );
-    const h = ranked.find((r) => r.factType === "hours" && Array.isArray((r.value as any)?.weekdayDescriptions));
-    if (h) {
+    const hs: FeasibilityHours[] = [];
+    for (const h of ranked) {
+      if (h.factType !== "hours" || !Array.isArray((h.value as any)?.weekdayDescriptions)) continue;
       const v = toView(h, now, sources);
-      hours.set(itemId, {
+      const official = h.origin !== "places_api" && v?.publishable === true;
+      // P0-e item 2: only an OFFICIAL-licence fact may state a season (a Places list never does); a malformed
+      // season makes the fact unusable rather than all-year.
+      const season = h.origin !== "places_api" && h.license === "official" ? hoursSeason(h.value) : null;
+      if (season === "invalid") continue;
+      hs.push({
         weekdayDescriptions: ((h.value as any).weekdayDescriptions as unknown[]).map(String),
         checkedAt: h.fetchedAt ? new Date(h.fetchedAt as any).toISOString() : null,
-        official: h.origin !== "places_api" && v?.publishable === true,
+        official,
+        ...(season ? { season } : {}),
       });
     }
-    const la = ranked.find((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
-    if (la) lastAdmission.set(itemId, la.value);
+    if (hs.length) hours.set(itemId, hs);
+    const las = ranked.filter((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok).map((r) => r.value);
+    if (las.length) lastAdmission.set(itemId, las);
   });
 
   const lastServices = market ? await lastServicesForMarket(market, now) : [];

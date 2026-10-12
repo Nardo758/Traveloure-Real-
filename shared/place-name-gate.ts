@@ -29,6 +29,8 @@ export const GENERIC_PLACE_WORDS: ReadonlySet<string> = new Set([
   "breakfast", "brunch", "lunch", "dinner", "supper", "meal", "snack", "drinks", "coffee", "tea",
   "morning", "afternoon", "evening", "night", "nighttime", "late", "early", "day", "half", "full",
   "sunset", "sunrise", "time", "break", "rest", "free", "leisure",
+  // occasions (P0-e item 4, decision-maker Oct 12, 2026): "Kaiseki Farewell Dinner" names no place
+  "farewell", "welcome", "picnic",
   // activity verbs and nouns
   "visit", "visiting", "explore", "exploring", "stroll", "strolling", "walk", "walking", "tour",
   "tours", "hike", "hiking", "shopping", "shop", "browse", "wander", "wandering", "see", "sightseeing",
@@ -142,6 +144,36 @@ export function matchNamesItem(
 const AREA_TITLE_WORDS = /\b(district|ward|area|neighbou?rhood|streets?|photo\s+stop|photo\s+spot|walk)\b/i;
 export function titleNamesAnArea(title: string | null | undefined): boolean {
   return AREA_TITLE_WORDS.test(title ?? "");
+}
+
+/**
+ * P0-e item 4 (decision-maker, Oct 12, 2026): an item whose ONLY distinctive words are the names of the
+ * market's own neighbourhoods or wards ("Late Dinner in Shimogyo") names an area, not a place. Pure; the
+ * caller passes the market's area names (`city_neighborhoods` rows + `MARKET_WARDS`). No area names, or
+ * no distinctive words, ⇒ false.
+ */
+export function tokensNameOnlyAreas(tokens: ReadonlySet<string>, areaNames: readonly string[], city: string | null | undefined): boolean {
+  if (tokens.size === 0 || areaNames.length === 0) return false;
+  const areaTokens = new Set<string>();
+  for (const name of areaNames) distinctiveTokens(name, city).forEach((t) => areaTokens.add(t));
+  return Array.from(tokens).every((t) => areaTokens.has(t));
+}
+
+/**
+ * THE ONE "does this item name a place?" decision (§18 rule 1) — the Places lookup gate and the Optimize
+ * card's gap split both read it. `no_named_tokens`: nothing in the title or location names a specific
+ * place. `area_title`: the title names an area (smoke 7's words, or only the market's neighbourhood/ward
+ * names). Null ⇒ the item names a place.
+ */
+export function unnamedPlaceReason(
+  item: { title: string; locationName?: string | null },
+  city: string | null | undefined,
+  areaNames: readonly string[] = [],
+  tokens: ReadonlySet<string> = namedPlaceTokens(item, city),
+): "no_named_tokens" | "area_title" | null {
+  if (tokens.size === 0) return "no_named_tokens";
+  if (titleNamesAnArea(item.title) || tokensNameOnlyAreas(tokens, areaNames, city)) return "area_title";
+  return null;
 }
 
 /** Google place types that make a result ONE point of interest — the only kind a rename may adopt. */
