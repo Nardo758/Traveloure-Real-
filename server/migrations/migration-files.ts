@@ -2017,6 +2017,6 @@ export const MIGRATION_FILES = [
   "373_place_lookup_outcomes.sql",
   // 374 — reset an echoed leg mode (P0-c item 2, ledger 2026-10-12-p0c-hotfix). DATA ONLY: clears
   // transport_legs.user_selected_mode where nobody checked the leg, it equals recommended_mode and the leg is not
-  // superseded. Idempotent (a cleared row no longer matches). HELD for Leon's approval comment on the PR.
+  // superseded. Idempotent (a cleared row no longer matches). Migration 374 SQL approved by Leon — comment 01:02Z on #1424.
   "374_reset_echoed_leg_mode.sql",
 ] as const;

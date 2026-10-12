@@ -1,5 +1,5 @@
--- 374 — reset an echoed leg mode (P0-c item 2; ledger `2026-10-12-p0c-hotfix`). HELD for Leon's approval
--- comment on the PR. The number is provisional until merge-main.
+-- 374 — reset an echoed leg mode (P0-c item 2; ledger `2026-10-12-p0c-hotfix`).
+-- Migration 374 SQL approved by Leon — comment 01:02Z on #1424.
 --
 -- DATA ONLY. No ALTER, no CHECK, no index, no DEFAULT — nothing for the publish-time push to see.
 --
