@@ -132,10 +132,13 @@ export interface PrebookFacts {
 export type PrebookParse = { ok: true; facts: PrebookFacts } | { ok: false; reason: "no_prebook" | "no_payment_sdk" | "no_price" | "below_ssp" };
 
 /**
- * Pure: a `/rates/prebook` answer (`usePaymentSdk: true`) → what is stored and what the SDK needs. The prebook
- * answer states no SSP (founder sandbox run, 2026-10-09), so the floor is the RE-QUOTE's SSP, passed in; a
- * prebook-level `suggestedSellingPrice` is honoured too if LiteAPI ever states one. A price below the SSP is
- * refused (`below_ssp`); an SSP in another currency cannot be compared honestly and is refused too.
+ * Pure: a `/rates/prebook` answer (`usePaymentSdk: true`) → what is stored and what the SDK needs.
+ *
+ * THE FLOOR IS THE PREBOOK'S OWN SSP (S1-d-3c, Oct 12, 2026). The sandbox prebook does state
+ * `suggestedSellingPrice`, and it can differ from the re-quote's (CI run 38258094086: re-quote 327.31, prebook
+ * 284.58 for the same offer). The prebook prices the offer being sold, so its SSP is the floor; the re-quote's
+ * SSP, passed in, is the fallback only when the prebook states none. A price below the floor is refused
+ * (`below_ssp`); an SSP in another currency cannot be compared honestly and is refused too.
  */
 export function parsePrebook(body: any, quotedSsp: { amount: number; currency: string } | null = null): PrebookParse {
   const d = body?.data;
@@ -147,11 +150,52 @@ export function parsePrebook(body: any, quotedSsp: { amount: number; currency: s
   const price = money(d?.price);
   const currency = ccy(d?.currency);
   if (price === null || price <= 0 || !currency) return { ok: false, reason: "no_price" };
-  const prebookSsp = money(d?.suggestedSellingPrice);
-  if (prebookSsp !== null && prebookSsp > price) return { ok: false, reason: "below_ssp" };
-  if (quotedSsp && (quotedSsp.currency !== currency || quotedSsp.amount > price)) return { ok: false, reason: "below_ssp" };
+  const floor = prebookSspFloor(body, quotedSsp);
+  if (floor && (floor.currency !== currency || floor.amount > price)) return { ok: false, reason: "below_ssp" };
   const policy = d?.roomTypes?.[0]?.rates?.[0]?.cancellationPolicies ?? d?.cancellationPolicies ?? null;
   return { ok: true, facts: { prebookId, transactionId, secretKey, amountCents: toCents(price), currency, cancellationPolicy: policy ?? null } };
+}
+
+/**
+ * The SSP a prebook answer is held to: its own `suggestedSellingPrice` (in the answer's currency) when stated,
+ * else the re-quote's. null when neither states one.
+ */
+export function prebookSspFloor(body: any, quotedSsp: { amount: number; currency: string } | null = null): { amount: number; currency: string } | null {
+  const d = body?.data;
+  const own = money(d?.suggestedSellingPrice);
+  const currency = ccy(d?.currency);
+  if (own !== null && own > 0 && currency) return { amount: own, currency };
+  return quotedSsp;
+}
+
+/**
+ * THE ONE RE-PREBOOK (S1-d-3c, Oct 12, 2026): a prebook answered below its floor is re-quoted ONCE at
+ * max(our band, floor / net − 1), where net = the prebook's price / (1 + the margin it was quoted at), and prebooked
+ * again; a second answer below its floor is refused. Rounded UP to LiteAPI's two decimals, and always above the
+ * margin already tried — LiteAPI priced the 15% margin cents under its own SSP in CI (202.27 vs 202.30), so the
+ * same margin again would answer the same. Refused by name when the answer states no price or the floor is in
+ * another currency.
+ */
+export function prebookFloorPercent(
+  body: any,
+  quotedSsp: { amount: number; currency: string } | null,
+  marginUsedPercent: number,
+  bandFraction: number,
+): { ok: true; percent: number } | { ok: false; reason: "no_price" | "no_ssp" | "ssp_currency" } {
+  const d = body?.data;
+  const price = money(d?.price);
+  const currency = ccy(d?.currency);
+  if (price === null || price <= 0 || !currency) return { ok: false, reason: "no_price" };
+  const floor = prebookSspFloor(body, quotedSsp);
+  if (!floor) return { ok: false, reason: "no_ssp" };
+  if (floor.currency !== currency) return { ok: false, reason: "ssp_currency" };
+  const used = Number.isFinite(marginUsedPercent) && marginUsedPercent > 0 ? marginUsedPercent : 0;
+  const band = Number.isFinite(bandFraction) && bandFraction > 0 ? bandFraction : 0;
+  const net = price / (1 + used / 100);
+  const needed = floor.amount / net - 1;
+  let percent = Math.ceil(Math.max(band, needed) * 10_000 - 1e-9) / 100;
+  if (percent <= used) percent = Math.round((used + 0.01) * 100) / 100;
+  return { ok: true, percent };
 }
 
 export interface BookFacts {

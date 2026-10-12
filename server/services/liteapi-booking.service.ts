@@ -38,6 +38,7 @@ import {
   parseBook,
   parsePrebook,
   prebookDiagnostic,
+  prebookFloorPercent,
 } from "@shared/liteapi-booking";
 import {
   liteapiBookingEnabled,
@@ -180,9 +181,11 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
   let offerId: string | null = null;
   let offerQuote: any = null;
   let marginUsed = 0;
+  let bandFraction = 0;
   let quotedSsp: ReturnType<typeof sspFromRates> = null;
   try {
     const band = await deps.marginFraction();
+    bandFraction = band;
     const bandPercent = Math.round(band * 10_000) / 100;
     const quoted = await quote(bandPercent);
     if ("refused" in quoted) {
@@ -231,6 +234,28 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
     const prebookBody = await client.prebook({ offerId });
     console.info(`[liteapi-booking] prebook ${input.itemId}: ${prebookDiagnostic(offerQuote, prebookBody, marginUsed)}`);
     parsed = parsePrebook(prebookBody, quotedSsp);
+    if (!parsed.ok && parsed.reason === "below_ssp") {
+      // S1-d-3c: answered below its own SSP ⇒ ONE re-quote at the margin that floor needs, ONE more prebook,
+      // then refuse. Never more than two prebook calls per attempt.
+      const fl = prebookFloorPercent(prebookBody, quotedSsp, marginUsed, bandFraction);
+      if (fl.ok) {
+        console.info(`[liteapi-booking] ${input.itemId}: margin ${marginUsed}% → ${fl.percent}% to meet the prebook's SSP`);
+        const again = await quote(fl.percent);
+        if ("refused" in again) {
+          console.warn(`[liteapi-booking] prebook-floor re-quote ${input.itemId} refused: rates ${again.refused}`);
+          return { state: "unavailable", reason: "rates_paused" };
+        }
+        const retryOffer = offerIdFromRates(again.value);
+        if (!retryOffer) return { state: "unavailable", reason: "no_offer" };
+        offerId = retryOffer;
+        offerQuote = again.value;
+        marginUsed = fl.percent;
+        quotedSsp = sspFromRates(again.value) ?? quotedSsp;
+        const secondBody = await client.prebook({ offerId });
+        console.info(`[liteapi-booking] prebook ${input.itemId} (retry): ${prebookDiagnostic(offerQuote, secondBody, marginUsed)}`);
+        parsed = parsePrebook(secondBody, quotedSsp);
+      }
+    }
   } catch (err: any) {
     console.warn(`[liteapi-booking] prebook ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable", reason: "prebook_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };
