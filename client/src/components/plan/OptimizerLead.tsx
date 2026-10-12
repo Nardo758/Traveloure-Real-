@@ -19,14 +19,17 @@ import { Button } from "@/components/ui/button";
 import { LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, leadCoverageLine, leadDeltaLine, unlocatedStopLines, type Finding, type LegCoverage } from "@shared/optimizer-lead";
 import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
 
+/** P0-d: no coverage answer is an incomplete one — never an all-clear (§13). */
+const COVERAGE_UNKNOWN: LegCoverage = { complete: false, unlocated: [] };
+
 export interface OptimizerLeadProps {
   /** The preview's findings; `undefined` while it is being read (the card then shows no finding lines). */
   findings: readonly Finding[] | undefined;
   /**
    * P0-d item 1 (ledger `2026-10-12-p0d-coverage-bridges`): the preview's leg coverage and whether the plan
    * earns routed legs. With no findings the all-clear shows only when `leadCoverageLine` says it is
-   * earned; otherwise that line shows, with the stops off the map listed. Absent (a response from before
-   * P0-d) keeps the findings-only zero line.
+   * earned; otherwise that line shows, with the stops off the map listed. Absent ⇒ read as INCOMPLETE —
+   * no all-clear is claimed without coverage (decision-maker, Oct 12, 2026).
    */
   coverage?: LegCoverage;
   routedPlan?: boolean;
@@ -142,7 +145,8 @@ function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fe
   });
   const known = findings !== undefined;
   const none = known && findings!.length === 0;
-  const zeroGap = coverage ? leadCoverageLine(coverage, !!routedPlan) : null;
+  // P0-d (decision-maker, Oct 12): a response with no coverage gets NO all-clear — it is read as incomplete.
+  const zeroGap = leadCoverageLine(coverage ?? COVERAGE_UNKNOWN, routedPlan !== false);
   return (
     <section className="rounded-md border border-border p-3 space-y-2" data-testid="optimizer-lead">
       <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" data-testid="optimizer-lead-eyebrow">
@@ -266,7 +270,8 @@ function BoardOptimizerLead({
   });
   const known = findings !== undefined;
   const none = known && findings!.length === 0;
-  const zeroGap = coverage ? leadCoverageLine(coverage, !!routedPlan) : null;
+  // P0-d (decision-maker, Oct 12): a response with no coverage gets NO all-clear — it is read as incomplete.
+  const zeroGap = leadCoverageLine(coverage ?? COVERAGE_UNKNOWN, routedPlan !== false);
   return (
     <section className={shell} data-testid="optimizer-lead" data-lead-tone="board">
       {title ? (
