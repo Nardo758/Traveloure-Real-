@@ -37,6 +37,8 @@ import {
   bookingMarginFraction,
   parseBook,
   parsePrebook,
+  prebookDiagnostic,
+  prebookFloorPercent,
 } from "@shared/liteapi-booking";
 import {
   liteapiBookingEnabled,
@@ -44,9 +46,8 @@ import {
   liteapiCurrency,
   liteapiGuestNationality,
   liteapiRatesTimeoutMs,
-  type LiteapiConfig,
-} from "../config/liteapi.config";
-import { createLiteapiClient, LiteapiError, type LiteapiClient } from "./liteapi-client";
+  type LiteapiConfig, liteapiPrebookTimeoutMs, liteapiBookTimeoutMs } from "../config/liteapi.config";
+import { createLiteapiClient, LiteapiError, LiteapiTimeoutError, type LiteapiClient } from "./liteapi-client";
 import { gatedLiteapiRatesCall, type LiteapiRatesGateDeps } from "./liteapi-rates-gate";
 import { publicMarginFraction } from "./liteapi-rates.service";
 import { verifyTripOwnership } from "../utils/trip-ownership";
@@ -57,6 +58,9 @@ export interface StayBookingDeps {
   gate?: LiteapiRatesGateDeps;
   marginFraction: () => Promise<number>;
   timeoutMs: () => number;
+  /** S1-d-3c: hard client timeouts on the booking host (config, never literals). */
+  prebookTimeoutMs?: () => number;
+  bookTimeoutMs?: () => number;
 }
 
 export const defaultStayBookingDeps: StayBookingDeps = {
@@ -64,6 +68,8 @@ export const defaultStayBookingDeps: StayBookingDeps = {
   client: (cfg) => createLiteapiClient(cfg),
   marginFraction: publicMarginFraction,
   timeoutMs: () => liteapiRatesTimeoutMs(),
+  prebookTimeoutMs: () => liteapiPrebookTimeoutMs(),
+  bookTimeoutMs: () => liteapiBookTimeoutMs(),
 };
 
 type Refusal =
@@ -177,9 +183,13 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
     return out;
   };
   let offerId: string | null = null;
+  let offerQuote: any = null;
+  let marginUsed = 0;
+  let bandFraction = 0;
   let quotedSsp: ReturnType<typeof sspFromRates> = null;
   try {
     const band = await deps.marginFraction();
+    bandFraction = band;
     const bandPercent = Math.round(band * 10_000) / 100;
     const quoted = await quote(bandPercent);
     if ("refused" in quoted) {
@@ -187,6 +197,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
       return { state: "unavailable", reason: "rates_paused" };
     }
     offerId = offerIdFromRates(quoted.value);
+    offerQuote = quoted.value;
+    marginUsed = bandPercent;
     if (offerId) {
       // The booking margin (decision-maker, Oct 11, 2026): max(band, SSP / net − 1) from THIS answer, so the
       // booked price is never below the SSP nor below our band. Refused only for an unstated SSP or one in
@@ -205,6 +217,8 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
           return { state: "unavailable", reason: "rates_paused" };
         }
         offerId = offerIdFromRates(raised.value);
+        offerQuote = raised.value;
+        marginUsed = m.percent;
         quotedSsp = sspFromRates(raised.value) ?? m.ssp;
         console.info(`[liteapi-booking] ${input.itemId}: margin ${bandPercent}% → ${m.percent}% to meet the SSP`);
       }
@@ -220,8 +234,33 @@ export async function prebookStay(input: { tripId: string; itemId: string; userI
   }
 
   let parsed;
+  const prebookTimeout = (deps.prebookTimeoutMs ?? liteapiPrebookTimeoutMs)();
   try {
-    parsed = parsePrebook(await client.prebook({ offerId }), quotedSsp);
+    const prebookBody = await client.prebook({ offerId }, { timeoutMs: prebookTimeout });
+    console.info(`[liteapi-booking] prebook ${input.itemId}: ${prebookDiagnostic(offerQuote, prebookBody, marginUsed)}`);
+    parsed = parsePrebook(prebookBody, quotedSsp);
+    if (!parsed.ok && parsed.reason === "below_ssp") {
+      // S1-d-3c: answered below its own SSP ⇒ ONE re-quote at the margin that floor needs, ONE more prebook,
+      // then refuse. Never more than two prebook calls per attempt.
+      const fl = prebookFloorPercent(prebookBody, quotedSsp, marginUsed, bandFraction);
+      if (fl.ok) {
+        console.info(`[liteapi-booking] ${input.itemId}: margin ${marginUsed}% → ${fl.percent}% to meet the prebook's SSP`);
+        const again = await quote(fl.percent);
+        if ("refused" in again) {
+          console.warn(`[liteapi-booking] prebook-floor re-quote ${input.itemId} refused: rates ${again.refused}`);
+          return { state: "unavailable", reason: "rates_paused" };
+        }
+        const retryOffer = offerIdFromRates(again.value);
+        if (!retryOffer) return { state: "unavailable", reason: "no_offer" };
+        offerId = retryOffer;
+        offerQuote = again.value;
+        marginUsed = fl.percent;
+        quotedSsp = sspFromRates(again.value) ?? quotedSsp;
+        const secondBody = await client.prebook({ offerId }, { timeoutMs: prebookTimeout });
+        console.info(`[liteapi-booking] prebook ${input.itemId} (retry): ${prebookDiagnostic(offerQuote, secondBody, marginUsed)}`);
+        parsed = parsePrebook(secondBody, quotedSsp);
+      }
+    }
   } catch (err: any) {
     console.warn(`[liteapi-booking] prebook ${input.itemId}: ${err?.message ?? err}`);
     return { state: "unavailable", reason: "prebook_error", ...(typeof err?.status === "number" ? { status: err.status } : {}) };
@@ -317,9 +356,18 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
 
   let answer: any;
   try {
-    answer = await deps.client(cfg).book({ prebookId: pre.prebookId, transactionId: pre.transactionId, clientReference: pre.id, holder });
+    answer = await deps.client(cfg).book(
+      { prebookId: pre.prebookId, transactionId: pre.transactionId, clientReference: pre.id, holder },
+      { timeoutMs: (deps.bookTimeoutMs ?? liteapiBookTimeoutMs)() },
+    );
   } catch (err: any) {
+    // S1-d-3c: a timeout is UNKNOWN, never failed — a charge may exist (LD 43/44). The row stays `booking`
+    // ("still waiting for the hotel's answer") and the sync finds it by our client reference.
+    if (err instanceof LiteapiTimeoutError) console.warn(`[liteapi-booking] book ${input.itemId}: ${err.message} — left waiting for the sync`);
     const definite = err instanceof LiteapiError && err.status >= 400 && err.status < 500;
+    // One line per book that did not answer CONFIRMED: LiteAPI's status and its own message (the text stored as
+    // failure_reason), so a refused book says why in the server log.
+    if (!(err instanceof LiteapiTimeoutError)) console.warn(`[liteapi-booking] book ${input.itemId} ${definite ? "refused" : "unanswered"}: ${err instanceof LiteapiError ? `${err.status} ` : ""}${String(err?.message ?? err).slice(0, 300)}`);
     await db
       .update(liteapiBookings)
       .set({ status: definite ? "failed" : "booking", failureReason: String(err?.message ?? err).slice(0, 300), updatedAt: new Date() })
@@ -333,6 +381,7 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
   }
   if (!bookIsConfirmed(facts)) {
     const failed = facts.status === "FAILED";
+    console.warn(`[liteapi-booking] book ${input.itemId}: LiteAPI answered ${facts.status || "no status"}`);
     await db
       .update(liteapiBookings)
       .set({ status: failed ? "failed" : "booking", liteapiBookingId: facts.liteapiBookingId, lastSyncStatus: facts.status || null, updatedAt: new Date() })

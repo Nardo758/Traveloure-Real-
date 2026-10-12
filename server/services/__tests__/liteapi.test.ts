@@ -8,15 +8,17 @@
  *       rounded; the image must be https (hot-linked URL only); no review, rate or price field is written
  *   LA4 the client: `X-API-Key` header (never the URL), paced to maxRps, backs off on 429 / code 4290
  *       three times from 1 s, then throws; another failure throws at once
+ *   LA5 (S1-d-3c) prebook/book hard timeouts: from config (defaults 30 s / 60 s), a hung call throws
+ *       LiteapiTimeoutError (NOT a LiteapiError) even when the transport ignores the abort, and is never retried
  *
  * Run: npx tsx --test server/services/__tests__/liteapi.test.ts
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { liteapiConfig, LITEAPI_BOOK_BASE_URL_DEFAULT, LITEAPI_DATA_BASE_URL_DEFAULT } from "../../config/liteapi.config";
+import { liteapiConfig, LITEAPI_BOOK_BASE_URL_DEFAULT, LITEAPI_DATA_BASE_URL_DEFAULT, liteapiPrebookTimeoutMs, liteapiBookTimeoutMs } from "../../config/liteapi.config";
 import { LITEAPI_PROVIDER, stayKindForCacheProvider } from "@shared/liteapi";
 import { liteapiCityCode, liteapiHotelRow } from "../liteapi-rows";
-import { createLiteapiClient, LiteapiError } from "../liteapi-client";
+import { createLiteapiClient, LiteapiError, LiteapiTimeoutError } from "../liteapi-client";
 
 test("LA1 config is off without a key or a known env; URLs default and override", () => {
   assert.equal(liteapiConfig({}), null);
@@ -108,4 +110,35 @@ test("LA4 the client: header, pacing, back-off, refusal", async () => {
   const c4 = createLiteapiClient(cfg, { now: () => clock, sleep: async (ms) => { clock += ms; }, fetch: (async () => { n++; return res(401, { error: "bad key" }); }) as any });
   await assert.rejects(c4.listHotels({ countryCode: "JP", cityName: "Kyoto", offset: 0, limit: 1 }), (e: any) => e.status === 401);
   assert.equal(n, 1);
+});
+
+test("LA5 prebook/book hard timeouts: config, never retried, not a refusal", async () => {
+  assert.equal(liteapiPrebookTimeoutMs({}), 30_000);
+  assert.equal(liteapiBookTimeoutMs({}), 60_000);
+  assert.equal(liteapiPrebookTimeoutMs({ LITEAPI_PREBOOK_TIMEOUT_MS: "1500" }), 1500);
+  assert.equal(liteapiBookTimeoutMs({ LITEAPI_BOOK_TIMEOUT_MS: "0" }), 60_000, "0 never disables the timeout");
+  assert.equal(liteapiBookTimeoutMs({ LITEAPI_BOOK_TIMEOUT_MS: "abc" }), 60_000);
+
+  const cfg = liteapiConfig({ LITEAPI_API_KEY: "k", LITEAPI_ENV: "sandbox", LITEAPI_MAX_RPS: "1000" })!;
+  const holder = { firstName: "A", lastName: "B", email: "a@b.test" };
+  // A transport that honours the abort.
+  let calls = 0;
+  const honours = createLiteapiClient(cfg, {
+    fetch: ((_u: any, init: any) => {
+      calls++;
+      return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+    }) as any,
+  });
+  await assert.rejects(honours.prebook({ offerId: "o" }, { timeoutMs: 30 }), (e: any) => e instanceof LiteapiTimeoutError && !(e instanceof LiteapiError));
+  calls = 0;
+  await assert.rejects(honours.book({ prebookId: "p", transactionId: "t", clientReference: "r", holder }, { timeoutMs: 30 }), LiteapiTimeoutError);
+  assert.equal(calls, 1, "a timed-out book is never sent twice");
+  // A transport that ignores the abort entirely still cannot hang the caller.
+  const ignores = createLiteapiClient(cfg, { fetch: (() => new Promise(() => {})) as any });
+  const t0 = Date.now();
+  await assert.rejects(ignores.book({ prebookId: "p", transactionId: "t", clientReference: "r", holder }, { timeoutMs: 40 }), LiteapiTimeoutError);
+  assert.ok(Date.now() - t0 < 2000);
+  // An answer inside the window is returned as before.
+  const quick = createLiteapiClient(cfg, { fetch: (async () => new Response(JSON.stringify({ data: { prebookId: "p" } }), { status: 200 })) as any });
+  assert.deepEqual(await quick.prebook({ offerId: "o" }, { timeoutMs: 1000 }), { data: { prebookId: "p" } });
 });

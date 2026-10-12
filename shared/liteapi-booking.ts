@@ -61,6 +61,29 @@ function moneyOf(v: unknown): { amount: number; currency: string } | null {
   return amount !== null && amount > 0 && currency ? { amount, currency } : null;
 }
 
+/**
+ * The re-quote's retail price for the cheapest room type — `offerRetailRate`, else the rate's `retailRate.total`
+ * (the same order `bookingMarginFraction` reads). null when unstated (§13).
+ */
+export function quoteRetail(body: any): { amount: number; currency: string } | null {
+  const rt = body?.data?.[0]?.roomTypes?.[0];
+  return moneyOf(rt?.offerRetailRate) ?? moneyOf(rt?.rates?.[0]?.retailRate?.total);
+}
+
+/**
+ * S1-d-3c diagnostic: the facts compared at prebook, as one log line. Reads the re-quote that produced the offer
+ * and the raw prebook answer; computes nothing that is acted on.
+ */
+export function prebookDiagnostic(quoteBody: any, prebookBody: any, marginPercent: number): string {
+  const r = quoteRetail(quoteBody);
+  const q = sspFromRates(quoteBody);
+  const d = prebookBody?.data;
+  const p = money(d?.price);
+  const ps = money(d?.suggestedSellingPrice);
+  const f = (v: number | null | undefined) => (v === null || v === undefined ? "none" : String(v));
+  return `requote retail=${f(r?.amount)} ${r?.currency ?? ""} requote ssp=${f(q?.amount)} ${q?.currency ?? ""} prebook price=${f(p)} prebook ssp=${f(ps)} currency=${ccy(d?.currency) ?? "none"} margin=${marginPercent}%`;
+}
+
 export type BookingMargin =
   | { ok: true; fraction: number; percent: number; ssp: { amount: number; currency: string } }
   | { ok: false; reason: "no_ssp" | "ssp_currency" | "no_price" };
@@ -109,10 +132,13 @@ export interface PrebookFacts {
 export type PrebookParse = { ok: true; facts: PrebookFacts } | { ok: false; reason: "no_prebook" | "no_payment_sdk" | "no_price" | "below_ssp" };
 
 /**
- * Pure: a `/rates/prebook` answer (`usePaymentSdk: true`) → what is stored and what the SDK needs. The prebook
- * answer states no SSP (founder sandbox run, 2026-10-09), so the floor is the RE-QUOTE's SSP, passed in; a
- * prebook-level `suggestedSellingPrice` is honoured too if LiteAPI ever states one. A price below the SSP is
- * refused (`below_ssp`); an SSP in another currency cannot be compared honestly and is refused too.
+ * Pure: a `/rates/prebook` answer (`usePaymentSdk: true`) → what is stored and what the SDK needs.
+ *
+ * THE FLOOR IS THE PREBOOK'S OWN SSP (S1-d-3c, Oct 12, 2026). The sandbox prebook does state
+ * `suggestedSellingPrice`, and it can differ from the re-quote's (CI run 38258094086: re-quote 327.31, prebook
+ * 284.58 for the same offer). The prebook prices the offer being sold, so its SSP is the floor; the re-quote's
+ * SSP, passed in, is the fallback only when the prebook states none. A price below the floor is refused
+ * (`below_ssp`); an SSP in another currency cannot be compared honestly and is refused too.
  */
 export function parsePrebook(body: any, quotedSsp: { amount: number; currency: string } | null = null): PrebookParse {
   const d = body?.data;
@@ -124,11 +150,52 @@ export function parsePrebook(body: any, quotedSsp: { amount: number; currency: s
   const price = money(d?.price);
   const currency = ccy(d?.currency);
   if (price === null || price <= 0 || !currency) return { ok: false, reason: "no_price" };
-  const prebookSsp = money(d?.suggestedSellingPrice);
-  if (prebookSsp !== null && prebookSsp > price) return { ok: false, reason: "below_ssp" };
-  if (quotedSsp && (quotedSsp.currency !== currency || quotedSsp.amount > price)) return { ok: false, reason: "below_ssp" };
+  const floor = prebookSspFloor(body, quotedSsp);
+  if (floor && (floor.currency !== currency || floor.amount > price)) return { ok: false, reason: "below_ssp" };
   const policy = d?.roomTypes?.[0]?.rates?.[0]?.cancellationPolicies ?? d?.cancellationPolicies ?? null;
   return { ok: true, facts: { prebookId, transactionId, secretKey, amountCents: toCents(price), currency, cancellationPolicy: policy ?? null } };
+}
+
+/**
+ * The SSP a prebook answer is held to: its own `suggestedSellingPrice` (in the answer's currency) when stated,
+ * else the re-quote's. null when neither states one.
+ */
+export function prebookSspFloor(body: any, quotedSsp: { amount: number; currency: string } | null = null): { amount: number; currency: string } | null {
+  const d = body?.data;
+  const own = money(d?.suggestedSellingPrice);
+  const currency = ccy(d?.currency);
+  if (own !== null && own > 0 && currency) return { amount: own, currency };
+  return quotedSsp;
+}
+
+/**
+ * THE ONE RE-PREBOOK (S1-d-3c, Oct 12, 2026): a prebook answered below its floor is re-quoted ONCE at
+ * max(our band, floor / net − 1), where net = the prebook's price / (1 + the margin it was quoted at), and prebooked
+ * again; a second answer below its floor is refused. Rounded UP to LiteAPI's two decimals, and always above the
+ * margin already tried — LiteAPI priced the 15% margin cents under its own SSP in CI (202.27 vs 202.30), so the
+ * same margin again would answer the same. Refused by name when the answer states no price or the floor is in
+ * another currency.
+ */
+export function prebookFloorPercent(
+  body: any,
+  quotedSsp: { amount: number; currency: string } | null,
+  marginUsedPercent: number,
+  bandFraction: number,
+): { ok: true; percent: number } | { ok: false; reason: "no_price" | "no_ssp" | "ssp_currency" } {
+  const d = body?.data;
+  const price = money(d?.price);
+  const currency = ccy(d?.currency);
+  if (price === null || price <= 0 || !currency) return { ok: false, reason: "no_price" };
+  const floor = prebookSspFloor(body, quotedSsp);
+  if (!floor) return { ok: false, reason: "no_ssp" };
+  if (floor.currency !== currency) return { ok: false, reason: "ssp_currency" };
+  const used = Number.isFinite(marginUsedPercent) && marginUsedPercent > 0 ? marginUsedPercent : 0;
+  const band = Number.isFinite(bandFraction) && bandFraction > 0 ? bandFraction : 0;
+  const net = price / (1 + used / 100);
+  const needed = floor.amount / net - 1;
+  let percent = Math.ceil(Math.max(band, needed) * 10_000 - 1e-9) / 100;
+  if (percent <= used) percent = Math.round((used + 0.01) * 100) / 100;
+  return { ok: true, percent };
 }
 
 export interface BookFacts {
@@ -161,6 +228,19 @@ export function bookIsConfirmed(f: BookFacts): boolean {
 }
 
 /** Pure: a cancel (or booking read) answer's status, upper-cased; null when it states none. */
+/**
+ * S1-d-3c: the booking a `GET /bookings?clientReference=` answer holds for OUR reference — its LiteAPI id and
+ * status — or null. Only an entry that names our reference exactly counts (one per row id); an answer in another
+ * shape finds nothing rather than a guess (§13). The list shape is read defensively (`data` an array, or
+ * `data.bookings`) and is proven against fakes only until a sandbox answer is recorded.
+ */
+export function bookingForClientReference(body: any, clientReference: string): { liteapiBookingId: string; status: string | null } | null {
+  const list: any[] = Array.isArray(body?.data) ? body.data : Array.isArray(body?.data?.bookings) ? body.data.bookings : [];
+  const hit = list.find((b) => str(b?.clientReference) === clientReference && str(b?.bookingId));
+  if (!hit) return null;
+  return { liteapiBookingId: str(hit.bookingId)!, status: str(hit.status)?.toUpperCase() ?? null };
+}
+
 export function bookingStatusOf(body: any): string | null {
   return str(body?.data?.status)?.toUpperCase() ?? null;
 }
