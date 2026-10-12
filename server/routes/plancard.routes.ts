@@ -887,7 +887,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const routedLegs = await routedLegsFor(tripId);
     // P0-b item 1 (ledger `2026-10-11-p0b-routing-follow-ups`): WHY this plan's legs are not worked out,
     // through the engine's own `planLegsSkipReason` — present only when something skips it.
-    const legsSkipped = await legsSkippedFor(tripId, (plan as any).trip?.datesConfirmed === true);
+    // P0-c item 1: the trip DTO lives at `plan.plancard.trip` — `plan.trip` does not exist, so the old read saw
+    // every plan as unconfirmed and reported `dates_not_confirmed` beside legs the engine had worked out.
+    const legsSkipped = await legsSkippedFor(tripId, plan.plancard.trip?.datesConfirmed === true);
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
     // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
     const localTeasers = await localTeasersForTrip(tripId);
