@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { legRefetchDelayMs } from "@/lib/slip-legs";
+import { roundToFiveMinutes, type StopTimeRule } from "@shared/stop-time-edit";
 import { usePlanRowLook } from "@/components/plan/row-look";
 import {
   buildSlipAddItemBody,
@@ -43,7 +44,7 @@ import {
 } from "@/lib/slip-item-tools";
 
 /** The two reads a write here invalidates — the plan surface and the row list the form prefills from. */
-function invalidatePlan(tripId: string) {
+export function invalidatePlan(tripId: string) {
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
   // Step 9b D8 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): on a routed plan the server
   // recomputes the edited legs after its debounce — re-read the plan ONCE after that window.
@@ -76,11 +77,14 @@ function ItemFields({
   onChange,
   idPrefix,
   disabled,
+  timeRule,
 }: {
   values: SlipItemFormValues;
   onChange: (next: SlipItemFormValues) => void;
   idPrefix: string;
   disabled?: boolean;
+  /** ST-1 ruling 5: the edit form follows the slip's time rule — a blocked time is read-only, with its reason. */
+  timeRule?: StopTimeRule | null;
 }) {
   const set = (key: keyof SlipItemFormValues) => (e: { target: { value: string } }) =>
     onChange({ ...values, [key]: e.target.value });
@@ -101,9 +105,10 @@ function ItemFields({
         <input
           className={inputClass}
           type="time"
+          step={300}
           value={values.startTime}
           onChange={set("startTime")}
-          disabled={disabled}
+          disabled={disabled || timeRule?.editable === false}
           aria-label="Time (optional)"
           data-testid={`${idPrefix}-time`}
         />
@@ -117,6 +122,15 @@ function ItemFields({
           data-testid={`${idPrefix}-location`}
         />
       </div>
+      {timeRule?.editable === false ? (
+        <p className="text-xs text-muted-foreground" data-testid={`${idPrefix}-time-reason`}>
+          {timeRule.reason}
+        </p>
+      ) : timeRule?.note ? (
+        <p className="text-xs text-muted-foreground" data-testid={`${idPrefix}-time-note`}>
+          {timeRule.note}
+        </p>
+      ) : null}
       <textarea
         className={`${inputClass} min-h-[54px]`}
         value={values.notes}
@@ -255,10 +269,13 @@ export function useSlipItemActions({
   dayNumber,
   dayItemIds,
   groupItemIds,
+  timeRule = null,
 }: {
   tripId: string;
   itemId: string;
   tools: SlipItemToolset;
+  /** ST-1 ruling 5: the slip's time rule, so the edit form and the time editor agree. */
+  timeRule?: StopTimeRule | null;
   /** The day this row sits on. `null` only for a slot with no day — no reorder is possible there. */
   dayNumber: number | null;
   dayItemIds: readonly string[];
@@ -369,7 +386,7 @@ export function useSlipItemActions({
     dayNumber != null &&
     canReorderInDirection({ dayItemIds, groupItemIds, itemId, direction });
 
-  const body = current ? buildSlipEditItemBody(current, loaded ?? current) : null;
+  const body = editBodyUnderTimeRule(current ? buildSlipEditItemBody(current, loaded ?? current) : null, timeRule);
 
   const panel =
     confirmingDelete || editing ? (
@@ -419,6 +436,7 @@ export function useSlipItemActions({
                   values={current}
                   onChange={setValues}
                   idPrefix={`slip-item-edit-input-${itemId}`}
+                  timeRule={timeRule}
                 />
                 <div className="mt-2 flex items-center gap-2">
                   <Button
@@ -469,4 +487,17 @@ export function useSlipItemActions({
       : undefined,
     panel,
   };
+}
+
+/**
+ * ST-1 (ledger `2026-10-12-st1-stop-time-edit`): the edit form's body under the slip's time rule — a time
+ * the rule blocks is never sent, and a time it allows is rounded to the nearest 5 minutes on Save.
+ * Null when nothing is left to send.
+ */
+export function editBodyUnderTimeRule(body: Record<string, unknown> | null, rule: StopTimeRule | null | undefined): Record<string, unknown> | null {
+  if (!body || !("startTime" in body)) return body;
+  const next = { ...body };
+  if (rule?.editable === false) delete next.startTime;
+  else if (typeof next.startTime === "string") next.startTime = roundToFiveMinutes(next.startTime) ?? next.startTime;
+  return Object.keys(next).length ? next : null;
 }

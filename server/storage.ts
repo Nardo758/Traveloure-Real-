@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { scrubStoredTransportOption } from "./services/transport-option-client";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
 import { flightAnchorPoint, isFlightAnchorType } from "./services/airport-coords";
 import { dispatchModerationEvent } from "./automations/moderation/runtime";
@@ -9029,15 +9030,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingOptionsByVariantId(variantId: string): Promise<any[]> {
-    return await db.select().from(transportBookingOptions)
+    const rows = await db.select().from(transportBookingOptions)
       .where(eq(transportBookingOptions.variantId, variantId));
+    return rows.map(scrubStoredTransportOption); // AF-1: no stored row leaves with the API token
   }
 
   async getTransportBookingOptionById(optionId: string): Promise<any | null> {
     const [row] = await db.select().from(transportBookingOptions)
       .where(eq(transportBookingOptions.id, optionId))
       .limit(1);
-    return row ?? null;
+    return row ? scrubStoredTransportOption(row) : null; // AF-1
   }
 
   async createAffiliateClick(data: any): Promise<void> {
@@ -9045,9 +9047,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingOptionsByLegId(legId: string): Promise<any[]> {
-    return await db.select().from(transportBookingOptions)
+    const rows = await db.select().from(transportBookingOptions)
       .where(eq(transportBookingOptions.transportLegId, legId))
       .orderBy(asc(transportBookingOptions.sortOrder));
+    return rows.map(scrubStoredTransportOption); // AF-1
   }
 
   async getTopAiVariantByComparison(comparisonId: string): Promise<any | null> {
@@ -9118,8 +9121,9 @@ export class DatabaseStorage implements IStorage {
 
   async getBookingOptionsByLegIds(legIds: string[]): Promise<any[]> {
     if (!legIds.length) return [];
-    return await db.select().from(transportBookingOptions)
+    const rows = await db.select().from(transportBookingOptions)
       .where(inArray(transportBookingOptions.transportLegId, legIds));
+    return rows.map(scrubStoredTransportOption); // AF-1
   }
 
   // Plancard row-level vendor phone (§5 of the mobile-lens audit): bulk fetch just the

@@ -19,6 +19,7 @@ import { resolveViewerTransportBookings } from "../services/transport-viewer-boo
 import { isAuthenticated } from "../replit_integrations/auth";
 import { requireTestSeedEnabled } from "../middleware/test-only-endpoint";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { toClientTransportOption } from "../services/transport-option-client";
 
 const router = Router();
 
@@ -175,11 +176,10 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     // booking-agent rail re-resolves the URL from the transport_booking_options row by id
     // (transportOptionId) — the card only needs to know a bookable link exists. Same strip
     // as GET /api/transport-legs/:legId/options.
-    const stripExternalUrl = ({ externalUrl, ...rest }: any) => {
-      const viewerBooking = viewerBookings.get(rest.id);
+    const stripExternalUrl = (opt: any) => {
+      const viewerBooking = viewerBookings.get(opt.id);
       return {
-        ...rest,
-        hasBookingLink: !!externalUrl,
+        ...toClientTransportOption(opt), // AF-1: no partner URL and no affiliateCode on the wire
         // §13: ABSENT, not zero-filled and not invented. No booking of this option by this
         // viewer ⇒ both are null, which the card reads as "nothing to cancel here".
         serviceBookingId: viewerBooking?.bookingId ?? null,
@@ -303,10 +303,8 @@ router.get(
       // §16: affiliate/deep-link options never ship their externalUrl to the client. The
       // booking-agent rail re-resolves the URL from the transport_booking_options row by id
       // (transportOptionId) — the card only needs to know a bookable link exists.
-      const safeOptions = options.map(({ externalUrl, ...rest }: any) => ({
-        ...rest,
-        hasBookingLink: !!externalUrl,
-      }));
+      // AF-1: the same projection drops `affiliateCode` too.
+      const safeOptions = options.map((opt: any) => toClientTransportOption(opt));
 
       res.json({ legId, options: safeOptions });
     } catch (err) {
@@ -466,7 +464,8 @@ router.post(
         console.error("Error logging affiliate click:", clickError);
       }
 
-      // Add affiliate code if present
+      // Add affiliate code if present. AF-1: both values come from storage, which has already replaced
+      // any stored API token with the public marker, so the redirect carries the marker only.
       let redirectUrl = option.externalUrl;
       if (option.affiliateCode) {
         const separator = redirectUrl.includes("?") ? "&" : "?";
@@ -660,8 +659,8 @@ router.get("/api/transport-booking-options/:optionId", isAuthenticated, async (r
     }
 
     // §16: never ship the partner URL to the client — same strip as the hub/leg DTOs.
-    const { externalUrl, ...safe } = option as any;
-    res.json({ ...safe, hasBookingLink: !!externalUrl });
+    // AF-1: and never its affiliateCode.
+    res.json(toClientTransportOption(option as any));
   } catch (error) {
     console.error("Error fetching booking option:", error);
     res.status(500).json({ error: "Failed to fetch booking option" });

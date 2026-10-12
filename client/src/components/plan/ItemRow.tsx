@@ -126,6 +126,11 @@ export interface ItemRowProps {
   yoursToEdit?: boolean;
   /** R297: the Trip Card's today rows — the traveler's own "visited" tick (device-local, no write). */
   visited?: { checked: boolean; onToggle: () => void } | null;
+  /**
+   * ST-1 (ledger `2026-10-12-st1-stop-time-edit`): the owner's time editor on the slip — `cell` replaces the
+   * time text (a button, at least 44px tall), `panel` sits under the title. Absent ⇒ the row is unchanged.
+   */
+  timeEdit?: { cell: ReactNode; panel: ReactNode } | null;
 }
 
 export function ItemRow(props: ItemRowProps) {
@@ -150,7 +155,9 @@ export function ItemRow(props: ItemRowProps) {
           {props.visited.checked ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
         </button>
       ) : null}
-      {a.time ? (
+      {props.timeEdit && !anchor ? (
+        <span className="text-muted-foreground font-normal">{props.timeEdit.cell}</span>
+      ) : a.time ? (
         <span className="text-muted-foreground font-normal tabular-nums" data-testid={`slip-item-time-${a.id}`}>
           {a.time}
         </span>
@@ -172,6 +179,7 @@ export function ItemRow(props: ItemRowProps) {
 
   const below = (
     <>
+      {props.timeEdit && !anchor ? props.timeEdit.panel : null}
       {a.locked ? (
         <p className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" data-testid={`slip-item-locked-${a.id}`}>
           <Lock className="w-3 h-3" aria-hidden="true" />
@@ -427,6 +435,7 @@ function BoardItemRow(
           </span>
         ) : null}
       </div>
+      {props.timeEdit && !anchor ? props.timeEdit.panel : null}
       {anchor?.fromTool ? (
         <p className="text-[13px] font-medium text-[color:var(--slip-teal-ink)]" data-testid={`slip-anchor-label-${a.id}`}>
           {anchorLabel(anchor.fromTool)}
@@ -533,6 +542,7 @@ function BoardItemRow(
       <BoardRowFrame
         time={time}
         timeTestId={`slip-item-time-${a.id}`}
+        timeSlot={props.timeEdit && !anchor ? props.timeEdit.cell : null}
         dot={dot}
         menu={props.showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} locked={!!a.locked} board /> : null}
       >

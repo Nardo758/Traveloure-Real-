@@ -344,6 +344,8 @@ export interface PlanCardActivity {
   supplySlot?: true;
   /** R-ah (migration 342): the traveler locked this item ("Keep this"). Present only when true. */
   locked?: true;
+  /** ST-1: a catalog ride — its time is the operator's departure (no time edit). Present only when true. */
+  ride?: true;
   /**
    * D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`) — the two LINK columns the
    * item-kind derivation reads, mirroring `TripPlanActivity` (shared/trip-plan.ts):

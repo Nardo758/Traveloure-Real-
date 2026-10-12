@@ -374,6 +374,12 @@ export interface TripPlanActivity {
    * venue of its own (`isSupplySlot`, `@shared/ai-place-text`). Derived per read, never stored.
    */
   supplySlot?: true;
+  /**
+   * ST-1 (ledger `2026-10-12-st1-stop-time-edit`): a catalog RIDE (TC-3a) — its listing has a
+   * `service_transport_facts` row. Its time is the operator's departure, so the slip offers no time edit.
+   * Present only when true.
+   */
+  ride?: true;
 
   /**
    * ADDITIVE (ruling 2026-09-15, punchlist D-4; ledger `2026-09-15-d4-item-kind-contract`) — the
