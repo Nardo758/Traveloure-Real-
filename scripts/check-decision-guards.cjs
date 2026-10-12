@@ -7,6 +7,18 @@
  * .github/workflows/*.yml file. A script not wired into CI is not a guard
  * (ruling 27: "script-only = MISSING").
  *
+ * EVERY [guarded:] TAG IS READ (GW-1, ledger `2026-10-12-gw1-guard-tags`). Until GW-1 only a tag that
+ * stood ALONE in its cell was parsed, so 458 of 537 guarded rows — every row with a note after the tag —
+ * were never checked, and nine of them named test files that had since been deleted. A tag at the head of
+ * the cell is now read whatever follows it. In such a tag a part names a guard only when its first word is
+ * guard-shaped; prose parts name nothing. A guard is wired when a workflow `run:` names it, when it is a
+ * test file `scripts/check-test-files-wired.cjs` finds reachable (or a runner config passed by
+ * `--config`/`-c` names it, or matches it by literal `testDir` + `testMatch`), or when it is a workflow job
+ * id or workflow file. `[guarded: none …]`, `[retired with R<n> — surface removed]` and
+ * `[unguarded since R<n> — re-pin needed]` are printed on every run, never failed. NEGATIVE SPACE: a guard named only inside a sentence is not read; `[tested: …]`
+ * and a bare `[guarded]` are other notations and stay unread; the check is that the guard RUNS, never
+ * that it covers the ruling.
+ *
  * `deferred:<lane>` inside the tag exempts the guard with a WARNING — the named
  * lane owes the guard; the tag must be expired (removed) in the wave that lane
  * merges (ruling 21). Everything else missing from CI FAILS the lint.
@@ -123,6 +135,96 @@ const KNOWN_DUPLICATE_IDS = {
   "2026-09-07-slip-canvas-unrecoverable": "record row written twice; the second copy moved the note out of the tag cell",
 };
 
+/** The bracketed tag at the head of a tag cell (balanced), or null. */
+function leadingTag(cell) {
+  if (!cell.startsWith("[")) return null;
+  let depth = 0;
+  for (let i = 0; i < cell.length; i++) {
+    if (cell[i] === "[") depth++;
+    if (cell[i] === "]" && --depth === 0) return cell.slice(0, i + 1);
+  }
+  return null;
+}
+
+/**
+ * The guard NAMES in a tag whose content is written as prose (`a.test.ts T1–T4 (whole-directory job);
+ * scripts/x.cjs`). The content is split at top-level `,` and `;`; a part names a guard only when its
+ * first word is guard-shaped (a path, a file or a kebab/dotted name). Every other part is prose about
+ * the guards and names nothing — NEGATIVE SPACE: a guard written only inside a sentence is not read.
+ * A tag whose content opens with `none` is the row saying it has no guard; it is reported, not failed.
+ */
+function looseGuardNames(content) {
+  const trimmed = content.trim();
+  if (/^none\b/i.test(trimmed)) return { guards: [], deferred: null, none: true };
+  const parts = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of trimmed) {
+    if (ch === "(" || ch === "[") depth++;
+    if (ch === ")" || ch === "]") depth--;
+    if ((ch === "," || ch === ";") && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  parts.push(cur);
+  let deferred = null;
+  const guards = [];
+  for (const raw of parts.map((p) => p.trim()).filter(Boolean)) {
+    if (/^deferred:/i.test(raw)) {
+      deferred = raw.slice("deferred:".length).trim();
+      continue;
+    }
+    const first = raw.split(/[\s(]/)[0].replace(/^`|`$/g, "");
+    if (/^[\w./*@-]+$/.test(first) && /[/.-]/.test(first) && /[a-z]/i.test(first)) guards.push(first);
+  }
+  return { guards, deferred, none: false };
+}
+
+/**
+ * Whether a named guard runs in CI. A name that appears in a workflow `run:` command is wired
+ * (the original rule). A TEST FILE is also wired when `scripts/check-test-files-wired.cjs` finds
+ * it reachable — a whole-directory job runs a file without naming it. A test file may be named by
+ * its path or, when unique, by its basename; `.ts` and `.tsx` are the same file for this question.
+ * A workflow file (`*.yml`) is wired when it exists. Anything else must appear in a `run:` command.
+ */
+const TEST_SUFFIXES = [".test.ts", ".test.tsx", ".db.test.ts", ".http.test.ts", ".vitest.ts", ".spec.ts"];
+
+function globToRegex(glob) {
+  return new RegExp(`^${glob.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, ".")}$`);
+}
+
+/**
+ * A runner config a workflow `run:` passes by `--config`/`-c` RUNS a file when the config names it
+ * literally (a vitest `include` list) or when the file sits under the config's literal `testDir` and
+ * a literal `testMatch` glob matches its basename (a Playwright project). Computed values are not read.
+ */
+function configRuns(file, configs) {
+  return configs.some(({ text }) => {
+    if (text.includes(`"${file}"`) || text.includes(`'${file}'`)) return true;
+    const dir = (text.match(/testDir:\s*['"]\.?\/?([^'"]+)['"]/) || [])[1];
+    if (!dir || !file.startsWith(`${dir.replace(/\/$/, "")}/`)) return false;
+    const globs = [...text.matchAll(/testMatch:\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+    return globs.some((g) => globToRegex(g).test(path.basename(file)));
+  });
+}
+
+function guardIsWired(name, { workflowText, tests = [], reachable = new Set(), workflowFiles = [], jobIds = [], configs = [] }) {
+  if (workflowText.includes(name)) return true;
+  if (/\.ya?ml$/.test(name)) return workflowFiles.includes(path.basename(name));
+  // A workflow job id or a workflow file named without its extension is a CI job, and a job runs.
+  if (!name.includes("/") && (jobIds.includes(name) || workflowFiles.some((f) => f.replace(/\.ya?ml$/, "") === name))) return true;
+  const isTestName = TEST_SUFFIXES.some((x) => name.endsWith(x));
+  const variants = isTestName
+    ? [name, name.replace(/\.ts$/, ".tsx"), name.replace(/\.tsx$/, ".ts")]
+    : TEST_SUFFIXES.map((x) => `${name}${x}`);
+  const hits = name.includes("/")
+    ? variants.filter((v) => tests.includes(v))
+    : tests.filter((t) => variants.includes(path.basename(t)));
+  if (!hits.length) return false;
+  return hits.every((t) => reachable.has(t) || configRuns(t, configs));
+}
+
 function parseLedger(text) {
   const entries = [];
   const ids = [];
@@ -135,7 +237,32 @@ function parseLedger(text) {
     // IDs come in three shapes: the DATE-SLUG key new rows use (2026-08-16-some-lane),
     // the frozen numeric series (1..122), and the closed Console Realign letters (R-A).
     // The slug alternative is listed FIRST so `\d+` cannot half-match a date-slug's year.
-    const row = line.match(ROW_ID_RE);
+    // GW-1: a row whose guard was deleted and not re-pinned says so in its tag. It is reported on
+    // every run (never a silent baseline) and is not a failure — the re-pin lane owes it.
+    if (any) {
+      const head = leadingTag(rowCells(line)[2] ?? "") || "";
+      const unguarded = head.match(/^\[unguarded since (R\d+) — re-pin needed\]$/);
+      const retired = head.match(/^\[retired with (R\d+) — surface removed\]$/);
+      if (unguarded || retired) {
+        ids.push(any[1]);
+        entries.push({ id: any[1], guards: [], deferred: null, none: false, loose: true, unguardedSince: unguarded?.[1], retiredWith: retired?.[1] });
+        continue;
+      }
+    }
+    let row = line.match(ROW_ID_RE);
+    let loose = false;
+    if (!row && any) {
+      // GW-1 (ledger `2026-10-12-gw1-guard-tags`): most rows carry text AFTER the tag in the same cell
+      // (`[guarded: …] (note) |`). ROW_ID_RE only matched a tag alone in its cell, so 458 of 537 guarded
+      // rows were never checked. Read a tag at the head of the cell, whatever follows it.
+      const tag = leadingTag(rowCells(line)[2] ?? "");
+      // Only the two tag shapes this lint owns; `[tested: …]` and a bare `[guarded]` are other
+      // notations and stay unread, exactly as before (stated negative space).
+      if (tag && /^\[(guarded:|advisory\])/i.test(tag)) {
+        row = [null, any[1], tag];
+        loose = true;
+      }
+    }
     if (!row) {
       // A table-ish line mentioning guarded/advisory that failed to parse is a
       // malformed ledger row — reject loudly rather than silently skipping it.
@@ -152,10 +279,14 @@ function parseLedger(text) {
     ids.push(id);
     const guarded = tag.match(/^\[guarded:\s*([^\]]+)\]$/i);
     if (guarded) {
-      const parts = guarded[1].split(",").map((s) => s.trim()).filter(Boolean);
-      const deferred = parts.find((p) => p.toLowerCase().startsWith("deferred:"));
-      const guards = parts.filter((p) => !p.toLowerCase().startsWith("deferred:"));
-      entries.push({ id, guards, deferred: deferred ? deferred.slice("deferred:".length) : null });
+      if (loose) {
+        entries.push({ id, ...looseGuardNames(guarded[1]), loose: true });
+      } else {
+        const parts = guarded[1].split(",").map((s) => s.trim()).filter(Boolean);
+        const deferred = parts.find((p) => p.toLowerCase().startsWith("deferred:"));
+        const guards = parts.filter((p) => !p.toLowerCase().startsWith("deferred:"));
+        entries.push({ id, guards, deferred: deferred ? deferred.slice("deferred:".length) : null, none: false, loose: false });
+      }
     }
   }
   return { entries, ids, allIds, malformed };
@@ -244,7 +375,7 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   return { failures, exempted, unassigned, cited };
 }
 
-function lintLedger({ ledgerText, workflowText, requireAssigned = false, knownDuplicates = KNOWN_DUPLICATE_IDS }) {
+function lintLedger({ ledgerText, workflowText, requireAssigned = false, knownDuplicates = KNOWN_DUPLICATE_IDS, tests = [], reachable = new Set(), workflowFiles = [], jobIds = [], configs = [] }) {
   const failures = [];
   const warnings = [];
   const notes = [];
@@ -270,18 +401,35 @@ function lintLedger({ ledgerText, workflowText, requireAssigned = false, knownDu
     failures.push(`Unassigned R-number (R?) on ${r.unassigned.length} row(s): ${r.unassigned.join(", ")} — run \`node scripts/assign-r-numbers.cjs --write\` (ledger \`2026-09-29-r-number-at-merge\`).`);
   }
 
+  const wiring = { workflowText, tests, reachable, workflowFiles, jobIds, configs };
   for (const e of entries) {
+    if (e.retiredWith) {
+      notes.push(`Ruling ${e.id}: retired with ${e.retiredWith} — surface removed; the row stays as history.`);
+      continue;
+    }
+    if (e.unguardedSince) {
+      notes.push(`Ruling ${e.id}: UNGUARDED since ${e.unguardedSince} — re-pin needed.`);
+      continue;
+    }
+    if (e.none) {
+      notes.push(`Ruling ${e.id}: [guarded: none …] — the row states it has no guard.`);
+      continue;
+    }
+    if (e.loose && e.guards.length === 0 && !e.deferred) {
+      failures.push(`Ruling ${e.id}: [guarded] names no guard (no part of the tag starts with a guard name). Name the guard, or write [guarded: none — <why>].`);
+      continue;
+    }
     for (const g of e.guards) {
-      const inCI = workflowText.includes(g);
+      const inCI = guardIsWired(g, wiring);
       if (inCI) continue;
       if (e.deferred) {
         warnings.push(`Ruling ${e.id}: guard "${g}" not in CI — DEFERRED to lane "${e.deferred}" (must expire when that lane merges).`);
       } else {
-        failures.push(`Ruling ${e.id}: guard "${g}" is [guarded] but does not run in CI (no .github/workflows/*.yml mentions it). Script-only = MISSING (ruling 27).`);
+        failures.push(`Ruling ${e.id}: guard "${g}" is [guarded] but does not run in CI (no workflow \`run:\` names it, and it is not a reachable test file or a workflow file). Script-only = MISSING (ruling 27).`);
       }
     }
   }
-  return { failures, warnings, notes, laneLocal: r.exempted.length };
+  return { failures, warnings, notes, laneLocal: r.exempted.length, checked: entries.length };
 }
 
 function selfTest() {
@@ -409,16 +557,51 @@ function selfTest() {
     && rOnlyDupe.failures.some((f) => f.includes("Duplicate ruling ids") && f.includes("2026-01-07-feat"))
     && !known.failures.some((f) => f.includes("Duplicate ruling ids")) && known.notes.some((n) => n.includes("2026-01-07-feat"))
     && stale.failures.some((f) => f.includes("no longer duplicated"));
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16 || !ok17) {
+  // (n) GW-1: a [guarded:] tag with TEXT AFTER IT is checked like any other. A ghost guard fails; a
+  // reachable test file, a job id, a workflow named without its extension and a file a runner config
+  // names all pass; prose parts name nothing; a row naming no guard fails; `none …` and
+  // `[unguarded since Rn — re-pin needed]` are reported, not failed; `[tested: …]` stays unread.
+  const loose = (id, tag) => `| 2026-02-01-${id} | 2026-02-01 | ${tag} (a note after the tag) | x | y |`;
+  const wiring = {
+    tests: ["server/__tests__/reached.test.ts", "server/__tests__/orphan.test.ts", "client/src/lib/__tests__/named.test.ts", "server/__tests__/cfg.vitest.ts"],
+    reachable: new Set(["server/__tests__/reached.test.ts", "client/src/lib/__tests__/named.test.ts"]),
+    workflowFiles: ["some-gate.yml"],
+    jobIds: ["some-job"],
+    configs: [{ file: "vitest.cfg.ts", text: 'include: ["server/__tests__/cfg.vitest.ts"]' }],
+  };
+  const gw = (tag) => lint({ ledgerText: loose("g", tag), workflowText, ...wiring });
+  const gwPass = [
+    "[guarded: real-guard]",
+    "[guarded: server/__tests__/reached.test.ts T1–T4 (whole-directory job)]",
+    "[guarded: named (by basename, no suffix); some-job; some-gate]",
+    "[guarded: some-gate.yml, server/__tests__/cfg.vitest.ts]",
+    "[guarded: real-guard, both wired into `build.yml`]",
+  ].every((t) => gw(t).failures.length === 0);
+  const gwFail = [
+    "[guarded: ghost-guard]",
+    "[guarded: server/__tests__/orphan.test.ts]",
+    "[guarded: server/__tests__/deleted.test.ts]",
+    "[guarded: verified by hand]",
+  ].every((t) => gw(t).failures.length === 1);
+  const gwNone = gw("[guarded: none — and that is the finding]");
+  const gwUng = gw("[unguarded since R354 — re-pin needed]");
+  const gwRet = gw("[retired with R354 — surface removed]");
+  const gwTested = lint({ ledgerText: [loose("g", "[guarded: real-guard]"), loose("t", "[tested: `x.test.ts` — 5 proofs]")].join("\n"), workflowText, ...wiring });
+  const ok18 = gwPass && gwFail
+    && gwNone.failures.length === 0 && gwNone.notes.some((n) => n.includes("no guard"))
+    && gwUng.failures.length === 0 && gwUng.notes.some((n) => n.includes("UNGUARDED since R354"))
+    && gwRet.failures.length === 0 && gwRet.notes.some((n) => n.includes("retired with R354"))
+    && gwTested.failures.length === 0;
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16 || !ok17 || !ok18) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, ok17,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, ok17, ok18, gwPass, gwFail,
       textDupe: textDupe.failures, rOnlyDupe: rOnlyDupe.failures, known: known.failures, stale: stale.failures, rBad: rBad.failures, rAsc: rAsc.failures, rLate: rLate.failures,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline, [guarded:] tags with text after them incl. reachable tests, job ids, runner configs, prose parts, none, retired and unguarded)");
   process.exit(0);
 }
 
@@ -430,7 +613,37 @@ if (process.argv.includes("--self-test")) selfTest();
 const ledgerText = fs.readFileSync(LEDGER, "utf8");
 const workflowText = collectWorkflowText(WORKFLOW_DIR);
 const requireAssigned = process.argv.includes("--require-assigned");
-const { failures, warnings, notes, laneLocal } = lintLedger({ ledgerText, workflowText, requireAssigned });
+const wired = require("./check-test-files-wired.cjs");
+// The wiring script's own test set, plus the two kinds it does not collect: `e2e/` specs and
+// `*.vitest.ts` files. The inventory decides their reachability by the same predicate.
+const tests = [...wired.collectTests(), ...wired.collectTests(ROOT, ["e2e"])];
+for (const dir of ["server", "shared", "client"]) {
+  (function walk(d) {
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      if (ent.name === "node_modules" || ent.name.startsWith(".")) continue;
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else if (/\.vitest\.tsx?$/.test(ent.name)) tests.push(path.relative(ROOT, full).split(path.sep).join("/"));
+    }
+  })(path.join(ROOT, dir));
+}
+const reachable = new Set(
+  wired.inventory({
+    tests,
+    workflowCommands: wired.workflowCommands(),
+    packageScripts: JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).scripts || {},
+  }).reachable,
+);
+const workflowFiles = fs.readdirSync(WORKFLOW_DIR).filter((f) => /\.ya?ml$/.test(f));
+const jobIds = workflowFiles.flatMap((f) => {
+  const text = fs.readFileSync(path.join(WORKFLOW_DIR, f), "utf8");
+  const jobs = text.split(/^jobs:\s*$/m)[1] || "";
+  return [...jobs.matchAll(/^ {2}([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
+});
+const configs = [...new Set([...workflowText.matchAll(/(?:--config|-c)[ =](\S+)/g)].map((m) => m[1]))]
+  .filter((c) => fs.existsSync(path.join(ROOT, c)))
+  .map((c) => ({ file: c, text: fs.readFileSync(path.join(ROOT, c), "utf8") }));
+const { failures, warnings, notes, laneLocal, checked } = lintLedger({ ledgerText, workflowText, requireAssigned, tests, reachable, workflowFiles, jobIds, configs });
 
 for (const n of notes) console.warn(`NOTE  ${n}`);
 for (const w of warnings) console.warn(`WARN  ${w}`);
@@ -438,4 +651,4 @@ if (failures.length) {
   for (const f of failures) console.error(`FAIL  ${f}`);
   process.exit(1);
 }
-console.log(`decision-guards lint OK (${warnings.length} deferred warning(s); ${laneLocal} lane-local R row(s) per "## Lane-local R numbering")`);
+console.log(`decision-guards lint OK (${checked} [guarded]/[unguarded] row(s) checked; ${warnings.length} deferred warning(s); ${laneLocal} lane-local R row(s) per "## Lane-local R numbering")`);
