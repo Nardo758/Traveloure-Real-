@@ -1,4 +1,5 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// AF-2 (ledger `2026-10-12-af2-catalog-token-leak`): booking links carry the public marker, never the API token.
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
 
@@ -67,8 +68,8 @@ export async function searchAiraloEsim(params: AiraloSearchParams): Promise<Cata
       duration: p.validity_days ? `${p.validity_days} days` : p.validity || null,
       categories: ["esim", "connectivity"],
       tags: [p.operator || "airalo", p.country_code || ""].filter(Boolean),
-      bookingUrl: `https://www.airalo.com/?referral_code=${token}`,
-      affiliateUrl: `https://www.airalo.com/?referral_code=${token}`,
+      bookingUrl: `https://www.airalo.com/?referral_code=${getTravelpayoutsMarker()}`,
+      affiliateUrl: `https://www.airalo.com/?referral_code=${getTravelpayoutsMarker()}`,
       source: "travelpayouts/airalo",
       lastUpdated: new Date(),
     } as CatalogItem));
