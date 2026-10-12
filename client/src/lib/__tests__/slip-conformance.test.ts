@@ -138,6 +138,10 @@ function functionBody(src: string, declaration: string): string {
  * pin is about the control existing and pointing where it did, never about which file holds it.
  */
 const ALLOWED_ADDITIONS = {
+  // TC-5a (ledger `2026-10-12-tc5a-trip-card-entry`): the owner's ⋯ menu entry to the Trip Card,
+  // after Share link, on any plan that has ever been finalized (`tripCardHasFinal(finalVersion)`).
+  "slip-menu-trip-card": "TC-5a — the owner's menu link to /trip/:id on an ever-finalized plan",
+  "slip-trip-card-link": "TC-5a — the header link to /trip/:id beside the phase chip, every viewer, same predicate",
   // Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 7; sanctioned edit, decision-maker Oct 8, 2026):
   // the inline dates panels the two gated actions open when the plan's dates are not confirmed.
   "slip-draft-dates-gate": "E1 ruling 7 — Draft it with AI's inline dates panel (no modal detour)",

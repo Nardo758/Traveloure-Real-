@@ -69,6 +69,11 @@ jobs:
             echo "::error file=.github/workflows/slip-rail-actions-gate.yml::playwright/tests/slip-rail-actions.spec.ts is missing — restore it or update this workflow."
             exit 1
           fi
+          # TC-5a (ledger `2026-10-12-tc5a-trip-card-entry`): the Trip Card link on the slip.
+          if [ ! -f playwright/tests/slip-trip-card-link.spec.ts ]; then
+            echo "::error file=.github/workflows/slip-rail-actions-gate.yml::playwright/tests/slip-trip-card-link.spec.ts is missing — restore it or update this workflow."
+            exit 1
+          fi
           echo "spec present ✅"
 
       - name: Cache Playwright browsers
@@ -145,12 +150,20 @@ jobs:
           echo "Build identity confirmed: $ACTUAL_SHA ✅"
 
       - name: Press every rail action on a real plan slip
-        run: npx playwright test slip-rail-actions --project=chromium
+        run: npx playwright test slip-rail-actions slip-trip-card-link --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
-          # A13 (smoke 13 #5) seeds one handoff row with psql.
+          # A13 (smoke 13 #5) seeds one handoff row with psql; TC-5a T5 seeds one advisor row.
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Upload the Playwright JSON report (read by the spec-arming gate)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json
+          path: playwright-json/
+          if-no-files-found: error
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

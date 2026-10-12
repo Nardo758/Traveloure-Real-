@@ -43,7 +43,7 @@ import {
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
-import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
+import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardHasFinal, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
 import {
   type PlanCardActivity,
@@ -485,6 +485,19 @@ export function SlipHeader({
             <CalendarDays className="w-3 h-3" />
             {PHASE_LABELS[phase]}
           </span>
+        )}
+        {/* TC-5a: the way back to the Trip Card from any plan that has EVER been finalized —
+            `trip.finalVersion` (a `trip_finals` row exists), never `finalizedAt`, so it stays
+            through "Being revised" and after "Back to planning". Every viewer of the slip sees
+            it; the card's own read gate decides what they can open. */}
+        {trip?.id && tripCardHasFinal(trip.finalVersion) && (
+          <Link
+            href={`/trip/${trip.id}`}
+            className="text-[10px] font-semibold underline underline-offset-2 text-muted-foreground hover:text-foreground"
+            data-testid="slip-trip-card-link"
+          >
+            Trip Card
+          </Link>
         )}
         {/* THE PRIVATE-PLAN BADGE (re-audit A21). Share and the guest surface are already
             correctly ABSENT under a hidden occasion — hidden, never disabled — but the absence
