@@ -269,6 +269,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // What leaves is a board pin or an anchor score — never fact text.
     "server/services/optimizer-baseline.service.ts",
     "server/services/version-board.service.ts",
+    // AP-1 (ledger `2026-10-13-ap1-save-then-warn`): the hand-add lookup WRITE through the one writer
+    // `enrichPlanItems`, behind the item POST's owner check, and the per-stop check read, behind the plan's read
+    // gate (`authorizeTripLogistics`). What leaves is the findings' own hours lines and a leg line, never fact content.
+    "server/services/add-checks.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

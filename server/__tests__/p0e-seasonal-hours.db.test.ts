@@ -123,7 +123,7 @@ test("SH1 winter: the winter hours apply — reached after closing, named with d
   const { findings } = await loadOptimizerFindings(winter);
   const closed = findings.find((f) => f.kind === "closed_on_arrival");
   assert.ok(closed, "16:45 is after the 16:30 winter close");
-  assert.deepEqual(findingStopLines(closed!), ["Ginkaku-ji Temple · Day 1 starts after closing (4:30 PM)"]);
+  assert.deepEqual(findingStopLines(closed!), ["Ginkaku-ji Temple · Day 1 · 16:45 starts after closing (4:30 PM)"]);
 });
 
 test("SH2 summer: the summer hours apply — open on arrival, closes before the visit ends", async () => {
@@ -131,14 +131,14 @@ test("SH2 summer: the summer hours apply — open on arrival, closes before the 
   assert.equal(findings.find((f) => f.kind === "closed_on_arrival"), undefined, "open until 17:00 in summer");
   const early = findings.find((f) => f.kind === "closes_before_visit_end");
   assert.ok(early);
-  assert.deepEqual(findingStopLines(early!), ["Ginkaku-ji Temple · Day 1 closes at 5:00 PM, before your visit ends"]);
+  assert.deepEqual(findingStopLines(early!), ["Ginkaku-ji Temple · Day 1 · 16:45 closes at 5:00 PM, before your visit ends"]);
 });
 
 test("SH3 summer: the summer last entry applies although the winter fact is stored first", async () => {
   const { findings } = await loadOptimizerFindings(summer);
   const entry = findings.find((f) => f.kind === "after_last_admission");
   assert.ok(entry, "the 16:30 summer last entry is read");
-  assert.deepEqual(findingStopLines(entry!), ["Ginkaku-ji Temple · Day 1 arrives after last entry (4:30 PM)"]);
+  assert.deepEqual(findingStopLines(entry!), ["Ginkaku-ji Temple · Day 1 · 16:45 arrives after last entry (4:30 PM)"]);
 });
 
 test("SH4 an off-map placeholder and an off-map real place are told apart", async () => {

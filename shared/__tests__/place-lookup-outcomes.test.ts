@@ -17,8 +17,8 @@ import {
 
 test("L1: the outcome and reason sets are the ruled ones; the merged old words are gone", () => {
   assert.deepEqual([...PLACE_LOOKUP_OUTCOMES], ["attached", "unmatched", "capped", "skipped", "no_place", "error"]);
-  assert.deepEqual([...PLACE_LOOKUP_SKIP_REASONS], ["no_named_tokens", "area_title", "no_adapter"]);
-  assert.deepEqual([...PLACE_LOOKUP_CAP_REASONS], ["draft_cap", "maps_id_lookup", "maps_details"]);
+  assert.deepEqual([...PLACE_LOOKUP_SKIP_REASONS], ["no_named_tokens", "area_title", "no_adapter", "official_fact"]);
+  assert.deepEqual([...PLACE_LOOKUP_CAP_REASONS], ["draft_cap", "maps_id_lookup", "maps_details", "plan_day_cap"]);
   const all = new Set<string>([...PLACE_LOOKUP_OUTCOMES, ...PLACE_LOOKUP_SKIP_REASONS, ...PLACE_LOOKUP_CAP_REASONS]);
   for (const old of ["unnamed", "cap", "none"]) assert.equal(all.has(old), false, old);
 });

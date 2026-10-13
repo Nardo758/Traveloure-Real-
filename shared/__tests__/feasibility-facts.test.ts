@@ -93,7 +93,7 @@ const hours = (line: string): HoursFact => ({ weekdayDescriptions: [`Monday: ${l
 test("FF5 — after_last_admission compares the arrival with last entry", () => {
   const entry = new Map([["a", 16 * 60 + 30], ["b", 16 * 60 + 30], ["c", 16 * 60 + 30]]);
   const f = afterLastAdmission([item("a", "16:45"), item("b", "16:30"), item("c", null), item("d", "17:00")], entry);
-  assert.deepEqual(f, { kind: "after_last_admission", count: 1, days: [1], stops: [{ itemId: "a", title: "This stop", day: 1, reason: "after_last_entry", atMin: 990 }] });
+  assert.deepEqual(f, { kind: "after_last_admission", count: 1, days: [1], stops: [{ itemId: "a", title: "This stop", day: 1, reason: "after_last_entry", atMin: 990, startMin: 1005 }] });
   assert.equal(findingLine(f!), "1 stop is reached after last entry");
 });
 
@@ -106,7 +106,7 @@ test("FF6 — closes_before_visit_end compares the visit's end with closing", ()
     item("d", "16:00"), // no end and no duration — unchecked
   ];
   const f = closesBeforeVisitEnd(items, h, "2027-11-08");
-  assert.deepEqual(f, { kind: "closes_before_visit_end", count: 1, days: [1], stops: [{ itemId: "a", title: "This stop", day: 1, reason: "closes_early", atMin: 1020 }] });
+  assert.deepEqual(f, { kind: "closes_before_visit_end", count: 1, days: [1], stops: [{ itemId: "a", title: "This stop", day: 1, reason: "closes_early", atMin: 1020, startMin: 960 }] });
   assert.equal(closedOnArrival(items, h, "2027-11-08")?.count, 1, "the arrival check is unchanged");
   assert.equal(findingLine(f!), "1 stop closes before your visit ends");
 });

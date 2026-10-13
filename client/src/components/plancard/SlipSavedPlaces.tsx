@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
+import { AddChecksNotice, type AddedStop } from "@/components/plancard/AddChecksNotice";
 import {
   planHasItemNamed,
   savedPlacesForPlan,
@@ -35,6 +36,8 @@ export function SlipSavedPlaces({
 }) {
   const { toast } = useToast();
   const [added, setAdded] = useState<Set<string>>(new Set());
+  // AP-1 (ledger `2026-10-13-ap1-save-then-warn`): the last saved stop and what its checks found.
+  const [checked, setChecked] = useState<AddedStop | null>(null);
   const { data: saved } = useQuery<SavedItemRow[]>({ queryKey: ["/api/saved-items"] });
   const places = savedPlacesForPlan(saved, destination, stops);
 
@@ -51,16 +54,19 @@ export function SlipSavedPlaces({
           dayNumber: 1,
           status: "planned",
           ...(place.city ? { locationName: place.city } : {}),
+          addChecks: true,
         }),
       });
       if (!res.ok) throw new Error("add failed");
-      return place;
+      const out = await res.json().catch(() => null);
+      return { place, out };
     },
-    onSuccess: (place) => {
+    onSuccess: ({ place, out }) => {
       setAdded((prev) => new Set(prev).add(place.id));
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      toast({ title: ADDED_TO_PLAN_TITLE, description: `"${place.contentName}" is on day 1 of this plan.` });
+      if (out?.id && out?.addChecks) setChecked({ itemId: out.id, checks: out.addChecks });
+      else toast({ title: ADDED_TO_PLAN_TITLE, description: `"${place.contentName}" is on day 1 of this plan.` });
     },
     onError: () => toast({ title: "Couldn't add it", variant: "destructive" }),
   });
@@ -74,6 +80,16 @@ export function SlipSavedPlaces({
         Your saved places here
         <span className="text-xs text-muted-foreground font-normal">· {places.length}</span>
       </div>
+      <AddChecksNotice
+        tripId={tripId}
+        added={checked}
+        onDismiss={() => setChecked(null)}
+        onSettled={() => {
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+          queryClient.invalidateQueries({ queryKey: ["/api/optimization-preview", { tripId }] });
+        }}
+        testId="slip-saved-place-checks"
+      />
       <ul className="divide-y rounded-lg border">
         {places.map((place) => {
           const justAdded = added.has(place.id);

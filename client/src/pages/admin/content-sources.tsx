@@ -299,7 +299,7 @@ interface PlanLookupOutcomesResponse {
  * as stored; derives nothing. A title is the item's CURRENT title (the table stores ids only); a deleted item
  * says so rather than inventing one.
  */
-function LookupOutcomesCard() {
+export function LookupOutcomesCard() {
   const [planInput, setPlanInput] = useState("");
   const [planId, setPlanId] = useState<string | null>(null);
   const counts = useQuery<LookupOutcomeCountsResponse>({ queryKey: ["/api/admin/content-sources/lookup-outcomes"] });

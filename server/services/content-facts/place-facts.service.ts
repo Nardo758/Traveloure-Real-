@@ -378,6 +378,18 @@ export async function enrichPlanItems(input: {
   placesGate?: PlacesCallGate;
   /** PF-1: which caller started this run, stored on each outcome row (absent ⇒ NULL, "not stated"). */
   trigger?: PlaceLookupTrigger | null;
+  /**
+   * AP-1: the billed lookups this run may make, and the reason a billed lookup past it is capped with. Absent ⇒
+   * `placesLookupsPerDraft()` / `draft_cap` (every existing caller). The hand-add run passes what is left of the
+   * plan's daily budget and `plan_day_cap`.
+   */
+  billedBudget?: number;
+  billedCapReason?: PlaceLookupCapReason;
+  /**
+   * AP-1: before a BILLED Details call, does a stored official hours fact already cover this place? True ⇒ no call;
+   * the item keeps the place id (so the checks read the official fact) and the row says `official_fact`.
+   */
+  officialCovers?: (placeId: string) => Promise<boolean>;
 }): Promise<{ looked: number; cached: number; recorded: number; unnamed: number; unmatched: number; renamed: number; areas: number; runId: string }> {
   const run = { runId: crypto.randomUUID(), runStartedAt: new Date(), trigger: input.trigger ?? null };
   const summary = { looked: 0, cached: 0, recorded: 0, unnamed: 0, unmatched: 0, renamed: 0, areas: 0, runId: run.runId };
@@ -397,7 +409,8 @@ export async function enrichPlanItems(input: {
   const progress = input.draftId ? new LookupProgress(input.draftId) : null;
   const gate = input.placesGate ?? (input.adapters ? ungatedPlacesCall : mapsGatedPlacesCall);
   try {
-    const cap = placesLookupsPerDraft();
+    const cap = input.billedBudget ?? placesLookupsPerDraft();
+    const capReason: PlaceLookupCapReason = input.billedCapReason ?? "draft_cap";
     const areaNames = await loadMarketAreaNames(input.market, input.city);
     const byDay = namedByDay(input.items, input.city, areaNames);
     const named = new Set(Array.from(byDay.values()).flat().map((e) => e.item));
@@ -448,8 +461,13 @@ export async function enrichPlanItems(input: {
           summary.cached += 1;
           drafts = cached;
           cache = "hit";
+        } else if (placeId && input.officialCovers && (await input.officialCovers(placeId))) {
+          await keepPlaceIdOnItem(input.tripId, item.id, placeId);
+          logSkipped(ids(item), day, "official_fact");
+          note(item, day, "skipped", "official_fact", { placeId });
+          continue;
         } else if (capReached) {
-          capped(item, day, "draft_cap");
+          capped(item, day, capReason);
           continue;
         } else if (placeId && adapter.fetchByPlaceId) {
           const fetchById = adapter.fetchByPlaceId.bind(adapter);
@@ -505,6 +523,23 @@ export async function enrichPlanItems(input: {
     await recordLookupOutcomes(run, outcomes);
   }
   return summary;
+}
+
+/**
+ * AP-1: a hand-added stop whose place is covered by a stored official fact keeps the Google place id on its own
+ * row (LD 57 — a place id is the one Places value kept), so the feasibility reader maps the official fact to it.
+ * Never overwrites an id the row already has.
+ */
+async function keepPlaceIdOnItem(tripId: string, itemId: string, placeId: string): Promise<void> {
+  await db
+    .update(itineraryItems)
+    .set({ googlePlaceId: placeId } as any)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), isNull(itineraryItems.googlePlaceId)));
+}
+
+/** AP-1: is an official, tagged hours fact stored for this place? (The same rows the feasibility reader attaches.) */
+export async function officialHoursStoredFor(placeId: string): Promise<boolean> {
+  return (await storedOfficialFacts([placeId], ["hours"])).length > 0;
 }
 
 async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[]> {
@@ -612,6 +647,20 @@ function placeIdsOf(own: FactRow[]): Map<string, string> {
 }
 
 /**
+ * AP-1: the map above, plus an item's own `google_place_id` where the plan holds no Places row for it — a stop
+ * kept off the billed call because an official fact covers its place (`keepPlaceIdOnItem`) is mapped to that fact.
+ */
+async function itemPlaceIdsForTrip(tripId: string, own: FactRow[]): Promise<Map<string, string>> {
+  const placeOf = placeIdsOf(own);
+  const rows = await db
+    .select({ id: itineraryItems.id, placeId: itineraryItems.googlePlaceId })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), sql`${itineraryItems.googlePlaceId} IS NOT NULL`));
+  for (const r of rows) if (r.placeId && !placeOf.has(r.id)) placeOf.set(r.id, r.placeId);
+  return placeOf;
+}
+
+/**
  * P0-e addition 7: the engine's order (`rankFactsByOrigin`), with every official page-read hours fact moved
  * ahead of Google's — "when the official hours fact exists it replaces the Google line". Platform-native
  * and verified facts keep their place in front.
@@ -640,7 +689,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
   // warning and the findings read one fact. Only Google-shaped hours (`weekdayDescriptions`) are drawn
   // (`shownHoursFact`); a text-only crawled row is still a view, for the expert's confirm control.
   const tagged = rows.filter((r) => r.sourceClass != null);
-  const placeOf = placeIdsOf(tagged);
+  const placeOf = await itemPlaceIdsForTrip(tripId, tagged);
   const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
   const sources = await sourcesFor([...rows, ...stored]);
   const byItem = new Map<string, FactRow[]>();
@@ -968,7 +1017,7 @@ export async function lastServicesForMarket(market: string, now: Date = new Date
 
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
-  const placeOf = placeIdsOf(own);
+  const placeOf = await itemPlaceIdsForTrip(tripId, own);
   const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
   const sources = await sourcesFor([...own, ...stored]);
   const byItem = withStoredOfficial(own, placeOf, stored);

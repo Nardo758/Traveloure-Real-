@@ -151,7 +151,7 @@ test("G1 — an unsourced or unofficial last admission is refused by the one wri
 test("G2–G5 — the findings: last entry, visit end, last ride; untagged and text-only facts never count", async () => {
   const { findings } = await loadOptimizerFindings(trip);
   const by = new Map(findings.map((f) => [f.kind, f]));
-  assert.deepEqual(by.get("after_last_admission"), { kind: "after_last_admission", count: 1, days: [1], stops: [{ itemId: id("k"), title: "Kiyomizu-dera", day: 1, reason: "after_last_entry", atMin: 990 }] }, "Kiyomizu at 16:45 after 16:30 — the untagged 19:00 for the 20:00 stop is not read");
+  assert.deepEqual(by.get("after_last_admission"), { kind: "after_last_admission", count: 1, days: [1], stops: [{ itemId: id("k"), title: "Kiyomizu-dera", day: 1, reason: "after_last_entry", atMin: 990, startMin: 1005 }] }, "Kiyomizu at 16:45 after 16:30 — the untagged 19:00 for the 20:00 stop is not read");
   assert.equal(by.get("closes_before_visit_end")?.count, 1, "Temple B closes at 16:00 (official) before 16:30 — Places' 20:00 lost");
   assert.deepEqual(by.get("last_service_missed"), { kind: "last_service_missed", count: 1, days: [1], inferred: true }, "the 17:15 ride after the 17:00 last bus — inferred, no stored leg");
   assert.equal(by.has("closed_on_arrival"), false);

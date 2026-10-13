@@ -37,6 +37,7 @@ import {
   type HoursFact,
   planLegCoverage,
   type LegCoverage,
+  findingStopLines,
 } from "@shared/optimizer-lead";
 import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip } from "./content-facts/place-facts.service";
@@ -348,4 +349,52 @@ export async function loadDayFeasibility(tripId: string): Promise<Map<number, Da
     if (d && n > 0) d.noRoute = n;
   });
   return out;
+}
+
+/**
+ * AP-1 (ledger `2026-10-13-ap1-save-then-warn`): ONE stop's hours, read from the SAME feasibility context the
+ * findings and the day line read (§18 rule 1). `lines` are the findings' own stop lines for this item; a stop
+ * the hours or last entry cover with no conflict has none. Read behind the caller's own plan gate.
+ */
+export async function loadStopHours(
+  tripId: string,
+  itemId: string,
+): Promise<{ found: boolean; hasTime: boolean; checked: boolean; lines: string[]; caveat?: string }> {
+  const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  if (!trip) return { found: false, hasTime: false, checked: false, lines: [] };
+  const start = isoOf(trip.startDate);
+  const rows = await db
+    .select({
+      id: itineraryItems.id,
+      title: itineraryItems.title,
+      dayNumber: itineraryItems.dayNumber,
+      startTime: itineraryItems.startTime,
+      endTime: itineraryItems.endTime,
+      durationMinutes: itineraryItems.durationMinutes,
+      itemType: itineraryItems.itemType,
+      lat: itineraryItems.latitude,
+      lng: itineraryItems.longitude,
+      origin: itineraryItems.origin,
+      locationName: itineraryItems.locationName,
+      locationAddress: itineraryItems.locationAddress,
+    })
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, tripId))
+    .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.startTime), asc(itineraryItems.sortOrder));
+  const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
+  const own = items.find((r) => r.id === itemId);
+  if (!own) return { found: rows.some((r) => r.id === itemId), hasTime: false, checked: false, lines: [] };
+  const ctx = await feasibilityContext(tripId, items as FeasibilityItem[], start, trip.marketSlug ?? null);
+  const it = ctx.timed.find((t) => t.id === itemId);
+  if (!it || !it.startTime) return { found: true, hasTime: false, checked: false, lines: [] };
+  const h = ctx.hours.get(itemId);
+  const hoursChecked = !!(h && it.dateIso && parseDayHours(h.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay()));
+  const checked = hoursChecked || ctx.lastEntry.has(itemId);
+  const one = [it];
+  const found = [closedOnArrival(one, ctx.hours, start), afterLastAdmission(one, ctx.lastEntry), closesBeforeVisitEnd(one, ctx.hours, start)].filter(
+    (f): f is Finding => f !== null,
+  );
+  const lines = found.flatMap((f) => findingStopLines(f));
+  const caveat = found.find((f) => f.caveat)?.caveat;
+  return { found: true, hasTime: true, checked, lines, ...(caveat ? { caveat } : {}) };
 }

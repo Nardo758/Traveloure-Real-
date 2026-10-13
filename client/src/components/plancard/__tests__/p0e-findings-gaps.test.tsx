@@ -24,7 +24,7 @@ const closed: Finding = {
   kind: "closed_on_arrival",
   count: 1,
   days: [2],
-  stops: [{ itemId: "g", title: "Ginkaku-ji Temple", day: 2, reason: "after_closing", atMin: 17 * 60 }],
+  stops: [{ itemId: "g", title: "Ginkaku-ji Temple", day: 2, reason: "after_closing", atMin: 17 * 60, startMin: 17 * 60 + 10 }],
 };
 const eight: LegCoverage = {
   complete: false,
@@ -47,7 +47,7 @@ describe("P0-e", () => {
 
     it(`PE7 the hours finding names its stop (${tone})`, () => {
       const t = text(renderToString(<OptimizerLead tone={tone} findings={[closed]} coverage={{ complete: true, unlocated: [] }} routedPlan hasPricedItems={false} fee={fee} onClick={() => {}} />));
-      assert.ok(t.includes("Ginkaku-ji Temple · Day 2 starts after closing (5:00 PM)"));
+      assert.ok(t.includes("Ginkaku-ji Temple · Day 2 · 17:10 starts after closing (5:00 PM)"));
     });
   }
 
