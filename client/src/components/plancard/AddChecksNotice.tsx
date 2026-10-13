@@ -18,7 +18,7 @@ export interface AddedStop {
 
 /** The check read's URL — one home for the surfaces and the hook. */
 export function addChecksUrl(tripId: string, itemId: string): string {
-  return `/api/trips/${tripId}/itinerary-items/${itemId}/checks`;
+  return `/api/trips/${tripId}/stops/${itemId}/checks`;
 }
 
 /**

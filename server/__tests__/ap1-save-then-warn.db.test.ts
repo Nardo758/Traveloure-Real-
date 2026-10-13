@@ -247,11 +247,11 @@ test("S6 the way in: an unlocated end keeps the gap; a free plan reads the strai
 
 test("S7 the check read is behind the plan's read gate", async () => {
   const gin = (await db.execute(sql`SELECT id FROM itinerary_items WHERE trip_id = ${TRIP} AND title = 'Ginkaku-ji Temple'`)).rows[0] as any;
-  const ok = await call(`/api/trips/${TRIP}/itinerary-items/${gin.id}/checks`, OWNER);
+  const ok = await call(`/api/trips/${TRIP}/stops/${gin.id}/checks`, OWNER);
   assert.equal(ok.status, 200);
   assert.equal(ok.body.itemId, gin.id);
-  const stranger = await call(`/api/trips/${TRIP}/itinerary-items/${gin.id}/checks`, STRANGER);
+  const stranger = await call(`/api/trips/${TRIP}/stops/${gin.id}/checks`, STRANGER);
   assert.ok(stranger.status === 403 || stranger.status === 404, `stranger refused (${stranger.status})`);
-  const notHere = await call(`/api/trips/${TRIP}/itinerary-items/${id("nope")}/checks`, OWNER);
+  const notHere = await call(`/api/trips/${TRIP}/stops/${id("nope")}/checks`, OWNER);
   assert.equal(notHere.status, 404);
 });

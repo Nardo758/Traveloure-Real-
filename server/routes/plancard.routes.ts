@@ -615,11 +615,11 @@ router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async
 // AP-1 (ledger `2026-10-13-ap1-save-then-warn`): ONE stop's checks after a slip add — its hours lines and the
 // way into it, `pending` while the lookup or the leg recompute is still arriving. Through the plan's READ gate;
 // a stop not on this plan is one 404 (LD 40 posture). Reads only — no lookup or routing call is made here.
-router.get("/api/trips/:tripId/itinerary-items/:itemId/checks", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/stops/:itemId/checks", isAuthenticated, async (req, res) => {
   try {
     const { tripId, itemId } = req.params;
     const userId = getUserId(req)!;
-    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/itinerary-items/:itemId/checks");
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/stops/:itemId/checks");
     if (denied) return res.status(denied.status).json({ error: denied.message });
     const { loadStopChecks } = await import("../services/add-checks.service");
     const checks = await loadStopChecks(tripId, itemId);
