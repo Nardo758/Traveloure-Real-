@@ -356,3 +356,101 @@ mtime_ms = 1791912606229
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/64bb4bd1-a715-40ff-8d19-8a986c50b88c/61413466-7477-472f-9ee1-79b96ec7ee26"
 storage_version_token = "1791912870000717"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "hnDGKeWu2yXXlFd9fjhFq"
+uri = "file://.local/e2e-step0-review-assets/e2e-pre-phase2-gate.md"
+type = "text"
+title = "Step 0 gate report"
+description = "Updated coverage, D1–D5, rails, guard status and held release."
+logical_id = "7d3dec21-5663-4f43-89aa-66f28d1e3b3b"
+content_hash = "sha256:c238e931ebdd670017f545a172d73309f5b1a37bf5911d436af7664242897b6c"
+size = 17886
+mtime_ms = 1791915737733
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/7d3dec21-5663-4f43-89aa-66f28d1e3b3b/08ac388a-31bd-400e-a029-c84cb4da80de"
+storage_version_token = "1791915744230902"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "nXapQ5l9SlxHMrd5dD68G"
+uri = "file://.local/e2e-step0-review-assets/development-qa-recipient-guard-proposal.md"
+type = "text"
+title = "QA recipient guard proposal"
+description = "Exact four-file scope, limitations and provider-free proof plan; unapplied."
+logical_id = "4806663a-6f8b-405d-bd15-38537cfb77d5"
+content_hash = "sha256:dba9a3dd088d31d2048b82ccb92b0537a4c20ae0a37d48b38e7fe8fbcb6f0085"
+size = 5983
+mtime_ms = 1791915744841
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/4806663a-6f8b-405d-bd15-38537cfb77d5/07523e1f-3a1e-4ec5-baca-d416a1dde31c"
+storage_version_token = "1791915745218894"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "s6vlenLbG6a8cq72W4x2Y"
+uri = "file://.local/e2e-step0-review-assets/e2e-approved-golden-db-baseline.md"
+type = "text"
+title = "Fresh DB-stage baseline"
+description = "56/56 in each of two clean loops, with disposable-schema cleanup confirmed."
+logical_id = "e8e1b1b6-9a66-4b60-99a2-156eec52f4e0"
+content_hash = "sha256:c1678b42ea34be63d18c23aa0413861dc16874b56ff1775a1e581aedb9ab5945"
+size = 2893
+mtime_ms = 1791915745621
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/e8e1b1b6-9a66-4b60-99a2-156eec52f4e0/48a65ff3-bf93-4e20-b9a6-f922fa93e1ce"
+storage_version_token = "1791915746078428"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "PmIWkfo8zHVbR0Y4dPNEz"
+uri = "file://.local/e2e-step0-review-assets/real-clock-ledger.md"
+type = "text"
+title = "Real-clock ledger — MISSED"
+description = "Original times preserved; runner-liveness gap documented; no retry or backfill."
+logical_id = "29d96099-cc30-42da-b29e-a194315262ee"
+content_hash = "sha256:99a0a17f4d8fba706697a76588e88aa7a25410a3df8450e3597fbb4f19cb8b66"
+size = 5138
+mtime_ms = 1791915747065
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/29d96099-cc30-42da-b29e-a194315262ee/f56de27e-c78d-4fa9-bd22-9abeaad232cf"
+storage_version_token = "1791915747434447"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "zuiw8Ye9Fj6ha6iINUnLo"
+uri = "file://.local/e2e-step0-review-assets/blockers.md"
+type = "text"
+title = "Updated blocker table"
+description = "Open coverage and release blockers, including development runner and separate production scheduler proof."
+logical_id = "12e61691-f17c-4da0-963b-7fcc72ca9a03"
+content_hash = "sha256:b09cc17062387a4cdbceeb1ec36a5eb0ede934e2ef150e548fd4586cfb971999"
+size = 7529
+mtime_ms = 1791915748341
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/12e61691-f17c-4da0-963b-7fcc72ca9a03/242093ae-33f7-4f84-9102-4b408e9c13c4"
+storage_version_token = "1791915748723395"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "pLDNL2pjC7_Cm9qZoBmRk"
+uri = "file://.local/e2e-step0-review-assets/e2e-step0-inventory.md"
+type = "text"
+title = "Automation inventory and coverage map"
+description = "Full source tables; 89 main registry entries, not a complete product union."
+logical_id = "d399b027-e009-4b9d-a279-c19eccf299b2"
+content_hash = "sha256:03024fbe7d19ea6a45379fff6bf4eec573b9e7ef050dbe080a9bc16943055305"
+size = 163296
+mtime_ms = 1791915749509
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/d399b027-e009-4b9d-a279-c19eccf299b2/612a5a38-05ae-47ef-9667-1a163e5f0a68"
+storage_version_token = "1791915750204886"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "nwJ3ZRPly2DgSwtnGkvnv"
+uri = "file://.local/e2e-step0-review-assets/development-qa-recipient-guard-with-diff.md"
+type = "text"
+title = "QA guard proposal — full diff included"
+description = "Self-contained review document: four-file exact diff, retry limitation, exclusions and proof plan."
+logical_id = "a9702669-3586-4f2e-a6e1-966c5ae08043"
+content_hash = "sha256:5e19f0132c11fcc2829c9b87807f496ae04d968a2b114b531e79ea120c499463"
+size = 16604
+mtime_ms = 1791915827845
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/a9702669-3586-4f2e-a6e1-966c5ae08043/3f9217ec-3a80-4e18-9a9a-8a37d56ce9d8"
+storage_version_token = "1791915828404386"
+content_type = "text/markdown"
