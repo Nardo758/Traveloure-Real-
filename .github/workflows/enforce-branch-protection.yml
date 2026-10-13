@@ -1,8 +1,18 @@
 name: Enforce Branch Protection
 
 # Reads .github/branch-protection.json and applies the required status checks
-# to the main branch via the GitHub REST API. This makes the Tier 1 gate list
-# in CI_GATES.md machine-enforced rather than documentation-only.
+# to the main branch as a REPOSITORY RULESET via the GitHub REST API. This makes
+# the Tier 1 gate list in CI_GATES.md machine-enforced rather than
+# documentation-only.
+#
+# CI-1 Phase 1 (decision-maker ruling 1, Oct 12, 2026; ledger
+# `2026-10-12-ci1-post-merge-stamp`): classic branch protection moves to a
+# ruleset whose SOLE bypass actor is the Ledger Stamp GitHub App (repository
+# variable LEDGER_STAMP_APP_ID), so the post-merge stamp (ledger-stamp.yml) can
+# push its docs-only commit without the merge-main push. All 39 contexts are
+# preserved. The classic required-status-checks are retired ONLY by a manual
+# dispatch with `retire_classic_status_checks: true`, after the ruleset has
+# been verified — never as a side effect of a push.
 #
 # Trigger: every push to main that touches CI_GATES.md or this file itself,
 # plus manual dispatch so an admin can re-apply after any manual UI change.
@@ -32,6 +42,11 @@ on:
       - '.github/CI_GATES.md'
       - '.github/workflows/enforce-branch-protection.yml'
   workflow_dispatch:
+    inputs:
+      retire_classic_status_checks:
+        description: "After the ruleset is verified, delete the classic required-status-checks on main (the ruleset then enforces them alone)."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -53,61 +68,95 @@ jobs:
           if [ -z "${BRANCH_PROTECTION_PAT:-}" ]; then
             echo "::warning::Repository secret BRANCH_PROTECTION_PAT is missing or empty."
             echo "::warning::Use the exact repository secret name BRANCH_PROTECTION_PAT. A secret stored under any other name (for example Nardo758) will not be read by this workflow."
-            echo "::warning::This job will fall back to GITHUB_TOKEN for legibility, but branch-protection PATCH/GET requests will still fail unless BRANCH_PROTECTION_PAT is configured with repository Administration: Read and write."
+            echo "::warning::This job will fall back to GITHUB_TOKEN for legibility, but ruleset and branch-protection requests will still fail unless BRANCH_PROTECTION_PAT is configured with repository Administration: Read and write."
           else
             echo "BRANCH_PROTECTION_PAT is configured."
           fi
 
-      - name: Apply required status checks from branch-protection.json
+      - name: Apply the ruleset from branch-protection.json
         env:
           # Exact secret name required: BRANCH_PROTECTION_PAT
           GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          STAMP_APP_ID: ${{ vars.LEDGER_STAMP_APP_ID }}
         run: |
           set -euo pipefail
 
+          NAME=$(jq -r '.ruleset.name' .github/branch-protection.json)
           BRANCH=$(jq -r '.branch' .github/branch-protection.json)
-          # Build a JSON array of the required context strings
-          CONTEXTS=$(jq '.required_status_checks.contexts' .github/branch-protection.json)
+          # The sole bypass actor is the Ledger Stamp App; with no app id configured the ruleset has none.
+          jq --arg branch "$BRANCH" --arg app "${STAMP_APP_ID:-}" '{
+              name: .ruleset.name,
+              target: "branch",
+              enforcement: "active",
+              conditions: { ref_name: { include: ["refs/heads/" + $branch], exclude: [] } },
+              rules: [ { type: "required_status_checks", parameters: {
+                strict_required_status_checks_policy: .required_status_checks.strict,
+                required_status_checks: [ .required_status_checks.contexts[] | { context: . } ] } } ],
+              bypass_actors: (if $app == "" then [] else [ { actor_id: ($app | tonumber), actor_type: "Integration", bypass_mode: "always" } ] end)
+            }' .github/branch-protection.json > /tmp/ruleset.json
 
-          echo "Applying required status checks to branch: $BRANCH"
-          echo "Contexts: $CONTEXTS"
-
-          # PATCH only the required_status_checks sub-resource so we do not
-          # overwrite other protection settings (review requirements, etc.).
-          # Send the body as JSON via --input so contexts is a real array;
-          # -f/--raw-field would send it as a string and the API returns 422.
-          jq '{strict: .required_status_checks.strict, contexts: .required_status_checks.contexts}' \
-            .github/branch-protection.json \
-          | gh api \
-              --method PATCH \
-              "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
-              --input -
-
-          echo "✓ Branch protection updated successfully."
-
-      - name: Verify applied contexts match declaration
-        env:
-          # Exact secret name required: BRANCH_PROTECTION_PAT
-          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-
-          BRANCH=$(jq -r '.branch' .github/branch-protection.json)
-          DECLARED=$(jq -r '.required_status_checks.contexts[]' .github/branch-protection.json | sort)
-
-          LIVE=$(gh api \
-            "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
-            --jq '.contexts[]' | sort)
-
-          MISSING=$(comm -23 <(echo "$DECLARED") <(echo "$LIVE"))
-
-          if [ -n "$MISSING" ]; then
-            echo "ERROR: The following declared contexts were not applied:"
-            echo "$MISSING"
-            exit 1
+          ID=$(gh api "repos/$REPO/rulesets?includes_parents=false" --paginate --jq ".[] | select(.name == \"$NAME\") | .id" | head -1)
+          if [ -n "$ID" ]; then
+            echo "Updating ruleset $ID ($NAME)"
+            gh api --method PUT "repos/$REPO/rulesets/$ID" --input /tmp/ruleset.json > /dev/null
+          else
+            echo "Creating ruleset ($NAME)"
+            gh api --method POST "repos/$REPO/rulesets" --input /tmp/ruleset.json > /dev/null
+          fi
+          if [ -z "${STAMP_APP_ID:-}" ]; then
+            echo "::warning::Repository variable LEDGER_STAMP_APP_ID is not set — the ruleset has NO bypass actor and the ledger stamp cannot push."
           fi
 
-          echo "✓ All declared required status checks are active on $BRANCH:"
-          echo "$LIVE"
+      - name: Verify the ruleset matches the declaration
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          STAMP_APP_ID: ${{ vars.LEDGER_STAMP_APP_ID }}
+        run: |
+          set -euo pipefail
+
+          NAME=$(jq -r '.ruleset.name' .github/branch-protection.json)
+          ID=$(gh api "repos/$REPO/rulesets?includes_parents=false" --paginate --jq ".[] | select(.name == \"$NAME\") | .id" | head -1)
+          gh api "repos/$REPO/rulesets/$ID" > /tmp/live.json
+
+          DECLARED=$(jq -r '.required_status_checks.contexts[]' .github/branch-protection.json | sort)
+          LIVE=$(jq -r '.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context' /tmp/live.json | sort)
+          MISSING=$(comm -23 <(echo "$DECLARED") <(echo "$LIVE"))
+          EXTRA=$(comm -13 <(echo "$DECLARED") <(echo "$LIVE"))
+          if [ -n "$MISSING$EXTRA" ]; then
+            echo "ERROR: ruleset contexts differ from the declaration."
+            echo "Missing: $MISSING"
+            echo "Extra: $EXTRA"
+            exit 1
+          fi
+          [ "$(jq -r .enforcement /tmp/live.json)" = "active" ] || { echo "ERROR: ruleset is not active"; exit 1; }
+
+          ACTORS=$(jq -c '[.bypass_actors[]? | {actor_id, actor_type}]' /tmp/live.json)
+          if [ -n "${STAMP_APP_ID:-}" ]; then
+            WANT=$(jq -nc --arg app "$STAMP_APP_ID" '[{actor_id: ($app | tonumber), actor_type: "Integration"}]')
+          else
+            WANT='[]'
+          fi
+          if [ "$ACTORS" != "$WANT" ]; then
+            echo "ERROR: bypass actors are $ACTORS, expected $WANT (the Ledger Stamp App only)."
+            exit 1
+          fi
+          echo "✓ Ruleset '$NAME' is active with all $(echo "$DECLARED" | wc -l) declared contexts; bypass actors: $ACTORS"
+
+      - name: Retire the classic required status checks (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.retire_classic_status_checks
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BRANCH=$(jq -r '.branch' .github/branch-protection.json)
+          # Runs only after the verify step above passed in this same job. Removes ONLY the classic
+          # required-status-checks sub-resource; any other classic setting is left for a human.
+          if gh api "repos/$REPO/branches/$BRANCH/protection/required_status_checks" > /dev/null 2>&1; then
+            gh api --method DELETE "repos/$REPO/branches/$BRANCH/protection/required_status_checks"
+            echo "✓ Classic required status checks removed from $BRANCH; the ruleset enforces them."
+          else
+            echo "No classic required status checks on $BRANCH — nothing to retire."
+          fi

@@ -113,6 +113,14 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 >
 > The manual UI route below remains for an emergency only; a hand edit is overwritten by the next
 > enforcer run.
+>
+> **Since CI-1 Phase 1 (ledger `2026-10-12-ci1-post-merge-stamp`) the set is applied as a REPOSITORY
+> RULESET** named `main — required status checks`, whose sole bypass actor is the Ledger Stamp GitHub
+> App (repository variable `LEDGER_STAMP_APP_ID`). Read it back with
+> `GET /repos/Nardo758/Traveloure-Real-/rulesets` (admin token). The classic required-status-checks are
+> retired only by a manual dispatch of the enforcer with `retire_classic_status_checks: true`, after the
+> ruleset verifies; until then both enforce the same 39 contexts. The App pushes exactly one kind of
+> commit: `.github/workflows/ledger-stamp.yml`'s docs-only `[skip ci]` R-number stamp.
 
 1. Go to **GitHub → repository → Settings → Branches**
 2. Click **Edit** on the `main` branch protection rule (or create one)

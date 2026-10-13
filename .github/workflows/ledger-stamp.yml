@@ -1,0 +1,156 @@
+name: Ledger Stamp
+
+# CI-1 Phase 1 — POST-MERGE R-NUMBER STAMPING (decision-maker rulings, Oct 12, 2026; ledger
+# `2026-10-12-ci1-post-merge-stamp`). PRs merge with their ledger rows still `R?`. After each merge
+# to main that touches docs/DECISIONS.md, this job:
+#   1. moves every `R?` row to the end of the ledger and numbers it (scripts/assign-r-numbers.cjs --stamp),
+#      appending `; merged <sha7>` to its citation cell and replacing `R?` on CLAUDE.md lines naming its slug;
+#   2. refuses to commit anything outside docs/DECISIONS.md and CLAUDE.md;
+#   3. runs the ledger lint with --require-assigned and stamps ONLY if it passes;
+#   4. pushes a docs-only `[skip ci]` commit as the Ledger Stamp GitHub App — the ruleset's sole bypass
+#      actor — so the stamp triggers no gates and needs no merge-main push.
+# On a lint failure nothing is pushed and an issue is opened with the lint output.
+#
+# Credentials (names only): repository variable LEDGER_STAMP_APP_ID and repository secret
+# LEDGER_STAMP_APP_PRIVATE_KEY. Until they exist, a merge with no `R?` rows is a no-op (green), and a
+# merge carrying `R?` rows fails red with an issue — the same signal the old `--require-assigned`
+# step on main gave.
+#
+# Status context: NOT a required check. It runs after the merge, on main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/DECISIONS.md'
+  workflow_dispatch:
+
+# One stamp at a time: two merges in quick succession are numbered in the order their runs start,
+# each run re-reading main, so a second run finds nothing left to number.
+concurrency:
+  group: ledger-stamp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  ledger-stamp:
+    name: ledger-stamp (post-merge R-number)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 500
+          persist-credentials: false
+
+      - name: Anything to number?
+        id: probe
+        run: |
+          set -euo pipefail
+          node scripts/assign-r-numbers.cjs --self-test
+          if node scripts/check-decision-guards.cjs --require-assigned > /tmp/lint-before.txt 2>&1; then
+            echo "No R? rows on main — nothing to stamp."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            if grep -q "Unassigned R-number" /tmp/lint-before.txt; then
+              echo "needed=true" >> "$GITHUB_OUTPUT"
+            else
+              # The ledger is broken for a reason the stamp cannot fix: report it, stamp nothing.
+              cat /tmp/lint-before.txt
+              echo "needed=lint" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Mint the Ledger Stamp App token
+        id: app
+        if: steps.probe.outputs.needed == 'true' && vars.LEDGER_STAMP_APP_ID != ''
+        uses: actions/create-github-app-token@v1.11.0
+        with:
+          app-id: ${{ vars.LEDGER_STAMP_APP_ID }}
+          private-key: ${{ secrets.LEDGER_STAMP_APP_PRIVATE_KEY }}
+
+      - name: Stamp, lint, push
+        id: stamp
+        if: steps.probe.outputs.needed == 'true'
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          REPO: ${{ github.repository }}
+          MERGED_AT: ${{ github.event.head_commit.timestamp }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_TOKEN:-}" ]; then
+            echo "::error::Main carries R? rows but the Ledger Stamp App is not configured (repository variable LEDGER_STAMP_APP_ID / secret LEDGER_STAMP_APP_PRIVATE_KEY)."
+            exit 1
+          fi
+          APP_USER_ID=$(curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/users/${APP_SLUG}%5Bbot%5D" | jq -r .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${APP_USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          REMOTE="https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git"
+
+          # A merge can land between our read and our push. Re-read main and re-stamp (idempotent) on
+          # a rejected push; three tries, then fail red.
+          for attempt in 1 2 3; do
+            git fetch -q "$REMOTE" main
+            git reset -q --hard FETCH_HEAD
+            node scripts/assign-r-numbers.cjs --stamp | tee /tmp/stamp.txt
+            if git diff --quiet; then
+              echo "Nothing left to number (another run stamped it)."
+              echo "stamped=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # Two files, never more.
+            OUTSIDE=$(git diff --name-only | grep -v -x -e 'docs/DECISIONS.md' -e 'CLAUDE.md' || true)
+            if [ -n "$OUTSIDE" ]; then
+              echo "::error::The stamp changed files outside docs/DECISIONS.md and CLAUDE.md: $OUTSIDE"
+              exit 1
+            fi
+            if ! node scripts/check-decision-guards.cjs --require-assigned > /tmp/lint-after.txt 2>&1; then
+              cat /tmp/lint-after.txt
+              echo "::error::Ledger lint failed after stamping — nothing pushed."
+              exit 1
+            fi
+            NUMBERS=$(grep -E '^R[0-9]+ ' /tmp/stamp.txt | tr '\n' ' ' | sed 's/  */ /g; s/ $//')
+            git commit -q -am "ledger: stamp ${NUMBERS} [skip ci]"
+            if git push -q "$REMOTE" HEAD:main; then
+              echo "stamped=${NUMBERS}" >> "$GITHUB_OUTPUT"
+              {
+                echo "### Ledger stamp"
+                echo "- stamped: ${NUMBERS}"
+                echo "- stamp commit: $(git rev-parse --short HEAD)"
+                echo "- merge pushed at: ${MERGED_AT:-unknown}; stamp pushed at: $(date -u +%Y-%m-%dT%H:%M:%SZ); attempt ${attempt}"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "Push rejected (main moved) — re-reading main, attempt $((attempt + 1))."
+          done
+          echo "::error::Could not push the stamp after 3 attempts."
+          exit 1
+
+      - name: Report a ledger the stamp cannot fix
+        if: steps.probe.outputs.needed == 'lint'
+        run: exit 1
+
+      - name: Open an issue (nothing was stamped)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo "The post-merge ledger stamp did not stamp main at \`${SHA:0:9}\`. Nothing was pushed."
+            echo
+            echo "Run: ${RUN_URL}"
+            echo
+            echo '```'
+            cat /tmp/lint-after.txt /tmp/lint-before.txt 2>/dev/null | tail -40 || true
+            echo '```'
+          } > /tmp/issue.md
+          gh issue create --repo "$REPO" --title "Ledger stamp failed at ${SHA:0:9}" --body-file /tmp/issue.md
