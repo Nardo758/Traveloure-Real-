@@ -5,6 +5,11 @@
     "name": "main — required status checks",
     "_bypass": "The only bypass actor is the Ledger Stamp GitHub App, read from the repository variable LEDGER_STAMP_APP_ID (actor_type Integration, bypass_mode always). No other actor is ever added here."
   },
+  "review_ruleset": {
+    "name": "Protect main (review + checks + no force-push/delete)",
+    "_comment": "The pre-existing review ruleset on main. The enforcer sets ONLY the pull_request rule's require_last_push_approval to the value below and verifies it; every other rule, parameter and bypass actor in that ruleset is left as it is (decision-maker, Oct 13, 2026).",
+    "require_last_push_approval": false
+  },
   "required_status_checks": {
     "strict": false,
     "contexts": [
