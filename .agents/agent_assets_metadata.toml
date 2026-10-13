@@ -300,3 +300,59 @@ mtime_ms = 1790936771372
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/f076e28a-d96d-4081-86fc-598a8310b85e/5e1634ee-578e-4dcc-8bbd-26ed7ce14e2e"
 storage_version_token = "1790936929075876"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "9Zb5LlU0BN8vdHsu_bNR7"
+uri = "file://.local/worktrees/e2e-automation-phase1/reports/e2e-pre-phase2-gate.md"
+type = "text"
+title = "Step 0 — pre-Phase-2 gate report"
+description = "Findings, fresh golden counts, guard results and held approvals."
+logical_id = "d4c54b85-d888-4096-b48b-62b6786dd18f"
+content_hash = "sha256:c2c9957449fe54a80e1b50b5bab8acaf3d4f14cf54c253b9e401746a9e439cb9"
+size = 15888
+mtime_ms = 1791912806688
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/d4c54b85-d888-4096-b48b-62b6786dd18f/e6b5316d-364b-4bf3-a225-222747b83d33"
+storage_version_token = "1791912867682878"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "tiiZ-iyuyxegdiTYslan9"
+uri = "file://.local/worktrees/e2e-automation-phase1/reports/e2e-step0-inventory.md"
+type = "text"
+title = "Automation source inventory and coverage proposals"
+description = "Registry, mail, notification, push, job and source-step tables; unresolved mappings are explicit."
+logical_id = "5e5cea33-4999-43fa-86fb-fca365cfd22d"
+content_hash = "sha256:3eb26665d1ab96d336983a8434baaa8d6fd64a0433ee727be2e78705a8364760"
+size = 163001
+mtime_ms = 1791912384365
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/5e5cea33-4999-43fa-86fb-fca365cfd22d/6e38d721-2934-439d-b1cf-75e96e340659"
+storage_version_token = "1791912868622526"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "DvoFilNLziBaD2Cegl_Ir"
+uri = "file://.local/worktrees/e2e-automation-phase1/reports/e2e-persona-applicability.md"
+type = "text"
+title = "Persona applicability — 550 proposed pairs"
+description = "All R/O/N/A proposals and reasons, awaiting founder approval."
+logical_id = "c4c0f001-b730-48bd-90f2-30d4384315cc"
+content_hash = "sha256:74c5097efb20d002b7faa7a6f2c2f7c1069d928aaea3e6ba17ff9d41473e1f37"
+size = 72643
+mtime_ms = 1791911924048
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/c4c0f001-b730-48bd-90f2-30d4384315cc/6d8d8525-1883-4cfe-9fe5-893de5fc4bf8"
+storage_version_token = "1791912869307040"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "_rUJ0Qfh1M0KZpe5DrIvI"
+uri = "file://.local/worktrees/e2e-automation-phase1/reports/real-clock-ledger.md"
+type = "text"
+title = "Real-clock ledger — next-day proof still waiting"
+description = "Stored timestamps and actual held outcome, with no retry or invented delivery."
+logical_id = "64bb4bd1-a715-40ff-8d19-8a986c50b88c"
+content_hash = "sha256:d5783c76fdaff36ce7c2a1049dfb3a9b46796db0c9f59096cba6c02e9af607d9"
+size = 3574
+mtime_ms = 1791912606229
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/64bb4bd1-a715-40ff-8d19-8a986c50b88c/61413466-7477-472f-9ee1-79b96ec7ee26"
+storage_version_token = "1791912870000717"
+content_type = "text/markdown"
