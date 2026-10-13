@@ -30,6 +30,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { legRefetchDelayMs } from "@/lib/slip-legs";
 import { roundToFiveMinutes, type StopTimeRule } from "@shared/stop-time-edit";
 import { usePlanRowLook } from "@/components/plan/row-look";
+import { AddChecksNotice, type AddedStop } from "@/components/plancard/AddChecksNotice";
 import {
   buildSlipAddItemBody,
   buildSlipEditItemBody,
@@ -172,17 +173,20 @@ export function SlipAddItemControl({
   const look = usePlanRowLook();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<SlipItemFormValues>(EMPTY_SLIP_ITEM_FORM);
+  // AP-1 (ledger `2026-10-13-ap1-save-then-warn`): the saved stop and what its checks found.
+  const [added, setAdded] = useState<AddedStop | null>(null);
 
   const addMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const res = await apiRequest("POST", SLIP_ITEM_ENDPOINTS.add(tripId), body);
+      const res = await apiRequest("POST", SLIP_ITEM_ENDPOINTS.add(tripId), { ...body, addChecks: true });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (out: any) => {
       invalidatePlan(tripId);
       setValues(EMPTY_SLIP_ITEM_FORM);
       setOpen(false);
-      toast({ title: "Added to your plan" });
+      if (out?.id && out?.addChecks) setAdded({ itemId: out.id, checks: out.addChecks });
+      else toast({ title: "Added to your plan" });
     },
     onError: (err: any) =>
       toast({
@@ -200,8 +204,14 @@ export function SlipAddItemControl({
     );
   }
 
+  const notice = (
+    <AddChecksNotice tripId={tripId} added={added} onDismiss={() => setAdded(null)} onSettled={() => invalidatePlan(tripId)} testId={`${testId}-checks`} />
+  );
+
   if (!open) {
     return (
+      <>
+      {notice}
       <button
         type="button"
         className={
@@ -215,12 +225,14 @@ export function SlipAddItemControl({
       >
         <Plus className="w-3 h-3" /> {label}
       </button>
+      </>
     );
   }
 
   const body = buildSlipAddItemBody(values, { dayNumber, userExperienceId });
   return (
     <div className="mt-2 w-full rounded-md border border-border bg-background p-2.5" data-testid={`${testId}-form`}>
+      {notice}
       <ItemFields values={values} onChange={setValues} idPrefix={`${testId}-input`} />
       <div className="mt-2 flex items-center gap-2">
         <Button

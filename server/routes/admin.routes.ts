@@ -2883,14 +2883,17 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
     // EXP-OVR.P3: enrich each application with the expert's current commission
     // override so the admin UI can pre-populate the editor.
     const userIds = Array.from(new Set(forms.map(f => f.userId).filter(Boolean)));
-    let overrideByUser = new Map<string, string | null>();
+    let overrideByUser = new Map<string, { platformFee: string | null; expertShare: string | null }>();
     if (userIds.length > 0) {
       const overrideRows = await getUserCommissionOverrides(userIds);
-      overrideByUser = new Map(overrideRows.map(r => [r.id, r.override ?? null]));
+      overrideByUser = new Map(overrideRows.map(r => [r.id, { platformFee: r.platformFee ?? null, expertShare: r.expertShare ?? null }]));
     }
+    // FE-1 (a): the editable override is the platform fee; the expert-share column is shown
+    // read-only ("Earner's share — deprecated, read-only").
     const enriched = forms.map(f => ({
       ...f,
-      commissionOverrideExpertSharePercent: overrideByUser.get(f.userId) ?? null,
+      commissionOverridePlatformFeePercent: overrideByUser.get(f.userId)?.platformFee ?? null,
+      commissionOverrideExpertSharePercent: overrideByUser.get(f.userId)?.expertShare ?? null,
     }));
     res.json(enriched);
   });
@@ -3136,20 +3139,33 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
   res.json(updated);
 });
 
+// FE-1 (a): the commission-override PATCH body — the platform-fee override and nothing else.
+const commissionOverrideBodySchema = z
+  .object({ commissionOverridePlatformFeePercent: z.union([z.number(), z.string(), z.null()]).optional() })
+  .strict();
+
 router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
     const admin = await getFullAdminUser(getUserId(req)!);
     if (!admin || admin.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     const targetId = req.params.id;
-    const raw = (req.body as any)?.commissionOverrideExpertSharePercent;
+    // FE-1 (a): the override is stated as the PLATFORM FEE. The deprecated expert-share column is
+    // read-only — a body that names it is refused, never written. `.strict()` allowlist (§19).
+    const parsedOverride = commissionOverrideBodySchema.safeParse(req.body ?? {});
+    if (!parsedOverride.success) {
+      return res.status(400).json({
+        message: "Send commissionOverridePlatformFeePercent (a number in [0, 100], or null). The earner's-share override is deprecated and read-only.",
+      });
+    }
+    const raw = parsedOverride.data.commissionOverridePlatformFeePercent;
     let nextValue: string | null;
     if (raw === null || raw === undefined || raw === "") {
       nextValue = null;
     } else {
       const pct = Number(raw);
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-        return res.status(400).json({ message: "commissionOverrideExpertSharePercent must be a number in [0, 100] or null" });
+        return res.status(400).json({ message: "commissionOverridePlatformFeePercent must be a number in [0, 100] or null" });
       }
       nextValue = pct.toFixed(2);
     }
@@ -3165,9 +3181,9 @@ router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async 
       resourceType: "user",
       resourceId: targetId,
       targetUserId: targetId,
-      metadata: { previous: before.prev ?? null, next: nextValue },
+      metadata: { field: "commission_override_platform_fee_percent", previous: before.prev ?? null, next: nextValue },
     });
-    res.json({ id: targetId, commissionOverrideExpertSharePercent: nextValue });
+    res.json({ id: targetId, commissionOverridePlatformFeePercent: nextValue });
   });
 
   // === Provider Application Routes ===
@@ -7596,7 +7612,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       const current = await db.execute(sql`
         SELECT band_key, rate_type, CAST(default_rate AS FLOAT) AS default_rate,
                CAST(min_rate AS FLOAT) AS min_rate, CAST(max_rate AS FLOAT) AS max_rate,
-               CAST(max_amount AS FLOAT) AS max_amount, is_active
+               CAST(max_amount AS FLOAT) AS max_amount, is_active, display_name, description
         FROM fee_bands WHERE band_key = ${bandKey} LIMIT 1
       `);
       if (!current.rows || current.rows.length === 0) {
@@ -7663,20 +7679,69 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         }
       }
 
-      await db.execute(sql`
-        UPDATE fee_bands
-        SET
-          default_rate = ${nextDefault},
-          min_rate     = ${nextMin},
-          max_rate     = ${nextMax},
-          max_amount   = ${nextMaxAmount},
-          display_name = COALESCE(${displayName ?? null}, display_name),
-          description  = COALESCE(${description ?? null}, description),
-          is_active    = COALESCE(${isActive ?? null}, is_active),
-          updated_by   = ${userId},
-          updated_at   = NOW()
-        WHERE band_key = ${bandKey}
-      `);
+      // FE-1 (b): the edit and its `fee_band_update` audit row commit TOGETHER. The audit write used
+      // to run after the UPDATE with no transaction and a never-throwing writer, so an edit could
+      // land with no trail. Now a failed audit insert rolls the edit back and the PATCH answers an
+      // error: a band change nobody can account for is not saved. `before`/`after` carry every
+      // field this PATCH can change.
+      const nextDisplayName = displayName ?? before.display_name ?? null;
+      const nextDescription = description ?? before.description ?? null;
+      const nextIsActive = isActive ?? before.is_active;
+      try {
+        await db.transaction(async (tx) => {
+          await tx.execute(sql`
+            UPDATE fee_bands
+            SET
+              default_rate = ${nextDefault},
+              min_rate     = ${nextMin},
+              max_rate     = ${nextMax},
+              max_amount   = ${nextMaxAmount},
+              display_name = COALESCE(${displayName ?? null}, display_name),
+              description  = COALESCE(${description ?? null}, description),
+              is_active    = COALESCE(${isActive ?? null}, is_active),
+              updated_by   = ${userId},
+              updated_at   = NOW()
+            WHERE band_key = ${bandKey}
+          `);
+          await tx.insert(accessAuditLogs).values({
+            actorId: userId,
+            actorRole: user.role,
+            action: "fee_band_update",
+            resourceType: "fee_band",
+            resourceId: bandKey,
+            metadata: {
+              before: {
+                default_rate: before.default_rate,
+                min_rate: before.min_rate,
+                max_rate: before.max_rate,
+                max_amount: before.max_amount,
+                display_name: before.display_name ?? null,
+                description: before.description ?? null,
+                is_active: before.is_active,
+              },
+              after: {
+                default_rate: nextDefault,
+                min_rate: nextMin,
+                max_rate: nextMax,
+                max_amount: nextMaxAmount,
+                display_name: nextDisplayName,
+                description: nextDescription,
+                is_active: nextIsActive,
+              },
+              deactivated: isDeactivation,
+            },
+            ipAddress: req.ip ?? null,
+            userAgent: req.get("user-agent") ?? null,
+          } as any);
+        });
+      } catch (txErr: any) {
+        console.error(`[fee-bands] band ${bandKey} edit rolled back — the audit row could not be written:`, txErr?.message || txErr);
+        return res.status(500).json({
+          error: "The band was not changed: its audit record could not be written. Try again.",
+          code: "fee_band_audit_failed",
+          bandKey,
+        });
+      }
       if (bandKey === EXPERT_STANDARD_BAND) clearExpertSplitCache();
 
       // ── The platform Booking Concierge listing's price is EDITABLE FROM THIS PANEL ──────
@@ -7704,22 +7769,6 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           );
         }
       }
-
-      // Audit-log every fee_bands edit. Critical: these rows drive live billing.
-      await recordAdminAudit({
-        actorId: userId,
-        actorRole: user.role,
-        action: "fee_band_update",
-        resourceType: "fee_band",
-        resourceId: bandKey,
-        metadata: {
-          before: { default_rate: before.default_rate, max_amount: before.max_amount, is_active: before.is_active },
-          after: { default_rate: nextDefault, max_amount: nextMaxAmount, is_active: isActive ?? before.is_active },
-          deactivated: isDeactivation,
-        },
-        ipAddress: req.ip ?? null,
-        userAgent: req.get("user-agent") ?? null,
-      });
 
       res.json({
         ok: true,

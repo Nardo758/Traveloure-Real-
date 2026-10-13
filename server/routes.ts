@@ -13463,6 +13463,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         await rerouteIfStayItemChanged(tripId, [item as any]);
       }
 
+      // AP-1 (ledger `2026-10-13-ap1-save-then-warn`): a stop added from one of the three slip add surfaces
+      // (they send `addChecks: true` — a UI request, never a column) is SAVED above; only then does its one
+      // Places lookup start, unawaited and never failing the save (§15b), and the response carries the first
+      // check read as `addChecks` (additive — older callers ignore it; the check read is the truth after).
+      if ((owned || managingEa) && req.body?.addChecks === true && (!gemWrite || gemWrite.created)) {
+        const { addChecksAfterSave } = await import("./services/add-checks.service");
+        const { checks: addChecks } = await addChecksAfterSave(tripId, item.id);
+        return res.status(201).json(addChecks ? { ...item, addChecks } : item);
+      }
+
       res.status(gemWrite && !gemWrite.created ? 200 : 201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });

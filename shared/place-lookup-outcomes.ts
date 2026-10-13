@@ -17,8 +17,10 @@ export type PlaceLookupOutcome = (typeof PLACE_LOOKUP_OUTCOMES)[number];
  *   no_named_tokens — the title and location name no specific place (`namedPlaceTokens` is empty)
  *   area_title      — the title names an area ("… District", "… Walk"), which is never looked up
  *   no_adapter      — no source covers the item's need here (Places switched off, or the need is not covered)
+ *   official_fact   — AP-1: a hand-added stop whose place already has a stored official hours fact; the billed
+ *                     Details call is not made (the official fact is what the checks read)
  */
-export const PLACE_LOOKUP_SKIP_REASONS = ["no_named_tokens", "area_title", "no_adapter"] as const;
+export const PLACE_LOOKUP_SKIP_REASONS = ["no_named_tokens", "area_title", "no_adapter", "official_fact"] as const;
 export type PlaceLookupSkipReason = (typeof PLACE_LOOKUP_SKIP_REASONS)[number];
 
 /**
@@ -26,12 +28,15 @@ export type PlaceLookupSkipReason = (typeof PLACE_LOOKUP_SKIP_REASONS)[number];
  *   draft_cap       — `placesLookupsPerDraft()` billed lookups already spent this run
  *   maps_id_lookup  — the Maps billing gate refused the no-charge IDs-only search
  *   maps_details    — the Maps billing gate refused the billed Place Details call
+ *   plan_day_cap    — AP-1: this plan's hand-added stops already spent `placesLookupsPerDraft()` billed lookups
+ *                     today (UTC), counted from these rows
  */
-export const PLACE_LOOKUP_CAP_REASONS = ["draft_cap", "maps_id_lookup", "maps_details"] as const;
+export const PLACE_LOOKUP_CAP_REASONS = ["draft_cap", "maps_id_lookup", "maps_details", "plan_day_cap"] as const;
 export type PlaceLookupCapReason = (typeof PLACE_LOOKUP_CAP_REASONS)[number];
 
 /** Which caller started the run. NULL on a row = not stated (a caller that names none). */
-export const PLACE_LOOKUP_TRIGGERS = ["draft", "facts_recheck", "leg_coords", "where_to_stay"] as const;
+/** `hand_add` (AP-1): the one lookup run after a traveler adds a stop on the slip. */
+export const PLACE_LOOKUP_TRIGGERS = ["draft", "facts_recheck", "leg_coords", "where_to_stay", "hand_add"] as const;
 export type PlaceLookupTrigger = (typeof PLACE_LOOKUP_TRIGGERS)[number];
 
 export interface PlaceLookupOutcomeRow {

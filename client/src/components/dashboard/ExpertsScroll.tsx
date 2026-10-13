@@ -14,6 +14,9 @@ interface Expert {
   } | null;
   experienceTypes?: Array<{ experienceType?: { name?: string; slug?: string } }> | null;
   profileImageUrl?: string | null;
+  /** The list route's own review aggregate (`averageRating` / `reviewCount`); null/0 = no reviews. */
+  expertRating?: number | null;
+  expertReviewCount?: number | null;
 }
 
 const HEADER_GRADIENTS = [
@@ -33,12 +36,16 @@ const AVATAR_COLORS = [
   { bg: "#B5D4F4", text: "#0C447C" },
 ];
 
-const BADGES = [
-  { label: "Founding expert", bg: "#E1F5EE", text: "#085041" },
-  { label: "Top rated", bg: "#FAEEDA", text: "#633806" },
-  { label: "Rising star", bg: "#E6F1FB", text: "#0C447C" },
-  { label: "Verified", bg: "#F3E8FF", text: "#6B21A8" },
-];
+// FE-1 (c): the positional badge ("Founding expert" / "Top rated" / "Rising star" / "Verified",
+// assigned by list position) and the invented rating (4.7–4.9, 64+23i reviews) are gone. No data
+// stood behind either; no badge is better than a false one. A rating renders only from the list
+// route's real review aggregate.
+function realRating(expert: Expert): { rating: string; reviews: number } | null {
+  const rating = typeof expert.expertRating === "number" ? expert.expertRating : Number(expert.expertRating);
+  const reviews = Number(expert.expertReviewCount ?? 0);
+  if (!Number.isFinite(rating) || rating <= 0 || !Number.isFinite(reviews) || reviews <= 0) return null;
+  return { rating: rating.toFixed(1), reviews };
+}
 
 function expertInitials(expert: Expert): string {
   const first = (expert.firstName || "")[0] || "";
@@ -126,9 +133,7 @@ export function ExpertsScroll({ destinations }: { destinations?: string[] }) {
           const specialty = expertSpecialty(expert);
           const avatarColor = AVATAR_COLORS[i % AVATAR_COLORS.length];
           const headerGrad = HEADER_GRADIENTS[i % HEADER_GRADIENTS.length];
-          const badge = BADGES[i % BADGES.length];
-          const rating = (4.7 + (i % 3) * 0.1).toFixed(1);
-          const reviews = 64 + i * 23;
+          const real = realRating(expert);
 
           return (
             <Link key={expert.id} href={`/chat`}>
@@ -153,16 +158,12 @@ export function ExpertsScroll({ destinations }: { destinations?: string[] }) {
                   <div className="text-[11px] mt-0.5 truncate" style={{ color: "#7A7A72" }}>
                     {location && `${location} · `}{specialty}
                   </div>
-                  <div className="flex items-center gap-1 mt-1.5">
-                    <span className="text-[11px]" style={{ color: "#E8B339" }}>★★★★★</span>
-                    <span className="text-[11px]" style={{ color: "#7A7A72" }}>{rating} ({reviews})</span>
-                  </div>
-                  <span
-                    className="inline-block text-[9px] px-1.5 py-0.5 rounded-lg mt-1.5 font-medium"
-                    style={{ background: badge.bg, color: badge.text }}
-                  >
-                    {badge.label}
-                  </span>
+                  {real ? (
+                    <div className="flex items-center gap-1 mt-1.5" data-testid={`expert-rating-${expert.id}`}>
+                      <span className="text-[11px]" style={{ color: "#E8B339" }}>★</span>
+                      <span className="text-[11px]" style={{ color: "#7A7A72" }}>{real.rating} ({real.reviews})</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </Link>

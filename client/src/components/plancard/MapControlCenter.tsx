@@ -55,6 +55,7 @@ import { SceneMapGoogle } from "./map/SceneMapGoogle";
 import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
 import type { SceneLeg } from "./map/scene-legs";
 import { usePlanRowLook } from "@/components/plan/row-look";
+import { AddChecksNotice, type AddedStop } from "./AddChecksNotice";
 import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } from "@/lib/map-days";
 import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
@@ -246,14 +247,18 @@ export function MapControlCenter({
   const hosts = browseOn ? hostRows(experts).slice(0, 8) : [];
   const selectedBrowse = browsePlaces.find((b) => `${b.kind}:${b.id}` === selectedBrowseId) ?? null;
 
+  // AP-1 (ledger `2026-10-13-ap1-save-then-warn`): the stop the map just saved and what its checks found.
+  const [checked, setChecked] = useState<(AddedStop & { title: string }) | null>(null);
   const add = useMutation({
     mutationFn: async (place: BrowsePlace) =>
-      (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, browseAddBody(place, dayNumber ?? 1))).json(),
-    onSuccess: (_out, place) => {
+      (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, { ...browseAddBody(place, dayNumber ?? 1), addChecks: true })).json(),
+    onSuccess: (out: any, place) => {
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       // R322: the Workstation reads the trip's item list directly; keep it in step with the add.
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-      toast({ title: `Added ${place.name} to day ${dayNumber ?? 1}` });
+      const title = `Added ${place.name} to day ${dayNumber ?? 1}`;
+      if (out?.id && out?.addChecks) setChecked({ itemId: out.id, checks: out.addChecks, title });
+      else toast({ title });
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Couldn't add that", description: e?.message }),
   });
@@ -359,6 +364,21 @@ export function MapControlCenter({
       className={split ? "isolate lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : "isolate"}
     >
       <div className="min-w-0" data-testid={`map-main-${tripId}`}>
+      {checked && (
+        <div className="px-3">
+          <AddChecksNotice
+            tripId={tripId}
+            added={checked}
+            title={checked.title}
+            onDismiss={() => setChecked(null)}
+            onSettled={() => {
+              void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+              void queryClient.invalidateQueries({ queryKey: ["/api/optimization-preview", { tripId }] });
+            }}
+            testId={`map-add-checks-${tripId}`}
+          />
+        </div>
+      )}
       {/* ── Day chips · version toggle · layers ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border" data-testid={`map-toolbar-${tripId}`}>
         <div className="flex flex-wrap gap-1" data-testid={`map-day-selector-${tripId}`}>

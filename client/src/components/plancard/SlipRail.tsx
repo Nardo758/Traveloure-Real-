@@ -22,7 +22,7 @@
  *    myself" branch already runs `runBulkRouteToCheckout` over the same rows; a second button
  *    doing the same bulk write beside it is the drift class §18 rule 1 names. The helper itself
  *    is untouched and still Finalize's.
- *  · `slip-action-trip-card` ("Preview Trip Card") — REMOVED FROM THE PRE-FINAL RAIL. Before a
+ *  · `slip-menu-trip-card` ("Preview Trip Card") — REMOVED FROM THE PRE-FINAL RAIL. Before a
  *    snapshot exists `/trip/:id` has nothing of its own to render and bounces back here, so the
  *    control promised a surface that did not exist (§13). The Trip Card is reachable from the
  *    Finish card the moment the plan is finalized, and nowhere else.
@@ -50,6 +50,7 @@ import {
   CalendarPlus,
   CheckCircle2,
   ChevronRight,
+  CreditCard,
   Crown,
   ExternalLink,
   FileDown,
@@ -89,6 +90,7 @@ import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { FEEDBACK_CODES } from "@shared/feedback";
+import { tripCardHasFinal } from "@shared/trip-primary-surface";
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 import { countOptimizableItems, slipOptimizeDisabledReason } from "@/lib/slip-plan-actions";
 import {
@@ -1446,6 +1448,15 @@ export function SlipPlanMenu({
               <DropdownMenuItem onClick={() => share.mutate()} disabled={share.isPending} data-testid="slip-action-share">
                 <Share2 className="mr-2 h-4 w-4" /> Share link
               </DropdownMenuItem>
+              {/* TC-5a: owner only, the same rule as Share; shown on any plan that has EVER been
+                  finalized (`trip.finalVersion`), revised or reopened ones included. */}
+              {tripCardHasFinal(trip.finalVersion) ? (
+                <DropdownMenuItem asChild>
+                  <Link href={`/trip/${tripId}`} data-testid="slip-menu-trip-card">
+                    <CreditCard className="mr-2 h-4 w-4" /> Trip Card
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               {/* The printable copy — the SAME canonical items this slip renders; a plain anchor to the
                   session-authenticated attachment route. */}
               <DropdownMenuItem asChild>

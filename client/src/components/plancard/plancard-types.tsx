@@ -1,3 +1,4 @@
+import type { BookingPath } from "@shared/booking-path";
 import {
   Calendar, Star, TrainFront, Clock,
 } from "lucide-react";
@@ -57,7 +58,7 @@ export const TEMPLATES: Record<string, TemplateConfig> = {
   travel: {
     activityLabel: "Activities",
     transportLabel: "Transport",
-    statsLabels: ["Days", "Activities", "Transit Legs", "Transit Time"],
+    statsLabels: ["Days", "Activities", "Travel Legs", "Travel Time"],
     activityTypes: { dining: "Dining", attraction: "Attraction", shopping: "Shopping", transport: "Transport" },
   },
   wedding: {
@@ -295,6 +296,8 @@ export interface PlanCardActivity {
    * and which routing actions the owner is offered.
    */
   routingStatus?: RoutingStatus;
+  /** BP-1 — how this item is booked (`@shared/booking-path`); absent = not resolved, never `none`. */
+  bookingPath?: BookingPath;
   /**
    * The real `service_bookings` row this item was bought through — present only when the item is
    * really booked (§13; ROUTING_STATE_CONTRACT §2 "presence is the booked state"). Same object as

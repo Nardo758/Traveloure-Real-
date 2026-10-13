@@ -1,7 +1,8 @@
 /**
  * SS-1a — the refresh targets config checks (ledger `2026-10-10-ss1a-registry-entry-sheet`).
  *
- *   ST1  a clean config against its rows has no problems; the shipped config is empty and clean
+ *   ST1  a clean config against its rows has no problems; the shipped config is exactly Ginkaku-ji's one
+ *        target (ledger `2026-10-12-ginkakuji-official-target`) and is clean against its registry row
  *   ST2  a target naming a source id no row holds fails (SS-1 ruling 2: loudly)
  *   ST3  the url must be https on the row's own host (a subdomain is the same host); never a partner page
  *   ST4  the need must be ours and covered by the row; a `does_not_cover` exclusion wins
@@ -27,8 +28,23 @@ test("ST1 — a clean config, and the shipped config", () => {
     kyoto_travel: [{ label: "Kiyomizu-dera", url: "https://kyoto.travel/en/shrine_temple/132.html", need: "stop.hours", anchor: place }],
   };
   assert.deepEqual(validateTargets(ok, rows), []);
-  assert.deepEqual(CONTENT_SOURCE_TARGETS, {}, "empty until Leon types the rows and the pages are read");
-  assert.deepEqual(validateTargets(CONTENT_SOURCE_TARGETS, []), []);
+  assert.deepEqual(
+    CONTENT_SOURCE_TARGETS,
+    {
+      ginkakuji_official: [
+        {
+          label: "Ginkaku-ji — opening hours",
+          url: "https://www.shokoku-ji.jp/en/ginkakuji/",
+          need: "stop.hours",
+          anchor: { kind: "place", placeId: "ChIJ4W9CCwUJAWARyauI6BzKiiU" },
+        },
+      ],
+    },
+    "exactly the one target whose page was read and whose place id is known",
+  );
+  // The registry row as Leon will type it in /admin/content-sources (class `official`, covers `stop.hours`).
+  const ginkakujiRow = { id: "ginkakuji_official", homepage: "https://www.shokoku-ji.jp/", covers: ["stop.hours"], doesNotCover: [] };
+  assert.deepEqual(validateTargets(CONTENT_SOURCE_TARGETS, [ginkakujiRow]), []);
 });
 
 test("ST2 — an unknown source id fails, by name", () => {

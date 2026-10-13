@@ -15,4 +15,17 @@
  */
 import type { ContentSourceTargets } from "@shared/content-source-targets";
 
-export const CONTENT_SOURCE_TARGETS: ContentSourceTargets = {};
+export const CONTENT_SOURCE_TARGETS: ContentSourceTargets = {
+  // Ginkaku-ji (decision-maker, Oct 12, 2026 — ledger `2026-10-12-ginkakuji-official-target`): Chrome cleared
+  // shokoku-ji.jp on 12 Oct 2026 (robots allows /en/ginkakuji/, no terms page, footer copyright only); the
+  // place id is the production stop's own. The extractor stores hours as weekly lines plus any season, the
+  // quote limited to the stated times (P0-e).
+  ginkakuji_official: [
+    {
+      label: "Ginkaku-ji — opening hours",
+      url: "https://www.shokoku-ji.jp/en/ginkakuji/",
+      need: "stop.hours",
+      anchor: { kind: "place", placeId: "ChIJ4W9CCwUJAWARyauI6BzKiiU" },
+    },
+  ],
+};

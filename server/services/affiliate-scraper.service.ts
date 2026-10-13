@@ -86,6 +86,10 @@ class AffiliateScraperService {
       maxPages?: number;
       scrapeInterval?: number;
     };
+    /** TC-2 decision 1 (migration 376). */
+    license?: string | null;
+    attribution?: string | null;
+    publicOk?: boolean | null;
   }): Promise<AffiliatePartner> {
     const [partner] = await db.insert(affiliatePartners).values({
       name: data.name,
@@ -97,6 +101,9 @@ class AffiliateScraperService {
       logoUrl: data.logoUrl,
       commissionRate: data.commissionRate?.toString(),
       scrapeConfig: data.scrapeConfig,
+      ...(data.license !== undefined ? { license: data.license } : {}),
+      ...(data.attribution !== undefined ? { attribution: data.attribution } : {}),
+      ...(data.publicOk !== undefined ? { publicOk: data.publicOk } : {}),
     }).returning();
     
     return partner;
@@ -113,6 +120,9 @@ class AffiliateScraperService {
     commissionRate: number;
     scrapeConfig: any;
     isActive: boolean;
+    license: string | null;
+    attribution: string | null;
+    publicOk: boolean | null;
   }>): Promise<AffiliatePartner | null> {
     // Second layer (§19): the page-extract terms gate has ONE writer, `setPageExtractPermission`;
     // the general update path never carries it, whatever a caller passes.

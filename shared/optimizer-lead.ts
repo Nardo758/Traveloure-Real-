@@ -39,8 +39,11 @@ export interface Finding {
   caveat?: string;
   /** FD-3: `last_service_missed` only — a counted ride was inferred (no stored leg); the line hedges. */
   inferred?: true;
-  /** S12-4: `leg_unreachable` only — the stops it counts, by name and day, so a card can name them. */
-  stops?: Array<{ itemId: string; title: string; day: number }>;
+  /**
+   * S12-4: the stops a finding counts, by name and day, so a card can name them — `leg_unreachable`, and
+   * (P0-e item 2) the three hours findings, which also carry WHY and the time that tripped it.
+   */
+  stops?: Array<{ itemId: string; title: string; day: number; reason?: HoursStopReason; atMin?: number; startMin?: number }>;
   /**
    * Step 9b (L9 as amended, ledger `2026-10-07-step9b-optimizer-and-rechecks`): present ONLY on a
    * finding that reads leg durations (`leg_unreachable`) — true when every leg it counts was routed.
@@ -124,8 +127,13 @@ export function parseDayHours(descriptions: readonly string[] | null | undefined
   return ranges.length ? { kind: "ranges", ranges } : null;
 }
 
+/** P0-e item 2: why an hours finding counts a stop. */
+export type HoursStopReason = "before_opening" | "after_closing" | "closed_day" | "closes_early" | "after_last_entry";
+
 export interface TimedItem {
   id: string;
+  /** The stop's own title — named on the finding (P0-e item 2); absent ⇒ "This stop". */
+  title?: string;
   dayNumber: number;
   /** The plan day's calendar date, YYYY-MM-DD. */
   dateIso: string | null;
@@ -146,8 +154,17 @@ export interface HoursFact {
  * Places it is omitted. R-v: hours read more than 14 days before the trip's first day still count,
  * and the finding then carries the caveat.
  */
+/** Pure. A stop reached outside every range: before the next opening that day, else after the last close. */
+function shutReason(ranges: ReadonlyArray<[number, number]>, at: number): { reason: HoursStopReason; atMin: number } {
+  const next = ranges.filter(([s]) => s > at).sort((x, y) => x[0] - y[0])[0];
+  if (next) return { reason: "before_opening", atMin: next[0] };
+  const ended = ranges.filter(([, e]) => e <= at).sort((x, y) => y[1] - x[1])[0] ?? ranges[ranges.length - 1];
+  return { reason: "after_closing", atMin: ended[1] };
+}
+
 export function closedOnArrival(items: readonly TimedItem[], hours: ReadonlyMap<string, HoursFact>, tripStartIso: string | null): Finding | null {
   const days = new Set<number>();
+  const stops: NonNullable<Finding["stops"]> = [];
   let count = 0;
   let stale = false;
   const tripStart = tripStartIso ? Date.parse(`${tripStartIso}T00:00:00Z`) : NaN;
@@ -158,21 +175,22 @@ export function closedOnArrival(items: readonly TimedItem[], hours: ReadonlyMap<
     const weekday = new Date(`${it.dateIso}T00:00:00Z`).getUTCDay();
     const h = parseDayHours(fact.weekdayDescriptions, weekday);
     if (!h || h.kind === "open24") continue;
-    let shut: boolean;
+    let stop: { reason: HoursStopReason; atMin?: number } | null;
     if (h.kind === "closed") {
       if (!fact.official) continue; // R-p: a hard closure needs an official seasonal source
-      shut = true;
+      stop = { reason: "closed_day" };
     } else {
-      shut = !h.ranges.some(([s, e]) => at >= s && at < e);
+      stop = h.ranges.some(([s, e]) => at >= s && at < e) ? null : shutReason(h.ranges, at);
     }
-    if (!shut) continue;
+    if (!stop) continue;
     count += 1;
     days.add(it.dayNumber);
+    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, ...stop, startMin: at });
     const checked = fact.checkedAt ? Date.parse(fact.checkedAt) : NaN;
     if (!Number.isFinite(checked) || !Number.isFinite(tripStart) || tripStart - checked > HOURS_STALE_DAYS * 86_400_000) stale = true;
   }
   if (!count) return null;
-  return { kind: "closed_on_arrival", count, days: Array.from(days).sort((x, y) => x - y), ...(stale ? { caveat: HOURS_CAVEAT } : {}) };
+  return { kind: "closed_on_arrival", count, days: Array.from(days).sort((x, y) => x - y), stops, ...(stale ? { caveat: HOURS_CAVEAT } : {}) };
 }
 
 // ── a2. FD-3: the visit's own end, the last entry and the last ride (ledger `2026-10-10-fd3-feasibility`) ──
@@ -200,6 +218,7 @@ export function visitEndMinutes(it: VisitItem): number | null {
  */
 export function closesBeforeVisitEnd(items: readonly VisitItem[], hours: ReadonlyMap<string, HoursFact>, tripStartIso: string | null): Finding | null {
   const days = new Set<number>();
+  const stops: NonNullable<Finding["stops"]> = [];
   let count = 0;
   let stale = false;
   const tripStart = tripStartIso ? Date.parse(`${tripStartIso}T00:00:00Z`) : NaN;
@@ -214,11 +233,12 @@ export function closesBeforeVisitEnd(items: readonly VisitItem[], hours: Readonl
     if (!range || end <= range[1]) continue;
     count += 1;
     days.add(it.dayNumber);
+    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, reason: "closes_early", atMin: range[1], startMin: at });
     const checked = fact.checkedAt ? Date.parse(fact.checkedAt) : NaN;
     if (!Number.isFinite(checked) || !Number.isFinite(tripStart) || tripStart - checked > HOURS_STALE_DAYS * 86_400_000) stale = true;
   }
   if (!count) return null;
-  return { kind: "closes_before_visit_end", count, days: Array.from(days).sort((x, y) => x - y), ...(stale ? { caveat: HOURS_CAVEAT } : {}) };
+  return { kind: "closes_before_visit_end", count, days: Array.from(days).sort((x, y) => x - y), stops, ...(stale ? { caveat: HOURS_CAVEAT } : {}) };
 }
 
 /**
@@ -228,6 +248,7 @@ export function closesBeforeVisitEnd(items: readonly VisitItem[], hours: Readonl
  */
 export function afterLastAdmission(items: readonly TimedItem[], lastEntry: ReadonlyMap<string, number>): Finding | null {
   const days = new Set<number>();
+  const stops: NonNullable<Finding["stops"]> = [];
   let count = 0;
   for (const it of items) {
     const limit = lastEntry.get(it.id);
@@ -236,8 +257,9 @@ export function afterLastAdmission(items: readonly TimedItem[], lastEntry: Reado
     if (at <= limit) continue;
     count += 1;
     days.add(it.dayNumber);
+    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, reason: "after_last_entry", atMin: limit, startMin: at });
   }
-  return count ? { kind: "after_last_admission", count, days: Array.from(days).sort((x, y) => x - y) } : null;
+  return count ? { kind: "after_last_admission", count, days: Array.from(days).sort((x, y) => x - y), stops } : null;
 }
 
 /** One transit ride the plan takes, with its departure on the service day and the last departures that apply. */
@@ -503,6 +525,69 @@ export function findingLine(f: Finding): string {
   }
 }
 
+/** Pure. Minutes after midnight (may pass 24h) → "5:00 PM". */
+/**
+ * P0-e addition 7 (ledger `2026-10-12-p0e-findings-and-gaps`): the closing minute a stop's row warns
+ * about — the SAME two rules the findings use: reached after the day's last close (`closed_on_arrival`'s
+ * `after_closing`), or open on arrival and closing before the visit ends (`closes_before_visit_end`).
+ * Pure; an unreadable line, a closed or 24-hour day, or arriving before opening ⇒ null (§13).
+ */
+export function rowClosingMinute(
+  descriptions: readonly string[] | null | undefined,
+  weekday: number,
+  startMin: number,
+  endMin: number | null,
+): number | null {
+  const h = parseDayHours(descriptions, weekday);
+  if (!h || h.kind !== "ranges") return null;
+  const range = h.ranges.find(([s, e]) => startMin >= s && startMin < e);
+  if (range) return endMin != null && endMin > range[1] ? range[1] : null;
+  const shut = shutReason(h.ranges, startMin);
+  return shut.reason === "after_closing" ? shut.atMin ?? null : null;
+}
+
+/** Pure. Minutes after midnight → "17:10" (the plan's own 24-hour form for a stop's start). */
+export function clock24(min: number): string {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+export function clockLabel(min: number): string {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60);
+  const mm = String(m % 60).padStart(2, "0");
+  return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/**
+ * P0-e item 2 (decision-maker, Oct 12, 2026 — the five lines approved as written): one line per stop an
+ * hours finding counts, naming the stop, its day and the time that tripped it. Pure; a finding without
+ * stops (or another kind) has no lines.
+ */
+export function findingStopLines(f: Finding): string[] {
+  return (f.stops ?? [])
+    .filter((s) => s.reason)
+    .map((s) => {
+      // AP-1 (smoke on 2b9a05b8a): the stop's own start time, 24-hour, after the day — "Day 2 · 17:10".
+      const head = `${s.title} · Day ${s.day}${s.startMin != null ? ` · ${clock24(s.startMin)}` : ""}`;
+      const at = s.atMin != null ? clockLabel(s.atMin) : null;
+      switch (s.reason) {
+        case "after_closing":
+          return `${head} starts after closing${at ? ` (${at})` : ""}`;
+        case "before_opening":
+          return `${head} starts before opening${at ? ` (${at})` : ""}`;
+        case "closed_day":
+          return `${head} is closed that day`;
+        case "closes_early":
+          return at ? `${head} closes at ${at}, before your visit ends` : `${head} closes before your visit ends`;
+        case "after_last_entry":
+          return `${head} arrives after last entry${at ? ` (${at})` : ""}`;
+        default:
+          return head;
+      }
+    });
+}
+
 export const LEAD_EYEBROW = "What Optimize found in this draft";
 /** Smoke 9 S9-4: the card on a plan with no draft yet — Optimize is disabled, nothing is claimed. */
 export const LEAD_DRAFT_FIRST = "Draft first — Optimize works on a drafted plan";
@@ -519,7 +604,7 @@ export interface LegCoverage {
   /** Every consecutive pair on every day not yet past has a routed leg of its own. */
   complete: boolean;
   /** The stops on those days that are not on the map, in day order ("Day 2 · Soba Restaurant"). */
-  unlocated: Array<{ day: number; title: string }>;
+  unlocated: Array<{ day: number; title: string; placeholder?: true }>;
 }
 
 /**
@@ -529,7 +614,7 @@ export interface LegCoverage {
  * frozen). A day with one stop has no pair and is vacuously complete.
  */
 export function planLegCoverage(
-  stops: ReadonlyArray<{ id: string; title: string; dayNumber: number; located: boolean }>,
+  stops: ReadonlyArray<{ id: string; title: string; dayNumber: number; located: boolean; placeholder?: boolean }>,
   legs: ReadonlyArray<{ dayNumber: number; fromId: string | null; toId: string | null; routed: boolean }>,
   isPastDay: (dayNumber: number) => boolean,
 ): LegCoverage {
@@ -543,7 +628,7 @@ export function planLegCoverage(
   const unlocated: LegCoverage["unlocated"] = [];
   for (const day of Array.from(byDay.keys()).sort((a, b) => a - b)) {
     const list = byDay.get(day)!;
-    for (const s of list) if (!s.located) unlocated.push({ day, title: s.title });
+    for (const s of list) if (!s.located) unlocated.push({ day, title: s.title, ...(s.placeholder ? { placeholder: true as const } : {}) });
     for (let i = 0; i < list.length - 1; i++) {
       if (!routedPairs.has(`${day}|${list[i].id}|${list[i + 1].id}`)) complete = false;
     }
@@ -571,6 +656,26 @@ export function leadCoverageLine(coverage: LegCoverage, routedPlan: boolean): st
 /** Pure. The stops behind the count, one line each ("Day 2 · Soba Restaurant"). */
 export function unlocatedStopLines(coverage: LegCoverage | null | undefined): string[] {
   return (coverage?.unlocated ?? []).map((s) => `Day ${s.day} · ${s.title}`);
+}
+
+// ── P0-e item 4 (decision-maker, Oct 12, 2026): the gap list splits by kind ────────────────────────
+/** A stop that names a real place the lookup has not placed yet. */
+export const UNLOCATED_PLACES_HEAD = "We'll put these on the map";
+/** A placeholder — a title that names no place ("Late Dinner in Shimogyo"), per `unnamedPlaceReason`. */
+export const UNLOCATED_PLACEHOLDERS_HEAD = "Pick a spot, or let Optimize suggest one nearby";
+/** Under the gap list on a free plan, whose legs are straight lines. */
+export const FREE_PLAN_COVERAGE_FOOTER = "Checked with straight-line distances. Optimize checks real travel times.";
+
+/** Pure. The off-map stops in two groups — real places, then placeholders — each omitted when empty (§13). */
+export function unlocatedStopGroups(coverage: LegCoverage | null | undefined): Array<{ kind: "place" | "placeholder"; heading: string; lines: string[] }> {
+  const all = coverage?.unlocated ?? [];
+  const line = (s: { day: number; title: string }) => `Day ${s.day} · ${s.title}`;
+  const places = all.filter((s) => !s.placeholder).map(line);
+  const placeholders = all.filter((s) => s.placeholder).map(line);
+  return [
+    ...(places.length ? [{ kind: "place" as const, heading: UNLOCATED_PLACES_HEAD, lines: places }] : []),
+    ...(placeholders.length ? [{ kind: "placeholder" as const, heading: UNLOCATED_PLACEHOLDERS_HEAD, lines: placeholders }] : []),
+  ];
 }
 
 /**
