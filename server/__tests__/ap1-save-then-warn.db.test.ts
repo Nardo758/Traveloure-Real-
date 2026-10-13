@@ -13,6 +13,8 @@
  *   S5 a lookup failure never fails the save — no throw, an `error` row, the stop still on the plan
  *   S6 the check read's way in: an unlocated end keeps the gap wording; a free plan reads the straight line
  *   S7 the GET is behind the plan's read gate: a stranger is refused, a stop not on the plan is one 404
+ *   S8 the admin counts reader names both new reasons (L1, sanctioned Oct 13, 2026): skipped/official_fact and
+ *      capped/plan_day_cap, as stored
  *
  * STATED LIMIT (§18d): `POST /api/trips/:tripId/itinerary-items` lives in the `server/routes.ts` MONOLITH, which
  * no test mounts; the route calls `addChecksAfterSave` and nothing else for AP-1, so this proves that sequence
@@ -254,4 +256,12 @@ test("S7 the check read is behind the plan's read gate", async () => {
   assert.ok(stranger.status === 403 || stranger.status === 404, `stranger refused (${stranger.status})`);
   const notHere = await call(`/api/trips/${TRIP}/stops/${id("nope")}/checks`, OWNER);
   assert.equal(notHere.status, 404);
+});
+
+test("S8 the admin counts reader names official_fact and plan_day_cap", async () => {
+  const { lookupOutcomeCounts } = await import("../services/content-facts/lookup-outcomes.service");
+  const { counts } = await lookupOutcomeCounts(1);
+  const keys = new Set(counts.map((c) => `${c.outcome}/${c.reason}`));
+  assert.ok(keys.has("skipped/official_fact"), [...keys].join(", "));
+  assert.ok(keys.has("capped/plan_day_cap"), [...keys].join(", "));
 });
