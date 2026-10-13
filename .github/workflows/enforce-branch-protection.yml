@@ -144,6 +144,35 @@ jobs:
           fi
           echo "✓ Ruleset '$NAME' is active with all $(echo "$DECLARED" | wc -l) declared contexts; bypass actors: $ACTORS"
 
+      - name: Set require_last_push_approval on the review ruleset
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          NAME=$(jq -r '.review_ruleset.name' .github/branch-protection.json)
+          WANT=$(jq -r '.review_ruleset.require_last_push_approval' .github/branch-protection.json)
+          ID=$(gh api "repos/$REPO/rulesets?includes_parents=false" --paginate --jq ".[] | select(.name == \"$NAME\") | .id" | head -1)
+          if [ -z "$ID" ]; then
+            echo "No ruleset named '$NAME' — nothing to set."
+            exit 0
+          fi
+          gh api "repos/$REPO/rulesets/$ID" > /tmp/review.json
+          HAVE=$(jq -r '.rules[] | select(.type == "pull_request") | .parameters.require_last_push_approval' /tmp/review.json)
+          if [ "$HAVE" = "$WANT" ]; then
+            echo "✓ '$NAME' already has require_last_push_approval=$WANT."
+            exit 0
+          fi
+          # Only this one parameter changes; name, target, enforcement, conditions, every other rule and the
+          # bypass actors are sent back exactly as read.
+          jq --argjson v "$WANT" '{name, target, enforcement, conditions, bypass_actors,
+              rules: [ .rules[] | if .type == "pull_request" then .parameters.require_last_push_approval = $v else . end ]}' \
+            /tmp/review.json > /tmp/review-put.json
+          gh api --method PUT "repos/$REPO/rulesets/$ID" --input /tmp/review-put.json > /dev/null
+          AFTER=$(gh api "repos/$REPO/rulesets/$ID" --jq '.rules[] | select(.type == "pull_request") | .parameters.require_last_push_approval')
+          [ "$AFTER" = "$WANT" ] || { echo "ERROR: '$NAME' require_last_push_approval is $AFTER, expected $WANT"; exit 1; }
+          echo "✓ '$NAME' require_last_push_approval: $HAVE → $AFTER (nothing else changed)."
+
       - name: Retire the classic required status checks (manual dispatch only)
         if: github.event_name == 'workflow_dispatch' && inputs.retire_classic_status_checks
         env:

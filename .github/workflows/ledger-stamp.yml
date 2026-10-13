@@ -24,6 +24,11 @@ on:
     paths:
       - 'docs/DECISIONS.md'
   workflow_dispatch:
+    inputs:
+      auth_dry_run:
+        description: "Only mint the Ledger Stamp App token and read the repository with it; stamp and push nothing."
+        type: boolean
+        default: false
 
 # One stamp at a time: two merges in quick succession are numbered in the order their runs start,
 # each run re-reading main, so a second run finds nothing left to number.
@@ -40,6 +45,8 @@ jobs:
     name: ledger-stamp (post-merge R-number)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The App's private key lives in this environment (branch-limited to main), not at repository level.
+    environment: ledger-stamp
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,6 +56,7 @@ jobs:
 
       - name: Anything to number?
         id: probe
+        if: ${{ !inputs.auth_dry_run }}
         run: |
           set -euo pipefail
           node scripts/assign-r-numbers.cjs --self-test
@@ -67,11 +75,30 @@ jobs:
 
       - name: Mint the Ledger Stamp App token
         id: app
-        if: steps.probe.outputs.needed == 'true' && vars.LEDGER_STAMP_APP_ID != ''
+        if: (steps.probe.outputs.needed == 'true' || inputs.auth_dry_run) && vars.LEDGER_STAMP_APP_ID != ''
         uses: actions/create-github-app-token@v1.11.0
         with:
           app-id: ${{ vars.LEDGER_STAMP_APP_ID }}
           private-key: ${{ secrets.LEDGER_STAMP_APP_PRIVATE_KEY }}
+
+      - name: App auth dry run (read only)
+        if: ${{ inputs.auth_dry_run }}
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_TOKEN:-}" ]; then
+            echo "::error::No App token: LEDGER_STAMP_APP_ID (variable) or LEDGER_STAMP_APP_PRIVATE_KEY (ledger-stamp environment secret) is missing."
+            exit 1
+          fi
+          echo "Minted an installation token for ${APP_SLUG}."
+          curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/installation/repositories" \
+            | jq -r '"installation repositories (\(.total_count)): " + ([.repositories[].full_name] | join(", "))'
+          curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/repos/${REPO}" | jq -r '"read repo: " + .full_name + " (default branch " + .default_branch + ")"'
+          git ls-remote "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git" refs/heads/main | sed 's/^/git read: /'
+          echo "Dry run only: nothing stamped, nothing pushed."
 
       - name: Stamp, lint, push
         id: stamp
@@ -136,7 +163,7 @@ jobs:
         run: exit 1
 
       - name: Open an issue (nothing was stamped)
-        if: failure()
+        if: failure() && !inputs.auth_dry_run
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
