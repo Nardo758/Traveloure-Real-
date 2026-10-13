@@ -43,7 +43,7 @@ export interface Finding {
    * S12-4: the stops a finding counts, by name and day, so a card can name them — `leg_unreachable`, and
    * (P0-e item 2) the three hours findings, which also carry WHY and the time that tripped it.
    */
-  stops?: Array<{ itemId: string; title: string; day: number; reason?: HoursStopReason; atMin?: number }>;
+  stops?: Array<{ itemId: string; title: string; day: number; reason?: HoursStopReason; atMin?: number; startMin?: number }>;
   /**
    * Step 9b (L9 as amended, ledger `2026-10-07-step9b-optimizer-and-rechecks`): present ONLY on a
    * finding that reads leg durations (`leg_unreachable`) — true when every leg it counts was routed.
@@ -185,7 +185,7 @@ export function closedOnArrival(items: readonly TimedItem[], hours: ReadonlyMap<
     if (!stop) continue;
     count += 1;
     days.add(it.dayNumber);
-    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, ...stop });
+    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, ...stop, startMin: at });
     const checked = fact.checkedAt ? Date.parse(fact.checkedAt) : NaN;
     if (!Number.isFinite(checked) || !Number.isFinite(tripStart) || tripStart - checked > HOURS_STALE_DAYS * 86_400_000) stale = true;
   }
@@ -233,7 +233,7 @@ export function closesBeforeVisitEnd(items: readonly VisitItem[], hours: Readonl
     if (!range || end <= range[1]) continue;
     count += 1;
     days.add(it.dayNumber);
-    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, reason: "closes_early", atMin: range[1] });
+    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, reason: "closes_early", atMin: range[1], startMin: at });
     const checked = fact.checkedAt ? Date.parse(fact.checkedAt) : NaN;
     if (!Number.isFinite(checked) || !Number.isFinite(tripStart) || tripStart - checked > HOURS_STALE_DAYS * 86_400_000) stale = true;
   }
@@ -257,7 +257,7 @@ export function afterLastAdmission(items: readonly TimedItem[], lastEntry: Reado
     if (at <= limit) continue;
     count += 1;
     days.add(it.dayNumber);
-    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, reason: "after_last_entry", atMin: limit });
+    stops.push({ itemId: it.id, title: it.title ?? "This stop", day: it.dayNumber, reason: "after_last_entry", atMin: limit, startMin: at });
   }
   return count ? { kind: "after_last_admission", count, days: Array.from(days).sort((x, y) => x - y), stops } : null;
 }
@@ -546,6 +546,12 @@ export function rowClosingMinute(
   return shut.reason === "after_closing" ? shut.atMin ?? null : null;
 }
 
+/** Pure. Minutes after midnight → "17:10" (the plan's own 24-hour form for a stop's start). */
+export function clock24(min: number): string {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
 export function clockLabel(min: number): string {
   const m = ((Math.round(min) % 1440) + 1440) % 1440;
   const h = Math.floor(m / 60);
@@ -562,7 +568,8 @@ export function findingStopLines(f: Finding): string[] {
   return (f.stops ?? [])
     .filter((s) => s.reason)
     .map((s) => {
-      const head = `${s.title} · Day ${s.day}`;
+      // AP-1 (smoke on 2b9a05b8a): the stop's own start time, 24-hour, after the day — "Day 2 · 17:10".
+      const head = `${s.title} · Day ${s.day}${s.startMin != null ? ` · ${clock24(s.startMin)}` : ""}`;
       const at = s.atMin != null ? clockLabel(s.atMin) : null;
       switch (s.reason) {
         case "after_closing":

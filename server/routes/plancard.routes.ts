@@ -612,6 +612,25 @@ router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async
   }
 });
 
+// AP-1 (ledger `2026-10-13-ap1-save-then-warn`): ONE stop's checks after a slip add — its hours lines and the
+// way into it, `pending` while the lookup or the leg recompute is still arriving. Through the plan's READ gate;
+// a stop not on this plan is one 404 (LD 40 posture). Reads only — no lookup or routing call is made here.
+router.get("/api/trips/:tripId/itinerary-items/:itemId/checks", isAuthenticated, async (req, res) => {
+  try {
+    const { tripId, itemId } = req.params;
+    const userId = getUserId(req)!;
+    const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/itinerary-items/:itemId/checks");
+    if (denied) return res.status(denied.status).json({ error: denied.message });
+    const { loadStopChecks } = await import("../services/add-checks.service");
+    const checks = await loadStopChecks(tripId, itemId);
+    if (!checks) return res.status(404).json({ error: "Not found" });
+    res.json(checks);
+  } catch (err: any) {
+    console.error("[add-checks] read failed:", err?.message ?? err);
+    res.status(500).json({ error: "Failed to read checks" });
+  }
+});
+
 // Step 6 R-ad (ledger `2026-10-04-step6-trip-card`): the T-3 re-check's finding for this plan, as the
 // `facts-recheck` job recorded it (one `trip_recheck_conflict` notice per plan, by dedupe key). The
 // card's banner READS this; nothing is computed on page load. Through the plan's READ gate. No

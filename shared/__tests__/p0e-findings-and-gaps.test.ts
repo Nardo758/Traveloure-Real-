@@ -41,7 +41,7 @@ test("PE2 the hours for a date: the covering season, then the Places list", () =
   assert.equal(hoursFactForDate([summer], "2027-01-11"), null, "nothing covers it ⇒ unchecked, never a guess");
   // Ginkaku-ji at 16:45 on a winter Monday: after the 16:30 close; on a summer Monday: open.
   const at = (fact: typeof places) => closedOnArrival([{ id: "g", title: "Ginkaku-ji Temple", dayNumber: 2, dateIso: "2027-01-11", startTime: "16:45" }], new Map([["g", fact]]), "2027-01-10");
-  assert.deepEqual(findingStopLines(at(hoursFactForDate([summer, winter, places], "2027-01-11")!)!), ["Ginkaku-ji Temple · Day 2 starts after closing (4:30 PM)"]);
+  assert.deepEqual(findingStopLines(at(hoursFactForDate([summer, winter, places], "2027-01-11")!)!), ["Ginkaku-ji Temple · Day 2 · 16:45 starts after closing (4:30 PM)"]);
   assert.equal(at(summer), null);
 });
 
