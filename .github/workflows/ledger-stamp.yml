@@ -73,13 +73,51 @@ jobs:
             fi
           fi
 
+      # The key is normalized before minting (a pasted value can carry \r line endings or literal "\n"
+      # sequences, either of which fails the parse with "Invalid keyData"), every line is masked, and it is
+      # handed to the mint step as a step output. Diagnostics describe its SHAPE only — never its contents.
+      - name: Prepare the App key
+        id: key
+        if: (steps.probe.outputs.needed == 'true' || inputs.auth_dry_run) && vars.LEDGER_STAMP_APP_ID != ''
+        env:
+          RAW_KEY: ${{ secrets.LEDGER_STAMP_APP_PRIVATE_KEY }}
+          DRY_RUN: ${{ inputs.auth_dry_run }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, secrets as rnd
+          raw = os.environ.get("RAW_KEY", "")
+          had_cr = "\r" in raw
+          had_literal_nl = "\\n" in raw
+          key = raw.replace("\r", "").replace("\\n", "\n").strip()
+          lines = [l.strip() for l in key.split("\n") if l.strip()]
+          key = "\n".join(lines) + "\n" if lines else ""
+          for l in lines:
+              print(f"::add-mask::{l}")
+          # Which secret the job resolved: this job declares environment `ledger-stamp`, and an environment
+          # secret takes precedence over a repository secret of the same name. A value whose length is far from
+          # a PEM key's (~1.6-3.3k) is the sign of a shadowing or wrong value (a fingerprint is ~50).
+          print("environment declared on this job: ledger-stamp")
+          print(f"LEDGER_STAMP_APP_PRIVATE_KEY resolved: {'present' if raw else 'EMPTY'}, raw length {len(raw)}")
+          if os.environ.get("DRY_RUN") == "true":
+              begin = bool(lines) and lines[0].startswith("-----BEGIN ") and lines[0].endswith("PRIVATE KEY-----")
+              end = bool(lines) and lines[-1].startswith("-----END ") and lines[-1].endswith("PRIVATE KEY-----")
+              print("key shape (no contents): "
+                    f"lines={len(lines)}, \\r present={'y' if had_cr else 'n'}, literal \\n present={'y' if had_literal_nl else 'n'}, "
+                    f"first line is BEGIN marker={'y' if begin else 'n'}, last line is END marker={'y' if end else 'n'}, "
+                    f"normalized length={len(key)}")
+          delim = "KEY_" + rnd.token_hex(16)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"key<<{delim}\n{key}{delim}\n")
+          PY
+
       - name: Mint the Ledger Stamp App token
         id: app
         if: (steps.probe.outputs.needed == 'true' || inputs.auth_dry_run) && vars.LEDGER_STAMP_APP_ID != ''
-        uses: actions/create-github-app-token@v1.11.0
+        uses: actions/create-github-app-token@v2.2.1
         with:
           app-id: ${{ vars.LEDGER_STAMP_APP_ID }}
-          private-key: ${{ secrets.LEDGER_STAMP_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.key.outputs.key }}
 
       - name: App auth dry run (read only)
         if: ${{ inputs.auth_dry_run }}
