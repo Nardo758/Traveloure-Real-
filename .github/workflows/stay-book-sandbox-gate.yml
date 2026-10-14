@@ -33,7 +33,7 @@ jobs:
             echo "::warning file=.github/workflows/stay-book-sandbox-gate.yml::NOT RUN — repository secret LITEAPI_SANDBOX_API_KEY is not configured. Nothing about LiteAPI was proven by this job."
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
         if: env.HAS_KEY == 'true'
 
       - name: Start PostgreSQL (runner-installed; no registry pull)

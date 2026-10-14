@@ -97,7 +97,7 @@ jobs:
       # documented dev default (TestPass123!).
       E2E_TEST_PASSWORD: ${{ secrets.E2E_STAGING_TEST_PASSWORD || secrets.E2E_TEST_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
 
       - uses: actions/setup-node@v4
         with:

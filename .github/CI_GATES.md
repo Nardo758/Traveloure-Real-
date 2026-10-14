@@ -122,6 +122,22 @@ enforcement. Promote to Tier 1 as each gets a passing run.
 > ruleset verifies; until then both enforce the same 39 contexts. The App pushes exactly one kind of
 > commit: `.github/workflows/ledger-stamp.yml`'s docs-only `[skip ci]` R-number stamp.
 
+> **Three rulesets, split by who may bypass (decision-maker, Oct 14, 2026; ledger
+> `2026-10-14-ci1-ruleset-split`).** All three are declared in `.github/branch-protection.json`:
+>
+> | Ruleset | Rules | Bypass | Enforcer |
+> |---|---|---|---|
+> | `main — required status checks` (25019779) | the 39 contexts | Ledger Stamp App only | applies and verifies |
+> | `Protect main (review + checks …)` (21765961) | pull_request, required status checks | admins (pull-request mode) + Ledger Stamp App | sets `require_last_push_approval` only; refuses before writing if it carries a force-push/delete rule |
+> | `main — no force-push/delete` (25037632) | deletion, non_fast_forward | **none** | read only: asserts it exists, is active, has exactly those rules and no bypass |
+>
+> Force-push and deletion protection lives ONLY in 25037632 and is never re-added to the review
+> ruleset, so no one — admin or App — can force-push or delete `main`. The review and no-force-push
+> rulesets are matched by ID, so a rename does not lose them (a name mismatch is a warning). The
+> enforcer's token is `BRANCH_PROTECTION_PAT`, since Oct 14, 2026 the fine-grained "Traveloure
+> enforcer" token (Administration read/write, expires 2026-11-13). The App's key is the
+> `ledger-stamp` environment secret `LEDGER_STAMP_APP_PRIVATE_KEY`; there is no repository-level copy.
+
 1. Go to **GitHub → repository → Settings → Branches**
 2. Click **Edit** on the `main` branch protection rule (or create one)
 3. Check **"Require status checks to pass before merging"**

@@ -6,9 +6,20 @@
     "_bypass": "The only bypass actor is the Ledger Stamp GitHub App, read from the repository variable LEDGER_STAMP_APP_ID (actor_type Integration, bypass_mode always). No other actor is ever added here."
   },
   "review_ruleset": {
+    "id": 21765961,
     "name": "Protect main (review + checks + no force-push/delete)",
-    "_comment": "The pre-existing review ruleset on main. The enforcer sets ONLY the pull_request rule's require_last_push_approval to the value below and verifies it; every other rule, parameter and bypass actor in that ruleset is left as it is (decision-maker, Oct 13, 2026).",
+    "_comment": "The review ruleset on main (bypass: admins in pull-request mode, plus the Ledger Stamp App). It is matched by ID, so a rename does not lose it (its live name still ends \"+ no force-push/delete\" although those rules moved out on Oct 13, 2026). The enforcer sets ONLY the pull_request rule's require_last_push_approval to the value below and verifies it; every other rule, parameter and bypass actor is sent back as read. It REFUSES, before any write, if this ruleset carries a deletion or non_fast_forward rule: those live only in no_force_push_ruleset and are never re-added here (decision-maker, Oct 14, 2026).",
     "require_last_push_approval": false
+  },
+  "no_force_push_ruleset": {
+    "id": 25037632,
+    "name": "main — no force-push/delete",
+    "_comment": "Force-push and deletion protection for main lives ONLY here, with NO bypass actor of any kind — not admins, not the Ledger Stamp App (decision-maker, Oct 14, 2026; ledger `2026-10-14-ci1-ruleset-split`). The enforcer READS it and asserts it exists, is active, has exactly the rules below and an empty bypass list; it never writes it. A failed assertion fails the run, and the fix is a human in Settings → Rules, never the enforcer.",
+    "rules": [
+      "deletion",
+      "non_fast_forward"
+    ],
+    "bypass_actors": []
   },
   "required_status_checks": {
     "strict": false,

@@ -43,7 +43,7 @@ jobs:
       # green-but-vacuous shape triage note 3 forbids wiring.
       TIER2_DEV_AUDIT_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4

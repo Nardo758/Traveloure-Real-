@@ -20,7 +20,7 @@ jobs:
       # An accidental database call must fail instead of reaching a live database.
       DATABASE_URL: postgresql://ci-noconnect@127.0.0.1:1/nodb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

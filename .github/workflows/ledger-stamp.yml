@@ -11,8 +11,8 @@ name: Ledger Stamp
 #      actor — so the stamp triggers no gates and needs no merge-main push.
 # On a lint failure nothing is pushed and an issue is opened with the lint output.
 #
-# Credentials (names only): repository variable LEDGER_STAMP_APP_ID and repository secret
-# LEDGER_STAMP_APP_PRIVATE_KEY. Until they exist, a merge with no `R?` rows is a no-op (green), and a
+# Credentials (names only): repository variable LEDGER_STAMP_APP_ID and the `ledger-stamp` ENVIRONMENT
+# secret LEDGER_STAMP_APP_PRIVATE_KEY (no repository-level copy). Until they exist, a merge with no `R?` rows is a no-op (green), and a
 # merge carrying `R?` rows fails red with an issue — the same signal the old `--require-assigned`
 # step on main gave.
 #
@@ -48,7 +48,7 @@ jobs:
     # The App's private key lives in this environment (branch-limited to main), not at repository level.
     environment: ledger-stamp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
         with:
           ref: main
           fetch-depth: 500
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${APP_TOKEN:-}" ]; then
-            echo "::error::Main carries R? rows but the Ledger Stamp App is not configured (repository variable LEDGER_STAMP_APP_ID / secret LEDGER_STAMP_APP_PRIVATE_KEY)."
+            echo "::error::Main carries R? rows but the Ledger Stamp App is not configured (repository variable LEDGER_STAMP_APP_ID / ledger-stamp environment secret LEDGER_STAMP_APP_PRIVATE_KEY)."
             exit 1
           fi
           APP_USER_ID=$(curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/users/${APP_SLUG}%5Bbot%5D" | jq -r .id)

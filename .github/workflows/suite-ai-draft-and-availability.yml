@@ -48,7 +48,7 @@ jobs:
       JOURNEY_BASE_URL: http://127.0.0.1:5000
       BASE_URL: http://127.0.0.1:5000
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
