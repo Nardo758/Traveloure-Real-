@@ -14,6 +14,17 @@ name: Enforce Branch Protection
 # dispatch with `retire_classic_status_checks: true`, after the ruleset has
 # been verified — never as a side effect of a push.
 #
+# THREE ACTIVE RULESETS ON MAIN, SPLIT BY WHO MAY BYPASS (decision-maker, Oct 14, 2026; ledger
+# `2026-10-14-ci1-ruleset-split`), each declared in .github/branch-protection.json:
+#   - "main — required status checks" (`ruleset`): the 39 contexts; APPLIED and verified here; sole
+#     bypass = the Ledger Stamp App.
+#   - "Protect main (review + checks …)" (`review_ruleset`, id 21765961): pull_request + checks; bypass =
+#     admins in pull-request mode + the App. Only require_last_push_approval is written; the run REFUSES
+#     before writing if it carries deletion/non_fast_forward.
+#   - "main — no force-push/delete" (`no_force_push_ruleset`, id 25037632): deletion + non_fast_forward
+#     with NO bypass. READ ONLY here: asserted to exist, be active, carry exactly those rules and an
+#     empty bypass list. Those two rules live only there and are never re-added to the review ruleset.
+#
 # Trigger: every push to main that touches CI_GATES.md or this file itself,
 # plus manual dispatch so an admin can re-apply after any manual UI change.
 #
@@ -25,7 +36,8 @@ name: Enforce Branch Protection
 # So this workflow authenticates with a repo-scoped PAT stored under the
 # exact repository secret name `BRANCH_PROTECTION_PAT`. A fine-grained token
 # for this workflow must be scoped to Nardo758/Traveloure-Real- and grant
-# repository Administration: Read and write. The GH_TOKEN expressions below
+# repository Administration: Read and write. Since Oct 14, 2026 it is the
+# fine-grained "Traveloure enforcer" token (expires 2026-11-13 — rotate before). The GH_TOKEN expressions below
 # prefer BRANCH_PROTECTION_PAT and fall back to secrets.GITHUB_TOKEN only so
 # the failure mode without the PAT is a clear branch-protection API error
 # rather than a missing-env crash.
@@ -57,7 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
 
       - name: Check branch-protection token configuration
         env:
@@ -150,17 +162,28 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # Matched by ID (a rename must not lose it); the declared name is only a label checked below.
+          ID=$(jq -r '.review_ruleset.id' .github/branch-protection.json)
           NAME=$(jq -r '.review_ruleset.name' .github/branch-protection.json)
           WANT=$(jq -r '.review_ruleset.require_last_push_approval' .github/branch-protection.json)
-          ID=$(gh api "repos/$REPO/rulesets?includes_parents=false" --paginate --jq ".[] | select(.name == \"$NAME\") | .id" | head -1)
-          if [ -z "$ID" ]; then
-            echo "No ruleset named '$NAME' — nothing to set."
-            exit 0
+          if ! gh api "repos/$REPO/rulesets/$ID" > /tmp/review.json; then
+            echo "::error::Review ruleset $ID ('$NAME') could not be read."
+            exit 1
           fi
-          gh api "repos/$REPO/rulesets/$ID" > /tmp/review.json
+          LIVE_NAME=$(jq -r .name /tmp/review.json)
+          if [ "$LIVE_NAME" != "$NAME" ]; then
+            echo "::warning::Ruleset $ID is named '$LIVE_NAME' live but '$NAME' in branch-protection.json — update the declaration."
+          fi
+          # Force-push/deletion live ONLY in the no-bypass ruleset. Refuse before any write if they are here:
+          # a PUT of this ruleset would otherwise carry them (and its bypass actors) back.
+          STRAY=$(jq -r '[.rules[].type | select(. == "deletion" or . == "non_fast_forward")] | join(", ")' /tmp/review.json)
+          if [ -n "$STRAY" ]; then
+            echo "::error::Ruleset $ID ('$LIVE_NAME') carries $STRAY; those rules belong only to the no-bypass ruleset. Nothing written — remove them in Settings → Rules."
+            exit 1
+          fi
           HAVE=$(jq -r '.rules[] | select(.type == "pull_request") | .parameters.require_last_push_approval' /tmp/review.json)
           if [ "$HAVE" = "$WANT" ]; then
-            echo "✓ '$NAME' already has require_last_push_approval=$WANT."
+            echo "✓ '$LIVE_NAME' already has require_last_push_approval=$WANT."
             exit 0
           fi
           # Only this one parameter changes; name, target, enforcement, conditions, every other rule and the
@@ -170,8 +193,40 @@ jobs:
             /tmp/review.json > /tmp/review-put.json
           gh api --method PUT "repos/$REPO/rulesets/$ID" --input /tmp/review-put.json > /dev/null
           AFTER=$(gh api "repos/$REPO/rulesets/$ID" --jq '.rules[] | select(.type == "pull_request") | .parameters.require_last_push_approval')
-          [ "$AFTER" = "$WANT" ] || { echo "ERROR: '$NAME' require_last_push_approval is $AFTER, expected $WANT"; exit 1; }
-          echo "✓ '$NAME' require_last_push_approval: $HAVE → $AFTER (nothing else changed)."
+          [ "$AFTER" = "$WANT" ] || { echo "ERROR: '$LIVE_NAME' require_last_push_approval is $AFTER, expected $WANT"; exit 1; }
+          echo "✓ '$LIVE_NAME' require_last_push_approval: $HAVE → $AFTER (nothing else changed)."
+
+      # READ ONLY. This step never writes the no-force-push ruleset; a failed assertion is fixed by a human
+      # in Settings → Rules (decision-maker, Oct 14, 2026).
+      - name: Assert the no-force-push ruleset (read only)
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ID=$(jq -r '.no_force_push_ruleset.id' .github/branch-protection.json)
+          NAME=$(jq -r '.no_force_push_ruleset.name' .github/branch-protection.json)
+          if ! gh api "repos/$REPO/rulesets/$ID" > /tmp/nofp.json; then
+            echo "::error::No-force-push ruleset $ID ('$NAME') does not exist or could not be read."
+            exit 1
+          fi
+          FAIL=0
+          LIVE_NAME=$(jq -r .name /tmp/nofp.json)
+          [ "$LIVE_NAME" = "$NAME" ] || echo "::warning::Ruleset $ID is named '$LIVE_NAME' live but '$NAME' in branch-protection.json."
+          ENF=$(jq -r .enforcement /tmp/nofp.json)
+          [ "$ENF" = "active" ] || { echo "::error::Ruleset $ID enforcement is '$ENF', expected 'active'."; FAIL=1; }
+          ACTORS=$(jq -c '.bypass_actors // []' /tmp/nofp.json)
+          [ "$ACTORS" = "[]" ] || { echo "::error::Ruleset $ID has bypass actors $ACTORS; it must have none."; FAIL=1; }
+          WANT_RULES=$(jq -c '.no_force_push_ruleset.rules | sort' .github/branch-protection.json)
+          LIVE_RULES=$(jq -c '[.rules[].type] | sort' /tmp/nofp.json)
+          [ "$LIVE_RULES" = "$WANT_RULES" ] || { echo "::error::Ruleset $ID rules are $LIVE_RULES, expected $WANT_RULES."; FAIL=1; }
+          TARGET=$(jq -r '.target + " " + (.conditions.ref_name.include | join(","))' /tmp/nofp.json)
+          case "$TARGET" in
+            "branch ~DEFAULT_BRANCH"|"branch refs/heads/main") ;;
+            *) echo "::error::Ruleset $ID targets '$TARGET', expected the default branch (main)."; FAIL=1 ;;
+          esac
+          [ "$FAIL" = 0 ] || exit 1
+          echo "✓ Ruleset $ID '$LIVE_NAME' is active on main with $LIVE_RULES and no bypass actors."
 
       - name: Retire the classic required status checks (manual dispatch only)
         if: github.event_name == 'workflow_dispatch' && inputs.retire_classic_status_checks

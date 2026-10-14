@@ -40,7 +40,7 @@ jobs:
     # failing step in the log, and this is the job backstop.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4

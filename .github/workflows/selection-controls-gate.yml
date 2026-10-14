@@ -38,7 +38,7 @@ jobs:
     name: lockfile-purity (no replit.local)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Fail if package-lock.json points at the Replit firewall
         run: |
           if grep -n "replit\.local" package-lock.json; then
@@ -51,7 +51,7 @@ jobs:
     name: verify-selection-controls (logic gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -216,7 +216,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4

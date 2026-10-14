@@ -44,7 +44,7 @@ jobs:
     name: slip-card-integrity (slip is live, finalized plan is not re-routed, expert must exist)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4

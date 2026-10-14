@@ -69,7 +69,7 @@ jobs:
     # green over red specs. Red tests must be red at a glance in the Actions list.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
 

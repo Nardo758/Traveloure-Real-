@@ -25,7 +25,7 @@ jobs:
     name: verify-neighborhoods (logic gate, no DB)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -71,7 +71,7 @@ jobs:
     name: lockfile-purity (no replit.local)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Fail if package-lock.json points at Replit firewall
         run: |
           if grep -n "replit.local" package-lock.json; then

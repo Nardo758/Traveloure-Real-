@@ -39,7 +39,7 @@ jobs:
       NODE_ENV: test
       ALLOW_TEST_ACCOUNTS: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'

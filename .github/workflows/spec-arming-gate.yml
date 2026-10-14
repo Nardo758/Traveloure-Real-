@@ -56,7 +56,7 @@ jobs:
     # Waits (bounded by SPEC_ARMING_WAIT_MINUTES) for the arming workflow's own run on the head commit to finish.
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
         with:
           # Full history so the PR base commit is present for the diff below.
           fetch-depth: 0

@@ -47,7 +47,7 @@ jobs:
     name: test-file-reachability (ratchet - new orphans fail)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -68,7 +68,7 @@ jobs:
       SESSION_SECRET: ci-test-secret-not-for-production
       STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -326,7 +326,7 @@ jobs:
     name: money-endpoint-guard (CLAUDE.md §14)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -343,7 +343,7 @@ jobs:
     name: fee-band-admin-guards (2026-09-12-fee-band-admin-gaps — V-4/V-5/V-6)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -368,7 +368,7 @@ jobs:
     name: traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -398,7 +398,7 @@ jobs:
       # at IMPORT time when it is unset. Same posture as legacy-rail-traveler-charge below.
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/unused-no-connection-is-opened
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -436,7 +436,7 @@ jobs:
       DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/unused-no-connection-is-opened
       STRIPE_SECRET_KEY: sk_test_ci_placeholder_no_call_is_made
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -481,7 +481,7 @@ jobs:
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -497,7 +497,7 @@ jobs:
     name: migration-chain-integrity (DECISIONS.md rulings 19, 27)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -511,7 +511,7 @@ jobs:
     name: walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -1144,7 +1144,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1179,7 +1179,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1208,7 +1208,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1246,7 +1246,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1281,7 +1281,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1317,7 +1317,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1349,7 +1349,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1390,7 +1390,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1430,7 +1430,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1472,7 +1472,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1516,7 +1516,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1564,7 +1564,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1608,7 +1608,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1744,7 +1744,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1854,7 +1854,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1890,7 +1890,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1927,7 +1927,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1961,7 +1961,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -1996,7 +1996,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2031,7 +2031,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2136,7 +2136,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2172,7 +2172,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2211,7 +2211,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2255,7 +2255,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2291,7 +2291,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2323,7 +2323,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -2390,7 +2390,7 @@ jobs:
     name: plan-entry-source-fields (Locked Decision 42 D13 — 2026-09-05-doors-source-fields)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2408,7 +2408,7 @@ jobs:
     name: trip-card-honesty (L4 — 2026-09-07-trip-card-honesty)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2429,7 +2429,7 @@ jobs:
     name: plan-row-model (L3 my-plans-rows — 2026-09-07-my-plans-rows)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2457,7 +2457,7 @@ jobs:
     name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2475,7 +2475,7 @@ jobs:
     name: slip-small-additions (CLAUDE.md Locked Decision 42 D18-D22 - 2026-09-06-slip-small-additions)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2522,7 +2522,7 @@ jobs:
     name: slip-conformance (CLAUDE.md Locked Decision 42 D6/D16 - 2026-09-06-slip-conformance)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2573,7 +2573,7 @@ jobs:
     name: item-origin-chip (CLAUDE.md Locked Decision 12 read-exposure - 2026-09-06-item-origin-chip)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2612,7 +2612,7 @@ jobs:
     name: console-grammar (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-console-one-grammar)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2638,7 +2638,7 @@ jobs:
     name: expert-request-review (Console & AI Concierge brief L19 — 2026-09-07-request-is-a-click)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2665,7 +2665,7 @@ jobs:
     name: concierge-door (Console & AI Concierge brief L6 — 2026-09-07-concierge-door)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2692,7 +2692,7 @@ jobs:
     name: trip-card-one-page (CLAUDE.md Locked Decision 45 (6) — 2026-09-07-trip-card-one-page)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2726,7 +2726,7 @@ jobs:
     name: home-time-axis (CLAUDE.md Locked Decision 45 (8) — 2026-09-07-home-time-axis)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2757,7 +2757,7 @@ jobs:
     name: my-events-fold (CLAUDE.md Locked Decision 45 (5) — 2026-09-07-my-events-fold)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2782,7 +2782,7 @@ jobs:
     name: inbox-context (CLAUDE.md Locked Decision 40 + D22 — 2026-09-07-inbox-context)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2801,7 +2801,7 @@ jobs:
     name: discover-in-shell (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-discover-in-shell)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2821,7 +2821,7 @@ jobs:
     name: doors-pass-tripid (CLAUDE.md Locked Decision 42 D13/D15 — 2026-09-07-doors-pass-tripid)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2858,7 +2858,7 @@ jobs:
     name: extraction-date-anchor (Console & AI Concierge brief F5 — 2026-09-07-extraction-date-anchor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2875,7 +2875,7 @@ jobs:
     name: batch3-bookings-cleanup (L12 · §18c · LD 42 D7 · §14 — 2026-09-07)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2905,7 +2905,7 @@ jobs:
     name: batch4-vocabulary-link-cleanup (LD 44 phase 0 · LD 45 (1) · §18c/§18 rule 1 — 2026-09-08)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2950,7 +2950,7 @@ jobs:
     name: confirm-honesty (§13/§18c — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate · delete-dead-transport-status)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -2990,7 +2990,7 @@ jobs:
     name: unit-suite-shared (shared/__tests__ — whole directory)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -3003,7 +3003,7 @@ jobs:
     name: unit-suite-client-lib (client/src/lib/__tests__ — whole directory)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -3016,7 +3016,7 @@ jobs:
     name: unit-suite-client-components (client component __tests__ — whole directories)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -3062,7 +3062,7 @@ jobs:
     name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -3089,7 +3089,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -3128,7 +3128,7 @@ jobs:
       NODE_ENV: test
       JOURNEY_DB_WRITES_OK: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
       - uses: actions/setup-node@v4
@@ -3209,7 +3209,7 @@ jobs:
     name: guard-batch (26 grep/logic guards — each a named step)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
