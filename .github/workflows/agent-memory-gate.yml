@@ -1,0 +1,32 @@
+name: Agent memory repository hygiene
+
+# Scope evidence: reports/agent-memory-index-only.md.
+# No path filters: even a force-added note in an otherwise unrelated PR must fail.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: agent-memory-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  agent-memory:
+    name: No agent working notes in the Git index
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check tracked paths (including force-added notes)
+        run: node scripts/check-agent-memory.cjs
+      - name: Test clean and disposable force-added indexes
+        run: node --test scripts/check-agent-memory.test.cjs
