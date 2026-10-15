@@ -217,6 +217,11 @@ test("C5: no Places fact reaches a public route", async () => {
     // one writer and READS only the last `fetched_at` of its OWN `official_refresh` rows (to decide a target is
     // due). No Places row, no fact content, no route — an internal-secret job.
     "server/jobs/officialRefresh.ts",
+    // BOT-1 Phase 1 (ledger `2026-10-15-bot1-phase1`): the bot channel's one service. It WRITES an approved proposal
+    // through the one writer (`recordFacts`, origin `bot_proposal`), and READS only REGISTRY rows — no plan, a
+    // page-read origin, an official license — for the bot's overdue list (place id, type, dates) and the admin's
+    // review page. Never a Places fact, never a plan's fact.
+    "server/services/bot-proposals.service.ts",
     // Surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`): the OptimizerLead's findings
     // read the plan's hours and location facts — only inside `GET /api/optimization-preview`, behind
     // `authorizeTripLogistics`; only kinds and counts leave it.
