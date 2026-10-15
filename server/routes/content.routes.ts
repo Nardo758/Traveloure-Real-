@@ -9,7 +9,8 @@ import { isCustomVenueOwner, scopeTripFilter } from '../utils/custom-venue-owner
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { withQueryTimer } from '../utils/queryTimer';
 import { affiliateProductsPage, parsePagination } from '../utils/pagination';
-import { toPublicServiceListing } from '../utils/public-service-listing';
+import { toPublicServiceListing, toPublicListing, publicRouteSummary } from '../utils/public-service-listing';
+import { viewerSeesExactLocation, cityNeighborhoodNames } from '../services/listing-location-access.service';
 import { isConciergePoolAccount } from '../services/expert-routability';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
@@ -2527,6 +2528,29 @@ router.get("/api/services/:id", async (req, res) => {
       );
     const buyAction = await buyActionFor(service.deliveryMethod);
 
+    // CP-1 (ledger `2026-10-15-cp1-public-payloads`): this read is public, so WHERE the service
+    // happens is coarse — a ~500 m point, no meeting point / pickup / drop-off / bring / access
+    // text, and the route as a stop count plus the first stop's area. The OWNER and a traveler who
+    // has BOOKED this listing (session-derived, §14) read it exact. One projector for every
+    // product-shape branch below; start times and weekly patterns stay public.
+    const viewerId = getUserId(req) ?? null;
+    const exactLocation = await viewerSeesExactLocation(service.id, ownerUserId, viewerId);
+    const routeSummary = exactLocation
+      ? null
+      : publicRouteSummary(
+          routePoints,
+          service.city ? await cityNeighborhoodNames(service.city) : [],
+          (service as any).neighborhood ?? null,
+        );
+    const publicDetail = (payload: Record<string, any>) => {
+      const projected = toPublicListing(payload, { exact: exactLocation });
+      if (routeSummary) {
+        delete projected.routePoints;
+        Object.assign(projected, routeSummary);
+      }
+      return projected;
+    };
+
     // T-REP (G5 #13): neighborhoods served — same derivation `GET /api/provider/services/:id`
     // (the owner's own edit surface, routes.ts) already uses to pre-populate its multi-select, run
     // here read-only for the public detail. `provider_neighborhood_coverage` is keyed on
@@ -2593,7 +2617,8 @@ router.get("/api/services/:id", async (req, res) => {
         if (t.serviceName) contentOverlay.serviceName = t.serviceName;
         if (t.shortDescription) contentOverlay.shortDescription = t.shortDescription;
         if (t.description) contentOverlay.description = t.description;
-        if (t.meetingPoint) contentOverlay.meetingPoint = t.meetingPoint;
+        // CP-1: a translated meeting point is still the exact place — owner / booked traveler only.
+        if (t.meetingPoint && exactLocation) contentOverlay.meetingPoint = t.meetingPoint;
         translationMeta = { locale: activeLocale, status: "approved", source: t.source, shownInEnglish: false, sourceLocale: listingSourceLocale };
       } else {
         // No approved translation (none authored, or only a draft exists) → honest original +
@@ -2676,7 +2701,7 @@ router.get("/api/services/:id", async (req, res) => {
         publicRows.map((r) => r.deliveryMethod),
       );
 
-      return res.json(withTranslation({
+      return res.json(withTranslation(publicDetail({
         ...service,
         // No public component carries a derivable method (e.g. every one is currently hidden) ⇒
         // keep the last-known stored value rather than guessing (§13) — never blank the chip.
@@ -2694,7 +2719,7 @@ router.get("/api/services/:id", async (req, res) => {
         buyAction: derivedDeliveryMethod && derivedDeliveryMethod !== service.deliveryMethod
           ? await buyActionFor(derivedDeliveryMethod)
           : buyAction,
-      }));
+      })));
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2723,7 +2748,7 @@ router.get("/api/services/:id", async (req, res) => {
       // /api/service-bookings list read, which jitters every non-confirmed row and leaves a
       // confirmed booking's row exact (mirroring the /deliverable gate's status check).
       const jitteredProperty = applyPropertyLocationPrivacy(service);
-      return res.json(withTranslation({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction }));
+      return res.json(withTranslation(publicDetail({ ...jitteredProperty, rooms, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction })));
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2752,9 +2777,9 @@ router.get("/api/services/:id", async (req, res) => {
         fallbackLat: property?.latitude ?? null,
         fallbackLon: property?.longitude ?? null,
       });
-      return res.json(withTranslation({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction }));
+      return res.json(withTranslation(publicDetail({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction })));
     }
-    res.json(withTranslation({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction }));
+    res.json(withTranslation(publicDetail({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction })));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
@@ -2898,7 +2923,9 @@ router.get("/api/services", async (req, res) => {
     // non-property shapes is unaffected.
     // LD 40 (ledger `2026-10-07-public-service-ids`): the owner's `users.id` never rides this public
     // list — `toPublicServiceListing` removes it; `check-public-user-id` predicate (3) requires the call.
-    res.json(services.map((s) => toPublicServiceListing(applyPropertyLocationPrivacy(s))));
+    // CP-1: and the public listing projection — no file, session link or rate, a coarse pin and no
+    // address-like text (ledger `2026-10-15-cp1-public-payloads`).
+    res.json(services.map((s) => toPublicListing(toPublicServiceListing(applyPropertyLocationPrivacy(s)))));
   });
 
   // Unified Discovery Search (public - with advanced filtering)

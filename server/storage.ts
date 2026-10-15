@@ -1,3 +1,4 @@
+import { toPublicListing } from "./utils/public-service-listing";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
@@ -5349,7 +5350,7 @@ export class DatabaseStorage implements IStorage {
     // over. No client reads it (verified repo-wide: the only client references are
     // `pricing-fees.ts`/`pricing-fees-drawer.tsx` documenting its ABSENCE, plus the admin
     // services table, which reads its own admin endpoint).
-    return rows.map((r) => omitFields(r, ["serviceFile", "joinLink", "revenueShareRate"] as const));
+    return rows.map((r) => toPublicListing(omitFields(r, ["serviceFile", "joinLink", "revenueShareRate"] as const))); // CP-1
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {

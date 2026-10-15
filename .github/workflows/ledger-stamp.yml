@@ -114,10 +114,41 @@ jobs:
       - name: Mint the Ledger Stamp App token
         id: app
         if: (steps.probe.outputs.needed == 'true' || inputs.auth_dry_run) && vars.LEDGER_STAMP_APP_ID != ''
-        uses: actions/create-github-app-token@v2.2.1
+        uses: actions/create-github-app-token@v3.3.0
         with:
+          # v3 deprecates app-id in favour of client-id; the App ID variable is what this repo holds, and it still works.
           app-id: ${{ vars.LEDGER_STAMP_APP_ID }}
           private-key: ${{ steps.key.outputs.key }}
+          # The stamp needs exactly this: push one commit to main. Nothing else is granted to the token.
+          permission-contents: write
+
+      # The push must authenticate as the Ledger Stamp App and nothing else (GH013 "Changes must be made through a
+      # pull request" on run 38648786691 means the ruleset did not see the App). Checkout persists no credentials;
+      # this step also removes every other way git could supply one — an http extraheader, a credential helper, a
+      # url.insteadOf rewrite — and points origin at the App's installation token. It then prints what git would
+      # use, by NAME only, and fails if anything other than the App token remains.
+      - name: Pin git to the App token
+        id: gitauth
+        if: steps.app.outputs.token != ''
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for v in $(compgen -e | grep '^GIT_CONFIG_' || true); do unset "$v"; done  # no env-injected git config
+          for scope in --local --global; do
+            git config $scope --get-regexp '^http\..*\.extraheader$' | awk '{print $1}' | while read -r k; do git config $scope --unset-all "$k"; done || true
+            git config $scope --get-regexp '^url\..*\.insteadof$' | awk '{print $1}' | while read -r k; do git config $scope --unset-all "$k"; done || true
+            git config $scope --unset-all credential.helper || true
+          done
+          git config --local credential.helper ""
+          git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git"
+          LEFT=$(git config --show-origin --get-regexp '^(http\..*\.extraheader|url\..*\.insteadof)$' | awk '{print $2}' || true)
+          if [ -n "$LEFT" ]; then
+            echo "::error::git still carries another credential source: $LEFT"
+            exit 1
+          fi
+          echo "git credential sources: none but origin's App installation token (credential.helper empty, no extraheader, no insteadOf)."
 
       - name: App auth dry run (read only)
         if: ${{ inputs.auth_dry_run }}
@@ -127,6 +158,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          for v in $(compgen -e | grep '^GIT_CONFIG_' || true); do unset "$v"; done  # no env-injected git config
           if [ -z "${APP_TOKEN:-}" ]; then
             echo "::error::No App token: LEDGER_STAMP_APP_ID (variable) or LEDGER_STAMP_APP_PRIVATE_KEY (ledger-stamp environment secret) is missing."
             exit 1
@@ -134,8 +166,17 @@ jobs:
           echo "Minted an installation token for ${APP_SLUG}."
           curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/installation/repositories" \
             | jq -r '"installation repositories (\(.total_count)): " + ([.repositories[].full_name] | join(", "))'
-          curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/repos/${REPO}" | jq -r '"read repo: " + .full_name + " (default branch " + .default_branch + ")"'
-          git ls-remote "https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git" refs/heads/main | sed 's/^/git read: /'
+          # Identity: the token's own permissions on this repo, as GitHub reports them for this installation.
+          curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/repos/${REPO}" \
+            | jq -r '"read repo: " + .full_name + " (default branch " + .default_branch + "); token can push: " + (.permissions.push | tostring)'
+          # The pusher identity is the App's bot user; a push from this job authenticates as it and nothing else.
+          BOT=$(curl -fsS "https://api.github.com/users/${APP_SLUG}%5Bbot%5D" | jq -r '.login + " (id " + (.id|tostring) + ")"')
+          echo "pusher identity: ${BOT}"
+          # git reads main through origin, which the step above pinned to the App token.
+          git ls-remote origin refs/heads/main | sed 's/^/git read via origin: /'
+          [ "$(git remote get-url origin | sed -E 's#https://x-access-token:[^@]+@#https://x-access-token:***@#')" = "https://x-access-token:***@github.com/${REPO}.git" ] \
+            || { echo "::error::origin is not the App-token URL"; exit 1; }
+          echo "origin: https://x-access-token:***@github.com/${REPO}.git (App installation token)"
           echo "Dry run only: nothing stamped, nothing pushed."
 
       - name: Stamp, lint, push
@@ -148,6 +189,7 @@ jobs:
           MERGED_AT: ${{ github.event.head_commit.timestamp }}
         run: |
           set -euo pipefail
+          for v in $(compgen -e | grep '^GIT_CONFIG_' || true); do unset "$v"; done  # no env-injected git config
           if [ -z "${APP_TOKEN:-}" ]; then
             echo "::error::Main carries R? rows but the Ledger Stamp App is not configured (repository variable LEDGER_STAMP_APP_ID / ledger-stamp environment secret LEDGER_STAMP_APP_PRIVATE_KEY)."
             exit 1
@@ -155,7 +197,9 @@ jobs:
           APP_USER_ID=$(curl -fsS -H "Authorization: Bearer $APP_TOKEN" "https://api.github.com/users/${APP_SLUG}%5Bbot%5D" | jq -r .id)
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${APP_USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+          # origin was pinned to the App token by "Pin git to the App token"; REMOTE is that same URL.
           REMOTE="https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git"
+          [ "$(git remote get-url origin)" = "$REMOTE" ] || { echo "::error::origin is not the App-token URL — refusing to push"; exit 1; }
 
           # A merge can land between our read and our push. Re-read main and re-stamp (idempotent) on
           # a rejected push; three tries, then fail red.
