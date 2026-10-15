@@ -131,6 +131,7 @@ This document captures architectural decisions to maintain consistency across co
     `/services/:id` page): map renders **located stops only**, shows "X of Y stops located", and renders **no
     map at all when the service has no coordinates** — never a city-center fallback. Traveler map is
     Leaflet/OSM; ODbL attribution ("© OpenStreetMap contributors") REQUIRED wherever it renders.
+    **AMENDED — STOPS AFTER BOOKING (decision-maker Leon Dixon, Oct 15, 2026 — ledger `2026-10-15-cp1-public-payloads`; verbatim: "LD 22(c) and LD 24 amended — stops and notes after booking."):** a signed-out read carries a stop count and the first stop's area; the exact pin and stops are the owner's and a booked traveler's.
     **(d) Distribute:** the "Route" share frame is a third format of the EXISTING share-image rail
     (`/api/share-image/service/:id.png?format=route`, satori template beside feed/story) — layout data resolved
     server-side from the row like the other two; measurement stays on Performance (`LinkAnalyticsPanel`), the
@@ -169,6 +170,7 @@ This document captures architectural decisions to maintain consistency across co
     deliberately NOT `trip_participants.accessibility_needs`/`mobility_level` — that is a TRAVELER's
     stated needs, a different person's answer. Both are ordinary owner-authored content (no amount,
     identity, rate or grant), so §19's strip does not apply and none was added.
+    **AMENDED — NOTES AFTER BOOKING (decision-maker Leon Dixon, Oct 15, 2026 — ledger `2026-10-15-cp1-public-payloads`; verbatim: "LD 22(c) and LD 24 amended — stops and notes after booking."):** Bring and Access are shown to a booked traveler and the owner, never on a signed-out read.
 
 25. **New ledger rulings are keyed by DATE-SLUG, not by number (ledger `2026-08-16-ledger-ids`).**
     `docs/DECISIONS.md` ids 1–122 are **FROZEN** — cited throughout this file and the briefs, never
@@ -2701,6 +2703,17 @@ This document captures architectural decisions to maintain consistency across co
     The rail itself is recorded in the d-3a ledger row and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`;
     migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
     (`liteapiBookingEnabled`).
+    **AMENDED — A CHARGED CANCEL IS A CANCELLATION, AND ONLY AFTER CONSENT (decision-maker, Oct 15, 2026 — ledger
+    `2026-10-15-liteapi-cancel-with-charges`; migration 379 — Migration 379 SQL approved by Leon — comment 20:22Z on #1456).** Only a cancel's 200 carrying `CANCELLED` or
+    `CANCELLED_WITH_CHARGES` ends the booking: the row moves to `cancelled`, the item is released through the ONE
+    `releaseLiteapiStayItem`, and `cancellation_fee`, `refund_amount` and `currency` are stored exactly as returned
+    (`liteapi_bookings.cancel_amounts`). Money follows `refund_amount`, never the status word. A missing
+    `refund_amount` or a currency other than ours keeps the stay cancelled and opens a `liteapi_refund_unverified`
+    reconciliation exception. Every other answer (any other status code, no readable answer, any other status word)
+    moves the row to `needs_review`, never back to `confirmed`. When the policy the prebook stored says cancelling
+    now costs money, the cancel answers 422 `charges_apply` with the policy's amounts and makes NO LiteAPI call
+    unless the traveler sent `acknowledgeCharges: true` from the cancel sheet; CI never sends it. No traveler
+    refund is computed: that maths is a pending founder call.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;

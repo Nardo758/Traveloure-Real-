@@ -17,7 +17,7 @@ import { db, pool } from "../server/db";
 import { liteapiBookings } from "../shared/schema";
 import { liteapiConfig } from "../server/config/liteapi.config";
 import { createLiteapiClient } from "../server/services/liteapi-client";
-import { bookingForClientReference, bookingStatusOf } from "../shared/liteapi-booking";
+import { bookingForClientReference, bookingStatusOf, isLiteapiCancelled } from "../shared/liteapi-booking";
 
 async function main(): Promise<number> {
   const cfg = liteapiConfig();
@@ -55,9 +55,9 @@ async function main(): Promise<number> {
         continue;
       }
       const theirs = bookingStatusOf(await client.getBooking(bookingId));
-      if (theirs === "CANCELLED") {
+      if (isLiteapiCancelled(theirs)) {
         alreadyCancelled++;
-        console.log(`[liteapi-sandbox-cleanup] ${r.id} (${r.status}): LiteAPI ${bookingId} already CANCELLED`);
+        console.log(`[liteapi-sandbox-cleanup] ${r.id} (${r.status}): LiteAPI ${bookingId} already ${theirs}`);
         continue;
       }
       const after = bookingStatusOf(await client.cancelBooking(bookingId));

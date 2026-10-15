@@ -21,7 +21,7 @@
  */
 import fs from "fs";
 import path from "path";
-import satori from "satori";
+import { satori } from "../utils/satori"; // CP-1 PR 3: never a bare default import (see the module)
 import { Resvg } from "@resvg/resvg-js";
 import { FONT_CONFIG, h, type El } from "./share-image.service";
 import { photoSourceName } from "@shared/ready-made-preview";

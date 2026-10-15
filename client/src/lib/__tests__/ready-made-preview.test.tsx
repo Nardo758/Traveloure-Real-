@@ -2,10 +2,10 @@
  * Slice B1 — the Ready Made Trip's public preview, pure + render (ledger `2026-10-05-rmt-public-preview`).
  *   V1 the slug is the title in kebab case plus the id's token; the token alone is authoritative
  *   V2 the price line is the purchase's own total, "no fee on this purchase"; no price ⇒ no line
- *   V3 the sample day carries titles, times, types and place names, and only CONFIRMED legs with
- *      their own minutes — never a coordinate, a note or a price
+ *   V3 the sample day is an OUTLINE — the stop count and the areas (CP-1 PR 2, ledger
+ *      `2026-10-15-cp1-teasers`) — never a title, time, place name, leg minute, coordinate, note or price
  *   V4 the page draws the cover credit, the expert, the verified stamp only when true, the price,
- *      "Get this trip" to the store page, ONE day and the locked-days line; an absent fact draws nothing
+ *      "Get this trip" to the store page, ONE day's outline and the locked-days line; an absent fact draws nothing
  *
  * Run: npx tsx --test client/src/lib/__tests__/ready-made-preview.test.tsx
  */
@@ -68,11 +68,9 @@ const items = [
   { id: "c", title: "Nishiki Market", dayNumber: 1, startTime: null, itemType: "dining", locationName: "Nakagyo" },
   { id: "d", title: "Day 2 stop", dayNumber: 2, startTime: "09:00", itemType: "activity", locationName: null },
 ];
-const legs = [
-  { fromActivityId: "a", toActivityId: "b", proposalStatus: "confirmed", userSelectedMode: "walking", recommendedMode: "transit", estimatedDurationMinutes: 22 },
-  { fromActivityId: "b", toActivityId: "c", proposalStatus: "proposed", userSelectedMode: null, recommendedMode: "transit", estimatedDurationMinutes: 18 },
-  { fromActivityId: "c", toActivityId: "d", proposalStatus: "confirmed", userSelectedMode: "transit", recommendedMode: "transit", estimatedDurationMinutes: 30 },
-];
+// CP-1 PR 2: the caller names each stop's area; "b" sits near no known neighbourhood.
+const AREAS: Record<string, string | null> = { a: "Fushimi", b: null, c: "Nakagyo", d: "Arashiyama" };
+const areaOf = (i: { id: string }) => AREAS[i.id] ?? null;
 
 describe("V2b photo credit source", () => {
   it("names the library the metadata names, never a default", () => {
@@ -92,16 +90,16 @@ describe("V2b photo credit source", () => {
 });
 
 describe("V3 sample day", () => {
-  it("day 1 only, confirmed legs only, nothing private", () => {
-    const day = sampleDayOf(items as any, legs)!;
-    assert.equal(day.dayNumber, 1);
-    assert.deepEqual(day.stops.map((s) => s.title), ["Fushimi Inari", "Tofuku-ji", "Nishiki Market"]);
-    assert.deepEqual(day.legs, [{ fromIndex: 0, toIndex: 1, mode: "walking", minutes: 22 }]);
+  it("day 1 only, as an outline: the count and the areas, nothing the buyer pays for", () => {
+    const day = sampleDayOf(items as any, areaOf)!;
+    assert.deepEqual(day, { dayNumber: 1, stopCount: 3, areas: ["Fushimi", "Nakagyo"] });
     const json = JSON.stringify(day);
-    for (const banned of ["latitude", "secret", "expertNote", "notes"]) assert.ok(!json.includes(banned), banned);
+    for (const banned of ["Fushimi Inari", "Tofuku-ji", "Nishiki Market", "08:00", "latitude", "secret", "expertNote", "notes", "walking"]) {
+      assert.ok(!json.includes(banned), banned);
+    }
   });
   it("no day-1 stops ⇒ no sample day", () => {
-    assert.equal(sampleDayOf([items[3]] as any, []), null);
+    assert.equal(sampleDayOf([items[3]] as any, areaOf), null);
   });
 });
 
@@ -118,7 +116,7 @@ function preview(over: Partial<ReadyMadePreview> = {}): ReadyMadePreview {
     heroCredit: { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann", source: "Unsplash" },
     priceLine: "From $49 · no fee on this purchase",
     expert: { name: "Aiko", handle: "aiko-kyoto", localVerified: true },
-    sampleDay: sampleDayOf(items as any, legs),
+    sampleDay: sampleDayOf(items as any, areaOf),
     lockedDays: 2,
     ...over,
   };
@@ -135,9 +133,10 @@ describe("V4 the page", () => {
     assert.match(html, /Local · verified in Kyoto/);
     assert.match(html, /From \$49 · no fee on this purchase/);
     assert.match(html, /href="\/ready-made\/3f9a1c2b-7e44-4d1a-9c0e-5b6a7d8e9f01"[^>]*>Get this trip/);
-    assert.match(html, /A sample day · Day 1/);
-    assert.match(html, /22 min \(confirmed\)/);
-    assert.ok(!html.includes("18 min"), "a proposed leg is not shown");
+    assert.match(html, /Day 1 · 3 stops · Fushimi, Nakagyo/);
+    for (const hidden of ["Fushimi Inari", "Tofuku-ji", "Nishiki Market", "08:00", "min (confirmed)"]) {
+      assert.ok(!html.includes(hidden), `the outline never shows ${hidden}`);
+    }
     assert.ok(!html.includes("Day 2 stop"), "one day only");
     assert.match(html, /The other 2 days open in your own editable trip/);
   });

@@ -184,6 +184,13 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
         tried.push(`${h.name}: not bookable`);
         continue;
       }
+      // Only a refundable rate can be "cancelled at once" for free (ledger `2026-10-15-liteapi-cancel-with-charges`):
+      // read the stay's live rate first and pass over one that is not stated refundable.
+      const quote = await (await api.get(`${BASE_URL}/api/trips/${tripId}/stays/${h.id}/rates`)).json().catch(() => null);
+      if (quote?.state !== "ok" || quote.offer?.refundable !== true) {
+        tried.push(`${h.name}: ${quote?.state === "ok" ? "non-refundable" : `rates ${quote?.state ?? "unread"}`}`);
+        continue;
+      }
 
       await page.goto(`${BASE_URL}/plans/${tripId}`);
       await page.getByTestId(`slip-item-name-${itemId}`).first().click();
@@ -217,6 +224,11 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       // §18d: a run where every hotel tried was refused below SSP has proven the refusal path, NOT booking. It is
       // marked SKIPPED (never passed), naming what was not exercised, so a green job is never read as "booked".
       const onlyBelowSsp = tried.length > 0 && tried.every((t) => t.endsWith("(below_ssp)"));
+      const onlyNonRefundable = tried.length > 0 && tried.every((t) => t.endsWith(": non-refundable"));
+      if (onlyNonRefundable) {
+        test.skip(true, `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried offered only a non-refundable rate for the plan's dates, which cannot be cancelled free. Tried: ${tried.join("; ")}`);
+        return;
+      }
       expect(onlyBelowSsp && belowSspShown, `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
       test.skip(
         true,
@@ -231,6 +243,7 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
     const bookAnswer = page.waitForResponse((r) => r.url().endsWith(`/items/${itemId}/stay-booking/book`), { timeout: 180_000 });
     await payWithSandboxCard(page, `#liteapi-payment-${itemId}`);
     const booked = await (await bookAnswer).json();
+    let chargesApply: Record<string, unknown> | null = null;
     await expect(page.getByTestId("stay-booked-result")).toHaveAttribute("data-state", booked.state);
     try {
       expect(booked.state, JSON.stringify(booked)).toBe("confirmed");
@@ -239,9 +252,23 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       if (booked.hotelConfirmationCode) await expect(page.getByText(`booked · #${booked.hotelConfirmationCode}`).first()).toBeVisible();
     } finally {
       if (booked.state === "confirmed" || booked.state === "pending") {
-        const cancelled = await (await api.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking/cancel`, { data: {} })).json();
-        expect(cancelled.state, JSON.stringify(cancelled)).toBe("cancelled");
+        // Never sends acknowledgeCharges: CI does not consent to a charge on anyone's behalf.
+        const res = await api.post(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking/cancel`, { data: {} });
+        const cancelled = await res.json();
+        if (res.status() === 422) {
+          // The booking's re-quote came back non-refundable after the rate read said refundable. The consent gate
+          // must refuse without a LiteAPI call; the live sandbox booking is cancelled by the job's cleanup step.
+          expect(cancelled.code, JSON.stringify(cancelled)).toBe("charges_apply");
+          chargesApply = cancelled;
+        } else {
+          expect(cancelled.state, JSON.stringify(cancelled)).toBe("cancelled");
+        }
       }
+    }
+    if (chargesApply) {
+      expect((await (await api.get(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking`)).json()).booking.status).toBe("confirmed");
+      test.skip(true, `FREE CANCEL NOT EXERCISED: the booked rate's stored policy says cancelling now has a charge (${JSON.stringify(chargesApply)}); the 422 consent gate was proven and the job's cleanup step cancels the sandbox booking.`);
+      return;
     }
     const after = await (await api.get(`${BASE_URL}/api/trips/${tripId}/items/${itemId}/stay-booking`)).json();
     expect(after.booking.status).toBe("cancelled");
