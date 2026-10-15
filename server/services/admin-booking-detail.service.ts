@@ -16,6 +16,17 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveNeedsReviewServiceBooking, type NeedsReviewResolveOutcome } from "./checkout-claim.service";
 import { releaseLiteapiStayItem } from "./liteapi-booking.service";
+import { promoteTransportOptionForResolvedBooking } from "./transport-option-resolve";
+import { bookingChargeShare, chargeShareTolerance } from "./booking-charge-share";
+import { getStripeSecretKey } from "../utils/stripe-key";
+import Stripe from "stripe";
+
+class TransportOptionNotPromotableError extends Error {
+  constructor(optionId: string, status: string | null) {
+    super(`The transport option ${optionId} is "${status ?? "missing"}" and cannot be confirmed, so the booking was not confirmed either.`);
+    this.name = "TransportOptionNotPromotableError";
+  }
+}
 
 export const ADMIN_BOOKING_KINDS = ["service", "legacy", "liteapi"] as const;
 export type AdminBookingKind = (typeof ADMIN_BOOKING_KINDS)[number];
@@ -163,7 +174,105 @@ export async function loadAdminBookingDetail(kind: AdminBookingKind, id: string)
 
 export type ResolveResult =
   | { ok: true; status: NeedsReviewResolveOutcome; paymentIntentId: string | null }
-  | { ok: false; httpStatus: 404 | 409 | 422; reason: string; message: string };
+  | { ok: false; httpStatus: 404 | 409 | 422 | 503; reason: string; message: string; field?: PaymentIntentField };
+
+// ── Verifying the PaymentIntent with Stripe before any confirm (decision-maker, Oct 15, 2026) ──────
+// An id — the row's or the admin's — confirms a booking only when Stripe says it is real, paid (or
+// authorized), and for this booking's amount in this booking's currency. Anything else is refused by
+// name; Stripe being unreachable is refused too, because an unverified id never confirms.
+export type PaymentIntentField = "id" | "status" | "amount" | "currency";
+export interface RetrievedPaymentIntent { status: string; amount: number; currency: string }
+export interface ResolveDeps {
+  retrievePaymentIntent: (id: string) => Promise<RetrievedPaymentIntent | null>;
+}
+const VERIFIED_PAYMENT_INTENT_STATUSES = new Set(["succeeded", "requires_capture"]);
+
+export const defaultResolveDeps: ResolveDeps = {
+  async retrievePaymentIntent(id) {
+    const key = getStripeSecretKey();
+    if (!key) throw new Error("stripe_unconfigured");
+    const stripe = new Stripe(key, { apiVersion: "2024-12-18.acacia" as any });
+    try {
+      const pi = await stripe.paymentIntents.retrieve(id);
+      return { status: pi.status, amount: pi.amount, currency: pi.currency };
+    } catch (err: any) {
+      if (err?.code === "resource_missing" || err?.statusCode === 404) return null;
+      throw err;
+    }
+  },
+};
+
+/** What this booking charged, in cents and lower-case currency — server-derived from the row (§14). */
+async function expectedCharge(kind: "service" | "legacy", id: string): Promise<{ cents: number; currency: string; toleranceCents: number } | null> {
+  if (kind === "service") {
+    const r = rowsOf(await db.execute(sql`
+      SELECT total_amount, platform_fee, booking_details FROM service_bookings WHERE id = ${id}
+    `))[0];
+    if (!r) return null;
+    const d = (r.booking_details ?? {}) as Record<string, any>;
+    const dollars = bookingChargeShare({
+      totalAmount: r.total_amount,
+      platformFee: r.platform_fee,
+      conciergeFeeSnapshot: d.travelerCharge?.conciergeFee ?? null,
+      travelerFeeCharged: d.travelerServiceFee?.charged ?? null,
+    });
+    // The drift job's own rounding bound for one row — not a rate (§8).
+    return { cents: Math.round(dollars * 100), currency: String(d.currency ?? "usd").toLowerCase(), toleranceCents: Math.round(chargeShareTolerance(1) * 100) };
+  }
+  const r = rowsOf(await db.execute(sql`SELECT total_amount FROM bookings WHERE id::text = ${id}`))[0];
+  if (!r) return null;
+  // The legacy table carries no currency column; every legacy charge was created in USD.
+  return { cents: Math.round(Number(r.total_amount ?? 0) * 100), currency: "usd", toleranceCents: Math.round(chargeShareTolerance(1) * 100) };
+}
+
+async function verifyPaymentIntent(
+  kind: "service" | "legacy",
+  bookingId: string,
+  paymentIntentId: string,
+  deps: ResolveDeps,
+): Promise<{ ok: true } | Extract<ResolveResult, { ok: false }>> {
+  const mismatch = (field: PaymentIntentField, message: string) =>
+    ({ ok: false as const, httpStatus: 422 as const, reason: "payment_intent_mismatch", field, message });
+  let pi: RetrievedPaymentIntent | null;
+  try {
+    pi = await deps.retrievePaymentIntent(paymentIntentId);
+  } catch {
+    return { ok: false, httpStatus: 503, reason: "payment_intent_unverified", message: "Stripe could not be reached to check this PaymentIntent, so the booking was not confirmed. Try again." };
+  }
+  if (!pi) return mismatch("id", `Stripe has no PaymentIntent ${paymentIntentId}.`);
+  if (!VERIFIED_PAYMENT_INTENT_STATUSES.has(pi.status)) return mismatch("status", `PaymentIntent ${paymentIntentId} is "${pi.status}", not succeeded or requires_capture.`);
+  const expected = await expectedCharge(kind, bookingId);
+  if (!expected) return { ok: false, httpStatus: 404, reason: "not_found", message: "No such booking." };
+  if (pi.currency.toLowerCase() !== expected.currency) return mismatch("currency", `PaymentIntent is in ${pi.currency.toUpperCase()}; this booking is in ${expected.currency.toUpperCase()}.`);
+  if (Math.abs(pi.amount - expected.cents) > expected.toleranceCents) {
+    return mismatch("amount", `PaymentIntent is for ${(pi.amount / 100).toFixed(2)}; this booking charged ${(expected.cents / 100).toFixed(2)}.`);
+  }
+  return { ok: true };
+}
+
+/**
+ * The checks that come before Stripe is asked anything: the row exists, is held, and has exactly one
+ * PaymentIntent to verify (its own, or the admin's when it carries none). The atomic writer repeats
+ * every one of them; these exist so the Stripe call is made for the id the writer will record.
+ */
+async function preflightConfirm(
+  kind: "service" | "legacy",
+  id: string,
+  supplied: string | null,
+): Promise<{ ok: true; paymentIntentId: string } | Extract<ResolveResult, { ok: false }>> {
+  const cur = kind === "service"
+    ? rowsOf(await db.execute(sql`SELECT status, stripe_payment_intent_id FROM service_bookings WHERE id = ${id}`))[0]
+    : rowsOf(await db.execute(sql`SELECT status, stripe_payment_intent_id FROM bookings WHERE id::text = ${id}`))[0];
+  if (!cur) return { ok: false, httpStatus: 404, reason: "not_found", message: "No such booking." };
+  if (cur.status !== "needs_review") return { ok: false, httpStatus: 409, reason: "not_needs_review", message: `This booking is "${cur.status}", not needs_review; nothing was changed.` };
+  const onRow: string | null = cur.stripe_payment_intent_id ?? null;
+  if (onRow && supplied && onRow !== supplied) {
+    return { ok: false, httpStatus: 409, reason: "different_payment_intent", message: `This booking already records ${onRow}; a different PaymentIntent is never written over it.` };
+  }
+  const pi = onRow ?? supplied;
+  if (!pi) return { ok: false, httpStatus: 422, reason: "no_payment_intent", message: "A booking is never confirmed without a PaymentIntent. Enter the pi_… id from Stripe." };
+  return { ok: true, paymentIntentId: pi };
+}
 
 /**
  * The ONLY path out of `needs_review`. Each kind's flip is an atomic conditional on
@@ -174,8 +283,32 @@ export async function resolveNeedsReviewBooking(
   id: string,
   outcome: NeedsReviewResolveOutcome,
   paymentIntentId: string | null,
+  deps: ResolveDeps = defaultResolveDeps,
 ): Promise<ResolveResult> {
-  if (kind === "service") return resolveNeedsReviewServiceBooking(id, outcome, paymentIntentId);
+  const supplied = paymentIntentId?.trim() || null;
+  if (outcome === "confirmed" && (kind === "service" || kind === "legacy")) {
+    const pre = await preflightConfirm(kind, id, supplied);
+    if (!pre.ok) return pre;
+    const verified = await verifyPaymentIntent(kind, id, pre.paymentIntentId, deps);
+    if (!verified.ok) return verified;
+  }
+  if (kind === "service") {
+    // A transport booking's option is confirmed in the SAME transaction as the booking (as ruled).
+    return resolveNeedsReviewServiceBooking(id, outcome, supplied, async (tx, details) => {
+      const optionId = typeof details?.optionId === "string" ? details.optionId : null;
+      if (details?.bookingType !== "transport" || !optionId) return;
+      const option = await promoteTransportOptionForResolvedBooking(tx, optionId);
+      if (!option.promoted && option.bookingStatus !== "confirmed") {
+        // Refusing here rolls the booking's flip back too: the two are confirmed together or not at all.
+        throw new TransportOptionNotPromotableError(optionId, option.bookingStatus);
+      }
+    }).catch((err) => {
+      if (err instanceof TransportOptionNotPromotableError) {
+        return { ok: false as const, httpStatus: 409 as const, reason: "transport_option_not_promotable", message: err.message };
+      }
+      throw err;
+    });
+  }
 
   if (kind === "legacy") {
     const pi = paymentIntentId?.trim() || null;

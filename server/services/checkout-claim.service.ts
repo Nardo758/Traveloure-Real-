@@ -2628,6 +2628,8 @@ export async function resolveNeedsReviewServiceBooking(
   bookingId: string,
   outcome: NeedsReviewResolveOutcome,
   suppliedPaymentIntentId: string | null,
+  /** Runs inside the confirm's transaction, after the flip, with the row's booking_details. */
+  onConfirmed?: (tx: any, bookingDetails: Record<string, any>) => Promise<void>,
 ): Promise<ServiceNeedsReviewResult> {
   const rowsOf = (r: any) => (Array.isArray(r) ? r : (r?.rows ?? []));
   const readBack = async () =>
@@ -2650,8 +2652,9 @@ export async function resolveNeedsReviewServiceBooking(
   }
 
   const pi = suppliedPaymentIntentId?.trim() || null;
-  const moved = rowsOf(
-    await db.execute(sql`
+  const moved = await db.transaction(async (tx) => {
+    const flipped = rowsOf(
+    await tx.execute(sql`
       UPDATE service_bookings
       SET status = 'confirmed',
           stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ${pi}::text),
@@ -2673,9 +2676,12 @@ export async function resolveNeedsReviewServiceBooking(
           (stripe_payment_intent_id IS NOT NULL AND (${pi}::text IS NULL OR stripe_payment_intent_id = ${pi}::text))
           OR (stripe_payment_intent_id IS NULL AND ${pi}::text IS NOT NULL)
         )
-      RETURNING stripe_payment_intent_id
+      RETURNING stripe_payment_intent_id, booking_details
     `),
-  );
+    );
+    if (flipped[0] && onConfirmed) await onConfirmed(tx, flipped[0].booking_details ?? {});
+    return flipped;
+  });
   if (moved[0]) return { ok: true, status: "confirmed", paymentIntentId: moved[0].stripe_payment_intent_id };
 
   // Zero rows: the read below only names WHY (the message, not the decision).

@@ -260,7 +260,7 @@ export async function createTransportBookingCheckout(
  * second flip.
  */
 const TRANSPORT_BOOKING_PROMOTABLE_FROM = ["pending"] as const;
-const TRANSPORT_OPTION_PROMOTABLE_FROM = ["available", "booked"] as const;
+export const TRANSPORT_OPTION_PROMOTABLE_FROM = ["available", "booked"] as const;
 
 /**
  * PAY-1 §1 — the ONE writer that holds a paid transport booking for review. Atomic conditional on

@@ -892,7 +892,7 @@ router.post("/api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve", isA
     const { resolveNeedsReviewBooking } = await import("../services/admin-booking-detail.service");
     const kind = req.params.kind as "service" | "legacy" | "liteapi";
     const result = await resolveNeedsReviewBooking(kind, req.params.id, parsed.data.outcome, parsed.data.paymentIntentId ?? null);
-    if (!result.ok) return res.status(result.httpStatus).json({ message: result.message, reason: result.reason });
+    if (!result.ok) return res.status(result.httpStatus).json({ message: result.message, reason: result.reason, ...("field" in result && result.field ? { field: result.field } : {}) });
     const auditWarning = await recordAdminAudit({
       actorId: user.id,
       actorRole: user.role,

@@ -13,6 +13,13 @@
  *   P5  §4  Resolve on legacy and LiteAPI rows; LiteAPI → cancelled ends the row and gives the plan
  *           item back through the ONE release rail, in one transaction.
  *   P6  §4  the detail read says whether a PaymentIntent exists and carries the hold on its timeline.
+ *   P7  §4  confirm verifies the PaymentIntent with Stripe: a missing id, a wrong status, amount or
+ *           currency is 422 payment_intent_mismatch naming the field; Stripe unreachable is 503; none
+ *           of them confirms.
+ *   P8  §4  a verified confirm of a transport booking also confirms its transport option in the same
+ *           transaction; an option that cannot be confirmed rolls the booking back.
+ *
+ * Stripe is never called: every confirm gets an injected `retrievePaymentIntent`.
  *
  * DISPOSABLE DB ONLY. Every row this file writes is created by it and deleted in after().
  * Run solo: npx tsx --test server/__tests__/pay1-payment-checks.db.test.ts
@@ -33,7 +40,7 @@ import {
   WebhookClaimInFlightError,
   WEBHOOK_CLAIM_TTL_MINUTES,
 } from "../services/webhook-claim.service";
-import { loadAdminBookingDetail, resolveNeedsReviewBooking } from "../services/admin-booking-detail.service";
+import { loadAdminBookingDetail, resolveNeedsReviewBooking, type ResolveDeps } from "../services/admin-booking-detail.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -43,6 +50,12 @@ const serviceIds: string[] = [];
 const legacyIds: string[] = [];
 const liteapiIds: string[] = [];
 const eventIds: string[] = [];
+const optionIds: string[] = [];
+
+/** A fake Stripe that answers every id with a paid PaymentIntent for `cents` in `currency`. */
+const paidAs = (cents: number, currency = "usd", status = "succeeded"): ResolveDeps => ({
+  retrievePaymentIntent: async () => ({ status, amount: cents, currency }),
+});
 
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : (r?.rows ?? []));
 
@@ -96,6 +109,7 @@ after(async () => {
   for (const id of serviceIds) await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`).catch(() => {});
   for (const id of legacyIds) await db.execute(sql`DELETE FROM bookings WHERE id::text = ${id}`).catch(() => {});
   for (const id of liteapiIds) await db.execute(sql`DELETE FROM liteapi_bookings WHERE id = ${id}`).catch(() => {});
+  for (const id of optionIds) await db.execute(sql`DELETE FROM transport_booking_options WHERE id = ${id}`).catch(() => {});
   for (const id of eventIds) await db.execute(sql`DELETE FROM platform_webhook_consumers WHERE stripe_event_id = ${id}`).catch(() => {});
   await db.execute(sql`DELETE FROM payment_intents WHERE stripe_payment_intent_id LIKE ${`pi_${RUN}%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`).catch(() => {});
@@ -188,7 +202,7 @@ test("P4: Resolve on a service booking", async () => {
   assert.equal((await readService(noPi)).status, "needs_review");
 
   const pi = `pi_${RUN}_admin`;
-  const ok = await resolveNeedsReviewBooking("service", noPi, "confirmed", pi);
+  const ok = await resolveNeedsReviewBooking("service", noPi, "confirmed", pi, paidAs(12000));
   assert.deepEqual(ok, { ok: true, status: "confirmed", paymentIntentId: pi });
   const row = await readService(noPi);
   assert.equal(row.status, "confirmed");
@@ -200,11 +214,11 @@ test("P4: Resolve on a service booking", async () => {
   assert.equal((await readService(noPi)).status, "confirmed");
 
   const carrying = await seedService("needs_review", `pi_${RUN}_row`);
-  const different = await resolveNeedsReviewBooking("service", carrying, "confirmed", `pi_${RUN}_other`);
+  const different = await resolveNeedsReviewBooking("service", carrying, "confirmed", `pi_${RUN}_other`, paidAs(12000));
   assert.equal((different as any).httpStatus, 409);
   assert.equal((different as any).reason, "different_payment_intent");
   assert.equal((await readService(carrying)).stripe_payment_intent_id, `pi_${RUN}_row`, "never overwritten");
-  const rowPi = await resolveNeedsReviewBooking("service", carrying, "confirmed", null);
+  const rowPi = await resolveNeedsReviewBooking("service", carrying, "confirmed", null, paidAs(12000));
   assert.equal(rowPi.ok, true, "the row's own PaymentIntent is enough");
 
   const toCancel = await seedService("needs_review");
@@ -221,7 +235,7 @@ test("P4: Resolve on a service booking", async () => {
 test("P5: Resolve on legacy and LiteAPI rows", async () => {
   const legacy = await seedLegacy("needs_review");
   assert.equal(((await resolveNeedsReviewBooking("legacy", legacy, "confirmed", null)) as any).httpStatus, 422);
-  const ok = await resolveNeedsReviewBooking("legacy", legacy, "confirmed", `pi_${RUN}_legacy`);
+  const ok = await resolveNeedsReviewBooking("legacy", legacy, "confirmed", `pi_${RUN}_legacy`, paidAs(8000));
   assert.equal(ok.ok, true);
   const row = rowsOf(await db.execute(sql`SELECT status, stripe_payment_intent_id FROM bookings WHERE id::text = ${legacy}`))[0];
   assert.equal(row.status, "confirmed");
@@ -273,4 +287,77 @@ test("P6: the detail read says whether a PaymentIntent exists and shows the hold
   assert.equal(d3!.hasPaymentIntent, false);
 
   assert.equal(await loadAdminBookingDetail("legacy", crypto.randomUUID()), null);
+});
+
+test("P7: confirm verifies the PaymentIntent with Stripe and refuses a mismatch by field", async () => {
+  const id = await seedService("needs_review");
+  const pi = `pi_${RUN}_verify`;
+  const cases: Array<[ResolveDeps, string]> = [
+    [{ retrievePaymentIntent: async () => null }, "id"],
+    [paidAs(12000, "usd", "requires_payment_method"), "status"],
+    [paidAs(9900), "amount"],
+    [paidAs(12000, "jpy"), "currency"],
+  ];
+  for (const [deps, field] of cases) {
+    const r = await resolveNeedsReviewBooking("service", id, "confirmed", pi, deps);
+    assert.equal(r.ok, false);
+    assert.equal((r as any).httpStatus, 422, field);
+    assert.equal((r as any).reason, "payment_intent_mismatch", field);
+    assert.equal((r as any).field, field);
+    const row = await readService(id);
+    assert.equal(row.status, "needs_review", `${field}: never confirmed on an unverified id`);
+    assert.equal(row.stripe_payment_intent_id, null, `${field}: nothing recorded`);
+  }
+  const down = await resolveNeedsReviewBooking("service", id, "confirmed", pi, {
+    retrievePaymentIntent: async () => { throw new Error("network"); },
+  });
+  assert.equal((down as any).httpStatus, 503);
+  assert.equal((await readService(id)).status, "needs_review");
+
+  const legacy = await seedLegacy("needs_review");
+  const wrong = await resolveNeedsReviewBooking("legacy", legacy, "confirmed", pi, paidAs(1));
+  assert.equal((wrong as any).field, "amount");
+  const authorized = await resolveNeedsReviewBooking("legacy", legacy, "confirmed", pi, paidAs(8000, "usd", "requires_capture"));
+  assert.equal(authorized.ok, true, "requires_capture is an authorized payment");
+});
+
+async function seedOption(bookingStatus: string | null): Promise<string> {
+  const id = `opt-${RUN}-${crypto.randomUUID().slice(0, 6)}`;
+  await db.execute(sql`
+    INSERT INTO transport_booking_options (id, booking_type, source, title, mode_type, booking_status)
+    VALUES (${id}, 'platform', 'test', 'Kyoto transfer', 'train', ${bookingStatus})
+  `);
+  optionIds.push(id);
+  return id;
+}
+async function seedHeldTransport(optionId: string): Promise<string> {
+  const id = `booking-${Date.now()}-${crypto.randomUUID().slice(0, 9)}`;
+  await db.execute(sql`
+    INSERT INTO service_bookings (id, service_id, traveler_id, trip_id, status, total_amount, booking_details)
+    VALUES (${id}, NULL, ${traveler}, ${trip}, 'needs_review', '120.00',
+            ${JSON.stringify({ bookingType: "transport", optionId, currency: "USD" })}::jsonb)
+  `);
+  serviceIds.push(id);
+  return id;
+}
+
+test("P8: a verified confirm also confirms the transport option, in the same transaction", async () => {
+  const optionId = await seedOption("available");
+  const id = await seedHeldTransport(optionId);
+  const r = await resolveNeedsReviewBooking("service", id, "confirmed", `pi_${RUN}_p8`, paidAs(12000));
+  assert.deepEqual(r, { ok: true, status: "confirmed", paymentIntentId: `pi_${RUN}_p8` });
+  assert.equal((await readService(id)).status, "confirmed");
+  const opt = rowsOf(await db.execute(sql`SELECT booking_status FROM transport_booking_options WHERE id = ${optionId}`))[0];
+  assert.equal(opt.booking_status, "confirmed");
+
+  // An option that was cancelled is never resurrected — and the booking is not confirmed without it.
+  const cancelledOption = await seedOption("cancelled");
+  const held = await seedHeldTransport(cancelledOption);
+  const refused = await resolveNeedsReviewBooking("service", held, "confirmed", `pi_${RUN}_p8b`, paidAs(12000));
+  assert.equal((refused as any).httpStatus, 409);
+  assert.equal((refused as any).reason, "transport_option_not_promotable");
+  const row = await readService(held);
+  assert.equal(row.status, "needs_review", "the booking's flip rolled back with the option");
+  assert.equal(row.stripe_payment_intent_id, null);
+  assert.equal(rowsOf(await db.execute(sql`SELECT booking_status FROM transport_booking_options WHERE id = ${cancelledOption}`))[0].booking_status, "cancelled");
 });
