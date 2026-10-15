@@ -40,7 +40,7 @@ const REFUSALS: Record<string, string> = {
   url_not_https: "The page is not an https address.",
   url_off_source_host: "The page is not on the source's own site.",
   expiry_unset: "No expiry is set: the source has no refresh interval and bot_fact_default_expiry_days is missing.",
-  fact_refused: "The facts writer refused this fact (missing source, quote or official licence).",
+  fact_refused: "The facts writer refused this fact (missing source, quote or official license).",
   bad_kind: "This proposal's kind is not one Phase 1 can apply.",
 };
 
