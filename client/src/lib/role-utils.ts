@@ -1,6 +1,6 @@
 // Role vocabulary comes from the ONE canonical module (shared/roles.ts) — do not
 // re-declare role lists here (the role-vocabulary audit found five divergent copies).
-import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isEarnerRole, isExpertRole, isProviderRole } from "@shared/roles";
 
 export function getRoleHomePath(role: string): string {
   if (isExpertRole(role)) return "/expert/dashboard";
@@ -16,6 +16,9 @@ export function userHasRequiredRole(userRole: string, requiredRole: string): boo
   // not stored roles — they expand to the canonical role families.
   if (requiredRole === "expert") return isExpertRole(userRole);
   if (requiredRole === "provider") return isProviderRole(userRole);
+  // "earner" = either family (EX-1): a listing page both consoles link to. The server's
+  // ownership check stays the gate; this only stops an owner being shown "Access Denied".
+  if (requiredRole === "earner") return isEarnerRole(userRole);
   if (requiredRole === "executive_assistant") return userRole === "executive_assistant";
   return userRole === requiredRole;
 }

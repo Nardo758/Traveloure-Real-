@@ -177,7 +177,8 @@ export async function scoreKnowledgeProof(
     const resp = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,
-      temperature: 0,
+      // No `temperature` (EX-1): the current models reject it, and the catch below turned that
+      // rejection into a silent "unscored" for every application.
       messages: [{ role: "user", content: prompt }],
     });
     const text = resp.content

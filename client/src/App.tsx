@@ -1037,11 +1037,13 @@ function Router() {
       {/* Listing Home — the post-save landing page for a service draft.
           Must be BEFORE /:id/edit so the bare :id path matches first.
           /provider/services/new above guards against "new" being treated as an id. */}
+      {/* EX-1: experts own listings too and the shared ServiceForm links them here ("Pricing &
+          fees"), so these two admit the earner roles; the server's ownership check is the gate. */}
       <Route path="/provider/services/:id">
-        {() => <ProtectedRoute component={ProviderListingHome} requiredRole="provider" />}
+        {() => <ProtectedRoute component={ProviderListingHome} requiredRole="earner" />}
       </Route>
       <Route path="/provider/services/:id/edit">
-        {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
+        {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="earner" />}
       </Route>
       {/* Property builder — the 3-step create flow, graduated from canvas mockup. */}
       <Route path="/provider/properties/new">

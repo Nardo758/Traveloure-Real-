@@ -5812,6 +5812,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // GET /api/expert/profile — the OWNER's read-back of exactly what PATCH below writes (EX-1).
+  // The editor used to read the PUBLIC `/api/experts/:id`, which is a 404 for a pending or
+  // unapproved expert, so every save looked lost: the fields were written and blanked on reload.
+  // Owner from the session (§14); an explicit field list, never a spread row. No form row yet ⇒
+  // the form fields are null (never invented), and the names fall back to the users row.
+  app.get("/api/expert/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const [me] = await db
+        .select({ firstName: users.firstName, lastName: users.lastName, bio: users.bio })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!me) return res.status(404).json({ message: "Profile not found" });
+      const form = await storage.getLocalExpertForm(userId);
+      res.json({
+        firstName: form?.firstName ?? me.firstName ?? null,
+        lastName: form?.lastName ?? me.lastName ?? null,
+        displayName: form?.displayName ?? null,
+        headline: form?.headline ?? null,
+        bio: me.bio ?? form?.bio ?? null,
+        city: form?.city ?? null,
+        country: form?.country ?? null,
+        languages: (form?.languages as string[] | null) ?? [],
+        expertNotesStyle: form?.expertNotesStyle ?? null,
+        expertForm: form ? { expertType: form.expertType ?? null } : null,
+      });
+    } catch (err) {
+      console.error("Error loading expert profile:", err);
+      res.status(500).json({ message: "Failed to load profile" });
+    }
+  });
+
   // PATCH /api/expert/profile — Save the expert's public profile fields
   // (bio / headline / displayName / first+last name / city / country / languages).
   // Writes name+bio to the users row (the auth identity + public listing source)
