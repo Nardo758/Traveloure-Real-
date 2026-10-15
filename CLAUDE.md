@@ -2704,7 +2704,7 @@ This document captures architectural decisions to maintain consistency across co
     migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
     (`liteapiBookingEnabled`).
     **AMENDED — A CHARGED CANCEL IS A CANCELLATION, AND ONLY AFTER CONSENT (decision-maker, Oct 15, 2026 — ledger
-    `2026-10-15-liteapi-cancel-with-charges`; migration 379, HELD).** Only a cancel's 200 carrying `CANCELLED` or
+    `2026-10-15-liteapi-cancel-with-charges`; migration 379 — Migration 379 SQL approved by Leon — comment 20:22Z on #1456).** Only a cancel's 200 carrying `CANCELLED` or
     `CANCELLED_WITH_CHARGES` ends the booking: the row moves to `cancelled`, the item is released through the ONE
     `releaseLiteapiStayItem`, and `cancellation_fee`, `refund_amount` and `currency` are stored exactly as returned
     (`liteapi_bookings.cancel_amounts`). Money follows `refund_amount`, never the status word. A missing

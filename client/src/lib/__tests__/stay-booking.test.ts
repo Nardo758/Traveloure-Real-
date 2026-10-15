@@ -81,7 +81,7 @@ test("SB6 the cancel sheet: owner + confirmed only; the charge lines are the ser
   }
   const nrfn = stayCancelChargeLines({ policy: "NRFN", deadline: null, amount: 312.5, currency: "USD" });
   assert.equal(nrfn[0], STAY_CANCEL_WORDS.nonRefundable);
-  assert.equal(nrfn[1], "The hotel keeps $312.50.");
+  assert.equal(nrfn[1], "You'll be charged $312.50.");
   assert.equal(nrfn[2], STAY_CANCEL_WORDS.refundNote);
   const past = stayCancelChargeLines({ policy: "RFN", deadline: "2026-10-01T00:00:00.000Z", amount: null, currency: null });
   assert.equal(past[0], "Free cancellation ended on 2026-10-01.");

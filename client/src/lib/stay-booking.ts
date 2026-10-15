@@ -147,8 +147,8 @@ export const STAY_CANCEL_WORDS = {
   chargesTitle: "Canceling now has a charge",
   nonRefundable: "This rate is non-refundable.",
   pastDeadline: (deadline: string) => `Free cancellation ended on ${deadline}.`,
-  chargeLine: (amount: string) => `The hotel keeps ${amount}.`,
-  chargeUnstated: "The hotel did not state the amount it keeps.",
+  chargeLine: (amount: string) => `You'll be charged ${amount}.`,
+  chargeUnstated: "The amount you'll be charged was not stated.",
   refundNote: "Any refund is made by Nuitée, our hotel booking partner, to the card you paid with.",
   acceptAndCancel: "Accept the charge and cancel",
 } as const;
