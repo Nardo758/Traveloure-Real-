@@ -482,3 +482,45 @@ mtime_ms = 1792078032399
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/97dd5b36-debe-4443-8440-7ec057f2fcc7/84f5f525-5e1e-4794-821f-b0d30628f009"
 storage_version_token = "1792078097374544"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "6zv15zqA_eGNrF8aK3pvM"
+uri = "file://reports/automation-decision-sheet.md"
+type = "text"
+title = "One-page decision sheet"
+description = "Approvals and inputs, recommendations, risk of waiting, and what each unblocks. Release held."
+logical_id = "500292b9-04eb-4096-836c-ed00f088d983"
+content_hash = "sha256:aae2189b39e4ca0ad37a47bf779e1fe770a5867e4d28346b40233932c5a2e175"
+size = 3557
+mtime_ms = 1792079755123
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/500292b9-04eb-4096-836c-ed00f088d983/46510f94-09d2-46b4-afc3-2895c231197b"
+storage_version_token = "1792079778128858"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "l6F5MrRKhD0aomu5uq_P-"
+uri = "file://reports/auth-three-defects-proposal.md"
+type = "text"
+title = "Three authentication fixes — proposal only"
+description = "Exact proposed touch list, smallest changes, behavior decisions and proof plan. No implementation or tests performed."
+logical_id = "95e38bf8-432b-47d6-a6e4-7702e4fb3cd7"
+content_hash = "sha256:9df90e11679ee0d4cb4e33bf462c1fb4ebbdb2e9bf7d2ff6033f6fefad6b3117"
+size = 13414
+mtime_ms = 1792079689579
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/95e38bf8-432b-47d6-a6e4-7702e4fb3cd7/896c71ed-5d8c-428b-86ab-9c98ee42405b"
+storage_version_token = "1792079778968962"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "wpcn7HkEZciGYTJx-M5uA"
+uri = "file://reports/plan-vs-actual-follow-up.md"
+type = "text"
+title = "Audit follow-up and missing ending"
+description = "Verified manual-generator branch/path, missing-sheet correction, percentage update boundary, and Part 10 ending."
+logical_id = "6c9495b2-c15f-49b1-b7e9-4ae740e23517"
+content_hash = "sha256:2f213409abd02e74b9624a6be56aea8ca5909f20f45fcdc6c7ece82aa3d1874b"
+size = 4416
+mtime_ms = 1792079614675
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/6c9495b2-c15f-49b1-b7e9-4ae740e23517/bc52a33b-6b13-4ae7-aa70-a5f209d2a4fa"
+storage_version_token = "1792079780097920"
+content_type = "text/markdown"

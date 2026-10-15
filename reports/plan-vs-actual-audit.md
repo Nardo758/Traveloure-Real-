@@ -148,7 +148,7 @@ current main. The 14 October Q checks use mocked transport/database methods.
 | B | **14 automations** | Complete named list. Preserve dropped/deferred rows in historical plan denominator; exclude only authorized deferrals from release scope. |
 | C | **10 named Parts** | Deliverable bundles recovered below. A complete atomic-deliverable denominator from a consolidated prompt book is **unknown**; do not call ten Parts ten completed deliverables. |
 | D | **4 phases** | Also 25 journeys, 22 personas, 20 checks, 24 negatives, 12 break attempts, 8 guards, 12 system checks, 6 coverage gates and 5 current decisions. These are different units. |
-| E | **Unknown** | Requested 13-section manual test sheet not located in the supplied attachments/reviewed reports. “13 sections” is the expected total, not recovered item identities. Section 13 of D is a human-check list, not that sheet. |
+| E | **Unknown** | Requested 13-section manual test sheet not located. Follow-up identified the seven-category human receipt-check generator on `work/e2e-automation-harness-phase1`, `scripts/verification/e2e-user-automation/human-checks.ts`; it is not a recovered standalone thirteen-section sheet. See `reports/plan-vs-actual-follow-up.md`. |
 | F | **Unknown** | The referenced 7 October status document with twelve readiness items was not located. Do not substitute a later Part 10 report or D's twelve system checks. |
 | G | **Unknown for the requested full list** | Thirty blocker identities recovered, plus five current E2E decisions. The original D1–D12 list is not recovered. The latest D1–D5 cannot safely be assumed to be its first five entries. |
 | Overall | **Unknown** | Missing E/F/original decisions, unresolved outside-registry union, and unlike deliverable types prevent an honest all-source percentage. |
@@ -810,3 +810,10 @@ known Part bundles provide only the parent-level denominator.
 **Report:** `reports/plan-vs-actual-audit.md`
 
 **DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**
+
+Documentation follow-up, 15 October 2026: `reports/plan-vs-actual-follow-up.md`
+clarifies the manual-sheet gap and reproduces the missing ending.
+`reports/automation-decision-sheet.md` lists owner decisions/inputs.
+`reports/auth-three-defects-proposal.md` proposes only the three confirmed auth
+repairs. No percentages or evidence levels were changed; missing documents and
+implementation approvals remain outstanding.
