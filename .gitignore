@@ -49,3 +49,6 @@ generated/security/evidence-logs/
 
 # Replit agent memory is session-local; never commit new entries (founder ruling, Oct 2, 2026).
 .agents/memory/
+
+# Local automation regression evidence; never source or deployment inputs.
+/generated-artifacts/
