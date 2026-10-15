@@ -3046,6 +3046,51 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     res.json(expertForm);
   });
 
+  // Admin: re-score an application's knowledge-proof answers (EX-1). Admin-only; idempotent — it
+  // runs the SAME scorer and the SAME single UPDATE (`updateLocalExpertFormKnowledgeScore`) the
+  // submit rails use, so a repeat overwrites the score rather than adding a row. Advisory only:
+  // it changes no status or approval. No request body is read. Audit-logged.
+router.post("/api/admin/expert-applications/:id/rescore", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const [form] = await db
+      .select({
+        id: localExpertForms.id,
+        userId: localExpertForms.userId,
+        knowledgeProofAnswers: localExpertForms.knowledgeProofAnswers,
+        localityProof: localExpertForms.localityProof,
+        city: localExpertForms.city,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.id, req.params.id))
+      .limit(1);
+    if (!form) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    const { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } = await import("../services/expertise-scoring.service");
+    const score = await scoreKnowledgeProof(
+      (form.knowledgeProofAnswers as any[]) ?? [],
+      KNOWLEDGE_PROOF_QUESTIONS,
+      form.localityProof ?? null,
+      form.city ?? "",
+    );
+    await storage.updateLocalExpertFormKnowledgeScore(form.id, score);
+    const auditWarning = await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "expert_application_rescore",
+      resourceType: "local_expert_form",
+      resourceId: form.id,
+      targetUserId: form.userId,
+      metadata: { verdict: score.verdict, overall: score.overall },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ knowledgeScore: score, ...(auditWarning ? { auditWarning } : {}) });
+  });
+
   // Admin: Update rejection reason only (without changing status)
 router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
