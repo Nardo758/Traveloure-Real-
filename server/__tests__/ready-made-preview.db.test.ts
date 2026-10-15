@@ -1,7 +1,8 @@
 /**
  * Slice B1 — the Ready Made Trip's public preview (ledger `2026-10-05-rmt-public-preview`).
- *   P1 an approved listing's preview: canonical slug, the purchase's own price line, day 1 only with
- *      its CONFIRMED legs; the payload carries no coordinate, note, author id or build id (LD 40)
+ *   P1 an approved listing's preview: canonical slug, the purchase's own price line, day 1 only as an
+ *      OUTLINE (stop count + areas — CP-1 PR 2, ledger `2026-10-15-cp1-teasers`); the payload carries no
+ *      stop title, time, leg minute, coordinate, note, author id or build id (LD 40)
  *   P2 the public gate: a draft listing, an unknown token and a token-less slug are ONE 404; stale
  *      title words with the right token still resolve and return the canonical slug
  *   P3 /t/:slug serves real OG/Twitter tags (og:type product, canonical og:url, twitter:image); a stale
@@ -110,11 +111,14 @@ test("P1: an approved listing's preview is the public teaser, nothing private", 
   assert.equal(body.priceLine, "From $49 · no fee on this purchase");
   assert.deepEqual(body.expert, { name: "Aiko", handle: `rmp${RUN}`, localVerified: false });
   assert.deepEqual(body.heroCredit, { photographer: "Ann Lee", profileUrl: "https://unsplash.com/@ann", source: "Unsplash" });
-  assert.deepEqual(body.sampleDay.stops.map((s: any) => s.title), ["Fushimi Inari", "Tofuku-ji", "Nishiki Market"]);
-  assert.deepEqual(body.sampleDay.legs, [{ fromIndex: 0, toIndex: 1, mode: "walking", minutes: 22 }]);
+  assert.equal(body.sampleDay.dayNumber, 1);
+  assert.equal(body.sampleDay.stopCount, 3);
+  // "Fushimi Inari" is also a seeded Kyoto NEIGHBOURHOOD, so it may rightly appear as an area name;
+  // the other stop titles are not neighbourhoods and must not appear anywhere.
+  assert.ok(Array.isArray(body.sampleDay.areas), "areas are named, or the list is empty — never a stop");
   assert.equal(body.lockedDays, 2);
   const json = JSON.stringify(body);
-  for (const banned of ["latitude", "longitude", "34.967", "private author note", ids.author, ids.build, "Secret-Surname", "Kinkaku-ji"]) {
+  for (const banned of ["latitude", "longitude", "34.967", "private author note", ids.author, ids.build, "Secret-Surname", "Kinkaku-ji", "Tofuku-ji", "Nishiki Market", "08:00", "walking"]) {
     assert.ok(!json.includes(banned), `no ${banned}`);
   }
 });
@@ -200,9 +204,10 @@ test("P6: publishing warms all four; the version moves with what the image says"
   assert.equal(await shareData.warmReadyMadeShareImages(ids.draft), 0, "a draft has nothing to warm");
   const v1 = await shareData.readyMadeShareVersion(ids.listing);
   assert.equal(await shareData.readyMadeShareVersion(ids.listing), v1, "stable while nothing changes");
-  await db.execute(sql`UPDATE itinerary_items SET title = 'Fushimi Inari Taisha' WHERE id = ${ids.a}`);
+  // CP-1 PR 2: the images carry no stop title any more, so a stop's new PLACE (not its name) moves the map.
+  await db.execute(sql`UPDATE itinerary_items SET latitude = latitude + 0.02 WHERE id = ${ids.a}`);
   const v2 = await shareData.readyMadeShareVersion(ids.listing);
-  assert.notEqual(v2, v1, "a stop's new name is a new image");
+  assert.notEqual(v2, v1, "a stop's new place is a new image");
   const admin = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/admin.routes.ts"), "utf8");
   const approve = admin.slice(admin.indexOf('"/api/admin/ready-made/:id/approve"'));
   assert.match(approve.slice(0, approve.indexOf("Failed to approve listing")), /warmReadyMadeShareImages\(req\.params\.id\)/);

@@ -58,19 +58,35 @@ export function publicRouteSummary(
   const ordered = [...points].sort((a, b) => a.position - b.position);
   let area: string | null = null;
   const first = ordered.find((p) => Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude)) && p.latitude != null && p.longitude != null);
-  if (first) {
-    const lat = Number(first.latitude);
-    const lng = Number(first.longitude);
-    let best = Infinity;
-    for (const n of neighborhoods) {
-      const m = haversineMeters(lat, lng, n.lat, n.lng);
-      if (m < best && m <= maxMeters) {
-        best = m;
-        area = n.name;
-      }
-    }
-  }
+  if (first) area = nearestAreaName(first.latitude, first.longitude, neighborhoods, maxMeters);
   if (!area && typeof listingNeighborhood === "string" && listingNeighborhood.trim()) area = listingNeighborhood.trim();
   return { routeStopCount: ordered.length, routeFirstArea: area };
 }
 
+
+/**
+ * CP-1: the name of the neighbourhood whose centroid is nearest a point, within `maxMeters`; null
+ * for no point, no neighbourhood near enough, or none at all — never a guess (§13). The ONE rule the
+ * listing route summary, the Ready Made preview outline and the share images use (§18 rule 1).
+ */
+export function nearestAreaName(
+  latitude: unknown,
+  longitude: unknown,
+  neighborhoods: ReadonlyArray<{ name: string; lat: number; lng: number }>,
+  maxMeters = 3000,
+): string | null {
+  if (latitude == null || longitude == null || latitude === "" || longitude === "") return null;
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let best = Infinity;
+  let name: string | null = null;
+  for (const n of neighborhoods) {
+    const m = haversineMeters(lat, lng, n.lat, n.lng);
+    if (m < best && m <= maxMeters) {
+      best = m;
+      name = n.name;
+    }
+  }
+  return name;
+}
