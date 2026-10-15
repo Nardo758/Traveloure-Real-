@@ -16,8 +16,10 @@
  *     max(band, SSP / net − 1) from the re-quote's own answer; above the band, ONE more re-quote at that
  *     margin, whose offer is prebooked. Refused only when the SSP is unstated or in another currency.
  *   · CLAIM BEFORE EVERY EXTERNAL CALL (§15/§15b): `prebooked → booking` before book, `confirmed →
- *     cancelling` before cancel, each one atomic conditional. A definite LiteAPI refusal ends the claim; an
- *     answer we cannot read leaves it for the sync to DETECT — the sync never books (ruling).
+ *     cancelling` before cancel, each one atomic conditional. A definite LiteAPI refusal of a BOOK ends the claim; a
+ *     definite refusal of a CANCEL moves the row to `needs_review` with the reason, never back to `confirmed`
+ *     (ledger `2026-10-15-liteapi-cancel-needs-review`); an answer we cannot read leaves the claim for the sync
+ *     to DETECT — the sync never books (ruling).
  *   · CONFIRMED is ONE transaction: the row flips, the item becomes `purchased` (so the stay cannot be
  *     swapped under the booking — `chooseOption` refuses a non-`in_planning` item), and the voucher email is
  *     inserted into the outbox. The single confirmed flip is the voucher's dedupe (ruling 5).
@@ -29,7 +31,8 @@ import { emailOutbox, hotelCache, itineraryItems, liteapiBookings, planOptionSet
 import { LITEAPI_PROVIDER } from "@shared/liteapi";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
 import {
-  LITEAPI_LIVE_STATUSES,
+  LITEAPI_ITEM_HOLDING_STATUSES,
+  LITEAPI_NEEDS_REVIEW,
   bookIsConfirmed,
   bookingStatusOf,
   offerIdFromRates,
@@ -95,7 +98,12 @@ export type BookResult =
   | { state: "pending"; bookingId: string }
   | { state: Refusal };
 
-export type CancelResult = { state: "cancelled"; bookingId: string } | { state: "cancel_refused"; bookingId: string } | { state: "pending"; bookingId: string } | { state: Refusal };
+export type CancelResult =
+  | { state: "cancelled"; bookingId: string }
+  | { state: "cancel_refused"; bookingId: string }
+  | { state: "needs_review"; bookingId: string }
+  | { state: "pending"; bookingId: string }
+  | { state: Refusal };
 
 /** The chosen LiteAPI stay behind one item of one plan, or null (ruling 4). */
 export async function resolveChosenLiteapiStay(tripId: string, itemId: string): Promise<{ hotelCacheId: string; providerHotelId: string; hotelName: string } | null> {
@@ -144,8 +152,9 @@ async function ownerOf(tripId: string, userId: string | null | undefined): Promi
   return !!userId && (await verifyTripOwnership(tripId, userId));
 }
 
+// A live booking OR one awaiting review holds the item (LITEAPI_ITEM_HOLDING_STATUSES).
 async function liveBookingFor(itemId: string) {
-  const [row] = await db.select().from(liteapiBookings).where(and(eq(liteapiBookings.itineraryItemId, itemId), inArray(liteapiBookings.status, LITEAPI_LIVE_STATUSES as string[]))).limit(1);
+  const [row] = await db.select().from(liteapiBookings).where(and(eq(liteapiBookings.itineraryItemId, itemId), inArray(liteapiBookings.status, LITEAPI_ITEM_HOLDING_STATUSES as string[]))).limit(1);
   return row ?? null;
 }
 
@@ -359,13 +368,20 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
   // §13: a booking is never made under an invented name.
   if (!holder.firstName || !holder.lastName || !holder.email) return { state: "holder_incomplete" };
 
-  // The claim (§15): one statement; a second live booking for the item is refused by the partial UNIQUE.
+  // The claim (§15): one statement; a second live booking for the item is refused by the partial UNIQUE, and a
+  // booking awaiting review (outside that index) by the NOT EXISTS in the same statement.
   let claimed;
   try {
     [claimed] = await db
       .update(liteapiBookings)
       .set({ status: "booking", claimedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(liteapiBookings.id, pre.id), eq(liteapiBookings.status, "prebooked")))
+      .where(
+        and(
+          eq(liteapiBookings.id, pre.id),
+          eq(liteapiBookings.status, "prebooked"),
+          sql`NOT EXISTS (SELECT 1 FROM liteapi_bookings r WHERE r.itinerary_item_id = ${input.itemId} AND r.status = ${LITEAPI_NEEDS_REVIEW})`,
+        ),
+      )
       .returning({ id: liteapiBookings.id });
   } catch (err) {
     if (isUniqueViolation(err)) return { state: "already_booked" };
@@ -460,8 +476,16 @@ export async function cancelStay(input: { tripId: string; itemId: string; userId
   } catch (err: any) {
     const definite = err instanceof LiteapiError && err.status >= 400 && err.status < 500;
     if (definite) {
-      await db.update(liteapiBookings).set({ status: "confirmed", failureReason: String(err?.message ?? err).slice(0, 300), updatedAt: new Date() }).where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")));
-      return { state: "cancel_refused", bookingId: row.id };
+      // LiteAPI refused the cancel without saying the booking stands: it goes to review with the reason, never
+      // back to `confirmed` (ledger `2026-10-15-liteapi-cancel-needs-review`). The item stays held and `purchased`.
+      const reason = `${err.status} ${String(err?.message ?? err)}`.slice(0, 300);
+      console.warn(`[liteapi-booking] cancel ${input.itemId} refused: ${reason} — needs review`);
+      const [moved] = await db
+        .update(liteapiBookings)
+        .set({ status: LITEAPI_NEEDS_REVIEW, failureReason: reason, updatedAt: new Date() })
+        .where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")))
+        .returning({ id: liteapiBookings.id });
+      return moved ? { state: "needs_review", bookingId: row.id } : { state: "pending", bookingId: row.id };
     }
     // No readable answer: the claim stays; the sync records what LiteAPI says (it never cancels).
     return { state: "pending", bookingId: row.id };

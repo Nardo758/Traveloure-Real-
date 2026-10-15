@@ -19,7 +19,7 @@ test("SB1 Book draws only for the owner on a bookable stay with no live booking"
   assert.equal(showsStayBook({ isOwner: true, read: { bookable: false, booking: null } }), false);
   assert.equal(showsStayBook({ isOwner: true, read: undefined }), false);
   for (const s of ["prebooked", "failed", "cancelled"]) assert.equal(showsStayBook({ isOwner: true, read: read(s) }), true, s);
-  for (const s of ["booking", "confirmed", "cancelling"]) assert.equal(showsStayBook({ isOwner: true, read: read(s) }), false, s);
+  for (const s of ["booking", "confirmed", "cancelling", "needs_review"]) assert.equal(showsStayBook({ isOwner: true, read: read(s) }), false, s);
 });
 
 test("SB2 every server refusal has words; an unknown one claims nothing", () => {
