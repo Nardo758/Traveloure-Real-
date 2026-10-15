@@ -32,6 +32,7 @@ import {
 } from "../services/experts-query.service";
 import { proposeNuggetAsGem } from "../services/gem-promotion.service";
 import { expertTrackSwitchRequiresReview } from "../services/role-transition";
+import { deriveSlotEndTime } from "@shared/slot-end-time";
 
 const router = Router();
 
@@ -272,6 +273,8 @@ router.post("/api/me/services/:serviceId/slots", isAuthenticated, async (req, re
         providerId: userId,
         date,
         ...(startTime ? { startTime } : {}),
+        // EX-1: end = start + the listing's own duration, or NULL — never a guessed default.
+        endTime: deriveSlotEndTime(startTime, service.durationMinutes),
         ...(capacity != null ? { capacity } : {}),
       })
       .returning();
@@ -383,6 +386,9 @@ router.post("/api/me/services/:serviceId/slots/range", isAuthenticated, async (r
               serviceId: service.id,
               providerId: userId,
               date,
+              // EX-1: a range slot carries no start time, so the derivation answers NULL — it is
+              // called anyway so both slot rails state their end time through the ONE rule.
+              endTime: deriveSlotEndTime(null, service.durationMinutes),
               ...(capacity != null ? { capacity } : {}),
             })),
           )

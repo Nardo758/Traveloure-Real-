@@ -175,8 +175,10 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
   const [localityProof, setLocalityProof] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
 
+  // EX-1: the OWNER's read-back of the fields this page saves — never the public
+  // `/api/experts/:id`, which is a 404 for a pending expert and blanked every save on reload.
   const { data: expertProfile, isLoading: profileLoading } = useQuery({
-    queryKey: ["/api/experts", user?.id],
+    queryKey: ["/api/expert/profile"],
     enabled: !!user?.id,
   });
 
@@ -250,7 +252,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
     mutationFn: (expertType: string) =>
       apiRequest("PATCH", "/api/expert/role", { expertType }),
     onSuccess: (_data, expertType) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Role updated successfully" });
       // Console-family change (e.g. → Executive Assistant): this page sits behind
@@ -324,7 +326,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
         languages,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Profile saved" });
@@ -365,7 +367,7 @@ export default function ExpertProfile({ embedded = false }: { embedded?: boolean
       apiRequest("PATCH", "/api/expert/photo", { imageData }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/profile"] });
       queryClient.invalidateQueries({ queryKey: ["/api/experts"] });
       toast({ title: "Profile photo updated" });
     },

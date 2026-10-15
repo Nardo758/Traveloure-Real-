@@ -342,7 +342,7 @@ export async function verifyBookingRequest(
       const resp = await anthropicClient.messages.create({
         model: MODEL,
         max_tokens: 512,
-        temperature: 0,
+        // No `temperature` (EX-1): the current models reject it.
         messages: [{ role: "user", content: prompt }],
       });
       trackAnthropicResponse(resp, { sourceType: "ai_expert", userId: request.expertId ?? null, requestId });
