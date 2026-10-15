@@ -18,7 +18,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import satori from "satori";
+import { satori } from "../utils/satori"; // CP-1 PR 3: never a bare default import (see the module)
 import { Resvg } from "@resvg/resvg-js";
 
 // Console palette (CLAUDE.md Phase 4 theme) reused for share cards.
