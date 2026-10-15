@@ -2038,7 +2038,7 @@ export const MIGRATION_FILES = [
   "379_liteapi_cancel_amounts.sql",
   // 381 — launch waitlist + consent texts (LW-1a, ledger 2026-10-15-lw1a-launch-waitlist). Two NEW tables born
   // empty (no DEFAULT, CHECK or FK; every column but the key nullable) with a UNIQUE (email, market_slug) safe at
-  // creation, plus three platform_settings seeds (traveler_signup_mode=waitlist, launch_market_slug=kyoto,
+  // creation, users.signup_source (additive nullable text), plus three platform_settings seeds (traveler_signup_mode=waitlist, launch_market_slug=kyoto,
   // earn_ready_made_example_enabled=false), ON CONFLICT DO NOTHING. 378 and 380 are reserved by other lanes.
   // Declared in shared/schema.ts. HELD FOR LEON'S COMMENT on the PR.
   "381_launch_waitlist.sql",

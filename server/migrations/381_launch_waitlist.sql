@@ -1,9 +1,10 @@
 -- 381 — launch waitlist + consent texts (LW-1a; ledger `2026-10-15-lw1a-launch-waitlist`; launch session brief
 -- Oct 15, 2026, rulings 1 and 3). HELD until "Migration 381 SQL approved — Leon" is his own comment on the PR.
 --
--- Two NEW tables, born EMPTY, plus three seeded platform_settings rows. Additive only: no ALTER of an existing
--- table, no DEFAULT, no CHECK, no FK. Every column but the primary key is nullable; the ONE writer
--- (server/services/launch-waitlist.service.ts, LW-1c) supplies id and timestamps itself. Value sets
+-- Two NEW tables, born EMPTY, one additive nullable column on `users`, and three seeded platform_settings rows.
+-- Additive only: no DEFAULT, no CHECK, no FK, nothing altered but the one ADD COLUMN. Every column but the
+-- primary key is nullable; the ONE writer (server/services/launch-waitlist.service.ts, LW-1c) supplies id and
+-- timestamps itself. Value sets
 -- (`source`) are app-enforced once in shared/launch-waitlist.ts. Tables and indexes are declared in
 -- shared/schema.ts (deploy-push durability rule). IF NOT EXISTS / ON CONFLICT DO NOTHING throughout, so a
 -- second run is a no-op.
@@ -41,6 +42,12 @@ CREATE TABLE IF NOT EXISTS consent_texts (
   created_at  timestamp
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_consent_texts_key_version ON consent_texts (consent_key, version);
+
+-- Supply sign-up source (LW-1d; Launch brief answer 3, Oct 15, 2026): one additive nullable TEXT column on an
+-- EXISTING table — no DEFAULT, CHECK, index, FK or backfill (NULL = not recorded, never "other"). Written once,
+-- server-side, at a SUPPLY sign-up from an allowlisted value (anything else is stored as 'other'); never by a
+-- request body on any user-update rail (§19).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS signup_source text;
 
 -- Settings (ruling 3; Phase 0 sanction 3). ON CONFLICT DO NOTHING: an admin-set value is never overwritten.
 -- traveler_signup_mode is read FAIL-CLOSED (a missing row or a read error means 'waitlist').
