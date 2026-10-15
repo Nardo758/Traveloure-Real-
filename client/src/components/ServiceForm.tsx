@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
   MapPin, Navigation, Truck, Radius, Info, Image, Clock, FileText, ShieldAlert,
@@ -680,6 +680,20 @@ function listingStatusPill(
   }
   if (existingService?.approvalStatus === "rejected") return { label: "Changes requested", tone: "rejected" };
   return { label: "In review", tone: "review" };
+}
+
+/** "Pricing & fees" lives on the listing home (`/provider/services/:id`), which both earner
+ *  roles can open (EX-1). Once the listing has an id this names it as a link, so the sentence is
+ *  true — and reachable — for an expert as well as a provider. */
+function PricingFeesHomeLink({ id }: { id?: string }) {
+  if (!id) return <>this listing&apos;s home page</>;
+  return (
+    <Link href={`/provider/services/${id}`}>
+      <span className="underline cursor-pointer text-primary" data-testid="link-listing-home-pricing">
+        this listing&apos;s home page
+      </span>
+    </Link>
+  );
 }
 
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
@@ -3598,8 +3612,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 owns the rest. Stated here, where the provider would otherwise go looking. */}
             <p className="text-xs text-muted-foreground">
               One price is enough here. Surcharges, deposits and cancellation live in{" "}
-              <b className="text-foreground">Pricing &amp; fees</b> after you save — none of them
-              are required to go live.
+              <b className="text-foreground">Pricing &amp; fees</b> on{" "}
+              <PricingFeesHomeLink id={id} /> after you save — none of them are required to go live.
             </p>
           </div>
 
@@ -4427,7 +4441,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 coverage/location geometry, not a surcharge amount, and stays authored here. */}
             {(formData.pickupAvailable || pickupProvisionChosen) && (
               <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-surcharge-moved">
-                Travel surcharges are set in <b>Pricing &amp; fees</b>, on this listing's home page —
+                Travel surcharges are set in <b>Pricing &amp; fees</b>, on <PricingFeesHomeLink id={id} /> —
                 available once this listing first saves. Not required to go live.
               </p>
             )}
@@ -4785,8 +4799,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               template (`server/seeds/experience-template-tabs.seed.ts`), which is a different
               subject and a different table — do not conflate the two. */}
           <p className="text-xs text-muted-foreground rounded-md border border-dashed p-3" data-testid="note-cancellation-deposit-moved">
-            Cancellation policy and deposit are set in <b>Pricing &amp; fees</b>, on this listing's
-            home page — available once you've saved a draft. Not required to go live.
+            Cancellation policy and deposit are set in <b>Pricing &amp; fees</b>, on{" "}
+            <PricingFeesHomeLink id={id} /> — available once you've saved a draft. Not required to go live.
           </p>
         </CardContent>
       </Card>
