@@ -131,6 +131,7 @@ This document captures architectural decisions to maintain consistency across co
     `/services/:id` page): map renders **located stops only**, shows "X of Y stops located", and renders **no
     map at all when the service has no coordinates** — never a city-center fallback. Traveler map is
     Leaflet/OSM; ODbL attribution ("© OpenStreetMap contributors") REQUIRED wherever it renders.
+    **AMENDED — STOPS AFTER BOOKING (decision-maker Leon Dixon, Oct 15, 2026 — ledger `2026-10-15-cp1-public-payloads`; verbatim: "LD 22(c) and LD 24 amended — stops and notes after booking."):** a signed-out read carries a stop count and the first stop's area; the exact pin and stops are the owner's and a booked traveler's.
     **(d) Distribute:** the "Route" share frame is a third format of the EXISTING share-image rail
     (`/api/share-image/service/:id.png?format=route`, satori template beside feed/story) — layout data resolved
     server-side from the row like the other two; measurement stays on Performance (`LinkAnalyticsPanel`), the
@@ -169,6 +170,7 @@ This document captures architectural decisions to maintain consistency across co
     deliberately NOT `trip_participants.accessibility_needs`/`mobility_level` — that is a TRAVELER's
     stated needs, a different person's answer. Both are ordinary owner-authored content (no amount,
     identity, rate or grant), so §19's strip does not apply and none was added.
+    **AMENDED — NOTES AFTER BOOKING (decision-maker Leon Dixon, Oct 15, 2026 — ledger `2026-10-15-cp1-public-payloads`; verbatim: "LD 22(c) and LD 24 amended — stops and notes after booking."):** Bring and Access are shown to a booked traveler and the owner, never on a signed-out read.
 
 25. **New ledger rulings are keyed by DATE-SLUG, not by number (ledger `2026-08-16-ledger-ids`).**
     `docs/DECISIONS.md` ids 1–122 are **FROZEN** — cited throughout this file and the briefs, never

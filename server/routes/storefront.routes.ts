@@ -883,7 +883,9 @@ async function loadStorefrontFromOwner(
       insideCounts: readyMadeTrips.insideCounts,
     })
     .from(readyMadeTrips)
-    .where(and(eq(readyMadeTrips.authorId, owner.id), eq(readyMadeTrips.status, "approved")));
+    // CP-1: `active` too — the same approved + active gate `GET /api/ready-made/:id` applies, so a
+    // listing the author switched off is not shown (and does not keep the storefront public).
+    .where(and(eq(readyMadeTrips.authorId, owner.id), eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true)));
 
   const total = services.length + readyMade.length;
   // No approved inventory → no public page (an unvetted earner is not publishable).
