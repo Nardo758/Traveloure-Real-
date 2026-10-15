@@ -845,9 +845,8 @@ router.post("/api/admin/bookings/:bookingId/lost-chargeback/reconcile", isAuthen
 // and the ONLY path out of `needs_review`. The kind is in the path (`service|legacy|liteapi`) so it
 // can never be confused with the `:bookingId/<action>` routes above. Every read and every resolve is
 // written to the access audit log.
-const ADMIN_BOOKING_KIND_PATH = "/api/admin/bookings/:kind(service|legacy|liteapi)/:id";
-
-router.get(ADMIN_BOOKING_KIND_PATH, isAuthenticated, async (req, res) => {
+// The paths are literals (not a shared constant) so the mutation-auth inventory can read them.
+router.get("/api/admin/bookings/:kind(service|legacy|liteapi)/:id", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
@@ -882,7 +881,7 @@ const resolveNeedsReviewBody = z
   })
   .strict();
 
-router.post(`${ADMIN_BOOKING_KIND_PATH}/resolve`, isAuthenticated, async (req, res) => {
+router.post("/api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });

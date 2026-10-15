@@ -15,6 +15,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveNeedsReviewServiceBooking, type NeedsReviewResolveOutcome } from "./checkout-claim.service";
+import { releaseLiteapiStayItem } from "./liteapi-booking.service";
 
 export const ADMIN_BOOKING_KINDS = ["service", "legacy", "liteapi"] as const;
 export type AdminBookingKind = (typeof ADMIN_BOOKING_KINDS)[number];
@@ -162,7 +163,7 @@ export async function loadAdminBookingDetail(kind: AdminBookingKind, id: string)
 
 export type ResolveResult =
   | { ok: true; status: NeedsReviewResolveOutcome; paymentIntentId: string | null }
-  | { ok: false; httpStatus: 404 | 409 | 422 | 501; reason: string; message: string };
+  | { ok: false; httpStatus: 404 | 409 | 422; reason: string; message: string };
 
 /**
  * The ONLY path out of `needs_review`. Each kind's flip is an atomic conditional on
@@ -201,9 +202,26 @@ export async function resolveNeedsReviewBooking(
 
   // liteapi — paid through Nuitée; no PaymentIntent is involved.
   if (outcome === "cancelled") {
-    // The cancelled branch must also release the plan item the stay held. That release is
-    // `releaseLiteapiStayItem`, exported by the Events lane; this branch lands once it is on main.
-    return { ok: false, httpStatus: 501, reason: "not_yet_available", message: "Resolving a LiteAPI stay as cancelled is not available yet." };
+    // Status only, plus the ONE release rail (`releaseLiteapiStayItem`, shared with `cancelStay`) in
+    // the SAME transaction, so the plan item goes back to the traveler exactly when the row ends. No
+    // money moves: a LiteAPI refund is Nuitée's.
+    const released = await db.transaction(async (tx) => {
+      const ended = rowsOf(await tx.execute(sql`
+        UPDATE liteapi_bookings SET status = 'cancelled', cancelled_at = COALESCE(cancelled_at, NOW()), updated_at = NOW()
+        WHERE id = ${id} AND status = 'needs_review'
+        RETURNING trip_id, itinerary_item_id, hotel_confirmation_code`))[0];
+      if (!ended) return false;
+      await releaseLiteapiStayItem(tx, {
+        tripId: ended.trip_id,
+        itemId: ended.itinerary_item_id,
+        hotelConfirmationCode: ended.hotel_confirmation_code ?? null,
+      });
+      return true;
+    });
+    if (released) return { ok: true, status: "cancelled", paymentIntentId: null };
+    const cur = rowsOf(await db.execute(sql`SELECT status FROM liteapi_bookings WHERE id = ${id}`))[0];
+    if (!cur) return { ok: false, httpStatus: 404, reason: "not_found", message: "No such booking." };
+    return { ok: false, httpStatus: 409, reason: "not_needs_review", message: `This booking is "${cur.status}", not needs_review; nothing was changed.` };
   }
   const moved = rowsOf(await db.execute(sql`
     UPDATE liteapi_bookings SET status = 'confirmed', updated_at = NOW()

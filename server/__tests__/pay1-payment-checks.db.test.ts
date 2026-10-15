@@ -10,7 +10,8 @@
  *   P4  §4  Resolve on a service booking: confirmed needs a PaymentIntent (422 without), records it
  *           with the paid stamp, never over a different one (409); cancelled moves status only; a
  *           row already resolved is 409.
- *   P5  §4  Resolve on legacy and LiteAPI rows; LiteAPI → cancelled is not available yet (501).
+ *   P5  §4  Resolve on legacy and LiteAPI rows; LiteAPI → cancelled ends the row and gives the plan
+ *           item back through the ONE release rail, in one transaction.
  *   P6  §4  the detail read says whether a PaymentIntent exists and carries the hold on its timeline.
  *
  * DISPOSABLE DB ONLY. Every row this file writes is created by it and deleted in after().
@@ -75,10 +76,10 @@ async function seedLegacy(status: string, pi: string | null = null): Promise<str
   legacyIds.push(String(r[0].id));
   return String(r[0].id);
 }
-async function seedLiteapi(status: string): Promise<string> {
+async function seedLiteapi(status: string, itemId?: string, code?: string): Promise<string> {
   const r = rowsOf(await db.execute(sql`
-    INSERT INTO liteapi_bookings (trip_id, itinerary_item_id, user_id, provider_hotel_id, env, status, offer_id, prebook_id, transaction_id, checkin, checkout, adults, amount_cents, currency)
-    VALUES (${trip}, ${`pay1-${RUN}-item-${crypto.randomUUID().slice(0, 6)}`}, ${traveler}, 'lp1', 'sandbox', ${status}, 'offer', ${`pre-${crypto.randomUUID()}`}, 'tx', CURRENT_DATE + 30, CURRENT_DATE + 32, 2, 30000, 'USD')
+    INSERT INTO liteapi_bookings (trip_id, itinerary_item_id, user_id, provider_hotel_id, env, status, offer_id, prebook_id, transaction_id, checkin, checkout, adults, amount_cents, currency, hotel_confirmation_code)
+    VALUES (${trip}, ${itemId ?? `pay1-${RUN}-item-${crypto.randomUUID().slice(0, 6)}`}, ${traveler}, 'lp1', 'sandbox', ${status}, 'offer', ${`pre-${crypto.randomUUID()}`}, 'tx', CURRENT_DATE + 30, CURRENT_DATE + 32, 2, 30000, 'USD', ${code ?? null})
     RETURNING id
   `));
   liteapiIds.push(String(r[0].id));
@@ -226,10 +227,24 @@ test("P5: Resolve on legacy and LiteAPI rows", async () => {
   assert.equal(row.status, "confirmed");
   assert.equal(row.stripe_payment_intent_id, `pi_${RUN}_legacy`);
 
+  const itemId = `pay1-${RUN}-stay-item`;
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, routing_status, confirmation_number)
+    VALUES (${itemId}, ${trip}, 'Stay', 1, 'purchased', 'HCC-1')
+  `);
+  const held = await seedLiteapi("needs_review", itemId, "HCC-1");
+  const cancel = await resolveNeedsReviewBooking("liteapi", held, "cancelled", null);
+  assert.deepEqual(cancel, { ok: true, status: "cancelled", paymentIntentId: null });
+  const ended = rowsOf(await db.execute(sql`SELECT status, cancelled_at FROM liteapi_bookings WHERE id = ${held}`))[0];
+  assert.equal(ended.status, "cancelled");
+  assert.ok(ended.cancelled_at);
+  const item = rowsOf(await db.execute(sql`SELECT routing_status, confirmation_number FROM itinerary_items WHERE id = ${itemId}`))[0];
+  assert.equal(item.routing_status, "in_planning", "the plan item goes back to the traveler");
+  assert.equal(item.confirmation_number, null, "the code this booking wrote is cleared");
+  assert.equal(((await resolveNeedsReviewBooking("liteapi", held, "cancelled", null)) as any).httpStatus, 409);
+  await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${itemId}`);
+
   const stay = await seedLiteapi("needs_review");
-  const cancel = await resolveNeedsReviewBooking("liteapi", stay, "cancelled", null);
-  assert.equal((cancel as any).httpStatus, 501, "the LiteAPI cancelled branch lands with the stay-item release");
-  assert.equal(rowsOf(await db.execute(sql`SELECT status FROM liteapi_bookings WHERE id = ${stay}`))[0].status, "needs_review");
   const confirm = await resolveNeedsReviewBooking("liteapi", stay, "confirmed", null);
   assert.equal(confirm.ok, true, "a LiteAPI stay is paid through Nuitée; no PaymentIntent is asked for");
   assert.equal(rowsOf(await db.execute(sql`SELECT status FROM liteapi_bookings WHERE id = ${stay}`))[0].status, "confirmed");
