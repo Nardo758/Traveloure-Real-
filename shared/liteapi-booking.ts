@@ -16,10 +16,18 @@
 /** The one payment method ever sent to LiteAPI's book call. */
 export const LITEAPI_PAYMENT_METHOD = "TRANSACTION_ID" as const;
 
-export const LITEAPI_BOOKING_STATUSES = ["prebooked", "booking", "confirmed", "failed", "cancelling", "cancelled"] as const;
+export const LITEAPI_BOOKING_STATUSES = ["prebooked", "booking", "confirmed", "failed", "cancelling", "cancelled", "needs_review"] as const;
 export type LiteapiBookingStatus = (typeof LITEAPI_BOOKING_STATUSES)[number];
 /** A live booking holds the item: at most one per item (the partial UNIQUE in migration 371). */
 export const LITEAPI_LIVE_STATUSES: readonly LiteapiBookingStatus[] = ["booking", "confirmed", "cancelling"];
+/**
+ * A cancel LiteAPI refused with a definite 4xx: whether the hotel booking still stands is unknown, so the row is
+ * never put back to `confirmed` (decision-maker, Oct 15, 2026 — ledger `2026-10-15-liteapi-cancel-needs-review`).
+ * It keeps holding the item: no new prebook or book while one exists. Only a person moves a row out of it.
+ */
+export const LITEAPI_NEEDS_REVIEW = "needs_review" as const;
+/** Every status that holds the item against a second booking: the live set plus `needs_review`. */
+export const LITEAPI_ITEM_HOLDING_STATUSES: readonly LiteapiBookingStatus[] = [...LITEAPI_LIVE_STATUSES, LITEAPI_NEEDS_REVIEW];
 
 const toCents = (n: number) => Math.round(n * 100);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);

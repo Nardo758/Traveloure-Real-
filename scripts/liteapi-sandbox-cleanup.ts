@@ -40,7 +40,7 @@ async function main(): Promise<number> {
   const rows = await db
     .select({ id: liteapiBookings.id, status: liteapiBookings.status, liteapiBookingId: liteapiBookings.liteapiBookingId })
     .from(liteapiBookings)
-    .where(and(eq(liteapiBookings.env, "sandbox"), inArray(liteapiBookings.status, ["booking", "confirmed", "cancelling"])));
+    .where(and(eq(liteapiBookings.env, "sandbox"), inArray(liteapiBookings.status, ["booking", "confirmed", "cancelling", "needs_review"])));
   let cancelled = 0;
   let alreadyCancelled = 0;
   let notAtLiteapi = 0;
