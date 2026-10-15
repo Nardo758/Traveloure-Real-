@@ -2040,4 +2040,7 @@ export const MIGRATION_FILES = [
   // shared/schema.ts; UNIQUE only on the new tables) and the platform_settings row bot_fact_default_expiry_days = 90
   // (ON CONFLICT DO NOTHING). Registered after 379, the order it landed. Migration 378 SQL approved by Leon — comment 20:31Z on #1455.
   "378_bot_accounts_and_proposals.sql",
+  // 380 — bot_proposals.fact_id → place_facts(id) ON DELETE SET NULL (ledger 2026-10-15-bot-proposal-fact-fk). One
+  // constraint, named as drizzle names it and declared in shared/schema.ts; idempotent. HELD until Leon approves the SQL.
+  "380_bot_proposals_fact_fk.sql",
 ] as const;

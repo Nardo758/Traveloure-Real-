@@ -12468,7 +12468,8 @@ export const botProposals = pgTable("bot_proposals", {
   reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
   reviewedAt: timestamp("reviewed_at"),
   rejectReason: text("reject_reason"),
-  factId: varchar("fact_id"),
+  // Migration 380: the fact this proposal's approval wrote; a deleted fact clears it, never the proposal.
+  factId: varchar("fact_id").references(() => placeFacts.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   dedupeUniq: uniqueIndex("uq_bot_proposals_dedupe").on(table.dedupeHash),

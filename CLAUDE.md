@@ -2491,7 +2491,9 @@ This document captures architectural decisions to maintain consistency across co
     a verbatim quote, the structured value the crawl requires. It shows only "<source name> · checked <approval
     date>" — no author, never "Traveloure team". Expiry: the source's `refresh_interval_days`, else the
     admin-editable `platform_settings.bot_fact_default_expiry_days` (seeded 90); neither ⇒ refused, never a
-    number in code. Bots never propose nugget-type facts.
+    number in code. Bots never propose nugget-type facts. `bot_proposals.fact_id` gains its FK to `place_facts(id)`,
+    ON DELETE SET NULL (ledger `2026-10-15-bot-proposal-fact-fk`; migration 380, HELD until its SQL is approved): 378
+    created the column with none, by oversight.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
