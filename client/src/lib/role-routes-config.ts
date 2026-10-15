@@ -206,6 +206,8 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/qa-checklist',        description: 'QA checklist' },
   { href: '/admin/content-ops',         description: 'Content Ops — YouTube ingestion, extraction status, offering requests, market checklist' },
   { href: '/admin/content-sources',     description: 'Content Sources — the content-source registry and its terms check' },
+  { href: '/admin/bot-proposals',       description: 'Bot proposals — facts a bot read from an official page, approved or rejected by an admin' },
+  { href: '/admin/bot-accounts',        description: 'Bot accounts — create a bot (token shown once) and revoke it' },
   { href: '/admin/audit-log',           description: 'Administrative audit log' },
 ];
 

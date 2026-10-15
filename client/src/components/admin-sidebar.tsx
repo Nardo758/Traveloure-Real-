@@ -97,6 +97,9 @@ const menuGroups = [
       { title: "Content Ops", href: "/admin/content-ops", icon: RefreshCw },
       // Content source registry (A6 (2)): sources are entered here, never seeded.
       { title: "Content Sources", href: "/admin/content-sources", icon: Layers },
+      // BOT-1 Phase 1: proposals a bot filed (review queue) and the bots themselves (tokens, revoke).
+      { title: "Bot proposals", href: "/admin/bot-proposals", icon: Layers },
+      { title: "Bot accounts", href: "/admin/bot-accounts", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
       { title: "Message Reports", href: "/admin/message-moderation", icon: ShieldAlert },
