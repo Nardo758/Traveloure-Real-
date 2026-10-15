@@ -284,6 +284,7 @@ import reviewRepliesRoutes from "./routes/review-replies.routes";
 // per the file-ownership split (sibling owns statements.routes.ts + provider/earnings.tsx only).
 import statementsRoutes from "./routes/statements.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
+import launchPublicRoutes from "./routes/launch-public.routes";
 import discoverRedirectRoutes from "./routes/discover-redirect.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
@@ -1395,6 +1396,9 @@ export async function registerRoutes(
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
+
+  // LW-1b: GET /api/public/signup-mode — the traveler sign-up switch, read fail-closed. Mounted per §9.
+  app.use(launchPublicRoutes);
 
   // GET /discover/location/:city — 301 to canonical city casing (case-match fix).
   // Server page route: must beat the SPA catch-all, so mounted here in registerRoutes

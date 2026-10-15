@@ -721,6 +721,7 @@ export default function TravelExpertsPage() {
       toast({ title, description, variant: "destructive" });
       if (isAuthError) {
         openSignInModal({
+          intent: "supply", // LW-1b: a supply door — passes the traveler waitlist
           title: "Sign in to submit your application",
           description: "We've saved everything you entered — sign in and submit will pick up right where you left off.",
           returnTo: window.location.pathname + window.location.search,
@@ -732,6 +733,7 @@ export default function TravelExpertsPage() {
   const promptSignInToSubmit = () => {
     saveApplicationDraft(DRAFT_KEY, formData, currentStep);
     openSignInModal({
+      intent: "supply", // LW-1b: a supply door — passes the traveler waitlist
       title: "Sign in to submit your application",
       description: "Create a free account or sign in — everything you've entered so far will still be here.",
       returnTo: window.location.pathname + window.location.search,

@@ -8,7 +8,9 @@ import { sendPasswordResetEmail, sendEmailVerificationEmail, getAppBaseUrl } fro
 import { enqueueSignupWelcome } from "../../services/signup-welcome-outbox.service";
 import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
-import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
+import { qaSignupCodeMatches } from "../../services/qa-signup-code";
+import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { dispatchModerationEvent } from "../../automations/moderation/runtime";
 
@@ -57,6 +59,11 @@ const registerSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required").max(100, "First name is too long"),
   lastName: z.string().trim().min(1, "Last name is required").max(100, "Last name is too long"),
   userType: z.enum(validUserTypes).optional().default("user"), // accepted but ignored server-side
+  // LW-1b: what the sign-up is for. `supply` (offering services) passes the traveler waitlist; anything else is a
+  // traveler. It grants no role — role upgrades still require an approved application form.
+  intent: z.string().max(20).optional(),
+  // LW-1b: the QA sign-up code (server secret QA_SIGNUP_CODE). Compared in constant time; never logged.
+  qaCode: z.string().max(256).optional(),
 });
 
 const loginSchema = z.object({
@@ -89,6 +96,22 @@ export function setupEmailAuth(app: Express): void {
       }
 
       const { email, password, firstName, lastName } = validation.data;
+
+      // LW-1b: the traveler sign-up switch. In waitlist mode (read fail-closed) a first-time TRAVELER account is
+      // refused and sent to the launch market's waitlist; supply intent and a valid QA code pass. Decided before
+      // the existing-email check, so the refusal says nothing about whether the address has an account.
+      const signupDecision = decideFirstTimeSignup({
+        mode: await getTravelerSignupMode(),
+        intent: normalizeSignupIntent(validation.data.intent),
+        qaCodeValid: qaSignupCodeMatches(validation.data.qaCode),
+      });
+      if (!signupDecision.allowed) {
+        return res.status(403).json({
+          code: signupDecision.code,
+          message: "Traveler sign-up is waitlist-only right now.",
+          redirectTo: waitlistBlockedPath(await getLaunchMarketSlug()),
+        });
+      }
       // userType from request body is intentionally ignored — all new accounts
       // start as role='user'. Role upgrades happen via approved application forms.
 
