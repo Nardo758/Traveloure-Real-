@@ -368,20 +368,14 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
   // §13: a booking is never made under an invented name.
   if (!holder.firstName || !holder.lastName || !holder.email) return { state: "holder_incomplete" };
 
-  // The claim (§15): one statement; a second live booking for the item is refused by the partial UNIQUE, and a
-  // booking awaiting review (outside that index) by the NOT EXISTS in the same statement.
+  // The claim (§15): one statement; a second booking holding the item — live or awaiting review — is refused by
+  // the partial UNIQUE (migration 377).
   let claimed;
   try {
     [claimed] = await db
       .update(liteapiBookings)
       .set({ status: "booking", claimedAt: new Date(), updatedAt: new Date() })
-      .where(
-        and(
-          eq(liteapiBookings.id, pre.id),
-          eq(liteapiBookings.status, "prebooked"),
-          sql`NOT EXISTS (SELECT 1 FROM liteapi_bookings r WHERE r.itinerary_item_id = ${input.itemId} AND r.status = ${LITEAPI_NEEDS_REVIEW})`,
-        ),
-      )
+      .where(and(eq(liteapiBookings.id, pre.id), eq(liteapiBookings.status, "prebooked")))
       .returning({ id: liteapiBookings.id });
   } catch (err) {
     if (isUniqueViolation(err)) return { state: "already_booked" };
