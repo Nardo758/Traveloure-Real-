@@ -80,6 +80,7 @@ export const STAY_BOOK_REFUSALS: Record<string, string> = {
   failed: "The hotel didn't accept the booking. You have not been booked.",
   pending: "We're still waiting for the hotel's answer. Check back shortly — nothing more is needed from you.",
   cancel_refused: "The booking couldn't be canceled. It is still booked.",
+  needs_review: "The hotel's booking partner refused the cancellation, so we can't yet tell whether you are still booked. It has been marked for review; don't book this stay again until it's resolved.",
 };
 
 /**

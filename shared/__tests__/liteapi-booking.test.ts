@@ -13,6 +13,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  LITEAPI_BOOKING_STATUSES,
+  LITEAPI_ITEM_HOLDING_STATUSES,
   LITEAPI_LIVE_STATUSES,
   LITEAPI_PAYMENT_METHOD,
   bookIsConfirmed,
@@ -83,6 +85,9 @@ test("LB4 confirmed and the status read", () => {
 test("LB5 the one payment method and the live set", () => {
   assert.equal(LITEAPI_PAYMENT_METHOD, "TRANSACTION_ID");
   assert.deepEqual([...LITEAPI_LIVE_STATUSES], ["booking", "confirmed", "cancelling"]);
+  // A cancel refused with a definite 4xx holds the item too, outside the partial UNIQUE (no migration).
+  assert.deepEqual([...LITEAPI_ITEM_HOLDING_STATUSES], ["booking", "confirmed", "cancelling", "needs_review"]);
+  assert.ok((LITEAPI_BOOKING_STATUSES as readonly string[]).includes("needs_review"));
 });
 
 test("LB6 the booking margin", () => {

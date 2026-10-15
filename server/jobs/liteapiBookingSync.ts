@@ -26,6 +26,8 @@ export interface LiteapiBookingSyncResult {
   readFailed: number;
   /** LiteAPI's status differs from ours — reported, never applied. */
   disagree: Array<{ id: string; ours: string; theirs: string }>;
+  /** Rows in `needs_review` read this pass, with what LiteAPI says now (null when it said nothing readable). */
+  needsReview: Array<{ id: string; theirs: string | null }>;
   /** S1-d-3c: `booking` claims with no LiteAPI id that LiteAPI holds under our client reference. */
   foundByReference: number;
   strandedBooking: number;
@@ -35,7 +37,7 @@ export interface LiteapiBookingSyncResult {
 
 export async function runLiteapiBookingSync(opts: { now?: Date; config?: () => LiteapiConfig | null; client?: (cfg: LiteapiConfig) => LiteapiClient } = {}): Promise<LiteapiBookingSyncResult> {
   const now = opts.now ?? new Date();
-  const out: LiteapiBookingSyncResult = { at: now.toISOString(), read: 0, readFailed: 0, disagree: [], foundByReference: 0, strandedBooking: 0, stalePrebooked: 0 };
+  const out: LiteapiBookingSyncResult = { at: now.toISOString(), read: 0, readFailed: 0, disagree: [], needsReview: [], foundByReference: 0, strandedBooking: 0, stalePrebooked: 0 };
   const cfg = (opts.config ?? (() => liteapiConfig()))();
   if (!liteapiBookingEnabled(cfg)) {
     out.skipped = "booking_disabled";
@@ -46,7 +48,7 @@ export async function runLiteapiBookingSync(opts: { now?: Date; config?: () => L
     const rows = await db
       .select({ id: liteapiBookings.id, status: liteapiBookings.status, liteapiBookingId: liteapiBookings.liteapiBookingId })
       .from(liteapiBookings)
-      .where(and(eq(liteapiBookings.env, cfg.env), inArray(liteapiBookings.status, ["booking", "confirmed", "cancelling"]), isNotNull(liteapiBookings.liteapiBookingId)))
+      .where(and(eq(liteapiBookings.env, cfg.env), inArray(liteapiBookings.status, ["booking", "confirmed", "cancelling", "needs_review"]), isNotNull(liteapiBookings.liteapiBookingId)))
       .orderBy(sql`last_synced_at ASC NULLS FIRST`)
       .limit(LITEAPI_BOOKING_SYNC_BATCH);
     for (const r of rows) {
@@ -64,6 +66,8 @@ export async function runLiteapiBookingSync(opts: { now?: Date; config?: () => L
       const expected = r.status === "confirmed" ? "CONFIRMED" : r.status === "cancelling" ? "CANCELLED" : null;
       if (theirs && expected && theirs !== expected) out.disagree.push({ id: r.id, ours: r.status, theirs });
       if (theirs && r.status === "booking") out.disagree.push({ id: r.id, ours: r.status, theirs });
+      // A refused cancel awaiting review: LiteAPI's current status is reported every pass for the reviewer.
+      if (r.status === "needs_review") out.needsReview.push({ id: r.id, theirs });
     }
     // S1-d-3c: a claim with no LiteAPI id — find it by our client reference (the row id we sent).
     const unknown = await db

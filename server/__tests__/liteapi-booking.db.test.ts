@@ -19,6 +19,9 @@
  *       the row stays `booking` ("still waiting") and the book is sent once
  *   B12 (S1-d-3c) the sync finds a claim with no LiteAPI id by our client reference and records LiteAPI's id and
  *       status as facts — never our status; another reference's booking is not taken for ours
+ *   B13 a cancel LiteAPI refuses with a definite 4xx goes to `needs_review` with the reason — never back to
+ *       `confirmed`; the item stays purchased and held (no new prebook or book), and the sync reports the row
+ *       (ledger `2026-10-15-liteapi-cancel-needs-review`)
  *   B10 (S1-d-3c) a prebook below its OWN SSP ⇒ ONE re-quote at the margin that floor needs and ONE more prebook;
  *       a second answer below its floor is refused — never more than two prebook calls
  *
@@ -103,6 +106,7 @@ before(async () => {
   await stay("s2", "trip", "lite");
   await stay("s3", "trip", "lite");
   await stay("s4", "trip", "lite");
+  await stay("s5", "trip", "lite");
   await stay("notlite", "trip", "other");
   await stay("anon", "trip2", "lite");
 });
@@ -340,4 +344,30 @@ test("B12 the sync finds a timed-out book by our client reference and records fa
   const o = await row("s4");
   assert.equal(o.liteapi_booking_id, null, "another reference's booking is never taken for ours");
   assert.ok(out.strandedBooking >= 1, "a claim LiteAPI does not hold stays reported");
+});
+
+test("B13 a cancel refused with a definite 4xx goes to needs_review with the reason, never confirmed", async () => {
+  await prebookStay(q("s5"), fakes().deps);
+  assert.equal((await bookStay(q("s5"), fakes().deps)).state, "confirmed");
+  // A stale prebook made before the review row exists must not book past it.
+  const out: any = await cancelStay(q("s5"), fakes({ cancel: () => { throw new LiteapiError(422, "cancellation not allowed"); } }).deps);
+  assert.equal(out.state, "needs_review");
+  const r = await row("s5");
+  assert.equal(r.status, "needs_review", "never back to confirmed");
+  assert.match(r.failure_reason, /^422 cancellation not allowed/);
+  assert.equal(await itemStatus("s5"), "purchased", "the item stays held while the outcome is unknown");
+  // Held: no second prebook, no second cancel attempt from this row.
+  assert.deepEqual(await prebookStay(q("s5"), fakes().deps), { state: "already_booked" });
+  assert.deepEqual(await cancelStay(q("s5"), fakes().deps), { state: "not_confirmed" });
+  // A prebooked row left over from before cannot book past the review row (the claim's NOT EXISTS).
+  await db.execute(sql`INSERT INTO liteapi_bookings (id, trip_id, itinerary_item_id, user_id, status, env, prebook_id, transaction_id, offer_id, amount_cents, currency, checkin, checkout, adults, provider_hotel_id)
+    SELECT ${id("s5-stale")}, trip_id, itinerary_item_id, user_id, 'prebooked', env, ${`${RUN}-stale-pb`}, 'tx-stale', offer_id, amount_cents, currency, checkin, checkout, adults, provider_hotel_id
+    FROM liteapi_bookings WHERE id = ${r.id}`);
+  const f = fakes();
+  assert.deepEqual(await bookStay(q("s5"), f.deps), { state: "no_prebook" });
+  assert.equal(f.calls.book.length, 0, "no book call while a review is open");
+  // The sync reads it and reports it; it never changes our status.
+  const sync = await runLiteapiBookingSync({ config: f.deps.config, client: fakes({ get: () => ({ data: { status: "CONFIRMED" } }) }).deps.client });
+  assert.ok(sync.needsReview.some((n) => n.id === r.id && n.theirs === "CONFIRMED"));
+  assert.equal(((await db.execute(sql`SELECT status FROM liteapi_bookings WHERE id = ${r.id}`)) as any).rows[0].status, "needs_review");
 });
