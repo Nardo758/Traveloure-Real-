@@ -252,3 +252,15 @@ export function bookingForClientReference(body: any, clientReference: string): {
 export function bookingStatusOf(body: any): string | null {
   return str(body?.data?.status)?.toUpperCase() ?? null;
 }
+
+/**
+ * The reason a cancel was refused, for the ONE `[liteapi-booking] cancel <bookingId>: refused — <reason>` log line
+ * (ledger `2026-10-15-cancel-refused-logged`): LiteAPI's own status word and the booked rate's policy as the
+ * prebook stated it (refundable tag, first free-cancel deadline). A field the answer did not state says so (§13).
+ */
+export function cancelRefusalReason(liteapiStatus: string | null, policy: any): string {
+  const tag = str(policy?.refundableTag);
+  const infos = Array.isArray(policy?.cancelPolicyInfos) ? policy.cancelPolicyInfos : [];
+  const deadline = infos.map((i: any) => str(i?.cancelTime)).filter(Boolean).sort()[0] ?? null;
+  return `LiteAPI answered ${liteapiStatus ?? "no status"}; booked rate ${tag ?? "refundability not stated"}${deadline ? `, free cancel until ${deadline}` : ""}`;
+}

@@ -35,6 +35,7 @@ import {
   LITEAPI_NEEDS_REVIEW,
   bookIsConfirmed,
   bookingStatusOf,
+  cancelRefusalReason,
   offerIdFromRates,
   sspFromRates,
   bookingMarginFraction,
@@ -491,6 +492,7 @@ export async function cancelStay(input: { tripId: string; itemId: string; userId
     return { state: "pending", bookingId: row.id };
   }
   if (status !== "CANCELLED") {
+    console.warn(`[liteapi-booking] cancel ${row.id}: refused — ${cancelRefusalReason(status, row.cancellationPolicy)}`);
     await db.update(liteapiBookings).set({ status: "confirmed", lastSyncStatus: status, updatedAt: new Date() }).where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")));
     return { state: "cancel_refused", bookingId: row.id };
   }

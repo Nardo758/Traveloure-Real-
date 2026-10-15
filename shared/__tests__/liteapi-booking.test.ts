@@ -9,6 +9,7 @@
  *   LB6 the booking margin: max(band, SSP / net − 1), rounded up; refused only for no SSP / another currency
  *   LB7 (S1-d-3c) the prebook's own SSP is the floor, the re-quote's only when it states none; the one
  *       re-prebook margin is max(band, floor / net − 1), rounded up and always above the margin tried
+ *   LB8 the cancel-refusal log reason: LiteAPI's status and the booked rate's tag and first deadline; unstated says so
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -28,6 +29,7 @@ import {
   prebookFloorPercent,
   quoteRetail,
   prebookDiagnostic,
+  cancelRefusalReason,
 } from "../liteapi-booking";
 
 test("LB1 offer id from the re-quote", () => {
@@ -149,4 +151,11 @@ test("LB7 the prebook's own SSP is the floor; the one re-prebook margin", () => 
   assert.deepEqual(quoteRetail({ data: [{ roomTypes: [{ offerRetailRate: { amount: 202.27, currency: "usd" } }] }] }), { amount: 202.27, currency: "USD" });
   assert.equal(quoteRetail({}), null);
   assert.match(prebookDiagnostic({}, shy, 15), /requote retail=none .*prebook price=202\.27 prebook ssp=202\.3 currency=USD margin=15%/);
+});
+
+test("LB8 the cancel-refusal log reason", () => {
+  const policy = { refundableTag: "RFN", cancelPolicyInfos: [{ cancelTime: "2026-12-20 12:00:00" }, { cancelTime: "2026-12-10 12:00:00" }] };
+  assert.equal(cancelRefusalReason("CANCELLED_WITH_CHARGES", policy), "LiteAPI answered CANCELLED_WITH_CHARGES; booked rate RFN, free cancel until 2026-12-10 12:00:00");
+  assert.equal(cancelRefusalReason(null, { refundableTag: "NRFN" }), "LiteAPI answered no status; booked rate NRFN");
+  assert.equal(cancelRefusalReason("CONFIRMED", null), "LiteAPI answered CONFIRMED; booked rate refundability not stated");
 });
