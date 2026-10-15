@@ -840,12 +840,85 @@ router.post("/api/admin/bookings/:bookingId/lost-chargeback/reconcile", isAuthen
   }
 });
 
+// ── PAY-1 §4 (ledger `2026-10-15-pay1-payment-checks`) ─────────────────────────────────────────
+// ONE admin read of a booking across service_bookings, the legacy bookings table and liteapi_bookings,
+// and the ONLY path out of `needs_review`. The kind is in the path (`service|legacy|liteapi`) so it
+// can never be confused with the `:bookingId/<action>` routes above. Every read and every resolve is
+// written to the access audit log.
+const ADMIN_BOOKING_KIND_PATH = "/api/admin/bookings/:kind(service|legacy|liteapi)/:id";
+
+router.get(ADMIN_BOOKING_KIND_PATH, isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { loadAdminBookingDetail } = await import("../services/admin-booking-detail.service");
+    const kind = req.params.kind as "service" | "legacy" | "liteapi";
+    const detail = await loadAdminBookingDetail(kind, req.params.id);
+    if (!detail) return res.status(404).json({ message: "No such booking." });
+    const auditWarning = await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "booking_detail_viewed",
+      resourceType: `${kind}_booking`,
+      resourceId: req.params.id,
+      targetUserId: detail.traveler.id ?? undefined,
+      metadata: { kind },
+    } as any);
+    res.json({ ...detail, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err) {
+    console.error("Admin booking detail error:", err);
+    res.status(500).json({ message: "Failed to load the booking" });
+  }
+});
+
+const resolveNeedsReviewBody = z
+  .object({
+    outcome: z.enum(["confirmed", "cancelled"]),
+    reason: z.string().trim().min(1).max(500),
+    // An admin-entered PaymentIntent id, recorded only where the row carries none (or this one).
+    paymentIntentId: z.string().trim().regex(/^pi_[A-Za-z0-9]+$/).optional(),
+  })
+  .strict();
+
+router.post(`${ADMIN_BOOKING_KIND_PATH}/resolve`, isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const parsed = resolveNeedsReviewBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(zodErrorBody(parsed.error));
+  try {
+    const { resolveNeedsReviewBooking } = await import("../services/admin-booking-detail.service");
+    const kind = req.params.kind as "service" | "legacy" | "liteapi";
+    const result = await resolveNeedsReviewBooking(kind, req.params.id, parsed.data.outcome, parsed.data.paymentIntentId ?? null);
+    if (!result.ok) return res.status(result.httpStatus).json({ message: result.message, reason: result.reason });
+    const auditWarning = await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "booking_needs_review_resolved",
+      resourceType: `${kind}_booking`,
+      resourceId: req.params.id,
+      metadata: {
+        kind,
+        outcome: result.status,
+        reason: parsed.data.reason,
+        paymentIntentId: result.paymentIntentId,
+        paymentIntentSuppliedByAdmin: !!parsed.data.paymentIntentId,
+      },
+    } as any);
+    res.json({ status: result.status, paymentIntentId: result.paymentIntentId, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err) {
+    console.error("Admin needs_review resolve error:", err);
+    res.status(500).json({ message: "Failed to resolve the booking" });
+  }
+});
+
 /**
  * GET /api/admin/webhooks/unprocessed
- * Returns webhook_events rows where processed=false.
- * Covers two cases: events that never arrived (gap vs Stripe API)
- * and events that arrived but failed during processing (error column set).
- * Each row includes the raw_payload so ops can replay manually if needed.
+ * Returns platform_webhook_consumers claims that no consumer completed and nobody has claimed for
+ * over an hour (PAY-1 §3): failed (error set) or abandoned mid-flight.
  */
 router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
@@ -853,17 +926,21 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+    // PAY-1 §3 (ledger `2026-10-15-pay1-payment-checks`): read the per-consumer claims, not
+    // webhook_events.processed — the platform rail never wrote that flag, so every platform event read
+    // as stuck. A claim is stuck when nobody completed it and nobody has claimed it for over an hour
+    // (created_at is the last-claim time on this table).
     const result = await db.execute(sql`
       SELECT
-        id,
         stripe_event_id,
+        consumer,
         event_type,
-        processed,
-        processed_at,
+        completed_at,
         error,
         created_at
-      FROM webhook_events
-      WHERE processed = FALSE
+      FROM platform_webhook_consumers
+      WHERE completed_at IS NULL
+        AND created_at < NOW() - INTERVAL '1 hour'
       ORDER BY created_at ASC
       LIMIT 200
     `);

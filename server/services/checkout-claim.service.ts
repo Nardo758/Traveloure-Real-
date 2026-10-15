@@ -113,6 +113,7 @@ import { grantPlanWorkAdvisorAccess } from "./plan-work-access.service";
 /** Ratified TTL (decision-maker, ruling 38) — stated ONCE in shared/checkout-hold.ts, which help
  *  article 8 also reads; re-exported here for this module's existing importers. */
 import { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS } from "@shared/checkout-hold";
+import { PAID_CHARGE_KEY } from "@shared/payment-on-record";
 export { CHECKOUT_CLAIM_TTL_MINUTES, STALE_AUTHORIZED_CLAIM_HOURS };
 
 /** The `bookingDetails` key carrying the LAYER-1 pre-flight marker (see the docblock). */
@@ -2603,3 +2604,94 @@ class CheckoutClaimSweepScheduler {
 }
 
 export const checkoutClaimSweepScheduler = new CheckoutClaimSweepScheduler();
+
+// ══ PAY-1 §4 — RESOLVE A `needs_review` SERVICE BOOKING (ledger `2026-10-15-pay1-payment-checks`) ══
+//
+// The ONLY path out of `needs_review` for a `service_bookings` row, and it lives HERE because the
+// `confirmed` outcome may record `stripe_payment_intent_id`, whose sole writer is this file (§19a).
+//
+//   cancelled — moves STATUS ONLY. No refund is issued here: a refund stays on the exception-refund
+//               rail, so this writer never becomes a second refund path.
+//   confirmed — REQUIRES a PaymentIntent: the row's own, or the admin's `paymentIntentId`. The id is
+//               recorded in the SAME atomic statement as the flip, and only where the row carries none
+//               or already carries that one; a different id already on the row is REFUSED (409), never
+//               overwritten. Never confirmed without an id (422).
+//
+// The statement is the guard (§15/§18b): `status = 'needs_review'` is in the WHERE, so a row another
+// admin already resolved matches nothing and is reported, never resolved twice.
+export type NeedsReviewResolveOutcome = "confirmed" | "cancelled";
+export type ServiceNeedsReviewResult =
+  | { ok: true; status: NeedsReviewResolveOutcome; paymentIntentId: string | null }
+  | { ok: false; httpStatus: 404 | 409 | 422; reason: "not_found" | "not_needs_review" | "no_payment_intent" | "different_payment_intent"; message: string; status?: string | null };
+
+export async function resolveNeedsReviewServiceBooking(
+  bookingId: string,
+  outcome: NeedsReviewResolveOutcome,
+  suppliedPaymentIntentId: string | null,
+): Promise<ServiceNeedsReviewResult> {
+  const rowsOf = (r: any) => (Array.isArray(r) ? r : (r?.rows ?? []));
+  const readBack = async () =>
+    rowsOf(
+      await db.execute(sql`SELECT status, stripe_payment_intent_id FROM service_bookings WHERE id = ${bookingId}`),
+    )[0] as { status: string | null; stripe_payment_intent_id: string | null } | undefined;
+
+  if (outcome === "cancelled") {
+    const moved = rowsOf(
+      await db.execute(sql`
+        UPDATE service_bookings SET status = 'cancelled', updated_at = NOW()
+        WHERE id = ${bookingId} AND status = 'needs_review'
+        RETURNING stripe_payment_intent_id
+      `),
+    );
+    if (moved[0]) return { ok: true, status: "cancelled", paymentIntentId: moved[0].stripe_payment_intent_id ?? null };
+    const cur = await readBack();
+    if (!cur) return { ok: false, httpStatus: 404, reason: "not_found", message: "No such booking." };
+    return { ok: false, httpStatus: 409, reason: "not_needs_review", message: `This booking is "${cur.status}", not needs_review; nothing was changed.`, status: cur.status };
+  }
+
+  const pi = suppliedPaymentIntentId?.trim() || null;
+  const moved = rowsOf(
+    await db.execute(sql`
+      UPDATE service_bookings
+      SET status = 'confirmed',
+          stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ${pi}::text),
+          -- A confirm is a paid transition, so it carries the payment-on-record stamp in the SAME
+          -- statement (ledger 2026-09-28-no-payment-no-earnings). The amount is the one the hold
+          -- recorded from Stripe's session; absent ⇒ JSON null, never 0 (§13).
+          booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
+            ${PAID_CHARGE_KEY}::text,
+            jsonb_build_object(
+              'status', 'confirmed'::text,
+              'amount', COALESCE(booking_details, '{}'::jsonb) #> '{needsReview,amount}',
+              'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+            )
+          ),
+          updated_at = NOW()
+      WHERE id = ${bookingId}
+        AND status = 'needs_review'
+        AND (
+          (stripe_payment_intent_id IS NOT NULL AND (${pi}::text IS NULL OR stripe_payment_intent_id = ${pi}::text))
+          OR (stripe_payment_intent_id IS NULL AND ${pi}::text IS NOT NULL)
+        )
+      RETURNING stripe_payment_intent_id
+    `),
+  );
+  if (moved[0]) return { ok: true, status: "confirmed", paymentIntentId: moved[0].stripe_payment_intent_id };
+
+  // Zero rows: the read below only names WHY (the message, not the decision).
+  const cur = await readBack();
+  if (!cur) return { ok: false, httpStatus: 404, reason: "not_found", message: "No such booking." };
+  if (cur.status !== "needs_review") {
+    return { ok: false, httpStatus: 409, reason: "not_needs_review", message: `This booking is "${cur.status}", not needs_review; nothing was changed.`, status: cur.status };
+  }
+  if (!cur.stripe_payment_intent_id && !pi) {
+    return { ok: false, httpStatus: 422, reason: "no_payment_intent", message: "A booking is never confirmed without a PaymentIntent. Enter the pi_… id from Stripe.", status: cur.status };
+  }
+  return {
+    ok: false,
+    httpStatus: 409,
+    reason: "different_payment_intent",
+    message: `This booking already records ${cur.stripe_payment_intent_id}; a different PaymentIntent is never written over it.`,
+    status: cur.status,
+  };
+}
