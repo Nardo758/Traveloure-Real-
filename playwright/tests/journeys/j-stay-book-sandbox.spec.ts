@@ -244,27 +244,26 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       break;
     }
     if (!priced) {
-      // §18d: a run where every hotel tried was refused below SSP has proven the refusal path, NOT booking. It is
-      // marked SKIPPED (never passed), naming what was not exercised, so a green job is never read as "booked".
-      const onlyBelowSsp = tried.length > 0 && tried.every((t) => t.endsWith("(below_ssp)"));
-      const onlyNonRefundable = tried.length > 0 && tried.every((t) => t.endsWith(": non-refundable"));
-      // Decision-maker ruling, Oct 15, 2026 (ledger `2026-10-15-sandbox-rates-unavailable-skip`): when the sandbox
-      // priced NONE of the hotels tried — every rates read answered unavailable, a timeout included — booking was not
-      // exercised and the run says so: SKIPPED, never passed, and the workflow raises a notice so the skip shows on main.
-      // A mix (one non-refundable, the rest unavailable) still fails: the ruling covers "every hotel unavailable" only.
-      const onlyRatesUnavailable = tried.length > 0 && tried.every((t) => /: rates unavailable \(/.test(t));
-      if (onlyRatesUnavailable) {
-        test.skip(true, `BOOK AND CANCEL NOT EXERCISED: the LiteAPI sandbox priced none of the hotels tried for the plan's dates. Tried: ${tried.join("; ")}`);
-        return;
-      }
-      if (onlyNonRefundable) {
-        test.skip(true, `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried offered only a non-refundable rate for the plan's dates, which cannot be cancelled free. Tried: ${tried.join("; ")}`);
-        return;
-      }
-      expect(onlyBelowSsp && belowSspShown, `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
+      // §18d: a run in which no hotel tried could be booked and cancelled free has proven NOTHING about booking. It is
+      // marked SKIPPED (never passed), naming each hotel and its reason, so a green job is never read as "booked";
+      // the workflow raises a notice for every skip so it shows on main. Decision-maker rulings, Oct 15, 2026 (ledger
+      // `2026-10-15-sandbox-rates-unavailable-skip`): the sandbox's own answers are rates unavailable (a timeout
+      // included) and a non-refundable rate; a below-SSP refusal stays the Oct 11 ruling's. Any mix of those three
+      // skips. Anything else — our own server's unreadable answer, a failed add/choose, a hotel not bookable, any
+      // other prebook refusal — fails the run, as does every booking or cancel defect below.
+      const outsideOurControl = (t: string) =>
+        /: rates unavailable \(/.test(t) || t.endsWith(": non-refundable") || t.endsWith("(below_ssp)");
+      const notExercisable = tried.length > 0 && tried.every(outsideOurControl);
+      const belowSspSeen = tried.some((t) => t.endsWith("(below_ssp)"));
+      expect(
+        notExercisable && (!belowSspSeen || belowSspShown),
+        `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`,
+      ).toBe(true);
       test.skip(
         true,
-        `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried was below its suggested selling price and was refused (ruled Oct 11, 2026), with hotel_margin_public at ${marginInForce} (the seeded margin). Tried: ${tried.join("; ")}`,
+        `BOOK AND CANCEL NOT EXERCISED: no sandbox hotel tried could be booked and cancelled free for the plan's dates` +
+          `${belowSspSeen ? ` (below-SSP refusals ruled Oct 11, 2026, with hotel_margin_public at ${marginInForce}, the seeded margin)` : ""}. ` +
+          `Tried: ${tried.join("; ")}`,
       );
       return;
     }
