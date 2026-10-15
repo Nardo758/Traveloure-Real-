@@ -12549,6 +12549,10 @@ export const liteapiBookings = pgTable("liteapi_bookings", {
   commissionCents: integer("commission_cents"),
   processingFeeCents: integer("processing_fee_cents"),
   cancellationPolicy: jsonb("cancellation_policy"),
+  // Migration 379 (ledger `2026-10-15-liteapi-cancel-with-charges`): `cancellation_fee`, `refund_amount` and
+  // `currency` exactly as a cancel's 200 returned them. NULL = not cancelled through LiteAPI. Written only by
+  // `cancelStay`. Traveler refund maths is a pending founder call; nothing reads these for money yet.
+  cancelAmounts: jsonb("cancel_amounts"),
   failureReason: text("failure_reason"),
   claimedAt: timestamp("claimed_at"),
   bookedAt: timestamp("booked_at"),

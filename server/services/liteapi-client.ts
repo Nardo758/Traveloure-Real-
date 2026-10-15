@@ -137,7 +137,7 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
     }
   }
 
-  async function request(url: string, path: string, payload?: unknown, method?: "PUT", timeoutMs?: number): Promise<any> {
+  async function request(url: string, path: string, payload?: unknown, method?: "PUT", timeoutMs?: number, only200 = false): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       await pace();
       const { res, body } = await exchange(
@@ -155,7 +155,7 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
         await sleep(LITEAPI_BACKOFF_START_MS * 2 ** attempt);
         continue;
       }
-      if (!res.ok || limited) {
+      if (!res.ok || limited || (only200 && res.status !== 200)) {
         throw new LiteapiError(res.status, `LiteAPI ${path} answered ${res.status}${limited ? " (rate limited)" : ""}`);
       }
       return body;
@@ -215,9 +215,13 @@ export function createLiteapiClient(cfg: LiteapiConfig, deps: LiteapiClientDeps 
     async getBooking(bookingId: string): Promise<any> {
       return request(`${cfg.bookBaseUrl}/bookings/${encodeURIComponent(bookingId)}`, "/bookings/:id");
     },
-    /** S1-d-3a: cancel one booking. Any refund is Nuitée's; we move no money. */
+    /**
+     * S1-d-3a: cancel one booking. Any refund is Nuitée's; we move no money. Only a 200 is an answer (ledger
+     * `2026-10-15-liteapi-cancel-with-charges`): a 204 "not found" has an empty body and a 304 says nothing, so
+     * every other status code is thrown as a LiteapiError and goes by its code.
+     */
     async cancelBooking(bookingId: string): Promise<any> {
-      return request(`${cfg.bookBaseUrl}/bookings/${encodeURIComponent(bookingId)}`, "/bookings/:id", undefined, "PUT");
+      return request(`${cfg.bookBaseUrl}/bookings/${encodeURIComponent(bookingId)}`, "/bookings/:id", undefined, "PUT", undefined, true);
     },
   };
 }

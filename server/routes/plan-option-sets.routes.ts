@@ -374,6 +374,9 @@ router.get("/api/trips/:tripId/stays/:stayId/rates", isAuthenticated, async (req
 // pays — LD 52); anyone else and an absent plan, item or stay are ONE 404 (LD 40). Every body is an empty
 // `.strict()` object (§19): the offer, the price, the holder and the transaction id are all server-derived (§14).
 const stayBookingBody = z.object({}).strict();
+// The cancel's one admitted field (§19): the traveler's consent to the charges the stored policy states
+// (ledger `2026-10-15-liteapi-cancel-with-charges`). Absent ⇒ a charged cancel is answered `charges_apply`.
+const stayCancelBody = z.object({ acknowledgeCharges: z.literal(true).optional() }).strict();
 const STAY_BOOKING_STATUS: Record<string, number> = {
   not_found: 404,
   booking_unavailable: 409,
@@ -384,6 +387,7 @@ const STAY_BOOKING_STATUS: Record<string, number> = {
   no_prebook: 409,
   holder_incomplete: 409,
   not_confirmed: 409,
+  charges_apply: 422,
 };
 function sendStayBooking(res: any, out: { state: string }) {
   const code = STAY_BOOKING_STATUS[out.state];
@@ -422,10 +426,13 @@ router.post("/api/trips/:tripId/items/:itemId/stay-booking/book", isAuthenticate
   }
 });
 router.post("/api/trips/:tripId/items/:itemId/stay-booking/cancel", isAuthenticated, async (req: any, res) => {
-  if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
+  const body = stayCancelBody.safeParse(req.body ?? {});
+  if (!body.success) return badBody(res);
   try {
     const { cancelStay } = await import("../services/liteapi-booking.service");
-    sendStayBooking(res, await cancelStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req) }));
+    const out = await cancelStay({ tripId: req.params.tripId, itemId: req.params.itemId, userId: getUserId(req), acknowledgeCharges: body.data.acknowledgeCharges === true });
+    if (out.state === "charges_apply") return res.status(422).json({ code: "charges_apply", ...out });
+    sendStayBooking(res, out);
   } catch (err) {
     console.error("[stay-booking cancel]", err);
     res.status(500).json({ code: "internal", message: "Could not cancel the booking" });

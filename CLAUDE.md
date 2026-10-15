@@ -2701,6 +2701,17 @@ This document captures architectural decisions to maintain consistency across co
     The rail itself is recorded in the d-3a ledger row and brief `docs/planning/briefs/s1-d3-liteapi-booking.md`;
     migration 371 (Migration 371 SQL approved by Leon — comment 00:45Z on #1402). Sandbox only
     (`liteapiBookingEnabled`).
+    **AMENDED — A CHARGED CANCEL IS A CANCELLATION, AND ONLY AFTER CONSENT (decision-maker, Oct 15, 2026 — ledger
+    `2026-10-15-liteapi-cancel-with-charges`; migration 379, HELD).** Only a cancel's 200 carrying `CANCELLED` or
+    `CANCELLED_WITH_CHARGES` ends the booking: the row moves to `cancelled`, the item is released through the ONE
+    `releaseLiteapiStayItem`, and `cancellation_fee`, `refund_amount` and `currency` are stored exactly as returned
+    (`liteapi_bookings.cancel_amounts`). Money follows `refund_amount`, never the status word. A missing
+    `refund_amount` or a currency other than ours keeps the stay cancelled and opens a `liteapi_refund_unverified`
+    reconciliation exception. Every other answer (any other status code, no readable answer, any other status word)
+    moves the row to `needs_review`, never back to `confirmed`. When the policy the prebook stored says cancelling
+    now costs money, the cancel answers 422 `charges_apply` with the policy's amounts and makes NO LiteAPI call
+    unless the traveler sent `acknowledgeCharges: true` from the cancel sheet; CI never sends it. No traveler
+    refund is computed: that maths is a pending founder call.
 
 65. **CONTENT IS TAGGED PUBLIC OR LOCAL; ONLY TAGGED, LIVE CONTENT REACHES A DRAFT (decision-maker, Oct 9, 2026 —
     FD-2 rulings 1–9; ledger `2026-10-09-fd2-content-tier-tags`; brief `docs/planning/briefs/fd-content-tiers-phase0.md`;

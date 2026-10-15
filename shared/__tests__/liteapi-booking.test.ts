@@ -10,6 +10,8 @@
  *   LB7 (S1-d-3c) the prebook's own SSP is the floor, the re-quote's only when it states none; the one
  *       re-prebook margin is max(band, floor / net − 1), rounded up and always above the margin tried
  *   LB8 the cancel-refusal log reason: LiteAPI's status and the booked rate's tag and first deadline; unstated says so
+ *   LB9 CANCELLED and CANCELLED_WITH_CHARGES both end a booking; the consent gate's terms from the stored policy
+ *   LB10 a cancel's three amounts are kept exactly as returned; a refund is unverified when missing or in another currency
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -30,6 +32,10 @@ import {
   quoteRetail,
   prebookDiagnostic,
   cancelRefusalReason,
+  cancelChargeTerms,
+  isLiteapiCancelled,
+  cancelAmountsOf,
+  refundUnverifiedReason,
 } from "../liteapi-booking";
 
 test("LB1 offer id from the re-quote", () => {
@@ -158,4 +164,43 @@ test("LB8 the cancel-refusal log reason", () => {
   assert.equal(cancelRefusalReason("CANCELLED_WITH_CHARGES", policy), "LiteAPI answered CANCELLED_WITH_CHARGES; booked rate RFN, free cancel until 2026-12-10 12:00:00");
   assert.equal(cancelRefusalReason(null, { refundableTag: "NRFN" }), "LiteAPI answered no status; booked rate NRFN");
   assert.equal(cancelRefusalReason("CONFIRMED", null), "LiteAPI answered CONFIRMED; booked rate refundability not stated");
+});
+
+test("LB9 cancelled statuses and the consent gate's terms", () => {
+  assert.equal(isLiteapiCancelled("CANCELLED"), true);
+  assert.equal(isLiteapiCancelled("CANCELLED_WITH_CHARGES"), true);
+  assert.equal(isLiteapiCancelled("CONFIRMED"), false);
+  assert.equal(isLiteapiCancelled(null), false);
+  const now = Date.parse("2026-10-15T12:00:00Z");
+  // Non-refundable: always gated; the charge is the policy's largest stated amount.
+  assert.deepEqual(cancelChargeTerms({ refundableTag: "NRFN", cancelPolicyInfos: [{ cancelTime: "2026-11-01 00:00:00", amount: 300, currency: "usd" }] }, now), {
+    chargesApply: true, policy: "NRFN", deadline: "2026-11-01T00:00:00.000Z", amount: 300, currency: "USD",
+  });
+  // Non-refundable with no amount stated: gated, amount null — never guessed.
+  assert.deepEqual(cancelChargeTerms({ refundableTag: "NRFN" }, now), { chargesApply: true, policy: "NRFN", deadline: null, amount: null, currency: null });
+  // Refundable inside the window: not gated.
+  const inside = cancelChargeTerms({ refundableTag: "RFN", cancelPolicyInfos: [{ cancelTime: "2026-11-01 00:00:00", amount: 80, currency: "EUR" }] }, now);
+  assert.equal(inside.chargesApply, false);
+  assert.equal(inside.amount, null);
+  // Refundable past the first deadline: gated at the charge that has started.
+  const past = cancelChargeTerms(
+    { refundableTag: "RFN", cancelPolicyInfos: [{ cancelTime: "2026-10-01 00:00:00", amount: 40, currency: "EUR" }, { cancelTime: "2026-11-01 00:00:00", amount: 80, currency: "EUR" }] },
+    now,
+  );
+  assert.deepEqual(past, { chargesApply: true, policy: "RFN", deadline: "2026-10-01T00:00:00.000Z", amount: 40, currency: "EUR" });
+  // No policy stored: no stated charge, no gate.
+  assert.equal(cancelChargeTerms(null, now).chargesApply, false);
+});
+
+test("LB10 the cancel's amounts, as returned; when the refund is unverified", () => {
+  const body = { data: { bookingId: "b", status: "CANCELLED", cancellation_fee: 25, refund_amount: "287.50", currency: "USD", sandbox: true } };
+  assert.deepEqual(cancelAmountsOf(body), { cancellation_fee: 25, refund_amount: "287.50", currency: "USD" });
+  assert.deepEqual(cancelAmountsOf({ data: { status: "CANCELLED" } }), {});
+  assert.deepEqual(cancelAmountsOf(null), {});
+  assert.equal(refundUnverifiedReason({ refund_amount: 287.5, currency: "usd" }, "USD"), null);
+  assert.equal(refundUnverifiedReason({ refund_amount: 0, currency: "USD" }, "USD"), null, "a stated zero is a stated refund");
+  assert.equal(refundUnverifiedReason({ currency: "USD" }, "USD"), "refund_amount_missing");
+  assert.equal(refundUnverifiedReason({ refund_amount: null, currency: "USD" }, "USD"), "refund_amount_missing");
+  assert.equal(refundUnverifiedReason({ refund_amount: 10, currency: "EUR" }, "USD"), "currency_mismatch");
+  assert.equal(refundUnverifiedReason({ refund_amount: 10 }, "USD"), "currency_mismatch");
 });

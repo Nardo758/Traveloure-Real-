@@ -2028,4 +2028,8 @@ export const MIGRATION_FILES = [
   // 2026-10-12-tc2-affiliate-legs). Three additive nullable columns on affiliate_partners; no DEFAULT,
   // CHECK, index, FK or backfill; declared in shared/schema.ts. Migration 376 SQL approved by Leon — comment 19:42Z on #1438.
   "376_affiliate_partner_licence.sql",
+  // 379 — LiteAPI cancel amounts (ledger `2026-10-15-liteapi-cancel-with-charges`): one additive nullable jsonb
+  // column on liteapi_bookings holding `cancellation_fee`, `refund_amount` and `currency` exactly as a cancel's 200
+  // returned them. No DEFAULT, CHECK, index, FK or backfill; declared in shared/schema.ts. HELD for SQL approval.
+  "379_liteapi_cancel_amounts.sql",
 ] as const;
