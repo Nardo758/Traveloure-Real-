@@ -2036,10 +2036,14 @@ export const MIGRATION_FILES = [
   // column on liteapi_bookings holding `cancellation_fee`, `refund_amount` and `currency` exactly as a cancel's 200
   // returned them. No DEFAULT, CHECK, index, FK or backfill; declared in shared/schema.ts. Migration 379 SQL approved by Leon — comment 20:22Z on #1456.
   "379_liteapi_cancel_amounts.sql",
+  // 378 — BOT-1 Phase 1 (ledger 2026-10-15-bot1-phase1): bot_accounts + bot_proposals (new, empty, declared in
+  // shared/schema.ts; UNIQUE only on the new tables) and the platform_settings row bot_fact_default_expiry_days = 90
+  // (ON CONFLICT DO NOTHING). Registered after 379, the order it landed. Migration 378 SQL approved by Leon — comment 20:31Z on #1455.
+  "378_bot_accounts_and_proposals.sql",
   // 381 — launch waitlist + consent texts (LW-1a, ledger 2026-10-15-lw1a-launch-waitlist). Two NEW tables born
   // empty (no DEFAULT, CHECK or FK; every column but the key nullable) with a UNIQUE (email, market_slug) safe at
-  // creation, users.signup_source (additive nullable text), plus three platform_settings seeds (traveler_signup_mode=waitlist, launch_market_slug=kyoto,
-  // earn_ready_made_example_enabled=false), ON CONFLICT DO NOTHING. 378 and 380 are reserved by other lanes.
-  // Declared in shared/schema.ts. HELD FOR LEON'S COMMENT on the PR.
+  // creation, users.signup_source (additive nullable text), plus three platform_settings seeds
+  // (traveler_signup_mode=waitlist, launch_market_slug=kyoto, earn_ready_made_example_enabled=false), ON CONFLICT
+  // DO NOTHING. 380 is reserved by another lane. Declared in shared/schema.ts and shared/models/auth.ts. HELD FOR LEON'S COMMENT on the PR.
   "381_launch_waitlist.sql",
 ] as const;

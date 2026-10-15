@@ -74,6 +74,7 @@ import {
 } from "./infrastructure";
 import { queryCounterMiddleware } from "./utils/queryCounter";
 import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
+import { botLimiter } from "./middleware/bot-limiter";
 import { createCorsMiddleware } from "./middleware/cors-origins";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
@@ -143,6 +144,9 @@ app.use("/api/auth", authRateLimiter as RequestHandler);
 // internal.routes.ts, so internal-jobs-auth.http.test.ts — which mounts the bare router and fires
 // 30 deliberate 401s — keeps passing unmodified.
 app.use("/internal", internalJobsLimiter as RequestHandler);
+// BOT-1 Phase 1 ruling 1 (ledger `2026-10-15-bot1-phase1`): /api/bot/* gets its own limiter, keyed by the bot's
+// token rather than the IP, beside /internal's; the general /api limit above still applies.
+app.use("/api/bot", botLimiter as RequestHandler);
 
 // CORS — explicit, DENY-BY-DEFAULT header control for all API routes.
 //

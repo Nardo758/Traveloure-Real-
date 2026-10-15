@@ -2480,6 +2480,18 @@ This document captures architectural decisions to maintain consistency across co
     (`shared/place-lookup-outcomes.ts`). ONE writer, one INSERT per run, never failing the lookup (§15b); retention is
     config (90 days), pruned by the daily `facts-recheck`; `/admin/content-sources` shows counts and a plan-id view of
     each item's latest outcome. Migration 373 SQL approved by Leon — comment 20:09Z on #1419.
+    **AMENDED — A BOT MAY PROPOSE AN OFFICIAL HOURS OR LAST-ADMISSION FACT; ONLY AN ADMIN'S APPROVAL WRITES IT
+    (decision-maker, Oct 15, 2026 — BOT-1 Phase 1 rulings 1–4, the label ruling and decisions A–D; ledger
+    `2026-10-15-bot1-phase1`; migration 378 — Migration 378 SQL approved by Leon — comment 20:31Z on #1455).** Bots call `/api/bot/*` (outside `/api/admin`, token-authed,
+    off unless `BOT_API_ENABLED=1`) and file `bot_proposals`; a pending proposal is never a `place_facts` row and a
+    rejected one never touches the table. Approval writes ONE fact through `recordFacts` with the new origin
+    `bot_proposal` — in `PAGE_READ_ORIGINS`, so it is tagged, feasibility-read and publishable (only where the
+    source is `public_ok`) exactly as `official_refresh` — and `verified_by` = the approving admin (never a bot;
+    any admin may approve). Admission: an active, official, terms-checked source, an https page on its own host,
+    a verbatim quote, the structured value the crawl requires. It shows only "<source name> · checked <approval
+    date>" — no author, never "Traveloure team". Expiry: the source's `refresh_interval_days`, else the
+    admin-editable `platform_settings.bot_fact_default_expiry_days` (seeded 90); neither ⇒ refused, never a
+    number in code. Bots never propose nugget-type facts.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
@@ -3404,6 +3416,19 @@ Five incidents, two of which reached production, justify this rule. The sixth (2
 **The way of working — roles per model, lane briefs, the serial landing procedure, the publish
 procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md` (ratified Sep 6,
 2026); a session reads both files.**
+
+### Merging and the ledger stamp (decision-maker, Oct 15, 2026 — ledger `2026-10-15-ledger-merge-rule`)
+
+PRs merge with their ledger rows still `R?`; after each merge `ledger-stamp.yml` numbers them on `main`
+(CI-1 Phase 1).
+- **The skip-CI marker belongs only in the stamp's own commit.** Never write it — the bracketed
+  "skip ci" phrase — in a commit message, a squash commit's title or body, or a PR body (a squash
+  merge can carry the body into the commit). GitHub then runs none of that push's workflows, the
+  Ledger Stamp included. Set an explicit commit title and message on every squash merge.
+- **When merging `main` into a branch, `docs/DECISIONS.md` is never git's auto-merge.** The stamp
+  moves rows to the end of the ledger, so an auto-merge duplicates them or interleaves them. Take
+  `main`'s file verbatim, re-append only the branch's own `R?` row(s), in the order the PRs will
+  merge, and run `node scripts/check-decision-guards.cjs` before pushing.
 
 ### Recording approvals
 
