@@ -191,9 +191,14 @@ test("P1b: traveler read ?locale=ja returns the TRANSLATED content, no fallback 
   const body = await res.json();
   assert.equal(body.serviceName, JA_NAME, "name is the translated string");
   assert.equal(body.description, JA_DESC, "description is the translated string");
-  assert.equal(body.meetingPoint, JA_MEET, "meeting point is the translated string");
+  // CP-1 (ledger `2026-10-15-cp1-public-payloads`): a meeting point is the exact place, so a signed-out
+  // read carries none — translated or not. The owner still reads the translated string.
+  assert.equal(body.meetingPoint, undefined, "no meeting point on a signed-out read");
   assert.equal(body.translation.status, "approved");
   assert.equal(body.translation.shownInEnglish, false, "no fallback label on an approved translation");
+  const ownerRes = await api(`/api/services/${svcHuman}?locale=ja`, owner.cookie);
+  assert.equal(ownerRes.status, 200);
+  assert.equal((await ownerRes.json()).meetingPoint, JA_MEET, "the owner reads the translated meeting point");
 });
 
 test("P1c: an untranslated field (shortDescription) falls back to the ORIGINAL, never blanked", async () => {

@@ -269,9 +269,12 @@ test("N5b: the room's PUBLIC detail read falls back to the parent's pin, jittere
 
 // ═══ N6 — regression: a non-property shape is NEVER jittered ═══════════════════════════════════
 
-test("N6: a non-property (in_person) service keeps its EXACT pin on the public detail read", async () => {
-  const res = await readOnce(await api(`/api/services/${plainInPersonId}`, undefined));
-  assert.equal(res.status, 200, `public read failed (${res.status}): ${res.text}`);
+// CP-1 (ledger `2026-10-15-cp1-public-payloads`): the exact pin of a non-property listing is now the
+// OWNER's and a booked traveler's — a signed-out read carries a ~500 m point. N6 keeps its subject (a
+// non-property shape is never JITTERED) and reads it as the owner; the signed-out case is CP-1's P1.
+test("N6: a non-property (in_person) service keeps its EXACT pin on the owner's detail read", async () => {
+  const res = await readOnce(await api(`/api/services/${plainInPersonId}`, provider.cookie));
+  assert.equal(res.status, 200, `owner read failed (${res.status}): ${res.text}`);
   assert.ok(!res.body.locationApproximate, "a non-property shape must never carry the approximate flag");
   assert.equal(Number(res.body.latitude).toFixed(7), PLAIN_LAT.toFixed(7), "latitude must be exact — no jitter for this shape");
   assert.equal(Number(res.body.longitude).toFixed(7), PLAIN_LNG.toFixed(7), "longitude must be exact — no jitter for this shape");
