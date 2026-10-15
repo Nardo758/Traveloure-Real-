@@ -252,6 +252,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * resource-owner, probed by the User A → User B fixture. user-data 239 → 241, resource-owner 100 → 102.
  * 691 / 682 → 692 / 683 (EX-1, Track A): POST /api/admin/expert-applications/:id/rescore — admin-only,
  * behind the blanket /api/admin guard (and its own admin check); admin 171 → 172, admin-role 171 → 172.
+ * 692 / 683 → 697 / 688 (ledger `2026-10-15-bot1-phase1`): POST /api/admin/bot-accounts, …/bot-accounts/:id/revoke,
+ * …/bot-proposals/:id/approve and …/bot-proposals/:id/reject — admin-only, behind the blanket /api/admin guard
+ * (admin 172 → 176, admin-role 172 → 176); POST /api/bot/proposals — a bot's token, never a session, off unless
+ * BOT_API_ENABLED=1 (other 239 → 240, public-or-system 47 → 48).
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -260,8 +264,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 692);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 683);
+  assert.equal(result.mutations.length, 697);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 688);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -271,9 +275,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 683);
-  assert.equal(manifest.rawRegistrationCount, 692);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 683);
+  assert.equal(endpointRows.length, 688);
+  assert.equal(manifest.rawRegistrationCount, 697);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 688);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -297,7 +301,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // move no money of ours. + POST /internal/jobs/liteapi-booking-sync (S1-d-3a): other, public-or-system.
   // + POST /api/trips/:tripId/ride-suggestions/dismiss and PUT /api/trips/:tripId/profile-overlay (TC-3b): user-data.
   // + POST /api/admin/expert-applications/:id/rescore (EX-1): admin, behind the blanket /api/admin guard.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 172, "user-data": 241, other: 239 });
+  // + POST /api/admin/bot-accounts, /api/admin/bot-accounts/:id/revoke, /api/admin/bot-proposals/:id/{approve,reject}
+  // (BOT-1 Phase 1): admin, behind the blanket /api/admin guard. + POST /api/bot/proposals (BOT-1): other,
+  // public-or-system — a bot token (requireBotToken), off unless BOT_API_ENABLED=1.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 176, "user-data": 241, other: 240 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -317,9 +324,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/trips/:tripId/rides (TC-3a, R428): resource-owner 99 → 100.
   // + POST …/ride-suggestions/dismiss and PUT …/profile-overlay (TC-3b): resource-owner 100 → 102.
   // + POST /api/admin/expert-applications/:id/rescore (EX-1): admin-role 171 → 172.
+  // + four /api/admin/bot-* POSTs (BOT-1): admin-role 172 → 176; POST /api/bot/proposals: public-or-system 47 → 48.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 172, "session-self": 356, "resource-owner": 102,
-    signature: 6, "public-or-system": 47, unknown: 0,
+    "admin-role": 176, "session-self": 356, "resource-owner": 102,
+    signature: 6, "public-or-system": 48, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,
