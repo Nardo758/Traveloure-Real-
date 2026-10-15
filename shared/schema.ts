@@ -12589,3 +12589,40 @@ export const transportOptionEvents = pgTable("transport_option_events", {
   serviceIdx: index("idx_transport_option_events_service").on(table.serviceId, table.event),
 }));
 export type TransportOptionEvent = typeof transportOptionEvents.$inferSelect;
+
+// LW-1a (migration 381, HELD; ledger `2026-10-15-lw1a-launch-waitlist`): the launch-market waitlist. One row per
+// (email, market) — the UNIQUE index makes a repeat sign-up an update, never a duplicate. Born empty. NO DEFAULT,
+// CHECK or FK; every column but the key nullable — the ONE writer (server/services/launch-waitlist.service.ts)
+// supplies id and timestamps. `consent_at` is an opt-in, not a gate: NULL = never ticked, and nothing is ever
+// emailed to a NULL. `referrer_user_id` / `short_link_code` come only from a server-resolved short_links row.
+// `source` is app-enforced once in shared/launch-waitlist.ts. No insert schema — no request body reaches it (§19).
+export const launchWaitlist = pgTable("launch_waitlist", {
+  id: varchar("id").primaryKey(),
+  email: varchar("email", { length: 255 }),
+  marketSlug: varchar("market_slug", { length: 64 }),
+  source: varchar("source", { length: 32 }),
+  sourceRef: varchar("source_ref", { length: 200 }),
+  referrerUserId: varchar("referrer_user_id"),
+  shortLinkCode: varchar("short_link_code", { length: 12 }),
+  consentAt: timestamp("consent_at"),
+  consentTextId: varchar("consent_text_id"),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+}, (table) => ({
+  emailMarketUniq: uniqueIndex("uq_launch_waitlist_email_market").on(table.email, table.marketSlug),
+  marketCreatedIdx: index("idx_launch_waitlist_market_created").on(table.marketSlug, table.createdAt),
+}));
+export type LaunchWaitlistRow = typeof launchWaitlist.$inferSelect;
+
+// LW-1a (migration 381, HELD): the exact consent wording a person ticked, versioned. A row is never edited — new
+// wording is a new (consent_key, version). Born empty; no DEFAULT/CHECK/FK.
+export const consentTexts = pgTable("consent_texts", {
+  id: varchar("id").primaryKey(),
+  consentKey: varchar("consent_key", { length: 64 }),
+  version: varchar("version", { length: 40 }),
+  body: text("body"),
+  createdAt: timestamp("created_at"),
+}, (table) => ({
+  keyVersionUniq: uniqueIndex("uq_consent_texts_key_version").on(table.consentKey, table.version),
+}));
+export type ConsentText = typeof consentTexts.$inferSelect;
