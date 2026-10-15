@@ -2480,6 +2480,18 @@ This document captures architectural decisions to maintain consistency across co
     (`shared/place-lookup-outcomes.ts`). ONE writer, one INSERT per run, never failing the lookup (§15b); retention is
     config (90 days), pruned by the daily `facts-recheck`; `/admin/content-sources` shows counts and a plan-id view of
     each item's latest outcome. Migration 373 SQL approved by Leon — comment 20:09Z on #1419.
+    **AMENDED — A BOT MAY PROPOSE AN OFFICIAL HOURS OR LAST-ADMISSION FACT; ONLY AN ADMIN'S APPROVAL WRITES IT
+    (decision-maker, Oct 15, 2026 — BOT-1 Phase 1 rulings 1–4, the label ruling and decisions A–D; ledger
+    `2026-10-15-bot1-phase1`; migration 378 — Migration 378 SQL approved by Leon — comment 20:31Z on #1455).** Bots call `/api/bot/*` (outside `/api/admin`, token-authed,
+    off unless `BOT_API_ENABLED=1`) and file `bot_proposals`; a pending proposal is never a `place_facts` row and a
+    rejected one never touches the table. Approval writes ONE fact through `recordFacts` with the new origin
+    `bot_proposal` — in `PAGE_READ_ORIGINS`, so it is tagged, feasibility-read and publishable (only where the
+    source is `public_ok`) exactly as `official_refresh` — and `verified_by` = the approving admin (never a bot;
+    any admin may approve). Admission: an active, official, terms-checked source, an https page on its own host,
+    a verbatim quote, the structured value the crawl requires. It shows only "<source name> · checked <approval
+    date>" — no author, never "Traveloure team". Expiry: the source's `refresh_interval_days`, else the
+    admin-editable `platform_settings.bot_fact_default_expiry_days` (seeded 90); neither ⇒ refused, never a
+    number in code. Bots never propose nugget-type facts.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —

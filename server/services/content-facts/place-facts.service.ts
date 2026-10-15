@@ -42,6 +42,7 @@ import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
 import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType } from "@shared/feasibility-facts";
 import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
+import { BOT_FACT_ORIGIN, admitBotFact } from "@shared/bot-proposals";
 import { lookupErrorCode, type PlaceLookupCapReason, type PlaceLookupOutcomeRow, type PlaceLookupSkipReason, type PlaceLookupTrigger } from "@shared/place-lookup-outcomes";
 import { recordLookupOutcomes } from "./lookup-outcomes.service";
 import { TavilyExtractAdapter, type TavilyExtractDeps } from "./tavily-extract-adapter";
@@ -51,7 +52,14 @@ import { assertRobotsAllowed } from "../../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 import { loadPartnerHosts } from "../partner-hosts.service";
 
-export async function recordFacts(input: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export async function recordFacts(
+  input: FactDraft[],
+  ctx: { planId: string | null; itemId: string | null },
+  // BOT-1: a caller inside a transaction (the bot-proposal approve) writes the row inside it.
+  exec: typeof db | Tx = db,
+): Promise<number> {
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact passes the ONE admission rule or is not
   // stored — an unsourced last admission or last train never reaches a finding (rulings 1/3).
   const drafts = input.filter((d) => {
@@ -64,15 +72,24 @@ export async function recordFacts(input: FactDraft[], ctx: { planId: string | nu
         return false;
       }
     }
+    // BOT-1 ruling 3 (ledger `2026-10-15-bot1-phase1`): an approved bot fact carries the same provenance the
+    // official refresh does, plus the admin who approved it — never stored without them.
+    if (d.origin === BOT_FACT_ORIGIN) {
+      const r = admitBotFact(d);
+      if (!r.ok) {
+        console.info(`[place-facts] refused bot_proposal fact_type=${d.factType} reason=${r.reason} source_id=${d.sourceId ?? "none"}`);
+        return false;
+      }
+    }
     if (!isFeasibilityFactType(d.factType)) return true;
     const verdict = admitFeasibilityFact(d);
     if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
     return verdict.ok;
   });
   if (!drafts.length) return 0;
-  await db.insert(placeFacts).values(
+  await exec.insert(placeFacts).values(
     drafts.map((d) => ({
-      id: crypto.randomUUID(),
+      id: d.id ?? crypto.randomUUID(),
       placeRefKind: d.placeRefKind,
       placeRef: d.placeRef,
       placeLat: d.placeLat === null ? null : String(d.placeLat),
@@ -88,6 +105,7 @@ export async function recordFacts(input: FactDraft[], ctx: { planId: string | nu
       fetchedAt: d.fetchedAt,
       expiresAt: d.expiresAt,
       verifiedAt: d.verifiedAt ?? null,
+      verifiedBy: d.verifiedBy ?? null,
       costCents: String(d.costCents),
       planId: ctx.planId,
       itineraryItemId: ctx.itemId,

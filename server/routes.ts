@@ -314,6 +314,8 @@ import landingRoutes from "./routes/landing.routes";
 import tripPassRoutes from "./routes/trip-pass.routes";
 import occasionsRoutes from "./routes/occasions.routes";
 import internalRoutes from "./routes/internal.routes";
+import botRoutes from "./routes/bot.routes";
+import botAdminRoutes from "./routes/bot-admin.routes";
 import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -1430,6 +1432,10 @@ export async function registerRoutes(
   // INTERNAL_JOB_SECRET (NOT a user session). The authoritative daily runner on Autoscale (fired by
   // the GitHub Actions cron / another external cron); the in-process timer is defense-in-depth only.
   app.use(internalRoutes);
+  // BOT-1 Phase 1 (ledger `2026-10-15-bot1-phase1`): the bot surface at /api/bot/* — OUTSIDE /api/admin, token-authed,
+  // off unless BOT_API_ENABLED=1 — and its admin side under /api/admin (the blanket adminApiGuard above).
+  app.use(botRoutes);
+  app.use(botAdminRoutes);
 
   // Traveler service requests ("request a service that doesn't exist yet"):
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests

@@ -12433,6 +12433,50 @@ export const placeFacts = pgTable("place_facts", {
 export type ContentSource = typeof contentSources.$inferSelect;
 export type PlaceFact = typeof placeFacts.$inferSelect;
 
+// Migration 378 (BOT-1 Phase 1; ledger `2026-10-15-bot1-phase1`): the bot channel. Value sets in
+// shared/bot-proposals.ts; NO CHECK and NO DEFAULT on status. A bot is not a users row; only its token's SHA-256 is
+// stored. Pending proposals live here and nowhere else — approval writes the fact through `recordFacts`.
+export const botAccounts = pgTable("bot_accounts", {
+  id: varchar("id").primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  scopes: text("scopes").array().notNull(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  lastUsedAt: timestamp("last_used_at"),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tokenHashUniq: uniqueIndex("uq_bot_accounts_token_hash").on(table.tokenHash),
+}));
+export type BotAccount = typeof botAccounts.$inferSelect;
+
+export const botProposals = pgTable("bot_proposals", {
+  id: varchar("id").primaryKey(),
+  botId: varchar("bot_id").notNull().references(() => botAccounts.id, { onDelete: "cascade" }),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  placeRefKind: varchar("place_ref_kind", { length: 20 }).notNull(),
+  placeRef: varchar("place_ref", { length: 300 }).notNull(),
+  market: varchar("market", { length: 64 }),
+  value: jsonb("value").notNull(),
+  sourceId: varchar("source_id", { length: 64 }).references(() => contentSources.id, { onDelete: "set null" }),
+  sourceUrl: text("source_url").notNull(),
+  quote: text("quote").notNull(),
+  checkedAt: timestamp("checked_at").notNull(),
+  dedupeHash: varchar("dedupe_hash", { length: 64 }).notNull(),
+  status: varchar("status", { length: 16 }).notNull(),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectReason: text("reject_reason"),
+  factId: varchar("fact_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  dedupeUniq: uniqueIndex("uq_bot_proposals_dedupe").on(table.dedupeHash),
+  statusIdx: index("idx_bot_proposals_status").on(table.status),
+  botIdx: index("idx_bot_proposals_bot").on(table.botId),
+}));
+export type BotProposal = typeof botProposals.$inferSelect;
+
 // Migration 345 (ledger 2026-10-04-feedback-phase-a): feedback captured at the moments it means
 // something, as registry codes (shared/feedback.ts) plus one free-text field. One row per plan per
 // moment per user (app-enforced, see feedback.service). created_at is set by the app. No DEFAULT,

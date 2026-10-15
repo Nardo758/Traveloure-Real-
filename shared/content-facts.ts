@@ -161,15 +161,19 @@ export const FACT_ORIGINS = [
   // official source's own page on a schedule, outside any plan. Read exactly as an official crawl is
   // (`isPageReadOrigin`); the difference is only WHO fetched it and on what clock.
   "official_refresh",
+  // BOT-1 Phase 1 ruling 3 (ledger `2026-10-15-bot1-phase1`): a fact a bot proposed from an official page and an
+  // admin approved. A pending proposal is never a row; on approval it is written by `recordFacts` with
+  // `verified_by` = the approving admin and read exactly as the official refresh is (`isPageReadOrigin`).
+  "bot_proposal",
 ] as const;
 export type FactOrigin = (typeof FACT_ORIGINS)[number];
 
 /**
- * SS-1b: the origins whose fact was READ OFF A SOURCE'S PAGE — the per-plan crawl and the market-level
- * official refresh. Every rule that treats a page-read fact (tier, publishability, tagging, feasibility
+ * SS-1b: the origins whose fact was READ OFF A SOURCE'S PAGE — the per-plan crawl, the market-level
+ * official refresh and (BOT-1) an admin-approved bot proposal. Every rule that treats a page-read fact (tier, publishability, tagging, feasibility
  * admission, the cross-plan read) asks this ONE predicate, so the two can never disagree (§18 rule 1).
  */
-export const PAGE_READ_ORIGINS = ["crawled", "official_refresh"] as const;
+export const PAGE_READ_ORIGINS = ["crawled", "official_refresh", "bot_proposal"] as const;
 export function isPageReadOrigin(origin: string | null | undefined): boolean {
   return (PAGE_READ_ORIGINS as readonly string[]).includes(origin ?? "");
 }
@@ -197,6 +201,7 @@ const ORIGIN_TIER: Record<FactOrigin, number> = {
   places_api: 2,
   crawled: 3,
   official_refresh: 3,
+  bot_proposal: 3,
   traveler_note: 4,
 };
 

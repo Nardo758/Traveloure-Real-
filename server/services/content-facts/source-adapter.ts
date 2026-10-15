@@ -33,6 +33,10 @@ export interface FactDraft {
   expiresAt: Date | null;
   /** SS-1b: the official refresh stamps the moment it verified the page; every other writer leaves it unset. */
   verifiedAt?: Date | null;
+  /** BOT-1 ruling 3: the `users.id` of the person who verified the fact (an approving admin). Never a bot. */
+  verifiedBy?: string | null;
+  /** BOT-1: a caller that must point at the row it wrote names its id; every other writer leaves it unset. */
+  id?: string;
   /** The fetch's cost, recorded on ONE draft per call so a sum over rows is the real spend. */
   costCents: number;
   /** The billed SKU tier of the call that produced this draft (logged per call; not persisted). */
