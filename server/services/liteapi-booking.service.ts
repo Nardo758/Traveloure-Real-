@@ -25,6 +25,7 @@
  *     inserted into the outbox. The single confirmed flip is the voucher's dedupe (ruling 5).
  *   · SANDBOX ONLY: every step asks `liteapiBookingEnabled` first.
  */
+import crypto from "node:crypto";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { emailOutbox, hotelCache, itineraryItems, liteapiBookings, planOptionSets, planOptions, trips, users } from "@shared/schema";
@@ -35,6 +36,12 @@ import {
   LITEAPI_NEEDS_REVIEW,
   bookIsConfirmed,
   bookingStatusOf,
+  cancelChargeTerms,
+  cancelAmountsOf,
+  refundUnverifiedReason,
+  type LiteapiCancelAmounts,
+  cancelRefusalReason,
+  isLiteapiCancelled,
   offerIdFromRates,
   sspFromRates,
   bookingMarginFraction,
@@ -99,8 +106,8 @@ export type BookResult =
   | { state: Refusal };
 
 export type CancelResult =
-  | { state: "cancelled"; bookingId: string }
-  | { state: "cancel_refused"; bookingId: string }
+  | { state: "cancelled"; bookingId: string; liteapiStatus: string }
+  | { state: "charges_apply"; bookingId: string; policy: string | null; deadline: string | null; amount: number | null; currency: string | null }
   | { state: "needs_review"; bookingId: string }
   | { state: "pending"; bookingId: string }
   | { state: Refusal };
@@ -447,8 +454,41 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
   return { state: "confirmed", bookingId: pre.id, hotelConfirmationCode: facts.hotelConfirmationCode };
 }
 
-/** Cancel the item's confirmed booking. Any refund is Nuitée's: no refund row, no money moved here. */
-export async function cancelStay(input: { tripId: string; itemId: string; userId: string | null | undefined }, deps: StayBookingDeps = defaultStayBookingDeps): Promise<CancelResult> {
+/**
+ * Give the item back to the traveler after its LiteAPI booking ended: `purchased → in_planning` (only where no
+ * platform booking holds it), and clear the confirmation code THIS booking wrote — never one another rail put
+ * there. Inside the caller's transaction, so the row's own status change and the release commit together. The
+ * one release rail: `cancelStay` and the admin Resolve (PAY-1) both call it.
+ */
+export async function releaseLiteapiStayItem(
+  tx: Pick<typeof db, "update">,
+  input: { tripId: string; itemId: string; hotelConfirmationCode: string | null },
+): Promise<void> {
+  await tx
+    .update(itineraryItems)
+    .set({ routingStatus: "in_planning", updatedAt: new Date() } as any)
+    .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), sql`routing_status = 'purchased'`, sql`booking_id IS NULL`));
+  if (input.hotelConfirmationCode) {
+    await tx
+      .update(itineraryItems)
+      .set({ confirmationNumber: null, updatedAt: new Date() } as any)
+      .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), eq(itineraryItems.confirmationNumber, input.hotelConfirmationCode)));
+  }
+}
+
+/**
+ * Cancel the item's confirmed booking. Any refund is Nuitée's: no refund row, no money moved here.
+ *
+ * CONSENT FIRST (decision-maker, Oct 15, 2026 — ledger `2026-10-15-liteapi-cancel-with-charges`): when the policy
+ * the prebook stored says cancelling now costs money (non-refundable, or past the free-cancel deadline), the cancel
+ * is answered `charges_apply` with the terms and NO LiteAPI call, unless the traveler sent `acknowledgeCharges`.
+ * LiteAPI ends the booking on `CANCELLED` and on `CANCELLED_WITH_CHARGES`; both are a cancellation here, the
+ * second with its reported charge stored on the row. Any other status is a refusal.
+ */
+export async function cancelStay(
+  input: { tripId: string; itemId: string; userId: string | null | undefined; acknowledgeCharges?: boolean },
+  deps: StayBookingDeps = defaultStayBookingDeps,
+): Promise<CancelResult> {
   if (!(await ownerOf(input.tripId, input.userId))) return { state: "not_found" };
   const cfg = deps.config();
   if (!liteapiBookingEnabled(cfg)) return { state: "booking_unavailable" };
@@ -458,57 +498,91 @@ export async function cancelStay(input: { tripId: string; itemId: string; userId
     .where(and(eq(liteapiBookings.tripId, input.tripId), eq(liteapiBookings.itineraryItemId, input.itemId), eq(liteapiBookings.status, "confirmed"), eq(liteapiBookings.env, cfg.env)))
     .limit(1);
   if (!row?.liteapiBookingId) return { state: "not_confirmed" };
+  const terms = cancelChargeTerms(row.cancellationPolicy, Date.now());
+  if (terms.chargesApply && input.acknowledgeCharges !== true) {
+    return { state: "charges_apply", bookingId: row.id, policy: terms.policy, deadline: terms.deadline, amount: terms.amount, currency: terms.currency };
+  }
   const [claimed] = await db
     .update(liteapiBookings)
     .set({ status: "cancelling", cancellingAt: new Date(), updatedAt: new Date() })
     .where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "confirmed")))
     .returning({ id: liteapiBookings.id });
   if (!claimed) return { state: "not_confirmed" };
+  // Only a 200 carrying CANCELLED or CANCELLED_WITH_CHARGES ends the booking here. Every other answer — any other
+  // status code (204 "not found", 304, 401, any 4xx/5xx), no readable answer, or any other status word — goes to
+  // review with the reason, never back to `confirmed` (ledger `2026-10-15-liteapi-cancel-with-charges`, widening
+  // `2026-10-15-liteapi-cancel-needs-review`). The item stays held and `purchased` until a person resolves it.
+  const toReview = async (reason: string, liteapiStatus: string | null): Promise<CancelResult> => {
+    const why = reason.slice(0, 300);
+    console.warn(`[liteapi-booking] cancel ${row.id}: refused — ${why}`);
+    const [moved] = await db
+      .update(liteapiBookings)
+      .set({ status: LITEAPI_NEEDS_REVIEW, failureReason: why, ...(liteapiStatus ? { lastSyncStatus: liteapiStatus } : {}), updatedAt: new Date() })
+      .where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")))
+      .returning({ id: liteapiBookings.id });
+    return moved ? { state: "needs_review", bookingId: row.id } : { state: "pending", bookingId: row.id };
+  };
   let status: string | null;
+  let amounts: LiteapiCancelAmounts;
   try {
-    status = bookingStatusOf(await deps.client(cfg).cancelBooking(row.liteapiBookingId));
+    const body = await deps.client(cfg).cancelBooking(row.liteapiBookingId);
+    status = bookingStatusOf(body);
+    amounts = cancelAmountsOf(body);
   } catch (err: any) {
-    const definite = err instanceof LiteapiError && err.status >= 400 && err.status < 500;
-    if (definite) {
-      // LiteAPI refused the cancel without saying the booking stands: it goes to review with the reason, never
-      // back to `confirmed` (ledger `2026-10-15-liteapi-cancel-needs-review`). The item stays held and `purchased`.
-      const reason = `${err.status} ${String(err?.message ?? err)}`.slice(0, 300);
-      console.warn(`[liteapi-booking] cancel ${input.itemId} refused: ${reason} — needs review`);
-      const [moved] = await db
-        .update(liteapiBookings)
-        .set({ status: LITEAPI_NEEDS_REVIEW, failureReason: reason, updatedAt: new Date() })
-        .where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")))
-        .returning({ id: liteapiBookings.id });
-      return moved ? { state: "needs_review", bookingId: row.id } : { state: "pending", bookingId: row.id };
-    }
-    // No readable answer: the claim stays; the sync records what LiteAPI says (it never cancels).
-    return { state: "pending", bookingId: row.id };
+    const reason = err instanceof LiteapiError ? `${err.status} ${String(err.message)}` : `no readable answer (${String(err?.message ?? err)})`;
+    return toReview(reason, null);
   }
-  if (status !== "CANCELLED") {
-    await db.update(liteapiBookings).set({ status: "confirmed", lastSyncStatus: status, updatedAt: new Date() }).where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")));
-    return { state: "cancel_refused", bookingId: row.id };
-  }
+  if (!isLiteapiCancelled(status)) return toReview(cancelRefusalReason(status, row.cancellationPolicy), status);
+  // Both words end the booking; the money is whatever `refund_amount` says, never the word (the spec's own example is
+  // `CANCELLED` with a fee). The three figures are stored exactly as returned; no refund is computed here — traveler
+  // refund maths is a pending founder call.
+  const unverified = refundUnverifiedReason(amounts, row.currency);
+  let cancelled = false;
   await db.transaction(async (tx) => {
     const [done] = await tx
       .update(liteapiBookings)
-      .set({ status: "cancelled", cancelledAt: new Date(), lastSyncStatus: status, updatedAt: new Date() })
+      .set({ status: "cancelled", cancelledAt: new Date(), lastSyncStatus: status, cancelAmounts: amounts as any, updatedAt: new Date() })
       .where(and(eq(liteapiBookings.id, row.id), eq(liteapiBookings.status, "cancelling")))
       .returning({ id: liteapiBookings.id });
     if (!done) return;
+    cancelled = true;
     // The stay is the traveler's to change again.
-    await tx
-      .update(itineraryItems)
-      .set({ routingStatus: "in_planning", updatedAt: new Date() } as any)
-      .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), sql`routing_status = 'purchased'`, sql`booking_id IS NULL`));
-    // The code this booking wrote is cleared — only that code, never one another rail put there.
-    if (row.hotelConfirmationCode) {
-      await tx
-        .update(itineraryItems)
-        .set({ confirmationNumber: null, updatedAt: new Date() } as any)
-        .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId), eq(itineraryItems.confirmationNumber, row.hotelConfirmationCode)));
-    }
+    await releaseLiteapiStayItem(tx, { tripId: input.tripId, itemId: input.itemId, hotelConfirmationCode: row.hotelConfirmationCode });
   });
-  return { state: "cancelled", bookingId: row.id };
+  console.info(`[liteapi-booking] cancel ${row.id}: LiteAPI answered ${status} — cancelled; amounts ${JSON.stringify(amounts)}`);
+  if (cancelled && unverified) {
+    // The stay stays cancelled (never re-marked for review); the money is handed to a person through the
+    // reconciliation queue. An ancillary write never fails the cancel that authorized it (§15b).
+    await openRefundUnverifiedException(row, unverified, status!, amounts).catch((err) =>
+      console.error(`[liteapi-booking] cancel ${row.id}: could not open the ${unverified} exception: ${err?.message ?? err}`),
+    );
+  }
+  return { state: "cancelled", bookingId: row.id, liteapiStatus: status! };
+}
+
+/**
+ * One `reconciliation_exceptions` row (kind `liteapi_refund_unverified`, rail `liteapi`) for a cancelled stay whose
+ * refund LiteAPI did not state, or stated in another currency. Exceptions hang off a run, so the cancel writes its
+ * own one-row run (`triggered_by = 'liteapi_cancel'`, completed). Append-only and deduped on the booking row (§17).
+ */
+async function openRefundUnverifiedException(
+  row: { id: string; liteapiBookingId: string | null; amountCents: number; currency: string },
+  reason: "refund_amount_missing" | "currency_mismatch",
+  liteapiStatus: string,
+  amounts: LiteapiCancelAmounts,
+): Promise<void> {
+  const refund = Number(amounts.refund_amount);
+  const actual = amounts.refund_amount !== undefined && amounts.refund_amount !== null && Number.isFinite(refund) ? refund.toFixed(2) : null;
+  await db.transaction(async (tx) => {
+    const runId = crypto.randomUUID();
+    await tx.execute(sql`INSERT INTO reconciliation_runs (id, triggered_by, status, finished_at) VALUES (${runId}, 'liteapi_cancel', 'completed', now())`);
+    await tx.execute(sql`
+      INSERT INTO reconciliation_exceptions (id, run_id, rail, kind, severity, dedupe_key, booking_id, expected_amount, actual_amount, currency, details)
+      VALUES (${crypto.randomUUID()}, ${runId}, 'liteapi', 'liteapi_refund_unverified', 'warning', ${`liteapi_refund_unverified:${row.id}`}, ${row.id},
+              ${(row.amountCents / 100).toFixed(2)}, ${actual}, ${row.currency},
+              ${JSON.stringify({ reason, liteapiStatus, liteapiBookingId: row.liteapiBookingId, chargedCurrency: row.currency, ...amounts })}::jsonb)
+      ON CONFLICT (dedupe_key) DO NOTHING`);
+  });
 }
 
 /** The owner's read of the item's latest booking — status, code, price as booked. Nothing secret. */

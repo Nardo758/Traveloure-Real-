@@ -22,6 +22,16 @@
  *   B13 a cancel LiteAPI refuses with a definite 4xx goes to `needs_review` with the reason — never back to
  *       `confirmed`; the item stays purchased and held (no new prebook or book), and the sync reports the row
  *       (ledger `2026-10-15-liteapi-cancel-needs-review`)
+ *   B14 the consent gate: a stored policy that is non-refundable, or past its free-cancel deadline, answers
+ *       `charges_apply` with the terms and makes NO LiteAPI call; the row and item are untouched
+ *   B15 with `acknowledgeCharges`, a cancel LiteAPI answers CANCELLED_WITH_CHARGES is a cancellation: row
+ *       cancelled with LiteAPI's status and reported charges, item released (ledger
+ *       `2026-10-15-liteapi-cancel-with-charges`)
+ *   B16 CANCELLED with a fee: money follows `refund_amount`, never the word — cancelled, amounts stored as returned;
+ *       a repeat cancel is answered by our row (`not_confirmed`), makes no LiteAPI call and leaves the amounts
+ *   B17 a 204 (empty body) is no answer ⇒ `needs_review`; a currency other than ours, or no `refund_amount`, keeps the
+ *       stay cancelled and opens ONE `liteapi_refund_unverified` exception with the raw amounts
+ *   B18 any other status word ⇒ `needs_review`, never back to `confirmed`
  *   B10 (S1-d-3c) a prebook below its OWN SSP ⇒ ONE re-quote at the margin that floor needs and ONE more prebook;
  *       a second answer below its floor is refused — never more than two prebook calls
  *
@@ -64,7 +74,7 @@ function fakes(opts: { env?: "sandbox" | "production"; rates?: (q: any) => any; 
           calls.book.push(bookRequestBody(q));
           return opts.book ? opts.book() : { data: { bookingId: `bk-${RUN}`, status: "CONFIRMED", hotelConfirmationCode: "HC-42", clientCommission: 33.25, processingFee: 1.5 } };
         },
-        cancelBooking: async (bid: string) => (calls.cancel.push(bid), opts.cancel ? opts.cancel() : { data: { bookingId: bid, status: "CANCELLED" } }),
+        cancelBooking: async (bid: string) => (calls.cancel.push(bid), opts.cancel ? opts.cancel() : { data: { bookingId: bid, status: "CANCELLED", cancellation_fee: 0, refund_amount: 312.5, currency: "USD" } }),
         getBooking: async (bid: string) => (calls.get.push(bid), opts.get ? opts.get() : { data: { bookingId: bid, status: "CONFIRMED" } }),
         listBookingsByClientReference: async (ref: string) => (calls.list.push(ref), opts.list ? opts.list(ref) : { data: [] }),
       }) as any,
@@ -107,12 +117,16 @@ before(async () => {
   await stay("s3", "trip", "lite");
   await stay("s4", "trip", "lite");
   await stay("s5", "trip", "lite");
+  await stay("s6", "trip", "lite");
+  await stay("s7", "trip", "lite");
+  for (const k of ["s8", "s9", "s10", "s11"]) await stay(k, "trip", "lite");
   await stay("notlite", "trip", "other");
   await stay("anon", "trip2", "lite");
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM email_outbox WHERE metadata->>'source' = 'liteapi_booking' AND to_email LIKE ${`lbk-${RUN}-%`}`).catch(() => {});
+  await db.execute(sql`DELETE FROM reconciliation_runs WHERE id IN (SELECT run_id FROM reconciliation_exceptions WHERE booking_id IN (SELECT id FROM liteapi_bookings WHERE trip_id LIKE ${`lbk-${RUN}-%`}))`).catch(() => {});
   await db.execute(sql`DELETE FROM liteapi_bookings WHERE trip_id LIKE ${`lbk-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM trips WHERE id LIKE ${`lbk-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM hotel_cache WHERE id LIKE ${`lbk-${RUN}-%`}`).catch(() => {});
@@ -226,11 +240,10 @@ test("B6 cancel: claim, then CANCELLED ⇒ cancelled, item back in planning, no 
   assert.deepEqual(await cancelStay(q("s1"), f.deps), { state: "not_confirmed" });
   const refunds = ((await db.execute(sql`SELECT count(*)::int AS n FROM refunds WHERE reason LIKE ${`%${r.id}%`}`).catch(() => ({ rows: [{ n: 0 }] }))) as any).rows[0].n;
   assert.equal(refunds, 0);
-  // A refused cancel puts the claim back.
+  // s2 is booked here for B8; its cancel answered by another status word is B18 (that is no longer a refusal back
+  // to `confirmed` — ledger `2026-10-15-liteapi-cancel-with-charges`).
   await prebookStay(q("s2"), fakes().deps);
   await bookStay(q("s2"), fakes().deps);
-  assert.equal((await cancelStay(q("s2"), fakes({ cancel: () => ({ data: { status: "CONFIRMED" } }) }).deps)).state, "cancel_refused");
-  assert.equal((await row("s2")).status, "confirmed");
 });
 
 test("B7 a definite refusal fails; an unreadable answer leaves the claim", async () => {
@@ -370,4 +383,126 @@ test("B13 a cancel refused with a definite 4xx goes to needs_review with the rea
   const sync = await runLiteapiBookingSync({ config: f.deps.config, client: fakes({ get: () => ({ data: { status: "CONFIRMED" } }) }).deps.client });
   assert.ok(sync.needsReview.some((n) => n.id === r.id && n.theirs === "CONFIRMED"));
   assert.equal(((await db.execute(sql`SELECT status FROM liteapi_bookings WHERE id = ${r.id}`)) as any).rows[0].status, "needs_review");
+});
+
+const exceptionsFor = async (bookingRowId: string) =>
+  ((await db.execute(sql`SELECT count(*)::int AS n FROM reconciliation_exceptions WHERE booking_id = ${bookingRowId} AND kind = 'liteapi_refund_unverified'`)) as any).rows[0].n;
+const book = async (k: string) => {
+  await prebookStay(q(k), fakes().deps);
+  assert.equal((await bookStay(q(k), fakes().deps)).state, "confirmed");
+};
+
+const setPolicy = async (k: string, policy: unknown) =>
+  db.execute(sql`UPDATE liteapi_bookings SET cancellation_policy = ${JSON.stringify(policy)}::jsonb WHERE itinerary_item_id = ${id(k)} AND status = 'confirmed'`);
+
+test("B14 the consent gate: charges apply ⇒ 422 terms, no LiteAPI call, nothing changes", async () => {
+  await prebookStay(q("s6"), fakes().deps);
+  assert.equal((await bookStay(q("s6"), fakes().deps)).state, "confirmed");
+  await setPolicy("s6", { refundableTag: "NRFN", cancelPolicyInfos: [{ cancelTime: "2026-01-01 00:00:00", amount: 312.5, currency: "USD" }] });
+  const f = fakes();
+  const out: any = await cancelStay(q("s6"), f.deps);
+  assert.equal(out.state, "charges_apply");
+  assert.equal(out.policy, "NRFN");
+  assert.equal(out.amount, 312.5);
+  assert.equal(out.currency, "USD");
+  assert.equal(f.calls.cancel.length, 0, "no LiteAPI call without consent");
+  assert.equal((await row("s6")).status, "confirmed");
+  assert.equal(await itemStatus("s6"), "purchased");
+
+  // A refundable rate past its free-cancel deadline is gated the same way; one still inside it is not.
+  await prebookStay(q("s7"), fakes().deps);
+  assert.equal((await bookStay(q("s7"), fakes().deps)).state, "confirmed");
+  await setPolicy("s7", { refundableTag: "RFN", cancelPolicyInfos: [{ cancelTime: "2026-01-01 00:00:00", amount: 50, currency: "USD" }] });
+  const g = fakes();
+  const past: any = await cancelStay(q("s7"), g.deps);
+  assert.equal(past.state, "charges_apply");
+  assert.equal(past.deadline, "2026-01-01T00:00:00.000Z");
+  assert.equal(past.amount, 50);
+  assert.equal(g.calls.cancel.length, 0);
+  await setPolicy("s7", { refundableTag: "RFN", cancelPolicyInfos: [{ cancelTime: "2099-01-01 00:00:00", amount: 50, currency: "USD" }] });
+  const free: any = await cancelStay(q("s7"), fakes().deps);
+  assert.equal(free.state, "cancelled", "inside the free window there is nothing to consent to");
+  assert.equal(free.liteapiStatus, "CANCELLED");
+  const r7 = await row("s7");
+  assert.deepEqual(r7.cancel_amounts, { cancellation_fee: 0, refund_amount: 312.5, currency: "USD" }, "CANCELLED, fee 0, stored as returned");
+  assert.equal(await exceptionsFor(r7.id), 0);
+});
+
+test("B15 acknowledged: CANCELLED_WITH_CHARGES is a cancellation — row cancelled, charges stored, item released", async () => {
+  const f = fakes({ cancel: () => ({ data: { bookingId: "x", status: "CANCELLED_WITH_CHARGES", cancellation_fee: 312.5, refund_amount: 0, currency: "USD" } }) });
+  const out: any = await cancelStay({ ...q("s6"), acknowledgeCharges: true }, f.deps);
+  assert.equal(out.state, "cancelled");
+  assert.equal(out.liteapiStatus, "CANCELLED_WITH_CHARGES");
+  assert.equal(f.calls.cancel.length, 1);
+  const r = await row("s6");
+  assert.equal(r.status, "cancelled", "the room is gone at LiteAPI, so our row says so");
+  assert.ok(r.cancelled_at);
+  assert.equal(r.last_sync_status, "CANCELLED_WITH_CHARGES");
+  assert.deepEqual(r.cancel_amounts, { cancellation_fee: 312.5, refund_amount: 0, currency: "USD" }, "exactly as returned");
+  assert.equal(await exceptionsFor(r.id), 0, "a stated refund in our currency opens nothing");
+  assert.equal(await itemStatus("s6"), "in_planning");
+  assert.equal(await itemCode("s6"), null);
+});
+
+test("B16 CANCELLED with a fee: money follows refund_amount; a repeat cancel is our row's answer", async () => {
+  await book("s8");
+  const f = fakes({ cancel: () => ({ data: { bookingId: "x", status: "CANCELLED", cancellation_fee: 25, refund_amount: 287.5, currency: "USD" } }) });
+  const out: any = await cancelStay(q("s8"), f.deps);
+  assert.equal(out.state, "cancelled");
+  const r = await row("s8");
+  assert.equal(r.status, "cancelled");
+  assert.deepEqual(r.cancel_amounts, { cancellation_fee: 25, refund_amount: 287.5, currency: "USD" });
+  assert.equal(await itemStatus("s8"), "in_planning");
+  // LiteAPI answers a repeat cancel CANCELLED_WITH_CHARGES (run 38762970892); our row gates it first.
+  const again = fakes({ cancel: () => ({ data: { status: "CANCELLED_WITH_CHARGES", cancellation_fee: 999, refund_amount: 0, currency: "USD" } }) });
+  assert.deepEqual(await cancelStay(q("s8"), again.deps), { state: "not_confirmed" });
+  assert.equal(again.calls.cancel.length, 0);
+  assert.deepEqual((await row("s8")).cancel_amounts, { cancellation_fee: 25, refund_amount: 287.5, currency: "USD" }, "amounts untouched");
+});
+
+test("B17 a 204 goes to review; a currency mismatch or a missing refund stays cancelled with ONE exception", async () => {
+  await book("s9");
+  const gone: any = await cancelStay(q("s9"), fakes({ cancel: () => { throw new LiteapiError(204, "LiteAPI /bookings/:id answered 204"); } }).deps);
+  assert.equal(gone.state, "needs_review");
+  const r9 = await row("s9");
+  assert.equal(r9.status, "needs_review", "never back to confirmed");
+  assert.match(r9.failure_reason, /^204 /);
+  assert.equal(await itemStatus("s9"), "purchased");
+
+  await book("s10");
+  const other: any = await cancelStay(q("s10"), fakes({ cancel: () => ({ data: { status: "CANCELLED_WITH_CHARGES", cancellation_fee: 40, refund_amount: 260, currency: "EUR" } }) }).deps);
+  assert.equal(other.state, "cancelled");
+  const r10 = await row("s10");
+  assert.equal(r10.status, "cancelled", "never re-marked for review");
+  assert.equal(await exceptionsFor(r10.id), 1);
+  const ex = ((await db.execute(sql`SELECT * FROM reconciliation_exceptions WHERE booking_id = ${r10.id}`)) as any).rows[0];
+  assert.equal(ex.rail, "liteapi");
+  assert.equal(ex.severity, "warning");
+  assert.equal(ex.details.reason, "currency_mismatch");
+  assert.equal(ex.details.cancellation_fee, 40);
+  assert.equal(ex.details.refund_amount, 260);
+  assert.equal(ex.details.currency, "EUR");
+  assert.equal(ex.currency, "USD");
+  const run = ((await db.execute(sql`SELECT triggered_by, status FROM reconciliation_runs WHERE id = ${ex.run_id}`)) as any).rows[0];
+  assert.deepEqual(run, { triggered_by: "liteapi_cancel", status: "completed" });
+
+  await book("s11");
+  const blank: any = await cancelStay(q("s11"), fakes({ cancel: () => ({ data: { status: "CANCELLED", currency: "USD" } }) }).deps);
+  assert.equal(blank.state, "cancelled");
+  const r11 = await row("s11");
+  assert.deepEqual(r11.cancel_amounts, { currency: "USD" }, "only what LiteAPI returned");
+  const ex11 = ((await db.execute(sql`SELECT details, actual_amount FROM reconciliation_exceptions WHERE booking_id = ${r11.id}`)) as any).rows;
+  assert.equal(ex11.length, 1);
+  assert.equal(ex11[0].details.reason, "refund_amount_missing");
+  assert.equal(ex11[0].actual_amount, null);
+});
+
+test("B18 any other status word goes to review, never back to confirmed", async () => {
+  const out: any = await cancelStay(q("s2"), fakes({ cancel: () => ({ data: { status: "CONFIRMED" } }) }).deps);
+  assert.equal(out.state, "needs_review");
+  const r = await row("s2");
+  assert.equal(r.status, "needs_review");
+  assert.equal(r.last_sync_status, "CONFIRMED");
+  assert.match(r.failure_reason, /LiteAPI answered CONFIRMED/);
+  assert.equal(await itemStatus("s2"), "purchased");
 });

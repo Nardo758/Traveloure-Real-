@@ -42,12 +42,17 @@ export function useStayBooking(tripId: string, itemId: string, enabled: boolean)
 }
 
 /** POST one step; the answer's `state` is returned for a 2xx AND a 409 (the server's named refusals). */
-export async function postStayBooking(tripId: string, itemId: string, step: "prebook" | "book" | "cancel"): Promise<{ state: string } & Record<string, any>> {
+export async function postStayBooking(
+  tripId: string,
+  itemId: string,
+  step: "prebook" | "book" | "cancel",
+  body: { acknowledgeCharges?: true } = {},
+): Promise<{ state: string } & Record<string, any>> {
   const res = await fetch(`/api/trips/${tripId}/items/${itemId}/stay-booking/${step}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => null);
   if (json && typeof json.state === "string") return json;
@@ -79,8 +84,9 @@ export const STAY_BOOK_REFUSALS: Record<string, string> = {
   not_confirmed: "There is no confirmed booking to cancel.",
   failed: "The hotel didn't accept the booking. You have not been booked.",
   pending: "We're still waiting for the hotel's answer. Check back shortly — nothing more is needed from you.",
-  cancel_refused: "The booking couldn't be canceled. It is still booked.",
-  needs_review: "The hotel's booking partner refused the cancellation, so we can't yet tell whether you are still booked. It has been marked for review; don't book this stay again until it's resolved.",
+  cancelled: "Your booking is canceled.",
+  charges_apply: "Canceling now has a charge. Nothing was canceled.",
+  needs_review: "We couldn't confirm the cancellation with the hotel's booking partner, so we can't yet tell whether you are still booked. It has been marked for review; don't book this stay again until it's resolved.",
 };
 
 /**
@@ -124,4 +130,51 @@ export function stayBookedReturnPath(tripId: string, itemId: string): string {
 /** The SDK's public key from the server's env ("production" ⇒ "live"); anything else is refused. */
 export function paymentSdkPublicKey(env: string): "sandbox" | "live" | null {
   return env === "sandbox" ? "sandbox" : env === "production" ? "live" : null;
+}
+
+/**
+ * The cancel sheet (ledger `2026-10-15-liteapi-cancel-with-charges`). FOUNDER WORDING REVIEW: every sentence here
+ * is in the PR's review block. The policy and the amount are the SERVER's answer (`charges_apply`), read from the
+ * policy the hotel stated when the price was checked; a figure it did not state is not shown (§13).
+ */
+export const STAY_CANCEL_WORDS = {
+  open: "Cancel booking",
+  confirmTitle: "Cancel this booking?",
+  confirmBody: "We'll ask the hotel's booking partner to cancel your stay.",
+  confirm: "Cancel booking",
+  keep: "Keep booking",
+  working: "Canceling…",
+  chargesTitle: "Canceling now has a charge",
+  nonRefundable: "This rate is non-refundable.",
+  pastDeadline: (deadline: string) => `Free cancellation ended on ${deadline}.`,
+  chargeLine: (amount: string) => `You'll be charged ${amount}.`,
+  chargeUnstated: "The amount you'll be charged was not stated.",
+  refundNote: "Any refund is made by Nuitée, our hotel booking partner, to the card you paid with.",
+  acceptAndCancel: "Accept the charge and cancel",
+} as const;
+
+export interface StayCancelTerms {
+  policy: string | null;
+  deadline: string | null;
+  amount: number | null;
+  currency: string | null;
+}
+
+/** The lines the charges step shows, from the server's terms only. */
+export function stayCancelChargeLines(terms: StayCancelTerms, formatDate: (iso: string) => string = (iso) => iso.slice(0, 10)): string[] {
+  const lines: string[] = [];
+  if (terms.policy === "NRFN") lines.push(STAY_CANCEL_WORDS.nonRefundable);
+  else if (terms.deadline) lines.push(STAY_CANCEL_WORDS.pastDeadline(formatDate(terms.deadline)));
+  lines.push(
+    terms.amount !== null && terms.currency
+      ? STAY_CANCEL_WORDS.chargeLine(stayPriceText(Math.round(terms.amount * 100), terms.currency))
+      : STAY_CANCEL_WORDS.chargeUnstated,
+  );
+  lines.push(STAY_CANCEL_WORDS.refundNote);
+  return lines;
+}
+
+/** "Cancel booking" draws only for the owner, on a booking the server reads as confirmed. */
+export function showsStayCancel(input: { isOwner: boolean; read: StayBookingRead | undefined | null }): boolean {
+  return input.isOwner && input.read?.booking?.status === "confirmed";
 }
