@@ -10,6 +10,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cityNeighborhoods, serviceBookings } from "@shared/schema";
 import { EXACT_LOCATION_BOOKING_STATUSES } from "@shared/public-listing-location";
+import { nearestAreaName } from "../utils/public-service-listing";
 
 export async function viewerSeesExactLocation(
   serviceId: string,
@@ -41,4 +42,22 @@ export async function cityNeighborhoodNames(city: string): Promise<Array<{ name:
   return rows
     .map((r) => ({ name: r.name, lat: Number(r.lat), lng: Number(r.lng) }))
     .filter((n) => Number.isFinite(n.lat) && Number.isFinite(n.lng));
+}
+
+/**
+ * CP-1 PR 2: the distinct neighbourhood names a route's LOCATED stops are in, in stop order — what the
+ * public route share card names instead of the stops themselves. No city or no match ⇒ empty (§13).
+ */
+export async function routeAreaNames(
+  points: ReadonlyArray<{ position: number; latitude: unknown; longitude: unknown }>,
+  city: string | null,
+): Promise<string[]> {
+  if (!city) return [];
+  const neighborhoods = await cityNeighborhoodNames(city);
+  const out: string[] = [];
+  for (const p of [...points].sort((a, b) => a.position - b.position)) {
+    const name = nearestAreaName(p.latitude, p.longitude, neighborhoods);
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
 }

@@ -18,6 +18,7 @@ import { db } from "../db";
 import { readyMadeTrips, users } from "@shared/schema";
 import { storage } from "../storage";
 import { heavyReadRateLimiter } from "../infrastructure/rate-limiter";
+import { routeAreaNames } from "../services/listing-location-access.service";
 import {
   renderShareImage,
   type ServiceShareImageData,
@@ -69,7 +70,9 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
       }
       const routeData: ServiceRouteShareImageData = {
         serviceName: service.serviceName,
-        stops: routePoints.map((p) => p.name),
+        // CP-1 PR 2: the count and the areas the stops are in — never a stop's name.
+        stopCount: routePoints.length,
+        areas: await routeAreaNames(routePoints, service.city ?? null),
         earnerName,
         earnerHandle,
         path: earnerHandle ? `/s/${earnerHandle}` : `/services/${service.id}`,

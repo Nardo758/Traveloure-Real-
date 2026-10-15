@@ -72,18 +72,16 @@ export function readyMadePriceLine(listing: { priceCents: number | null | undefi
   return `From ${dollars(total)}${per} · no fee on this purchase`;
 }
 
-export interface ReadyMadePreviewStop {
-  title: string;
-  startTime: string | null;
-  itemType: string | null;
-  locationName: string | null;
-}
-export interface ReadyMadePreviewLeg {
-  /** Index into `stops`. */
-  fromIndex: number;
-  toIndex: number;
-  mode: string;
-  minutes: number;
+/**
+ * CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): the sample day is an OUTLINE — how many stops, and the
+ * areas they are in. Never a stop's title, time or place name, and never a leg's minutes; those are
+ * what the buyer pays for.
+ */
+export interface ReadyMadePreviewOutlineDay {
+  dayNumber: number;
+  stopCount: number;
+  /** Distinct neighbourhood names, in the order the day reaches them; empty when none is known. */
+  areas: string[];
 }
 
 export interface ReadyMadePreview {
@@ -98,37 +96,34 @@ export interface ReadyMadePreview {
   heroCredit: { photographer: string; profileUrl: string | null; source: string | null } | null;
   priceLine: string | null;
   expert: { name: string; handle: string | null; localVerified: boolean };
-  sampleDay: { dayNumber: number; stops: ReadyMadePreviewStop[]; legs: ReadyMadePreviewLeg[] } | null;
+  sampleDay: ReadyMadePreviewOutlineDay | null;
   /** How many of the trip's days stay behind the purchase. */
   lockedDays: number;
 }
 
-/** Day 1 of the listing's build: its stops in the engine's own order and the confirmed legs between them. */
+/**
+ * Day 1 of the listing's build as an outline: its stop count and the distinct areas its stops are in,
+ * in order. `areaOf` names a stop's area (null when unknown); the caller supplies it so this stays pure.
+ */
 export function sampleDayOf(
-  items: ReadonlyArray<{ id: string; title: string; dayNumber: number | null; startTime?: string | null; itemType?: string | null; locationName?: string | null }>,
-  legs: ReadonlyArray<{ fromActivityId: string | null; toActivityId: string | null; proposalStatus: string | null; userSelectedMode: string | null; recommendedMode: string | null; estimatedDurationMinutes: number | null }>,
+  items: ReadonlyArray<{ id: string; dayNumber: number | null }>,
+  areaOf: (item: { id: string }) => string | null,
+  maxAreas = 3,
 ): ReadyMadePreview["sampleDay"] {
   const day = items.filter((i) => i.dayNumber === 1);
   if (!day.length) return null;
-  const stops: ReadyMadePreviewStop[] = day.map((i) => ({
-    title: i.title,
-    startTime: i.startTime ?? null,
-    itemType: i.itemType ?? null,
-    locationName: i.locationName ?? null,
-  }));
-  const index = new Map(day.map((i, n) => [i.id, n] as const));
-  const out: ReadyMadePreviewLeg[] = [];
-  for (const l of legs) {
-    if (l.proposalStatus !== "confirmed" || !l.fromActivityId || !l.toActivityId) continue;
-    const from = index.get(l.fromActivityId);
-    const to = index.get(l.toActivityId);
-    const mode = (l.userSelectedMode || l.recommendedMode || "").trim() || null; // the author's pick, else the recommendation
-    const minutes = Number(l.estimatedDurationMinutes);
-    if (from == null || to == null || !mode || !Number.isFinite(minutes) || minutes <= 0) continue;
-    out.push({ fromIndex: from, toIndex: to, mode, minutes });
+  const areas: string[] = [];
+  for (const i of day) {
+    const a = areaOf(i);
+    if (a && !areas.includes(a) && areas.length < maxAreas) areas.push(a);
   }
-  out.sort((a, b) => a.fromIndex - b.fromIndex);
-  return { dayNumber: 1, stops, legs: out };
+  return { dayNumber: 1, stopCount: day.length, areas };
+}
+
+/** "Day 1 · 4 stops · Higashiyama, Gion" — the outline's one line. */
+export function outlineDayLine(day: ReadyMadePreviewOutlineDay): string {
+  const stops = `${day.stopCount} ${day.stopCount === 1 ? "stop" : "stops"}`;
+  return day.areas.length ? `Day ${day.dayNumber} · ${stops} · ${day.areas.join(", ")}` : `Day ${day.dayNumber} · ${stops}`;
 }
 
 const PHOTO_SOURCES: ReadonlyArray<[host: string, name: string]> = [
