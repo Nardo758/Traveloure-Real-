@@ -97,9 +97,12 @@ export interface ServiceShareImageData {
 
 export interface ServiceRouteShareImageData {
   serviceName: string;
-  /** Ordered stop names (ruling 22 route stops). The route layer 404s when empty — this
+  /** How many stops the route has (ruling 22 route stops). The route layer 404s at zero — this
    *  template never renders a fabricated route (§13). */
-  stops: string[];
+  stopCount: number;
+  /** CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): the distinct AREAS the route passes through, in
+   *  order — never a stop's name. Empty when no stop is placed near a known neighbourhood. */
+  areas: string[];
   earnerName?: string | null;
   earnerHandle?: string | null;
   /** Footer path text, e.g. "/p/somehandle" or "/services/abc123". */
@@ -429,17 +432,17 @@ function buildReviewElement(data: ReviewShareImageData): El {
   );
 }
 
-// Ruling 22(d): the Route frame — the ordered stop list as a card, feed dimensions. Stop
-// NAMES only in sequence; no distances, durations, or map tiles are fabricated (§13). Long
-// routes clamp to the first 8 stops with an honest "+N more stops" line.
+// Ruling 22(d): the Route frame, feed dimensions — amended by CP-1 PR 2: the stop COUNT and the AREAS
+// it passes through, in order; never a stop name, distance, duration or map tile (§13). Long area lists
+// clamp to the first 8 with an honest "+N more areas" line.
 function buildServiceRouteElement(
   data: ServiceRouteShareImageData,
   opts: { width: number; height: number },
 ): El {
   const { width, height } = opts;
   const pad = 72;
-  const shown = data.stops.slice(0, 8);
-  const hidden = data.stops.length - shown.length;
+  const shown = data.areas.slice(0, 8);
+  const hidden = data.areas.length - shown.length;
   const earnerText = formatEarnerLine(data.earnerName, data.earnerHandle);
 
   const stopRows: El[] = shown.map((name, i) =>
@@ -479,7 +482,7 @@ function buildServiceRouteElement(
       h(
         "div",
         { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 30, color: DARK_SECONDARY, marginLeft: 84 },
-        `+${hidden} more stop${hidden === 1 ? "" : "s"}`,
+        `+${hidden} more area${hidden === 1 ? "" : "s"}`,
       ),
     );
   }
@@ -501,7 +504,9 @@ function buildServiceRouteElement(
     h(
       "div",
       { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 30, color: DARK_SECONDARY, marginBottom: 40 },
-      `${data.stops.length} stop${data.stops.length === 1 ? "" : "s"}, in order`,
+      data.areas.length
+        ? `${data.stopCount} stop${data.stopCount === 1 ? "" : "s"}, through`
+        : `${data.stopCount} stop${data.stopCount === 1 ? "" : "s"}`,
     ),
     h("div", { display: "flex", flexDirection: "column" }, stopRows),
   ];
