@@ -2028,4 +2028,8 @@ export const MIGRATION_FILES = [
   // 2026-10-12-tc2-affiliate-legs). Three additive nullable columns on affiliate_partners; no DEFAULT,
   // CHECK, index, FK or backfill; declared in shared/schema.ts. Migration 376 SQL approved by Leon — comment 19:42Z on #1438.
   "376_affiliate_partner_licence.sql",
+  // 377 — the one-booking-per-item partial UNIQUE on liteapi_bookings also covers `needs_review` (ledger
+  // 2026-10-15-liteapi-review-holds-item). Index only: the new index is created before 371's is dropped; declared
+  // in shared/schema.ts. HELD until Leon approves the SQL.
+  "377_liteapi_holding_item_index.sql",
 ] as const;
