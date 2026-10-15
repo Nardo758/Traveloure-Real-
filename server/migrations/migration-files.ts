@@ -2028,8 +2028,16 @@ export const MIGRATION_FILES = [
   // 2026-10-12-tc2-affiliate-legs). Three additive nullable columns on affiliate_partners; no DEFAULT,
   // CHECK, index, FK or backfill; declared in shared/schema.ts. Migration 376 SQL approved by Leon — comment 19:42Z on #1438.
   "376_affiliate_partner_licence.sql",
+  // 377 — the one-booking-per-item partial UNIQUE on liteapi_bookings also covers `needs_review` (ledger
+  // 2026-10-15-liteapi-review-holds-item). Index only: the new index is created before 371's is dropped; declared
+  // in shared/schema.ts. Migration 377 SQL approved by Leon — comment 20:22Z on #1452.
+  "377_liteapi_holding_item_index.sql",
+  // 379 — LiteAPI cancel amounts (ledger `2026-10-15-liteapi-cancel-with-charges`): one additive nullable jsonb
+  // column on liteapi_bookings holding `cancellation_fee`, `refund_amount` and `currency` exactly as a cancel's 200
+  // returned them. No DEFAULT, CHECK, index, FK or backfill; declared in shared/schema.ts. Migration 379 SQL approved by Leon — comment 20:22Z on #1456.
+  "379_liteapi_cancel_amounts.sql",
   // 378 — BOT-1 Phase 1 (ledger 2026-10-15-bot1-phase1): bot_accounts + bot_proposals (new, empty, declared in
   // shared/schema.ts; UNIQUE only on the new tables) and the platform_settings row bot_fact_default_expiry_days = 90
-  // (ON CONFLICT DO NOTHING). 377 is #1452's, held. HELD until Leon approves the SQL.
+  // (ON CONFLICT DO NOTHING). Registered after 379, the order it landed. Migration 378 SQL approved by Leon — comment 20:31Z on #1455.
   "378_bot_accounts_and_proposals.sql",
 ] as const;

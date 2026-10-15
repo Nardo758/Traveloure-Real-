@@ -12,7 +12,7 @@
 import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { liteapiBookings } from "@shared/schema";
-import { bookingForClientReference, bookingStatusOf } from "@shared/liteapi-booking";
+import { bookingForClientReference, bookingStatusOf, isLiteapiCancelled } from "@shared/liteapi-booking";
 import { liteapiBookingEnabled, liteapiConfig, type LiteapiConfig } from "../config/liteapi.config";
 import { createLiteapiClient, type LiteapiClient } from "../services/liteapi-client";
 import { logger } from "../infrastructure/logger";
@@ -63,8 +63,9 @@ export async function runLiteapiBookingSync(opts: { now?: Date; config?: () => L
       }
       // Facts only: when we read it and what LiteAPI said. The row's own status is never written here.
       await db.update(liteapiBookings).set({ lastSyncedAt: now, lastSyncStatus: theirs }).where(eq(liteapiBookings.id, r.id));
-      const expected = r.status === "confirmed" ? "CONFIRMED" : r.status === "cancelling" ? "CANCELLED" : null;
-      if (theirs && expected && theirs !== expected) out.disagree.push({ id: r.id, ours: r.status, theirs });
+      // A cancel LiteAPI answers CANCELLED_WITH_CHARGES also ended the booking (ledger `2026-10-15-liteapi-cancel-with-charges`).
+      const agrees = r.status === "confirmed" ? theirs === "CONFIRMED" : r.status === "cancelling" ? isLiteapiCancelled(theirs) : true;
+      if (theirs && !agrees) out.disagree.push({ id: r.id, ours: r.status, theirs });
       if (theirs && r.status === "booking") out.disagree.push({ id: r.id, ours: r.status, theirs });
       // A refused cancel awaiting review: LiteAPI's current status is reported every pass for the reviewer.
       if (r.status === "needs_review") out.needsReview.push({ id: r.id, theirs });

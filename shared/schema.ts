@@ -12593,6 +12593,10 @@ export const liteapiBookings = pgTable("liteapi_bookings", {
   commissionCents: integer("commission_cents"),
   processingFeeCents: integer("processing_fee_cents"),
   cancellationPolicy: jsonb("cancellation_policy"),
+  // Migration 379 (ledger `2026-10-15-liteapi-cancel-with-charges`): `cancellation_fee`, `refund_amount` and
+  // `currency` exactly as a cancel's 200 returned them. NULL = not cancelled through LiteAPI. Written only by
+  // `cancelStay`. Traveler refund maths is a pending founder call; nothing reads these for money yet.
+  cancelAmounts: jsonb("cancel_amounts"),
   failureReason: text("failure_reason"),
   claimedAt: timestamp("claimed_at"),
   bookedAt: timestamp("booked_at"),
@@ -12604,7 +12608,8 @@ export const liteapiBookings = pgTable("liteapi_bookings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   prebookUniq: uniqueIndex("uq_liteapi_bookings_prebook").on(table.prebookId),
-  liveItemUniq: uniqueIndex("uq_liteapi_bookings_live_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling')`),
+  // Migration 377: one HOLDING booking per item — the live set plus `needs_review` (LITEAPI_ITEM_HOLDING_STATUSES).
+  holdingItemUniq: uniqueIndex("uq_liteapi_bookings_holding_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling', 'needs_review')`),
   statusIdx: index("idx_liteapi_bookings_status").on(table.status),
 }));
 export type LiteapiBooking = typeof liteapiBookings.$inferSelect;

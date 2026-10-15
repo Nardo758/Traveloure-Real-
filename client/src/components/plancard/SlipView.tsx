@@ -79,7 +79,8 @@ import { itemFactsLine } from "@/lib/place-facts";
 import { ITEM_MENU_LABELS, ItemRow, type ItemRowMenu } from "@/components/plan/ItemRow";
 import { ItemSheet } from "@/components/plan/ItemSheet";
 import { StayBookButton } from "@/components/plan/StayBookButton";
-import { showsStayBook, useStayBooking } from "@/lib/stay-booking";
+import { StayCancelButton } from "@/components/plan/StayCancelButton";
+import { showsStayBook, showsStayCancel, useStayBooking } from "@/lib/stay-booking";
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
@@ -974,6 +975,7 @@ function SlipDayItem({
                 </Button>
               ) : null}
               {sheetControls.primaryBook && stayBook ? <StayBookButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
+              {showsStayCancel({ isOwner, read: stayRead }) ? <StayCancelButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
               {sheetControls.primaryBook && a.bookingPath === "affiliate" && !stayBook ? (
                 <AffiliateBookButton activity={a as any} testId={`item-sheet-affiliate-book-${a.id}`} />
               ) : null}

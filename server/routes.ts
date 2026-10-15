@@ -148,6 +148,7 @@ import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
+import { toPublicListing } from "./utils/public-service-listing";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
 import { stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
 import { resolveCapturedDeposit } from "./services/deposit.service";
@@ -3360,7 +3361,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     );
     res.json(
       live.map((s) => ({
-        ...omitFields(s, ["serviceFile", "joinLink", "userId", "revenueShareRate"] as const),
+        // CP-1 (ledger `2026-10-15-cp1-public-payloads`): the ONE public listing projection — the
+        // same never-fields this line stripped, plus a coarse pin and no address-like text.
+        ...toPublicListing(omitFields(s, ["serviceFile", "joinLink", "userId", "revenueShareRate"] as const)),
         buyAction: buyActions.get(s.id),
       })),
     );
@@ -5670,7 +5673,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const expertId = req.params.id;
       // F2 public read-gate: this is a public expert-profile surface — approved+active listings only.
       const services = await storage.getApprovedServicesForExpert(expertId);
-      res.json(services);
+      // CP-1: projected again here (idempotent) — the route never trusts storage alone (§18 placement).
+      res.json(services.map((s: Record<string, any>) => toPublicListing(s)));
     } catch (err) {
       console.error("Error fetching expert services:", err);
       res.json([]);

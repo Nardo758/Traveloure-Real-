@@ -2,6 +2,10 @@
  * ready-made-teaser-map.service.ts — server-rendered pre-purchase teaser SVG for a Ready Made
  * Trips store listing (GET /api/ready-made/:id/teaser-map.svg, server/routes/ready-made.routes.ts).
  *
+ * CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): the teaser now draws NO stop and NO route — one blurred
+ * region per day, at least 1 km (`teaserDayRegions`). The jitter below survives only for the share
+ * image's schematic map (`jitterPoint`, ready-made-share-data.service.ts), which has no basemap.
+ *
  * CRITICAL REDACTION RULE: raw item coordinates must NEVER reach an unpurchased client. Every
  * stop position is jittered ±~250m using a PRNG seeded deterministically from the listing id
  * (stable rendering across loads — the SAME listing draws the SAME approximate map every time —
@@ -27,6 +31,8 @@
  */
 import { projectPath, projectPoint, type MarketGeography } from "@shared/geo/market-geography";
 import { getMarketGeographyForDestinationSync } from "./market-geography.service";
+import { coarsenPoint } from "@shared/public-listing-location";
+import { haversineMeters } from "@shared/geo";
 
 const VIEW_WIDTH = 800;
 const VIEW_HEIGHT = 420;
@@ -169,37 +175,68 @@ function geographyLayer(geo: MarketGeography, bbox: Bbox): string {
   return `${water}${parks}${roads}`;
 }
 
-export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
-  const { listingId, destination, items, dayDistances } = opts;
+/** CP-1 PR 2: a day's region is never smaller than this, and its radius is rounded UP to this step. */
+export const TEASER_REGION_MIN_RADIUS_M = 1000;
+const TEASER_REGION_STEP_M = 500;
 
-  type Stop = { dayNumber: number; lon: number; lat: number };
-  const stops: Stop[] = [];
+/**
+ * CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): ONE generalised region per day — the day's located stops
+ * reduced to a centre snapped to the ~500 m public grid (`coarsenPoint`) and a radius that covers them
+ * all, at least 1 km, rounded up to 500 m, plus a 500 m margin for the snap. No stop and no route is in
+ * the output. A day with no located stop draws nothing (§13).
+ */
+export function teaserDayRegions(
+  items: ReadonlyArray<TeaserMapItemInput>,
+): Array<{ dayNumber: number; lat: number; lon: number; radiusM: number }> {
+  const byDay = new Map<number, Array<{ lat: number; lon: number }>>();
   for (const item of items) {
     const lat = item.latitude != null ? Number(item.latitude) : NaN;
     const lon = item.longitude != null ? Number(item.longitude) : NaN;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue; // unlocated — simply absent
-    const [jLon, jLat] = jitterPoint(lat, lon, listingId, item.id);
-    stops.push({ dayNumber: item.dayNumber, lon: jLon, lat: jLat });
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (!byDay.has(item.dayNumber)) byDay.set(item.dayNumber, []);
+    byDay.get(item.dayNumber)!.push({ lat, lon });
   }
+  const out: Array<{ dayNumber: number; lat: number; lon: number; radiusM: number }> = [];
+  for (const [dayNumber, pts] of Array.from(byDay.entries()).sort((a, b) => a[0] - b[0])) {
+    const cLat = pts.reduce((a, p) => a + p.lat, 0) / pts.length;
+    const cLon = pts.reduce((a, p) => a + p.lon, 0) / pts.length;
+    const snapped = coarsenPoint(cLat, cLon);
+    if (snapped.latitude == null || snapped.longitude == null) continue;
+    const lat = Number(snapped.latitude);
+    const lon = Number(snapped.longitude);
+    const farthest = Math.max(...pts.map((p) => haversineMeters(lat, lon, p.lat, p.lon)));
+    const needed = Math.max(TEASER_REGION_MIN_RADIUS_M, farthest + TEASER_REGION_STEP_M);
+    out.push({ dayNumber, lat, lon, radiusM: Math.ceil(needed / TEASER_REGION_STEP_M) * TEASER_REGION_STEP_M });
+  }
+  return out;
+}
 
+const METERS_PER_DEG_LAT = 111_320;
+
+export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
+  const { destination, items, dayDistances } = opts;
+
+  const regions = teaserDayRegions(items);
   const geo = getMarketGeographyForDestinationSync(destination);
-  const stopsBbox = computeBbox(stops.map((s) => [s.lon, s.lat] as [number, number]));
+  const corners: [number, number][] = [];
+  for (const r of regions) {
+    const dLat = r.radiusM / METERS_PER_DEG_LAT;
+    const dLon = r.radiusM / (METERS_PER_DEG_LAT * Math.max(Math.cos((r.lat * Math.PI) / 180), 0.01));
+    corners.push([r.lon - dLon, r.lat - dLat], [r.lon + dLon, r.lat + dLat]);
+  }
+  const regionsBbox = computeBbox(corners);
 
   let bbox: Bbox;
-  if (stopsBbox) {
-    const padded = padBbox(stopsBbox, PAD_FRACTION, MIN_SPAN_DEG);
-    // Union with the market bbox (when one exists) so the geography layer and the route render
-    // in the SAME projection and stay aligned; padBbox's minimum span above is the "clamp" half
-    // of that — it keeps a single stop (or a market with a much larger bbox) from degenerating
-    // the viewport before the union runs.
+  if (regionsBbox) {
+    const padded = padBbox(regionsBbox, PAD_FRACTION, MIN_SPAN_DEG);
+    // Union with the market bbox (when one exists) so the geography layer and the regions render in
+    // the SAME projection and stay aligned.
     bbox = geo ? unionBbox(padded, geo.bbox) : padded;
   } else if (geo) {
-    // No located stops at all — render the geography layer alone, honestly (§13: never invent a
-    // route or a stop to fill the frame).
+    // No located stops at all — the geography layer alone, honestly (§13).
     bbox = geo.bbox;
   } else {
-    // Neither stops nor geography exist — a bare deterministic placeholder box; nothing renders
-    // on top of it beyond ground + attribution.
+    // Neither stops nor geography — a bare deterministic placeholder box (ground + attribution).
     bbox = [-1, -1, 1, 1];
   }
 
@@ -207,31 +244,19 @@ export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
   layers.push(`<rect x="0" y="0" width="${VIEW_WIDTH}" height="${VIEW_HEIGHT}" fill="${GROUND_COLOR}" />`);
   if (geo) layers.push(geographyLayer(geo, bbox));
 
-  // Routes: per day, connect that day's located stops in itinerary order (the order they arrive
-  // in `items`, which the caller has already sorted). Unlocated items simply don't appear.
-  const stopsByDay = new Map<number, Stop[]>();
-  for (const s of stops) {
-    if (!stopsByDay.has(s.dayNumber)) stopsByDay.set(s.dayNumber, []);
-    stopsByDay.get(s.dayNumber)!.push(s);
+  // One soft, blurred disc per day — an area, never a pin or a route (CP-1 PR 2).
+  if (regions.length) {
+    layers.push(`<defs><filter id="teaser-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14" /></filter></defs>`);
   }
-  const routeLayers: string[] = [];
-  const dotLayers: string[] = [];
-  for (const [dayNumber, dayStops] of Array.from(stopsByDay.entries()).sort((a, b) => a[0] - b[0])) {
-    const color = DAY_PALETTE[(dayNumber - 1) % DAY_PALETTE.length];
-    if (dayStops.length >= 2) {
-      const line = dayStops.map((s) => [s.lon, s.lat] as [number, number]);
-      routeLayers.push(
-        `<path d="${projectPath(line, bbox, VIEW_WIDTH, VIEW_HEIGHT)}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />`,
-      );
-    }
-    for (const s of dayStops) {
-      const [x, y] = projectPoint([s.lon, s.lat], bbox, VIEW_WIDTH, VIEW_HEIGHT);
-      dotLayers.push(
-        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6" fill="${color}" stroke="#FFFFFF" stroke-width="2" />`,
-      );
-    }
+  for (const r of regions) {
+    const color = DAY_PALETTE[(r.dayNumber - 1) % DAY_PALETTE.length];
+    const [x, y] = projectPoint([r.lon, r.lat], bbox, VIEW_WIDTH, VIEW_HEIGHT);
+    const [, yTop] = projectPoint([r.lon, r.lat + r.radiusM / METERS_PER_DEG_LAT], bbox, VIEW_WIDTH, VIEW_HEIGHT);
+    const rPx = Math.max(12, Math.abs(y - yTop));
+    layers.push(
+      `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rPx.toFixed(1)}" fill="${color}" fill-opacity="0.28" filter="url(#teaser-blur)" />`,
+    );
   }
-  layers.push(...routeLayers, ...dotLayers);
 
   // Distance legend (bottom-left) — ONLY when real transport legs exist; never estimated (§13:
   // an absent leg set means no legend, not a guessed distance).

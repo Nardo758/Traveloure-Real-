@@ -13,12 +13,14 @@
  *   · A field LiteAPI's answer does not state is NULL, never guessed (§13).
  */
 
+import { gmtInstant } from "./liteapi-rates";
+
 /** The one payment method ever sent to LiteAPI's book call. */
 export const LITEAPI_PAYMENT_METHOD = "TRANSACTION_ID" as const;
 
 export const LITEAPI_BOOKING_STATUSES = ["prebooked", "booking", "confirmed", "failed", "cancelling", "cancelled", "needs_review"] as const;
 export type LiteapiBookingStatus = (typeof LITEAPI_BOOKING_STATUSES)[number];
-/** A live booking holds the item: at most one per item (the partial UNIQUE in migration 371). */
+/** A live booking: `booking`, `confirmed` or `cancelling`. */
 export const LITEAPI_LIVE_STATUSES: readonly LiteapiBookingStatus[] = ["booking", "confirmed", "cancelling"];
 /**
  * A cancel LiteAPI refused with a definite 4xx: whether the hotel booking still stands is unknown, so the row is
@@ -26,7 +28,8 @@ export const LITEAPI_LIVE_STATUSES: readonly LiteapiBookingStatus[] = ["booking"
  * It keeps holding the item: no new prebook or book while one exists. Only a person moves a row out of it.
  */
 export const LITEAPI_NEEDS_REVIEW = "needs_review" as const;
-/** Every status that holds the item against a second booking: the live set plus `needs_review`. */
+/** Every status that holds the item against a second booking: the live set plus `needs_review` — exactly the
+ *  predicate of the partial UNIQUE `uq_liteapi_bookings_holding_item` (migration 377): at most one per item. */
 export const LITEAPI_ITEM_HOLDING_STATUSES: readonly LiteapiBookingStatus[] = [...LITEAPI_LIVE_STATUSES, LITEAPI_NEEDS_REVIEW];
 
 const toCents = (n: number) => Math.round(n * 100);
@@ -251,4 +254,91 @@ export function bookingForClientReference(body: any, clientReference: string): {
 
 export function bookingStatusOf(body: any): string | null {
   return str(body?.data?.status)?.toUpperCase() ?? null;
+}
+
+/**
+ * The reason a cancel was refused, for the ONE `[liteapi-booking] cancel <bookingId>: refused — <reason>` log line
+ * (ledger `2026-10-15-cancel-refused-logged`): LiteAPI's own status word and the booked rate's policy as the
+ * prebook stated it (refundable tag, first free-cancel deadline). A field the answer did not state says so (§13).
+ */
+export function cancelRefusalReason(liteapiStatus: string | null, policy: any): string {
+  const tag = str(policy?.refundableTag);
+  const infos = Array.isArray(policy?.cancelPolicyInfos) ? policy.cancelPolicyInfos : [];
+  const deadline = infos.map((i: any) => str(i?.cancelTime)).filter(Boolean).sort()[0] ?? null;
+  return `LiteAPI answered ${liteapiStatus ?? "no status"}; booked rate ${tag ?? "refundability not stated"}${deadline ? `, free cancel until ${deadline}` : ""}`;
+}
+
+/**
+ * The two answers LiteAPI gives to a cancel that ENDED the booking (ledger `2026-10-15-liteapi-cancel-with-charges`;
+ * LiteAPI's docs, confirmed by the decision-maker Oct 15, 2026): `CANCELLED` and `CANCELLED_WITH_CHARGES`. Both
+ * mean the room is gone. Any other status word goes to review.
+ */
+export const LITEAPI_CANCELLED_STATUSES = ["CANCELLED", "CANCELLED_WITH_CHARGES"] as const;
+export function isLiteapiCancelled(status: string | null | undefined): boolean {
+  return !!status && (LITEAPI_CANCELLED_STATUSES as readonly string[]).includes(status.toUpperCase());
+}
+
+/**
+ * The money LiteAPI states on a cancel's 200 (its OpenAPI spec: `data.{bookingId, status, cancellation_fee,
+ * refund_amount, currency}`), kept exactly as returned — only the three keys, and only those present. Money follows
+ * `refund_amount`, never the status word: the spec's own example is `CANCELLED` with a 25 fee.
+ */
+export interface LiteapiCancelAmounts {
+  cancellation_fee?: unknown;
+  refund_amount?: unknown;
+  currency?: unknown;
+}
+export function cancelAmountsOf(body: any): LiteapiCancelAmounts {
+  const d = body?.data ?? {};
+  const out: LiteapiCancelAmounts = {};
+  for (const k of ["cancellation_fee", "refund_amount", "currency"] as const) if (d[k] !== undefined) out[k] = d[k];
+  return out;
+}
+
+/**
+ * Why a cancelled stay's refund cannot be taken at its word, or null when it can: `refund_amount` missing, or a
+ * currency other than the one we charged. The stay is cancelled either way; this only opens an exception.
+ */
+export function refundUnverifiedReason(amounts: LiteapiCancelAmounts, chargedCurrency: string): "refund_amount_missing" | "currency_mismatch" | null {
+  if (amounts.refund_amount === undefined || amounts.refund_amount === null || amounts.refund_amount === "") return "refund_amount_missing";
+  const c = typeof amounts.currency === "string" ? amounts.currency.trim().toUpperCase() : null;
+  if (c !== chargedCurrency.trim().toUpperCase()) return "currency_mismatch";
+  return null;
+}
+
+export interface CancelChargeTerms {
+  /** True when cancelling now costs money: a non-refundable rate, or a refundable one past its free-cancel deadline. */
+  chargesApply: boolean;
+  /** The prebook's refundable tag (`RFN` / `NRFN`), null when it did not say. */
+  policy: string | null;
+  /** The free-cancel deadline (the earliest `cancelTime`, as an ISO instant), null when none is stated. */
+  deadline: string | null;
+  /** The charge that applies now and its currency, from the stored policy; null when the policy states none (§13). */
+  amount: number | null;
+  currency: string | null;
+}
+
+/**
+ * The consent gate's rule (decision-maker, Oct 15, 2026): from the policy the prebook stored on the row, does
+ * cancelling now cost money, and how much. A `cancelPolicyInfos` entry charges its `amount` from its `cancelTime`
+ * on; the charge now is the largest entry whose time has passed (for a non-refundable rate, the largest entry).
+ * A policy that states neither a tag nor a passed deadline does not gate — it states no charge.
+ */
+export function cancelChargeTerms(policy: any, nowMs: number): CancelChargeTerms {
+  const tag = str(policy?.refundableTag)?.toUpperCase() ?? null;
+  const infos = (Array.isArray(policy?.cancelPolicyInfos) ? policy.cancelPolicyInfos : [])
+    .map((i: any) => ({ at: gmtInstant(i?.cancelTime), amount: Number(i?.amount), currency: str(i?.currency)?.toUpperCase() ?? null }))
+    .filter((i: { at: string | null }) => i.at !== null) as Array<{ at: string; amount: number; currency: string | null }>;
+  const deadline = infos.map((i) => i.at).sort()[0] ?? null;
+  const nonRefundable = tag === "NRFN";
+  const pastDeadline = deadline !== null && Date.parse(deadline) <= nowMs;
+  const charging = (nonRefundable ? infos : infos.filter((i) => Date.parse(i.at) <= nowMs)).filter((i) => Number.isFinite(i.amount) && i.amount > 0);
+  const top = charging.sort((a, b) => b.amount - a.amount)[0] ?? null;
+  return {
+    chargesApply: nonRefundable || pastDeadline,
+    policy: tag,
+    deadline,
+    amount: top ? top.amount : null,
+    currency: top ? top.currency : null,
+  };
 }

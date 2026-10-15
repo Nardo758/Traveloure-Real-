@@ -22,6 +22,8 @@ import { readyMadePriceLine, readyMadeSlug, readyMadePreviewPath } from "@shared
 import { loadVerifiedMarkets } from "./blog-byline-gate.service";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { jitterPoint } from "./ready-made-teaser-map.service";
+import { nearestAreaName } from "../utils/public-service-listing";
+import { cityNeighborhoodNames } from "./listing-location-access.service";
 import {
   READY_MADE_SHARE_FORMATS,
   heroCreditLine,
@@ -104,8 +106,16 @@ export async function loadReadyMadeShareInputs(listingId: string): Promise<{ dat
   const map: ReadyMadeShareMapDay[] = Array.from(norm.keys())
     .sort((a, b) => a - b)
     .map((d) => ({ dayNumber: d, points: norm.get(d)!, confirmedMinutes: minutesByDay.get(d) ?? null }));
+  // CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): a chip names the AREA the day starts in — never a stop
+  // title. No known area ⇒ the day's stop count, which the image already states elsewhere (§13).
+  const neighborhoods = listing.market ? await cityNeighborhoodNames(listing.market) : [];
   const chips: ReadyMadeShareData["dayChips"] = [];
-  for (const i of days) if (!chips.some((c) => c.dayNumber === i.dayNumber)) chips.push({ dayNumber: i.dayNumber!, label: i.title });
+  for (const i of days) {
+    if (chips.some((c) => c.dayNumber === i.dayNumber)) continue;
+    const dayItems = days.filter((d) => d.dayNumber === i.dayNumber);
+    const area = dayItems.map((d) => nearestAreaName(d.latitude, d.longitude, neighborhoods)).find((a) => a != null) ?? null;
+    chips.push({ dayNumber: i.dayNumber!, label: area ?? `${dayItems.length} ${dayItems.length === 1 ? "stop" : "stops"}` });
+  }
   const marketSlug = resolveMarketSlug(listing.market ?? "");
   const slug = readyMadeSlug(listing);
   const meta = (listing.heroImageMeta ?? null) as { photographer?: string; profileUrl?: string; unsplashId?: string } | null;

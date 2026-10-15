@@ -5,11 +5,23 @@
  * SB3 the price is the server's minor units in the server's currency.
  * SB4 the SDK key follows the server's env, and nothing else.
  * SB5 the page holds no card field, sends no payment method and no offer, and the SDK is loaded in ONE module.
+ * SB6 the cancel sheet: drawn for the owner on a confirmed booking; its charge lines are the server's terms, and an
+ *     amount the policy did not state is said, never shown as a number (ledger `2026-10-15-liteapi-cancel-with-charges`).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { STAY_BOOK_REFUSALS, paymentSdkPublicKey, showsStayBook, stayBookedReturnPath, stayPriceText, stayRefusalText } from "../stay-booking";
+import {
+  STAY_BOOK_REFUSALS,
+  STAY_CANCEL_WORDS,
+  paymentSdkPublicKey,
+  showsStayBook,
+  showsStayCancel,
+  stayBookedReturnPath,
+  stayCancelChargeLines,
+  stayPriceText,
+  stayRefusalText,
+} from "../stay-booking";
 
 const read = (b: any) => ({ bookable: true, booking: b ? { id: "r", status: b, hotelConfirmationCode: null, amountCents: 1, currency: "USD", checkin: "2026-11-01", checkout: "2026-11-02", adults: 2, env: "sandbox" } : null });
 
@@ -54,6 +66,28 @@ test("SB5 no card field, no payment method, no offer from the page; one SDK load
     assert.doesNotMatch(t, /cardNumber|type="password"|autocomplete="cc-/i, f);
     assert.doesNotMatch(t, /TRANSACTION_ID|offerId|payment-wrapper/, f);
   }
-  assert.match(readFileSync("client/src/lib/stay-booking.ts", "utf8"), /body: "\{\}"/, "every post sends an empty body");
+  // Every post's body admits ONE field, the cancel's consent flag (ledger `2026-10-15-liteapi-cancel-with-charges`);
+  // prebook and book still send an empty body.
+  assert.match(readFileSync("client/src/lib/stay-booking.ts", "utf8"), /body: \{ acknowledgeCharges\?: true \} = \{\}/);
+  assert.doesNotMatch(readFileSync("client/src/components/plan/StayBookButton.tsx", "utf8"), /postStayBooking\([^)]*"(prebook|book)",/);
   assert.match(readFileSync("client/src/lib/liteapi-payment-sdk.ts", "utf8"), /payment-wrapper\.liteapi\.travel/);
+});
+
+test("SB6 the cancel sheet: owner + confirmed only; the charge lines are the server's terms", () => {
+  assert.equal(showsStayCancel({ isOwner: true, read: read("confirmed") }), true);
+  assert.equal(showsStayCancel({ isOwner: false, read: read("confirmed") }), false);
+  for (const st of ["prebooked", "booking", "cancelling", "cancelled", "needs_review", "failed"]) {
+    assert.equal(showsStayCancel({ isOwner: true, read: read(st) }), false, st);
+  }
+  const nrfn = stayCancelChargeLines({ policy: "NRFN", deadline: null, amount: 312.5, currency: "USD" });
+  assert.equal(nrfn[0], STAY_CANCEL_WORDS.nonRefundable);
+  assert.equal(nrfn[1], "You'll be charged $312.50.");
+  assert.equal(nrfn[2], STAY_CANCEL_WORDS.refundNote);
+  const past = stayCancelChargeLines({ policy: "RFN", deadline: "2026-10-01T00:00:00.000Z", amount: null, currency: null });
+  assert.equal(past[0], "Free cancellation ended on 2026-10-01.");
+  assert.equal(past[1], STAY_CANCEL_WORDS.chargeUnstated, "an unstated amount is said, never a number");
+  // The sheet sends the consent flag only from its second step, and the request body carries nothing else.
+  const sheet = readFileSync("client/src/components/plan/StayCancelButton.tsx", "utf8");
+  assert.match(sheet, /send\(true\)/);
+  assert.equal((sheet.match(/acknowledgeCharges: true/g) ?? []).length, 1);
 });
