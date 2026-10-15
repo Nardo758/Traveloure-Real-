@@ -387,7 +387,7 @@ const STAY_BOOKING_STATUS: Record<string, number> = {
   no_prebook: 409,
   holder_incomplete: 409,
   not_confirmed: 409,
-  charges_apply: 422,
+  charges_apply: 422, // fee-literal-ok: an HTTP status code, not a fee amount
 };
 function sendStayBooking(res: any, out: { state: string }) {
   const code = STAY_BOOKING_STATUS[out.state];
