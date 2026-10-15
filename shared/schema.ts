@@ -12564,7 +12564,8 @@ export const liteapiBookings = pgTable("liteapi_bookings", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   prebookUniq: uniqueIndex("uq_liteapi_bookings_prebook").on(table.prebookId),
-  liveItemUniq: uniqueIndex("uq_liteapi_bookings_live_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling')`),
+  // Migration 377: one HOLDING booking per item — the live set plus `needs_review` (LITEAPI_ITEM_HOLDING_STATUSES).
+  holdingItemUniq: uniqueIndex("uq_liteapi_bookings_holding_item").on(table.itineraryItemId).where(sql`status IN ('booking', 'confirmed', 'cancelling', 'needs_review')`),
   statusIdx: index("idx_liteapi_bookings_status").on(table.status),
 }));
 export type LiteapiBooking = typeof liteapiBookings.$inferSelect;

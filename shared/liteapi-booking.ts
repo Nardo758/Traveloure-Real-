@@ -20,7 +20,7 @@ export const LITEAPI_PAYMENT_METHOD = "TRANSACTION_ID" as const;
 
 export const LITEAPI_BOOKING_STATUSES = ["prebooked", "booking", "confirmed", "failed", "cancelling", "cancelled", "needs_review"] as const;
 export type LiteapiBookingStatus = (typeof LITEAPI_BOOKING_STATUSES)[number];
-/** A live booking holds the item: at most one per item (the partial UNIQUE in migration 371). */
+/** A live booking: `booking`, `confirmed` or `cancelling`. */
 export const LITEAPI_LIVE_STATUSES: readonly LiteapiBookingStatus[] = ["booking", "confirmed", "cancelling"];
 /**
  * A cancel LiteAPI refused with a definite 4xx: whether the hotel booking still stands is unknown, so the row is
@@ -28,7 +28,8 @@ export const LITEAPI_LIVE_STATUSES: readonly LiteapiBookingStatus[] = ["booking"
  * It keeps holding the item: no new prebook or book while one exists. Only a person moves a row out of it.
  */
 export const LITEAPI_NEEDS_REVIEW = "needs_review" as const;
-/** Every status that holds the item against a second booking: the live set plus `needs_review`. */
+/** Every status that holds the item against a second booking: the live set plus `needs_review` — exactly the
+ *  predicate of the partial UNIQUE `uq_liteapi_bookings_holding_item` (migration 377): at most one per item. */
 export const LITEAPI_ITEM_HOLDING_STATUSES: readonly LiteapiBookingStatus[] = [...LITEAPI_LIVE_STATUSES, LITEAPI_NEEDS_REVIEW];
 
 const toCents = (n: number) => Math.round(n * 100);

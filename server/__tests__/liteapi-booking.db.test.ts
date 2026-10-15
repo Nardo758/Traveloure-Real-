@@ -372,12 +372,12 @@ test("B13 a cancel refused with a definite 4xx goes to needs_review with the rea
   // Held: no second prebook, no second cancel attempt from this row.
   assert.deepEqual(await prebookStay(q("s5"), fakes().deps), { state: "already_booked" });
   assert.deepEqual(await cancelStay(q("s5"), fakes().deps), { state: "not_confirmed" });
-  // A prebooked row left over from before cannot book past the review row (the claim's NOT EXISTS).
+  // A prebooked row left over from before cannot book past the review row (the partial UNIQUE, migration 377).
   await db.execute(sql`INSERT INTO liteapi_bookings (id, trip_id, itinerary_item_id, user_id, status, env, prebook_id, transaction_id, offer_id, amount_cents, currency, checkin, checkout, adults, provider_hotel_id)
     SELECT ${id("s5-stale")}, trip_id, itinerary_item_id, user_id, 'prebooked', env, ${`${RUN}-stale-pb`}, 'tx-stale', offer_id, amount_cents, currency, checkin, checkout, adults, provider_hotel_id
     FROM liteapi_bookings WHERE id = ${r.id}`);
   const f = fakes();
-  assert.deepEqual(await bookStay(q("s5"), f.deps), { state: "no_prebook" });
+  assert.deepEqual(await bookStay(q("s5"), f.deps), { state: "already_booked" });
   assert.equal(f.calls.book.length, 0, "no book call while a review is open");
   // The sync reads it and reports it; it never changes our status.
   const sync = await runLiteapiBookingSync({ config: f.deps.config, client: fakes({ get: () => ({ data: { status: "CONFIRMED" } }) }).deps.client });
