@@ -8,6 +8,12 @@ import type { Express } from "express";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import {
+  decideEmailMerge,
+  EMAIL_SIGN_IN_REQUIRED,
+  EMAIL_SIGN_IN_REQUIRED_MESSAGE,
+  EMAIL_SIGN_IN_REQUIRED_PARAM,
+} from "./email-merge";
 
 interface InstagramAccount {
   id: string;
@@ -86,32 +92,35 @@ export async function facebookVerify(
 
     const fbUserId = `fb_${profile.id}`;
 
-    // Email-merge: if an existing account already owns this email (e.g. the
-    // user previously registered with email/password or Replit OIDC), attach
-    // the Facebook profile to that account rather than spawning a duplicate.
     let user;
     let isNewUser = false;
 
-    const emailOwner = email
+    // This Facebook identity's own account signs in as itself, whatever its email.
+    const existingFb = await authStorage.getUser(fbUserId).catch(() => undefined);
+
+    // Email-merge (LW-1-0): a DIFFERENT account already owns this email. Facebook's profile carries no
+    // verified-email signal, so the ONE rule (email-merge.ts) never merges it — and never into an admin
+    // account. No second account is created for the email either: the person is told to sign in with
+    // their email and password. Logged by user id only.
+    const emailOwner = !existingFb && email
       ? await authStorage.getUserByEmail(email).catch(() => undefined)
       : undefined;
 
     if (emailOwner) {
-      // Merge: update the canonical account with any richer Facebook data.
-      const updatedOwner = await authStorage.updateUser(emailOwner.id, {
-        profileImageUrl:
-          instagramData?.profile_picture_url ||
-          profileImageUrl ||
-          emailOwner.profileImageUrl ||
-          undefined,
+      const decision = decideEmailMerge({ emailVerified: false, owner: emailOwner });
+      if (!decision.merge) {
+        console.warn(`[Facebook Auth] email-match merge refused (${decision.reason}) for existing account ${emailOwner.id}`);
+        return done(null, false, { message: EMAIL_SIGN_IN_REQUIRED_MESSAGE, code: EMAIL_SIGN_IN_REQUIRED } as any);
+      }
+      // Unreachable while Facebook supplies no signal; kept so the rule, not this file, decides.
+      user = (await authStorage.updateUser(emailOwner.id, {
+        profileImageUrl: emailOwner.profileImageUrl || instagramData?.profile_picture_url || profileImageUrl || undefined,
         firstName: emailOwner.firstName || profile.name?.givenName || profile.displayName?.split(" ")[0] || undefined,
         lastName: emailOwner.lastName || profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || undefined,
-      });
-      user = updatedOwner ?? emailOwner;
+      })) ?? emailOwner;
       console.log(`[Facebook Auth] Merged fb_${profile.id} into existing account ${emailOwner.id}`);
     } else {
       // No email collision — create/update the fb_xxx account as before.
-      const existingFb = await authStorage.getUser(fbUserId).catch(() => undefined);
       isNewUser = !existingFb;
 
       // Admin-controlled registration kill switch (/admin/system):
@@ -218,9 +227,17 @@ export function setupFacebookAuth(app: Express) {
 
   app.get("/api/auth/facebook/callback", (req, res, next) => {
     ensureFacebookStrategy(req.hostname);
-    passport.authenticate(`facebook:${req.hostname}`, {
-      successRedirect: "/become-expert?influencer=true&auth=facebook",
-      failureRedirect: "/become-expert?influencer=true&error=auth_failed",
+    passport.authenticate(`facebook:${req.hostname}`, (err: any, user: any, info: any) => {
+      if (err) return next(err);
+      // LW-1-0: a refused email-match merge is told to use email and password.
+      if (!user && info?.code === EMAIL_SIGN_IN_REQUIRED) {
+        return res.redirect(`/login?error=${EMAIL_SIGN_IN_REQUIRED_PARAM}`);
+      }
+      if (!user) return res.redirect("/become-expert?influencer=true&error=auth_failed");
+      req.logIn(user, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        res.redirect("/become-expert?influencer=true&auth=facebook");
+      });
     })(req, res, next);
   });
 

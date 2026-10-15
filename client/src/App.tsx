@@ -219,6 +219,7 @@ import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
+import { EMAIL_SIGN_IN_REQUIRED_MESSAGE, EMAIL_SIGN_IN_REQUIRED_PARAM } from "@shared/email-sign-in-required";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
 // Routes are code-split (React.lazy) so the browser and the Vite dev server
@@ -306,9 +307,14 @@ function LoginRoute() {
       sessionStorage.setItem("traveloure_return_to", returnTo);
     }
     navigate("/", { replace: true });
+    // LW-1-0: a social sign-in whose email belongs to an existing account was not merged into it
+    // (server/replit_integrations/auth/email-merge.ts) — say so, and offer email and password.
+    const emailSignInRequired = params.get("error") === EMAIL_SIGN_IN_REQUIRED_PARAM;
     openSignInModal({
       title: "Sign in to your account",
-      description: "Welcome back! Sign in to continue planning your travels.",
+      description: emailSignInRequired
+        ? EMAIL_SIGN_IN_REQUIRED_MESSAGE
+        : "Welcome back! Sign in to continue planning your travels.",
       returnTo,
     });
   }, [isLoading, user, openSignInModal, navigate]);
