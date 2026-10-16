@@ -8191,9 +8191,13 @@ export const transportLegs = pgTable("transport_legs", {
   supersededAt: timestamp("superseded_at"),
   supersededByItemId: varchar("superseded_by_item_id"),
   // Migration 357 (ledger `2026-10-07-step9a-routing-engine`, step 9a ruling 3): the routing source that
-  // computed this leg — `google_routes` | `stub`. NULL = not a routing-engine leg. A traveler sees an
+  // computed this leg — `google_routes` | `osrm` | `stub`. NULL = not a routing-engine leg. A traveler sees an
   // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
   source: varchar("source", { length: 30 }),
+  // Migration 385 (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec ED2): the departure this leg was routed for,
+  // plan-timezone wall-clock "HH:MM", verbatim. One writer, the routing engine. NULL = not recorded. Nullable, no
+  // DEFAULT/CHECK/index/FK.
+  routedDepartureLocal: text("routed_departure_local"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -8300,7 +8304,7 @@ export const transportBookingOptions = pgTable("transport_booking_options", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true, source: true });
+export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true, source: true, routedDepartureLocal: true });
 export const insertTransportBookingOptionSchema = createInsertSchema(transportBookingOptions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSharedItinerarySchema = createInsertSchema(sharedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMapsExportCacheSchema = createInsertSchema(mapsExportCache).omit({ id: true });

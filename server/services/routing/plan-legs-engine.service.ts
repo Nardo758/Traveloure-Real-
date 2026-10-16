@@ -58,6 +58,15 @@ function realPoint(lat: unknown, lng: unknown): { lat: number; lng: number } | n
   return { lat: la, lng: ln };
 }
 
+/**
+ * Migration 385 (9b spec ED2): the plan-timezone "HH:MM" this leg was routed for — the same wall clock
+ * `departAt` turns into the instant it asks with (P0 ruling 3's 10:00 when the stop has no time). NULL when
+ * the leg was asked with no departure (no trip start), so nothing is claimed that was not asked.
+ */
+export function routedDepartureLocalFor(leg: Pick<DesiredLeg, "wallClock">, departAt: (leg: any) => Date | null): string | null {
+  return departAt(leg) ? legDepartureWallClock(leg.wallClock) : null;
+}
+
 /** `coord_source`/`coord_fetched_at` for a leg: Google when either end is, with the OLDER fetch time. */
 export function googleCoordStamp(from: Date | undefined, to: Date | undefined): { coordSource: "google"; coordFetchedAt: Date } | Record<string, never> {
   const times = [from, to].filter((d): d is Date => !!d);
@@ -385,6 +394,7 @@ async function computePlanLegsCore(
         pickupTime: old.pickupTime ?? null,
         pickupProviderServiceId: old.pickupProviderServiceId ?? null,
         source: route.provenance.source,
+        routedDepartureLocal: routedDepartureLocalFor(want, departAt),
         calculatedAt: new Date(route.provenance.checkedAt),
         ...googleCoordStamp(googleFetchedAt.get(want.from.id), googleFetchedAt.get(want.to.id)),
       });
@@ -469,6 +479,7 @@ async function computePlanLegsCore(
       destinationProfile: trip.destination || null,
       proposalStatus: "proposed",
       source: route.provenance.source,
+      routedDepartureLocal: routedDepartureLocalFor(leg, departAt),
       calculatedAt: new Date(route.provenance.checkedAt),
       ...googleCoordStamp(googleFetchedAt.get(leg.from.id), googleFetchedAt.get(leg.to.id)),
     });
