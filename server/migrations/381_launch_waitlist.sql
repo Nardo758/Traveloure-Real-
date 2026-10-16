@@ -4,34 +4,52 @@
 -- Two NEW tables, born EMPTY, one additive nullable column on `users`, and three seeded platform_settings rows.
 -- Additive only: no DEFAULT, no CHECK, no FK, nothing altered but the one ADD COLUMN. Every column but the
 -- primary key is nullable; the ONE writer (server/services/launch-waitlist.service.ts, LW-1c) supplies id and
--- timestamps itself. Value sets
--- (`source`) are app-enforced once in shared/launch-waitlist.ts. Tables and indexes are declared in
+-- timestamps itself. Value sets (`role`, `trip_type`, `service_type`, `source`) are app-enforced once in
+-- shared/launch-waitlist.ts. Tables and indexes are declared in
 -- shared/schema.ts (deploy-push durability rule). IF NOT EXISTS / ON CONFLICT DO NOTHING throughout, so a
 -- second run is a no-op.
 --
 -- The UNIQUE index is safe at creation because its table is created by this same migration (§20's born-object
 -- carve-out): it is what makes a repeat sign-up an update of the one row, never a duplicate.
 
--- One row per (email, market). `email` is stored normalised (trimmed, lower-case) by the writer.
+-- One row per (email, market), for BOTH forms (hand-off Part B "Field names"). `email` is stored normalised
+-- (trimmed, lower-case) by the writer, which is how "unique per market" holds without the citext extension.
+-- `role` is 'traveler' | 'provider' (app-enforced). Traveler answers: `trip_type` (proposal | wedding | foliage |
+-- other), `rough_month` ('YYYY-MM'), `worry` (<= 500). Provider answers: `contact_name`, `business_name`,
+-- `service_type` (the provider sign-up category list), `website`, `area` (<= 120), `languages`. Each half is
+-- NULL on the other role's rows. `source` is `kyoto_waitlist_page` or `kyoto_blog_cta:<post-slug>` (allowlist
+-- pattern, app-enforced); the FIRST source is kept on a repeat sign-up.
 -- `consent_at` is an OPT-IN, not a gate (ruling 1): joining the list never requires it; NULL = the tick was
--- not given, and nothing is ever emailed to a NULL. `consent_text_id` names the consent_texts row the person
--- ticked (app-enforced, no FK). `referrer_user_id` / `short_link_code` are written only from a short_links row
--- the server resolved (LW-1d), never from a request body.
+-- not given, and nothing is ever emailed to a NULL. `consent_text_version` names the consent_texts version the
+-- person ticked (app-enforced, no FK). `unsubscribed_at` is written by a later unsubscribe rail; NULL = never
+-- unsubscribed. `referrer_user_id` / `short_link_code` are written only from a short_links row the server
+-- resolved (LW-1d), never from a request body.
 CREATE TABLE IF NOT EXISTS launch_waitlist (
-  id                varchar PRIMARY KEY,
-  email             varchar(255),
-  market_slug       varchar(64),
-  source            varchar(32),
-  source_ref        varchar(200),
-  referrer_user_id  varchar,
-  short_link_code   varchar(12),
-  consent_at        timestamp,
-  consent_text_id   varchar,
-  created_at        timestamp,
-  updated_at        timestamp
+  id                   varchar PRIMARY KEY,
+  email                varchar(255),
+  market_slug          varchar(64),
+  role                 varchar(16),
+  source               varchar(200),
+  trip_type            varchar(32),
+  rough_month          varchar(7),
+  worry                text,
+  contact_name         varchar(120),
+  business_name        varchar(160),
+  service_type         varchar(64),
+  website              varchar(500),
+  area                 varchar(120),
+  languages            text[],
+  referrer_user_id     varchar,
+  short_link_code      varchar(12),
+  consent_at           timestamp,
+  consent_text_version varchar(40),
+  created_at           timestamp,
+  updated_at           timestamp,
+  unsubscribed_at      timestamp
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_launch_waitlist_email_market ON launch_waitlist (email, market_slug);
 CREATE INDEX IF NOT EXISTS idx_launch_waitlist_market_created ON launch_waitlist (market_slug, created_at);
+CREATE INDEX IF NOT EXISTS idx_launch_waitlist_market_role ON launch_waitlist (market_slug, role);
 
 -- The exact consent wording a person ticked, versioned. A row is never edited: new wording is a new version.
 CREATE TABLE IF NOT EXISTS consent_texts (

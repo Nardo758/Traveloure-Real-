@@ -12639,22 +12639,34 @@ export type TransportOptionEvent = typeof transportOptionEvents.$inferSelect;
 // CHECK or FK; every column but the key nullable — the ONE writer (server/services/launch-waitlist.service.ts)
 // supplies id and timestamps. `consent_at` is an opt-in, not a gate: NULL = never ticked, and nothing is ever
 // emailed to a NULL. `referrer_user_id` / `short_link_code` come only from a server-resolved short_links row.
-// `source` is app-enforced once in shared/launch-waitlist.ts. No insert schema — no request body reaches it (§19).
+// `role`/`trip_type`/`service_type`/`source` value sets are app-enforced once in shared/launch-waitlist.ts; the
+// traveler and provider halves are NULL on the other role's rows. No insert schema — no request body reaches it (§19).
 export const launchWaitlist = pgTable("launch_waitlist", {
   id: varchar("id").primaryKey(),
   email: varchar("email", { length: 255 }),
   marketSlug: varchar("market_slug", { length: 64 }),
-  source: varchar("source", { length: 32 }),
-  sourceRef: varchar("source_ref", { length: 200 }),
+  role: varchar("role", { length: 16 }),
+  source: varchar("source", { length: 200 }),
+  tripType: varchar("trip_type", { length: 32 }),
+  roughMonth: varchar("rough_month", { length: 7 }),
+  worry: text("worry"),
+  contactName: varchar("contact_name", { length: 120 }),
+  businessName: varchar("business_name", { length: 160 }),
+  serviceType: varchar("service_type", { length: 64 }),
+  website: varchar("website", { length: 500 }),
+  area: varchar("area", { length: 120 }),
+  languages: text("languages").array(),
   referrerUserId: varchar("referrer_user_id"),
   shortLinkCode: varchar("short_link_code", { length: 12 }),
   consentAt: timestamp("consent_at"),
-  consentTextId: varchar("consent_text_id"),
+  consentTextVersion: varchar("consent_text_version", { length: 40 }),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
+  unsubscribedAt: timestamp("unsubscribed_at"),
 }, (table) => ({
   emailMarketUniq: uniqueIndex("uq_launch_waitlist_email_market").on(table.email, table.marketSlug),
   marketCreatedIdx: index("idx_launch_waitlist_market_created").on(table.marketSlug, table.createdAt),
+  marketRoleIdx: index("idx_launch_waitlist_market_role").on(table.marketSlug, table.role),
 }));
 export type LaunchWaitlistRow = typeof launchWaitlist.$inferSelect;
 
