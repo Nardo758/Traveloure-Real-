@@ -3039,7 +3039,7 @@
       "path": "/api/admin/waitlist/:id",
       "effectivePath": "/api/admin/waitlist/:id",
       "source": "server/routes/launch-waitlist.routes.ts",
-      "line": 120,
+      "line": 141,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -12007,7 +12007,7 @@
       "path": "/api/waitlist",
       "effectivePath": "/api/waitlist",
       "source": "server/routes/launch-waitlist.routes.ts",
-      "line": 35,
+      "line": 41,
       "risk": "other",
       "expectedAuth": "public",
       "expectedRoles": [],

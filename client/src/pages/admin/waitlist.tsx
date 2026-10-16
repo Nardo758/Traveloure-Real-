@@ -4,6 +4,8 @@
 // download is audit-logged server-side. Stored keys are shown with the forms' own labels.
 // LW-1e: QA rows (QA-domain addresses) are left out of the numbers and the default CSVs, and said so; an admin can
 // find a row by email and delete it (the server writes the audit row, keeping the row id and a hash of the address).
+// LW-2: every operating market's totals in one table, and a market filter (default the launch market) that the
+// counts and both CSVs follow; each CSV row carries its market_slug.
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -16,7 +18,9 @@ import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
-import { WAITLIST_SEARCH_MIN_CHARS, WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES } from "@shared/launch-waitlist";
+import {
+  WAITLIST_MARKET_OPTIONS, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES, waitlistCityName,
+} from "@shared/launch-waitlist";
 
 interface WaitlistCount { key: string; count: number }
 interface WaitlistReferrerCount { referrerUserId: string; handle: string | null; count: number }
@@ -26,6 +30,7 @@ interface WaitlistCounts {
   travelers: { total: number; consented: number; byTripType: WaitlistCount[]; bySource: WaitlistCount[] };
   providers: { total: number; consented: number; byServiceType: WaitlistCount[] };
   qaExcluded: number;
+  byMarket: { marketSlug: string; travelers: number; providers: number }[];
 }
 interface WaitlistSearchRow {
   id: string; email: string; role: string; marketSlug: string | null; source: string | null; createdAt: string | null; isQa: boolean;
@@ -161,9 +166,36 @@ function Totals({ total, consented, prefix }: { total: number; consented: number
   );
 }
 
+function MarketTable({ rows }: { rows: WaitlistCounts["byMarket"] }) {
+  return (
+    <table className="text-sm" data-testid="table-waitlist-markets">
+      <thead>
+        <tr>
+          <th className="pr-6 text-left font-medium">City</th>
+          <th className="pr-6 text-right font-medium">Travelers</th>
+          <th className="text-right font-medium">Guides and providers</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.marketSlug} data-testid={`row-waitlist-market-${r.marketSlug}`}>
+            <td className="pr-6">{waitlistCityName(r.marketSlug) ?? r.marketSlug}</td>
+            <td className="pr-6 text-right">{r.travelers}</td>
+            <td className="text-right">{r.providers}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function AdminWaitlist() {
-  const { data, isLoading, isError } = useQuery<WaitlistCounts>({ queryKey: ["/api/admin/waitlist"] });
-  const market = data?.marketSlug ? ` — ${data.marketSlug}` : "";
+  // "" = the server's default (the launch market); "all" = every market; else one market key.
+  const [filter, setFilter] = useState("");
+  const qs = filter ? `?market=${encodeURIComponent(filter)}` : "";
+  const { data, isLoading, isError } = useQuery<WaitlistCounts>({ queryKey: [`/api/admin/waitlist${qs}`] });
+  const market = data?.marketSlug ? ` — ${waitlistCityName(data.marketSlug) ?? data.marketSlug}` : filter === "all" ? " — all cities" : "";
+  const exportHref = (role: "traveler" | "provider") => `/api/admin/waitlist/export?role=${role}${filter ? `&market=${encodeURIComponent(filter)}` : ""}`;
   return (
     <AdminLayout title="Waitlist">
       <div className="space-y-6 p-6" data-testid="page-admin-waitlist">
@@ -177,6 +209,27 @@ export default function AdminWaitlist() {
               </p>
             )}
             <Card>
+              <CardHeader><CardTitle>By city</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <MarketTable rows={data.byMarket} />
+                <label className="flex items-center gap-2 text-sm">
+                  <span>Show</span>
+                  <select
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    data-testid="select-waitlist-market"
+                  >
+                    <option value="">Launch market</option>
+                    <option value="all">All cities</option>
+                    {WAITLIST_MARKET_OPTIONS.map((m) => (
+                      <option key={m.key} value={m.key}>{m.city}</option>
+                    ))}
+                  </select>
+                </label>
+              </CardContent>
+            </Card>
+            <Card>
               <CardHeader><CardTitle>Travelers{market}</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <Totals total={data.travelers.total} consented={data.travelers.consented} prefix="waitlist-travelers" />
@@ -185,7 +238,7 @@ export default function AdminWaitlist() {
                   <CountTable heading="Source" rows={data.travelers.bySource} label={(k) => k} testId="table-waitlist-sources" />
                 </div>
                 <Button asChild variant="outline" data-testid="button-waitlist-csv-travelers">
-                  <a href="/api/admin/waitlist/export?role=traveler"><Download className="mr-2 h-4 w-4" />Download travelers CSV</a>
+                  <a href={exportHref("traveler")}><Download className="mr-2 h-4 w-4" />Download travelers CSV</a>
                 </Button>
               </CardContent>
             </Card>
@@ -195,7 +248,7 @@ export default function AdminWaitlist() {
                 <Totals total={data.providers.total} consented={data.providers.consented} prefix="waitlist-providers" />
                 <CountTable heading="Type of service" rows={data.providers.byServiceType} label={(k) => labelFor(WAITLIST_SERVICE_TYPES, k)} testId="table-waitlist-service-types" />
                 <Button asChild variant="outline" data-testid="button-waitlist-csv-providers">
-                  <a href="/api/admin/waitlist/export?role=provider"><Download className="mr-2 h-4 w-4" />Download providers CSV</a>
+                  <a href={exportHref("provider")}><Download className="mr-2 h-4 w-4" />Download providers CSV</a>
                 </Button>
               </CardContent>
             </Card>

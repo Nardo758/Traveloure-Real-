@@ -160,7 +160,7 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | PATCH | `/api/admin/users/:id/suspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9420` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/unsuspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9586` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/verification` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3224` | unknown | unknown |
-| DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:120` | unknown | unknown |
+| DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:141` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests` | other | resource-owner | no | verified | `server/routes/content.routes.ts:7609` | unknown | unknown |
 | PATCH | `/api/affiliate-booking-requests/:id` | other | resource-owner | no | verified | `server/routes/content.routes.ts:8046` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests/:id/claim` | other | session-self | no | unknown | `server/routes/content.routes.ts:7988` | unknown | unknown |
@@ -675,7 +675,7 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/vendors` | other | session-self | no | unknown | `server/routes.ts:2744` | unknown | unknown |
 | POST | `/api/viator/availability` | other | session-self | no | unknown | `server/routes/content.routes.ts:3577` | unknown | unknown |
 | POST | `/api/visa/requirements` | other | public-or-system | no | unknown | `server/routes/experts.routes.ts:670` | unknown | unknown |
-| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:35` | unknown | unknown |
+| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:41` | unknown | unknown |
 | POST | `/api/wallet/add-credits` | payments | session-self | no | self | `server/routes/payments.routes.ts:277` | unknown | unknown |
 | POST | `/api/webhooks/persona` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:104` (/persona) | unknown | unknown |
 | POST | `/api/webhooks/stripe` | payments | signature | no | unknown | `server/routes/webhooks.routes.ts:535` (/stripe) | unknown | unknown |

@@ -1,12 +1,15 @@
 // LW-1c (ledger `2026-10-16-lw1c-kyoto-waitlist`): the launch-market waitlist.
 //
 //   POST /api/waitlist               — public, rate-limited (strictRateLimiter), `.strict()` allowlist body (§19),
-//                                      honeypot `homepage`. The market is the `launch_market_slug` setting, never
-//                                      the body. Always answers `{ ok: true }` — whether the address was already
-//                                      on the list is never revealed. No email is sent (Launch ruling 1).
-//   GET  /api/admin/waitlist         — counts for the launch market: travelers (by trip type and source) and
-//                                      providers (by service type) apart, never mixed. Admin only.
-//   GET  /api/admin/waitlist/export  — CSV of the launch market's list (`?role=traveler|provider`, else both).
+//                                      honeypot `homepage`. LW-2: an optional `market` — ONE operating-market key;
+//                                      absent ⇒ the `launch_market_slug` setting; any other value ⇒ 400
+//                                      UNKNOWN_MARKET. Always answers `{ ok: true }` — whether the address was
+//                                      already on the list is never revealed. No email is sent (Launch ruling 1).
+//   GET  /api/admin/waitlist         — counts for one market (`?market=<key>|all`, default the launch market):
+//                                      travelers (by trip type and source) and providers (by service type) apart,
+//                                      never mixed; LW-2 `byMarket` gives every market's two totals. Admin only.
+//   GET  /api/admin/waitlist/export  — CSV (`?market=<key>|all`, default the launch market;
+//                                      `?role=traveler|provider`, else both; the `market_slug` column names each row's city).
 //                                      Admin only; every export is audit-logged. QA rows (QA-domain addresses) are
 //                                      left out unless `?includeQa=1` (LW-1e); every row carries `id` and `is_qa`.
 //   GET  /api/admin/waitlist/search  — LW-1e: rows whose email contains `?email=` (at least 3 characters), every
@@ -25,7 +28,10 @@ import { getLaunchMarketSlug } from "../services/platform-flags";
 import {
   WAITLIST_CSV_COLUMNS, deleteWaitlistRow, joinWaitlist, searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
 } from "../services/launch-waitlist.service";
-import { WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, waitlistJoinBodySchema } from "@shared/launch-waitlist";
+import {
+  WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_UNKNOWN_MARKET, resolveWaitlistMarket, waitlistCityName,
+  waitlistJoinBodySchema,
+} from "@shared/launch-waitlist";
 import { logger } from "../infrastructure/logger";
 import { csvCell } from "../utils/csv";
 import { resolveWaitlistReferral } from "../services/waitlist-referral.service";
@@ -38,10 +44,13 @@ router.post("/api/waitlist", strictRateLimiter, async (req, res) => {
   if (typeof raw.homepage === "string" && raw.homepage.trim() !== "") return res.json({ ok: true });
   const parsed = waitlistJoinBodySchema.safeParse(raw);
   if (!parsed.success) return res.status(400).json({ error: WAITLIST_EMAIL_ERROR });
-  const { homepage: _honeypot, ref, ...body } = parsed.data;
+  const { homepage: _honeypot, ref, market, ...body } = parsed.data;
   try {
-    const marketSlug = await getLaunchMarketSlug();
-    if (!marketSlug) return res.status(503).json({ error: "The waitlist is not open right now." });
+    const launchMarketSlug = await getLaunchMarketSlug();
+    if (!launchMarketSlug) return res.status(503).json({ error: "The waitlist is not open right now." });
+    const resolved = resolveWaitlistMarket(market, launchMarketSlug);
+    if (!resolved.ok) return res.status(400).json({ error: "Please choose a city from the list.", code: WAITLIST_UNKNOWN_MARKET });
+    const marketSlug = resolved.market;
     // LW-1d: credit comes only from the short link the visitor arrived through, resolved here from its raw code; a
     // refusal (made-up, expired, someone else's trip, the visitor's own link) is logged and the sign-up goes on.
     const referral = await resolveWaitlistReferral({ ref: ref ?? null, viewerUserId: getUserId(req) ?? null });
@@ -71,17 +80,29 @@ async function requireAdminUser(req: any, res: any): Promise<{ id: string; role:
   return { id: userId, role: user.role };
 }
 
+/**
+ * LW-2: the admin market filter. Absent ⇒ the launch market (the behavior before LW-2); `all` ⇒ every market
+ * (null); an operating-market key ⇒ that market; anything else ⇒ undefined (the route answers 400).
+ */
+async function adminMarketFilter(raw: unknown): Promise<string | null | undefined> {
+  if (raw === undefined || raw === "") return getLaunchMarketSlug();
+  if (raw === "all") return null;
+  return typeof raw === "string" && waitlistCityName(raw) ? raw : undefined;
+}
+
 router.get("/api/admin/waitlist", isAuthenticated, async (req, res) => {
   const admin = await requireAdminUser(req, res);
   if (!admin) return;
-  const marketSlug = await getLaunchMarketSlug();
+  const marketSlug = await adminMarketFilter(req.query.market);
+  if (marketSlug === undefined) return res.status(400).json({ error: "Unknown market", code: WAITLIST_UNKNOWN_MARKET });
   res.json(await waitlistCounts(marketSlug));
 });
 
 router.get("/api/admin/waitlist/export", isAuthenticated, async (req, res) => {
   const admin = await requireAdminUser(req, res);
   if (!admin) return;
-  const marketSlug = await getLaunchMarketSlug();
+  const marketSlug = await adminMarketFilter(req.query.market);
+  if (marketSlug === undefined) return res.status(400).json({ error: "Unknown market", code: WAITLIST_UNKNOWN_MARKET });
   const roleParam = req.query.role;
   const role = roleParam === "traveler" || roleParam === "provider" ? roleParam : null;
   const includeQa = req.query.includeQa === "1";

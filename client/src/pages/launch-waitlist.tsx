@@ -7,6 +7,9 @@
 // provider form (name, business name, email, type of service, the same tick). The source comes from this page's
 // own URL, checked against the allowlist pattern; a hidden honeypot rides along. The answer is the same whether or
 // not the address was already on the list.
+// LW-2 (ledger `2026-10-16-lw2-all-markets-waitlist`): under each form, "Planning somewhere else? Tell us where." —
+// ONE city per submission, from `OPERATING_MARKETS`, defaulting to the launch market (Kyoto). The Kyoto words are
+// unchanged; another city's tick, button and thank-you name that city and promise only an email when it opens.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -17,9 +20,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SEOHead } from "@/components/seo-head";
 import {
-  WAITLIST_CONSENT_LINE,
   WAITLIST_CONSENT_PRIVACY_LINK,
   WAITLIST_EMAIL_ERROR,
+  WAITLIST_MARKET_OPTIONS,
+  WAITLIST_OTHER_CITY_PROMPT,
+  waitlistCityName,
+  waitlistConsentLine,
+  waitlistOtherCityDone,
+  waitlistOtherCityJoinButton,
+  waitlistOtherCityProviderDone,
+  waitlistOtherCityProviderLine,
   WAITLIST_SERVICE_TYPES,
   WAITLIST_TRIP_TYPES,
   WAITLIST_WORRY_MAX,
@@ -65,12 +75,12 @@ function Honeypot({ value, onChange, id }: { value: string; onChange: (v: string
   );
 }
 
-function ConsentTick({ id, checked, onChange }: { id: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ConsentTick({ id, market, checked, onChange }: { id: string; market: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-start gap-2">
       <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} data-testid={`checkbox-${id}`} />
       <div className="text-sm leading-snug">
-        <Label htmlFor={id} className="font-normal">{WAITLIST_CONSENT_LINE}</Label>{" "}
+        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}</Label>{" "}
         {WAITLIST_CONSENT_PRIVACY_LINK.before}
         <Link href={WAITLIST_CONSENT_PRIVACY_LINK.href} className="underline">{WAITLIST_CONSENT_PRIVACY_LINK.label}</Link>
         {WAITLIST_CONSENT_PRIVACY_LINK.after}
@@ -82,7 +92,24 @@ function ConsentTick({ id, checked, onChange }: { id: string; checked: boolean; 
 const selectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
 
-function TravelerForm({ source, refCode }: { source: string | null; refCode: string | null }) {
+/** LW-2: the one city this submission is for. A single select — never several cities in one submission. */
+function CityPicker({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{WAITLIST_OTHER_CITY_PROMPT}</Label>
+      <select id={id} className={`${selectClass} block`} value={value} onChange={(e) => onChange(e.target.value)} data-testid={`select-${id}`}>
+        {WAITLIST_MARKET_OPTIONS.map((m) => (
+          <option key={m.key} value={m.key}>{m.city}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function TravelerForm({ source, refCode, launchMarket }: { source: string | null; refCode: string | null; launchMarket: string }) {
+  const [market, setMarket] = useState(launchMarket);
+  const isLaunch = market === launchMarket;
+  const city = waitlistCityName(market) ?? market;
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [tripType, setTripType] = useState<WaitlistTripType | "">("");
@@ -106,6 +133,7 @@ function TravelerForm({ source, refCode }: { source: string | null; refCode: str
     const r = await postWaitlist({
       role: "traveler",
       email: email.trim(),
+      market,
       consent,
       ...(source ? { source } : {}),
       ...(refCode ? { ref: refCode } : {}),
@@ -125,7 +153,9 @@ function TravelerForm({ source, refCode }: { source: string | null; refCode: str
   if (status === "done") {
     return (
       <p className="mt-6 rounded-lg border p-4" role="status" data-testid="text-waitlist-done">
-        You're on the Kyoto waitlist. Thanks for telling us about your trip. If you ticked the box, we'll email you when Traveloure opens for Kyoto.
+        {isLaunch
+          ? "You're on the Kyoto waitlist. Thanks for telling us about your trip. If you ticked the box, we'll email you when Traveloure opens for Kyoto."
+          : waitlistOtherCityDone(city, consent)}
       </p>
     );
   }
@@ -150,7 +180,7 @@ function TravelerForm({ source, refCode }: { source: string | null; refCode: str
         )}
       </div>
       <Honeypot id="waitlist-homepage" value={homepage} onChange={setHomepage} />
-      <ConsentTick id="waitlist-consent" checked={consent} onChange={setConsent} />
+      <ConsentTick id="waitlist-consent" market={market} checked={consent} onChange={setConsent} />
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">What's the trip for?</legend>
         <div className="flex flex-wrap gap-2">
@@ -202,14 +232,18 @@ function TravelerForm({ source, refCode }: { source: string | null; refCode: str
           data-testid="input-waitlist-worry"
         />
       </div>
+      <CityPicker id="waitlist-city" value={market} onChange={setMarket} />
       <Button type="submit" disabled={status === "sending"} data-testid="button-waitlist-join">
-        Join the Kyoto waitlist
+        {isLaunch ? "Join the Kyoto waitlist" : waitlistOtherCityJoinButton(city)}
       </Button>
     </form>
   );
 }
 
-function ProviderForm({ source, refCode }: { source: string | null; refCode: string | null }) {
+function ProviderForm({ source, refCode, launchMarket }: { source: string | null; refCode: string | null; launchMarket: string }) {
+  const [market, setMarket] = useState(launchMarket);
+  const isLaunch = market === launchMarket;
+  const city = waitlistCityName(market) ?? market;
   const [contactName, setContactName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
@@ -231,6 +265,7 @@ function ProviderForm({ source, refCode }: { source: string | null; refCode: str
     const r = await postWaitlist({
       role: "provider",
       email: email.trim(),
+      market,
       consent,
       contactName: contactName.trim(),
       ...(businessName.trim() ? { businessName: businessName.trim() } : {}),
@@ -250,7 +285,9 @@ function ProviderForm({ source, refCode }: { source: string | null; refCode: str
   if (status === "done") {
     return (
       <p className="mt-6 rounded-lg border p-4" role="status" data-testid="text-provider-waitlist-done">
-        Thanks, we've got your details. We'll be in touch about joining Traveloure in Kyoto.
+        {isLaunch
+          ? "Thanks, we've got your details. We'll be in touch about joining Traveloure in Kyoto."
+          : waitlistOtherCityProviderDone(city)}
       </p>
     );
   }
@@ -305,7 +342,11 @@ function ProviderForm({ source, refCode }: { source: string | null; refCode: str
         </div>
       </fieldset>
       <Honeypot id="provider-homepage" value={homepage} onChange={setHomepage} />
-      <ConsentTick id="provider-consent" checked={consent} onChange={setConsent} />
+      <ConsentTick id="provider-consent" market={market} checked={consent} onChange={setConsent} />
+      <CityPicker id="provider-city" value={market} onChange={setMarket} />
+      {!isLaunch && (
+        <p className="text-sm text-muted-foreground" data-testid="text-provider-other-city">{waitlistOtherCityProviderLine(city)}</p>
+      )}
       <Button type="submit" disabled={status === "sending"} data-testid="button-provider-waitlist-send">
         Send my details
       </Button>
@@ -319,6 +360,9 @@ export default function LaunchWaitlistPage() {
   // LW-1d: the raw short-link code the visitor arrived with (this page's ?ref=, else the session's). The server
   // decides any credit; the page never names a referrer.
   const refCode = arrivalRef(window.location.search, getAcquisitionRef());
+  // LW-2: the picker's default is the launch market (Kyoto); until the setting has loaded, the first operating market.
+  const launchMarket =
+    signup?.launchMarketSlug && waitlistCityName(signup.launchMarketSlug) ? signup.launchMarketSlug : WAITLIST_MARKET_OPTIONS[0].key;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
@@ -386,7 +430,7 @@ export default function LaunchWaitlistPage() {
         <p className="mt-3 text-muted-foreground">
           We're opening Traveloure in Kyoto first. Join the waitlist and tell us about your trip, so it's shaped around trips like yours.
         </p>
-        <TravelerForm source={source} refCode={refCode} />
+        <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} />
       </section>
 
       <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-providers">
@@ -394,7 +438,7 @@ export default function LaunchWaitlistPage() {
         <p className="mt-3 text-muted-foreground">
           Traveloure is opening in Kyoto first. As local experts and providers join, travelers will be able to plan trips, proposals and weddings with them. Leave your details and we'll be in touch about joining.
         </p>
-        <ProviderForm source={source} refCode={refCode} />
+        <ProviderForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} />
         <p className="mt-6 text-sm">
           <Link href="/signup?intent=supply" className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
         </p>

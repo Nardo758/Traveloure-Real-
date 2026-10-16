@@ -17,22 +17,27 @@ import {
   WAITLIST_QA_EMAIL_DOMAIN,
   WAITLIST_SEARCH_LIMIT,
   WAITLIST_CONSENT_KEY,
-  WAITLIST_CONSENT_TEXT,
-  WAITLIST_CONSENT_VERSION,
   WAITLIST_EXPERT_LINK_SOURCE,
+  WAITLIST_MARKET_OPTIONS,
+  waitlistConsentText,
+  waitlistConsentVersion,
   normalizeWaitlistEmail,
   normalizeWaitlistSource,
   type WaitlistJoinBody,
 } from "@shared/launch-waitlist";
 
-/** Records the current consent wording once (ON CONFLICT DO NOTHING on (consent_key, version)); returns its version. */
-export async function ensureConsentText(): Promise<string> {
+/**
+ * Records the market's consent wording once (ON CONFLICT DO NOTHING on (consent_key, version)); returns its version.
+ * LW-2: one row per market, version `f1-2026-10-15:<market>`, body the exact text shown beside that city's tick.
+ */
+export async function ensureConsentText(marketSlug: string): Promise<string> {
+  const version = waitlistConsentVersion(marketSlug);
   await db.execute(sql`
     INSERT INTO consent_texts (id, consent_key, version, body, created_at)
-    VALUES (gen_random_uuid(), ${WAITLIST_CONSENT_KEY}, ${WAITLIST_CONSENT_VERSION}, ${WAITLIST_CONSENT_TEXT}, NOW())
+    VALUES (gen_random_uuid(), ${WAITLIST_CONSENT_KEY}, ${version}, ${waitlistConsentText(marketSlug)}, NOW())
     ON CONFLICT (consent_key, version) DO NOTHING
   `);
-  return WAITLIST_CONSENT_VERSION;
+  return version;
 }
 
 /** A credit the server resolved from a short link (`resolveWaitlistReferral`), never from a request body. */
@@ -57,7 +62,7 @@ export async function joinWaitlist(
   const referrerUserId = credit?.referrerUserId ?? null;
   const shortLinkCode = credit?.shortLinkCode ?? null;
   const consent = body.consent === true;
-  const consentVersion = consent ? await ensureConsentText() : null;
+  const consentVersion = consent ? await ensureConsentText(marketSlug) : null;
   const tripType = traveler ? body.tripType ?? null : null;
   const roughMonth = traveler ? body.roughMonth ?? null : null;
   const worry = traveler && body.worry?.trim() ? body.worry.trim() : null;
@@ -118,7 +123,10 @@ export interface WaitlistCounts {
   providers: { total: number; consented: number; byServiceType: WaitlistCount[] };
   /** LW-1e: QA rows (QA-domain addresses) in the market, left out of every number above. */
   qaExcluded: number;
+  /** LW-2: every market's travelers and providers, QA rows left out — operating markets first, in their order. */
+  byMarket: WaitlistMarketCount[];
 }
+export interface WaitlistMarketCount { marketSlug: string; travelers: number; providers: number }
 
 async function grouped(column: "trip_type" | "service_type" | "source", role: "traveler" | "provider", marketSlug: string | null): Promise<WaitlistCount[]> {
   const market = marketSlug ? sql`AND market_slug = ${marketSlug}` : sql``;
@@ -162,8 +170,32 @@ async function qaCount(marketSlug: string | null): Promise<number> {
   return Number((r.rows[0] as any)?.n ?? 0);
 }
 
+/** LW-2: per-market counts (QA rows left out). An operating market with no row reads 0, which is its real count. */
+async function marketCounts(): Promise<WaitlistMarketCount[]> {
+  const r = await db.execute(sql`
+    SELECT market_slug,
+           COUNT(*) FILTER (WHERE COALESCE(role, 'traveler') = 'traveler')::int AS travelers,
+           COUNT(*) FILTER (WHERE role = 'provider')::int AS providers
+    FROM launch_waitlist WHERE market_slug IS NOT NULL AND NOT ${QA}
+    GROUP BY 1
+  `);
+  const found = new Map((r.rows as any[]).map((row) => [String(row.market_slug), row]));
+  const out: WaitlistMarketCount[] = WAITLIST_MARKET_OPTIONS.map((m) => ({
+    marketSlug: m.key,
+    travelers: Number(found.get(m.key)?.travelers ?? 0),
+    providers: Number(found.get(m.key)?.providers ?? 0),
+  }));
+  found.forEach((row, slug) => {
+    if (!WAITLIST_MARKET_OPTIONS.some((m) => m.key === slug)) {
+      out.push({ marketSlug: slug, travelers: Number(row.travelers), providers: Number(row.providers) });
+    }
+  });
+  return out;
+}
+
 export async function waitlistCounts(marketSlug: string | null): Promise<WaitlistCounts> {
   return {
+    byMarket: await marketCounts(),
     qaExcluded: await qaCount(marketSlug),
     marketSlug,
     referrers: await referrerCounts(marketSlug),

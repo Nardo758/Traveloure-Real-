@@ -3,6 +3,7 @@
 // the client page (§18 rule 1). Table and columns: migration 381 (`launch_waitlist`, `consent_texts`), whose
 // column names are the hand-off's Part B "Field names". The visible words are Marketing's F1 copy, word for word.
 import { z } from "zod";
+import { OPERATING_MARKETS } from "./operating-markets";
 
 /** Who a row is for. Provider rows are never counted as travelers. */
 export const WAITLIST_ROLES = ["traveler", "provider"] as const;
@@ -79,6 +80,8 @@ export const WAITLIST_EMAIL_ERROR = "Please enter a valid email address.";
  * `ref` (LW-1d) is the RAW short-link code the visitor arrived with, nothing more: the server resolves it against
  * `short_links` and credits the link's owner only when they authored the linked Ready-Made Trip. A referrer id is
  * never accepted from the body.
+ * `market` (LW-2) is the ONE city the person picked, as an `OPERATING_MARKETS` key; absent means the launch market.
+ * A key outside that list is refused 400 `UNKNOWN_MARKET` by the route (`resolveWaitlistMarket`).
  */
 export const waitlistJoinBodySchema = z
   .object({
@@ -93,6 +96,7 @@ export const waitlistJoinBodySchema = z
     businessName: z.string().trim().max(160).optional(),
     serviceType: z.enum(SERVICE_TYPE_KEYS).optional(),
     ref: z.string().max(40).optional(),
+    market: z.string().trim().toLowerCase().max(64).optional(),
     homepage: z.string().max(200).optional(),
   })
   .strict()
@@ -135,3 +139,64 @@ export function isWaitlistQaEmail(email: string | null | undefined): boolean {
 /** Admin search: at least this many characters, at most this many rows back. */
 export const WAITLIST_SEARCH_MIN_CHARS = 3;
 export const WAITLIST_SEARCH_LIMIT = 50;
+
+// ── LW-2 (ledger `2026-10-16-lw2-all-markets-waitlist`; Leon, Oct 16, 2026: "the waitlist needs to cover all the
+// markets"). Kyoto stays the launch market and the headline; this is a waitlist only, not a launch. ──────────────
+
+/** The refusal code for a `market` that is not an operating market. */
+export const WAITLIST_UNKNOWN_MARKET = "UNKNOWN_MARKET";
+
+/** The cities a person may pick: `OPERATING_MARKETS`, in its own order — never a second list (§18 rule 1). */
+export const WAITLIST_MARKET_OPTIONS: readonly { key: string; city: string }[] = OPERATING_MARKETS.map((m) => ({
+  key: m.marketKey,
+  city: m.cityName,
+}));
+
+export function waitlistCityName(marketKey: string): string | null {
+  return WAITLIST_MARKET_OPTIONS.find((m) => m.key === marketKey)?.city ?? null;
+}
+
+/**
+ * The market a submission is for: absent ⇒ the launch market; an operating-market key ⇒ that market; anything else
+ * ⇒ `unknown` (the route answers 400 UNKNOWN_MARKET). One city per submission.
+ */
+export function resolveWaitlistMarket(
+  raw: string | undefined,
+  launchMarketSlug: string,
+): { ok: true; market: string } | { ok: false; code: typeof WAITLIST_UNKNOWN_MARKET } {
+  if (raw === undefined || raw === "") return { ok: true, market: launchMarketSlug };
+  return waitlistCityName(raw) ? { ok: true, market: raw } : { ok: false, code: WAITLIST_UNKNOWN_MARKET };
+}
+
+/**
+ * Consent is per city: the tick covers only the city shown beside it. Each market has its own `consent_texts` row,
+ * version `f1-2026-10-15:<market>`, and a waitlist row names the version it was shown. The F1 copy was written for
+ * Kyoto, so Kyoto keeps F1's line word for word; every other city reads "Email me when Traveloure opens in <city>."
+ * (Rows that consented before LW-2 keep the bare `f1-2026-10-15`, the Kyoto wording they saw.)
+ */
+const F1_COPY_MARKET = "kyoto";
+export function waitlistConsentVersion(marketKey: string): string {
+  return `${WAITLIST_CONSENT_VERSION}:${marketKey}`;
+}
+export function waitlistConsentLine(marketKey: string): string {
+  if (marketKey === F1_COPY_MARKET) return WAITLIST_CONSENT_LINE;
+  return `Email me when Traveloure opens in ${waitlistCityName(marketKey) ?? marketKey}.`;
+}
+export function waitlistConsentText(marketKey: string): string {
+  return `${waitlistConsentLine(marketKey)} See our Privacy Policy (/privacy).`;
+}
+
+/** The page's words for a city other than Kyoto. Never "be first to book", no dates, no experts or providers. */
+export const WAITLIST_OTHER_CITY_PROMPT = "Planning somewhere else? Tell us where.";
+export function waitlistOtherCityJoinButton(city: string): string {
+  return `Join the ${city} waitlist`;
+}
+export function waitlistOtherCityDone(city: string, consented: boolean): string {
+  return consented ? `We'll email you when Traveloure opens in ${city}.` : `You're on the ${city} waitlist.`;
+}
+export function waitlistOtherCityProviderLine(city: string): string {
+  return `Know ${city}? Send us your details and we'll be in touch when we open there.`;
+}
+export function waitlistOtherCityProviderDone(city: string): string {
+  return `Thanks, we've got your details. We'll be in touch when we open in ${city}.`;
+}
