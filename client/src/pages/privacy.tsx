@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>1. Introduction</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Traveloure LLC ("Traveloure," "we," "us," or "our") operates a three-party marketplace platform connecting travelers with authenticated Local Experts and Service Providers to facilitate personalized travel experiences and life events. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform, whether as a Traveler, Local Expert, or Service Provider.
+              Traveloure LLC ("Traveloure," "we," "us," or "our") operates a three-party marketplace platform connecting travelers with Local Experts and Service Providers to facilitate personalized travel experiences and life events. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform, whether as a Traveler, Local Expert, or Service Provider.
             </p>
             <p className="text-muted-foreground leading-relaxed mb-4">
               We are committed to protecting your privacy and complying with applicable data protection laws, including the General Data Protection Regulation (GDPR), California Consumer Privacy Act (CCPA), and other international privacy regulations.
@@ -83,7 +83,6 @@ export default function PrivacyPolicyPage() {
               We may receive information about you from third-party sources:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li>Background verification services (for Expert and Provider vetting)</li>
               <li>Social media platforms (if you connect your account or use social login)</li>
               <li>Travel inventory partners (Viator, GetYourGuide, Klook, Fever, Musement, 12Go)</li>
               <li>Payment processors and financial institutions</li>
@@ -127,7 +126,6 @@ export default function PrivacyPolicyPage() {
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.2 Safety and Trust</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Verify identity and credentials of Experts and Service Providers</li>
-              <li>Conduct background checks and screening processes</li>
               <li>Monitor and prevent fraud, abuse, and security incidents</li>
               <li>Enforce our Terms of Service and policies</li>
               <li>Investigate and resolve disputes and complaints</li>
@@ -178,7 +176,6 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Payment processors (Stripe Connect for transaction processing and payouts)</li>
-              <li>Background verification services (for Expert and Provider screening)</li>
               <li>Cloud hosting and data storage providers</li>
               <li>Email and communication service providers</li>
               <li>Analytics and marketing platforms</li>
@@ -213,7 +210,7 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>5. International Data Transfers</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Traveloure operates across eight strategic global markets: Mumbai, Bogotá, Goa, Kyoto, Edinburgh, Cartagena, Jaipur, and Porto. Your information may be transferred to, stored, and processed in the United States and other countries where our service providers operate.
+              Your information may be transferred to, stored, and processed in the United States and other countries where our service providers operate.
             </p>
             <p className="text-muted-foreground leading-relaxed mb-4">
               When we transfer personal data from the European Economic Area (EEA), United Kingdom, or Switzerland to other countries, we implement appropriate safeguards:
@@ -254,7 +251,6 @@ export default function PrivacyPolicyPage() {
               <li><strong>Secure payment processing:</strong> PCI DSS compliance through Stripe Connect</li>
               <li><strong>Access controls:</strong> Role-based access with multi-factor authentication for employees</li>
               <li><strong>Network security:</strong> Firewalls, intrusion detection, and regular security audits</li>
-              <li><strong>Data segregation:</strong> Customer funds held in FDIC-insured segregated accounts</li>
               <li><strong>Incident response:</strong> Established protocols for security breach detection and response</li>
               <li><strong>Regular testing:</strong> Penetration testing and vulnerability assessments</li>
               <li><strong>Employee training:</strong> Regular security awareness training for staff</li>
