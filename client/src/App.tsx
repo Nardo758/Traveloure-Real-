@@ -125,6 +125,7 @@ const AdminDestinationEvents = lazy(() => import("@/pages/admin/destination-even
 const AdminServiceRequests = lazy(() => import("@/pages/admin/service-requests"));
 const AdminReconciliation = lazy(() => import("@/pages/admin/reconciliation"));
 const AdminBookingDetail = lazy(() => import("@/pages/admin/booking-detail"));
+const AdminBookings = lazy(() => import("@/pages/admin/bookings"));
 const AdminFeedback = lazy(() => import("@/pages/admin/feedback"));
 const ConciergePage = lazy(() => import("@/pages/concierge"));
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
@@ -1227,6 +1228,9 @@ function Router() {
       </Route>
       <Route path="/admin/reconciliation">
         {() => <ProtectedRoute component={AdminReconciliation} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/bookings">
+        {() => <ProtectedRoute component={AdminBookings} requiredRole="admin" />}
       </Route>
       <Route path="/admin/bookings/:kind/:id">
         {() => <ProtectedRoute component={AdminBookingDetail} requiredRole="admin" />}
