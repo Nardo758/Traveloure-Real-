@@ -175,7 +175,7 @@ import {
   adminGlobalSearch, getAdminSearchCounts,
   getServiceReviewsList, getAdminReviews, getReviewModerationLogs, getServiceReviewById, getReviewById,
   updateServiceReviewStatus, moderateReview, insertReviewModerationLog,
-  getFeeBands, getFeeBand, updateFeeBand, checkActiveBand,
+  getFeeBands, getFeeBand, checkActiveBand,
   getPlatformSettings, getPlatformSettingValue, upsertPlatformSetting,
   getServiceOfferingTypesList, getAllServiceOfferingTypes,
   createServiceOfferingTypeRow, updateServiceOfferingTypeRow, deleteServiceOfferingTypeRow,

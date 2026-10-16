@@ -876,31 +876,6 @@ export async function getFeeBand(bandKey: string) {
   return (result.rows?.[0] as any) ?? null;
 }
 
-export async function updateFeeBand(bandKey: string, params: {
-  nextDefault: number;
-  nextMin: number | null;
-  nextMax: number | null;
-  displayName?: string;
-  description?: string;
-  isActive?: boolean;
-  userId: string;
-}) {
-  const { nextDefault, nextMin, nextMax, displayName, description, isActive, userId } = params;
-  return db.execute(sql`
-    UPDATE fee_bands
-    SET
-      default_rate = ${nextDefault},
-      min_rate     = ${nextMin},
-      max_rate     = ${nextMax},
-      display_name = COALESCE(${displayName ?? null}, display_name),
-      description  = COALESCE(${description ?? null}, description),
-      is_active    = COALESCE(${isActive ?? null}, is_active),
-      updated_by   = ${userId},
-      updated_at   = NOW()
-    WHERE band_key = ${bandKey}
-  `);
-}
-
 export async function checkActiveBand(bandKey: string) {
   const result = await db.execute(sql`
     SELECT 1 FROM fee_bands WHERE band_key = ${bandKey} AND is_active = true LIMIT 1
