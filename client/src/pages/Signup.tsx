@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { TRAVELER_WAITLIST, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
+import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { useTranslation } from "react-i18next";
 
@@ -31,6 +32,9 @@ export function SignupPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // AUTH-1 fix 3b: the server answers a new and an existing address the same way and signs nobody in, so a
+  // completed sign-up shows one neutral state — never the dashboard, never "account created".
+  const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -60,6 +64,10 @@ export function SignupPage() {
         }),
       });
       const data = await res.json();
+      if (isRegistrationNeutral(res.status, data)) {
+        setSubmitted(true);
+        return;
+      }
       if (!res.ok) {
         if (res.status === 403 && data?.code === TRAVELER_WAITLIST) {
           window.location.replace(sanitizeReturnTo(data.redirectTo) ?? "/");
@@ -68,15 +76,31 @@ export function SignupPage() {
         setError(data.message || t("signupPage.failed"));
         return;
       }
-      // Reload auth state after registration instead of reusing the cached
-      // signed-out /api/auth/user result when the protected route mounts.
-      window.location.replace("/dashboard");
+      // Any other 2xx is not the contract this page knows; say so rather than claim an account exists.
+      setError(t("signupPage.failed"));
     } catch {
       setError(t("signupPage.genericError"));
     } finally {
       setLoading(false);
     }
   };
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md" data-testid="signup-neutral-result">
+          <h1 className="text-xl font-semibold text-gray-900 mb-3">{t("registered.title")}</h1>
+          <p className="text-sm text-gray-600 mb-6" data-testid="text-signup-neutral">{t("registered.body")}</p>
+          {/* The sign-in window also holds "Forgot password?", so one link serves both paths. */}
+          <div className="flex flex-col gap-2 text-sm">
+            <a href="/login" className="text-gray-900 underline" data-testid="link-neutral-sign-in">
+              {t("registered.signIn")}
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
