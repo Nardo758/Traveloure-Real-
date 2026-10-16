@@ -9,7 +9,7 @@ export default function TermsOfServicePage() {
       width="reading"
       title="Terms and Conditions"
       titleTestId="text-terms-title"
-      lead={<p className="text-muted-foreground">Effective Date: September 27, 2026</p>}
+      lead={<p className="text-muted-foreground">Effective Date: October 16, 2026</p>}
       testId="page-terms"
     >
 
@@ -54,7 +54,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.3 Service Areas</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Traveloure currently operates in eight strategic global markets: Mumbai, Bogotá, Goa, Kyoto, Edinburgh, Cartagena, Jaipur, and Porto. We may expand to additional markets without prior notice.
+              Traveloure currently operates in Kyoto, Japan. We may expand to additional markets without prior notice.
             </p>
           </section>
 
@@ -537,7 +537,7 @@ export default function TermsOfServicePage() {
           <div className="p-4 bg-muted/50 rounded-lg mt-8">
             <p className="text-sm text-muted-foreground text-center">
               By using Traveloure, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
-              <br />Last Updated: September 27, 2026 | Version {CURRENT_TERMS_VERSION}
+              <br />Last Updated: October 16, 2026 | Version {CURRENT_TERMS_VERSION}
             </p>
           </div>
         </div>

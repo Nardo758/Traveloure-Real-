@@ -143,6 +143,7 @@ const menuGroups = [
       { title: "Gem Photo Backfill", href: "/admin/gem-photo-backfill", icon: ImageIcon },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Waitlist", href: "/admin/waitlist", icon: ListChecks },
+      { title: "Ticker", href: "/admin/ticker", icon: ListChecks },
       { title: "Settings", href: "/admin/system", icon: Settings },
     ],
   },

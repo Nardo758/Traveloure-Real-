@@ -2056,4 +2056,8 @@ export const MIGRATION_FILES = [
   // 383 — FE-2 backfill: approved travel_expert/local_expert/event_planner accounts join beta_2026, locked at their
   // approval audit timestamp else now(). DATA ONLY, idempotent; no schema change. HELD.
   "383_expert_rate_cohort_backfill.sql",
+  // 384 — ticker_items (LW-1f, ledger 2026-10-16-lw1f-kyoto-ticker). One NEW table, no DEFAULT, CHECK, FK or index;
+  // every column but the key nullable; four seed rows (Marketing's lines, two inactive) ON CONFLICT (id) DO NOTHING.
+  // 382/383 are taken by FE-2 (#1475). Declared in shared/schema.ts. Migration 384 SQL approved by Leon — comment 18:26Z on #1481.
+  "384_ticker_items.sql",
 ] as const;

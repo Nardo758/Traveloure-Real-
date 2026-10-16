@@ -12642,6 +12642,22 @@ export type TransportOptionEvent = typeof transportOptionEvents.$inferSelect;
 // emailed to a NULL. `referrer_user_id` / `short_link_code` come only from a server-resolved short_links row.
 // `role`/`trip_type`/`service_type`/`source` value sets are app-enforced once in shared/launch-waitlist.ts; the
 // traveler and provider halves are NULL on the other role's rows. No insert schema — no request body reaches it (§19).
+// LW-1f (migration 384, ledger `2026-10-16-lw1f-kyoto-ticker`): the launch-market ticker's lines, edited in
+// /admin/ticker. No DEFAULT, CHECK, FK or index; every column but the key nullable. Rules are app-enforced once in
+// shared/ticker.ts; the ONE writer is server/services/ticker.service.ts.
+export const tickerItems = pgTable("ticker_items", {
+  id: varchar("id").primaryKey(),
+  text: text("text"),
+  href: text("href"),
+  marketSlug: varchar("market_slug", { length: 64 }),
+  sortOrder: integer("sort_order"),
+  active: boolean("active"),
+  startsAt: timestamp("starts_at"),
+  endsAt: timestamp("ends_at"),
+  updatedBy: varchar("updated_by"),
+  updatedAt: timestamp("updated_at"),
+});
+
 export const launchWaitlist = pgTable("launch_waitlist", {
   id: varchar("id").primaryKey(),
   email: varchar("email", { length: 255 }),
