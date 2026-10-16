@@ -40,6 +40,7 @@ import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
 import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
+import { runUnderWebhookClaim } from "./webhook-claim.service";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -781,8 +782,8 @@ class StripePaymentService {
     // individually idempotent — `promotePaidCheckout` is a §15c atomic conditional and
     // `recordRevenueEvent` is behind the migration-244 unique index.
     //
-    // A per-rail claim needs a `handler` column and a (stripe_event_id, handler) UNIQUE —
-    // a migration plus a `shared/schema.ts` declaration. Do not re-add one without it.
+    // A per-rail claim needs a (stripe_event_id, consumer) key. `platform_webhook_consumers` already
+    // has one, so PAY-1 §3 claims there (consumer 'platform') and leaves this row as a record only.
     if (event.id) {
       await db.execute(sql`
         INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
@@ -792,6 +793,11 @@ class StripePaymentService {
     }
 
     try {
+      // PAY-1 §3 (ledger `2026-10-15-pay1-payment-checks`): the work runs under ONE claim on
+      // platform_webhook_consumers (consumer 'platform'); see webhook-claim.service.ts. A completed
+      // claim is a replay and skipped; a live claim held by another delivery answers 500 so Stripe
+      // retries; a failure records `error`, leaves `completed_at` NULL and answers 500.
+      const claimOutcome = await runUnderWebhookClaim(event, "platform", event, async () => {
       switch (event.type) {
         case 'payment_intent.succeeded':
           await this.handlePaymentSucceeded(event.data.object as Stripe.PaymentIntent);
@@ -864,11 +870,13 @@ class StripePaymentService {
         default:
           console.log(`Unhandled event type: ${event.type}`);
       }
+      });
+      if (claimOutcome === "already_completed") {
+        console.info(`[stripe-webhook] ${event.id} (${event.type}) already completed by consumer=platform — skipped`);
+      }
 
-      // No `processed`/`error` write here, deliberately — see the header comment. Marking the
-      // row processed would make the OTHER endpoint's dedupe skip its whole switch, and on the
-      // error path an unconditional `processed = FALSE` by `stripe_event_id` would flip a row
-      // that endpoint had already completed back to unprocessed.
+      // Still no `webhook_events.processed`/`error` write here: that row is the Connect rail's record,
+      // and this rail's lifecycle now lives on its own platform_webhook_consumers row.
       return { received: true };
     } catch (error: any) {
       console.error('Webhook handling error:', error);
@@ -1049,7 +1057,12 @@ class StripePaymentService {
                   payment_status = 'succeeded',
                   confirmed_at = NOW(),
                   confirmation_code = ${confirmationCode},
-                  deposit_paid = true
+                  deposit_paid = true,
+                  -- PAY-1 §2 (ledger 2026-10-15-pay1-payment-checks): the deposit PaymentIntent is
+                  -- recorded on the row it paid for, never overwriting one already there, so the
+                  -- refund and the drift job can find it. Stripe's own id (signature-verified).
+                  stripe_deposit_intent_id = COALESCE(stripe_deposit_intent_id, ${paymentIntent.id}),
+                  stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ${paymentIntent.id})
                 WHERE id = ${bookingId}
                   AND status IN (${sql.join(LEGACY_PREPAYMENT_STATUSES.map(s => sql`${s}`), sql`, `)})
                 RETURNING confirmation_code
