@@ -105,12 +105,12 @@ interface ReconciliationRun {
  * class §18 rule 1 names; `reconciliationKindLabel` is now the ONE reader, and a kind this build
  * does not know still renders as its own identifier rather than a guess (§13). */
 
+/** PAY-1 §3: one claim per (Stripe event, consumer) on platform_webhook_consumers. */
 interface UnprocessedWebhook {
-  id: string;
   stripe_event_id: string;
+  consumer: string;
   event_type: string;
-  processed: boolean;
-  processed_at: string | null;
+  completed_at: string | null;
   error: string | null;
   created_at: string;
 }
@@ -1129,11 +1129,11 @@ export default function AdminReconciliation() {
                   </thead>
                   <tbody>
                     {webhookData?.events.map((evt) => (
-                      <tr key={evt.id} className="border-b border-gray-100 hover:bg-gray-50" data-testid={`row-webhook-${evt.id}`}>
+                      <tr key={`${evt.stripe_event_id}:${evt.consumer}`} className="border-b border-gray-100 hover:bg-gray-50" data-testid={`row-webhook-${evt.stripe_event_id}-${evt.consumer}`}>
                         <td className="py-2 px-3 font-mono text-xs text-gray-700 max-w-[160px] truncate">
                           {evt.stripe_event_id}
                         </td>
-                        <td className="py-2 px-3 text-xs text-gray-600">{evt.event_type}</td>
+                        <td className="py-2 px-3 text-xs text-gray-600">{evt.event_type} · {evt.consumer}</td>
                         <td className="py-2 px-3 text-xs text-gray-500">
                           {new Date(evt.created_at).toLocaleString([], {
                             month: "short", day: "numeric",
@@ -1155,7 +1155,7 @@ export default function AdminReconciliation() {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-600 hover:underline"
-                            data-testid={`link-stripe-event-${evt.id}`}
+                            data-testid={`link-stripe-event-${evt.stripe_event_id}-${evt.consumer}`}
                           >
                             Stripe →
                           </a>
@@ -1201,10 +1201,10 @@ export default function AdminReconciliation() {
               treat an empty list as unknown, not as healthy.
             </p>
             <p>
-              <strong className="text-gray-700">Unprocessed webhooks</strong> — Shows events in the{" "}
-              <code className="bg-gray-100 px-1 rounded">webhook_events</code> table where{" "}
-              <code className="bg-gray-100 px-1 rounded">processed = FALSE</code>. These are either events that
-              arrived but failed during processing (error set), or events stuck mid-flight.
+              <strong className="text-gray-700">Unprocessed webhooks</strong> — Shows claims in the{" "}
+              <code className="bg-gray-100 px-1 rounded">platform_webhook_consumers</code> table that no consumer
+              completed and nobody has claimed for over an hour. These either failed during processing (error set)
+              or were abandoned mid-flight.
             </p>
             <p>
               <strong className="text-gray-700">Daily schedule</strong> — Reconciliation runs automatically every 24 h,

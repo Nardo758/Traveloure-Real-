@@ -21,6 +21,7 @@ import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key"
 import { handleStripeDispute } from "../services/stripe-dispute.service";
 import { markCheckoutPaymentFailed } from "../services/checkout-claim.service";
 import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-booking-email.service";
+import { claimWebhookEvent, completeWebhookClaim, failWebhookClaim, WebhookClaimInFlightError } from "../services/webhook-claim.service";
 import {
   CONNECT_FINANCIAL_EVENT_AUTOMATION_IDS,
   dispatchPaymentEvent,
@@ -117,17 +118,18 @@ router.post("/persona", (_req, res) => {
 // Any unhandled error is surfaced via the error column on webhook_events and
 // will appear in GET /api/admin/webhooks/unprocessed for manual review.
 async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
-  // ── 1. Deduplication ──────────────────────────────────────────────────────
-  // Stripe guarantees at-least-once delivery; the same event ID can arrive twice.
-  const existing = await db
-    .select({ processed: webhookEvents.processed })
-    .from(webhookEvents)
-    .where(eq(webhookEvents.stripeEventId, event.id))
-    .limit(1);
-
-  if (existing.length > 0 && existing[0].processed) {
-    console.info(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already processed — skipping`);
-    return;
+  // ── 1. Claim (PAY-1 §3, ledger `2026-10-15-pay1-payment-checks`) ──────────
+  // Stripe guarantees at-least-once delivery; the same event ID can arrive twice, and two deliveries
+  // can arrive at once. The old check-then-insert on webhook_events.processed let both run. The
+  // decision is now ONE atomic claim on platform_webhook_consumers (consumer 'connect'): a completed
+  // claim is a replay and skipped; a live one held by another delivery answers 500 so Stripe retries.
+  const claim = event.id ? await claimWebhookEvent(event, "connect", event) : ({ claimed: true } as const);
+  if (!claim.claimed) {
+    if (claim.reason === "completed") {
+      console.info(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already completed — skipping`);
+      return;
+    }
+    throw new WebhookClaimInFlightError(event.id, "connect");
   }
 
   // ── 2. Event log insert ───────────────────────────────────────────────────
@@ -457,6 +459,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
   // ── 4. Mark processed / record error ──────────────────────────────────────
   // processed=false + error text → shows in GET /api/admin/webhooks/unprocessed
   if (processingError === null) {
+    if (event.id) await completeWebhookClaim(event.id, "connect");
     await db.execute(sql`
       UPDATE webhook_events
       SET processed    = TRUE,
@@ -464,6 +467,8 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       WHERE stripe_event_id = ${event.id}
     `);
   } else {
+    // completed_at stays NULL on the claim, so the next delivery re-takes it.
+    if (event.id) await failWebhookClaim(event.id, "connect", processingError);
     await db.execute(sql`
       UPDATE webhook_events
       SET error = ${processingError}

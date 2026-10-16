@@ -136,7 +136,7 @@ export async function runQAVerify(): Promise<QARunSummary> {
       SELECT
         (SELECT COUNT(*) FROM trips WHERE user_id IS NULL)::int AS orphaned_trips,
         (SELECT COUNT(*) FROM bookings b WHERE b.trip_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM trips t WHERE t.id = b.trip_id))::int AS orphaned_bookings,
-        (SELECT COUNT(*) FROM webhook_events WHERE processed = false AND created_at < NOW() - INTERVAL '1 hour')::int AS stuck_webhooks,
+        (SELECT COUNT(*) FROM platform_webhook_consumers WHERE completed_at IS NULL AND created_at < NOW() - INTERVAL '1 hour')::int AS stuck_webhooks, -- PAY-1 §3: per-consumer claims
         (SELECT COUNT(*) FROM bookings WHERE status = 'payment_pending' AND created_at < NOW() - INTERVAL '10 minutes')::int AS stuck_payments
     `);
     const row = (r as any).rows[0];
