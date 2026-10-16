@@ -93,6 +93,10 @@ export interface RailsLinkFacts {
   code: string;
   ownerUserId: string;
   frame: string | null;
+  /** What the link points at (`short_links.target_type` / `target_id`). Read, never decided on, by the fee
+   *  path; the waitlist referral (LW-1d) reads them to check the link's owner authored the trip. */
+  targetType: string;
+  targetId: string | null;
 }
 
 export interface RailsRefValidation {
@@ -167,14 +171,22 @@ export async function validateRailsRef(opts: {
   if (!REF_PATTERN.test(raw)) return { valid: false, reason: "malformed_ref", ref: raw.slice(0, 12), link: null };
 
   const res = await db.execute(sql`
-    SELECT id, code, owner_user_id, frame,
+    SELECT id, code, owner_user_id, frame, target_type, target_id,
            (expires_at IS NOT NULL AND expires_at <= now()) AS is_expired
       FROM short_links
      WHERE code = ${raw}
      LIMIT 1
   `);
   const row = res.rows?.[0] as
-    | { id: string; code: string; owner_user_id: string; frame: string | null; is_expired: boolean }
+    | {
+        id: string;
+        code: string;
+        owner_user_id: string;
+        frame: string | null;
+        target_type: string;
+        target_id: string | null;
+        is_expired: boolean;
+      }
     | undefined;
   if (!row) return { valid: false, reason: "unknown_ref", ref: raw, link: null };
 
@@ -183,6 +195,8 @@ export async function validateRailsRef(opts: {
     code: String(row.code),
     ownerUserId: String(row.owner_user_id),
     frame: row.frame === null || row.frame === undefined ? null : String(row.frame),
+    targetType: String(row.target_type),
+    targetId: row.target_id === null || row.target_id === undefined ? null : String(row.target_id),
   };
   if (row.is_expired) return { valid: false, reason: "expired_ref", ref: raw, link };
   if (link.ownerUserId === opts.travelerUserId) return { valid: false, reason: "self_referral", ref: raw, link };

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { TRAVELER_WAITLIST, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
+import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
@@ -7,6 +9,24 @@ export function SignupPage() {
   const params = new URLSearchParams(window.location.search);
   const refToken = params.get("ref") || "";
   const source = params.get("source") || "direct";
+  // LW-1b: `?intent=supply` marks a sign-up from a door for people offering services; `?qa=1` shows the QA code
+  // field (the code itself is a server secret the tester types — it is never in this bundle).
+  const intent = normalizeSignupIntent(params.get("intent"));
+  const showQaCode = params.get("qa") === "1";
+  const [qaCode, setQaCode] = useState("");
+
+  // LW-1b: in waitlist mode a traveler has nothing to sign up for here — go to the launch market's waitlist.
+  useEffect(() => {
+    if (intent === "supply" || showQaCode) return;
+    let cancelled = false;
+    fetch("/api/public/signup-mode", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        if (!cancelled && m?.mode === "waitlist") window.location.replace(waitlistBlockedPath(m.launchMarketSlug));
+      })
+      .catch(() => { /* the server still refuses on submit */ });
+    return () => { cancelled = true; };
+  }, [intent, showQaCode]);
 
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
@@ -32,11 +52,19 @@ export function SignupPage() {
           password: form.password,
           refToken,
           source,
+          ...(intent === "supply" ? { intent } : {}),
+          // LW-1d: the raw `?source=` tag of a supply sign-up (never the "direct" default above).
+          ...(intent === "supply" && params.get("source") ? { signupSource: params.get("source") } : {}),
+          ...(showQaCode && qaCode ? { qaCode } : {}),
           // NOTE: NO role field — server always assigns "user"
         }),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 403 && data?.code === TRAVELER_WAITLIST) {
+          window.location.replace(sanitizeReturnTo(data.redirectTo) ?? "/");
+          return;
+        }
         setError(data.message || t("signupPage.failed"));
         return;
       }
@@ -105,6 +133,23 @@ export function SignupPage() {
               placeholder={t("fields.passwordPlaceholderSignup")}
             />
           </div>
+
+          {showQaCode && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-qa-code">
+                QA code
+              </label>
+              <input
+                id="input-qa-code"
+                data-testid="input-qa-code"
+                type="password"
+                autoComplete="off"
+                value={qaCode}
+                onChange={(e) => setQaCode(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          )}
 
           <button
             data-testid="button-create-account"

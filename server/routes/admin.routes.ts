@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
+import { TRAVELER_SIGNUP_MODE_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -16,6 +17,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
+import { csvCell } from "../utils/csv";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
 import { JOB_CADENCE } from "./internal.routes";
@@ -840,12 +842,84 @@ router.post("/api/admin/bookings/:bookingId/lost-chargeback/reconcile", isAuthen
   }
 });
 
+// ── PAY-1 §4 (ledger `2026-10-15-pay1-payment-checks`) ─────────────────────────────────────────
+// ONE admin read of a booking across service_bookings, the legacy bookings table and liteapi_bookings,
+// and the ONLY path out of `needs_review`. The kind is in the path (`service|legacy|liteapi`) so it
+// can never be confused with the `:bookingId/<action>` routes above. Every read and every resolve is
+// written to the access audit log.
+// The paths are literals (not a shared constant) so the mutation-auth inventory can read them.
+router.get("/api/admin/bookings/:kind(service|legacy|liteapi)/:id", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { loadAdminBookingDetail } = await import("../services/admin-booking-detail.service");
+    const kind = req.params.kind as "service" | "legacy" | "liteapi";
+    const detail = await loadAdminBookingDetail(kind, req.params.id);
+    if (!detail) return res.status(404).json({ message: "No such booking." });
+    const auditWarning = await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "booking_detail_viewed",
+      resourceType: `${kind}_booking`,
+      resourceId: req.params.id,
+      targetUserId: detail.traveler.id ?? undefined,
+      metadata: { kind },
+    } as any);
+    res.json({ ...detail, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err) {
+    console.error("Admin booking detail error:", err);
+    res.status(500).json({ message: "Failed to load the booking" });
+  }
+});
+
+const resolveNeedsReviewBody = z
+  .object({
+    outcome: z.enum(["confirmed", "cancelled"]),
+    reason: z.string().trim().min(1).max(500),
+    // An admin-entered PaymentIntent id, recorded only where the row carries none (or this one).
+    paymentIntentId: z.string().trim().regex(/^pi_[A-Za-z0-9]+$/).optional(),
+  })
+  .strict();
+
+router.post("/api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const parsed = resolveNeedsReviewBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(zodErrorBody(parsed.error));
+  try {
+    const { resolveNeedsReviewBooking } = await import("../services/admin-booking-detail.service");
+    const kind = req.params.kind as "service" | "legacy" | "liteapi";
+    const result = await resolveNeedsReviewBooking(kind, req.params.id, parsed.data.outcome, parsed.data.paymentIntentId ?? null);
+    if (!result.ok) return res.status(result.httpStatus).json({ message: result.message, reason: result.reason, ...("field" in result && result.field ? { field: result.field } : {}) });
+    const auditWarning = await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "booking_needs_review_resolved",
+      resourceType: `${kind}_booking`,
+      resourceId: req.params.id,
+      metadata: {
+        kind,
+        outcome: result.status,
+        reason: parsed.data.reason,
+        paymentIntentId: result.paymentIntentId,
+        paymentIntentSuppliedByAdmin: !!parsed.data.paymentIntentId,
+      },
+    } as any);
+    res.json({ status: result.status, paymentIntentId: result.paymentIntentId, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err) {
+    console.error("Admin needs_review resolve error:", err);
+    res.status(500).json({ message: "Failed to resolve the booking" });
+  }
+});
+
 /**
  * GET /api/admin/webhooks/unprocessed
- * Returns webhook_events rows where processed=false.
- * Covers two cases: events that never arrived (gap vs Stripe API)
- * and events that arrived but failed during processing (error column set).
- * Each row includes the raw_payload so ops can replay manually if needed.
+ * Returns platform_webhook_consumers claims that no consumer completed and nobody has claimed for
+ * over an hour (PAY-1 §3): failed (error set) or abandoned mid-flight.
  */
 router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
@@ -853,17 +927,21 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+    // PAY-1 §3 (ledger `2026-10-15-pay1-payment-checks`): read the per-consumer claims, not
+    // webhook_events.processed — the platform rail never wrote that flag, so every platform event read
+    // as stuck. A claim is stuck when nobody completed it and nobody has claimed it for over an hour
+    // (created_at is the last-claim time on this table).
     const result = await db.execute(sql`
       SELECT
-        id,
         stripe_event_id,
+        consumer,
         event_type,
-        processed,
-        processed_at,
+        completed_at,
         error,
         created_at
-      FROM webhook_events
-      WHERE processed = FALSE
+      FROM platform_webhook_consumers
+      WHERE completed_at IS NULL
+        AND created_at < NOW() - INTERVAL '1 hour'
       ORDER BY created_at ASC
       LIMIT 200
     `);
@@ -5991,6 +6069,8 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
           joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
           trips: Number(userTrips) || 0,
           spent: `$${totalSpent.toLocaleString()}`,
+          // LW-1d: the supply sign-up source tag, as stored (NULL = not recorded, never "other").
+          signupSource: u.signupSource ?? null,
         };
       }));
 
@@ -6005,6 +6085,65 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin users error:", err);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // === Admin: user CSV export (LW-1d) ===
+  // Every non-deleted account with its supply sign-up source tag (`users.signup_source`, migration 381; NULL = not
+  // recorded). Admin only — the blanket /api/admin guard plus this DB-role check — and every export writes one
+  // `users_export` audit row. Formula-neutralised RFC 4180 cells, `no-store`.
+  router.get("/api/admin/users/export", isAuthenticated, async (req, res) => {
+    const admin = await getFullAdminUser(getUserId(req)!);
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const rows = await db
+        .select({
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          isSuspended: users.isSuspended,
+          createdAt: users.createdAt,
+          signupSource: users.signupSource,
+        })
+        .from(users)
+        .where(eq(users.isDeleted, false))
+        .orderBy(desc(users.createdAt));
+      await recordAdminAudit({
+        actorId: admin.id,
+        actorRole: admin.role,
+        action: "users_export",
+        resourceType: "users",
+        resourceId: "all",
+        metadata: { rows: rows.length },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      });
+      const header = ["email", "name", "role", "status", "joined_at", "signup_source"];
+      const lines = [
+        header.join(","),
+        ...rows.map((u) =>
+          [
+            u.email ?? "",
+            [u.firstName, u.lastName].filter(Boolean).join(" "),
+            u.role ?? "user",
+            u.isSuspended ? "suspended" : "active",
+            u.createdAt ? new Date(u.createdAt).toISOString() : "",
+            u.signupSource ?? "",
+          ]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="users.csv"');
+      res.setHeader("Cache-Control", "no-store");
+      res.send(lines.join("\n"));
+    } catch (err) {
+      console.error("Admin users export error:", err);
+      res.status(500).json({ message: "Failed to export users" });
     }
   });
 
@@ -8028,6 +8167,14 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // number of days — a junk value would leave every approval refused with `expiry_unset`.
       if (settingKey === BOT_FACT_DEFAULT_EXPIRY_SETTING && !isValidExpiryDaysSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
+      }
+      // LW-1b: the traveler sign-up switch is exactly 'waitlist' or 'open' (shared/launch-signup.ts), and the
+      // launch market is a slug — a junk value must never reach the sign-up gates or the waitlist redirect.
+      if (settingKey === TRAVELER_SIGNUP_MODE_SETTING && !isTravelerSignupModeValue(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be 'waitlist' or 'open'`, got: settingValue });
+      }
+      if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be a market slug (lower-case letters, digits, hyphens)`, got: settingValue });
       }
       if (settingKey === "active_provider_commission_policy" && !["beta_flat", "tiered"].includes(settingValue)) {
         return res.status(400).json({ error: "active_provider_commission_policy must be 'beta_flat' or 'tiered'", got: settingValue });

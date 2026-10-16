@@ -63,6 +63,11 @@ export function readPurchaseStatus(status: string | null | undefined): PurchaseS
     // is one spelling for one state.
     case "partially_completed":
       return { kind: "booked", label: "Booked · partially completed" };
+    // PAY-1 §1 (ledger `2026-10-15-pay1-payment-checks`): a transport payment Stripe reported paid
+    // whose PaymentIntent could not be recorded is HELD for an admin, never confirmed. The money
+    // arrived; the booking is not yet "booked". FOUNDER WORDING REVIEW on the PR that carries it.
+    case "needs_review":
+      return { kind: "other", label: "Payment received — being checked" };
     default:
       return { kind: "other", label: raw.replace(/_/g, " ") };
   }

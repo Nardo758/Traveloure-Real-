@@ -532,6 +532,9 @@ jobs:
       # both surfaces read the server's named refusals through.
       - name: Quote surface copy pin
         run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
+      # CP-2: the /earn and /become-provider "keep N%" lines are built from the live bands only.
+      - name: Fee keep copy pin (CP-2)
+        run: npx tsx --test client/src/lib/__tests__/fee-keep-copy.test.ts
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
@@ -1508,6 +1511,10 @@ jobs:
       # notification for a cancellation that did not happen.
       - name: Transport PaymentIntent recording + cancel from-state guard (T1–T7)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/transport-payment-intent.db.test.ts
+      # PAY-1 (ledger 2026-10-15-pay1-payment-checks): transport hold at needs_review, the legacy
+      # deposit PaymentIntent, the per-consumer webhook claim, and the admin Resolve (P1–P6).
+      - name: PAY-1 payment checks (P1–P6)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/pay1-payment-checks.db.test.ts
 
   ready-made-clone-fields:
     name: ready-made-clone-fields (V-14/V-15; ledger 2026-09-13-clone-carries-content-not-state)

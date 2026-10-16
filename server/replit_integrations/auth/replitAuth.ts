@@ -4,7 +4,7 @@
 // influencer auth (facebookAuth.ts) all depend on it. Do not remove it from
 // package.json unless every one of those flows is migrated off Passport first.
 import * as client from "openid-client";
-import { Strategy, type VerifyFunction } from "openid-client/passport";
+import { Strategy, type VerifyFunctionWithRequest } from "openid-client/passport";
 
 import passport from "passport";
 import session from "express-session";
@@ -13,7 +13,10 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
-import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
+import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
+import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
+import { recordSignupSource } from "../../services/signup-source-record";
 import {
   decideEmailMerge,
   oidcEmailVerified,
@@ -82,7 +85,7 @@ function updateUserSession(
 // Exported for tests — the registration-flag gate is verified without a live
 // OIDC handshake. Resolves to the id of the account the session belongs to: the
 // Replit sub, or the existing account a verified email-match was merged into.
-export async function upsertUser(claims: any): Promise<string> {
+export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sourceTag?: string | null } = {}): Promise<string> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
@@ -119,6 +122,15 @@ export async function upsertUser(claims: any): Promise<string> {
   if (!existing) {
     const registrationEnabled = await getPlatformFlag(FLAG_REGISTRATION_ENABLED, true);
     if (!registrationEnabled) throw new Error("REGISTRATION_DISABLED");
+
+    // LW-1b: the traveler sign-up switch. In waitlist mode a FIRST-TIME traveler is refused; a supply sign-up
+    // (intent carried through the round trip by the session stash) passes. Social sign-ins get no QA bypass.
+    const decision = decideFirstTimeSignup({
+      mode: await getTravelerSignupMode(),
+      intent: opts.intent ?? "traveler",
+      qaCodeValid: false,
+    });
+    if (!decision.allowed) throw new Error(TRAVELER_WAITLIST);
   }
 
   const user = await authStorage.upsertUser({
@@ -131,6 +143,9 @@ export async function upsertUser(claims: any): Promise<string> {
   });
 
   if (user.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
+
+  // LW-1d: a NEW supply account records its sign-up source tag once (never on a sign-in, never for a traveler).
+  if (!existing && opts.intent === "supply") await recordSignupSource(user.id, opts.sourceTag);
 
   if (!existing && email) {
     sendWelcomeEmail({ toEmail: email, firstName: claims["first_name"] ?? null }).catch(
@@ -160,13 +175,14 @@ export async function setupAuth(app: Express) {
 
   const config = await getOidcConfig();
 
-  const verify: VerifyFunction = async (
+  const verify: VerifyFunctionWithRequest = async (
+    req,
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
     const user: any = {};
     try {
-      const accountId = await upsertUser(tokens.claims());
+      const accountId = await upsertUser(tokens.claims(), { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req) });
       const sub = (tokens.claims() as any)?.sub;
       if (accountId && accountId !== sub) user.accountId = accountId;
     } catch (err: any) {
@@ -178,6 +194,9 @@ export async function setupAuth(app: Express) {
       }
       if (err?.message === "REGISTRATION_DISABLED") {
         return verified(null, false, { message: "New user registration is temporarily disabled. Please try again later." } as any);
+      }
+      if (err?.message === TRAVELER_WAITLIST) {
+        return verified(null, false, { code: TRAVELER_WAITLIST } as any);
       }
       return verified(err as Error);
     }
@@ -206,6 +225,7 @@ export async function setupAuth(app: Express) {
           config,
           scope: "openid email profile offline_access",
           callbackURL,
+          passReqToCallback: true,
         },
         verify
       );
@@ -216,6 +236,8 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
+    // LW-1b: `?intent=supply&returnTo=/path` survive the round trip in the session stash.
+    stashSignupIntent(req);
     passport.authenticate(`replitauth:${req.hostname}`, {
       prompt: "login consent",
       scope: ["openid", "email", "profile", "offline_access"],
@@ -231,12 +253,20 @@ export async function setupAuth(app: Express) {
       if (!user && info?.code === EMAIL_SIGN_IN_REQUIRED) {
         return res.redirect(`/login?error=${EMAIL_SIGN_IN_REQUIRED_PARAM}`);
       }
+      // LW-1b: a first-time traveler in waitlist mode goes to the launch market's waitlist — no email in the URL.
+      if (!user && info?.code === TRAVELER_WAITLIST) {
+        takeStashedReturnTo(req);
+        getLaunchMarketSlug()
+          .then((slug) => res.redirect(waitlistBlockedPath(slug)))
+          .catch(() => res.redirect("/"));
+        return;
+      }
       if (!user) return res.redirect("/api/login");
-      // Same as the previous `successReturnToOrRedirect: "/dashboard"`: nothing sets
-      // session.returnTo on this path, so success always landed on /dashboard.
+      // Read the stashed return path BEFORE req.logIn regenerates the session; default as before.
+      const returnTo = takeStashedReturnTo(req);
       req.logIn(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        res.redirect("/dashboard");
+        res.redirect(returnTo ?? "/dashboard");
       });
     })(req, res, next);
   });

@@ -22,7 +22,7 @@ import { db } from "../db";
 import { transportBookingOptions, serviceBookings } from "@shared/schema";
 import { users } from "@shared/models/auth";
 import { noItemBookingDetail } from "@shared/no-item-booking";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getStripeSecretKey } from "../utils/stripe-key";
 // Ruling 2026-09-02-traveler-fee-applies-everywhere (path 4 — platform transport is merchant-of-record,
 // so the traveler service fee applies). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
@@ -260,7 +260,38 @@ export async function createTransportBookingCheckout(
  * second flip.
  */
 const TRANSPORT_BOOKING_PROMOTABLE_FROM = ["pending"] as const;
-const TRANSPORT_OPTION_PROMOTABLE_FROM = ["available", "booked"] as const;
+export const TRANSPORT_OPTION_PROMOTABLE_FROM = ["available", "booked"] as const;
+
+/**
+ * PAY-1 §1 — the ONE writer that holds a paid transport booking for review. Atomic conditional on
+ * `pending` (§15/§18b): a row that already moved (confirmed by an earlier delivery, cancelled) is
+ * never pulled back. The reason is MERGED into `booking_details.needsReview`, never assigned, so a
+ * repeat delivery keeps the first record. Returns whether this call moved the row.
+ */
+export async function holdTransportBookingForReview(
+  bookingId: string,
+  hold: { reason: string; sessionId: string; paymentIntentId: string | null; amountDollars: number | null },
+): Promise<boolean> {
+  const res: any = await db.execute(sql`
+    UPDATE service_bookings
+    SET status = 'needs_review',
+        booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
+          'needsReview', jsonb_build_object(
+            'reason', ${hold.reason}::text,
+            'source', 'transport_checkout_session'::text,
+            'sessionId', ${hold.sessionId}::text,
+            'paymentIntentId', ${hold.paymentIntentId}::text,
+            'amount', ${hold.amountDollars === null ? null : String(hold.amountDollars)}::numeric,
+            'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+          )
+        ),
+        updated_at = NOW()
+    WHERE id = ${bookingId} AND status = 'pending'
+    RETURNING id
+  `);
+  const rows = Array.isArray(res) ? res : (res?.rows ?? []);
+  return rows.length > 0;
+}
 
 /**
  * Handles Stripe webhook for payment completion
@@ -322,21 +353,45 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
         ? session.payment_intent
         : (session.payment_intent?.id ?? null);
 
+    // PAY-1 §1 (ledger `2026-10-15-pay1-payment-checks`): a paid session whose PaymentIntent cannot
+    // be recorded is HELD, never confirmed. Confirming it would leave `confirmed` + no id — a row the
+    // cancel route cannot refund — so the booking moves `pending → needs_review` with the reason,
+    // the option is left alone, and an admin resolves it on /admin/bookings/service/:id.
+    let holdReason: string | null = null;
     if (!paymentIntentId) {
+      holdReason = "no_payment_intent";
       console.error(
         `[transport] paid session ${sessionId} carries no payment_intent — booking=${bookingId} has ` +
-          `no payment id to point at; nothing is invented. Needs a human.`,
+          `no payment id to point at; nothing is invented. Held for review.`,
       );
     } else {
       const stamp = await stampTransportPaymentIntent(bookingId, paymentIntentId);
       if (!stamp.stamped && !stamp.alreadyStamped) {
+        holdReason = `stamp_refused:${stamp.refusedReason ?? "unknown"}`;
         console.error(
           `[transport] REFUSED to record payment_intent=${paymentIntentId} on booking=${bookingId} ` +
             `(reason="${stamp.refusedReason}", status="${stamp.status}", ` +
             `existing="${stamp.existingPaymentIntentId ?? "none"}") on paid session ${sessionId} — ` +
-            `detected, never repaired; needs a human.`,
+            `detected, never repaired; held for review.`,
         );
       }
+    }
+
+    if (holdReason) {
+      const held = await holdTransportBookingForReview(bookingId, {
+        reason: holdReason,
+        sessionId,
+        paymentIntentId,
+        // Stripe's own total for the paid session, in dollars; absent ⇒ null, never 0 (§13).
+        amountDollars: typeof session.amount_total === "number" ? Math.round(session.amount_total) / 100 : null,
+      });
+      if (!held) {
+        console.error(
+          `[transport] booking=${bookingId} was not in "pending", so it was not moved to needs_review ` +
+            `(reason="${holdReason}", session ${sessionId}); nothing else is written.`,
+        );
+      }
+      return;
     }
 
     // ── The booking row: atomic conditional, never a check-then-write (§15) ──────────────────────
