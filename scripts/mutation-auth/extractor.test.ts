@@ -262,6 +262,9 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 698 / 689 → 699 / 690 (PAY-1, Track A, sanctioned Oct 15, 2026 as 692 → 693; rebased onto BOT-1 and LW-1c): POST
  * /api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve — the only path out of needs_review,
  * admin-only behind the blanket /api/admin guard (and its own admin check); admin 176 → 177, admin-role 176 → 177.
+ * 699 / 690 → 700 / 691 (ledger `2026-10-16-lw1e-waitlist-admin`): DELETE /api/admin/waitlist/:id — the admin's
+ * hard delete of one waitlist row, admin-only behind the blanket /api/admin guard (and its own admin check), audit
+ * row in the same transaction; admin 177 → 178, admin-role 177 → 178.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -270,8 +273,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 699);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 690);
+  assert.equal(result.mutations.length, 700);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 691);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -281,9 +284,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 690);
-  assert.equal(manifest.rawRegistrationCount, 699);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 690);
+  assert.equal(endpointRows.length, 691);
+  assert.equal(manifest.rawRegistrationCount, 700);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 691);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -312,7 +315,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // public-or-system — a bot token (requireBotToken), off unless BOT_API_ENABLED=1.
   // + POST /api/waitlist (LW-1c): other, public-or-system — the public launch-waitlist form.
   // + POST /api/admin/bookings/:kind/:id/resolve (PAY-1): admin, behind the blanket /api/admin guard.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 177, "user-data": 241, other: 241 });
+  // + DELETE /api/admin/waitlist/:id (LW-1e): admin, behind the blanket /api/admin guard.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 178, "user-data": 241, other: 241 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -336,8 +340,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/waitlist (LW-1c): public-or-system 48 → 49. LW-1d's optional getUserId (self-referral refusal)
   // would read as session-self; it is pinned public in publicSystemOverrides, so the totals do not move.
   // + POST /api/admin/bookings/:kind/:id/resolve (PAY-1): admin-role 176 → 177.
+  // + DELETE /api/admin/waitlist/:id (LW-1e): admin-role 177 → 178.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 177, "session-self": 356, "resource-owner": 102,
+    "admin-role": 178, "session-self": 356, "resource-owner": 102,
     signature: 6, "public-or-system": 49, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
