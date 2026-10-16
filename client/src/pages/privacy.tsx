@@ -125,7 +125,7 @@ export default function PrivacyPolicyPage() {
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>3.2 Safety and Trust</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li>Verify identity and credentials of Experts and Service Providers</li>
+              <li>Verify the identity of Experts and Service Providers</li>
               <li>Monitor and prevent fraud, abuse, and security incidents</li>
               <li>Enforce our Terms of Service and policies</li>
               <li>Investigate and resolve disputes and complaints</li>

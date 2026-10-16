@@ -54,7 +54,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>2.3 Service Areas</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Traveloure currently operates in eight strategic global markets: Mumbai, Bogotá, Goa, Kyoto, Edinburgh, Cartagena, Jaipur, and Porto. We may expand to additional markets without prior notice.
+              We may expand to additional markets without prior notice.
             </p>
           </section>
 
