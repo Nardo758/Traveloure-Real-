@@ -15,7 +15,8 @@ import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
-import { stashSignupIntent, readSignupIntent, takeStashedReturnTo } from "./signup-intent-stash";
+import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
+import { recordSignupSource } from "../../services/signup-source-record";
 import {
   decideEmailMerge,
   oidcEmailVerified,
@@ -84,7 +85,7 @@ function updateUserSession(
 // Exported for tests — the registration-flag gate is verified without a live
 // OIDC handshake. Resolves to the id of the account the session belongs to: the
 // Replit sub, or the existing account a verified email-match was merged into.
-export async function upsertUser(claims: any, opts: { intent?: SignupIntent } = {}): Promise<string> {
+export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sourceTag?: string | null } = {}): Promise<string> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
@@ -143,6 +144,9 @@ export async function upsertUser(claims: any, opts: { intent?: SignupIntent } = 
 
   if (user.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
 
+  // LW-1d: a NEW supply account records its sign-up source tag once (never on a sign-in, never for a traveler).
+  if (!existing && opts.intent === "supply") await recordSignupSource(user.id, opts.sourceTag);
+
   if (!existing && email) {
     sendWelcomeEmail({ toEmail: email, firstName: claims["first_name"] ?? null }).catch(
       (err) => console.error("[auth/replit] welcome email failed (non-fatal):", err)
@@ -178,7 +182,7 @@ export async function setupAuth(app: Express) {
   ) => {
     const user: any = {};
     try {
-      const accountId = await upsertUser(tokens.claims(), { intent: readSignupIntent(req) });
+      const accountId = await upsertUser(tokens.claims(), { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req) });
       const sub = (tokens.claims() as any)?.sub;
       if (accountId && accountId !== sub) user.accountId = accountId;
     } catch (err: any) {

@@ -9,7 +9,8 @@ import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
-import { stashSignupIntent, readSignupIntent, takeStashedReturnTo } from "./signup-intent-stash";
+import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
+import { recordSignupSource } from "../../services/signup-source-record";
 import {
   decideEmailMerge,
   EMAIL_SIGN_IN_REQUIRED,
@@ -85,7 +86,7 @@ export async function facebookVerify(
   refreshToken: string,
   profile: FacebookStrategy.Profile,
   done: (error: any, user?: any, info?: any) => void,
-  opts: { intent?: SignupIntent } = {}
+  opts: { intent?: SignupIntent; sourceTag?: string | null } = {}
 ): Promise<void> {
   try {
     const email = profile.emails?.[0]?.value;
@@ -153,6 +154,8 @@ export async function facebookVerify(
         // LW-1b: record the provider (the column defaulted to "email", which mislabelled every Facebook account).
         authProvider: "facebook",
       });
+      // LW-1d: a NEW supply account records its sign-up source tag once (never on a sign-in, never for a traveler).
+      if (isNewUser && opts.intent === "supply") await recordSignupSource(user.id, opts.sourceTag);
     }
 
     if (isNewUser && email) {
@@ -220,7 +223,7 @@ export function setupFacebookAuth(app: Express) {
           },
           // LW-1b: the request carries the stashed sign-up intent into the verify callback.
           (req: any, accessToken: string, refreshToken: string, profile: FacebookStrategy.Profile, done: any) =>
-            facebookVerify(accessToken, refreshToken, profile, done, { intent: readSignupIntent(req) })
+            facebookVerify(accessToken, refreshToken, profile, done, { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req) })
         )
       );
       registeredStrategies.add(strategyName);

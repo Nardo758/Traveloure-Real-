@@ -58,6 +58,9 @@ export function normalizeWaitlistSource(value: unknown, marketSlug: string): str
   return page;
 }
 
+/** The source a sign-up credited to an expert's short link carries (LW-1d). Set by the server, never by the body. */
+export const WAITLIST_EXPERT_LINK_SOURCE = "expert_link";
+
 /** Trimmed, lower-cased — the identity the UNIQUE (email, market_slug) index keys on. */
 export function normalizeWaitlistEmail(value: string): string {
   return value.trim().toLowerCase();
@@ -73,6 +76,9 @@ export const WAITLIST_EMAIL_ERROR = "Please enter a valid email address.";
  * consent timestamp is ever taken from anywhere but here and the server.
  * A traveler may answer `tripType`, `roughMonth` (YYYY-MM) and `worry`; a provider must give `contactName` and
  * `serviceType` and may give `businessName`. The other role's fields are refused, never stored.
+ * `ref` (LW-1d) is the RAW short-link code the visitor arrived with, nothing more: the server resolves it against
+ * `short_links` and credits the link's owner only when they authored the linked Ready-Made Trip. A referrer id is
+ * never accepted from the body.
  */
 export const waitlistJoinBodySchema = z
   .object({
@@ -86,6 +92,7 @@ export const waitlistJoinBodySchema = z
     contactName: z.string().trim().min(1).max(120).optional(),
     businessName: z.string().trim().max(160).optional(),
     serviceType: z.enum(SERVICE_TYPE_KEYS).optional(),
+    ref: z.string().max(40).optional(),
     homepage: z.string().max(200).optional(),
   })
   .strict()

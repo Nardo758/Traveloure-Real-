@@ -72,7 +72,9 @@ const paymentBoundaryOverrides: Record<string, Boundary> = {
 // Guest trip creation is intentionally public: the production handler mints a
 // share token for the new record. It must not inherit the generic trip-owner
 // classification used by existing-trip mutations.
-const publicSystemOverrides = new Set(["POST /api/trips"]);
+// The launch waitlist (LW-1c/LW-1d) is a public, rate-limited form: anonymous visitors join it. It reads the
+// session only OPTIONALLY (getUserId), to refuse crediting a visitor through their own short link — never to admit.
+const publicSystemOverrides = new Set(["POST /api/trips", "POST /api/waitlist"]);
 
 function textPath(node: ts.Expression): string | undefined {
   if (ts.isStringLiteralLike(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;

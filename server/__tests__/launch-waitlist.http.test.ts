@@ -18,6 +18,13 @@
  *       and providers (by service type) counted apart.
  *   W9  GET /api/admin/waitlist/export: non-admin 403; admin gets CSV with the field-name header; `?role=provider`
  *       carries no traveler row; every export writes one `waitlist_export` audit row.
+ *   W10 (LW-1d) A sign-up carrying the author's own Ready-Made short-link code is credited: source expert_link,
+ *       referrer and code stored, shown in the admin counts and the CSV. A made-up code and a code for a link to a
+ *       trip its owner did not author credit nobody, and a body naming a referrer is refused.
+ *   W11 (LW-1d) GET /api/admin/users/export: non-admin 403; admin gets the CSV with signup_source; one
+ *       `users_export` audit row per export.
+ *   W12 (LW-1d) Email register: a supply sign-up's `signupSource` tag is stored once on the new account,
+ *       normalized; a traveler sign-up offering a tag stores nothing.
  *
  * Run against a disposable dev database only, with the app started:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/launch-waitlist.http.test.ts
@@ -215,7 +222,7 @@ test("W9 — the CSV export is admin-only, role-scoped and audit-logged", async 
   const [header, ...lines] = r.text.split("\n");
   assert.equal(
     header,
-    "email,role,market_slug,source,trip_type,rough_month,worry,contact_name,business_name,service_type,website,area,languages,consent_at,consent_text_version,created_at,updated_at,unsubscribed_at",
+    "email,role,market_slug,source,trip_type,rough_month,worry,contact_name,business_name,service_type,website,area,languages,referrer_user_id,referrer_handle,short_link_code,consent_at,consent_text_version,created_at,updated_at,unsubscribed_at",
   );
   assert.ok(lines.some((l) => l.startsWith(W_EMAIL("w1"))), "the row is in the export");
   const providers = await call("GET", "/api/admin/waitlist/export?role=provider", adminCookie);
@@ -224,4 +231,97 @@ test("W9 — the CSV export is admin-only, role-scoped and audit-logged", async 
   assert.ok(!providerLines.some((l) => l.startsWith(W_EMAIL("w1"))), "no traveler in the provider export");
   const afterCount = await pool.query(`SELECT COUNT(*)::int AS n FROM access_audit_logs WHERE actor_id = $1 AND action = 'waitlist_export'`, [adminId]);
   assert.equal(afterCount.rows[0].n, before.rows[0].n + 2);
+});
+
+test("W10 — a sign-up through the author's own Ready-Made link is credited; anything else is not", async () => {
+  const code = `w${RUN}`.slice(0, 12).toLowerCase();
+  const otherCode = `x${RUN}`.slice(0, 12).toLowerCase();
+  const t = await pool.query(
+    `INSERT INTO trips (id, user_id, destination, start_date, end_date)
+     VALUES (gen_random_uuid()::text, $1, 'Kyoto, Japan', '2027-11-01', '2027-11-03') RETURNING id`,
+    [adminId],
+  );
+  const rm = await pool.query(
+    `INSERT INTO ready_made_trips (id, author_id, source_trip_id, market, title, duration_days)
+     VALUES (gen_random_uuid()::text, $1, $2, 'Kyoto', $3, 3) RETURNING id`,
+    [adminId, t.rows[0].id, `LW-1d ${RUN}`],
+  );
+  const memberId = (await pool.query(`SELECT id FROM users WHERE email = $1`, [MEMBER_EMAIL])).rows[0].id;
+  await pool.query(
+    `INSERT INTO short_links (id, code, owner_user_id, target_type, target_id) VALUES
+       (gen_random_uuid()::text, $1, $2, 'ready_made', $4), (gen_random_uuid()::text, $3, $5, 'ready_made', $4)`,
+    [code, adminId, otherCode, rm.rows[0].id, memberId],
+  );
+  try {
+    const credited = W_EMAIL("w10a");
+    assert.equal((await call("POST", "/api/waitlist", null, { email: credited, ref: code.toUpperCase() })).status, 200);
+    const row = (await rowsFor(credited))[0];
+    assert.equal(row.source, "expert_link");
+    assert.equal(row.referrer_user_id, adminId);
+    assert.equal(row.short_link_code, code);
+
+    const madeUp = W_EMAIL("w10b");
+    await call("POST", "/api/waitlist", null, { email: madeUp, ref: "zz9zz9zz" });
+    const r2 = (await rowsFor(madeUp))[0];
+    assert.equal(r2.referrer_user_id, null);
+    assert.equal(r2.source, src().page);
+
+    const notAuthor = W_EMAIL("w10c");
+    await call("POST", "/api/waitlist", null, { email: notAuthor, ref: otherCode });
+    assert.equal((await rowsFor(notAuthor))[0].referrer_user_id, null, "a link to someone else's trip credits nobody");
+
+    assert.equal((await call("POST", "/api/waitlist", null, { email: W_EMAIL("w10d"), referrerUserId: adminId })).status, 400);
+
+    const counts = await call("GET", "/api/admin/waitlist", adminCookie);
+    assert.ok(counts.json.referrers.some((r: any) => r.referrerUserId === adminId && r.count >= 1));
+    const csv = await call("GET", "/api/admin/waitlist/export", adminCookie);
+    assert.ok(csv.text.split("\n").some((l: string) => l.startsWith(credited) && l.includes(`,${adminId},`) && l.includes(`,${code},`)));
+  } finally {
+    await pool.query(`DELETE FROM short_links WHERE code IN ($1, $2)`, [code, otherCode]);
+    await pool.query(`DELETE FROM ready_made_trips WHERE id = $1`, [rm.rows[0].id]);
+    await pool.query(`DELETE FROM trips WHERE id = $1`, [t.rows[0].id]);
+  }
+});
+
+test("W11 — the admin user CSV carries signup_source and is audit-logged", async () => {
+  assert.equal((await call("GET", "/api/admin/users/export", memberCookie)).status, 403);
+  await pool.query(`UPDATE users SET signup_source = 'ig_dm' WHERE email = $1`, [MEMBER_EMAIL]);
+  const before = await pool.query(`SELECT COUNT(*)::int AS n FROM access_audit_logs WHERE actor_id = $1 AND action = 'users_export'`, [adminId]);
+  const r = await call("GET", "/api/admin/users/export", adminCookie);
+  assert.equal(r.status, 200, r.text);
+  assert.match(r.headers.get("content-type") ?? "", /text\/csv/);
+  const [header, ...lines] = r.text.split("\n");
+  assert.equal(header, "email,name,role,status,joined_at,signup_source");
+  assert.ok(lines.some((l) => l.startsWith(MEMBER_EMAIL) && l.endsWith(",ig_dm")));
+  const afterCount = await pool.query(`SELECT COUNT(*)::int AS n FROM access_audit_logs WHERE actor_id = $1 AND action = 'users_export'`, [adminId]);
+  assert.equal(afterCount.rows[0].n, before.rows[0].n + 1);
+});
+
+test("W12 — email register stores a supply sign-up's source tag, normalized; a traveler's is not stored", async () => {
+  const supplyEmail = W_EMAIL("w12-supply");
+  const r1 = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: supplyEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: " Contact_Form " }),
+  });
+  assert.equal(r1.status, 201, await r1.text());
+  const oddEmail = W_EMAIL("w12-odd");
+  const r2 = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: oddEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: "made-up-tag" }),
+  });
+  assert.equal(r2.status, 201, await r2.text());
+  const travelerEmail = W_EMAIL("w12-traveler");
+  const r3 = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: travelerEmail, password: PASSWORD, firstName: "Lw", lastName: "One", signupSource: "ig_dm" }),
+  });
+  assert.equal(r3.status, 201, await r3.text());
+  const rows = await pool.query(`SELECT email, signup_source FROM users WHERE email = ANY($1::text[])`, [[supplyEmail, oddEmail, travelerEmail]]);
+  const by = Object.fromEntries(rows.rows.map((r: any) => [r.email, r.signup_source]));
+  assert.equal(by[supplyEmail], "contact_form");
+  assert.equal(by[oddEmail], "other");
+  assert.equal(by[travelerEmail], null);
 });

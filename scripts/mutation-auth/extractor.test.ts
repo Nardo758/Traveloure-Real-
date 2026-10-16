@@ -329,7 +329,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST …/ride-suggestions/dismiss and PUT …/profile-overlay (TC-3b): resource-owner 100 → 102.
   // + POST /api/admin/expert-applications/:id/rescore (EX-1): admin-role 171 → 172.
   // + four /api/admin/bot-* POSTs (BOT-1): admin-role 172 → 176; POST /api/bot/proposals: public-or-system 47 → 48.
-  // + POST /api/waitlist (LW-1c): public-or-system 48 → 49.
+  // + POST /api/waitlist (LW-1c): public-or-system 48 → 49. LW-1d's optional getUserId (self-referral refusal)
+  // would read as session-self; it is pinned public in publicSystemOverrides, so the totals do not move.
   assert.deepEqual(manifest.boundaryTotals, {
     "admin-role": 176, "session-self": 356, "resource-owner": 102,
     signature: 6, "public-or-system": 49, unknown: 0,

@@ -20,6 +20,8 @@ import { getLaunchMarketSlug } from "../services/platform-flags";
 import { WAITLIST_CSV_COLUMNS, joinWaitlist, waitlistCounts, waitlistExportRows } from "../services/launch-waitlist.service";
 import { WAITLIST_EMAIL_ERROR, waitlistJoinBodySchema } from "@shared/launch-waitlist";
 import { logger } from "../infrastructure/logger";
+import { csvCell } from "../utils/csv";
+import { resolveWaitlistReferral } from "../services/waitlist-referral.service";
 
 const router = Router();
 
@@ -29,11 +31,17 @@ router.post("/api/waitlist", strictRateLimiter, async (req, res) => {
   if (typeof raw.homepage === "string" && raw.homepage.trim() !== "") return res.json({ ok: true });
   const parsed = waitlistJoinBodySchema.safeParse(raw);
   if (!parsed.success) return res.status(400).json({ error: WAITLIST_EMAIL_ERROR });
-  const { homepage: _honeypot, ...body } = parsed.data;
+  const { homepage: _honeypot, ref, ...body } = parsed.data;
   try {
     const marketSlug = await getLaunchMarketSlug();
     if (!marketSlug) return res.status(503).json({ error: "The waitlist is not open right now." });
-    await joinWaitlist(body, marketSlug);
+    // LW-1d: credit comes only from the short link the visitor arrived through, resolved here from its raw code; a
+    // refusal (made-up, expired, someone else's trip, the visitor's own link) is logged and the sign-up goes on.
+    const referral = await resolveWaitlistReferral({ ref: ref ?? null, viewerUserId: getUserId(req) ?? null });
+    const credit = referral.credited
+      ? { referrerUserId: referral.referrerUserId, shortLinkCode: referral.shortLinkCode }
+      : null;
+    await joinWaitlist(body, marketSlug, credit);
     return res.json({ ok: true });
   } catch (err: any) {
     // Never log the address (no email in logs).
@@ -62,13 +70,6 @@ router.get("/api/admin/waitlist", isAuthenticated, async (req, res) => {
   const marketSlug = await getLaunchMarketSlug();
   res.json(await waitlistCounts(marketSlug));
 });
-
-/** RFC 4180 quoting plus formula neutralisation (the vendor-export posture). */
-function csvCell(value: unknown): string {
-  let text = String(value ?? "");
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 router.get("/api/admin/waitlist/export", isAuthenticated, async (req, res) => {
   const admin = await requireAdminUser(req, res);

@@ -64,6 +64,13 @@ import { planTypeDisplay } from "@shared/ready-made-plan-types";
 import { ITEM_KINDS, itemKindChip } from "@shared/item-kind";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { refreshPlanLists } from "@/lib/plan-lists";
+import { getAcquisitionRef } from "@/lib/acquisition";
+import {
+  READY_MADE_WAITLIST_LABEL,
+  arrivalRef,
+  readyMadeWaitlistHref,
+  type SignupModeRead,
+} from "@/lib/ready-made-waitlist";
 import {
   ArrowLeft,
   CalendarDays,
@@ -223,6 +230,15 @@ export default function ReadyMadeDetailPage() {
   });
   const listing = data?.listing;
   const isPreview = data?.preview === true;
+  // LW-1d: while traveler sign-up is waitlist-only, the buy button becomes the launch market's waitlist, carrying
+  // only the raw code the visitor arrived with (the server decides any credit). Unread mode ⇒ buy as usual.
+  const { data: signupMode } = useQuery<SignupModeRead>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  // One class string for the buy CTA and its waitlist-mode stand-in, so the two cannot drift apart.
+  const buyCtaClass =
+    "w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2";
+  const waitlistHref = isPreview
+    ? null
+    : readyMadeWaitlistHref(signupMode, arrivalRef(window.location.search, getAcquisitionRef()));
 
   const startPurchase = async () => {
     if (!user) {
@@ -632,16 +648,26 @@ export default function ReadyMadeDetailPage() {
               <p className="text-[#738091] text-[11px] mt-[7px] mb-[18px]" data-testid="text-rm-price-caption">
                 For the plan itself · no recurring fee · copied into your editable trips
               </p>
-              <Button
-                size="lg"
-                onClick={startPurchase}
-                disabled={isPreview || price === null}
-                data-testid="button-buy-rm"
-                className="w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                {isPreview ? "Preview only" : "Get this trip"}
-              </Button>
+              {waitlistHref ? (
+                <Button
+                  asChild
+                  size="lg"
+                  className={buyCtaClass}
+                >
+                  <a href={waitlistHref} data-testid="button-rm-waitlist">{READY_MADE_WAITLIST_LABEL}</a>
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  onClick={startPurchase}
+                  disabled={isPreview || price === null}
+                  data-testid="button-buy-rm"
+                  className={buyCtaClass}
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  {isPreview ? "Preview only" : "Get this trip"}
+                </Button>
+              )}
               <div className="grid gap-[11px] mt-[19px] pt-[17px] border-t border-[#e4e7ec] text-[#475467] text-[11px]">
                 <span className="flex items-center gap-2"><Pencil className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Edit every itinerary item</span>
                 <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Keep it in your Trip Slip</span>
