@@ -147,6 +147,10 @@ const AdminOfferingTypes = lazy(() => import("@/pages/admin/offering-types"));
 const AdminCategoryFees = lazy(() => import("@/pages/admin/category-fees"));
 const AdminNeighborhoods = lazy(() => import("@/pages/admin/neighborhoods"));
 const AdminMarkets = lazy(() => import("@/pages/admin/markets"));
+// LW-1c: the launch waitlist — counts and a CSV download (admin only).
+const AdminWaitlist = lazy(() => import("@/pages/admin/waitlist"));
+// LW-1c: the launch market's waitlist page.
+const LaunchWaitlistPage = lazy(() => import("@/pages/launch-waitlist"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
 const AdminPlatformProviders = lazy(() => import("@/pages/admin/platform-providers"));
 const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
@@ -589,6 +593,11 @@ function Router() {
       </Route>
       <Route path="/careers">
         <Layout><CareersPage /></Layout>
+      </Route>
+      {/* LW-1c: the launch market's waitlist (launch_market_slug = kyoto). Where the sign-up switch sends a
+          blocked traveler (?blocked=1) and where the blog CTA points (?source=blog&ref=<post>). */}
+      <Route path="/kyoto">
+        <Layout><LaunchWaitlistPage /></Layout>
       </Route>
       <Route path="/blog/:slug">
         <Layout><BlogPostPage /></Layout>
@@ -1238,6 +1247,9 @@ function Router() {
       </Route>
       <Route path="/admin/markets">
         {() => <ProtectedRoute component={AdminMarkets} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/waitlist">
+        {() => <ProtectedRoute component={AdminWaitlist} requiredRole="admin" />}
       </Route>
       <Route path="/admin/event-packages">
         {() => <ProtectedRoute component={AdminEventPackages} requiredRole="admin" />}

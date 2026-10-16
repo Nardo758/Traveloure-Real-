@@ -181,6 +181,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/category-fees',       description: 'Category fee percentages' },
   { href: '/admin/neighborhoods',       description: 'Neighborhood management' },
   { href: '/admin/markets',             description: 'Market management' },
+  { href: '/admin/waitlist',            description: 'Launch waitlist counts and CSV' },
   { href: '/admin/event-packages',      description: 'Event package management' },
   { href: '/admin/platform-providers',  description: 'Platform provider registry' },
   { href: '/admin/routing-queue',       description: 'Lead routing queue' },
