@@ -14,6 +14,13 @@ import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import {
+  decideEmailMerge,
+  oidcEmailVerified,
+  EMAIL_SIGN_IN_REQUIRED,
+  EMAIL_SIGN_IN_REQUIRED_MESSAGE,
+  EMAIL_SIGN_IN_REQUIRED_PARAM,
+} from "./email-merge";
 
 const getOidcConfig = memoize(
   async () => {
@@ -61,36 +68,49 @@ function updateUserSession(
   user: any,
   tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers
 ) {
-  user.claims = tokens.claims();
+  // LW-1-0: a session whose Replit sign-in was merged into an existing account is pinned to THAT
+  // account's id (`accountId`), on the first sign-in and on every token refresh after it — otherwise
+  // `claims.sub` is the Replit sub, which has no users row, and every request is a 401.
+  const claims: any = { ...(tokens.claims() as any) };
+  if (user.accountId) claims.sub = user.accountId;
+  user.claims = claims;
   user.access_token = tokens.access_token;
   user.refresh_token = tokens.refresh_token;
   user.expires_at = user.claims?.exp;
 }
 
 // Exported for tests — the registration-flag gate is verified without a live
-// OIDC handshake.
-export async function upsertUser(claims: any): Promise<void> {
+// OIDC handshake. Resolves to the id of the account the session belongs to: the
+// Replit sub, or the existing account a verified email-match was merged into.
+export async function upsertUser(claims: any): Promise<string> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
   // Check whether this Replit sub already has its own account.
   const existing = await authStorage.getUser(userId).catch(() => undefined);
 
-  // Email-merge: if a different account already owns this email (e.g. email/password
-  // or Facebook), attach the Replit profile to that canonical account rather than
-  // creating a second account keyed on the Replit sub.
+  // Email-merge (LW-1-0): a different account already owns this email (e.g. email/password or
+  // Facebook). Attach the Replit sign-in to it ONLY on an explicit verified-email claim, and never to an
+  // admin account (email-merge.ts). A refused merge creates no second account for the email either:
+  // the person is told to sign in with their email and password. Logged by user id only.
   if (!existing && email) {
     const emailOwner = await authStorage.getUserByEmail(email).catch(() => undefined);
     if (emailOwner) {
+      const decision = decideEmailMerge({ emailVerified: oidcEmailVerified(claims), owner: emailOwner });
+      if (!decision.merge) {
+        console.warn(`[auth/replit] email-match merge refused (${decision.reason}) for existing account ${emailOwner.id}`);
+        throw new Error(EMAIL_SIGN_IN_REQUIRED);
+      }
+      // The owner's own profile image is kept; the Replit one only fills a gap.
       const updated = await authStorage.updateUser(emailOwner.id, {
-        profileImageUrl: claims["profile_image_url"] || emailOwner.profileImageUrl || undefined,
+        profileImageUrl: emailOwner.profileImageUrl || claims["profile_image_url"] || undefined,
         firstName: emailOwner.firstName || claims["first_name"] || undefined,
         lastName: emailOwner.lastName || claims["last_name"] || undefined,
       });
       const merged = updated ?? emailOwner;
       console.log(`[auth/replit] Merged Replit OIDC ${userId} → existing account ${emailOwner.id}`);
       if (merged.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
-      return;
+      return emailOwner.id;
     }
   }
 
@@ -117,6 +137,7 @@ export async function upsertUser(claims: any): Promise<void> {
       (err) => console.error("[auth/replit] welcome email failed (non-fatal):", err)
     );
   }
+  return user.id;
 }
 
 export async function setupAuth(app: Express) {
@@ -143,11 +164,15 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
-    updateUserSession(user, tokens);
+    const user: any = {};
     try {
-      await upsertUser(tokens.claims());
+      const accountId = await upsertUser(tokens.claims());
+      const sub = (tokens.claims() as any)?.sub;
+      if (accountId && accountId !== sub) user.accountId = accountId;
     } catch (err: any) {
+      if (err?.message === EMAIL_SIGN_IN_REQUIRED) {
+        return verified(null, false, { message: EMAIL_SIGN_IN_REQUIRED_MESSAGE, code: EMAIL_SIGN_IN_REQUIRED } as any);
+      }
       if (err?.message === "ACCOUNT_SUSPENDED") {
         return verified(null, false, { message: "Your account has been suspended. Please contact support." } as any);
       }
@@ -156,6 +181,7 @@ export async function setupAuth(app: Express) {
       }
       return verified(err as Error);
     }
+    updateUserSession(user, tokens);
     verified(null, user);
   };
 
@@ -198,9 +224,20 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/dashboard",
-      failureRedirect: "/api/login",
+    passport.authenticate(`replitauth:${req.hostname}`, (err: any, user: any, info: any) => {
+      if (err) return next(err);
+      // LW-1-0: a refused email-match merge is told to use email and password. Re-entering OIDC
+      // (the generic failure below) would loop on the same refusal and show nothing.
+      if (!user && info?.code === EMAIL_SIGN_IN_REQUIRED) {
+        return res.redirect(`/login?error=${EMAIL_SIGN_IN_REQUIRED_PARAM}`);
+      }
+      if (!user) return res.redirect("/api/login");
+      // Same as the previous `successReturnToOrRedirect: "/dashboard"`: nothing sets
+      // session.returnTo on this path, so success always landed on /dashboard.
+      req.logIn(user, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        res.redirect("/dashboard");
+      });
     })(req, res, next);
   });
 
