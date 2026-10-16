@@ -23,6 +23,8 @@
  *       trip its owner did not author credit nobody, and a body naming a referrer is refused.
  *   W11 (LW-1d) GET /api/admin/users/export: non-admin 403; admin gets the CSV with signup_source; one
  *       `users_export` audit row per export.
+ *   W12 (LW-1d) Email register: a supply sign-up's `signupSource` tag is stored once on the new account,
+ *       normalized; a traveler sign-up offering a tag stores nothing.
  *
  * Run against a disposable dev database only, with the app started:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/launch-waitlist.http.test.ts
@@ -293,4 +295,33 @@ test("W11 — the admin user CSV carries signup_source and is audit-logged", asy
   assert.ok(lines.some((l) => l.startsWith(MEMBER_EMAIL) && l.endsWith(",ig_dm")));
   const afterCount = await pool.query(`SELECT COUNT(*)::int AS n FROM access_audit_logs WHERE actor_id = $1 AND action = 'users_export'`, [adminId]);
   assert.equal(afterCount.rows[0].n, before.rows[0].n + 1);
+});
+
+test("W12 — email register stores a supply sign-up's source tag, normalized; a traveler's is not stored", async () => {
+  const supplyEmail = W_EMAIL("w12-supply");
+  const r1 = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: supplyEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: " Contact_Form " }),
+  });
+  assert.equal(r1.status, 201, await r1.text());
+  const oddEmail = W_EMAIL("w12-odd");
+  const r2 = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: oddEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: "made-up-tag" }),
+  });
+  assert.equal(r2.status, 201, await r2.text());
+  const travelerEmail = W_EMAIL("w12-traveler");
+  const r3 = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: travelerEmail, password: PASSWORD, firstName: "Lw", lastName: "One", signupSource: "ig_dm" }),
+  });
+  assert.equal(r3.status, 201, await r3.text());
+  const rows = await pool.query(`SELECT email, signup_source FROM users WHERE email = ANY($1::text[])`, [[supplyEmail, oddEmail, travelerEmail]]);
+  const by = Object.fromEntries(rows.rows.map((r: any) => [r.email, r.signup_source]));
+  assert.equal(by[supplyEmail], "contact_form");
+  assert.equal(by[oddEmail], "other");
+  assert.equal(by[travelerEmail], null);
 });

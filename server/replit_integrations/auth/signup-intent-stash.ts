@@ -8,6 +8,8 @@
 //   - It is read BEFORE `req.logIn`, which regenerates the session; the callback route clears it.
 //   - It carries no email and no account id. It grants nothing: a stashed `supply` only lets a FIRST-TIME account
 //     past the traveler waitlist, exactly as the email path's `intent` does.
+//   - LW-1d: a supply door's raw `?source=` tag rides along (capped, never trusted as a value): the verify callback
+//     hands it to the ONE writer `recordSignupSource`, which normalizes it and stores it once on a new account.
 import { OAUTH_STATE_TTL_MS, safeReturnPath } from "../../utils/oauth-state";
 import { normalizeSignupIntent, type SignupIntent } from "@shared/launch-signup";
 
@@ -16,8 +18,12 @@ const SESSION_KEY = "lw1SignupIntent";
 interface StashedIntent {
   intent: SignupIntent;
   returnTo: string | null;
+  /** LW-1d: the raw `?source=` tag of a supply sign-up (normalized only by `recordSignupSource`). */
+  source: string | null;
   issuedAt: number;
 }
+
+const SOURCE_TAG_MAX = 200;
 
 export function stashSignupIntent(req: any, now: number = Date.now()): void {
   if (!req?.session) return;
@@ -26,6 +32,7 @@ export function stashSignupIntent(req: any, now: number = Date.now()): void {
   const stash: StashedIntent = {
     intent: normalizeSignupIntent(query.intent),
     returnTo: returnTo || null,
+    source: typeof query.source === "string" && query.source.trim() ? query.source.trim().slice(0, SOURCE_TAG_MAX) : null,
     issuedAt: now,
   };
   req.session[SESSION_KEY] = stash;
@@ -40,6 +47,11 @@ function readStash(req: any, now: number): StashedIntent | null {
 
 export function readSignupIntent(req: any, now: number = Date.now()): SignupIntent {
   return readStash(req, now)?.intent ?? "traveler";
+}
+
+/** LW-1d: the stashed raw source tag (or null). */
+export function readSignupSourceTag(req: any, now: number = Date.now()): string | null {
+  return readStash(req, now)?.source ?? null;
 }
 
 /** The stashed return path (or null), clearing the stash. Call before `req.logIn`. */

@@ -10,6 +10,7 @@ import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { qaSignupAllowed } from "../../services/qa-signup-code";
+import { recordSignupSource } from "../../services/signup-source-record";
 import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { dispatchModerationEvent } from "../../automations/moderation/runtime";
@@ -64,6 +65,9 @@ const registerSchema = z.object({
   intent: z.string().max(20).optional(),
   // LW-1b: the QA sign-up code (server secret QA_SIGNUP_CODE). Compared in constant time; never logged.
   qaCode: z.string().max(256).optional(),
+  // LW-1d: a supply sign-up's raw `?source=` tag. Only `recordSignupSource` reads it, normalized against the
+  // launch market; it is distinct from the funnel `source` above, whose client default ("direct") is not a tag.
+  signupSource: z.string().max(200).optional(),
 });
 
 const loginSchema = z.object({
@@ -152,6 +156,11 @@ export function setupEmailAuth(app: Express): void {
         const welcomeId = await enqueueSignupWelcome(tx, newUser.id);
         return { newUser, welcomeId };
       });
+
+      // LW-1d: a supply account records its sign-up source tag once. Never fails the sign-up (the writer never throws).
+      if (normalizeSignupIntent(validation.data.intent) === "supply") {
+        await recordSignupSource(newUser.id, validation.data.signupSource);
+      }
 
       // Fire-and-forget: T1 funnel event (includes paid-acquisition attribution)
       trackFunnelEvent({
