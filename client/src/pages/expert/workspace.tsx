@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { ExpertRateLine } from "@/components/expert/expert-rate-line";
 import { WorkstationDays, type LegPatch } from "@/components/plan/WorkstationDays";
 import { HOST_PICKUP_UNAVAILABLE_NOTE, type StopLeg } from "@/components/plan/LegRow";
 import type { PlanCardDay } from "@/components/plancard/plancard-types";
@@ -2787,9 +2788,10 @@ export default function ExpertWorkspace() {
           <PenSquare style={{ width: 24, height: 24, color: BRAND }} />
           <h1 style={{ fontSize: 22, fontWeight: 700, color: INK, margin: 0 }}>Workstation</h1>
         </div>
-        <div style={{ fontSize: 14, color: MID, marginBottom: 22 }}>
+        <div style={{ fontSize: 14, color: MID, marginBottom: 8 }}>
           One door in — build first, decide where it ships later.
         </div>
+        <ExpertRateLine style={{ color: MID, marginBottom: 22 }} />
 
         {/* ONE create action (P1-1). The build is unlabeled at birth; channels attach in Distribute.
             W-4: the destination is set here — it is the location the build's data loads from

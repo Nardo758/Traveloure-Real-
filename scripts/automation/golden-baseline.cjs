@@ -83,6 +83,12 @@ async function main() {
   if (args.some(arg => !["--isolated-db", "--guards-only", "--loop=1", "--loop=2"].includes(arg))) {
     throw new Error("Unrecognized baseline option");
   }
+  // Without a database nothing here can run, and a session sweeping the repo's scripts must not read
+  // that as a failed check: say so and exit 0. Kept out of the scripts/check-* namespace for the same reason.
+  if (!process.env.DATABASE_URL) {
+    console.log("Golden baseline skipped: DATABASE_URL is not set, so no stage can run. Set it to run the baseline.");
+    return;
+  }
   const reporter = await import(pathToFileURL(path.resolve("scripts/verification/automation-baseline-reporter.mjs")).href);
   const isolated = args.includes("--isolated-db");
   const loop = args.find(arg => /^--loop=[12]$/.test(arg))?.split("=")[1] ?? "1";
