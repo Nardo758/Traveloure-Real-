@@ -1,20 +1,20 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **703** raw mounted mutation registrations and **694** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **704** raw mounted mutation registrations and **695** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+148** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+149** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 181; user-data 241; other 241.
-Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature 6; public-or-system 49; unknown 0.
+Category totals: payments 31; admin 181; user-data 241; other 242.
+Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature 6; public-or-system 50; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/admin/affiliate/partners` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8710` | unknown | unknown |
 | DELETE | `/api/admin/affiliate/partners/:id` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8798` | unknown | unknown |
 | PATCH | `/api/admin/affiliate/partners/:id` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8774` | unknown | unknown |
-| POST | `/api/admin/affiliate/partners/:id/approve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9630` | unknown | unknown |
+| POST | `/api/admin/affiliate/partners/:id/approve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9667` | unknown | unknown |
 | POST | `/api/admin/affiliate/partners/:id/page-extract` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8816` | unknown | unknown |
-| POST | `/api/admin/affiliate/partners/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9641` | unknown | unknown |
+| POST | `/api/admin/affiliate/partners/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9678` | unknown | unknown |
 | POST | `/api/admin/affiliate/partners/:id/scrape` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8835` | unknown | unknown |
 | PATCH | `/api/admin/affiliate/reconciliation/:earningId` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4436` | unknown | unknown |
 | POST | `/api/admin/blog/drafts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:117` | unknown | unknown |
@@ -43,10 +43,10 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | DELETE | `/api/admin/categories/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3939` | unknown | unknown |
 | PATCH | `/api/admin/categories/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3826` | unknown | unknown |
 | PATCH | `/api/admin/contact-submissions/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:2904` | unknown | unknown |
-| POST | `/api/admin/content-placement-rules` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8708` | unknown | unknown |
-| DELETE | `/api/admin/content-placement-rules/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8731` | unknown | unknown |
-| PATCH | `/api/admin/content-placement-rules/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8719` | unknown | unknown |
-| POST | `/api/admin/content-placement-rules/auto-index` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8744` | unknown | unknown |
+| POST | `/api/admin/content-placement-rules` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8745` | unknown | unknown |
+| DELETE | `/api/admin/content-placement-rules/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8768` | unknown | unknown |
+| PATCH | `/api/admin/content-placement-rules/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8756` | unknown | unknown |
+| POST | `/api/admin/content-placement-rules/auto-index` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8781` | unknown | unknown |
 | POST | `/api/admin/content-sources` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:72` | unknown | unknown |
 | PATCH | `/api/admin/content-sources/:id` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:82` | unknown | unknown |
 | POST | `/api/admin/content-sources/:id/activate` | admin | admin-role | no | unknown | `server/routes/content-sources.routes.ts:90` | unknown | unknown |
@@ -62,7 +62,7 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/admin/demand/onepager/:market/withdraw` | admin | admin-role | no | unknown | `server/routes/demand.routes.ts:871` | unknown | unknown |
 | POST | `/api/admin/destination-events/:id/approve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4313` | unknown | unknown |
 | POST | `/api/admin/destination-events/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4339` | unknown | unknown |
-| POST | `/api/admin/digest/send-now` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9392` | unknown | unknown |
+| POST | `/api/admin/digest/send-now` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9429` | unknown | unknown |
 | POST | `/api/admin/disputes/:bookingId/refund-rejected-artifact` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1930` | unknown | unknown |
 | POST | `/api/admin/disputes/:bookingId/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1743` | unknown | unknown |
 | POST | `/api/admin/disputes/:bookingId/uphold` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1821` | unknown | unknown |
@@ -76,10 +76,10 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/admin/dmo/publish/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:2734` | unknown | unknown |
 | POST | `/api/admin/dmo/resolve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:2833` | unknown | unknown |
 | POST | `/api/admin/dmo/sync-registry` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:2650` | unknown | unknown |
-| POST | `/api/admin/email-outbox/:id/retry` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9707` | unknown | unknown |
-| POST | `/api/admin/event-packages` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8947` | unknown | unknown |
-| DELETE | `/api/admin/event-packages/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8996` | unknown | unknown |
-| PATCH | `/api/admin/event-packages/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8969` | unknown | unknown |
+| POST | `/api/admin/email-outbox/:id/retry` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9744` | unknown | unknown |
+| POST | `/api/admin/event-packages` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8984` | unknown | unknown |
+| DELETE | `/api/admin/event-packages/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9033` | unknown | unknown |
+| PATCH | `/api/admin/event-packages/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9006` | unknown | unknown |
 | PATCH | `/api/admin/evidence-thresholds/:key` | admin | admin-role | no | unknown | `server/routes/neighborhood-claims.routes.ts:310` | unknown | unknown |
 | PATCH | `/api/admin/expert-applications/:id/rejection-reason` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3188` | unknown | unknown |
 | POST | `/api/admin/expert-applications/:id/rescore` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3146` | unknown | unknown |
@@ -89,16 +89,16 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | PATCH | `/api/admin/expert-offering-types/:key` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8130` | unknown | unknown |
 | PATCH | `/api/admin/expert-templates/:id/roles` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3701` | unknown | unknown |
 | PATCH | `/api/admin/fee-bands/:bandKey` | admin | admin-role | no | verified | `server/routes/admin.routes.ts:7784` | unknown | unknown |
-| POST | `/api/admin/gem-candidates/:id/approve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8612` | unknown | unknown |
-| POST | `/api/admin/gem-candidates/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8655` | unknown | unknown |
-| POST | `/api/admin/gems/:id/verify` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8592` | unknown | unknown |
+| POST | `/api/admin/gem-candidates/:id/approve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8649` | unknown | unknown |
+| POST | `/api/admin/gem-candidates/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8692` | unknown | unknown |
+| POST | `/api/admin/gems/:id/verify` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8629` | unknown | unknown |
 | POST | `/api/admin/gems/backfill-photos` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:317` | unknown | unknown |
 | POST | `/api/admin/handoffs/:id/assign` | admin | admin-role | no | unknown | `server/routes/handoff.routes.ts:389` | unknown | unknown |
 | POST | `/api/admin/invoices` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4931` | unknown | unknown |
 | PATCH | `/api/admin/invoices/:invoiceNumber/status` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4995` | unknown | unknown |
-| PATCH | `/api/admin/lead-routing-logs/:id/override` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8306` | unknown | unknown |
-| POST | `/api/admin/leads/:expertRequestId/assign` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8386` | unknown | unknown |
-| POST | `/api/admin/leads/:expertRequestId/confirm` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8489` | unknown | unknown |
+| PATCH | `/api/admin/lead-routing-logs/:id/override` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8343` | unknown | unknown |
+| POST | `/api/admin/leads/:expertRequestId/assign` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8423` | unknown | unknown |
+| POST | `/api/admin/leads/:expertRequestId/confirm` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8526` | unknown | unknown |
 | POST | `/api/admin/markets` | admin | admin-role | no | unknown | `server/routes/admin-markets.routes.ts:187` | unknown | unknown |
 | POST | `/api/admin/markets/:slug/refresh-geography` | admin | admin-role | no | unknown | `server/routes/admin-markets.routes.ts:284` | unknown | unknown |
 | PATCH | `/api/admin/message-reports/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:7579` | unknown | unknown |
@@ -106,15 +106,15 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/admin/neighborhood-claims/:id/rescore` | admin | admin-role | no | unknown | `server/routes/neighborhood-claims.routes.ts:287` | unknown | unknown |
 | POST | `/api/admin/neighborhood-claims/:id/return` | admin | admin-role | no | unknown | `server/routes/neighborhood-claims.routes.ts:262` | unknown | unknown |
 | POST | `/api/admin/neighborhood-claims/manual-entry` | admin | admin-role | no | unknown | `server/routes/neighborhood-claims.routes.ts:160` | unknown | unknown |
-| PATCH | `/api/admin/neighborhoods/:id/adjacency` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9297` | unknown | unknown |
-| POST | `/api/admin/neighborhoods/:id/coverage-targets` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9119` | unknown | unknown |
-| DELETE | `/api/admin/neighborhoods/:id/coverage-targets/:categoryKey` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9168` | unknown | unknown |
-| PUT | `/api/admin/neighborhoods/:id/lead` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9193` | unknown | unknown |
-| POST | `/api/admin/neighborhoods/backfill` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9080` | unknown | unknown |
+| PATCH | `/api/admin/neighborhoods/:id/adjacency` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9334` | unknown | unknown |
+| POST | `/api/admin/neighborhoods/:id/coverage-targets` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9156` | unknown | unknown |
+| DELETE | `/api/admin/neighborhoods/:id/coverage-targets/:categoryKey` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9205` | unknown | unknown |
+| PUT | `/api/admin/neighborhoods/:id/lead` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9230` | unknown | unknown |
+| POST | `/api/admin/neighborhoods/backfill` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9117` | unknown | unknown |
 | DELETE | `/api/admin/notifications/:id` | admin | admin-role | no | unknown | `server/routes.ts:13860` | unknown | unknown |
 | PATCH | `/api/admin/notifications/:id/read` | admin | admin-role | no | unknown | `server/routes.ts:13826` | unknown | unknown |
 | PATCH | `/api/admin/notifications/read-all` | admin | admin-role | no | unknown | `server/routes.ts:13886` | unknown | unknown |
-| POST | `/api/admin/optimization-fees` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8884` | unknown | unknown |
+| POST | `/api/admin/optimization-fees` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8921` | unknown | unknown |
 | POST | `/api/admin/payouts` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5763` | unknown | unknown |
 | PATCH | `/api/admin/payouts/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5829` | unknown | unknown |
 | PATCH | `/api/admin/platform-settings/:settingKey` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8183` | unknown | unknown |
@@ -123,7 +123,7 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/admin/provider-services/:id/approve` | admin | admin-role | no | verified | `server/routes/admin.routes.ts:4131` | unknown | unknown |
 | POST | `/api/admin/provider-services/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4220` | unknown | unknown |
 | POST | `/api/admin/providers/:userId/remind-stripe` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3394` | unknown | unknown |
-| POST | `/api/admin/qa/run-nightly` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9544` | unknown | unknown |
+| POST | `/api/admin/qa/run-nightly` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9581` | unknown | unknown |
 | POST | `/api/admin/ready-made/:id/approve` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1333` | unknown | unknown |
 | PATCH | `/api/admin/ready-made/:id/badge` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1449` | unknown | unknown |
 | POST | `/api/admin/ready-made/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1481` | unknown | unknown |
@@ -131,8 +131,8 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/admin/ready-made/disputes/:purchaseId/refund` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1581` | unknown | unknown |
 | POST | `/api/admin/reviews/:id/clear-response` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:7665` | unknown | unknown |
 | PATCH | `/api/admin/reviews/:id/status` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:7644` | unknown | unknown |
-| POST | `/api/admin/routing-queue/:requestId/confirm` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8501` | unknown | unknown |
-| POST | `/api/admin/routing-queue/:requestId/reassign` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8513` | unknown | unknown |
+| POST | `/api/admin/routing-queue/:requestId/confirm` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8538` | unknown | unknown |
+| POST | `/api/admin/routing-queue/:requestId/reassign` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8550` | unknown | unknown |
 | POST | `/api/admin/seed-categories` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4006` | unknown | unknown |
 | POST | `/api/admin/service-offering-types` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8067` | unknown | unknown |
 | DELETE | `/api/admin/service-offering-types/:key` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8100` | unknown | unknown |
@@ -153,12 +153,12 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/admin/ticker` | admin | admin-role | no | unknown | `server/routes/ticker.routes.ts:88` | unknown | unknown |
 | PATCH | `/api/admin/ticker/:id` | admin | admin-role | no | unknown | `server/routes/ticker.routes.ts:119` | unknown | unknown |
 | PUT | `/api/admin/ticker/order` | admin | admin-role | no | unknown | `server/routes/ticker.routes.ts:104` | unknown | unknown |
-| POST | `/api/admin/trigger-digest` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9380` | unknown | unknown |
-| POST | `/api/admin/trip-pass/issue` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9803` | unknown | unknown |
+| POST | `/api/admin/trigger-digest` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9417` | unknown | unknown |
+| POST | `/api/admin/trip-pass/issue` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9840` | unknown | unknown |
 | DELETE | `/api/admin/users/:id` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:6200` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/commission-override` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3285` | unknown | unknown |
-| PATCH | `/api/admin/users/:id/suspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9420` | unknown | unknown |
-| PATCH | `/api/admin/users/:id/unsuspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9586` | unknown | unknown |
+| PATCH | `/api/admin/users/:id/suspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9457` | unknown | unknown |
+| PATCH | `/api/admin/users/:id/unsuspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9623` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/verification` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3224` | unknown | unknown |
 | DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:120` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests` | other | resource-owner | no | verified | `server/routes/content.routes.ts:7609` | unknown | unknown |
@@ -682,24 +682,25 @@ Boundary totals: admin-role 181; session-self 356; resource-owner 102; signature
 | POST | `/api/webhooks/stripe-identity` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:38` (/stripe-identity) | unknown | unknown |
 | POST | `/email-preferences` | other | session-self | no | unknown | `server/routes/itinerary-email-preferences.routes.ts:78` | unknown | unknown |
 | POST | `/email-preferences/unsubscribe/:token` | other | resource-owner | no | verified | `server/routes/itinerary-email-preferences.routes.ts:110` | unknown | unknown |
-| POST | `/internal/jobs/availability-materialization` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:308` | unknown | unknown |
-| POST | `/internal/jobs/booking-auto-completion` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:265` | unknown | unknown |
-| POST | `/internal/jobs/booking-expiry` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:321` | unknown | unknown |
-| POST | `/internal/jobs/checkout-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:294` | unknown | unknown |
-| POST | `/internal/jobs/content-expiry-census` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:439` | unknown | unknown |
-| POST | `/internal/jobs/earnings-release` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:251` | unknown | unknown |
-| POST | `/internal/jobs/email-outbox` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:356` | unknown | unknown |
-| POST | `/internal/jobs/facts-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:432` | unknown | unknown |
-| POST | `/internal/jobs/handoff-timers` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:417` | unknown | unknown |
-| POST | `/internal/jobs/itinerary-generation-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:347` | unknown | unknown |
-| POST | `/internal/jobs/leg-google-coords` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:475` | unknown | unknown |
-| POST | `/internal/jobs/legs-dayof-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:467` | unknown | unknown |
-| POST | `/internal/jobs/liteapi-booking-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:459` | unknown | unknown |
-| POST | `/internal/jobs/liteapi-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:445` | unknown | unknown |
-| POST | `/internal/jobs/official-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:452` | unknown | unknown |
-| POST | `/internal/jobs/score-neighborhood-claims` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:374` | unknown | unknown |
-| POST | `/internal/jobs/stripe-reconciliation` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:276` | unknown | unknown |
-| POST | `/internal/jobs/travel-matrix-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:394` | unknown | unknown |
-| POST | `/internal/jobs/travelpayouts-report-poll` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:329` | unknown | unknown |
-| POST | `/internal/jobs/travelpulse-weekly` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:409` | unknown | unknown |
-| POST | `/internal/run-occasion-drafts` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:233` | unknown | unknown |
+| POST | `/internal/jobs/availability-materialization` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:312` | unknown | unknown |
+| POST | `/internal/jobs/booking-auto-completion` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:269` | unknown | unknown |
+| POST | `/internal/jobs/booking-expiry` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:325` | unknown | unknown |
+| POST | `/internal/jobs/checkout-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:298` | unknown | unknown |
+| POST | `/internal/jobs/content-expiry-census` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:443` | unknown | unknown |
+| POST | `/internal/jobs/earnings-release` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:255` | unknown | unknown |
+| POST | `/internal/jobs/email-outbox` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:360` | unknown | unknown |
+| POST | `/internal/jobs/facts-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:436` | unknown | unknown |
+| POST | `/internal/jobs/handoff-timers` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:421` | unknown | unknown |
+| POST | `/internal/jobs/itinerary-generation-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:351` | unknown | unknown |
+| POST | `/internal/jobs/leg-google-coords` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:486` | unknown | unknown |
+| POST | `/internal/jobs/legs-dayof-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:478` | unknown | unknown |
+| POST | `/internal/jobs/liteapi-booking-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:470` | unknown | unknown |
+| POST | `/internal/jobs/liteapi-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:456` | unknown | unknown |
+| POST | `/internal/jobs/official-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:463` | unknown | unknown |
+| POST | `/internal/jobs/score-neighborhood-claims` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:378` | unknown | unknown |
+| POST | `/internal/jobs/stripe-reconciliation` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:280` | unknown | unknown |
+| POST | `/internal/jobs/travel-matrix-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:398` | unknown | unknown |
+| POST | `/internal/jobs/travelpayouts-report-poll` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:333` | unknown | unknown |
+| POST | `/internal/jobs/travelpulse-weekly` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:413` | unknown | unknown |
+| POST | `/internal/jobs/waitlist-retention` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:450` | unknown | unknown |
+| POST | `/internal/run-occasion-drafts` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:237` | unknown | unknown |

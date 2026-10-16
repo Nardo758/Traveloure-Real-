@@ -133,5 +133,23 @@ export function isWaitlistQaEmail(email: string | null | undefined): boolean {
 }
 
 /** Admin search: at least this many characters, at most this many rows back. */
+/**
+ * LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`; Leon, Oct 16, 2026): a waitlist row that never became an
+ * account is deleted 12 months after the day traveler sign-up first opened (`traveler_signup_opened_at`). Before
+ * sign-up opens there is no clock and nothing is deleted.
+ */
+export const WAITLIST_RETENTION_MONTHS = 12;
+
+/** The instant retention deletion becomes due: the opening instant plus the retention months (UTC calendar months). */
+export function waitlistRetentionDueAt(openedAt: Date): Date {
+  const due = new Date(openedAt.getTime());
+  const day = due.getUTCDate();
+  due.setUTCDate(1);
+  due.setUTCMonth(due.getUTCMonth() + WAITLIST_RETENTION_MONTHS);
+  const lastDay = new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth() + 1, 0)).getUTCDate();
+  due.setUTCDate(Math.min(day, lastDay));
+  return due;
+}
+
 export const WAITLIST_SEARCH_MIN_CHARS = 3;
 export const WAITLIST_SEARCH_LIMIT = 50;
