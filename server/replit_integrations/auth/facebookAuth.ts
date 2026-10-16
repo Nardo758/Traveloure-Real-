@@ -7,6 +7,7 @@ import FacebookStrategy from "passport-facebook";
 import type { Express } from "express";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
+import { issueEmailVerification } from "./emailAuth";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
 import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
@@ -159,6 +160,11 @@ export async function facebookVerify(
     }
 
     if (isNewUser && email) {
+      // AUTH-1 Finding A (i): Facebook is never trusted as a verified address. A new account gets the
+      // same verification email an email sign-up gets, and its welcome is held until that is used.
+      issueEmailVerification(user.id, email, user.firstName ?? null).catch(
+        (err) => console.error("[auth/facebook] verification email issue failed (non-fatal):", err)
+      );
       sendWelcomeEmail({ toEmail: email, firstName: user.firstName ?? null }).catch(
         (err) => console.error("[auth/facebook] welcome email failed (non-fatal):", err)
       );
