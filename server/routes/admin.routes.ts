@@ -207,6 +207,7 @@ import {
   getRoleChangeAuditLogs,
   getAuditLogsForResource,
 } from "../services/admin-query.service";
+import { parseAdminBookingListQuery } from "@shared/admin-booking-list";
 // THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
 // CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). The lead-confirm handler below calls it;
 // it never inserts the row itself.
@@ -411,6 +412,16 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
       return res.status(403).json({ message: "Admin access required" });
     }
     try {
+      // PAY-1c: with `kind` (service | legacy | liteapi) this answers the /admin/bookings list — one
+      // table, filtered by status and by creation day — through the same service the detail page
+      // reads. Without `kind` the response is the original enriched service-bookings array, unchanged.
+      if (req.query.kind !== undefined) {
+        const parsed = parseAdminBookingListQuery(req.query as Record<string, unknown>);
+        if (!parsed.ok) return res.status(400).json({ message: parsed.message });
+        const { listAdminBookings, ADMIN_BOOKING_LIST_LIMIT } = await import("../services/admin-booking-detail.service");
+        const rows = await listAdminBookings(parsed.filters);
+        return res.json({ rows, limit: ADMIN_BOOKING_LIST_LIMIT, filters: parsed.filters });
+      }
       const status = req.query.status as string | undefined;
       const allBookings = await storage.getServiceBookings(status ? { status } : {});
       const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
