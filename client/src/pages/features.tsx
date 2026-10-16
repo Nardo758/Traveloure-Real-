@@ -45,7 +45,7 @@ const mainFeatures = [
   {
     title: "Local Expert Network",
     description:
-      "Connect with verified local experts who know their destinations inside out. Get insider tips and authentic experiences you won't find in guidebooks.",
+      "Connect with local experts who know their destinations inside out. Get insider tips and authentic experiences you won't find in guidebooks.",
     icon: Users,
     highlights: [
       "Reviewed before they can list",

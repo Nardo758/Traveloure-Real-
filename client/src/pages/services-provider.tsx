@@ -39,6 +39,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { isAffiliateCategory } from "@/lib/earn-roles";
+import { providerKeepLine, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import { suggestHandle } from "@shared/handle-suggestion";
 import { HANDLE_MAX_LENGTH } from "@shared/handle";
 import { savePendingHandle } from "@/lib/pending-handle";
@@ -97,17 +98,22 @@ const businessTypes = [
   "Non-Profit",
 ];
 
-const benefits = [
-  { icon: Users, text: "Access to qualified travelers" },
-  { icon: DollarSign, text: "Competitive commission rates" },
-  { icon: Star, text: "Review and rating system" },
-  { icon: Shield, text: "Secure payment processing" },
-];
+// The commission benefit is the provider rate the fee resolver applies today (CP-2); with no answer it is left out (§13).
+function platformBenefits(commissionLine: string | null) {
+  return [
+    { icon: Users, text: "Access to qualified travelers" },
+    ...(commissionLine ? [{ icon: DollarSign, text: commissionLine }] : []),
+    { icon: Star, text: "Review and rating system" },
+    { icon: Shield, text: "Secure payment processing" },
+  ];
+}
 
 export default function ServicesProviderPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user: signedInUser, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { data: keepRates } = useQuery<PublicKeepRates>({ queryKey: [KEEP_RATES_ENDPOINT], staleTime: 60_000 });
+  const benefits = platformBenefits(providerKeepLine(keepRates));
   // #924: the application status carries the reviewer's feedback (current or previous rejection).
   const { data: appStatus } = useQuery<{ rejectionMessage?: string | null; previousRejection?: { message: string } | null }>({
     queryKey: ["/api/provider/application-status"],

@@ -3142,6 +3142,19 @@ router.get("/api/booking-fee-config", async (req, res) => {
   // pricing surfaces (optimize.tsx, etc.) so admin edits propagate without redeploy.
   // Percent bands return rate as a fraction (0.25 = 25 %); flat bands return rate
   // as USD dollars (49.99 = $49.99). The rateType field disambiguates. // fee-literal-ok: comment example, fee resolves from config
+// CP-2 (ledger `2026-10-16-cp2-public-copy`): the platform rates the fee resolver applies today to
+// an expert sale and a provider line, for the public "keep N%" copy. Public, read-only; a rate the
+// resolver cannot state as one number is null (§13).
+router.get("/api/fee-policies/keep-rates", async (_req, res) => {
+    try {
+      const { resolvePublicKeepRates } = await import("../services/earn-keep-rates.service");
+      res.setHeader("Cache-Control", "public, max-age=60");
+      return res.json(await resolvePublicKeepRates());
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
 router.get("/api/fee-bands/:bandKey", async (req, res) => {
     try {
       const bandKey = String(req.params.bandKey || "").trim();

@@ -19,9 +19,9 @@
  * which door /start/events sends it through and because the two tables have
  * separate key namespaces (`proposal_planner` exists in both).
  *
- * Earning indicators are config-driven: each category's commissionBandKey
- * (/api/service-categories) resolved through /api/fee-bands/:bandKey, and
- * the expert floor from the expert_standard band. No hardcoded percentages.
+ * The revenue-share line reads the rates the fee resolver applies today
+ * (/api/fee-policies/keep-rates via `lib/fee-keep-copy.ts`, CP-2).
+ * No hardcoded percentages.
  *
  * Editing an offering-type row (is_active, display_name, is_surprising…)
  * changes this page on next render — no deploy. Selecting any offering
@@ -29,7 +29,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { earnKeepSentence, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
@@ -73,27 +74,6 @@ interface ExpertOfferingType {
   sort_order: number;
 }
 
-interface ServiceCategory {
-  id: string;
-  name: string;
-  categoryKey: string | null;
-  commissionBandKey: string | null;
-}
-
-interface FeeBand {
-  band_key: string;
-  rate_type: "percent" | "flat";
-  default_rate: number;
-}
-
-const EXPERT_FLOOR_BAND = "expert_standard";
-
-/** "keep up to N%" / "keep N%+" — N derived from live band rates only. */
-function formatKeep(rate: number, style: "up_to" | "floor"): string {
-  const keepPct = Math.round((1 - rate) * 100);
-  return style === "up_to" ? `keep up to ${keepPct}%` : `keep ${keepPct}%+`;
-}
-
 function TrackPill({ track }: { track: EarnRole["track"] }) {
   const isInPerson = track === "in-person";
   return (
@@ -107,29 +87,15 @@ function TrackPill({ track }: { track: EarnRole["track"] }) {
   );
 }
 
-function EarningBadge({ text, testId }: { text: string | null; testId: string }) {
-  if (!text) return null;
-  return (
-    <span
-      className="text-xs font-medium text-[color:var(--earn-gold-ink)] bg-[color:var(--earn-gold-wash)] px-2.5 py-0.5 rounded-md whitespace-nowrap"
-      data-testid={testId}
-    >
-      {text}
-    </span>
-  );
-}
-
 function RoleCard({
   role,
   active,
   chips,
-  earning,
   onSelect,
 }: {
   role: EarnRole;
   active: boolean;
   chips: string[];
-  earning: string | null;
   onSelect: () => void;
 }) {
   return (
@@ -154,7 +120,6 @@ function RoleCard({
           </span>
         ))}
       </div>
-      <EarningBadge text={earning} testId={`earn-role-earning-${role.key}`} />
     </button>
   );
 }
@@ -264,7 +229,7 @@ export default function EarnPage() {
     el.scrollIntoView({ block: "center" });
   }, [roleParam, activeKey]);
 
-  // ── Data: the two offering catalogs + categories (names + band keys) ──────
+  // ── Data: the two offering catalogs ──────────────────────────────────────
   const { data: providerOfferings, isLoading: loadingProv, error: errProv, refetch: refetchProv } = useQuery<ServiceOfferingType[]>({
     queryKey: ["/api/offering-types/services"],
     staleTime: 5 * 60_000,
@@ -273,54 +238,9 @@ export default function EarnPage() {
     queryKey: ["/api/offering-types/experts"],
     staleTime: 5 * 60_000,
   });
-  const { data: categories } = useQuery<ServiceCategory[]>({
-    queryKey: ["/api/service-categories"],
-    staleTime: 5 * 60_000,
-  });
-
-  // ── Earning config: live band rates, never hardcoded ─────────────────────
-  // Distinct provider bands (from each category's commissionBandKey) + the
-  // expert floor band.
-  const providerBandKeys = Array.from(
-    new Set(
-      (categories ?? [])
-        .filter((c) => c.categoryKey && c.commissionBandKey)
-        .map((c) => c.commissionBandKey as string)
-    )
-  ).sort();
-  const bandQueries = useQueries({
-    queries: [...providerBandKeys, EXPERT_FLOOR_BAND].map((key) => ({
-      queryKey: [`/api/fee-bands/${key}`],
-      staleTime: 60_000,
-    })),
-  });
-  const bandRates = new Map<string, number>();
-  bandQueries.forEach((q) => {
-    const band = q.data as FeeBand | undefined;
-    if (band && band.rate_type === "percent") bandRates.set(band.band_key, Number(band.default_rate));
-  });
-
-  /** Best (highest) keep-% across the categories a role spans. */
-  const roleEarning = (role: EarnRole): string | null => {
-    if (role.track === "remote") {
-      const rate = bandRates.get(EXPERT_FLOOR_BAND);
-      return rate === undefined ? null : formatKeep(rate, "floor");
-    }
-    const rates = (categories ?? [])
-      .filter((c) => c.categoryKey && roleForProviderCategory(c.categoryKey) === role.key)
-      .map((c) => (c.commissionBandKey ? bandRates.get(c.commissionBandKey) : undefined))
-      .filter((r): r is number => r !== undefined);
-    // Event Planner spans BOTH catalogs, so its ceiling must consider the expert
-    // floor band too — a "keep up to N%" derived from the provider half alone
-    // would be a claim about offerings it does not govern (§13). Still config —
-    // no rate is written here (§8).
-    if (role.key === "event_planner") {
-      const expertRate = bandRates.get(EXPERT_FLOOR_BAND);
-      if (expertRate !== undefined) rates.push(expertRate);
-    }
-    if (rates.length === 0) return null;
-    return formatKeep(Math.min(...rates), "up_to");
-  };
+  // ── Revenue share: the resolver's own rates, never a typed number (§8, CP-2) ─────
+  const { data: keepRates } = useQuery<PublicKeepRates>({ queryKey: [KEEP_RATES_ENDPOINT], staleTime: 60_000 });
+  const keepSentence = earnKeepSentence(keepRates);
 
   // ── Role → offerings (partition functions from the config module) ────────
   // Both catalogs are asked for every card and the partition functions decide.
@@ -408,6 +328,11 @@ export default function EarnPage() {
             <p className="text-muted-foreground">
               Pick the role that sounds like you — see exactly what you'd offer and what you keep.
             </p>
+            {keepSentence && (
+              <p className="mt-2 text-[14px] text-foreground" data-testid="earn-keep-sentence">
+                {keepSentence}
+              </p>
+            )}
             <p className="mt-3 text-[14px]">
               <span className="text-muted-foreground">Already a partner?</span>{" "}
               <button
@@ -441,7 +366,6 @@ export default function EarnPage() {
                   role={role}
                   active={role.key === activeKey}
                   chips={offeringsForRole(role.key).slice(0, 3).map((o) => o.name)}
-                  earning={roleEarning(role)}
                   onSelect={() => setRole(role.key)}
                 />
               ))}
@@ -467,7 +391,6 @@ export default function EarnPage() {
               <SectionTitle testId="earn-catalog-title">
                 {activeRole.label} · all services
               </SectionTitle>
-              <EarningBadge text={roleEarning(activeRole)} testId="earn-catalog-earning" />
             </div>
             {catalogLoading ? (
               <p className="text-sm text-[color:var(--earn-muted)]">Loading offerings…</p>
