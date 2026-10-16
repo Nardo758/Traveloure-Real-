@@ -26,6 +26,7 @@ import {
   type TravelerSignupMode,
 } from "@shared/launch-signup";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, parseWelcomeVerificationWindowDays } from "@shared/welcome-verification";
+import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugs } from "@shared/ticker";
 
 const TTL_MS = 15_000;
 
@@ -101,6 +102,21 @@ export async function getLaunchMarketSlug(): Promise<string | null> {
   } catch (err) {
     console.error(`[platform-flags] read failed for ${LAUNCH_MARKET_SLUG_SETTING}:`, err);
     return null;
+  }
+}
+
+/**
+ * LW-1f-b (ledger `2026-10-16-lw1f-b-beta-cities`): the market keys that may be called "in beta". The stored list when
+ * valid and non-empty, else the launch market alone (`betaMarketSlugs`, shared/ticker.ts). A read error is the
+ * launch market alone, never a guessed wider list.
+ */
+export async function getBetaMarketSlugs(): Promise<string[]> {
+  const launch = await getLaunchMarketSlug();
+  try {
+    return betaMarketSlugs(await getSettingValue(BETA_MARKET_SLUGS_SETTING), launch);
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${BETA_MARKET_SLUGS_SETTING}, using the launch market:`, err);
+    return betaMarketSlugs(null, launch);
   }
 }
 

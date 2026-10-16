@@ -3,6 +3,8 @@
 //   GET   /api/public/ticker?market=<slug>  — public. Active lines inside their window that link only to live pages,
 //                                             in order, text and href only. Cached briefly (30 s, here and in the
 //                                             browser). Only the launch market has lines; any other is empty.
+//                                             LW-1f-b: also `betaCities` — the names of the cities on the beta list
+//                                             (`beta_market_slugs`, default the launch city), for the left label.
 //   GET   /api/admin/ticker                 — every line of the launch market, with whether each is showing.
 //   POST  /api/admin/ticker                 — add a line (`.strict()` allowlist body, §19).
 //   PATCH /api/admin/ticker/:id             — edit a line: text, link, on/off, start/end.
@@ -14,7 +16,8 @@ import { Router } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { getAdminRole } from "../services/admin-query.service";
-import { getLaunchMarketSlug } from "../services/platform-flags";
+import { getBetaMarketSlugs, getLaunchMarketSlug } from "../services/platform-flags";
+import { betaCityNames } from "@shared/ticker";
 import { logger } from "../infrastructure/logger";
 import {
   TICKER_CACHE_MS,
@@ -37,8 +40,9 @@ router.get("/api/public/ticker", async (req, res) => {
   if (!market || (raw && raw !== market)) return res.json({ items: [] });
   try {
     const items = await publicTickerItems(market);
+    const betaCities = betaCityNames(await getBetaMarketSlugs());
     res.set("Cache-Control", `public, max-age=${Math.floor(TICKER_CACHE_MS / 1000)}`);
-    return res.json({ items });
+    return res.json({ items, betaCities });
   } catch (err: any) {
     // The ribbon shows nothing on an empty list, so a failed read hides it rather than breaking the page.
     logger.error(`[ticker] public read failed: ${err?.code ?? err?.message ?? "unknown"}`);
