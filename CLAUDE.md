@@ -2383,6 +2383,11 @@ This document captures architectural decisions to maintain consistency across co
     link, no "Ask the local"), created by an admin from Marketing's files (drafts never enter the repo), and published only by
     an admin: Publish is the approval of that one draft and writes an audit row in the same transaction. Every source carries
     its checked date or is refused; an edit after publish returns the post to draft. The blog index ordering is unchanged.
+    **The house account (ledger `2026-10-16-ed1b-editorial-house-account`; migration 385, HELD until the decision-maker
+    approves its SQL on the PR):** one reserved `users` row (no password, role `user`, no handle), separate from the platform
+    concierge account, its id in `platform_settings.editorial_user_id` and read only by `getEditorialUserId`
+    (`server/services/editorial-account.service.ts`). It earns nothing, advises no plan and is never ranked: the earnings mint
+    and the advisor-row author refuse it, and the routable-expert filter and the lead scorer leave it out by id.
 
 57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
     WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;
