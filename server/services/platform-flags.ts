@@ -76,6 +76,8 @@ export async function getPlatformFlag(key: string, defaultValue: boolean): Promi
 export const FLAG_MAINTENANCE_MODE = "maintenance_mode";
 export const FLAG_REGISTRATION_ENABLED = "new_user_registration_enabled";
 export const FLAG_EMAIL_NOTIFICATIONS_ENABLED = "email_notifications_enabled";
+/** LW-1g: "true" shows the /earn Ready-Made calculator's worked example line (seeded "false" by migration 381). */
+export const FLAG_EARN_READY_MADE_EXAMPLE = "earn_ready_made_example_enabled";
 
 /**
  * LW-1b: the traveler sign-up mode, read FAIL CLOSED — a missing row, a read error or any value other than
