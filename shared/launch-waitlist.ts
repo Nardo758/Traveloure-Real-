@@ -120,3 +120,18 @@ export const WAITLIST_CONSENT_LINE = "Email me when Traveloure opens for Kyoto."
 export const WAITLIST_CONSENT_PRIVACY_LINK = { before: "See our ", label: "Privacy Policy", href: "/privacy", after: "." } as const;
 /** The exact text a person saw beside the tick, as stored in `consent_texts.body`. */
 export const WAITLIST_CONSENT_TEXT = `${WAITLIST_CONSENT_LINE} See our Privacy Policy (/privacy).`;
+
+/**
+ * LW-1e (ledger `2026-10-16-lw1e-waitlist-admin`): a row whose address is on the QA domain is a QA row — flagged
+ * `is_qa`, left out of the admin counts and of the default export. Until a migration gives the table a stored
+ * `is_qa` column, the flag is COMPUTED from the address by this one rule (and its SQL twin in the service), so a row
+ * is QA from the moment it is inserted.
+ */
+export const WAITLIST_QA_EMAIL_DOMAIN = "traveloure-qa.test";
+export function isWaitlistQaEmail(email: string | null | undefined): boolean {
+  return typeof email === "string" && normalizeWaitlistEmail(email).endsWith(`@${WAITLIST_QA_EMAIL_DOMAIN}`);
+}
+
+/** Admin search: at least this many characters, at most this many rows back. */
+export const WAITLIST_SEARCH_MIN_CHARS = 3;
+export const WAITLIST_SEARCH_LIMIT = 50;

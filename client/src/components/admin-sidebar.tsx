@@ -127,6 +127,8 @@ const menuGroups = [
       // a money problem, not a system-health one. Relabeled so "Disputes" is discoverable
       // directly in the nav instead of only after opening the page.
       { title: "Reconciliation & Disputes", href: "/admin/reconciliation", icon: ShieldAlert },
+      // PAY-1c: every booking, filterable to the needs_review queue; rows open /admin/bookings/:kind/:id.
+      { title: "Bookings", href: "/admin/bookings", icon: ClipboardList },
     ],
   },
   {

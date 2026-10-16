@@ -428,22 +428,29 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     console.log("[I5-signup-UI] PASS — spaces-only password on /signup shows error");
   });
 
-  test("valid data successfully navigates away from /signup", async ({ page }) => {
+  test("valid data shows the neutral result and signs nobody in (AUTH-1 fix 3b)", async ({ page }) => {
     const email = `valid.signup.${uid()}@example.com`;
 
     await page.locator('[data-testid="input-name"]').fill("Valid User");
     await page.locator('[data-testid="input-email"]').fill(email);
     await page.locator('[data-testid="input-password"]').fill("ValidPass1!");
 
+    const registered = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/auth/register" && r.request().method() === "POST",
+    );
     await page.locator('[data-testid="button-create-account"]').click();
+    expect((await registered).status()).toBe(202);
 
-    // Should redirect away from /signup on success
-    await page.waitForURL((url) => !url.toString().includes("/signup"), {
-      timeout: 15_000,
-    });
+    // The same neutral state a new and an existing address both get: no dashboard, no "account created".
+    await expect(page.locator('[data-testid="signup-neutral-result"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="link-neutral-sign-in"]')).toBeVisible();
+    expect(page.url()).not.toContain("/dashboard");
+    await expect(page.getByText(/account created/i)).toHaveCount(0);
 
-    expect(page.url()).not.toContain("/signup");
-    console.log(`[signup-UI] PASS — valid signup navigated to ${page.url()}`);
+    // No session was created by registering.
+    const me = await page.request.get(`${BASE_URL}/api/auth/user`);
+    expect(me.status()).toBe(401);
+    console.log("[signup-UI] PASS — valid signup shows the neutral result, no session");
   });
 });
 

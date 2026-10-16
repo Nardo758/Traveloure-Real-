@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { guardedDeleteProviderService } from "./service-delete-guard";
 import { assertRoleTransitionAllowed } from "./role-transition";
+import { stampApprovalCohort } from "./expert-rate-cohort.service";
 import {
   users, contactSubmissions, notifications, accessAuditLogs,
   serviceBookings, providerServices, serviceReviews, reviewModerationLogs,
@@ -223,6 +224,7 @@ export async function updateUserRole(
   userId: string,
   role: string,
   actor: { actorId: string; actorRole: string; reason?: string },
+  options: { assignRateCohort?: boolean } = {},
 ) {
   // ATOMIC: role update and audit insert commit or roll back together.
   // A role change without an audit record must never be possible — if the
@@ -255,6 +257,18 @@ export async function updateUserRole(
         reason: actor.reason ?? null,
       },
     } as any);
+
+    // FE-2 (ledger 2026-10-16-fe2-beta-cohort): an expert approval joins the approval cohort IN THIS
+    // TRANSACTION, with its own `rate_cohort_assigned` audit row, so a role change, its cohort stamp
+    // and both audit rows commit or roll back together. Stamps once; a re-approval never re-stamps.
+    if (options.assignRateCohort) {
+      await stampApprovalCohort(tx as any, {
+        userId,
+        role,
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+      });
+    }
   });
 }
 
@@ -860,31 +874,6 @@ export async function getFeeBand(bandKey: string) {
     FROM fee_bands WHERE band_key = ${bandKey} LIMIT 1
   `);
   return (result.rows?.[0] as any) ?? null;
-}
-
-export async function updateFeeBand(bandKey: string, params: {
-  nextDefault: number;
-  nextMin: number | null;
-  nextMax: number | null;
-  displayName?: string;
-  description?: string;
-  isActive?: boolean;
-  userId: string;
-}) {
-  const { nextDefault, nextMin, nextMax, displayName, description, isActive, userId } = params;
-  return db.execute(sql`
-    UPDATE fee_bands
-    SET
-      default_rate = ${nextDefault},
-      min_rate     = ${nextMin},
-      max_rate     = ${nextMax},
-      display_name = COALESCE(${displayName ?? null}, display_name),
-      description  = COALESCE(${description ?? null}, description),
-      is_active    = COALESCE(${isActive ?? null}, is_active),
-      updated_by   = ${userId},
-      updated_at   = NOW()
-    WHERE band_key = ${bandKey}
-  `);
 }
 
 export async function checkActiveBand(bandKey: string) {

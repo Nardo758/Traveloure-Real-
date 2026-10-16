@@ -1,5 +1,5 @@
 -- 384 — ticker items (LW-1f; ledger `2026-10-16-lw1f-kyoto-ticker`; hand-off Part A, launch session brief rulings
--- 2 and 3). HELD until "Migration 384 SQL approved — Leon" is his own comment on the PR.
+-- 2 and 3). Migration 384 SQL approved by Leon — comment 18:26Z on #1481.
 --
 -- ONE new table, born with the four seed rows below and nothing else. Additive only: no DEFAULT, no CHECK, no FK,
 -- no index, nothing altered. Every column but the primary key is nullable; the ONE writer

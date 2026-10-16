@@ -25,6 +25,15 @@
  *       `users_export` audit row per export.
  *   W12 (LW-1d) Email register: a supply sign-up's `signupSource` tag is stored once on the new account,
  *       normalized; a traveler sign-up offering a tag stores nothing.
+ *   W13 (LW-1e) The CSV's first column is the row id, and every timestamp is ISO-8601 with an offset, the same
+ *       instant the database holds.
+ *   W14 (LW-1e) GET /api/admin/waitlist/search: anonymous 401, non-admin 403, under 3 characters 400; a
+ *       case-insensitive substring match; `%` and `_` match literally.
+ *   W15 (LW-1e) DELETE /api/admin/waitlist/:id: non-admin 403 and the row stays; admin hard-deletes it and ONE
+ *       `waitlist_row_delete` audit row keeps the row id and the sha256 of the email, never the address; a repeat
+ *       or an unknown id is 404 and writes no audit row.
+ *   W16 (LW-1e) A QA-domain address is flagged is_qa from its insert: left out of the counts (reported as
+ *       qaExcluded) and the default CSV, present with is_qa=true under `?includeQa=1`.
  *
  * Run against a disposable dev database only, with the app started:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/launch-waitlist.http.test.ts
@@ -33,6 +42,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
 import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { isWaitlistQaEmail } from "../../shared/launch-waitlist";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -43,6 +53,7 @@ const RUN = crypto.randomUUID().slice(0, 8);
 const ADMIN_EMAIL = `lw1c-admin-${RUN}@traveloure.test`;
 const MEMBER_EMAIL = `lw1c-member-${RUN}@traveloure.test`;
 const W_EMAIL = (n: string) => `lw1c-${n}-${RUN}@traveloure.test`;
+const QA_EMAIL = (n: string) => `lw1e-${n}-${RUN}@traveloure-qa.test`;
 
 let adminCookie = "";
 let adminId = "";
@@ -90,6 +101,7 @@ before(async () => {
 
 after(async () => {
   await pool.query(`DELETE FROM launch_waitlist WHERE email LIKE $1`, [`lw1c-%-${RUN}@traveloure.test`]);
+  await pool.query(`DELETE FROM launch_waitlist WHERE email LIKE $1`, [`lw1e-%-${RUN}@traveloure-qa.test`]);
   await pool.end();
 });
 
@@ -217,13 +229,14 @@ test("W9 — the CSV export is admin-only, role-scoped and audit-logged", async 
   const [header, ...lines] = r.text.split("\n");
   assert.equal(
     header,
-    "email,role,market_slug,source,trip_type,rough_month,worry,contact_name,business_name,service_type,website,area,languages,referrer_user_id,referrer_handle,short_link_code,consent_at,consent_text_version,created_at,updated_at,unsubscribed_at",
+    // LW-1e: the row id leads and is_qa closes.
+    "id,email,role,market_slug,source,trip_type,rough_month,worry,contact_name,business_name,service_type,website,area,languages,referrer_user_id,referrer_handle,short_link_code,consent_at,consent_text_version,created_at,updated_at,unsubscribed_at,is_qa",
   );
-  assert.ok(lines.some((l) => l.startsWith(W_EMAIL("w1"))), "the row is in the export");
+  assert.ok(lines.some((l) => l.includes(`,${W_EMAIL("w1")},`)), "the row is in the export");
   const providers = await call("GET", "/api/admin/waitlist/export?role=provider", adminCookie);
   const providerLines = providers.text.split("\n").slice(1);
-  assert.ok(providerLines.some((l) => l.startsWith(W_EMAIL("w7p"))));
-  assert.ok(!providerLines.some((l) => l.startsWith(W_EMAIL("w1"))), "no traveler in the provider export");
+  assert.ok(providerLines.some((l) => l.includes(`,${W_EMAIL("w7p")},`)));
+  assert.ok(!providerLines.some((l) => l.includes(`,${W_EMAIL("w1")},`)), "no traveler in the provider export");
   const afterCount = await pool.query(`SELECT COUNT(*)::int AS n FROM access_audit_logs WHERE actor_id = $1 AND action = 'waitlist_export'`, [adminId]);
   assert.equal(afterCount.rows[0].n, before.rows[0].n + 2);
 });
@@ -270,7 +283,7 @@ test("W10 — a sign-up through the author's own Ready-Made link is credited; an
     const counts = await call("GET", "/api/admin/waitlist", adminCookie);
     assert.ok(counts.json.referrers.some((r: any) => r.referrerUserId === adminId && r.count >= 1));
     const csv = await call("GET", "/api/admin/waitlist/export", adminCookie);
-    assert.ok(csv.text.split("\n").some((l: string) => l.startsWith(credited) && l.includes(`,${adminId},`) && l.includes(`,${code},`)));
+    assert.ok(csv.text.split("\n").some((l: string) => l.includes(`,${credited},`) && l.includes(`,${adminId},`) && l.includes(`,${code},`)));
   } finally {
     await pool.query(`DELETE FROM short_links WHERE code IN ($1, $2)`, [code, otherCode]);
     await pool.query(`DELETE FROM ready_made_trips WHERE id = $1`, [rm.rows[0].id]);
@@ -299,24 +312,149 @@ test("W12 — email register stores a supply sign-up's source tag, normalized; a
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: supplyEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: " Contact_Form " }),
   });
-  assert.equal(r1.status, 201, await r1.text());
+  assert.equal(r1.status, 202, await r1.text()); // AUTH-1 fix 3b: the neutral answer
   const oddEmail = W_EMAIL("w12-odd");
   const r2 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: oddEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: "made-up-tag" }),
   });
-  assert.equal(r2.status, 201, await r2.text());
+  assert.equal(r2.status, 202, await r2.text()); // AUTH-1 fix 3b: the neutral answer
   const travelerEmail = W_EMAIL("w12-traveler");
   const r3 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: travelerEmail, password: PASSWORD, firstName: "Lw", lastName: "One", signupSource: "ig_dm" }),
   });
-  assert.equal(r3.status, 201, await r3.text());
+  assert.equal(r3.status, 202, await r3.text()); // AUTH-1 fix 3b: the neutral answer
   const rows = await pool.query(`SELECT email, signup_source FROM users WHERE email = ANY($1::text[])`, [[supplyEmail, oddEmail, travelerEmail]]);
   const by = Object.fromEntries(rows.rows.map((r: any) => [r.email, r.signup_source]));
   assert.equal(by[supplyEmail], "contact_form");
   assert.equal(by[oddEmail], "other");
   assert.equal(by[travelerEmail], null);
+});
+
+// ─── LW-1e: the admin's id column, search, delete and QA rows ────────────────────────────────────────────────
+
+/** Minimal CSV reader for the export (quoted cells, doubled quotes, commas and newlines inside quotes). */
+function parseCsv(text: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i += 1; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  row.push(cell); rows.push(row);
+  const [header, ...body] = rows;
+  return body.filter((r) => r.length === header.length).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i]])));
+}
+
+const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+
+test("W13 — the CSV starts with the row id, and timestamps are ISO-8601 with an offset", async () => {
+  const email = W_EMAIL("w13");
+  assert.equal((await call("POST", "/api/waitlist", null, { email, consent: true })).status, 200);
+  const r = await call("GET", "/api/admin/waitlist/export?role=traveler", adminCookie);
+  assert.equal(r.status, 200, r.text);
+  assert.ok(r.text.startsWith("id,email,"), "id is the first column");
+  const row = parseCsv(r.text).find((x) => x.email === email);
+  assert.ok(row, "the row is in the export");
+  const [db] = await rowsFor(email);
+  assert.equal(row.id, db.id);
+  for (const c of ["created_at", "updated_at", "consent_at"]) assert.match(row[c], ISO_WITH_OFFSET, c);
+  assert.equal(row.unsubscribed_at, "", "a NULL timestamp stays an empty cell");
+  const epoch = await pool.query(
+    `SELECT extract(epoch FROM (created_at AT TIME ZONE current_setting('TimeZone')))::float8 AS e FROM launch_waitlist WHERE id = $1`,
+    [db.id],
+  );
+  assert.equal(Math.floor(Date.parse(row.created_at) / 1000), Math.floor(Number(epoch.rows[0].e)), "the same instant");
+});
+
+test("W14 — search by email: admin only, a substring match, wildcards literal", async () => {
+  const email = W_EMAIL("w14-Find");
+  assert.equal((await call("POST", "/api/waitlist", null, { email })).status, 200);
+  const q = `w14-find-${RUN}`;
+  assert.equal((await call("GET", `/api/admin/waitlist/search?email=${q}`, null)).status, 401);
+  assert.equal((await call("GET", `/api/admin/waitlist/search?email=${q}`, memberCookie)).status, 403);
+  assert.equal((await call("GET", `/api/admin/waitlist/search?email=ab`, adminCookie)).status, 400);
+  const hit = await call("GET", `/api/admin/waitlist/search?email=${encodeURIComponent(q.toUpperCase())}`, adminCookie);
+  assert.equal(hit.status, 200, hit.text);
+  assert.deepEqual(hit.json.rows.map((x: any) => x.email), [email.toLowerCase()]);
+  assert.equal(typeof hit.json.rows[0].id, "string");
+  assert.match(hit.json.rows[0].createdAt, ISO_WITH_OFFSET);
+  assert.equal(hit.json.rows[0].isQa, false);
+  for (const literal of [`%${RUN}x`, `w14_find-${RUN}`]) {
+    const none = await call("GET", `/api/admin/waitlist/search?email=${encodeURIComponent(literal)}`, adminCookie);
+    assert.equal(none.status, 200);
+    assert.equal(none.json.rows.length, 0, `${literal} is matched literally`);
+  }
+});
+
+test("W15 — deleting one row: admin only, hard delete, audit keeps the id and a hash, never the address", async () => {
+  const email = W_EMAIL("w15");
+  assert.equal((await call("POST", "/api/waitlist", null, { email })).status, 200);
+  const [row] = await rowsFor(email);
+  const auditCount = async () =>
+    Number((await pool.query(`SELECT COUNT(*)::int AS n FROM access_audit_logs WHERE action = 'waitlist_row_delete' AND resource_id = $1`, [row.id])).rows[0].n);
+
+  assert.equal((await call("DELETE", `/api/admin/waitlist/${row.id}`, null)).status, 401);
+  assert.equal((await call("DELETE", `/api/admin/waitlist/${row.id}`, memberCookie)).status, 403);
+  assert.equal((await rowsFor(email)).length, 1, "a refused delete leaves the row");
+  assert.equal(await auditCount(), 0);
+
+  const del = await call("DELETE", `/api/admin/waitlist/${row.id}`, adminCookie);
+  assert.equal(del.status, 200, del.text);
+  assert.deepEqual(del.json, { deleted: true });
+  assert.equal((await rowsFor(email)).length, 0, "the row is gone");
+  const audit = await pool.query(
+    `SELECT actor_id, resource_type, metadata, metadata::text AS raw FROM access_audit_logs WHERE action = 'waitlist_row_delete' AND resource_id = $1`,
+    [row.id],
+  );
+  assert.equal(audit.rows.length, 1);
+  assert.equal(audit.rows[0].actor_id, adminId);
+  assert.equal(audit.rows[0].resource_type, "launch_waitlist");
+  assert.equal(audit.rows[0].metadata.emailSha256, crypto.createHash("sha256").update(email.toLowerCase()).digest("hex"));
+  assert.ok(!audit.rows[0].raw.toLowerCase().includes(email.toLowerCase()), "no plaintext address in the audit row");
+  assert.ok(!audit.rows[0].raw.includes(`w15-${RUN}`), "no part of the address in the audit row");
+
+  assert.equal((await call("DELETE", `/api/admin/waitlist/${row.id}`, adminCookie)).status, 404);
+  assert.equal((await call("DELETE", `/api/admin/waitlist/${crypto.randomUUID()}`, adminCookie)).status, 404);
+  assert.equal((await call("DELETE", `/api/admin/waitlist/not%20an%20id`, adminCookie)).status, 404);
+  assert.equal(await auditCount(), 1, "a 404 writes no audit row");
+});
+
+test("W16 — a QA-domain row is flagged is_qa, left out of the counts and the default CSV", async () => {
+  assert.equal(isWaitlistQaEmail("Someone@Traveloure-QA.test"), true);
+  assert.equal(isWaitlistQaEmail("someone@traveloure-qa.test.example.com"), false);
+  assert.equal(isWaitlistQaEmail("someone@traveloure.test"), false);
+
+  const before = (await call("GET", "/api/admin/waitlist", adminCookie)).json;
+  const qa = QA_EMAIL("w16");
+  const real = W_EMAIL("w16-real");
+  assert.equal((await call("POST", "/api/waitlist", null, { email: qa, tripType: "wedding", consent: true })).status, 200);
+  assert.equal((await call("POST", "/api/waitlist", null, { email: real, tripType: "wedding" })).status, 200);
+  const after = (await call("GET", "/api/admin/waitlist", adminCookie)).json;
+  assert.equal(after.travelers.total, before.travelers.total + 1, "only the real row is counted");
+  assert.equal(after.travelers.consented, before.travelers.consented, "the QA row's consent is not counted");
+  const wedding = (x: any) => x.travelers.byTripType.find((t: any) => t.key === "wedding")?.count ?? 0;
+  assert.equal(wedding(after), wedding(before) + 1);
+  assert.equal(after.qaExcluded, before.qaExcluded + 1);
+
+  const plain = parseCsv((await call("GET", "/api/admin/waitlist/export", adminCookie)).text);
+  assert.ok(!plain.some((x) => x.email === qa), "the default CSV leaves the QA row out");
+  assert.equal(plain.find((x) => x.email === real)?.is_qa, "false");
+  const withQa = parseCsv((await call("GET", "/api/admin/waitlist/export?includeQa=1", adminCookie)).text);
+  assert.equal(withQa.find((x) => x.email === qa)?.is_qa, "true");
+  const audit = await pool.query(
+    `SELECT metadata FROM access_audit_logs WHERE action = 'waitlist_export' AND actor_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [adminId],
+  );
+  assert.equal(audit.rows[0].metadata.includeQa, true, "the export audit row says QA rows were included");
 });

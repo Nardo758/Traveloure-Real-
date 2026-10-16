@@ -175,6 +175,10 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/ai-costs',            description: 'AI cost tracking' },
   { href: '/admin/payouts',             description: 'Payout management' },
   { href: '/admin/reconciliation',      description: 'Revenue reconciliation' },
+  { href: '/admin/bookings',            description: 'Bookings list — the needs_review queue (PAY-1c)' },
+  // A concrete URL, not a :param route: no booking has this id, so the detail page must render its
+  // "Booking not found" view with a back link (PAY-1c), never the raw 404 body.
+  { href: '/admin/bookings/service/no-such-booking', description: 'Booking detail — not-found view (PAY-1c)' },
   { href: '/admin/feedback',            description: 'Feedback counts and written feedback' },
   { href: '/admin/fee-bands',           description: 'Concierge fee bands' },
   { href: '/admin/offering-types',      description: 'Offering type seed' },

@@ -27,6 +27,7 @@
  */
 
 import type { FeeBandRateType } from "../../shared/fee-band-display";
+import { EXPERT_RATE_COHORTS } from "../../shared/expert-rate-cohort";
 
 export type { FeeBandRateType };
 
@@ -330,6 +331,20 @@ export const RESOLVER_FEE_BAND_REQUIREMENTS: readonly FeeBandRequirement[] = [
   // manifest, so the deployment gate never type-checked them and the admin panel could not
   // say what deactivating one would do. Declaring them changes no gate outcome for an absent
   // or inactive row (optional rows may be either) — it adds the type check and the sentence.
+  // FE-2 (ledger 2026-10-16-fe2-beta-cohort): every expert rate-cohort band, one entry each,
+  // generated from the ONE cohort map so a new cohort cannot ship undeclared. Optional: a missing,
+  // inactive or ended cohort band falls back to the ordinary expert band for its experts.
+  ...Object.values(EXPERT_RATE_COHORTS).map((cohort): FeeBandRequirement => ({
+    bandKey: cohort.bandKey,
+    expectedType: "percent",
+    required: false,
+    owner: "commission resolver (expert rate cohort, Tier 3b)",
+    fallback: {
+      kind: "other_band",
+      resolver: "resolveCohortBandRate (expert-rate-cohort.service)",
+      bandKey: EXPERT_STANDARD_BAND,
+    },
+  })),
   {
     bandKey: READY_MADE_TRIP_BAND,
     expectedType: "percent",
