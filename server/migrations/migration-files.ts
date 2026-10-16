@@ -2044,7 +2044,7 @@ export const MIGRATION_FILES = [
   // empty (no DEFAULT, CHECK or FK; every column but the key nullable) with a UNIQUE (email, market_slug) safe at
   // creation, users.signup_source (additive nullable text), plus three platform_settings seeds
   // (traveler_signup_mode=waitlist, launch_market_slug=kyoto, earn_ready_made_example_enabled=false), ON CONFLICT
-  // DO NOTHING. 380 is reserved by another lane. Declared in shared/schema.ts and shared/models/auth.ts. HELD FOR LEON'S COMMENT on the PR.
+  // DO NOTHING. 380 is reserved by another lane. Declared in shared/schema.ts and shared/models/auth.ts. Migration 381 SQL approved by Leon — comment 01:48Z on #1461.
   "381_launch_waitlist.sql",
   // 380 — bot_proposals.fact_id → place_facts(id) ON DELETE SET NULL (ledger 2026-10-15-bot-proposal-fact-fk), registered after 381, the order it landed. One
   // constraint, named as drizzle names it and declared in shared/schema.ts; idempotent. Migration 380 SQL approved by Leon — comment 01:33Z on #1463.
