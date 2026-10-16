@@ -20,6 +20,7 @@ export interface PublicKeepRates {
   expertCohort?: { label?: string | null; noticeDays?: number | null } | null;
   /** LW-1g: the platform take on a Ready-Made Trip sale (the `ready_made_trip` band, as charged). */
   readyMadePlatformRate?: number | null;
+  readyMadeExampleEnabled?: boolean;
 }
 
 /** The platform take as a whole percent, or null when there is no usable rate. */

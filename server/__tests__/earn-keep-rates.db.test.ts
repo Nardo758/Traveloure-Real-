@@ -9,6 +9,7 @@
  *   E4 (FE-2) past the cohort's end date the expert rate falls back to the ordinary split.
  *   E5 (LW-1g, ledger `2026-10-16-lw1g-earn-calculator`) the Ready-Made rate IS
  *      `resolveReadyMadeTakeRate()`, and it follows the `ready_made_trip` band when an admin edits it.
+ *   E6 (LW-1g) the example-line flag is false unless `earn_ready_made_example_enabled` is "true".
  * The policy row, the FE-2 settings and the band are restored in after(); nothing else is written.
  *
  * Run solo: npx tsx --test server/__tests__/earn-keep-rates.db.test.ts
@@ -21,6 +22,7 @@ import { resolvePublicKeepRates } from "../services/earn-keep-rates.service";
 import { getExpertSplitRates } from "../services/commission";
 import { BETA_FLAT_BAND, readBand } from "../services/fee-resolution.service";
 import { resolveReadyMadeTakeRate } from "../services/ready-made-purchase.service";
+import { invalidatePlatformFlagCache } from "../services/platform-flags";
 
 const KEY = "active_provider_commission_policy";
 let saved: { exists: boolean; value: unknown } | null = null;
@@ -111,4 +113,18 @@ test("E5: the Ready-Made rate is the purchase path's own rate, and follows the b
   const edited = Number(savedReadyMadeRate) === 0.15 ? "0.2" : "0.15"; // fee-literal-ok: a test edit of the band, then restored
   await db.execute(sql`UPDATE fee_bands SET default_rate = ${edited} WHERE band_key = 'ready_made_trip'`);
   assert.equal((await resolvePublicKeepRates()).readyMadePlatformRate, Number(edited));
+});
+
+test("E6: the Ready-Made example line is off unless the setting is \"true\"", async () => {
+  const key = "earn_ready_made_example_enabled";
+  await setFe2(key, "false");
+  invalidatePlatformFlagCache(key);
+  assert.equal((await resolvePublicKeepRates()).readyMadeExampleEnabled, false);
+  await setFe2(key, "yes");
+  invalidatePlatformFlagCache(key);
+  assert.equal((await resolvePublicKeepRates()).readyMadeExampleEnabled, false);
+  await setFe2(key, "true");
+  invalidatePlatformFlagCache(key);
+  assert.equal((await resolvePublicKeepRates()).readyMadeExampleEnabled, true);
+  invalidatePlatformFlagCache(key);
 });

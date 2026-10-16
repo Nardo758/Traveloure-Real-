@@ -536,7 +536,9 @@ export default function EarnPage() {
           </div>
         </section>
 
-        {showReadyMadeCalculator && readyMadeRate !== null && <ReadyMadeCalculator rate={readyMadeRate} />}
+        {showReadyMadeCalculator && readyMadeRate !== null && (
+          <ReadyMadeCalculator rate={readyMadeRate} showExample={keepRates?.readyMadeExampleEnabled === true} />
+        )}
 
         {/* ── Featured strip: is_surprising rows ───────────────────────── */}
         {surprising.length > 0 && (

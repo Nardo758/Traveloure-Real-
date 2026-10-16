@@ -16,6 +16,26 @@ export const RM_CALC_ESTIMATE_LABEL = "Your estimate, based on the numbers you e
 export const rmCalcKeepLine = (amount: string) => `You keep ${amount} per sale`;
 export const rmCalcMonthLine = (amount: string) => `At your guess: ${amount} a month`;
 
+/**
+ * The worked example (hand-off F2, "use everywhere"), shown only while `earn_ready_made_example_enabled` is "true"
+ * (Leon, Oct 16, 2026; off by default). $20 is the example's PRICE, not a fee; the kept amount is worked out from the
+ * rate the page was given (the `ready_made_trip` band), never typed (§8).
+ */
+export const RM_EXAMPLE_PRICE_USD = 20;
+/** Whole dollars print without cents ("$17"), anything else with them ("$17.50"). */
+export function formatUsdShort(amount: number): string {
+  return Number.isInteger(amount)
+    ? amount.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })
+    : formatUsd(amount);
+}
+export function rmExampleLine(rate: number | null | undefined): string | null {
+  const r = usableRate(rate);
+  if (r === null) return null;
+  const keepCents = Math.round(RM_EXAMPLE_PRICE_USD * 100 * (1 - r));
+  const price = formatUsdShort(RM_EXAMPLE_PRICE_USD);
+  return `Example: you set a 3-day Ready-Made Trip at ${price} and keep ${formatUsdShort(keepCents / 100)}. The traveler pays ${price}.`;
+}
+
 /** A positive amount in USD from a typed box (digits, one optional decimal point, up to 2 decimals), else null. */
 export function parsePrice(input: string): number | null {
   const v = input.trim();

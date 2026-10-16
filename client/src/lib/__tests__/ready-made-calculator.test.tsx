@@ -8,6 +8,8 @@
  *   C4  no "typical", "average", "top experts", "passive income" or "make $" wording, in the copy module, the
  *       component, or the /earn page source.
  *   C5  the calculator is hidden when the launch market has no Ready-Made Trip on sale, or no rate is usable.
+ *   C6  the $20 example line is hidden by default and shown only behind `earn_ready_made_example_enabled`; its kept
+ *       amount is worked out from the rate given (the `ready_made_trip` band), never typed.
  *
  * Run: npx tsx --test client/src/lib/__tests__/ready-made-calculator.test.tsx
  */
@@ -24,6 +26,7 @@ import {
   parsePrice,
   parseSales,
   readyMadeEstimate,
+  rmExampleLine,
   usableRate,
 } from "../ready-made-calculator";
 
@@ -100,7 +103,27 @@ describe("C5 — hidden without Ready-Made Trips in the launch market", () => {
     const src = read("client/src/pages/earn.tsx");
     assert.ok(src.includes("const readyMadeRate = usableRate(keepRates?.readyMadePlatformRate);"));
     assert.ok(src.includes("readyMadeRate !== null &&\n    marketHasReadyMade(readyMadeFeed?.listings, signupMode?.launchMarketSlug)"));
-    assert.ok(src.includes("{showReadyMadeCalculator && readyMadeRate !== null && <ReadyMadeCalculator rate={readyMadeRate} />}"));
+    assert.ok(src.includes("{showReadyMadeCalculator && readyMadeRate !== null && ("));
+    assert.ok(src.includes("<ReadyMadeCalculator rate={readyMadeRate} showExample={keepRates?.readyMadeExampleEnabled === true} />"));
     assert.doesNotMatch(src, /<ReadyMadeCalculator[^>]*initial(Price|Sales)/, "the page never pre-fills a box");
+  });
+});
+
+describe("C6 — the $20 example line sits behind its setting", () => {
+  it("is hidden by default and when the setting is off", () => {
+    assert.doesNotMatch(renderToString(<ReadyMadeCalculator rate={0.15} />), /earn-rm-example|Example:/);
+    assert.doesNotMatch(renderToString(<ReadyMadeCalculator rate={0.15} showExample={false} />), /earn-rm-example|Example:/);
+  });
+  it("shows the hand-off's exact line with the kept amount worked out from the rate", () => {
+    assert.equal(rmExampleLine(0.15), "Example: you set a 3-day Ready-Made Trip at $20 and keep $17. The traveler pays $20.");
+    assert.equal(rmExampleLine(0.2), "Example: you set a 3-day Ready-Made Trip at $20 and keep $16. The traveler pays $20.");
+    assert.equal(rmExampleLine(0.125), "Example: you set a 3-day Ready-Made Trip at $20 and keep $17.50. The traveler pays $20.");
+    const html = renderToString(<ReadyMadeCalculator rate={0.2} showExample />);
+    assert.match(html, /data-testid="earn-rm-example"/);
+    assert.ok(html.includes("keep $16."));
+  });
+  it("has no rate of its own: an unusable rate gives no example", () => {
+    for (const rate of [null, undefined, -0.1, 1, Number.NaN]) assert.equal(rmExampleLine(rate as any), null);
+    assert.doesNotMatch(renderToString(<ReadyMadeCalculator rate={1} showExample />), /earn-rm-example/);
   });
 });
