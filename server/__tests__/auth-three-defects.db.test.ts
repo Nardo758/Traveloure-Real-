@@ -1,8 +1,12 @@
 /**
  * AUTH-1 Finding B — a new password-reset request revokes every earlier link, and issuing and using a
  * link lock the account in the same order (server/services/password-reset-tokens.service.ts).
- * The proposal's five reset cases, R1–R5. Fix 3 (the neutral sign-up response) is not built, so this
- * file carries no sign-up cases.
+ * The proposal's five reset cases, R1–R5.
+ *
+ * AUTH-1 fix 3b — the neutral sign-up response (shared/registration-neutral.ts), N1–N6: a new and an
+ * existing address get the same 202 and body, with no id, email or session; only a new address writes
+ * anything; a lost unique-email race is a duplicate and any other fault is a 500; the pre-existing
+ * session is left alone; both paths hash the password once. Needs traveler sign-up OPEN (CI opens it).
  *
  * DISPOSABLE DB ONLY: refuses anything but a local database. Every row it writes it creates and deletes.
  * Transport stubbed: RESEND_API_KEY is removed for the run, so no email leaves the process.
@@ -21,13 +25,17 @@ process.env.SESSION_COOKIE_INSECURE ??= "1";
 process.env.SESSION_SECRET ??= "test-session-secret-not-for-prod";
 
 const { db, pool } = await import("../db");
-const { and, eq, isNull } = await import("drizzle-orm");
+const { and, eq, inArray, isNull } = await import("drizzle-orm");
 const { users, passwordResetTokens } = await import("../../shared/models/auth");
 const {
   issuePasswordResetToken, consumePasswordResetToken, hashAuthToken, _resetTokenTestHooks,
 } = await import("../services/password-reset-tokens.service");
 const { getSession } = await import("../replit_integrations/auth/replitAuth");
-const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
+const { setupEmailAuth, isEmailUniqueViolation } = await import("../replit_integrations/auth/emailAuth");
+const { emailVerificationTokens } = await import("../../shared/models/auth");
+const { emailOutbox } = await import("../../shared/schema");
+const { REGISTRATION_NEUTRAL_CODE, REGISTRATION_NEUTRAL_MESSAGE } = await import("../../shared/registration-neutral");
+const { sql } = await import("drizzle-orm");
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 async function assertDisposableDb(): Promise<void> {
@@ -228,5 +236,210 @@ describe("AUTH-1 Finding B: reset links", () => {
     }
     assert.equal((await unusedTokens(oauthOnly)).length, 0);
     assert.equal((await unusedTokens(b)).length, 1, "the real request issued one new link for B");
+  });
+});
+
+// ─── AUTH-1 fix 3b: the neutral sign-up response ─────────────────────────────────────────────────────────────
+
+describe("AUTH-1 fix 3b: neutral registration", () => {
+  let app3: http.Server;
+  let base3 = "";
+  const emails: string[] = [];
+  const PASSWORD = "longenough-pass1";
+  const origTransaction = (db as any).transaction;
+  const origScrypt = crypto.scrypt;
+  let scryptCalls = 0;
+
+  function addr(label: string) {
+    const e = `auth1-3b-${label}-${crypto.randomUUID()}@traveloure-qa.test`;
+    emails.push(e);
+    return e;
+  }
+  async function register(email: string, cookie?: string) {
+    const res = await fetch(`${base3}/api/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify({ email, password: PASSWORD, firstName: "Neutral", lastName: "Fixture" }),
+    });
+    const text = await res.text();
+    return { status: res.status, text, body: JSON.parse(text), setCookie: res.headers.get("set-cookie") };
+  }
+  async function login(email: string) {
+    const res = await fetch(`${base3}/api/auth/login`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    return res.headers.get("set-cookie")!.split(";")[0];
+  }
+  async function whoAmI(cookie: string | null | undefined) {
+    const res = await fetch(`${base3}/api/auth/user-probe`, { headers: cookie ? { cookie } : {} });
+    return res.status === 200 ? ((await res.json()) as { sub: string | null }).sub : null;
+  }
+  async function accountsFor(email: string) {
+    return db.select().from(users).where(eq(users.email, email));
+  }
+  async function welcomesFor(userId: string) {
+    return db.select({ id: emailOutbox.id }).from(emailOutbox)
+      .where(sql`${emailOutbox.emailType} = 'signup_welcome' AND ${emailOutbox.metadata}->>'signupAccountId' = ${userId}`);
+  }
+  async function verificationTokensFor(userId: string) {
+    return db.select({ id: emailVerificationTokens.id }).from(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userId));
+  }
+  /** issueEmailVerification is fire-and-forget after the response: wait (by reads) for its row. */
+  async function awaitVerificationToken(userId: string) {
+    for (let i = 0; i < 200; i += 1) {
+      if ((await verificationTokensFor(userId)).length > 0) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.fail(`no verification token for ${userId}`);
+  }
+
+  before(async () => {
+    assert.equal(process.env.NODE_ENV, "test");
+    await assertDisposableDb();
+    (crypto as any).scrypt = (...args: unknown[]) => { scryptCalls += 1; return (origScrypt as any)(...args); };
+    const app = express();
+    app.use(express.json());
+    app.use(getSession());
+    app.use(passport.initialize());
+    app.use(passport.session());
+    passport.serializeUser((user: any, cb) => cb(null, user));
+    passport.deserializeUser((user: any, cb) => cb(null, user));
+    setupEmailAuth(app);
+    // Test-only read of who the session says is signed in.
+    app.get("/api/auth/user-probe", (req: any, res) => res.json({ sub: req.user?.claims?.sub ?? null }));
+    app3 = http.createServer(app);
+    await new Promise<void>(r => app3.listen(0, "127.0.0.1", r));
+    base3 = `http://127.0.0.1:${(app3.address() as any).port}`;
+  });
+  afterEach(() => { (db as any).transaction = origTransaction; });
+  after(async () => {
+    (crypto as any).scrypt = origScrypt;
+    await new Promise<void>(r => app3?.close(() => r()));
+    // Let the fire-and-forget verification/welcome work settle before deleting what it touches.
+    await new Promise((r) => setTimeout(r, 300));
+    const rows = emails.length ? await db.select({ id: users.id }).from(users).where(inArray(users.email, emails)) : [];
+    for (const { id } of rows) {
+      await db.delete(emailOutbox).where(sql`${emailOutbox.metadata}->>'signupAccountId' = ${id}`);
+      await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, id));
+      await pool.query(`DELETE FROM sessions WHERE sess::text LIKE $1`, [`%${id}%`]);
+      await db.delete(users).where(eq(users.id, id));
+    }
+  });
+
+  it("N1: a new and an existing address get the same status and body, with no id, email or session", async () => {
+    const fresh = addr("n1-new");
+    const first = await register(fresh);
+    const again = await register(fresh);
+    for (const r of [first, again]) {
+      assert.equal(r.status, 202, r.text);
+      assert.deepEqual(r.body, { code: REGISTRATION_NEUTRAL_CODE, message: REGISTRATION_NEUTRAL_MESSAGE });
+      assert.ok(!r.text.includes(fresh), "the body never echoes the address");
+      assert.equal(await whoAmI(r.setCookie?.split(";")[0]), null, "registering signs nobody in");
+    }
+    const [account] = await accountsFor(fresh);
+    assert.ok(account, "the new address made an account");
+    assert.ok(!first.text.includes(account.id), "the body never carries the user id");
+    // The account signs in through the ordinary login.
+    assert.equal(await whoAmI(await login(fresh)), account.id);
+  });
+
+  it("N2: only a new address writes; a duplicate changes nothing on the existing account", async () => {
+    const email = addr("n2");
+    await register(email);
+    const [before] = await accountsFor(email);
+    await awaitVerificationToken(before.id);
+    assert.equal((await welcomesFor(before.id)).length, 1, "the new account has one welcome obligation");
+    const tokensBefore = (await verificationTokensFor(before.id)).length;
+
+    const dup = await fetch(`${base3}/api/auth/register`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: email.toUpperCase(), password: "a-different-pass9", firstName: "Other", lastName: "Name" }),
+    });
+    assert.equal(dup.status, 202);
+    await new Promise((r) => setTimeout(r, 200));
+    const after = await accountsFor(email);
+    assert.equal(after.length, 1);
+    for (const k of ["id", "password", "firstName", "lastName", "role", "emailVerified"] as const) {
+      assert.deepEqual(after[0][k], before[k], `duplicate left ${k} unchanged`);
+    }
+    assert.equal((await welcomesFor(before.id)).length, 1, "no second welcome");
+    assert.equal((await verificationTokensFor(before.id)).length, tokensBefore, "no new verification email");
+  });
+
+  it("N3: concurrent sign-ups for one new address make one account and one welcome, all answered neutrally", async () => {
+    const email = addr("n3");
+    const results = await Promise.all(Array.from({ length: 8 }, () => register(email)));
+    for (const r of results) {
+      assert.equal(r.status, 202, r.text);
+      assert.deepEqual(r.body, { code: REGISTRATION_NEUTRAL_CODE, message: REGISTRATION_NEUTRAL_MESSAGE });
+    }
+    const rows = await accountsFor(email);
+    assert.equal(rows.length, 1);
+    assert.equal((await welcomesFor(rows[0].id)).length, 1);
+  });
+
+  it("N4: a lost unique-email race is a duplicate; any other fault is a 500 and writes nothing", async () => {
+    // The race, made deterministic: the insert reports the users.email unique index.
+    const raced = addr("n4-race");
+    (db as any).transaction = async () => {
+      const driver = Object.assign(new Error("duplicate key"), { code: "23505", constraint: "users_email_unique" });
+      throw Object.assign(new Error("Failed query"), { cause: driver });
+    };
+    const r1 = await register(raced);
+    assert.equal(r1.status, 202, r1.text);
+    assert.deepEqual(r1.body, { code: REGISTRATION_NEUTRAL_CODE, message: REGISTRATION_NEUTRAL_MESSAGE });
+
+    // A different unique index, or any other fault, is not a duplicate sign-up.
+    for (const fault of [
+      Object.assign(new Error("duplicate key"), { code: "23505", constraint: "users_handle_unique" }),
+      new Error("connection reset"),
+    ]) {
+      const email = addr("n4-fault");
+      (db as any).transaction = async () => { throw fault; };
+      const r = await register(email);
+      assert.equal(r.status, 500, r.text);
+      assert.notEqual(r.body.code, REGISTRATION_NEUTRAL_CODE);
+      assert.equal((await accountsFor(email)).length, 0);
+    }
+
+    // The predicate itself.
+    assert.equal(isEmailUniqueViolation({ code: "23505", constraint: "users_email_unique" }), true);
+    assert.equal(isEmailUniqueViolation({ message: "x", cause: { code: "23505", constraint: "users_email_unique" } }), true);
+    assert.equal(isEmailUniqueViolation({ code: "23505", constraint: "users_handle_unique" }), false);
+    assert.equal(isEmailUniqueViolation({ code: "23503", constraint: "users_email_unique" }), false);
+    assert.equal(isEmailUniqueViolation(new Error("plain")), false);
+    assert.equal(isEmailUniqueViolation(null), false);
+  });
+
+  it("N5: a session that existed before registering is left as it was", async () => {
+    const existing = addr("n5-signed-in");
+    await register(existing);
+    const cookie = await login(existing);
+    const [me] = await accountsFor(existing);
+    const other = addr("n5-other");
+    const r = await register(other, cookie);
+    assert.equal(r.status, 202);
+    assert.equal(r.setCookie, null, "registering does not issue a new session cookie");
+    assert.equal(await whoAmI(cookie), me.id, "still signed in as the same account");
+  });
+
+  it("N6: a new and an existing address both hash the password once; timings recorded", async () => {
+    const email = addr("n6");
+    scryptCalls = 0;
+    let t = performance.now();
+    assert.equal((await register(email)).status, 202);
+    const newMs = performance.now() - t;
+    const newCalls = scryptCalls;
+    scryptCalls = 0;
+    t = performance.now();
+    assert.equal((await register(email)).status, 202);
+    const dupMs = performance.now() - t;
+    assert.equal(newCalls, 1, "a new address hashes once");
+    assert.equal(scryptCalls, 1, "an existing address hashes once too");
+    // Recorded, not asserted: the proposal does not claim constant-time network behaviour.
+    console.log(`[auth1-3b] N6 timings: new ${newMs.toFixed(1)} ms, existing ${dupMs.toFixed(1)} ms`);
   });
 });
