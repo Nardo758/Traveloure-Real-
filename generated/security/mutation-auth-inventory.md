@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **699** raw mounted mutation registrations and **690** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **700** raw mounted mutation registrations and **691** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+144** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+145** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 177; user-data 241; other 241.
-Boundary totals: admin-role 177; session-self 356; resource-owner 102; signature 6; public-or-system 49; unknown 0.
+Category totals: payments 31; admin 178; user-data 241; other 241.
+Boundary totals: admin-role 178; session-self 356; resource-owner 102; signature 6; public-or-system 49; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -157,6 +157,7 @@ Boundary totals: admin-role 177; session-self 356; resource-owner 102; signature
 | PATCH | `/api/admin/users/:id/suspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9420` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/unsuspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9586` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/verification` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3224` | unknown | unknown |
+| DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:120` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests` | other | resource-owner | no | verified | `server/routes/content.routes.ts:7609` | unknown | unknown |
 | PATCH | `/api/affiliate-booking-requests/:id` | other | resource-owner | no | verified | `server/routes/content.routes.ts:8046` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests/:id/claim` | other | session-self | no | unknown | `server/routes/content.routes.ts:7988` | unknown | unknown |
@@ -671,7 +672,7 @@ Boundary totals: admin-role 177; session-self 356; resource-owner 102; signature
 | POST | `/api/vendors` | other | session-self | no | unknown | `server/routes.ts:2742` | unknown | unknown |
 | POST | `/api/viator/availability` | other | session-self | no | unknown | `server/routes/content.routes.ts:3577` | unknown | unknown |
 | POST | `/api/visa/requirements` | other | public-or-system | no | unknown | `server/routes/experts.routes.ts:670` | unknown | unknown |
-| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:28` | unknown | unknown |
+| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:35` | unknown | unknown |
 | POST | `/api/wallet/add-credits` | payments | session-self | no | self | `server/routes/payments.routes.ts:277` | unknown | unknown |
 | POST | `/api/webhooks/persona` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:104` (/persona) | unknown | unknown |
 | POST | `/api/webhooks/stripe` | payments | signature | no | unknown | `server/routes/webhooks.routes.ts:535` (/stripe) | unknown | unknown |
