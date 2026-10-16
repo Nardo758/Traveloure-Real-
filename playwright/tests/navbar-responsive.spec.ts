@@ -246,7 +246,14 @@ test.describe("Sticky navbar", () => {
   test("Navbar stays fixed at top after scrolling 500px", async ({ page }) => {
     await setViewport(page, 1280, 800);
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    // LW-1f (ledger `2026-10-16-lw1f-kyoto-ticker`): the launch ribbon now sits ABOVE the nav on this page. A
+    // scroll taken before the page has rendered is clamped to 0, which leaves the nav below the ribbon and reads
+    // as "not sticky". So scroll once the page is rendered and confirm the scroll really happened; the assertion
+    // itself — the nav is at the top after scrolling — is unchanged.
+    await page.waitForSelector("nav", { timeout: 8000 });
+    await page.waitForLoadState("networkidle").catch(() => null);
     await page.evaluate(() => window.scrollTo(0, 500));
+    await page.waitForFunction(() => window.scrollY >= 200, null, { timeout: 5000 });
     await page.waitForTimeout(300);
 
     const { top, visible } = await page.evaluate(() => {

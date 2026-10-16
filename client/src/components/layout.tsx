@@ -73,6 +73,8 @@ import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig, activeNavGroupName } from "@/lib/nav-config";
 import { TripStrip } from "@/components/trip/trip-strip";
+import { CityTickerTape } from "@/components/CityTickerTape";
+import { showsTicker } from "@/lib/ticker-mount";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 // ONE source object for the earn-grammar nav leaves (ruling 2026-08-25-nav-icons):
@@ -707,6 +709,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       >
         {t("skipToContent")}
       </a>
+
+      {/* LW-1f: the launch-market ribbon, above the header, on the public marketing pages only (lib/ticker-mount). */}
+      {showsTicker(location) && <CityTickerTape />}
 
       {/* TEST 5 — aria-label="Main navigation" announces the landmark to screen readers */}
       <nav

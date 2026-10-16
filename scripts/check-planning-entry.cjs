@@ -47,10 +47,10 @@
  *   • THAT A PASSED FIELD IS TRUE. This is text over source: `{ city: someVariable }` satisfies the
  *     `city` requirement whatever that variable holds. Locked Decision 42 (D13) puts the honesty
  *     half on the author — a door passes only what it holds, and where a field would have to be
- *     invented it passes NOTHING — and this guard cannot enforce it. That is why two doors here
- *     (the `OPERATING_MARKETS` ticker rail, which names eight cities and no one of them, and the
- *     storefront, whose `earner.location` is a NEIGHBOURHOOD as often as a city) are deliberately
- *     required to pass NO city rather than any city.
+ *     invented it passes NOTHING — and this guard cannot enforce it. That is why the storefront,
+ *     whose `earner.location` is a NEIGHBOURHOOD as often as a city, is deliberately required to pass
+ *     NO city rather than any city. (The ticker rail was the second such door until LW-1f made it
+ *     single-city: it now names the launch market and is REQUIRED to pass that city.)
  *   • A FIELD PASSED THROUGH AN INDIRECTION. `open(src)` where `src` was built elsewhere in the
  *     file reads as passing nothing. The predicate wants the key literally at a call site.
  *   • That the modal opens with the right VALUES generally. A surface passing nothing where nothing
@@ -134,18 +134,18 @@ const ENTRY_SURFACES = [
 // A surface listed here MUST pass the named `PlanningSource` keys at some opener call site in its
 // own source. Absence from this list is not a pass mark (see the negative space in the header).
 //
-// TWO SURFACES ARE LISTED WITH NO REQUIRED CITY ON PURPOSE, and that is the ruling, not a gap:
+// SOME SURFACES ARE LISTED WITH NO REQUIRED CITY ON PURPOSE, and that is the ruling, not a gap:
 // D13's second clause says a door passes only what is TRUE, so where a field would have to be
-// invented the door passes NOTHING. Both are recorded as `forbid` entries below so the reason is
+// invented the door passes NOTHING. Each is recorded as a `forbid` entry below so the reason is
 // checked rather than remembered.
 const REQUIRED_SOURCE_FIELDS = [
   {
     file: "client/src/components/CityTickerTape.tsx",
-    require: [],
-    // The rail names ALL EIGHT OPERATING_MARKETS and no ONE of them. Passing a city here would
-    // manufacture a destination the traveler never chose.
-    forbid: ["city", "destination"],
-    why: "the launch-market ticker rail holds eight cities and no single one (§13)",
+    // LW-1f (ledger `2026-10-16-lw1f-kyoto-ticker`; hand-off Part A item 8): the ribbon is single-city —
+    // the launch market — so in open mode its "Start planning" passes that city. It was `forbid` while
+    // the rail named all eight OPERATING_MARKETS and no one of them.
+    require: ["city"],
+    why: "the ticker is the launch market's own ribbon (Kyoto), so its planning door holds one city",
   },
   {
     file: "client/src/pages/trip-details.tsx",
@@ -187,7 +187,7 @@ const REQUIRED_SOURCE_FIELDS = [
   // Ledger `2026-09-07-home-honesty` (L2). Home's TWO create doors — the "New experience" CTA
   // tile and the empty-state "Create Your First Plan" button — both open the ONE IntakePanel.
   // What the page holds (the destinations of EXISTING active plans) is not the destination of
-  // the NEW plan being created, so like the ticker rail the doors pass nothing (D13 second
+  // the NEW plan being created, so like the storefront the doors pass no city (D13 second
   // clause): seeding the new plan with an existing plan's city would be an invented answer.
   {
     file: "client/src/pages/dashboard.tsx",
@@ -667,8 +667,9 @@ function selfTest() {
     // The whole reason regions exist rather than a whole-file grep.
     ["D13 · a key in a TYPE or a filter is NOT a door passing it", () => req(CHAT, decoy).some((e) => e.includes("does not pass `tripId`"))],
     // The §13 half: two doors are ruled to pass NO city, and inventing one must fail.
-    ["D13 · the ticker passing NO city passes", () => req(TICKER, doorBare).length === 0],
-    ["D13 · the ticker passing a city FAILS (§13 — eight markets, no single one)", () => req(TICKER, 'const { open: openPlanning } = usePlanning();\nonClick={() => openPlanning({ city: markets[0].cityName })}').some((e) => e.includes("ruled NOT to pass"))],
+    // LW-1f: the ribbon is single-city now (the launch market), so its door must pass that city.
+    ["D13 · the ticker passing its city passes", () => req(TICKER, 'const { open: openPlanning } = usePlanning();\nonPlan={(city) => openPlanning({ city })}').length === 0],
+    ["D13 · the ticker passing NO city now FAILS (single-city ribbon)", () => req(TICKER, doorBare).some((e) => e.includes("does not pass `city`"))],
     // D15 (lane L22, ledger `2026-09-07-doors-pass-tripid`): the storefront IS an earner, so its
     // door carries the return address. This fixture used to assert the opposite — that a BARE
     // storefront CTA passed — which was true right up until the ruling gave that door something

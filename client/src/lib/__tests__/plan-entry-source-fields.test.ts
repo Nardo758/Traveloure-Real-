@@ -13,13 +13,14 @@
  *       (the trip row's own `experienceType`; the listing's own `market`; the resolved
  *       `selectedTripId`).
  *   S2  (the experience template's three doors) was retired with the page in step 8c.
- *   S3  the two §13 doors pass NO city. The ticker rail names eight markets and no one of them;
- *       the storefront's `earner.location` is a NEIGHBOURHOOD as often as a city
+ *   S3  the storefront passes NO city: its `earner.location` is a NEIGHBOURHOOD as often as a city
  *       (`resolveEarnerLocation`). D13's second clause is that a door passes only what is TRUE, so
  *       an invented field here is a failure, not a nicety.
- *   S4  the ticker STILL holds no single city. If that rail ever becomes single-city this pin
- *       fails, which forces the ticker's source, the guard's REQUIRED_SOURCE_FIELDS entry and S3
- *       to be revisited together instead of one of them drifting.
+ *   S4  (LW-1f, ledger `2026-10-16-lw1f-kyoto-ticker`; hand-off Part A item 8) the ticker is now
+ *       SINGLE-CITY — the launch market — so its planning door passes that city, read from the
+ *       `launch_market_slug` setting, and nothing on it counts or lists the operating markets. It used
+ *       to pin the opposite (eight markets, no single city); the guard's REQUIRED_SOURCE_FIELDS entry
+ *       moved with it in the same PR.
  *   S5  `/experiences` passes the city it holds (step 8a: the picked market, through its door), and
  *       the intake panel still ACCEPTS a city for the mounts that keep it until D11.
  *
@@ -82,19 +83,19 @@ describe("S1 — chat passes the trip its thread is about, and only when there i
   });
 });
 
-describe("S3/S4 — the two doors that pass NOTHING, and why", () => {
-  it("the ticker rail passes no city — it names eight markets and no single one", () => {
+describe("S3/S4 — the storefront passes nothing; the single-city ticker passes its city", () => {
+  it("S4 — the ticker passes the launch market's city, and only that", () => {
     const src = read(TICKER);
-    assert.ok(src.includes("onClick={() => openPlanning()}"), "the ticker door must stay bare");
-    assert.ok(!/openPlanning\(\{[^)]*city/.test(src), "a city here would be manufactured (§13)");
+    assert.ok(src.includes("onPlan={(city) => openPlanning({ city })}"), "the ticker door passes its one city");
+    assert.ok(src.includes("launchCityName(slug)"), "the city comes from the launch_market_slug setting");
+    assert.ok(src.includes('queryKey: ["/api/public/signup-mode"]'), "the slug is read from the public setting");
   });
 
-  it("S4 — the rail still holds ALL the operating markets, so there is still no single city to pass", () => {
+  it("S4 — nothing on the ribbon counts or lists the operating markets", () => {
     const src = read(TICKER);
-    // If this ever becomes a single-city rail, this pin fails and the ticker's source, the guard's
-    // REQUIRED_SOURCE_FIELDS entry and S3 above all have to be revisited together.
-    assert.ok(src.includes("const markets = OPERATING_MARKETS;"));
-    assert.ok(src.includes("Beta in {markets.length} cities"));
+    assert.ok(!src.includes("OPERATING_MARKETS"), "the ribbon no longer reads the eight-market list");
+    assert.ok(!/in beta in \{[^}]*\} cities|Beta in \{markets\.length\}|cities<\/span>/i.test(src), "no 'N cities' text");
+    assert.ok(!src.includes("markets.length"));
   });
 
   it("the storefront passes no city — earner.location is a neighbourhood as often as a city", () => {
