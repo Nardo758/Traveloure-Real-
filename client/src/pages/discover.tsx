@@ -703,7 +703,7 @@ const SURFACE_META: Record<MarketplaceSurface, { icon: LucideIcon; title: string
   packages: {
     icon: Gem,
     title: "Ready-Made Trips",
-    subtitle: "Guided itineraries crafted by verified experts — buy the plan and travel it your way",
+    subtitle: "Itineraries built by local experts. Buy the plan and travel it your way.",
     url: "/ready-made",
     seoTitle: "Ready-Made Trips — Expert-Built, Ready to Buy",
   },

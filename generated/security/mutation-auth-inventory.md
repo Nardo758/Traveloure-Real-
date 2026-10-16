@@ -430,7 +430,7 @@ Boundary totals: admin-role 176; session-self 356; resource-owner 102; signature
 | PATCH | `/api/me/travel-preferences` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:417` | unknown | unknown |
 | PATCH | `/api/me/traveler-profile` | user-data | session-self | no | self | `server/routes/traveler-profile.routes.ts:68` | unknown | unknown |
 | PATCH | `/api/me/vacation` | user-data | session-self | no | self | `server/routes/vacation.routes.ts:74` | unknown | unknown |
-| POST | `/api/memberships/checkout` | other | session-self | no | unknown | `server/routes/payments.routes.ts:3449` | unknown | unknown |
+| POST | `/api/memberships/checkout` | other | session-self | no | unknown | `server/routes/payments.routes.ts:3462` | unknown | unknown |
 | POST | `/api/messages` | user-data | session-self | yes | unknown | `server/routes/messages.ts:173` (/) | unknown | unknown |
 | PATCH | `/api/messages/:messageId/read` | user-data | session-self | yes | unknown | `server/routes/messages.ts:250` (/:messageId/read) | unknown | unknown |
 | DELETE | `/api/messages/block/:targetUserId` | user-data | session-self | yes | unknown | `server/routes/messages.ts:330` (/block/:targetUserId) | unknown | unknown |
@@ -453,7 +453,7 @@ Boundary totals: admin-role 176; session-self 356; resource-owner 102; signature
 | PATCH | `/api/participants/:id` | user-data | resource-owner | yes | verified | `server/routes/content.routes.ts:7204` | unknown | unknown |
 | POST | `/api/participants/:id/payment` | payments | resource-owner | yes | verified | `server/routes/content.routes.ts:7249` | unknown | unknown |
 | PATCH | `/api/participants/:id/rsvp` | user-data | session-self | yes | unknown | `server/routes/content.routes.ts:7230` | unknown | unknown |
-| POST | `/api/payouts/request` | payments | session-self | no | self | `server/routes/payments.routes.ts:3172` | unknown | unknown |
+| POST | `/api/payouts/request` | payments | session-self | no | self | `server/routes/payments.routes.ts:3185` | unknown | unknown |
 | DELETE | `/api/plans/:id/feedback` | other | session-self | no | unknown | `server/routes/feedback.routes.ts:73` | unknown | unknown |
 | POST | `/api/plans/:id/feedback` | other | session-self | no | unknown | `server/routes/feedback.routes.ts:53` | unknown | unknown |
 | PATCH | `/api/profile` | user-data | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:87` | unknown | unknown |

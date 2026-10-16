@@ -600,7 +600,7 @@ export function LandingHeroContent({
             data-testid="hero-beta-pill"
           >
             <i className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--earn-green)" }} />
-            Beta in {OPERATING_MARKETS.length} operating markets
+            Now in beta in Kyoto
           </span>
           <h1
             className="mt-3 text-[40px] font-semibold leading-[1.03] tracking-[-0.015em] sm:text-[54px]"
