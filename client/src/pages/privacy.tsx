@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
       width="reading"
       title="Privacy Policy"
       titleTestId="text-privacy-title"
-      lead={<p className="text-muted-foreground">Effective Date: August 10, 2026</p>}
+      lead={<p className="text-muted-foreground">Effective Date: October 16, 2026</p>}
       testId="page-privacy"
     >
 
@@ -397,7 +397,42 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>14. Contact Information</h2>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>14. The Kyoto Waitlist</h2>
+            <p className="text-muted-foreground leading-relaxed mb-4">
+              Traveloure is not yet open in Kyoto. You can join the Kyoto waitlist on our Kyoto page, as a traveler or as a local provider, without creating an account. This section explains what we keep when you do.
+            </p>
+
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.1 What We Collect</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li><strong>Traveler form:</strong> your email address and, if you choose to answer, what the trip is for, a rough month for it, and anything you tell us you are unsure about.</li>
+              <li><strong>Provider form:</strong> your name, your email address, the type of service you offer, and, if you give it, your business name.</li>
+              <li><strong>Both forms:</strong> whether you ticked "Email me when Traveloure opens for Kyoto." and when, the wording of that line as you saw it, the page or blog post you signed up from, and, if you arrived through a link shared by a Traveloure expert, which link.</li>
+            </ul>
+
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.2 Why We Use It</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li>To count demand for Kyoto: how many travelers and providers are waiting, and what kinds of trips people are planning.</li>
+              <li>To tell you when Traveloure opens for Kyoto. We email you about this only if you ticked the box.</li>
+            </ul>
+
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.3 How Long We Keep It</h3>
+            <p className="text-muted-foreground leading-relaxed mb-6">
+              We keep a waitlist sign-up for 12 months after you sign up.
+            </p>
+
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.4 Removing Your Details</h3>
+            <p className="text-muted-foreground leading-relaxed mb-6">
+              Waitlist sign-ups have no account, so to be removed, email us at {COMPANY_CONTACT_EMAIL} from the address you signed up with. We complete removal requests within 30 days.
+            </p>
+
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.5 Where It Is Stored</h3>
+            <p className="text-muted-foreground leading-relaxed">
+              Our site is hosted by Replit on Google Cloud, and waitlist sign-ups are stored in a database run by Neon (PostgreSQL). Both are in the United States.
+            </p>
+          </section>
+
+          <section>
+            <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>15. Contact Information</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
               If you have questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:
             </p>
@@ -414,7 +449,7 @@ export default function PrivacyPolicyPage() {
 
           <div className="p-4 bg-muted/50 rounded-lg mt-8">
             <p className="text-sm text-muted-foreground text-center">
-              This Privacy Policy was last updated on August 10, 2026. Thank you for trusting Traveloure with your personal information.
+              This Privacy Policy was last updated on October 16, 2026. Thank you for trusting Traveloure with your personal information.
             </p>
           </div>
         </div>
