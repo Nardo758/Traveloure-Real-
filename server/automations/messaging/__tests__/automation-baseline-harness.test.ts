@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 const require = createRequire(import.meta.url);
-const runner = require(resolve("scripts/check-automation-golden-baseline.cjs"));
+const runner = require(resolve("scripts/automation/golden-baseline.cjs"));
 const reporterUrl = pathToFileURL(resolve("scripts/verification/automation-baseline-reporter.mjs")).href;
 
 test("provider-free environment drops all live transports and production URLs", () => {

@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { serializeEvidence, redact } from "../automation-baseline-reporter.mjs";
 
 const require = createRequire(import.meta.url);
-const runner = require("../../check-automation-golden-baseline.cjs");
+const runner = require("../../automation/golden-baseline.cjs");
 
 test("structured evidence retains nested rows, timestamps, counts and types", () => {
   const document = {
@@ -69,7 +69,7 @@ test("unsupported email mode refuses before any child or evidence directory", ()
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "automation-refusal-"));
   try {
     const child = spawnSync(process.execPath, [
-      path.resolve("scripts/check-automation-golden-baseline.cjs"), "--live-proof",
+      path.resolve("scripts/automation/golden-baseline.cjs"), "--live-proof",
     ], { env: runner.providerFreeEnvironment(), encoding: "utf8", cwd: scratch });
     assert.equal(child.status, 1);
     assert.equal(child.stdout, "");
