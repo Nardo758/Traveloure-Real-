@@ -17,6 +17,7 @@ import {
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
+import { ExpertRateLine } from "@/components/expert/expert-rate-line";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
 // Console IA C8 (§17 17→9 collapse): module renamed Earnings → Money — route moved to
@@ -177,6 +178,7 @@ export default function ExpertEarnings() {
             </Button>
           }
         />
+        <ExpertRateLine />
 
         <StripeConnectCard />
 

@@ -2049,4 +2049,11 @@ export const MIGRATION_FILES = [
   // 380 — bot_proposals.fact_id → place_facts(id) ON DELETE SET NULL (ledger 2026-10-15-bot-proposal-fact-fk), registered after 381, the order it landed. One
   // constraint, named as drizzle names it and declared in shared/schema.ts; idempotent. Migration 380 SQL approved by Leon — comment 01:33Z on #1463.
   "380_bot_proposals_fact_fk.sql",
+  // 382 — FE-2 expert rate cohort (ledger 2026-10-16-fe2-beta-cohort): users.rate_cohort, rate_locked_at,
+  // rate_notice_sent_at (additive nullable, no DEFAULT/CHECK/index/FK, declared in shared/models/auth.ts); the
+  // expert_beta_2026 band (0.15, insert-if-missing); three platform_settings rows (insert-if-missing). HELD.
+  "382_expert_rate_cohort.sql",
+  // 383 — FE-2 backfill: approved travel_expert/local_expert/event_planner accounts join beta_2026, locked at their
+  // approval audit timestamp else now(). DATA ONLY, idempotent; no schema change. HELD.
+  "383_expert_rate_cohort_backfill.sql",
 ] as const;
