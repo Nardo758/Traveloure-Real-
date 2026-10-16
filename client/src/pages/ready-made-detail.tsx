@@ -233,6 +233,9 @@ export default function ReadyMadeDetailPage() {
   // LW-1d: while traveler sign-up is waitlist-only, the buy button becomes the launch market's waitlist, carrying
   // only the raw code the visitor arrived with (the server decides any credit). Unread mode ⇒ buy as usual.
   const { data: signupMode } = useQuery<SignupModeRead>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  // One class string for the buy CTA and its waitlist-mode stand-in, so the two cannot drift apart.
+  const buyCtaClass =
+    "w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2";
   const waitlistHref = isPreview
     ? null
     : readyMadeWaitlistHref(signupMode, arrivalRef(window.location.search, getAcquisitionRef()));
@@ -649,7 +652,7 @@ export default function ReadyMadeDetailPage() {
                 <Button
                   asChild
                   size="lg"
-                  className="w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2"
+                  className={buyCtaClass}
                 >
                   <a href={waitlistHref} data-testid="button-rm-waitlist">{READY_MADE_WAITLIST_LABEL}</a>
                 </Button>
@@ -659,7 +662,7 @@ export default function ReadyMadeDetailPage() {
                   onClick={startPurchase}
                   disabled={isPreview || price === null}
                   data-testid="button-buy-rm"
-                  className="w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2"
+                  className={buyCtaClass}
                 >
                   <ShoppingBag className="w-4 h-4" />
                   {isPreview ? "Preview only" : "Get this trip"}
