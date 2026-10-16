@@ -21,8 +21,8 @@
  * connection and never calls `setTimeout`; the round-trip is the only thing that has been
  * shown to work, and a timer would be a guess dressed as a fix.
  *
- * §13 — THE FAILURE MODES ARE DIFFERENT FACTS AND ARE REPORTED AS SUCH. "the register did
- * not return 201", "the actor never became visible to this connection within N reads" and
+ * §13 — THE FAILURE MODES ARE DIFFERENT FACTS AND ARE REPORTED AS SUCH. "the register was
+ * refused or the sign-in after it failed", "the actor never became visible to this connection within N reads" and
  * "the role UPDATE matched no row" are three different things; each throws with its own
  * sentence rather than being funnelled into one FK error raised much later by an unrelated
  * INSERT. The role UPDATE in particular used to be able to match ZERO rows in silence, which
