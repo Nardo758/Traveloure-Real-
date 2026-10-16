@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 699,
-  "rawRegistrationCount": 699,
-  "uniqueMethodNormalizedPathCount": 690,
-  "distinctMethodPathCount": 690,
+  "mutationCount": 700,
+  "rawRegistrationCount": 700,
+  "uniqueMethodNormalizedPathCount": 691,
+  "distinctMethodPathCount": 691,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -145,12 +145,12 @@
   ],
   "categoryTotals": {
     "payments": 31,
-    "admin": 177,
+    "admin": 178,
     "user-data": 241,
     "other": 241
   },
   "boundaryTotals": {
-    "admin-role": 177,
+    "admin-role": 178,
     "session-self": 356,
     "resource-owner": 102,
     "signature": 6,
@@ -159,7 +159,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 153,
+    "delta": 154,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -2964,6 +2964,25 @@
       "effectivePath": "/api/admin/users/:id/verification",
       "source": "server/routes/admin.routes.ts",
       "line": 3224,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "DELETE",
+      "rawPath": "/api/admin/waitlist/:id",
+      "path": "/api/admin/waitlist/:id",
+      "effectivePath": "/api/admin/waitlist/:id",
+      "source": "server/routes/launch-waitlist.routes.ts",
+      "line": 120,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -11931,7 +11950,7 @@
       "path": "/api/waitlist",
       "effectivePath": "/api/waitlist",
       "source": "server/routes/launch-waitlist.routes.ts",
-      "line": 28,
+      "line": 35,
       "risk": "other",
       "expectedAuth": "public",
       "expectedRoles": [],
