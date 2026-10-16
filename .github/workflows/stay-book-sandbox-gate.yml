@@ -123,6 +123,13 @@ jobs:
           CI: 'true'
           LITEAPI_SANDBOX_E2E: '1'
           QA_ACCOUNT_EMAIL_DOMAIN: traveloure-qa.test
+          # The spec names each hotel's rates error from the server's own log when it skips (ledger
+          # 2026-10-15-sandbox-rates-unavailable-skip).
+          STAY_SANDBOX_SERVER_LOG: /tmp/server.log
+
+      - name: Raise a notice for each skipped test (a skip is never silent on main)
+        if: always() && env.HAS_KEY == 'true'
+        run: node scripts/report-playwright-skips.cjs playwright-json/results.json "stay-book-sandbox skipped"
 
       - name: Server's LiteAPI lines (the re-quote, the floor margin, each prebook refusal)
         if: always() && env.HAS_KEY == 'true'
