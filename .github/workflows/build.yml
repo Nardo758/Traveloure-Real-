@@ -535,6 +535,10 @@ jobs:
       # CP-2: the /earn and /become-provider "keep N%" lines are built from the live bands only.
       - name: Fee keep copy pin (CP-2)
         run: npx tsx --test client/src/lib/__tests__/fee-keep-copy.test.ts
+      # LW-1g: the /earn Ready-Made calculator — empty boxes, the rate from the resolver, nothing on bad input,
+      # no average/typical wording, hidden without Ready-Made Trips in the launch market.
+      - name: Ready-Made calculator (LW-1g)
+        run: npx tsx --test client/src/lib/__tests__/ready-made-calculator.test.tsx
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin

@@ -4,7 +4,9 @@
  *   E1 the expert rate IS `getExpertSplitRates().platformFeeRate`.
  *   E2 under `beta_flat` (or no policy) the provider rate IS the active `beta_flat` band.
  *   E3 under `tiered` there is no single provider rate, so it is null (§13).
- * The policy row is restored in after(); nothing else is written.
+ *   E4 (LW-1g, ledger `2026-10-16-lw1g-earn-calculator`) the Ready-Made rate IS
+ *      `resolveReadyMadeTakeRate()`, and it follows the `ready_made_trip` band when an admin edits it.
+ * The policy row and the band are restored in after(); nothing else is written.
  *
  * Run solo: npx tsx --test server/__tests__/earn-keep-rates.db.test.ts
  */
@@ -15,6 +17,7 @@ import { db } from "../db";
 import { resolvePublicKeepRates } from "../services/earn-keep-rates.service";
 import { getExpertSplitRates } from "../services/commission";
 import { BETA_FLAT_BAND, readBand } from "../services/fee-resolution.service";
+import { resolveReadyMadeTakeRate } from "../services/ready-made-purchase.service";
 
 const KEY = "active_provider_commission_policy";
 let saved: { exists: boolean; value: unknown } | null = null;
@@ -32,7 +35,11 @@ async function setPolicy(value: string) {
   }
 }
 
+let savedReadyMadeRate: string | null | undefined;
 after(async () => {
+  if (savedReadyMadeRate !== undefined) {
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${savedReadyMadeRate} WHERE band_key = 'ready_made_trip'`);
+  }
   if (!saved) return;
   if (saved.exists) {
     await db.execute(sql`UPDATE platform_settings SET setting_value = ${saved.value as any} WHERE setting_key = ${KEY}`);
@@ -56,4 +63,14 @@ test("E2: under beta_flat the provider rate is the beta_flat band", async () => 
 test("E3: under tiered there is no single provider rate", async () => {
   await setPolicy("tiered");
   assert.equal((await resolvePublicKeepRates()).providerPlatformRate, null);
+});
+
+test("E4: the Ready-Made rate is the purchase path's own rate, and follows the band", async () => {
+  assert.equal((await resolvePublicKeepRates()).readyMadePlatformRate, await resolveReadyMadeTakeRate());
+  const r: any = await db.execute(sql`SELECT default_rate::text AS rate FROM fee_bands WHERE band_key = 'ready_made_trip' AND is_active = true LIMIT 1`);
+  if (!r.rows?.[0]) return; // no active band here: the fallback is what E4's first line already pinned
+  savedReadyMadeRate = r.rows[0].rate;
+  const edited = Number(savedReadyMadeRate) === 0.15 ? "0.2" : "0.15"; // fee-literal-ok: a test edit of the band, then restored
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${edited} WHERE band_key = 'ready_made_trip'`);
+  assert.equal((await resolvePublicKeepRates()).readyMadePlatformRate, Number(edited));
 });

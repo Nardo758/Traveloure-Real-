@@ -14,6 +14,8 @@ export const KEEP_RATES_ENDPOINT = "/api/fee-policies/keep-rates";
 export interface PublicKeepRates {
   expertPlatformRate?: number | null;
   providerPlatformRate?: number | null;
+  /** LW-1g: the platform take on a Ready-Made Trip sale (the `ready_made_trip` band, as charged). */
+  readyMadePlatformRate?: number | null;
 }
 
 /** The platform take as a whole percent, or null when there is no usable rate. */

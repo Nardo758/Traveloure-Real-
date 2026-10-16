@@ -31,6 +31,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { earnKeepSentence, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
+import { ReadyMadeCalculator } from "@/components/earn/ReadyMadeCalculator";
+import { marketHasReadyMade, usableRate } from "@/lib/ready-made-calculator";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
@@ -241,6 +243,14 @@ export default function EarnPage() {
   // ── Revenue share: the resolver's own rates, never a typed number (§8, CP-2) ─────
   const { data: keepRates } = useQuery<PublicKeepRates>({ queryKey: [KEEP_RATES_ENDPOINT], staleTime: 60_000 });
   const keepSentence = earnKeepSentence(keepRates);
+  // LW-1g: the Ready-Made calculator shows only with a usable rate from the fee resolver AND Ready-Made Trips on
+  // sale in the launch market ("hide it in markets without Ready-Made Trips"). Either answer missing ⇒ hidden.
+  const readyMadeRate = usableRate(keepRates?.readyMadePlatformRate);
+  const { data: signupMode } = useQuery<{ launchMarketSlug: string | null }>({ queryKey: ["/api/public/signup-mode"], staleTime: 60_000 });
+  const { data: readyMadeFeed } = useQuery<{ listings: { market?: string | null }[] }>({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
+  const showReadyMadeCalculator =
+    readyMadeRate !== null &&
+    marketHasReadyMade(readyMadeFeed?.listings, signupMode?.launchMarketSlug);
 
   // ── Role → offerings (partition functions from the config module) ────────
   // Both catalogs are asked for every card and the partition functions decide.
@@ -525,6 +535,8 @@ export default function EarnPage() {
             </div>
           </div>
         </section>
+
+        {showReadyMadeCalculator && readyMadeRate !== null && <ReadyMadeCalculator rate={readyMadeRate} />}
 
         {/* ── Featured strip: is_surprising rows ───────────────────────── */}
         {surprising.length > 0 && (
