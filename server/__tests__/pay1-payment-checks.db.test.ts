@@ -27,12 +27,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
-  process.env.STRIPE_SECRET_KEY = "sk_test_dummy_key_for_pay1_suite";
-}
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { holdTransportBookingForReview } from "../services/stripe.service";
 import {
   claimWebhookEvent,
   failWebhookClaim,
@@ -40,8 +36,18 @@ import {
   WebhookClaimInFlightError,
   WEBHOOK_CLAIM_TTL_MINUTES,
 } from "../services/webhook-claim.service";
-import { loadAdminBookingDetail, resolveNeedsReviewBooking, type ResolveDeps } from "../services/admin-booking-detail.service";
-import { stripePaymentService } from "../services/stripe-payment.service";
+import type { ResolveDeps } from "../services/admin-booking-detail.service";
+
+// STRIPE TEST MODE ONLY, never called. `stripe.service.ts` throws at import when no key is set, and
+// static imports run before any statement in this file, so the key is set first and the modules that
+// reach Stripe are loaded dynamically in before().
+if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
+  process.env.STRIPE_SECRET_KEY = "sk_test_dummy_key_for_pay1_suite";
+}
+let holdTransportBookingForReview: typeof import("../services/stripe.service").holdTransportBookingForReview;
+let loadAdminBookingDetail: typeof import("../services/admin-booking-detail.service").loadAdminBookingDetail;
+let resolveNeedsReviewBooking: typeof import("../services/admin-booking-detail.service").resolveNeedsReviewBooking;
+let stripePaymentService: typeof import("../services/stripe-payment.service").stripePaymentService;
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const traveler = `pay1-${RUN}-trav`;
@@ -100,6 +106,9 @@ async function seedLiteapi(status: string, itemId?: string, code?: string): Prom
 }
 
 before(async () => {
+  ({ holdTransportBookingForReview } = await import("../services/stripe.service"));
+  ({ loadAdminBookingDetail, resolveNeedsReviewBooking } = await import("../services/admin-booking-detail.service"));
+  ({ stripePaymentService } = await import("../services/stripe-payment.service"));
   await assertDisposableDb();
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name) VALUES (${traveler}, ${`pay1-${RUN}@t.test`}, 'Pay', 'One')`);
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date) VALUES (${trip}, ${traveler}, 'PAY-1 trip', 'Kyoto', CURRENT_DATE + 30, CURRENT_DATE + 35)`);
