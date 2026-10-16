@@ -1,7 +1,7 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
-import { TRAVELER_SIGNUP_MODE_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
+import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -8219,6 +8219,10 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (settingKey === TRAVELER_SIGNUP_MODE_SETTING && !isTravelerSignupModeValue(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be 'waitlist' or 'open'`, got: settingValue });
       }
+      // LW-1h: the opening instant is the server's record of the flip, never an admin's typed value.
+      if (settingKey === TRAVELER_SIGNUP_OPENED_AT_SETTING) {
+        return res.status(400).json({ error: `${settingKey} is set by the server when traveler sign-up first opens`, code: "server_written_setting" });
+      }
       if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a market slug (lower-case letters, digits, hyphens)`, got: settingValue });
       }
@@ -8248,14 +8252,34 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       `);
       const beforeValue = before.rows && before.rows.length > 0 ? (before.rows[0] as any).setting_value : null;
 
-      await db.execute(sql`
-        INSERT INTO platform_settings (setting_key, setting_value, updated_by, updated_at)
-        VALUES (${settingKey}, ${settingValue}, ${userId}, NOW())
-        ON CONFLICT (setting_key) DO UPDATE SET
-          setting_value = EXCLUDED.setting_value,
-          updated_by    = EXCLUDED.updated_by,
-          updated_at    = NOW()
-      `);
+      // LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`): the FIRST flip of traveler sign-up to "open" also
+      // records its instant, in the same transaction, so the waitlist retention clock can never start without the
+      // flip or the flip land without its clock. ON CONFLICT DO NOTHING: a later reopen keeps the first date.
+      const opensSignup = settingKey === TRAVELER_SIGNUP_MODE_SETTING && settingValue === "open" && beforeValue !== "open";
+      const openedAtValue = await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          INSERT INTO platform_settings (setting_key, setting_value, updated_by, updated_at)
+          VALUES (${settingKey}, ${settingValue}, ${userId}, NOW())
+          ON CONFLICT (setting_key) DO UPDATE SET
+            setting_value = EXCLUDED.setting_value,
+            updated_by    = EXCLUDED.updated_by,
+            updated_at    = NOW()
+        `);
+        if (!opensSignup) return null;
+        const stamped = await tx.execute(sql`
+          INSERT INTO platform_settings (setting_key, setting_value, description, updated_by, updated_at)
+          VALUES (
+            ${TRAVELER_SIGNUP_OPENED_AT_SETTING},
+            to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+            'LW-1h: the instant traveler sign-up first opened (UTC). Server-written on that flip; starts the waitlist retention clock.',
+            ${userId},
+            NOW()
+          )
+          ON CONFLICT (setting_key) DO NOTHING
+          RETURNING setting_value
+        `);
+        return (stamped.rows[0] as { setting_value: string } | undefined)?.setting_value ?? null;
+      });
 
       await recordAdminAudit({
         actorId: userId,
@@ -8267,6 +8291,19 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
       });
+
+      if (openedAtValue) {
+        await recordAdminAudit({
+          actorId: userId,
+          actorRole: user.role,
+          action: "platform_setting_update",
+          resourceType: "platform_setting",
+          resourceId: TRAVELER_SIGNUP_OPENED_AT_SETTING,
+          metadata: { before: null, after: openedAtValue, cause: `${TRAVELER_SIGNUP_MODE_SETTING} opened` },
+          ipAddress: req.ip ?? null,
+          userAgent: req.get("user-agent") ?? null,
+        });
+      }
 
       // Apply toggles immediately in-process (flag reads are otherwise TTL-cached).
       invalidatePlatformFlagCache(settingKey);

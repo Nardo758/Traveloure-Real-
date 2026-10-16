@@ -30,6 +30,7 @@ import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
 import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
+import { runWaitlistRetention } from "../jobs/waitlistRetention";
 import { runOfficialRefresh } from "../jobs/officialRefresh";
 import { runLiteapiSync } from "../jobs/liteapiSync";
 import { runLiteapiBookingSync } from "../jobs/liteapiBookingSync";
@@ -217,6 +218,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "leg-google-coords", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // FD-2 ruling 8: the nightly count of expired local content (counts only).
   { job: "content-expiry-census", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`): posted daily; `not_open` / `not_due` until 12 months after
+  // traveler sign-up first opens, then deletes never-converted waitlist rows, each with its audit row.
+  { job: "waitlist-retention", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // S1-d-1 (ledger `2026-10-10-s1-d1-liteapi`): LiteAPI static content, Kyoto only, incremental.
   { job: "liteapi-sync", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // SS-1b (ledger `2026-10-10-ss1b-official-refresh`): posted daily; reads only targets that are DUE on their
@@ -438,6 +442,13 @@ router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, 
 // only — nothing is deleted or rewritten. A table it cannot read is an error and never stamps a success.
 router.post("/internal/jobs/content-expiry-census", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("content-expiry-census", () => runContentExpiryCensus(), (r) => Object.keys(r?.errors ?? {}).length > 0);
+  res.status(status).json(body);
+});
+
+// LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`): the waitlist retention pass. Nothing is deleted before 12
+// months after traveler sign-up first opened; an unreadable opening date or an unauditable deletion is an error.
+router.post("/internal/jobs/waitlist-retention", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("waitlist-retention", () => runWaitlistRetention(), (r) => r?.status === "error");
   res.status(status).json(body);
 });
 
