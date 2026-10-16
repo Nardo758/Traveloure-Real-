@@ -11,11 +11,12 @@
  * - Local-only assertion for any test that can create data or submit payment
  */
 
-import { type Page, expect } from '@playwright/test';
+import { type Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { registerAndSignIn } from '../utils/auth';
 
 const _filename = fileURLToPath(import.meta.url);
 const _dirname = path.dirname(_filename);
@@ -176,17 +177,11 @@ export async function registerAndLogin(
   const suffix = crypto.randomBytes(5).toString('hex');
   const email = `tier4-${label}-${suffix}@traveloure.test`;
 
-  const reg = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: {
-      email,
-      password: PASSWORD,
-      firstName: 'Tier4',
-      lastName: label,
-      userType: 'user',
-    },
-  });
-  expect(reg.ok(), `register failed: ${reg.status()} ${await reg.text()}`).toBe(true);
-  const body = await reg.json().catch(() => ({}));
+  const { id } = await registerAndSignIn(
+    page.request,
+    { email, password: PASSWORD, firstName: 'Tier4', lastName: label, extra: { userType: 'user' } },
+    BASE_URL,
+  );
 
   // Accept terms — uses page.request so it shares the same authenticated session
   await page.request.post(`${BASE_URL}/api/auth/accept-terms`, {
@@ -212,7 +207,7 @@ export async function registerAndLogin(
     await page.waitForTimeout(1000);
   }
 
-  return { email, id: body?.user?.id };
+  return { email, id };
 }
 
 // ── Stripe test card helpers ───────────────────────────────────────────────────

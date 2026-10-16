@@ -204,3 +204,46 @@ export async function acceptTerms(page: Page): Promise<void> {
     await page.waitForLoadState('networkidle').catch(() => {});
   }
 }
+
+/**
+ * AUTH-1 fix 3a (ledger `2026-10-16-auth1-3a-register-and-sign-in`): the ONE way a browser or request suite
+ * creates a fresh signed-in account. It registers, then signs in through `POST /api/auth/login` on the SAME
+ * request context, and takes the user id from the LOGIN response — never from the register body.
+ *
+ * Why: AUTH-1 fix 3b makes register answer the same neutral 202 for a new and an existing address, with no
+ * session and no user id. This works before 3b (register 201 + session) and after it. A spec that is testing
+ * REGISTRATION itself (its status, body or refusals) calls the endpoint directly instead.
+ *
+ * It throws on a register outside 2xx (with the server's text) and on a sign-in that is not 200; it does not
+ * assert `connect.sid` or re-read `/api/auth/user` — a caller that needs that proof calls
+ * `assertAuthenticatedSession` after it.
+ */
+export async function registerAndSignIn(
+  ctx: APIRequestContext,
+  account: { email: string; password: string; firstName?: string; lastName?: string; extra?: Record<string, unknown> },
+  base: string = baseUrl(),
+): Promise<{ id: string; email: string; user: AuthenticatedUser & Record<string, unknown> }> {
+  const reg = await ctx.post(`${base}/api/auth/register`, {
+    data: {
+      email: account.email,
+      password: account.password,
+      firstName: account.firstName ?? 'Test',
+      lastName: account.lastName ?? 'Actor',
+      ...(account.extra ?? {}),
+    },
+  });
+  if (reg.status() < 200 || reg.status() >= 300) {
+    throw new Error(`register(${account.email}) failed (${reg.status()}): ${await reg.text()}`);
+  }
+  const login = await ctx.post(`${base}/api/auth/login`, {
+    data: { email: account.email, password: account.password },
+  });
+  const text = await login.text();
+  if (login.status() !== 200) {
+    throw new Error(`sign-in(${account.email}) after register failed (${login.status()}): ${text}`);
+  }
+  const body = JSON.parse(text) as { user?: AuthenticatedUser & Record<string, unknown> };
+  const id = body?.user?.id;
+  if (!id) throw new Error(`sign-in(${account.email}) returned no user id: ${text}`);
+  return { id: String(id), email: account.email, user: body.user! };
+}

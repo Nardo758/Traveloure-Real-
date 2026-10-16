@@ -21,6 +21,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 // ── DB-write safety guard ─────────────────────────────────────────────────────
 const { Pool } = await import("pg");
@@ -80,17 +81,11 @@ async function apiCall(
 /** Register a fresh disposable user; returns session cookie + userId. */
 async function register(label: string): Promise<{ cookie: string; userId: string }> {
   const email = `xss-san-${RUN}-${label}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: BENCH_PASSWORD, firstName: "XSS", lastName: label }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: BENCH_PASSWORD, firstName: "XSS", lastName: label,
   });
-  if (res.status !== 201) {
-    assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  }
-  const data = (await res.json()) as any;
-  const cookie = res.headers.get("set-cookie")!.split(";")[0];
-  const userId = data.user?.id ?? data.id;
+  const cookie = actor.cookie;
+  const userId = actor.id;
   disposableUserIds.push(userId);
   return { cookie, userId };
 }

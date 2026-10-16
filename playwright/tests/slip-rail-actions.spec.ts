@@ -31,22 +31,24 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { execSync } from "child_process";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /** A signed-in traveler with a plan of their own. The pattern `trip-pass.spec.ts` established. */
 async function registerAndCreateTrip(page: Page, tag: string): Promise<string> {
-  const reg = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: {
+  await registerAndSignIn(
+    page.request,
+    {
       email: `e2e-slip-rail-${tag}-${uid()}@example.com`,
       password: "SlipRail123!",
       firstName: "Slip",
       lastName: "Rail",
-      userType: "user",
+      extra: { userType: "user" },
     },
-  });
-  expect(reg.status(), await reg.text()).toBe(201);
+    BASE_URL,
+  );
   const trip = await page.request.post(`${BASE_URL}/api/trips`, {
     data: {
       title: "Slip rail e2e plan",

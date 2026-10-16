@@ -42,6 +42,7 @@ import { resolveTravelSurcharge, haversineKm } from "../services/travel-surcharg
 import { composeTravelerCharge } from "../services/traveler-charge";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
 import { storage } from "../storage";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -76,18 +77,10 @@ async function assertDisposableDb(): Promise<void> {
 interface Actor { id: string; email: string; cookie: string; }
 async function registerActor(label: string, role: string): Promise<Actor> {
   const email = `ts-${RUN}-${label}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "TS", lastName: label }),
-  });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "TS", lastName: label });
   createdEmails.push(email);
-  await db.execute(sql`UPDATE users SET role = ${role} WHERE id = ${body.user.id}`);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  await db.execute(sql`UPDATE users SET role = ${role} WHERE id = ${actor.id}`);
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 
 function api(pathname: string, cookie: string | undefined, method = "GET", body?: unknown) {

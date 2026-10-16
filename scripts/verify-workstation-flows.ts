@@ -15,6 +15,7 @@ import { db } from "../server/db";
 import { users, trips, tripExpertAdvisors, notifications } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 import { ensureTripAdvisorRow } from "../server/services/booking-actions.service";
+import { registerAndSignIn } from "./lib/register-and-sign-in";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const PASSWORD = "VerifyFlows!2026";
@@ -46,20 +47,8 @@ function makeActor() {
 }
 
 async function register(actor: ReturnType<typeof makeActor>, email: string) {
-  let reg = await actor.req("POST", "/api/auth/register", {
-    email, password: PASSWORD, firstName: "Verify", lastName: "Flows",
-  });
-  if (reg.status === 429) {
-    const waitSec = Number(reg.json?.retryAfter ?? 60) + 2;
-    console.log(`  ⏳ register rate-limited — waiting ${waitSec}s`);
-    await new Promise((r) => setTimeout(r, waitSec * 1000));
-    reg = await actor.req("POST", "/api/auth/register", {
-      email, password: PASSWORD, firstName: "Verify", lastName: "Flows",
-    });
-  }
-  if (reg.status !== 200 && reg.status !== 201) {
-    throw new Error(`register ${email}: ${reg.status} ${reg.text.slice(0, 150)}`);
-  }
+  // AUTH-1 fix 3a: register, then sign in, so the session lands in this actor's jar either way.
+  await registerAndSignIn(actor.req, { email, password: PASSWORD, firstName: "Verify", lastName: "Flows" });
 }
 
 async function main() {

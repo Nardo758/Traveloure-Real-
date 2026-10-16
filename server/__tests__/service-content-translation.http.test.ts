@@ -31,6 +31,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const readPool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -84,22 +85,14 @@ interface Actor {
 
 async function registerActor(label: string): Promise<Actor> {
   const email = emailTag(label);
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "Xlate", lastName: label }),
-  });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Xlate", lastName: label });
   createdEmails.push(email);
   // The provider-translation endpoints live under /api/provider/services/* and are correctly
   // gated by isEarner (the shared offering surface, CLAUDE.md §5). Grant the stored provider role
   // so the gate is satisfied — and so P5 proves OWNERSHIP (404) rather than the role gate (403):
   // a stranger who IS an earner but not the owner must still be turned away.
-  await readPool.query(`UPDATE users SET role = 'service_provider' WHERE id = $1`, [body.user.id]);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  await readPool.query(`UPDATE users SET role = 'service_provider' WHERE id = $1`, [actor.id]);
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 
 function api(path: string, cookie: string | undefined, method = "GET", body?: unknown) {

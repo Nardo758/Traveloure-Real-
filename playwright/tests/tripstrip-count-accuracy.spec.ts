@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
+import { registerAndSignIn } from "../utils/auth";
 
 /**
  * TripStrip count accuracy — Suite: cart mutations
@@ -71,19 +72,17 @@ function mutationSource(src: string, name: string): string | null {
 // ── Shared API helpers ─────────────────────────────────────────────────────
 
 async function registerFreshUser(page: import("@playwright/test").Page) {
-  const res = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: {
+  await registerAndSignIn(
+    page.request,
+    {
       email: `e2e-tripstrip-${uid()}@example.com`,
       password: "TripStrip123!",
       firstName: "Strip",
       lastName: "Tester",
-      userType: "user",
+      extra: { userType: "user" },
     },
-  });
-  expect(
-    res.status(),
-    `Registration failed (${res.status()}): ${await res.text()}`
-  ).toBe(201);
+    BASE_URL,
+  );
 }
 
 /**

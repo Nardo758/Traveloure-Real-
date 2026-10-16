@@ -18,15 +18,17 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { execSync } from "child_process";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 async function registerAndCreateTrip(page: Page): Promise<string> {
-  const reg = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email: `e2e-trip-pass-${uid()}@example.com`, password: "TripPass123!", firstName: "Tp", lastName: "Buyer", userType: "user" },
-  });
-  expect(reg.status(), await reg.text()).toBe(201);
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-trip-pass-${uid()}@example.com`, password: "TripPass123!", firstName: "Tp", lastName: "Buyer", extra: { userType: "user" } },
+    BASE_URL,
+  );
   const tripRes = await page.request.post(`${BASE_URL}/api/trips`, {
     data: { title: "TP e2e trip", destination: "Kyoto, Japan", startDate: "2027-04-01", endDate: "2027-04-05" },
   });
@@ -75,9 +77,11 @@ test("T2: status endpoint owner-gated; purchase pre-PI gates hold", async ({ pag
   // A stranger's session cannot read another trip's pass status (403).
   const stranger = await page.context().browser()!.newContext();
   const sPage = await stranger.newPage();
-  await sPage.request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email: `e2e-tp-stranger-${uid()}@example.com`, password: "TripPass123!", firstName: "S", lastName: "T", userType: "user" },
-  });
+  await registerAndSignIn(
+    sPage.request,
+    { email: `e2e-tp-stranger-${uid()}@example.com`, password: "TripPass123!", firstName: "S", lastName: "T", extra: { userType: "user" } },
+    BASE_URL,
+  );
   const strangerStatus = await sPage.request.get(`${BASE_URL}/api/trips/${tripId}/trip-pass`);
   expect(strangerStatus.status()).toBe(403);
   await stranger.close();

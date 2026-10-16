@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
+import { registerAndSignIn } from "../utils/auth";
 
 // ESM-safe __dirname (same pattern as dynamic-links.spec.ts)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -110,21 +111,13 @@ test.describe("Cart conversion → /plans/:tripId redirect (Suite 6)", () => {
       const email = `e2e-cart-redirect-${uid()}@example.com`;
       const password = "TestRedirect123!";
 
-      // 1. Register a fresh user via API (establishes session cookie automatically
-      //    because page.request shares the browser cookie jar with page navigation)
-      const registerRes = await page.request.post(`${BASE_URL}/api/auth/register`, {
-        data: {
-          email,
-          password,
-          firstName: "Cart",
-          lastName: "Tester",
-          userType: "user",
-        },
-      });
-      expect(
-        registerRes.status(),
-        `User registration failed (${registerRes.status()}): ${await registerRes.text()}`
-      ).toBe(201);
+      // 1. Register a fresh user and sign in via API (page.request shares the
+      //    browser cookie jar with page navigation, so the session carries over)
+      await registerAndSignIn(
+        page.request,
+        { email, password, firstName: "Cart", lastName: "Tester", extra: { userType: "user" } },
+        BASE_URL,
+      );
 
       // 2. Add a content item to the cart
       //    POST /api/cart accepts contentType=activity with a free-form contentId

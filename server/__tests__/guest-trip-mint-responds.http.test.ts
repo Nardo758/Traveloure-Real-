@@ -59,6 +59,7 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -167,25 +168,15 @@ before(async () => {
   assert.ok(health && health.ok, `server must be running on ${BASE_URL}`);
   await assertDisposableDb();
 
-  const reg = await api("/api/auth/register", undefined, "POST", {
+  const traveler = await registerAndSignIn({
+    baseUrl: BASE_URL,
     email: travelerEmail,
     password: PASSWORD,
     firstName: "Guest",
     lastName: "Mint",
   });
-  assert.equal(reg.status, 201, `register traveler failed (${reg.status}): ${reg.text}`);
-  travelerId = reg.json?.user?.id;
-  assert.ok(travelerId, "register must return the new user's id");
-
-  const login = await fetch(`${BASE_URL}/api/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: travelerEmail, password: PASSWORD }),
-  });
-  assert.equal(login.status, 200, "login must succeed for the registered traveler");
-  const setCookie = login.headers.get("set-cookie");
-  assert.ok(setCookie, "login must set a session cookie");
-  travelerCookie = setCookie!.split(";")[0];
+  travelerId = traveler.id;
+  travelerCookie = traveler.cookie;
 });
 
 after(async () => {

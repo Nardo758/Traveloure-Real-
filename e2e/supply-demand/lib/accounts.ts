@@ -36,6 +36,11 @@ export async function signupViaUi(page: Page, acc: NewAccount): Promise<void> {
   }
   // Give the app time to redirect/settle post-signup (varies by role/onboarding gate).
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+  // Registration does not prove a session (AUTH-1): sign in on the page's own cookie jar.
+  const login = await page.request.post('/api/auth/login', { data: { email: acc.email, password } });
+  if (login.status() !== 200) {
+    throw new Error(`signupViaUi(${acc.email}): registered, but POST /api/auth/login answered ${login.status()}`);
+  }
   const me = await page.request.get('/api/auth/user');
   const who = me.ok() ? ((await me.json().catch(() => null)) as { email?: string } | null) : null;
   if (!who || String(who.email ?? '').toLowerCase() !== acc.email.toLowerCase()) {

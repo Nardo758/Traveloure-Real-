@@ -44,6 +44,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import type { PiVerifier } from "../services/booking-auto-complete.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 // The unified scheduler's payment gate verifies each candidate's PaymentIntent against Stripe.
 // These fixtures model PAID bookings, so the tests inject a stub that reports "succeeded" — the
@@ -112,17 +113,10 @@ async function assertDisposableDb(): Promise<void> {
 
 async function registerUser(tag: string): Promise<{ id: string; cookie: string }> {
   const email = `d8-${RUN}-${tag}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: "Sup3rSecret!23", firstName: "D8", lastName: tag }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: "Sup3rSecret!23", firstName: "D8", lastName: tag,
   });
-  const raw = await res.text();
-  assert.ok(res.ok, `register(${tag}) must succeed: ${res.status} ${raw}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body: any = JSON.parse(raw);
-  return { id: body.user.id, cookie: setCookie.split(";")[0] };
+  return { id: actor.id, cookie: actor.cookie };
 }
 
 function api(path: string, cookie: string | undefined, method = "GET", body?: unknown) {
