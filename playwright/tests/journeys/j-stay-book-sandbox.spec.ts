@@ -4,6 +4,25 @@ import { Pool } from "pg";
 import { BASE_URL, uid, assertDisposableDb } from "./_journey-helpers";
 
 /**
+ * The rates route answers a failed read as `{ state: "unavailable" }` and nothing more (S1-d-2: the card never shows
+ * an error). The reason is in the server's own log as `[liteapi-rates] <stayId>: <error>`; the workflow names that log
+ * in STAY_SANDBOX_SERVER_LOG so a skip can say what each hotel answered. No log, or no line ⇒ said, never guessed.
+ */
+function serverRatesError(stayId: string): string {
+  const path = process.env.STAY_SANDBOX_SERVER_LOG;
+  if (!path) return "server log not available";
+  let log: string;
+  try {
+    log = readFileSync(path, "utf8");
+  } catch {
+    return "server log not readable";
+  }
+  const prefix = `[liteapi-rates] ${stayId}: `;
+  const line = log.split("\n").reverse().find((l) => l.includes(prefix));
+  return line ? line.slice(line.indexOf(prefix) + prefix.length).trim() : "no error logged";
+}
+
+/**
  * S1-d-3b — the LiteAPI SANDBOX book-and-cancel (ledger `2026-10-11-s1-d3b-stay-book-ui`; S1-d-3 rulings).
  * Re-proves in CI the field names the founder's Oct 9 sandbox run verified (d-3a).
  *
@@ -188,7 +207,11 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       // read the stay's live rate first and pass over one that is not stated refundable.
       const quote = await (await api.get(`${BASE_URL}/api/trips/${tripId}/stays/${h.id}/rates`)).json().catch(() => null);
       if (quote?.state !== "ok" || quote.offer?.refundable !== true) {
-        tried.push(`${h.name}: ${quote?.state === "ok" ? "non-refundable" : `rates ${quote?.state ?? "unread"}`}`);
+        tried.push(
+          quote?.state === "ok"
+            ? `${h.name}: non-refundable`
+            : `${h.name}: rates ${quote?.state ?? "unread"} (${serverRatesError(h.id)})`,
+        );
         continue;
       }
 
@@ -221,18 +244,26 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       break;
     }
     if (!priced) {
-      // §18d: a run where every hotel tried was refused below SSP has proven the refusal path, NOT booking. It is
-      // marked SKIPPED (never passed), naming what was not exercised, so a green job is never read as "booked".
-      const onlyBelowSsp = tried.length > 0 && tried.every((t) => t.endsWith("(below_ssp)"));
-      const onlyNonRefundable = tried.length > 0 && tried.every((t) => t.endsWith(": non-refundable"));
-      if (onlyNonRefundable) {
-        test.skip(true, `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried offered only a non-refundable rate for the plan's dates, which cannot be cancelled free. Tried: ${tried.join("; ")}`);
-        return;
-      }
-      expect(onlyBelowSsp && belowSspShown, `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`).toBe(true);
+      // §18d: a run in which no hotel tried could be booked and cancelled free has proven NOTHING about booking. It is
+      // marked SKIPPED (never passed), naming each hotel and its reason, so a green job is never read as "booked";
+      // the workflow raises a notice for every skip so it shows on main. Decision-maker rulings, Oct 15, 2026 (ledger
+      // `2026-10-15-sandbox-rates-unavailable-skip`): the sandbox's own answers are rates unavailable (a timeout
+      // included) and a non-refundable rate; a below-SSP refusal stays the Oct 11 ruling's. Any mix of those three
+      // skips. Anything else — our own server's unreadable answer, a failed add/choose, a hotel not bookable, any
+      // other prebook refusal — fails the run, as does every booking or cancel defect below.
+      const outsideOurControl = (t: string) =>
+        /: rates unavailable \(/.test(t) || t.endsWith(": non-refundable") || t.endsWith("(below_ssp)");
+      const notExercisable = tried.length > 0 && tried.every(outsideOurControl);
+      const belowSspSeen = tried.some((t) => t.endsWith("(below_ssp)"));
+      expect(
+        notExercisable && (!belowSspSeen || belowSspShown),
+        `no Kyoto sandbox hotel priced the plan's dates — tried: ${tried.join("; ") || "none"}`,
+      ).toBe(true);
       test.skip(
         true,
-        `BOOK AND CANCEL NOT EXERCISED: every sandbox hotel tried was below its suggested selling price and was refused (ruled Oct 11, 2026), with hotel_margin_public at ${marginInForce} (the seeded margin). Tried: ${tried.join("; ")}`,
+        `BOOK AND CANCEL NOT EXERCISED: no sandbox hotel tried could be booked and cancelled free for the plan's dates` +
+          `${belowSspSeen ? ` (below-SSP refusals ruled Oct 11, 2026, with hotel_margin_public at ${marginInForce}, the seeded margin)` : ""}. ` +
+          `Tried: ${tried.join("; ")}`,
       );
       return;
     }
