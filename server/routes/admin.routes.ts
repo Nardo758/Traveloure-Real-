@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
+import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
 import { TRAVELER_SIGNUP_MODE_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
@@ -8090,6 +8091,11 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // BOT-1 decision B (ledger `2026-10-15-bot1-phase1`): the default expiry of an approved bot fact is a whole
       // number of days — a junk value would leave every approval refused with `expiry_unset`.
       if (settingKey === BOT_FACT_DEFAULT_EXPIRY_SETTING && !isValidExpiryDaysSetting(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
+      }
+      // AUTH-1 Finding A (ii): days a signup welcome waits for verification — whole days, or a junk value
+      // would silently fall back to the default.
+      if (settingKey === WELCOME_VERIFICATION_WINDOW_SETTING && !isValidWelcomeVerificationWindowSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
       }
       // LW-1b: the traveler sign-up switch is exactly 'waitlist' or 'open' (shared/launch-signup.ts), and the

@@ -25,6 +25,7 @@ import {
   parseTravelerSignupMode,
   type TravelerSignupMode,
 } from "@shared/launch-signup";
+import { WELCOME_VERIFICATION_WINDOW_SETTING, parseWelcomeVerificationWindowDays } from "@shared/welcome-verification";
 
 const TTL_MS = 15_000;
 
@@ -98,5 +99,18 @@ export async function getLaunchMarketSlug(): Promise<string | null> {
   } catch (err) {
     console.error(`[platform-flags] read failed for ${LAUNCH_MARKET_SLUG_SETTING}:`, err);
     return null;
+  }
+}
+
+/**
+ * AUTH-1 Finding A (ii): days a signup welcome waits for verification before it is cancelled. An absent
+ * row, an invalid value or a read error is the ruled default (shared/welcome-verification.ts).
+ */
+export async function getWelcomeVerificationWindowDays(): Promise<number> {
+  try {
+    return parseWelcomeVerificationWindowDays(await getSettingValue(WELCOME_VERIFICATION_WINDOW_SETTING));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${WELCOME_VERIFICATION_WINDOW_SETTING}, using the default:`, err);
+    return parseWelcomeVerificationWindowDays(null);
   }
 }
