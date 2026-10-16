@@ -299,21 +299,21 @@ test("W12 — email register stores a supply sign-up's source tag, normalized; a
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: supplyEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: " Contact_Form " }),
   });
-  assert.equal(r1.status, 201, await r1.text());
+  assert.equal(r1.status, 202, await r1.text()); // AUTH-1 fix 3b: the neutral answer
   const oddEmail = W_EMAIL("w12-odd");
   const r2 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: oddEmail, password: PASSWORD, firstName: "Lw", lastName: "One", intent: "supply", signupSource: "made-up-tag" }),
   });
-  assert.equal(r2.status, 201, await r2.text());
+  assert.equal(r2.status, 202, await r2.text()); // AUTH-1 fix 3b: the neutral answer
   const travelerEmail = W_EMAIL("w12-traveler");
   const r3 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email: travelerEmail, password: PASSWORD, firstName: "Lw", lastName: "One", signupSource: "ig_dm" }),
   });
-  assert.equal(r3.status, 201, await r3.text());
+  assert.equal(r3.status, 202, await r3.text()); // AUTH-1 fix 3b: the neutral answer
   const rows = await pool.query(`SELECT email, signup_source FROM users WHERE email = ANY($1::text[])`, [[supplyEmail, oddEmail, travelerEmail]]);
   const by = Object.fromEntries(rows.rows.map((r: any) => [r.email, r.signup_source]));
   assert.equal(by[supplyEmail], "contact_form");
