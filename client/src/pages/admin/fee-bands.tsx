@@ -490,7 +490,7 @@ export default function FeeBandsAdminPage() {
             Provider policy: <code>{(settings ?? []).find((s) => s.setting_key === "active_provider_commission_policy")?.setting_value ?? "not set"}</code>
           </p>
           <ul className="space-y-1">
-            {["beta_flat", "limited", "moderate", "commercial", "premium", "expert_standard", "expert_new", "traveler_service_fee", "expert_concierge_booking", "expert_concierge_booking_expert_share"].map((key) => {
+            {["beta_flat", "limited", "moderate", "commercial", "premium", "expert_standard", "expert_beta_2026", "traveler_service_fee", "expert_concierge_booking", "expert_concierge_booking_expert_share"].map((key) => {
               const row = (bands ?? []).find((b) => b.band_key === key);
               if (!row) return null;
               const percent = row.rate_type === "percent" && Number.isFinite(row.default_rate)
