@@ -9,8 +9,8 @@ import { enqueueSignupWelcome } from "../../services/signup-welcome-outbox.servi
 import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
-import { qaSignupCodeMatches } from "../../services/qa-signup-code";
-import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
+import { qaSignupAllowed } from "../../services/qa-signup-code";
+import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { dispatchModerationEvent } from "../../automations/moderation/runtime";
 
@@ -98,17 +98,18 @@ export function setupEmailAuth(app: Express): void {
       const { email, password, firstName, lastName } = validation.data;
 
       // LW-1b: the traveler sign-up switch. In waitlist mode (read fail-closed) a first-time TRAVELER account is
-      // refused and sent to the launch market's waitlist; supply intent and a valid QA code pass. Decided before
+      // refused and sent to the launch market's waitlist; supply intent and a QA sign-up (QA-domain address AND the
+      // right code) pass. Decided before
       // the existing-email check, so the refusal says nothing about whether the address has an account.
       const signupDecision = decideFirstTimeSignup({
         mode: await getTravelerSignupMode(),
         intent: normalizeSignupIntent(validation.data.intent),
-        qaCodeValid: qaSignupCodeMatches(validation.data.qaCode),
+        qaCodeValid: qaSignupAllowed(email, validation.data.qaCode),
       });
       if (!signupDecision.allowed) {
         return res.status(403).json({
           code: signupDecision.code,
-          message: "Traveler sign-up is waitlist-only right now.",
+          message: TRAVELER_WAITLIST_MESSAGE,
           redirectTo: waitlistBlockedPath(await getLaunchMarketSlug()),
         });
       }

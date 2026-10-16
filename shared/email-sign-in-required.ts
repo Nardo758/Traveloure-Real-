@@ -7,4 +7,4 @@ export const EMAIL_SIGN_IN_REQUIRED = "EMAIL_SIGN_IN_REQUIRED";
 /** The `/login?error=` value the OAuth callbacks redirect a refused merge to. */
 export const EMAIL_SIGN_IN_REQUIRED_PARAM = "email_sign_in_required";
 export const EMAIL_SIGN_IN_REQUIRED_MESSAGE =
-  "An account already uses this email. Sign in with your email and password.";
+  "An account with this email already exists. Sign in with your email and password.";

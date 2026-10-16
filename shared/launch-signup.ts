@@ -35,9 +35,20 @@ export function normalizeSignupIntent(value: unknown): SignupIntent {
 /** The refusal code a waitlist-mode traveler sign-up (or purchase) is answered with. */
 export const TRAVELER_WAITLIST = "TRAVELER_WAITLIST";
 
+/**
+ * What a blocked traveler reads, on every blocked path (email 403, Replit bounce, Facebook bounce). Marketing's
+ * exact copy (hand-off answer 7), used word for word; ONE spelling for the server and the waitlist page.
+ */
+export const TRAVELER_WAITLIST_MESSAGE =
+  "Traveloure isn't open for traveler sign-ups yet. Join the Kyoto waitlist to be first to book when Kyoto opens.";
+export const TRAVELER_WAITLIST_BUTTON = "Join the Kyoto waitlist";
+
 export type TravelerSignupDecision = { allowed: true } | { allowed: false; code: typeof TRAVELER_WAITLIST };
 
-/** The ONE decision for a first-time account: open mode, supply intent or a valid QA code passes. */
+/**
+ * The ONE decision for a first-time account: open mode, supply intent or a QA sign-up (a QA-domain address AND the
+ * right code — `qaSignupAllowed`) passes.
+ */
 export function decideFirstTimeSignup(input: {
   mode: TravelerSignupMode;
   intent: SignupIntent;

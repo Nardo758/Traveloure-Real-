@@ -10,8 +10,9 @@
  * S2 — email register, waitlist mode: a traveler is refused 403 TRAVELER_WAITLIST with redirectTo
  *      /<launch market>?blocked=1 (no email in it), before the existing-email check; supply intent passes.
  * S3 — email register, open mode: a traveler passes.
- * S4 — the QA code: a matching code passes a waitlist-mode traveler; a wrong code, an absent code and an UNSET
- *      secret all refuse; the comparison is over digests (length mismatch never throws).
+ * S4 — the QA sign-up: a QA-domain address with the matching code passes a waitlist-mode traveler; a QA-domain
+ *      address with a wrong, absent or UNSET code refuses; the right code on a non-QA address refuses; an unset
+ *      QA domain refuses; the comparison is over digests (length mismatch never throws).
  * S5 — existing accounts always sign in: POST /api/auth/login never consults the switch.
  * S6 — the Ready-Made purchase gate: waitlist mode refuses a traveler and passes an admin and a QA-tagged account;
  *      open mode passes everyone.
@@ -29,7 +30,7 @@ import assert from "node:assert/strict";
 import { db } from "../db.js";
 import { invalidatePlatformFlagCache, getTravelerSignupMode, getLaunchMarketSlug } from "../services/platform-flags.js";
 import { setupEmailAuth } from "../replit_integrations/auth/emailAuth.js";
-import { qaSignupCodeMatches } from "../services/qa-signup-code.js";
+import { qaSignupCodeMatches, qaSignupAllowed } from "../services/qa-signup-code.js";
 import { authStorage } from "../replit_integrations/auth/storage.js";
 import { upsertUser } from "../replit_integrations/auth/replitAuth.js";
 import { facebookVerify } from "../replit_integrations/auth/facebookAuth.js";
@@ -38,6 +39,7 @@ import { OAUTH_STATE_TTL_MS } from "../utils/oauth-state.js";
 import { decideWaitlistPurchase } from "../services/waitlist-purchase-gate.js";
 import {
   TRAVELER_WAITLIST,
+  TRAVELER_WAITLIST_MESSAGE,
   decideFirstTimeSignup,
   normalizeSignupIntent,
   parseTravelerSignupMode,
@@ -49,6 +51,7 @@ import {
 const origExecute = (db as any).execute;
 const origSelect = (db as any).select;
 const origQaCode = process.env.QA_SIGNUP_CODE;
+const origQaDomain = process.env.QA_ACCOUNT_EMAIL_DOMAIN;
 const origGetUser = authStorage.getUser;
 const origGetUserByEmail = authStorage.getUserByEmail;
 const origUpsertUser = authStorage.upsertUser;
@@ -89,6 +92,8 @@ after(() => {
   (db as any).select = origSelect;
   if (origQaCode === undefined) delete process.env.QA_SIGNUP_CODE;
   else process.env.QA_SIGNUP_CODE = origQaCode;
+  if (origQaDomain === undefined) delete process.env.QA_ACCOUNT_EMAIL_DOMAIN;
+  else process.env.QA_ACCOUNT_EMAIL_DOMAIN = origQaDomain;
 });
 
 beforeEach(() => {
@@ -97,6 +102,7 @@ beforeEach(() => {
   readThrows = false;
   selectCalls = 0;
   delete process.env.QA_SIGNUP_CODE;
+  process.env.QA_ACCOUNT_EMAIL_DOMAIN = "traveloure-qa.test";
 });
 
 // ─── capture the email handlers ─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +155,7 @@ describe("S2 — email register in waitlist mode", () => {
     assert.equal(res.statusCode, 403);
     assert.equal(res.body.code, TRAVELER_WAITLIST);
     assert.equal(res.body.redirectTo, "/kyoto?blocked=1");
+    assert.equal(res.body.message, TRAVELER_WAITLIST_MESSAGE, "Marketing's exact blocked line");
     assert.ok(!JSON.stringify(res.body).includes("traveloure-qa.test"), "the refusal carries no email");
     assert.equal(selectCalls, 0, "refused before the existing-email check");
   });
@@ -179,14 +186,14 @@ describe("S3 — email register in open mode", () => {
   });
 });
 
-describe("S4 — the QA code", () => {
-  it("a matching code passes a waitlist-mode traveler", async () => {
+describe("S4 — the QA sign-up needs the QA domain AND the code", () => {
+  it("a QA-domain address with the matching code passes a waitlist-mode traveler", async () => {
     process.env.QA_SIGNUP_CODE = "qa-secret-123";
     const res = await register({ qaCode: "qa-secret-123" });
     assert.equal(res.statusCode, 400);
     assert.match(res.body.message, /already exists/);
   });
-  it("a wrong code, an absent code and an unset secret all refuse", async () => {
+  it("a QA-domain address with a wrong, absent or unset code refuses", async () => {
     process.env.QA_SIGNUP_CODE = "qa-secret-123";
     assert.equal((await register({ qaCode: "qa-secret-12" })).statusCode, 403);
     assert.equal((await register({})).statusCode, 403);
@@ -194,11 +201,26 @@ describe("S4 — the QA code", () => {
     assert.equal((await register({ qaCode: "" })).statusCode, 403);
     assert.equal((await register({ qaCode: "anything" })).statusCode, 403);
   });
+  it("the right code on a non-QA address refuses", async () => {
+    process.env.QA_SIGNUP_CODE = "qa-secret-123";
+    const res = await register({ email: "someone@example.com", qaCode: "qa-secret-123" });
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.code, TRAVELER_WAITLIST);
+    assert.equal((await register({ email: "x@traveloure-qa.test.example.com", qaCode: "qa-secret-123" })).statusCode, 403);
+  });
+  it("an unset QA domain refuses even the right code", async () => {
+    process.env.QA_SIGNUP_CODE = "qa-secret-123";
+    delete process.env.QA_ACCOUNT_EMAIL_DOMAIN;
+    assert.equal((await register({ qaCode: "qa-secret-123" })).statusCode, 403);
+  });
   it("the comparison never throws on a length mismatch and never matches an empty secret", () => {
     assert.equal(qaSignupCodeMatches("a", "a-much-longer-secret"), false);
     assert.equal(qaSignupCodeMatches("", ""), false);
     assert.equal(qaSignupCodeMatches(undefined, "x"), false);
     assert.equal(qaSignupCodeMatches("x", "x"), true);
+    assert.equal(qaSignupAllowed("q@traveloure-qa.test", "x", { qaDomain: "traveloure-qa.test", configured: "x" }), true);
+    assert.equal(qaSignupAllowed("q@example.com", "x", { qaDomain: "traveloure-qa.test", configured: "x" }), false);
+    assert.equal(qaSignupAllowed(undefined, "x", { qaDomain: "traveloure-qa.test", configured: "x" }), false);
   });
 });
 
