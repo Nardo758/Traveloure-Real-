@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -34,23 +35,11 @@ function api(path: string, init?: RequestInit) {
 
 async function createOwner(label: string, role: "local_expert" | "service_provider", handle: string | null) {
   const email = `storefront-role-${RUN}-${label}@traveloure.test`;
-  const response = await api("/api/auth/register", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      email,
-      password: PASSWORD,
-      firstName: "Storefront",
-      lastName: label,
-    }),
-  });
-  const responseText = await response.text();
-  assert.equal(response.status, 201, responseText);
-  const body = JSON.parse(responseText) as { user: { id: string } };
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Storefront", lastName: label });
   createdEmails.push(email);
-  await pool.query(`UPDATE users SET role = $1, handle = $2 WHERE id = $3`, [role, handle, body.user.id]);
-  ownerIds[label] = body.user.id;
-  return body.user.id;
+  await pool.query(`UPDATE users SET role = $1, handle = $2 WHERE id = $3`, [role, handle, actor.id]);
+  ownerIds[label] = actor.id;
+  return actor.id;
 }
 
 async function createExpertForm(

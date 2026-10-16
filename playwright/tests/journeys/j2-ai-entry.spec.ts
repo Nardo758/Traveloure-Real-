@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import crypto from "crypto";
 import { Pool } from "pg";
+import { registerAndSignIn } from "../../utils/auth";
 import {
   assertDisposableDb,
   assertCheckoutAccepted,
@@ -63,13 +64,13 @@ async function q<T = any>(sql: string, params: any[] = []): Promise<T[]> {
 
 async function registerActor(request: APIRequestContext, label: string): Promise<{ id: string; email: string }> {
   const email = `j2-${label}-${uid()}@t.test`;
-  const res = await request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email, password: PASSWORD, firstName: "AI", lastName: label, userType: "user" },
-  });
-  expect(res.status(), `register failed (${res.status()}): ${await res.text()}`).toBe(201);
-  const body = await res.json();
+  const { id } = await registerAndSignIn(
+    request,
+    { email, password: PASSWORD, firstName: "AI", lastName: label, extra: { userType: "user" } },
+    BASE_URL,
+  );
   createdEmails.push(email);
-  return { id: body.user.id, email };
+  return { id, email };
 }
 
 test.afterAll(async () => {

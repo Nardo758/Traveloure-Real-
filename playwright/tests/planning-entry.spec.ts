@@ -23,6 +23,7 @@
  * registered user (the cart-checkout-redirect.spec.ts pattern).
  */
 import { test, expect, type Page } from "@playwright/test";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -41,10 +42,11 @@ async function openEntryFromHero(page: Page) {
 
 async function registerUser(page: Page) {
   const email = `e2e-planning-${uid()}@example.com`;
-  const res = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email, password: "TestPlanning123!", firstName: "Plan", lastName: "Tester", userType: "user" },
-  });
-  expect(res.status(), `registration failed: ${await res.text()}`).toBe(201);
+  await registerAndSignIn(
+    page.request,
+    { email, password: "TestPlanning123!", firstName: "Plan", lastName: "Tester", extra: { userType: "user" } },
+    BASE_URL,
+  );
 }
 
 /** Place → a city → Start a plan; optionally a "More specific" occasion first. */

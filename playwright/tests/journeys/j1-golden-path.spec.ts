@@ -2,6 +2,7 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
 import crypto from "crypto";
 import { execFileSync } from "child_process";
 import { Pool } from "pg";
+import { registerAndSignIn } from "../../utils/auth";
 import Stripe from "stripe";
 import {
   assertDisposableDb,
@@ -67,13 +68,13 @@ async function q<T = any>(sql: string, params: any[] = []): Promise<T[]> {
 /** Register a fresh user via the app API; page.request shares the cookie jar with page nav. */
 async function registerActor(request: APIRequestContext, label: string): Promise<{ id: string; email: string }> {
   const email = `j1-${label}-${uid()}@t.test`;
-  const res = await request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email, password: PASSWORD, firstName: "Golden", lastName: label, userType: "user" },
-  });
-  expect(res.status(), `register failed (${res.status()}): ${await res.text()}`).toBe(201);
-  const body = await res.json();
+  const { id } = await registerAndSignIn(
+    request,
+    { email, password: PASSWORD, firstName: "Golden", lastName: label, extra: { userType: "user" } },
+    BASE_URL,
+  );
   createdEmails.push(email);
-  return { id: body.user.id, email };
+  return { id, email };
 }
 
 async function createTrip(request: APIRequestContext, title: string): Promise<any> {

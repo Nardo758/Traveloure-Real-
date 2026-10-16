@@ -40,6 +40,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 import { MIN_PAYOUT_CENTS } from "../config/payout.config";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
@@ -88,12 +89,8 @@ let trackedCode = "";
 
 async function register(prefix: string, role: string | null): Promise<{ id: string; email: string; cookie: string }> {
   const email = `fp5-${prefix}-${RUN}@t.test`;
-  const res = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "FP", lastName: "Five",
-  }));
-  assert.equal(res.status, 201, `register failed (${res.status}): ${res.text}`);
+  const { id } = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "FP", lastName: "Five" });
   createdEmails.push(email);
-  const id = res.body.user.id as string;
   if (role) await db.execute(sql`UPDATE users SET role = ${role} WHERE id = ${id}`);
   const login = await api("/api/auth/login", undefined, "POST", { email, password: PASSWORD });
   const cookie = login.headers.get("set-cookie")!.split(";")[0];

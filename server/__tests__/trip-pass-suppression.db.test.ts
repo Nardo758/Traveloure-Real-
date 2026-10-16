@@ -23,6 +23,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveTripPassFeeWaiver } from "../services/rails-attribution.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -46,13 +47,10 @@ before(async () => {
   }
   if (!serverUp) return;
 
-  const reg = await fetch(`${BASE}/api/auth/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password: "TpSup123!pass", firstName: "Tp", lastName: "Sup", userType: "user" }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE, email, password: "TpSup123!pass", firstName: "Tp", lastName: "Sup", extra: { userType: "user" },
   });
-  assert.equal(reg.status, 201, await reg.text());
-  cookie = (reg.headers.get("set-cookie") ?? "").split(";")[0];
+  cookie = actor.cookie;
 
   for (const label of ["covered", "uncovered"] as const) {
     const res = await fetch(`${BASE}/api/trips`, {

@@ -40,6 +40,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { providerServices } from "@shared/schema";
@@ -97,17 +98,9 @@ interface Actor {
 
 async function registerActor(label: string): Promise<Actor> {
   const email = emailTag(label);
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "PVHold", lastName: label }),
-  });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "PVHold", lastName: label });
   createdEmails.push(email);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 
 function api(path: string, cookie: string | undefined, method = "GET", body?: unknown) {

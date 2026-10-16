@@ -17,6 +17,7 @@
  */
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
 import { execSync } from "child_process";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -29,17 +30,18 @@ function sql(query: string): string {
 }
 
 async function register(ctx: APIRequestContext, tag: string): Promise<string> {
-  const res = await ctx.post(`${BASE_URL}/api/auth/register`, {
-    data: {
+  const { id } = await registerAndSignIn(
+    ctx,
+    {
       email: `e2e-tc5a-${tag}-${uid()}@example.com`,
       password: "TripCard123!",
       firstName: "Card",
       lastName: "Link",
-      userType: "user",
+      extra: { userType: "user" },
     },
-  });
-  expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).user.id as string;
+    BASE_URL,
+  );
+  return id;
 }
 
 /** A plan more than 48 h out, so finalize/reopen — not the date window — decides the card's state. */
