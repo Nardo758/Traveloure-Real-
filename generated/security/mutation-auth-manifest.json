@@ -11912,7 +11912,7 @@
       "path": "/api/waitlist",
       "effectivePath": "/api/waitlist",
       "source": "server/routes/launch-waitlist.routes.ts",
-      "line": 24,
+      "line": 26,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],

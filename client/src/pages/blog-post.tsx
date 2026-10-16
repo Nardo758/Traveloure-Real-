@@ -226,8 +226,8 @@ function SeriesDoors({ doors }: { doors: BlogPlanDoor[] }) {
 
 /**
  * LW-1c: a post about the launch market, read while traveler sign-up is waitlist-only, offers the waitlist and
- * names itself as the source (`?source=blog&ref=<slug>`). Any other post, or an unreadable mode, shows nothing.
- * COPY IS A PLACEHOLDER until Marketing's Part F copy arrives.
+ * names itself as the source (`<market>_blog_cta:<slug>`). Any other post, or an unreadable mode, shows nothing.
+ * Marketing's F1 blog CTA copy, word for word.
  */
 function LaunchWaitlistCta({ post }: { post: PublicBlogPost }) {
   const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
@@ -235,9 +235,11 @@ function LaunchWaitlistCta({ post }: { post: PublicBlogPost }) {
   if (!href) return null;
   return (
     <aside className="mt-10 rounded-xl border p-6" data-testid="cta-blog-waitlist">
-      <p className="font-medium">[Placeholder — F1 blog CTA copy pending]</p>
+      <p className="font-medium">
+        Planning Kyoto around the days that don't work is what Traveloure is being built for, with local experts as they join.
+      </p>
       <Button asChild className="mt-4">
-        <Link href={href} data-testid="link-blog-waitlist">[Placeholder] Join the waitlist</Link>
+        <Link href={href} data-testid="link-blog-waitlist">Join the Kyoto waitlist</Link>
       </Button>
     </aside>
   );

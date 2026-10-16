@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "f0a00c670ebc884efa71c4650d4784b1b7ce84d0fa7d09eabf7aa0e151dae0db",
+  "manifestSha256": "b91f92179e346640bea25a6bd8b37b760c88c2e5e555f2359be66078471e1716",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -13226,7 +13226,7 @@
       "path": "/api/waitlist",
       "effectivePath": "/api/waitlist",
       "source": "server/routes/launch-waitlist.routes.ts",
-      "line": 24,
+      "line": 26,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],

@@ -3,9 +3,10 @@
 //
 //   - One row per (email, market): a repeat sign-up UPDATES the row through the UNIQUE (email, market_slug) index
 //     in one statement — never a second row, never a check-then-insert (§15).
-//   - The FIRST sign-up's source and source_ref are kept: a later visit through a different door does not rewrite
-//     where the person came from.
-//   - Consent is an opt-in, not a gate (Launch ruling 1): ticking stamps consent_at and names the consent text;
+//   - The FIRST sign-up's source is kept: a later visit through a different door does not rewrite where the person
+//     came from. The latest submission's role and answers replace the earlier ones ("a repeat sign-up updates the
+//     answers"), and the other role's fields are set NULL, so a row only ever carries its own role's answers.
+//   - Consent is an opt-in, not a gate (Launch ruling 1): ticking stamps consent_at and names the consent version;
 //     a repeat sign-up without the tick never clears an earlier consent (withdrawal is its own action, not built).
 //   - The caller learns nothing about whether the address was already on the list.
 import { sql } from "drizzle-orm";
@@ -14,97 +15,137 @@ import {
   WAITLIST_CONSENT_KEY,
   WAITLIST_CONSENT_TEXT,
   WAITLIST_CONSENT_VERSION,
-  normalizeSourceRef,
   normalizeWaitlistEmail,
   normalizeWaitlistSource,
+  type WaitlistJoinBody,
 } from "@shared/launch-waitlist";
 
-/** The current consent text's row id, inserting it once (ON CONFLICT DO NOTHING on (consent_key, version)). */
-export async function ensureConsentTextId(): Promise<string> {
+/** Records the current consent wording once (ON CONFLICT DO NOTHING on (consent_key, version)); returns its version. */
+export async function ensureConsentText(): Promise<string> {
   await db.execute(sql`
     INSERT INTO consent_texts (id, consent_key, version, body, created_at)
     VALUES (gen_random_uuid(), ${WAITLIST_CONSENT_KEY}, ${WAITLIST_CONSENT_VERSION}, ${WAITLIST_CONSENT_TEXT}, NOW())
     ON CONFLICT (consent_key, version) DO NOTHING
   `);
-  const r = await db.execute(sql`
-    SELECT id FROM consent_texts WHERE consent_key = ${WAITLIST_CONSENT_KEY} AND version = ${WAITLIST_CONSENT_VERSION} LIMIT 1
-  `);
-  return String((r.rows[0] as any).id);
+  return WAITLIST_CONSENT_VERSION;
 }
 
-export async function joinWaitlist(input: {
-  email: string;
-  marketSlug: string;
-  source?: unknown;
-  sourceRef?: unknown;
-  consent?: boolean;
-}): Promise<void> {
-  const email = normalizeWaitlistEmail(input.email);
-  const source = normalizeWaitlistSource(input.source);
-  const sourceRef = normalizeSourceRef(input.sourceRef);
-  const consent = input.consent === true;
-  const consentTextId = consent ? await ensureConsentTextId() : null;
+export async function joinWaitlist(body: Omit<WaitlistJoinBody, "homepage">, marketSlug: string): Promise<void> {
+  const email = normalizeWaitlistEmail(body.email);
+  const role = body.role ?? "traveler";
+  const traveler = role === "traveler";
+  const source = normalizeWaitlistSource(body.source, marketSlug);
+  const consent = body.consent === true;
+  const consentVersion = consent ? await ensureConsentText() : null;
+  const tripType = traveler ? body.tripType ?? null : null;
+  const roughMonth = traveler ? body.roughMonth ?? null : null;
+  const worry = traveler && body.worry?.trim() ? body.worry.trim() : null;
+  const contactName = traveler ? null : body.contactName?.trim() || null;
+  const businessName = traveler ? null : body.businessName?.trim() || null;
+  const serviceType = traveler ? null : body.serviceType ?? null;
   await db.execute(sql`
     INSERT INTO launch_waitlist
-      (id, email, market_slug, source, source_ref, consent_at, consent_text_id, created_at, updated_at)
+      (id, email, market_slug, role, source, trip_type, rough_month, worry,
+       contact_name, business_name, service_type, consent_at, consent_text_version, created_at, updated_at)
     VALUES
-      (gen_random_uuid(), ${email}, ${input.marketSlug}, ${source}, ${sourceRef},
-       CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentTextId}, NOW(), NOW())
+      (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
+       ${contactName}, ${businessName}, ${serviceType},
+       CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW())
     ON CONFLICT (email, market_slug) DO UPDATE SET
-      updated_at      = NOW(),
-      consent_text_id = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_id ELSE launch_waitlist.consent_text_id END,
-      consent_at      = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
+      updated_at           = NOW(),
+      role                 = EXCLUDED.role,
+      trip_type            = EXCLUDED.trip_type,
+      rough_month          = EXCLUDED.rough_month,
+      worry                = EXCLUDED.worry,
+      contact_name         = EXCLUDED.contact_name,
+      business_name        = EXCLUDED.business_name,
+      service_type         = EXCLUDED.service_type,
+      consent_text_version = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_version ELSE launch_waitlist.consent_text_version END,
+      consent_at           = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
   `);
 }
 
+export interface WaitlistCount { key: string; count: number }
 export interface WaitlistCounts {
   marketSlug: string | null;
-  total: number;
-  consented: number;
-  bySource: { source: string; count: number }[];
+  travelers: { total: number; consented: number; byTripType: WaitlistCount[]; bySource: WaitlistCount[] };
+  providers: { total: number; consented: number; byServiceType: WaitlistCount[] };
 }
 
+async function grouped(column: "trip_type" | "service_type" | "source", role: "traveler" | "provider", marketSlug: string | null): Promise<WaitlistCount[]> {
+  const market = marketSlug ? sql`AND market_slug = ${marketSlug}` : sql``;
+  const r = await db.execute(sql`
+    SELECT COALESCE(${sql.raw(column)}, 'not_answered') AS key, COUNT(*)::int AS count
+    FROM launch_waitlist WHERE COALESCE(role, 'traveler') = ${role} ${market}
+    GROUP BY 1 ORDER BY 2 DESC, 1
+  `);
+  return (r.rows as any[]).map((row) => ({ key: String(row.key), count: Number(row.count) }));
+}
+
+async function totals(role: "traveler" | "provider", marketSlug: string | null) {
+  const market = marketSlug ? sql`AND market_slug = ${marketSlug}` : sql``;
+  const r = await db.execute(sql`
+    SELECT COUNT(*)::int AS total, COUNT(consent_at)::int AS consented
+    FROM launch_waitlist WHERE COALESCE(role, 'traveler') = ${role} ${market}
+  `);
+  const t = (r.rows[0] as any) ?? {};
+  return { total: Number(t.total ?? 0), consented: Number(t.consented ?? 0) };
+}
+
+/** Counts by trip type and role; provider rows are counted apart and never in the traveler numbers. */
 export async function waitlistCounts(marketSlug: string | null): Promise<WaitlistCounts> {
-  const where = marketSlug ? sql`WHERE market_slug = ${marketSlug}` : sql``;
-  const totals = await db.execute(sql`
-    SELECT COUNT(*)::int AS total, COUNT(consent_at)::int AS consented FROM launch_waitlist ${where}
-  `);
-  const bySource = await db.execute(sql`
-    SELECT COALESCE(source, 'unknown') AS source, COUNT(*)::int AS count
-    FROM launch_waitlist ${where} GROUP BY 1 ORDER BY 2 DESC, 1
-  `);
-  const t = (totals.rows[0] as any) ?? {};
   return {
     marketSlug,
-    total: Number(t.total ?? 0),
-    consented: Number(t.consented ?? 0),
-    bySource: (bySource.rows as any[]).map((r) => ({ source: String(r.source), count: Number(r.count) })),
+    travelers: {
+      ...(await totals("traveler", marketSlug)),
+      byTripType: await grouped("trip_type", "traveler", marketSlug),
+      bySource: await grouped("source", "traveler", marketSlug),
+    },
+    providers: {
+      ...(await totals("provider", marketSlug)),
+      byServiceType: await grouped("service_type", "provider", marketSlug),
+    },
   };
 }
 
-export interface WaitlistExportRow {
-  email: string | null;
-  market_slug: string | null;
-  source: string | null;
-  source_ref: string | null;
-  consent_at: string | null;
-  consent_version: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-}
+/** CSV columns, in order: the hand-off's field names, so the provider export lines up with Supply Scout's list. */
+export const WAITLIST_CSV_COLUMNS = [
+  "email",
+  "role",
+  "market_slug",
+  "source",
+  "trip_type",
+  "rough_month",
+  "worry",
+  "contact_name",
+  "business_name",
+  "service_type",
+  "website",
+  "area",
+  "languages",
+  "consent_at",
+  "consent_text_version",
+  "created_at",
+  "updated_at",
+  "unsubscribed_at",
+] as const;
+export type WaitlistExportRow = Record<(typeof WAITLIST_CSV_COLUMNS)[number], string | null>;
 
-export async function waitlistExportRows(marketSlug: string | null): Promise<WaitlistExportRow[]> {
-  const where = marketSlug ? sql`WHERE w.market_slug = ${marketSlug}` : sql``;
+export async function waitlistExportRows(marketSlug: string | null, role: "traveler" | "provider" | null): Promise<WaitlistExportRow[]> {
+  const market = marketSlug ? sql`AND market_slug = ${marketSlug}` : sql``;
+  const byRole = role ? sql`AND COALESCE(role, 'traveler') = ${role}` : sql``;
   const r = await db.execute(sql`
-    SELECT w.email, w.market_slug, w.source, w.source_ref,
-           to_char(w.consent_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS consent_at,
-           c.version AS consent_version,
-           to_char(w.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
-           to_char(w.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at
-    FROM launch_waitlist w
-    LEFT JOIN consent_texts c ON c.id = w.consent_text_id
-    ${where}
-    ORDER BY w.created_at ASC NULLS LAST, w.email ASC
+    SELECT email, role, market_slug, source, trip_type, rough_month, worry,
+           contact_name, business_name, service_type, website, area,
+           array_to_string(languages, '; ') AS languages,
+           to_char(consent_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS consent_at,
+           consent_text_version,
+           to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
+           to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
+           to_char(unsubscribed_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS unsubscribed_at
+    FROM launch_waitlist
+    WHERE TRUE ${market} ${byRole}
+    ORDER BY created_at ASC NULLS LAST, email ASC
   `);
   return r.rows as unknown as WaitlistExportRow[];
 }
