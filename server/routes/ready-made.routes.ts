@@ -34,6 +34,7 @@ import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
 import { resolveTripTimezone } from "../services/trip-timezone";
 import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
 // THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
@@ -1396,6 +1397,13 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // LW-1b: in traveler waitlist mode nobody but a QA-tagged account or an admin buys (before any read or
+    // Stripe call), so the waitlist cannot be stepped around by calling the purchase rail directly.
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: waitlistGate.code, message: "Ready-Made Trips open with the launch. Join the waitlist to hear first." });
+    }
 
     const [listing] = await db
       .select()
