@@ -143,12 +143,12 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
   "/discover": {
     title: "Discover Experiences & Local Services | Traveloure",
     description:
-      "Browse curated local experiences, tours, and travel services from verified experts and providers — book securely on Traveloure.",
+      "Browse local experiences, tours and travel services from local experts and providers on Traveloure.",
   },
   "/experts": {
     title: "Local Travel Experts | Traveloure",
     description:
-      "Meet verified local experts who plan, optimize, and book your trip — from Kyoto temple walks to Paris food tours.",
+      "Meet the local experts who help plan your trip, starting with Kyoto.",
   },
   "/experiences": {
     title: "Plan around a place, a date or an event | Traveloure",
@@ -163,7 +163,7 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
   "/about": {
     title: "About Us | Traveloure",
     description:
-      "Traveloure pairs AI-powered trip planning with verified local experts to make every journey personal.",
+      "Traveloure pairs AI-powered trip planning with local experts to make every journey personal.",
   },
   "/contact": {
     title: "Contact | Traveloure",

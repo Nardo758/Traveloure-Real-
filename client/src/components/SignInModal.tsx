@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRoleHomePath } from "@/lib/role-utils";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
+import { TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
+import { socialSignInHref } from "@/lib/social-sign-in";
 
 interface SignInModalProps {
   open: boolean;
@@ -28,6 +30,8 @@ interface SignInModalProps {
    * modal; it signs nothing in and writes nothing. Absent ⇒ the modal is exactly as before.
    */
   dismissLabel?: string;
+  /** LW-1b: `supply` when opened from a door for people offering services (passes the traveler waitlist). */
+  intent?: SignupIntent;
 }
 
 export function SignInModal({
@@ -37,6 +41,7 @@ export function SignInModal({
   description: descriptionProp,
   returnTo,
   dismissLabel,
+  intent,
 }: SignInModalProps) {
   const { t } = useTranslation("auth");
   // Ruling 60 Phase A: the sign-in title/description are OVERRIDABLE by the caller (a
@@ -124,7 +129,7 @@ export function SignInModal({
       const endpoint = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
       const body = mode === "signin"
         ? { email: formData.email, password: formData.password }
-        : formData;
+        : { ...formData, ...(intent === "supply" ? { intent } : {}) };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -136,6 +141,12 @@ export function SignInModal({
       const data = await response.json();
 
       if (!response.ok) {
+        // LW-1b: traveler sign-up is waitlist-only — go to the waitlist page the server named. No email in the URL.
+        if (response.status === 403 && data?.code === TRAVELER_WAITLIST) {
+          onOpenChange(false);
+          window.location.href = sanitizeReturnTo(data.redirectTo) ?? "/";
+          return;
+        }
         throw new Error(data.message || "Authentication failed");
       }
 
@@ -190,7 +201,8 @@ export function SignInModal({
     if (returnTo) {
       sessionStorage.setItem("traveloure_return_to", returnTo);
     }
-    window.location.href = "/api/login";
+    // LW-1b: a supply door carries its intent (and the page to return to) through the round trip.
+    window.location.href = intent === "supply" ? socialSignInHref("/api/login", { intent, returnTo }) : "/api/login";
   };
 
   return (

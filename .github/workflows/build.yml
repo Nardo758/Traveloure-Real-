@@ -532,6 +532,9 @@ jobs:
       # both surfaces read the server's named refusals through.
       - name: Quote surface copy pin
         run: npx tsx --test client/src/lib/__tests__/quote-copy.test.ts
+      # CP-2: the /earn and /become-provider "keep N%" lines are built from the live bands only.
+      - name: Fee keep copy pin (CP-2)
+        run: npx tsx --test client/src/lib/__tests__/fee-keep-copy.test.ts
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin

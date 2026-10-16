@@ -282,7 +282,7 @@ export async function resolveProviderRate(input: ProviderRateInput): Promise<Res
   };
 }
 
-async function readProviderCommissionPolicy(): Promise<string | null> {
+export async function readProviderCommissionPolicy(): Promise<string | null> {
   const res = await db.execute(sql`
     SELECT setting_value FROM platform_settings
      WHERE setting_key = 'active_provider_commission_policy'

@@ -59,6 +59,7 @@ import {
 import { suggestHandle } from "@shared/handle-suggestion";
 import { HANDLE_MAX_LENGTH } from "@shared/handle";
 import { savePendingHandle } from "@/lib/pending-handle";
+import { socialSignInHref, facebookReturnPath } from "@/lib/social-sign-in";
 import {
   saveApplicationDraft,
   loadApplicationDraft,
@@ -721,6 +722,7 @@ export default function TravelExpertsPage() {
       toast({ title, description, variant: "destructive" });
       if (isAuthError) {
         openSignInModal({
+          intent: "supply", // LW-1b: a supply door — passes the traveler waitlist
           title: "Sign in to submit your application",
           description: "We've saved everything you entered — sign in and submit will pick up right where you left off.",
           returnTo: window.location.pathname + window.location.search,
@@ -732,6 +734,7 @@ export default function TravelExpertsPage() {
   const promptSignInToSubmit = () => {
     saveApplicationDraft(DRAFT_KEY, formData, currentStep);
     openSignInModal({
+      intent: "supply", // LW-1b: a supply door — passes the traveler waitlist
       title: "Sign in to submit your application",
       description: "Create a free account or sign in — everything you've entered so far will still be here.",
       returnTo: window.location.pathname + window.location.search,
@@ -946,7 +949,7 @@ export default function TravelExpertsPage() {
                         type="button"
                         variant="outline"
                         className="bg-[#1877F2] hover:bg-[#166FE5] text-white border-none"
-                        onClick={() => window.location.href = '/api/auth/facebook'}
+                        onClick={() => { window.location.href = socialSignInHref('/api/auth/facebook', { intent: 'supply', returnTo: facebookReturnPath(window.location.pathname, window.location.search) }); }}
                         data-testid="button-facebook-login-top"
                       >
                         <SiFacebook className="w-4 h-4 mr-2" />
@@ -956,7 +959,7 @@ export default function TravelExpertsPage() {
                         type="button"
                         variant="outline"
                         className="bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 text-white border-none"
-                        onClick={() => window.location.href = '/api/auth/facebook'}
+                        onClick={() => { window.location.href = socialSignInHref('/api/auth/facebook', { intent: 'supply', returnTo: facebookReturnPath(window.location.pathname, window.location.search) }); }}
                         data-testid="button-instagram-login-top"
                       >
                         <SiInstagram className="w-4 h-4 mr-2" />

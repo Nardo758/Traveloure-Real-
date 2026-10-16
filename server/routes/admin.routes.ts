@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
+import { TRAVELER_SIGNUP_MODE_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -8104,6 +8105,14 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // number of days — a junk value would leave every approval refused with `expiry_unset`.
       if (settingKey === BOT_FACT_DEFAULT_EXPIRY_SETTING && !isValidExpiryDaysSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
+      }
+      // LW-1b: the traveler sign-up switch is exactly 'waitlist' or 'open' (shared/launch-signup.ts), and the
+      // launch market is a slug — a junk value must never reach the sign-up gates or the waitlist redirect.
+      if (settingKey === TRAVELER_SIGNUP_MODE_SETTING && !isTravelerSignupModeValue(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be 'waitlist' or 'open'`, got: settingValue });
+      }
+      if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be a market slug (lower-case letters, digits, hyphens)`, got: settingValue });
       }
       if (settingKey === "active_provider_commission_policy" && !["beta_flat", "tiered"].includes(settingValue)) {
         return res.status(400).json({ error: "active_provider_commission_policy must be 'beta_flat' or 'tiered'", got: settingValue });
