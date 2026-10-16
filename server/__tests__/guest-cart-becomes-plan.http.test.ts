@@ -92,6 +92,7 @@ import { sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import * as cartProjection from "../services/cart-projection.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -257,19 +258,15 @@ before(async () => {
   assert.ok(health && health.ok, `server must be running on ${BASE_URL}`);
   await assertDisposableDb();
 
-  const reg = await api("/api/auth/register", undefined, "POST", {
+  const traveler = await registerAndSignIn({
+    baseUrl: BASE_URL,
     email: travelerEmail,
     password: PASSWORD,
     firstName: "Guest",
     lastName: "Cart",
   });
-  if (reg.status !== 201) {
-    assert.fail(`register traveler failed (${reg.status}): ${await reg.text().catch(() => "")}`);
-  }
-  const setCookie = reg.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  travelerCookie = setCookie!.split(";")[0];
-  travelerId = ((await reg.json()) as any).user.id;
+  travelerCookie = traveler.cookie;
+  travelerId = traveler.id;
 
   otherId = `gcart-${RUN}-other`;
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)

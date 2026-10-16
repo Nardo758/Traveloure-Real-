@@ -45,6 +45,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -65,15 +66,11 @@ const userIds: string[] = [];
 const tripIds: string[] = [];
 
 async function register(label: string): Promise<Actor> {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: `sci-${label}-${RUN}@t.test`, password: PASSWORD, firstName: "SCI", lastName: label, userType: "user" }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email: `sci-${label}-${RUN}@t.test`, password: PASSWORD, firstName: "SCI", lastName: label, extra: { userType: "user" },
   });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const body = await res.json();
-  userIds.push(body.user.id);
-  return { id: body.user.id as string, cookie: (res.headers.get("set-cookie") ?? "").split(";")[0] };
+  userIds.push(actor.id);
+  return { id: actor.id, cookie: actor.cookie };
 }
 
 async function call(actor: Actor, method: string, path: string, body?: unknown) {

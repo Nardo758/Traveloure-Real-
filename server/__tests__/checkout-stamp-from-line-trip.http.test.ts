@@ -30,6 +30,7 @@ import { sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import { resolveOwnedLineTripIds } from "../services/trip-pass-line-coverage.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -118,17 +119,15 @@ before(async () => {
   if (!serverUp) return;
   await assertDisposableDb();
 
-  const reg = await api("/api/auth/register", undefined, "POST", {
+  const buyer = await registerAndSignIn({
+    baseUrl: BASE_URL,
     email: buyerEmail,
     password: PASSWORD,
     firstName: "Stamp",
     lastName: "Line",
   });
-  if (reg.status !== 201) assert.fail(`register buyer failed (${reg.status}): ${await reg.text().catch(() => "")}`);
-  const setCookie = reg.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  buyerCookie = setCookie!.split(";")[0];
-  buyerId = ((await reg.json()) as any).user.id;
+  buyerCookie = buyer.cookie;
+  buyerId = buyer.id;
 
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.provider}, ${`cslt-${RUN}-prov@t.test`}, 'Prov', 'Fixture', 'service_provider')`);

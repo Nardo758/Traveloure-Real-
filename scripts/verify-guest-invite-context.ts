@@ -24,6 +24,7 @@
  * Requires a running server (real runMigrations() has created trip_contexts etc.).
  * Self-cleaning.
  */
+import { registerAndSignIn } from "./lib/register-and-sign-in";
 
 // ── Browser shims so the client modules run under node ─────────────────────────
 const store = new Map<string, string>();
@@ -82,20 +83,8 @@ function makeActor() {
 }
 
 async function register(actor: ReturnType<typeof makeActor>, email: string, password: string) {
-  let reg = await actor.req("POST", "/api/auth/register", {
-    email, password, firstName: "Verify", lastName: "Invite",
-  });
-  if (reg.status === 429) {
-    const waitSec = Number(reg.json?.retryAfter ?? 60) + 2;
-    console.log(`  ⏳ register rate-limited — waiting ${waitSec}s`);
-    await new Promise((r) => setTimeout(r, waitSec * 1000));
-    reg = await actor.req("POST", "/api/auth/register", {
-      email, password, firstName: "Verify", lastName: "Invite",
-    });
-  }
-  if (reg.status !== 200 && reg.status !== 201) {
-    throw new Error(`register ${email}: ${reg.status} ${reg.text.slice(0, 150)}`);
-  }
+  // AUTH-1 fix 3a: register, then sign in, so the session lands in this actor's jar either way.
+  await registerAndSignIn(actor.req, { email, password: password, firstName: "Verify", lastName: "Invite" });
 }
 
 async function main() {

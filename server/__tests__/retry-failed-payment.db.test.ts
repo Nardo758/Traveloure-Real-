@@ -42,6 +42,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { assembleTripPlan } from "../services/trip-plan.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -62,14 +63,10 @@ const tripIds: string[] = [];
 const bookingIds: string[] = [];
 
 async function register(label: string): Promise<Actor> {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: `rfp-${label}-${RUN}@t.test`, password: PASSWORD, firstName: "RFP", lastName: label, userType: "user" }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email: `rfp-${label}-${RUN}@t.test`, password: PASSWORD, firstName: "RFP", lastName: label, extra: { userType: "user" },
   });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const body = await res.json();
-  return { id: body.user.id as string, cookie: (res.headers.get("set-cookie") ?? "").split(";")[0] };
+  return { id: actor.id, cookie: actor.cookie };
 }
 
 async function call(actor: Actor, method: string, path: string, body?: unknown) {

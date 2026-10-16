@@ -61,6 +61,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveCommissionRates, calcInsuranceFee } from "../services/commission";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -271,16 +272,11 @@ before(async () => {
   assert.ok(health && health.ok, `server must be running on ${BASE_URL} ('npm run dev' / CI boot step)`);
 
   // Traveler through the real registration route (email-auth session, user.claims.sub shape).
-  const reg = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: ids.travelerEmail, password: PASSWORD, firstName: "PPR", lastName: "Traveler" }),
+  const traveler = await registerAndSignIn({
+    baseUrl: BASE_URL, email: ids.travelerEmail, password: PASSWORD, firstName: "PPR", lastName: "Traveler",
   });
-  assert.equal(reg.status, 201, `register failed (${reg.status}): ${await reg.clone().text()}`);
-  const setCookie = reg.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  travelerCookie = setCookie!.split(";")[0];
-  travelerId = ((await reg.json()) as any).user.id;
+  travelerCookie = traveler.cookie;
+  travelerId = traveler.id;
 
   // Service owners — direct fixture inserts, same posture as the db suite. The provider row
   // carries the canonical stored role string 'service_provider' (shared/roles.ts) so the route's

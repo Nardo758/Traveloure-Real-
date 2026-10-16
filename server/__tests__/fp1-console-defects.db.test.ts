@@ -44,6 +44,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 import { needsScheduling, isPlaceAnchored } from "@shared/service-fundamentals";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
@@ -121,12 +122,8 @@ async function verifyProviderForm(userId: string, email: string): Promise<void> 
 
 async function createProvider(): Promise<void> {
   const email = `fp1-${RUN}@t.test`;
-  const res = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "FP", lastName: "One",
-  }));
-  assert.equal(res.status, 201, `register failed (${res.status}): ${res.text}`);
+  const { id } = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "FP", lastName: "One" });
   createdEmails.push(email);
-  const id = res.body.user.id as string;
   await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${id}`);
   await verifyProviderForm(id, email);
   // Re-login so the session carries the provider role.

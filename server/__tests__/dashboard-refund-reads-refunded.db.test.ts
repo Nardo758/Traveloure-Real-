@@ -45,6 +45,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import Stripe from "stripe";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/traveloure";
 
@@ -275,15 +276,11 @@ test("H1 a SIGNED charge.refunded through the platform endpoint flips the label 
 
   // A real traveler account on the running app, so My Bookings is read through its own route.
   const email = `r163-h1-${RUN}@t.test`;
-  const reg = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Traveler" }),
+  const actor = await registerAndSignIn({
+    baseUrl, email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Traveler",
   });
-  const regText = await reg.text();
-  assert.equal(reg.status, 201, regText);
-  const cookie = reg.headers.get("set-cookie")!.split(";")[0];
-  const traveler = (JSON.parse(regText) as any).user.id as string;
+  const cookie = actor.cookie;
+  const traveler = actor.id;
   createdUsers.push(traveler);
 
   const tripId = await seedTrip(traveler);
@@ -350,15 +347,11 @@ test("H2 cancel and dispute refuse a fully dashboard-refunded booking with a 409
     return;
   }
   const email = `r163-h2-${RUN}@t.test`;
-  const reg = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Canceller" }),
+  const actor = await registerAndSignIn({
+    baseUrl, email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Canceller",
   });
-  const regText = await reg.text();
-  assert.equal(reg.status, 201, regText);
-  const cookie = reg.headers.get("set-cookie")!.split(";")[0];
-  const traveler = (JSON.parse(regText) as any).user.id as string;
+  const cookie = actor.cookie;
+  const traveler = actor.id;
   createdUsers.push(traveler);
 
   const tripId = await seedTrip(traveler);
@@ -415,15 +408,11 @@ test("H3 a flagged payment_pending booking: My Bookings reads Refunded, and canc
     return;
   }
   const email = `r163-h3-${RUN}@t.test`;
-  const reg = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Pending" }),
+  const actor = await registerAndSignIn({
+    baseUrl, email, password: `R163-${RUN}-pass!`, firstName: "R163", lastName: "Pending",
   });
-  const regText = await reg.text();
-  assert.equal(reg.status, 201, regText);
-  const cookie = reg.headers.get("set-cookie")!.split(";")[0];
-  const traveler = (JSON.parse(regText) as any).user.id as string;
+  const cookie = actor.cookie;
+  const traveler = actor.id;
   createdUsers.push(traveler);
 
   const tripId = await seedTrip(traveler);

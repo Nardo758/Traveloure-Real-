@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -84,13 +85,8 @@ async function assertDisposableDb(): Promise<void> {
 }
 
 async function registerUser(email: string, first: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: first, lastName: "NoteGate" }),
-  });
-  assert.equal(res.status, 201, `register ${email} failed (${res.status}): ${await res.clone().text()}`);
-  return ((await res.json()) as any).user.id;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: first, lastName: "NoteGate" });
+  return actor.id;
 }
 
 async function loginCookie(email: string): Promise<string> {

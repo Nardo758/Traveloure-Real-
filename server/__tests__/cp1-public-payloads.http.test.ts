@@ -19,6 +19,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -43,15 +44,11 @@ const neighborhoodId = crypto.randomUUID();
 const bookingIds: string[] = [];
 
 async function register(key: keyof typeof EMAILS) {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: EMAILS[key], password: PASSWORD, firstName: "Cp", lastName: "One" }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email: EMAILS[key], password: PASSWORD, firstName: "Cp", lastName: "One",
   });
-  const text = await res.text();
-  assert.equal(res.status, 201, text);
-  cookies[key] = res.headers.get("set-cookie")!.split(";")[0];
-  ids[key] = (JSON.parse(text) as { user: { id: string } }).user.id;
+  cookies[key] = actor.cookie;
+  ids[key] = actor.id;
 }
 
 async function get(path: string, cookie?: string) {
