@@ -16,6 +16,8 @@ interface SEOHeadProps {
    * <head> across navigations and a leftover noindex would silently deindex the next page.
    */
   noindex?: boolean;
+  /** An og:title that differs from the page title (e.g. a campaign headline). Absent ⇒ the page title. */
+  ogTitle?: string;
 }
 
 const DEFAULT_TITLE = "Traveloure - Your AI-Powered Travel Planning Platform";
@@ -35,6 +37,7 @@ export function SEOHead({
   publishedTime,
   modifiedTime,
   noindex = false,
+  ogTitle,
 }: SEOHeadProps) {
   const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
   const fullUrl = url ? `https://traveloure.com${url}` : "https://traveloure.com";
@@ -77,7 +80,7 @@ export function SEOHead({
     // Open Graph
     updateMetaTag("og:type", type, true);
     updateMetaTag("og:url", fullUrl, true);
-    updateMetaTag("og:title", fullTitle, true);
+    updateMetaTag("og:title", ogTitle ?? fullTitle, true);
     updateMetaTag("og:description", description, true);
     updateMetaTag("og:image", imageUrl, true);
     updateMetaTag("og:site_name", SITE_NAME, true);
@@ -100,7 +103,7 @@ export function SEOHead({
       document.head.appendChild(canonical);
     }
     canonical.href = fullUrl;
-  }, [fullTitle, description, allKeywords, imageUrl, fullUrl, type, author, publishedTime, modifiedTime]);
+  }, [fullTitle, description, allKeywords, imageUrl, fullUrl, type, author, publishedTime, modifiedTime, ogTitle]);
 
   useEffect(() => {
     if (!noindex) return;

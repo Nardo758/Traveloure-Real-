@@ -3,7 +3,10 @@
 //
 // Keys used by the /admin/system Platform Settings card:
 //   maintenance_mode                — "true" blocks non-admin API access (503)
-//   new_user_registration_enabled   — "false" blocks POST /api/auth/register
+//   new_user_registration_enabled   — "false" blocks first-time account creation on every
+//                                     sign-up path: POST /api/auth/register, a first-time
+//                                     Replit OIDC sign-in and a first-time Facebook sign-in.
+//                                     Existing accounts still sign in.
 //   email_notifications_enabled     — "false" makes sendEmail() a logged no-op
 //                                     (auth-critical emails — password reset,
 //                                     verification — bypass sendEmail and are
@@ -16,6 +19,12 @@
 
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import {
+  LAUNCH_MARKET_SLUG_SETTING,
+  TRAVELER_SIGNUP_MODE_SETTING,
+  parseTravelerSignupMode,
+  type TravelerSignupMode,
+} from "@shared/launch-signup";
 
 const TTL_MS = 15_000;
 
@@ -66,3 +75,28 @@ export async function getPlatformFlag(key: string, defaultValue: boolean): Promi
 export const FLAG_MAINTENANCE_MODE = "maintenance_mode";
 export const FLAG_REGISTRATION_ENABLED = "new_user_registration_enabled";
 export const FLAG_EMAIL_NOTIFICATIONS_ENABLED = "email_notifications_enabled";
+
+/**
+ * LW-1b: the traveler sign-up mode, read FAIL CLOSED — a missing row, a read error or any value other than
+ * "open" is "waitlist" (shared/launch-signup.ts). Cached like the flags; the admin PATCH invalidates it.
+ */
+export async function getTravelerSignupMode(): Promise<TravelerSignupMode> {
+  try {
+    return parseTravelerSignupMode(await getSettingValue(TRAVELER_SIGNUP_MODE_SETTING));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${TRAVELER_SIGNUP_MODE_SETTING}, failing closed to waitlist:`, err);
+    return "waitlist";
+  }
+}
+
+/** LW-1b: the launch market's slug, or null when unset/unreadable (never a guessed market). */
+export async function getLaunchMarketSlug(): Promise<string | null> {
+  try {
+    const value = await getSettingValue(LAUNCH_MARKET_SLUG_SETTING);
+    const slug = value?.trim().toLowerCase() ?? "";
+    return /^[a-z0-9-]{1,64}$/.test(slug) ? slug : null;
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${LAUNCH_MARKET_SLUG_SETTING}:`, err);
+    return null;
+  }
+}
