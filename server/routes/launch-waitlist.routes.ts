@@ -7,7 +7,12 @@
 //   GET  /api/admin/waitlist         — counts for the launch market: travelers (by trip type and source) and
 //                                      providers (by service type) apart, never mixed. Admin only.
 //   GET  /api/admin/waitlist/export  — CSV of the launch market's list (`?role=traveler|provider`, else both).
-//                                      Admin only; every export is audit-logged.
+//                                      Admin only; every export is audit-logged. QA rows (QA-domain addresses) are
+//                                      left out unless `?includeQa=1` (LW-1e); every row carries `id` and `is_qa`.
+//   GET  /api/admin/waitlist/search  — LW-1e: rows whose email contains `?email=` (at least 3 characters), every
+//                                      market, newest first, capped. Admin only.
+//   DELETE /api/admin/waitlist/:id   — LW-1e: hard-delete ONE row; its audit row (row id + sha256 of the email,
+//                                      never the address) is written in the same transaction. Admin only.
 //
 // /api/admin/* is also behind the blanket requireAdmin guard (CLAUDE.md §2); the explicit DB-role checks here are
 // the second layer, as on the other admin routes.
@@ -17,8 +22,10 @@ import { getUserId } from "../utils/auth";
 import { strictRateLimiter } from "../infrastructure/rate-limiter";
 import { getAdminRole, recordAdminAudit } from "../services/admin-query.service";
 import { getLaunchMarketSlug } from "../services/platform-flags";
-import { WAITLIST_CSV_COLUMNS, joinWaitlist, waitlistCounts, waitlistExportRows } from "../services/launch-waitlist.service";
-import { WAITLIST_EMAIL_ERROR, waitlistJoinBodySchema } from "@shared/launch-waitlist";
+import {
+  WAITLIST_CSV_COLUMNS, deleteWaitlistRow, joinWaitlist, searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
+} from "../services/launch-waitlist.service";
+import { WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, waitlistJoinBodySchema } from "@shared/launch-waitlist";
 import { logger } from "../infrastructure/logger";
 import { csvCell } from "../utils/csv";
 import { resolveWaitlistReferral } from "../services/waitlist-referral.service";
@@ -77,14 +84,15 @@ router.get("/api/admin/waitlist/export", isAuthenticated, async (req, res) => {
   const marketSlug = await getLaunchMarketSlug();
   const roleParam = req.query.role;
   const role = roleParam === "traveler" || roleParam === "provider" ? roleParam : null;
-  const rows = await waitlistExportRows(marketSlug, role);
+  const includeQa = req.query.includeQa === "1";
+  const rows = await waitlistExportRows(marketSlug, role, { includeQa });
   await recordAdminAudit({
     actorId: admin.id,
     actorRole: admin.role,
     action: "waitlist_export",
     resourceType: "launch_waitlist",
     resourceId: marketSlug ?? "all",
-    metadata: { rows: rows.length, role: role ?? "all" },
+    metadata: { rows: rows.length, role: role ?? "all", includeQa },
     ipAddress: req.ip ?? null,
     userAgent: req.get("user-agent") ?? null,
   });
@@ -96,6 +104,38 @@ router.get("/api/admin/waitlist/export", isAuthenticated, async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="waitlist-${marketSlug ?? "all"}-${role ?? "all"}.csv"`);
   res.setHeader("Cache-Control", "no-store");
   res.send(lines.join("\n"));
+});
+
+router.get("/api/admin/waitlist/search", isAuthenticated, async (req, res) => {
+  const admin = await requireAdminUser(req, res);
+  if (!admin) return;
+  const q = typeof req.query.email === "string" ? req.query.email.trim() : "";
+  if (q.length < WAITLIST_SEARCH_MIN_CHARS || q.length > 254) {
+    return res.status(400).json({ error: `Enter at least ${WAITLIST_SEARCH_MIN_CHARS} characters of an email address.` });
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ rows: await searchWaitlistByEmail(q) });
+});
+
+router.delete("/api/admin/waitlist/:id", isAuthenticated, async (req, res) => {
+  const admin = await requireAdminUser(req, res);
+  if (!admin) return;
+  const id = String(req.params.id ?? "");
+  if (!/^[0-9a-f-]{1,64}$/i.test(id)) return res.status(404).json({ error: "Not found" });
+  try {
+    const deleted = await deleteWaitlistRow(id, {
+      id: admin.id,
+      role: admin.role,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    return res.json({ deleted: true });
+  } catch (err: any) {
+    // The delete and its audit row are one transaction: a failure leaves the row in place. Never log the address.
+    logger.error(`[waitlist] delete failed: ${err?.code ?? err?.message ?? "unknown"}`);
+    return res.status(500).json({ error: "Could not delete the row." });
+  }
 });
 
 export default router;

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "e1f4448141ec408e907336d141d75a1bc05304ec31dc1c9324b840cc110a9c8a",
+  "manifestSha256": "39347fcc3b2c67ea0720a948ae4635cfe25bb70ac0dd8e483a4a010e0e107cf9",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 690,
-    "remaining": 690,
+    "total": 691,
+    "remaining": 691,
     "categories": {
       "payments": {
         "tested": 0,
@@ -19,7 +19,7 @@
       },
       "admin": {
         "tested": 0,
-        "total": 177
+        "total": 178
       },
       "user-data": {
         "tested": 0,
@@ -315,6 +315,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "DELETE /api/admin/users/:id",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "DELETE",
+      "rawPath": "/api/admin/waitlist/:id",
+      "path": "/api/admin/waitlist/:id",
+      "effectivePath": "/api/admin/waitlist/:id",
+      "source": "server/routes/launch-waitlist.routes.ts",
+      "line": 120,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "DELETE /api/admin/waitlist/:id",
       "tested": false,
       "reason": "Not run: evidence manifest SHA-256 is stale."
     },
@@ -13248,7 +13270,7 @@
       "path": "/api/waitlist",
       "effectivePath": "/api/waitlist",
       "source": "server/routes/launch-waitlist.routes.ts",
-      "line": 28,
+      "line": 35,
       "risk": "other",
       "expectedAuth": "public",
       "expectedRoles": [],
