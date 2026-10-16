@@ -7,7 +7,9 @@ import FacebookStrategy from "passport-facebook";
 import type { Express } from "express";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
-import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
+import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
+import { stashSignupIntent, readSignupIntent, takeStashedReturnTo } from "./signup-intent-stash";
 import {
   decideEmailMerge,
   EMAIL_SIGN_IN_REQUIRED,
@@ -82,7 +84,8 @@ export async function facebookVerify(
   accessToken: string,
   refreshToken: string,
   profile: FacebookStrategy.Profile,
-  done: (error: any, user?: any, info?: any) => void
+  done: (error: any, user?: any, info?: any) => void,
+  opts: { intent?: SignupIntent } = {}
 ): Promise<void> {
   try {
     const email = profile.emails?.[0]?.value;
@@ -131,6 +134,14 @@ export async function facebookVerify(
         if (!registrationEnabled) {
           return done(null, false, { message: "New user registration is temporarily disabled. Please try again later." } as any);
         }
+        // LW-1b: the traveler sign-up switch — in waitlist mode a first-time traveler is refused; a supply sign-up
+        // (intent carried by the session stash) passes. No QA bypass on a social sign-in.
+        const decision = decideFirstTimeSignup({
+          mode: await getTravelerSignupMode(),
+          intent: opts.intent ?? "traveler",
+          qaCodeValid: false,
+        });
+        if (!decision.allowed) return done(null, false, { code: TRAVELER_WAITLIST } as any);
       }
 
       user = await authStorage.upsertUser({
@@ -139,6 +150,8 @@ export async function facebookVerify(
         firstName: profile.name?.givenName || profile.displayName?.split(" ")[0] || null,
         lastName: profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || null,
         profileImageUrl: instagramData?.profile_picture_url || profileImageUrl || null,
+        // LW-1b: record the provider (the column defaulted to "email", which mislabelled every Facebook account).
+        authProvider: "facebook",
       });
     }
 
@@ -203,8 +216,11 @@ export function setupFacebookAuth(app: Express) {
             callbackURL: `https://${domain}/api/auth/facebook/callback`,
             profileFields: ["id", "emails", "name", "displayName", "photos"],
             enableProof: true,
+            passReqToCallback: true,
           },
-          facebookVerify
+          // LW-1b: the request carries the stashed sign-up intent into the verify callback.
+          (req: any, accessToken: string, refreshToken: string, profile: FacebookStrategy.Profile, done: any) =>
+            facebookVerify(accessToken, refreshToken, profile, done, { intent: readSignupIntent(req) })
         )
       );
       registeredStrategies.add(strategyName);
@@ -213,6 +229,8 @@ export function setupFacebookAuth(app: Express) {
 
   app.get("/api/auth/facebook", (req, res, next) => {
     ensureFacebookStrategy(req.hostname);
+    // LW-1b: `?intent=supply&returnTo=/path` survive the round trip in the session stash.
+    stashSignupIntent(req);
     passport.authenticate(`facebook:${req.hostname}`, {
       scope: [
         "email",
@@ -233,10 +251,21 @@ export function setupFacebookAuth(app: Express) {
       if (!user && info?.code === EMAIL_SIGN_IN_REQUIRED) {
         return res.redirect(`/login?error=${EMAIL_SIGN_IN_REQUIRED_PARAM}`);
       }
+      // LW-1b: a first-time traveler in waitlist mode goes to the launch market's waitlist — no email in the URL.
+      if (!user && info?.code === TRAVELER_WAITLIST) {
+        takeStashedReturnTo(req);
+        getLaunchMarketSlug()
+          .then((slug) => res.redirect(waitlistBlockedPath(slug)))
+          .catch(() => res.redirect("/"));
+        return;
+      }
       if (!user) return res.redirect("/become-expert?influencer=true&error=auth_failed");
+      // LW-1b: return to the page the flow started from (read before req.logIn regenerates the session); the
+      // influencer onboarding page stays the default when none was stashed.
+      const returnTo = takeStashedReturnTo(req);
       req.logIn(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        res.redirect("/become-expert?influencer=true&auth=facebook");
+        res.redirect(returnTo ?? "/become-expert?influencer=true&auth=facebook");
       });
     })(req, res, next);
   });

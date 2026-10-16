@@ -95,6 +95,7 @@ jobs:
         #   server/migrations/migrate-entry.ts  — invoked by the "Apply database migrations" step
         #   scripts/create-sessions-table.ts    — invoked by the "Create sessions table" step
         #   scripts/seed-ci-test-users.ts       — invoked by the "Seed CI test users" step
+        #   scripts/ci-open-traveler-signup.ts  — invoked by the "Open traveler sign-up for CI fixtures" step
         #
         # Fix when this fails:
         #   Either restore the file to its expected path OR update the path in
@@ -123,6 +124,7 @@ jobs:
           check_path "server/migrations/migrate-entry.ts"  "Apply database migrations"
           check_path "scripts/create-sessions-table.ts"    "Create sessions table (connect-pg-simple workaround)"
           check_path "scripts/seed-ci-test-users.ts"       "Seed CI test users"
+          check_path "scripts/ci-open-traveler-signup.ts"  "Open traveler sign-up for CI fixtures"
 
           if [ "$FAIL" -eq 1 ]; then
             echo ""
@@ -267,6 +269,7 @@ jobs:
             "migrate-entry\.ts"
             "create-sessions-table\.ts"
             "seed-ci-test-users\.ts"
+            "ci-open-traveler-signup\.ts"
           )
 
           FAIL=0
@@ -463,6 +466,8 @@ jobs:
                   run: npx tsx scripts/create-sessions-table.ts
                 - name: Inline seed step
                   run: npx tsx scripts/seed-ci-test-users.ts
+                - name: Inline open-traveler-signup step
+                  run: npx tsx scripts/ci-open-traveler-signup.ts
           YAML
 
           # -----------------------------------------------------------------
@@ -495,6 +500,7 @@ jobs:
             "migrate-entry\.ts"
             "create-sessions-table\.ts"
             "seed-ci-test-users\.ts"
+            "ci-open-traveler-signup\.ts"
           )
 
           FAIL=0
