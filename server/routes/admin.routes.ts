@@ -17,6 +17,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
+import { csvCell } from "../utils/csv";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
 import { computeJobHealth, isAnyJobUnhealthy } from "../services/job-heartbeats.service";
 import { JOB_CADENCE } from "./internal.routes";
@@ -6068,6 +6069,8 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
           joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
           trips: Number(userTrips) || 0,
           spent: `$${totalSpent.toLocaleString()}`,
+          // LW-1d: the supply sign-up source tag, as stored (NULL = not recorded, never "other").
+          signupSource: u.signupSource ?? null,
         };
       }));
 
@@ -6082,6 +6085,65 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("Admin users error:", err);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // === Admin: user CSV export (LW-1d) ===
+  // Every non-deleted account with its supply sign-up source tag (`users.signup_source`, migration 381; NULL = not
+  // recorded). Admin only — the blanket /api/admin guard plus this DB-role check — and every export writes one
+  // `users_export` audit row. Formula-neutralised RFC 4180 cells, `no-store`.
+  router.get("/api/admin/users/export", isAuthenticated, async (req, res) => {
+    const admin = await getFullAdminUser(getUserId(req)!);
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const rows = await db
+        .select({
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          isSuspended: users.isSuspended,
+          createdAt: users.createdAt,
+          signupSource: users.signupSource,
+        })
+        .from(users)
+        .where(eq(users.isDeleted, false))
+        .orderBy(desc(users.createdAt));
+      await recordAdminAudit({
+        actorId: admin.id,
+        actorRole: admin.role,
+        action: "users_export",
+        resourceType: "users",
+        resourceId: "all",
+        metadata: { rows: rows.length },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      });
+      const header = ["email", "name", "role", "status", "joined_at", "signup_source"];
+      const lines = [
+        header.join(","),
+        ...rows.map((u) =>
+          [
+            u.email ?? "",
+            [u.firstName, u.lastName].filter(Boolean).join(" "),
+            u.role ?? "user",
+            u.isSuspended ? "suspended" : "active",
+            u.createdAt ? new Date(u.createdAt).toISOString() : "",
+            u.signupSource ?? "",
+          ]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", 'attachment; filename="users.csv"');
+      res.setHeader("Cache-Control", "no-store");
+      res.send(lines.join("\n"));
+    } catch (err) {
+      console.error("Admin users export error:", err);
+      res.status(500).json({ message: "Failed to export users" });
     }
   });
 

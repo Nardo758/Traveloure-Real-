@@ -17,7 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getRoleHomePath } from "@/lib/role-utils";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
-import { socialSignInHref } from "@/lib/social-sign-in";
+import { socialSignInHref, supplySourceTag } from "@/lib/social-sign-in";
 
 interface SignInModalProps {
   open: boolean;
@@ -129,7 +129,14 @@ export function SignInModal({
       const endpoint = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
       const body = mode === "signin"
         ? { email: formData.email, password: formData.password }
-        : { ...formData, ...(intent === "supply" ? { intent } : {}) };
+        : {
+            ...formData,
+            ...(intent === "supply" ? { intent } : {}),
+            // LW-1d: the supply door's `?source=` tag, stored once on the new account by the server.
+            ...(intent === "supply" && supplySourceTag(window.location.search)
+              ? { signupSource: supplySourceTag(window.location.search) }
+              : {}),
+          };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -202,7 +209,7 @@ export function SignInModal({
       sessionStorage.setItem("traveloure_return_to", returnTo);
     }
     // LW-1b: a supply door carries its intent (and the page to return to) through the round trip.
-    window.location.href = intent === "supply" ? socialSignInHref("/api/login", { intent, returnTo }) : "/api/login";
+    window.location.href = intent === "supply" ? socialSignInHref("/api/login", { intent, returnTo, source: supplySourceTag(window.location.search) }) : "/api/login";
   };
 
   return (

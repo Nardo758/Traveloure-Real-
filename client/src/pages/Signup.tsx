@@ -53,6 +53,8 @@ export function SignupPage() {
           refToken,
           source,
           ...(intent === "supply" ? { intent } : {}),
+          // LW-1d: the raw `?source=` tag of a supply sign-up (never the "direct" default above).
+          ...(intent === "supply" && params.get("source") ? { signupSource: params.get("source") } : {}),
           ...(showQaCode && qaCode ? { qaCode } : {}),
           // NOTE: NO role field — server always assigns "user"
         }),

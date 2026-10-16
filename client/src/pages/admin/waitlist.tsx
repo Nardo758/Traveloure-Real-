@@ -1,5 +1,6 @@
 // LW-1c (ledger `2026-10-16-lw1c-kyoto-waitlist`): the launch waitlist for admins — travelers (by trip type and
-// source) and providers (by type of service) counted apart, never mixed, and a CSV download per role. Every
+// source) and providers (by type of service) counted apart, never mixed; experts credited through their own
+// Ready-Made link (LW-1d); and a CSV download per role. Every
 // download is audit-logged server-side. Stored keys are shown with the forms' own labels.
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
@@ -9,8 +10,10 @@ import { Download } from "lucide-react";
 import { WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES } from "@shared/launch-waitlist";
 
 interface WaitlistCount { key: string; count: number }
+interface WaitlistReferrerCount { referrerUserId: string; handle: string | null; count: number }
 interface WaitlistCounts {
   marketSlug: string | null;
+  referrers: WaitlistReferrerCount[];
   travelers: { total: number; consented: number; byTripType: WaitlistCount[]; bySource: WaitlistCount[] };
   providers: { total: number; consented: number; byServiceType: WaitlistCount[] };
 }
@@ -84,6 +87,20 @@ export default function AdminWaitlist() {
                 <Button asChild variant="outline" data-testid="button-waitlist-csv-providers">
                   <a href="/api/admin/waitlist/export?role=provider"><Download className="mr-2 h-4 w-4" />Download providers CSV</a>
                 </Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Credited to experts{market}</CardTitle></CardHeader>
+              <CardContent>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Sign-ups that arrived through an expert's own Ready-Made Trip link (source expert_link).
+                </p>
+                <CountTable
+                  heading="Expert"
+                  rows={data.referrers.map((r) => ({ key: r.handle ? `@${r.handle}` : r.referrerUserId, count: r.count }))}
+                  label={(k) => k}
+                  testId="table-waitlist-referrers"
+                />
               </CardContent>
             </Card>
           </>

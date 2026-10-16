@@ -42,6 +42,8 @@ interface AdminUserRow {
   status: string;
   suspensionReason?: string | null;
   joined: string;
+  /** LW-1d: the supply sign-up source tag (`users.signup_source`); null = not recorded. */
+  signupSource?: string | null;
   trips: number;
   spent: string;
 }
@@ -240,6 +242,9 @@ export default function AdminUsers() {
               <Users className="w-5 h-5 text-blue-600" />
               All Users ({usersData?.total ?? filteredUsers.length})
             </CardTitle>
+            <Button asChild variant="outline" size="sm" data-testid="button-users-csv">
+              <a href="/api/admin/users/export">Download CSV</a>
+            </Button>
             {/* "Add User" button removed (task #1004 audit): it had no functional
                 wire-up (no onClick / dialog / route) — a dead write-affordance an
                 admin could click with zero effect. Re-add alongside a real
@@ -254,6 +259,7 @@ export default function AdminUsers() {
                     <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Role</th>
                     <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Status</th>
                     <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Joined</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Sign-up source</th>
                     <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Trips</th>
                     <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Spent</th>
                     <th scope="col" className="text-right py-3 px-2 text-sm font-medium text-gray-500">Actions</th>
@@ -291,6 +297,7 @@ export default function AdminUsers() {
                         </Badge>
                       </td>
                       <td className="py-3 px-2 text-gray-600">{user.joined}</td>
+                      <td className="py-3 px-2 text-gray-600" data-testid={`text-signup-source-${user.id}`}>{user.signupSource ?? "—"}</td>
                       <td className="py-3 px-2 text-gray-600">{user.trips}</td>
                       <td className="py-3 px-2 text-gray-600">{user.spent}</td>
                       <td className="py-3 px-2">
@@ -423,6 +430,10 @@ export default function AdminUsers() {
                 <div>
                   <p className="text-gray-500">Joined</p>
                   <p className="text-gray-900">{viewUser.joined}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Sign-up source</p>
+                  <p className="text-gray-900">{viewUser.signupSource ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Trips</p>
