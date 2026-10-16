@@ -46,14 +46,9 @@ export async function signupViaUi(page: Page, acc: NewAccount): Promise<void> {
   if (!who || String(who.email ?? '').toLowerCase() !== acc.email.toLowerCase()) {
     throw new Error(`signupViaUi(${acc.email}): registered, but GET /api/auth/user answered ${me.status()}${who?.email ? ` as ${who.email}` : ''}`);
   }
-  // HARNESS WORKAROUND, not a product fix: Signup.tsx's onSuccess routes to a
-  // protected page (/dashboard) before the auth query has re-resolved, so
-  // ProtectedRoute's guard fires once, stores sessionStorage
-  // "traveloure_return_to"="/dashboard" and bounces to "/". AuthReturnToRestorer
-  // (client/src/App.tsx) then replays that stored path on the NEXT full
-  // navigation this session makes — hijacking our very next page.goto (e.g. to
-  // /become-provider) back to /dashboard. Clearing it here keeps the harness
-  // deterministic; the underlying race is filed as a finding by the caller.
+  // A stored return path from before this sign-in would hijack the next page.goto (AuthReturnToRestorer,
+  // client/src/App.tsx). Since AUTH-1 fix 3b the sign-up form shows its neutral result and navigates nowhere,
+  // so this is now only a safeguard; it is kept so the harness stays deterministic.
   await page.evaluate(() => sessionStorage.removeItem('traveloure_return_to')).catch(() => {});
 }
 

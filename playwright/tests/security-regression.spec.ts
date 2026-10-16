@@ -265,7 +265,7 @@ test.describe("T8 — Rate limiting: middleware wired on auth endpoints", () => 
     const resp = await page.request.post(`${BASE}/api/auth/register`, {
       data: { email: `probe.t8b.${TS}@nope.test`, password: "WrongPw", firstName: "P", lastName: "Q" },
     });
-    expect([201, 400, 429]).toContain(resp.status());
+    expect([202, 400, 429]).toContain(resp.status()); // AUTH-1 fix 3b: a valid sign-up is the neutral 202
     const limit = resp.headers()["x-ratelimit-limit"];
     expect(limit).toBeTruthy();
   });

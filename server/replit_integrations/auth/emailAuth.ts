@@ -13,6 +13,7 @@ import { qaSignupAllowed } from "../../services/qa-signup-code";
 import { recordSignupSource } from "../../services/signup-source-record";
 import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
+import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/registration-neutral";
 import {
   RESET_TOKEN_TTL_MIN, hashAuthToken, issuePasswordResetToken, consumePasswordResetToken,
 } from "../../services/password-reset-tokens.service";
@@ -100,6 +101,17 @@ export async function issueEmailVerification(userId: string, email: string, firs
   });
 }
 
+/**
+ * AUTH-1 fix 3b: true only for the users.email unique index (`users_email_unique`), checked on the error and on the
+ * driver error drizzle wraps it in. Any other unique index, constraint or fault is not a duplicate sign-up.
+ */
+export function isEmailUniqueViolation(err: unknown): boolean {
+  for (let e: any = err, depth = 0; e && depth < 4; e = e.cause, depth += 1) {
+    if (e.code === "23505") return e.constraint === "users_email_unique";
+  }
+  return false;
+}
+
 export function setupEmailAuth(app: Express): void {
   // Register new user with email/password
   app.post("/api/auth/register", async (req, res) => {
@@ -142,42 +154,53 @@ export function setupEmailAuth(app: Express): void {
       // userType from request body is intentionally ignored — all new accounts
       // start as role='user'. Role upgrades happen via approved application forms.
 
-      // Check if user already exists
+      // AUTH-1 fix 3b: from here a new address and an existing one get the SAME answer (202, neutral body, no
+      // session). The password is hashed BEFORE the existing-account lookup, so both paths do the same scrypt work;
+      // a duplicate simply discards the hash. Nothing is written, sent or signed in for a duplicate.
+      const hashedPassword = await hashPassword(password);
+
       const existingUser = await db
-        .select()
+        .select({ id: users.id })
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
         .then((r) => r[0]);
 
       if (existingUser) {
-        return res.status(400).json({
-          message: "An account with this email already exists",
-        });
+        return res.status(REGISTRATION_NEUTRAL_STATUS).json(registrationNeutralBody());
       }
 
-      // Hash password
-      const hashedPassword = await hashPassword(password);
-
       // Commit the account and welcome obligation together; never send before commit.
-      const { newUser, welcomeId } = await db.transaction(async (tx) => {
-        const [newUser] = await tx
-          .insert(users)
-          .values({
-            email: email.toLowerCase(),
-            password: hashedPassword,
-            firstName,
-            lastName,
-            role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
-            authProvider: "email",
-            termsAcceptedAt: new Date(),
-            privacyAcceptedAt: new Date(),
-            termsVersion: CURRENT_TERMS_VERSION,
-            privacyVersion: CURRENT_PRIVACY_VERSION,
-          })
-          .returning();
-        const welcomeId = await enqueueSignupWelcome(tx, newUser.id);
-        return { newUser, welcomeId };
-      });
+      let created: { newUser: typeof users.$inferSelect; welcomeId: number } | null;
+      try {
+        created = await db.transaction(async (tx) => {
+          const [newUser] = await tx
+            .insert(users)
+            .values({
+              email: email.toLowerCase(),
+              password: hashedPassword,
+              firstName,
+              lastName,
+              role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
+              authProvider: "email",
+              termsAcceptedAt: new Date(),
+              privacyAcceptedAt: new Date(),
+              termsVersion: CURRENT_TERMS_VERSION,
+              privacyVersion: CURRENT_PRIVACY_VERSION,
+            })
+            .returning();
+          const welcomeId = await enqueueSignupWelcome(tx, newUser.id);
+          return { newUser, welcomeId };
+        });
+      } catch (err) {
+        // A concurrent sign-up for the same address won the email unique index: that is a duplicate, and gets the
+        // duplicate's answer. Any other failure stays a failure (outer catch → 500).
+        if (!isEmailUniqueViolation(err)) throw err;
+        created = null;
+      }
+      if (!created) {
+        return res.status(REGISTRATION_NEUTRAL_STATUS).json(registrationNeutralBody());
+      }
+      const { newUser, welcomeId } = created;
 
       // LW-1d: a supply account records its sign-up source tag once. Never fails the sign-up (the writer never throws).
       if (normalizeSignupIntent(validation.data.intent) === "supply") {
@@ -200,46 +223,15 @@ export function setupEmailAuth(app: Express): void {
         (err) => console.error("[auth/register] verification email issue failed:", err)
       );
 
-      // Best-effort immediate delivery after commit; the existing drain handles retries.
+      // Best-effort immediate delivery after commit; the existing drain handles retries. (AUTH-1 fix 1 holds the
+      // welcome until the address is verified.)
       deliverQueuedEmail(welcomeId).catch(
         (err) => console.error("[auth/register] welcome email failed (non-fatal):", err)
       );
 
-      // Log the user in — regenerate the session ID first to prevent fixation.
-      const sessionUser = {
-        claims: {
-          sub: newUser.id,
-          email: newUser.email,
-          first_name: newUser.firstName,
-          last_name: newUser.lastName,
-          role: newUser.role,
-        },
-        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
-      };
-
-      req.session.regenerate((regenErr) => {
-        if (regenErr) {
-          console.error("Session regeneration error after registration:", regenErr);
-          return res.status(500).json({ message: "Failed to create session" });
-        }
-        (req as any).login(sessionUser, (err: any) => {
-          if (err) {
-            console.error("Login error after registration:", err);
-            return res.status(500).json({ message: "Failed to create session" });
-          }
-          
-          res.status(201).json({
-            message: "Account created successfully",
-            user: {
-              id: newUser.id,
-              email: newUser.email,
-              firstName: newUser.firstName,
-              lastName: newUser.lastName,
-              role: newUser.role,
-            },
-          });
-        });
-      });
+      // AUTH-1 fix 3b: no sign-in here. The session is left exactly as it was; the new account signs in through
+      // POST /api/auth/login (which regenerates the session id) like every other account.
+      return res.status(REGISTRATION_NEUTRAL_STATUS).json(registrationNeutralBody());
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Failed to create account" });
