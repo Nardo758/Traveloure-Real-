@@ -2378,6 +2378,11 @@ This document captures architectural decisions to maintain consistency across co
     `/expert/blog-review`): buttons mirror the server's from-states through ONE pure `client/src/lib/blog-console.ts`,
     and the expert signs the `contentSha256` the review rail returned, never one computed client-side. **Not built, named:** the footer's Blog link, which returns behind a count of
     five published posts and never a hand-flipped flag.
+    **AMENDED — EDITORIAL GUIDES (decision-maker, Oct 16, 2026 — ED-1 rulings; ledger `2026-10-16-ed1a-editorial-guides`).**
+    `editorial_guide` posts are written by "Traveloure Editorial" (author kind `editorial`, plain-text byline, no storefront
+    link, no "Ask the local"), created by an admin from Marketing's files (drafts never enter the repo), and published only by
+    an admin: Publish is the approval of that one draft and writes an audit row in the same transaction. Every source carries
+    its checked date or is refused; an edit after publish returns the post to draft. The blog index ordering is unchanged.
 
 57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
     WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;
