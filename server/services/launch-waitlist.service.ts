@@ -15,6 +15,7 @@ import {
   WAITLIST_CONSENT_KEY,
   WAITLIST_CONSENT_TEXT,
   WAITLIST_CONSENT_VERSION,
+  WAITLIST_EXPERT_LINK_SOURCE,
   normalizeWaitlistEmail,
   normalizeWaitlistSource,
   type WaitlistJoinBody,
@@ -30,11 +31,27 @@ export async function ensureConsentText(): Promise<string> {
   return WAITLIST_CONSENT_VERSION;
 }
 
-export async function joinWaitlist(body: Omit<WaitlistJoinBody, "homepage">, marketSlug: string): Promise<void> {
+/** A credit the server resolved from a short link (`resolveWaitlistReferral`), never from a request body. */
+export interface WaitlistCredit {
+  referrerUserId: string;
+  shortLinkCode: string;
+}
+
+/**
+ * `credit` (LW-1d) stamps `referrer_user_id`, `short_link_code` and `source = expert_link` on a NEW row. Like the
+ * first source, the first credit is kept: a repeat sign-up never writes the credit columns.
+ */
+export async function joinWaitlist(
+  body: Omit<WaitlistJoinBody, "homepage" | "ref">,
+  marketSlug: string,
+  credit: WaitlistCredit | null = null,
+): Promise<void> {
   const email = normalizeWaitlistEmail(body.email);
   const role = body.role ?? "traveler";
   const traveler = role === "traveler";
-  const source = normalizeWaitlistSource(body.source, marketSlug);
+  const source = credit ? WAITLIST_EXPERT_LINK_SOURCE : normalizeWaitlistSource(body.source, marketSlug);
+  const referrerUserId = credit?.referrerUserId ?? null;
+  const shortLinkCode = credit?.shortLinkCode ?? null;
   const consent = body.consent === true;
   const consentVersion = consent ? await ensureConsentText() : null;
   const tripType = traveler ? body.tripType ?? null : null;
@@ -46,10 +63,11 @@ export async function joinWaitlist(body: Omit<WaitlistJoinBody, "homepage">, mar
   await db.execute(sql`
     INSERT INTO launch_waitlist
       (id, email, market_slug, role, source, trip_type, rough_month, worry,
-       contact_name, business_name, service_type, consent_at, consent_text_version, created_at, updated_at)
+       contact_name, business_name, service_type, referrer_user_id, short_link_code,
+       consent_at, consent_text_version, created_at, updated_at)
     VALUES
       (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
-       ${contactName}, ${businessName}, ${serviceType},
+       ${contactName}, ${businessName}, ${serviceType}, ${referrerUserId}, ${shortLinkCode},
        CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW())
     ON CONFLICT (email, market_slug) DO UPDATE SET
       updated_at           = NOW(),
@@ -66,8 +84,11 @@ export async function joinWaitlist(body: Omit<WaitlistJoinBody, "homepage">, mar
 }
 
 export interface WaitlistCount { key: string; count: number }
+/** One expert credited through their short link (LW-1d): the referrer's id and handle (null when unclaimed). */
+export interface WaitlistReferrerCount { referrerUserId: string; handle: string | null; count: number }
 export interface WaitlistCounts {
   marketSlug: string | null;
+  referrers: WaitlistReferrerCount[];
   travelers: { total: number; consented: number; byTripType: WaitlistCount[]; bySource: WaitlistCount[] };
   providers: { total: number; consented: number; byServiceType: WaitlistCount[] };
 }
@@ -93,9 +114,25 @@ async function totals(role: "traveler" | "provider", marketSlug: string | null) 
 }
 
 /** Counts by trip type and role; provider rows are counted apart and never in the traveler numbers. */
+async function referrerCounts(marketSlug: string | null): Promise<WaitlistReferrerCount[]> {
+  const market = marketSlug ? sql`AND w.market_slug = ${marketSlug}` : sql``;
+  const r = await db.execute(sql`
+    SELECT w.referrer_user_id, u.handle, COUNT(*)::int AS count
+    FROM launch_waitlist w LEFT JOIN users u ON u.id = w.referrer_user_id
+    WHERE w.referrer_user_id IS NOT NULL ${market}
+    GROUP BY 1, 2 ORDER BY 3 DESC, 1
+  `);
+  return (r.rows as any[]).map((row) => ({
+    referrerUserId: String(row.referrer_user_id),
+    handle: row.handle === null || row.handle === undefined ? null : String(row.handle),
+    count: Number(row.count),
+  }));
+}
+
 export async function waitlistCounts(marketSlug: string | null): Promise<WaitlistCounts> {
   return {
     marketSlug,
+    referrers: await referrerCounts(marketSlug),
     travelers: {
       ...(await totals("traveler", marketSlug)),
       byTripType: await grouped("trip_type", "traveler", marketSlug),
@@ -123,6 +160,9 @@ export const WAITLIST_CSV_COLUMNS = [
   "website",
   "area",
   "languages",
+  "referrer_user_id",
+  "referrer_handle",
+  "short_link_code",
   "consent_at",
   "consent_text_version",
   "created_at",
@@ -132,20 +172,22 @@ export const WAITLIST_CSV_COLUMNS = [
 export type WaitlistExportRow = Record<(typeof WAITLIST_CSV_COLUMNS)[number], string | null>;
 
 export async function waitlistExportRows(marketSlug: string | null, role: "traveler" | "provider" | null): Promise<WaitlistExportRow[]> {
-  const market = marketSlug ? sql`AND market_slug = ${marketSlug}` : sql``;
-  const byRole = role ? sql`AND COALESCE(role, 'traveler') = ${role}` : sql``;
+  const market = marketSlug ? sql`AND w.market_slug = ${marketSlug}` : sql``;
+  const byRole = role ? sql`AND COALESCE(w.role, 'traveler') = ${role}` : sql``;
   const r = await db.execute(sql`
-    SELECT email, role, market_slug, source, trip_type, rough_month, worry,
-           contact_name, business_name, service_type, website, area,
-           array_to_string(languages, '; ') AS languages,
-           to_char(consent_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS consent_at,
-           consent_text_version,
-           to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
-           to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
-           to_char(unsubscribed_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS unsubscribed_at
-    FROM launch_waitlist
+    SELECT w.email, w.role, w.market_slug, w.source, w.trip_type, w.rough_month, w.worry,
+           w.contact_name, w.business_name, w.service_type, w.website, w.area,
+           array_to_string(w.languages, '; ') AS languages,
+           w.referrer_user_id, u.handle AS referrer_handle, w.short_link_code,
+           to_char(w.consent_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS consent_at,
+           w.consent_text_version,
+           to_char(w.created_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
+           to_char(w.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS updated_at,
+           to_char(w.unsubscribed_at, 'YYYY-MM-DD"T"HH24:MI:SS') AS unsubscribed_at
+    FROM launch_waitlist w
+    LEFT JOIN users u ON u.id = w.referrer_user_id
     WHERE TRUE ${market} ${byRole}
-    ORDER BY created_at ASC NULLS LAST, email ASC
+    ORDER BY w.created_at ASC NULLS LAST, w.email ASC
   `);
   return r.rows as unknown as WaitlistExportRow[];
 }

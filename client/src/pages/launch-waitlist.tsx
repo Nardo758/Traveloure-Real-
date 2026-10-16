@@ -28,6 +28,8 @@ import {
 } from "@shared/launch-waitlist";
 import { TRAVELER_WAITLIST_BUTTON, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { waitlistSourceFromSearch, type SignupModeView } from "@/lib/launch-waitlist-view";
+import { arrivalRef } from "@/lib/ready-made-waitlist";
+import { getAcquisitionRef } from "@/lib/acquisition";
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MONTHS = [
@@ -80,7 +82,7 @@ function ConsentTick({ id, checked, onChange }: { id: string; checked: boolean; 
 const selectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
 
-function TravelerForm({ source }: { source: string | null }) {
+function TravelerForm({ source, refCode }: { source: string | null; refCode: string | null }) {
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [tripType, setTripType] = useState<WaitlistTripType | "">("");
@@ -106,6 +108,7 @@ function TravelerForm({ source }: { source: string | null }) {
       email: email.trim(),
       consent,
       ...(source ? { source } : {}),
+      ...(refCode ? { ref: refCode } : {}),
       ...(tripType ? { tripType } : {}),
       ...(month && year ? { roughMonth: `${year}-${month}` } : {}),
       ...(worry.trim() ? { worry: worry.trim() } : {}),
@@ -206,7 +209,7 @@ function TravelerForm({ source }: { source: string | null }) {
   );
 }
 
-function ProviderForm({ source }: { source: string | null }) {
+function ProviderForm({ source, refCode }: { source: string | null; refCode: string | null }) {
   const [contactName, setContactName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
@@ -233,6 +236,7 @@ function ProviderForm({ source }: { source: string | null }) {
       ...(businessName.trim() ? { businessName: businessName.trim() } : {}),
       serviceType,
       ...(source ? { source } : {}),
+      ...(refCode ? { ref: refCode } : {}),
       ...(homepage ? { homepage } : {}),
     });
     if (!r.ok) {
@@ -312,6 +316,9 @@ function ProviderForm({ source }: { source: string | null }) {
 export default function LaunchWaitlistPage() {
   const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
   const { source, blocked } = waitlistSourceFromSearch(window.location.search, signup?.launchMarketSlug ?? null);
+  // LW-1d: the raw short-link code the visitor arrived with (this page's ?ref=, else the session's). The server
+  // decides any credit; the page never names a referrer.
+  const refCode = arrivalRef(window.location.search, getAcquisitionRef());
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
@@ -379,7 +386,7 @@ export default function LaunchWaitlistPage() {
         <p className="mt-3 text-muted-foreground">
           We're opening Traveloure in Kyoto first. Join the waitlist and tell us about your trip, so it's shaped around trips like yours.
         </p>
-        <TravelerForm source={source} />
+        <TravelerForm source={source} refCode={refCode} />
       </section>
 
       <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-providers">
@@ -387,7 +394,7 @@ export default function LaunchWaitlistPage() {
         <p className="mt-3 text-muted-foreground">
           Traveloure is opening in Kyoto first. As local experts and providers join, travelers will be able to plan trips, proposals and weddings with them. Leave your details and we'll be in touch about joining.
         </p>
-        <ProviderForm source={source} />
+        <ProviderForm source={source} refCode={refCode} />
         <p className="mt-6 text-sm">
           <Link href="/signup?intent=supply" className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
         </p>
