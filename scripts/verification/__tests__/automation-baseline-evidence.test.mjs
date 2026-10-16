@@ -79,3 +79,18 @@ test("unsupported email mode refuses before any child or evidence directory", ()
     fs.rmSync(scratch, { recursive: true, force: true });
   }
 });
+
+test("without DATABASE_URL the runner prints the skip notice, exits 0 and creates no files", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "automation-skip-"));
+  try {
+    const env = runner.providerFreeEnvironment();
+    delete env.DATABASE_URL;
+    const child = spawnSync(process.execPath, [path.resolve("scripts/automation/golden-baseline.cjs")],
+      { env, encoding: "utf8", cwd: scratch });
+    assert.equal(child.status, 0);
+    assert.match(child.stdout, /Golden baseline skipped: DATABASE_URL is not set/);
+    assert.deepEqual(fs.readdirSync(scratch), []);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
