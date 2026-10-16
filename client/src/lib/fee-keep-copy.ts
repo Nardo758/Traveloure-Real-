@@ -1,48 +1,43 @@
 /**
  * The "keep N%" copy on /earn and /become-provider (CP-2, ledger `2026-10-16-cp2-public-copy`).
  *
- * Every number comes from a live `fee_bands` row (§8): the band stores the PLATFORM TAKE as a
- * fraction, and the earner keeps the rest. A band that did not load, is not a percent band, or
- * holds a rate outside 0–1 gives NO sentence (§13), never a typed fallback number.
+ * The numbers are the platform rates the fee resolver applies today, served by
+ * `GET /api/fee-policies/keep-rates` (`server/services/earn-keep-rates.service.ts`); the earner
+ * keeps the rest. A rate that is absent, not a number, or outside 0–1 gives NO sentence for its
+ * half (§13), never a typed fallback (§8).
  *
- * Bands read: `expert_new` (the beta cohort's expert and planner rate) and `beta_flat` (the
- * provider rate while `active_provider_commission_policy` is `beta_flat`).
+ * Part F3's beta-cohort clause ("locked when you join, 30 days' written notice before any change")
+ * is left out on purpose until FE-2 makes it true (decision-maker, Oct 16, 2026).
  */
-export const EXPERT_BETA_BAND = "expert_new";
-export const PROVIDER_BETA_BAND = "beta_flat";
+export const KEEP_RATES_ENDPOINT = "/api/fee-policies/keep-rates";
 
-export interface PercentBandLike {
-  rate_type?: string;
-  default_rate?: number | string | null;
+export interface PublicKeepRates {
+  expertPlatformRate?: number | null;
+  providerPlatformRate?: number | null;
 }
 
-/** The platform take as a whole percent, or null when the band gives no usable answer. */
-export function platformTakePercent(band: PercentBandLike | null | undefined): number | null {
-  if (!band || band.rate_type !== "percent") return null;
-  const rate = Number(band.default_rate);
-  if (!Number.isFinite(rate) || rate < 0 || rate > 1) return null;
-  return Math.round(rate * 100);
+/** The platform take as a whole percent, or null when there is no usable rate. */
+export function platformTakePercent(rate: number | string | null | undefined): number | null {
+  if (rate === null || rate === undefined || rate === "") return null;
+  const value = Number(rate);
+  if (!Number.isFinite(value) || value < 0 || value >= 1) return null;
+  return Math.round(value * 100);
 }
 
 /** "Providers keep 90% (10%)." — or null. */
-export function providerKeepLine(providerBand: PercentBandLike | null | undefined): string | null {
-  const take = platformTakePercent(providerBand);
+export function providerKeepLine(rates: PublicKeepRates | null | undefined): string | null {
+  const take = platformTakePercent(rates?.providerPlatformRate);
   return take === null ? null : `Providers keep ${100 - take}% (${take}%).`;
 }
 
-/**
- * The /earn revenue-share line (Part F3 item 3, word for word). Each half needs its own band;
- * a half whose band gave no answer is left out rather than guessed.
- */
-export function earnKeepSentence(
-  expertBand: PercentBandLike | null | undefined,
-  providerBand: PercentBandLike | null | undefined,
-): string | null {
-  const expertTake = platformTakePercent(expertBand);
-  const expertHalf =
-    expertTake === null
-      ? null
-      : `Experts and planners keep ${100 - expertTake}% of your planning fee (${expertTake}% beta cohort rate, locked when you join, 30 days' written notice before any change).`;
-  const parts = [expertHalf, providerKeepLine(providerBand)].filter((p): p is string => p !== null);
+/** "Experts and planners keep 75% of your planning fee." — or null. */
+export function expertKeepLine(rates: PublicKeepRates | null | undefined): string | null {
+  const take = platformTakePercent(rates?.expertPlatformRate);
+  return take === null ? null : `Experts and planners keep ${100 - take}% of your planning fee.`;
+}
+
+/** The /earn revenue-share line; each half is left out when its rate gave no answer. */
+export function earnKeepSentence(rates: PublicKeepRates | null | undefined): string | null {
+  const parts = [expertKeepLine(rates), providerKeepLine(rates)].filter((p): p is string => p !== null);
   return parts.length === 0 ? null : parts.join(" ");
 }

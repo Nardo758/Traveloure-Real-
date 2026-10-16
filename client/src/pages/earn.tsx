@@ -19,8 +19,8 @@
  * which door /start/events sends it through and because the two tables have
  * separate key namespaces (`proposal_planner` exists in both).
  *
- * The revenue-share line is config-driven: the `expert_new` and `beta_flat`
- * bands read through /api/fee-bands/:bandKey (`lib/fee-keep-copy.ts`, CP-2).
+ * The revenue-share line reads the rates the fee resolver applies today
+ * (/api/fee-policies/keep-rates via `lib/fee-keep-copy.ts`, CP-2).
  * No hardcoded percentages.
  *
  * Editing an offering-type row (is_active, display_name, is_surprising…)
@@ -30,7 +30,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { earnKeepSentence, EXPERT_BETA_BAND, PROVIDER_BETA_BAND, type PercentBandLike } from "@/lib/fee-keep-copy";
+import { earnKeepSentence, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import { useSearch, useLocation, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
@@ -238,16 +238,9 @@ export default function EarnPage() {
     queryKey: ["/api/offering-types/experts"],
     staleTime: 5 * 60_000,
   });
-  // ── Revenue share: two live bands, never a typed number (§8, CP-2) ─────
-  const { data: expertBetaBand } = useQuery<PercentBandLike>({
-    queryKey: [`/api/fee-bands/${EXPERT_BETA_BAND}`],
-    staleTime: 60_000,
-  });
-  const { data: providerBetaBand } = useQuery<PercentBandLike>({
-    queryKey: [`/api/fee-bands/${PROVIDER_BETA_BAND}`],
-    staleTime: 60_000,
-  });
-  const keepSentence = earnKeepSentence(expertBetaBand, providerBetaBand);
+  // ── Revenue share: the resolver's own rates, never a typed number (§8, CP-2) ─────
+  const { data: keepRates } = useQuery<PublicKeepRates>({ queryKey: [KEEP_RATES_ENDPOINT], staleTime: 60_000 });
+  const keepSentence = earnKeepSentence(keepRates);
 
   // ── Role → offerings (partition functions from the config module) ────────
   // Both catalogs are asked for every card and the partition functions decide.
