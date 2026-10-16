@@ -2,12 +2,21 @@
 // source) and providers (by type of service) counted apart, never mixed; experts credited through their own
 // Ready-Made link (LW-1d); and a CSV download per role. Every
 // download is audit-logged server-side. Stored keys are shown with the forms' own labels.
-import { useQuery } from "@tanstack/react-query";
+// LW-1e: QA rows (QA-domain addresses) are left out of the numbers and the default CSVs, and said so; an admin can
+// find a row by email and delete it (the server writes the audit row, keeping the row id and a hash of the address).
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
-import { WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES } from "@shared/launch-waitlist";
+import { WAITLIST_SEARCH_MIN_CHARS, WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES } from "@shared/launch-waitlist";
 
 interface WaitlistCount { key: string; count: number }
 interface WaitlistReferrerCount { referrerUserId: string; handle: string | null; count: number }
@@ -16,6 +25,102 @@ interface WaitlistCounts {
   referrers: WaitlistReferrerCount[];
   travelers: { total: number; consented: number; byTripType: WaitlistCount[]; bySource: WaitlistCount[] };
   providers: { total: number; consented: number; byServiceType: WaitlistCount[] };
+  qaExcluded: number;
+}
+interface WaitlistSearchRow {
+  id: string; email: string; role: string; marketSlug: string | null; source: string | null; createdAt: string | null; isQa: boolean;
+}
+
+function WaitlistSearch() {
+  const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState<WaitlistSearchRow | null>(null);
+  const search = useQuery<{ rows: WaitlistSearchRow[] }>({
+    queryKey: [`/api/admin/waitlist/search?email=${encodeURIComponent(query)}`],
+    enabled: query.length >= WAITLIST_SEARCH_MIN_CHARS,
+  });
+  const remove = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/admin/waitlist/${encodeURIComponent(id)}`),
+    onSuccess: () => {
+      setPending(null);
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/admin/waitlist") });
+    },
+  });
+  return (
+    <Card>
+      <CardHeader><CardTitle>Find and remove a sign-up</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => { e.preventDefault(); setQuery(input.trim()); }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Email address, or part of one"
+            className="max-w-sm"
+            data-testid="input-waitlist-search"
+          />
+          <Button type="submit" variant="outline" disabled={input.trim().length < WAITLIST_SEARCH_MIN_CHARS} data-testid="button-waitlist-search">
+            Search
+          </Button>
+        </form>
+        {search.isError && <p className="text-sm text-destructive">Search failed.</p>}
+        {search.data && (
+          <table className="text-sm" data-testid="table-waitlist-search">
+            <thead>
+              <tr>
+                <th className="pr-6 text-left font-medium">Email</th>
+                <th className="pr-6 text-left font-medium">Role</th>
+                <th className="pr-6 text-left font-medium">Market</th>
+                <th className="pr-6 text-left font-medium">Joined</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {search.data.rows.length === 0 && (
+                <tr><td className="pr-6 text-muted-foreground" colSpan={5}>No sign-up matches.</td></tr>
+              )}
+              {search.data.rows.map((r) => (
+                <tr key={r.id} data-testid={`row-waitlist-${r.id}`}>
+                  <td className="pr-6">{r.email}{r.isQa && <span className="ml-2 text-xs text-muted-foreground">QA</span>}</td>
+                  <td className="pr-6">{r.role}</td>
+                  <td className="pr-6">{r.marketSlug ?? ""}</td>
+                  <td className="pr-6">{r.createdAt ?? ""}</td>
+                  <td>
+                    <Button size="sm" variant="outline" onClick={() => setPending(r)} data-testid={`button-waitlist-delete-${r.id}`}>
+                      Delete
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <AlertDialog open={pending !== null} onOpenChange={(open) => { if (!open) setPending(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this sign-up?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pending?.email} will be removed from the waitlist for good. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {remove.isError && <p className="text-sm text-destructive">Could not delete the row.</p>}
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); if (pending) remove.mutate(pending.id); }}
+                disabled={remove.isPending}
+                data-testid="button-waitlist-delete-confirm"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </CardContent>
+    </Card>
+  );
 }
 
 function labelFor(list: readonly { key: string; label: string }[], key: string): string {
@@ -66,6 +171,11 @@ export default function AdminWaitlist() {
         {isError && <p className="text-sm text-destructive">Could not load the waitlist.</p>}
         {data && (
           <>
+            {data.qaExcluded > 0 && (
+              <p className="text-sm text-muted-foreground" data-testid="text-waitlist-qa-excluded">
+                {data.qaExcluded} QA sign-up{data.qaExcluded === 1 ? "" : "s"} (test addresses) left out of these numbers and the CSVs.
+              </p>
+            )}
             <Card>
               <CardHeader><CardTitle>Travelers{market}</CardTitle></CardHeader>
               <CardContent className="space-y-4">
@@ -103,6 +213,7 @@ export default function AdminWaitlist() {
                 />
               </CardContent>
             </Card>
+            <WaitlistSearch />
           </>
         )}
       </div>

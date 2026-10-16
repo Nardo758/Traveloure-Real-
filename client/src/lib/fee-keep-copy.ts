@@ -6,14 +6,18 @@
  * keeps the rest. A rate that is absent, not a number, or outside 0–1 gives NO sentence for its
  * half (§13), never a typed fallback (§8).
  *
- * Part F3's beta-cohort clause ("locked when you join, 30 days' written notice before any change")
- * is left out on purpose until FE-2 makes it true (decision-maker, Oct 16, 2026).
+ * Part F3's beta-cohort clause ("beta cohort rate, locked when you join, 30 days' written notice
+ * before any change") rides the expert half only when the server says the expert rate IS a
+ * cohort's (`expertCohort`, FE-2 ruling 6). The notice days are the server's
+ * `expert_rate_change_notice_days`; when that is unset the notice clause is left out, never a
+ * typed "30" (§8/§13).
  */
 export const KEEP_RATES_ENDPOINT = "/api/fee-policies/keep-rates";
 
 export interface PublicKeepRates {
   expertPlatformRate?: number | null;
   providerPlatformRate?: number | null;
+  expertCohort?: { label?: string | null; noticeDays?: number | null } | null;
   /** LW-1g: the platform take on a Ready-Made Trip sale (the `ready_made_trip` band, as charged). */
   readyMadePlatformRate?: number | null;
 }
@@ -32,10 +36,28 @@ export function providerKeepLine(rates: PublicKeepRates | null | undefined): str
   return take === null ? null : `Providers keep ${100 - take}% (${take}%).`;
 }
 
-/** "Experts and planners keep 75% of your planning fee." — or null. */
+/** The F3 clause for a cohort rate, or null when the rate is not a cohort's. */
+export function expertCohortClause(rates: PublicKeepRates | null | undefined): string | null {
+  const label = rates?.expertCohort?.label?.trim();
+  if (!label) return null;
+  const days = rates?.expertCohort?.noticeDays;
+  const notice = typeof days === "number" && Number.isInteger(days) && days > 0
+    ? `, ${days} days' written notice before any change`
+    : "";
+  return `${label} cohort rate, locked when you join${notice}`;
+}
+
+/**
+ * "Experts and planners keep 85% of your planning fee: beta cohort rate, locked when you join,
+ * 30 days' written notice before any change." — the clause only for a cohort rate — or null.
+ */
 export function expertKeepLine(rates: PublicKeepRates | null | undefined): string | null {
   const take = platformTakePercent(rates?.expertPlatformRate);
-  return take === null ? null : `Experts and planners keep ${100 - take}% of your planning fee.`;
+  if (take === null) return null;
+  const clause = expertCohortClause(rates);
+  return clause === null
+    ? `Experts and planners keep ${100 - take}% of your planning fee.`
+    : `Experts and planners keep ${100 - take}% of your planning fee: ${clause}.`;
 }
 
 /** The /earn revenue-share line; each half is left out when its rate gave no answer. */

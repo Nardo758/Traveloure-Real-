@@ -365,3 +365,88 @@ export async function resolveNeedsReviewBooking(
   if (!cur) return { ok: false, httpStatus: 404, reason: "not_found", message: "No such booking." };
   return { ok: false, httpStatus: 409, reason: "not_needs_review", message: `This booking is "${cur.status}", not needs_review; nothing was changed.` };
 }
+
+export interface AdminBookingListRow {
+  kind: AdminBookingKind;
+  id: string;
+  status: string | null;
+  travelerName: string | null;
+  travelerEmail: string | null;
+  serviceName: string | null;
+  total: string | null;
+  currency: string | null;
+  createdAt: string | null;
+}
+
+/** The list cap. Filters narrow it; the page says when it is reached. */
+export const ADMIN_BOOKING_LIST_LIMIT = 200;
+
+/**
+ * PAY-1c — the admin bookings list: one table at a time (the same three the detail page reads),
+ * newest first, filtered by status and by the UTC day the booking was created (both ends inclusive).
+ */
+export async function listAdminBookings(filters: {
+  kind: AdminBookingKind;
+  status: string | null;
+  from: string | null;
+  to: string | null;
+}): Promise<AdminBookingListRow[]> {
+  // created_at is a timestamp without time zone holding UTC; a day is compared as a date.
+  const conds = (alias: "sb" | "b" | "lb") => {
+    const col = sql.raw(alias);
+    const parts = [sql`TRUE`];
+    if (filters.status) parts.push(sql`${col}.status = ${filters.status}`);
+    if (filters.from) parts.push(sql`${col}.created_at >= ${filters.from}::date`);
+    if (filters.to) parts.push(sql`${col}.created_at < (${filters.to}::date + 1)`);
+    return sql.join(parts, sql` AND `);
+  };
+
+  let rows: any[];
+  if (filters.kind === "service") {
+    rows = rowsOf(await db.execute(sql`
+      SELECT sb.id::text AS id, sb.status, ps.service_name, sb.total_amount::text AS total, NULL::text AS currency,
+             sb.created_at, u.first_name, u.last_name, u.email
+        FROM service_bookings sb
+        LEFT JOIN provider_services ps ON ps.id = sb.service_id
+        LEFT JOIN users u ON u.id = sb.traveler_id
+       WHERE ${conds("sb")}
+       ORDER BY sb.created_at DESC NULLS LAST
+       LIMIT ${ADMIN_BOOKING_LIST_LIMIT}
+    `));
+  } else if (filters.kind === "legacy") {
+    rows = rowsOf(await db.execute(sql`
+      SELECT b.id::text AS id, b.status, b.title AS service_name, b.total_amount::text AS total, NULL::text AS currency,
+             b.created_at, u.first_name, u.last_name, u.email
+        FROM bookings b
+        LEFT JOIN users u ON u.id = b.user_id
+       WHERE ${conds("b")}
+       ORDER BY b.created_at DESC NULLS LAST
+       LIMIT ${ADMIN_BOOKING_LIST_LIMIT}
+    `));
+  } else {
+    rows = rowsOf(await db.execute(sql`
+      SELECT lb.id::text AS id, lb.status, lb.provider_hotel_id AS service_name,
+             (lb.amount_cents::numeric / 100)::text AS total, lb.currency,
+             lb.created_at, u.first_name, u.last_name, u.email
+        FROM liteapi_bookings lb
+        LEFT JOIN users u ON u.id = lb.user_id
+       WHERE ${conds("lb")}
+       ORDER BY lb.created_at DESC NULLS LAST
+       LIMIT ${ADMIN_BOOKING_LIST_LIMIT}
+    `));
+  }
+  return rows.map((r) => {
+    const name = [r.first_name, r.last_name].filter(Boolean).join(" ").trim();
+    return {
+      kind: filters.kind,
+      id: String(r.id),
+      status: r.status ?? null,
+      travelerName: name || null,
+      travelerEmail: r.email ?? null,
+      serviceName: r.service_name ?? null,
+      total: r.total ?? null,
+      currency: r.currency ?? null,
+      createdAt: iso(r.created_at),
+    };
+  });
+}

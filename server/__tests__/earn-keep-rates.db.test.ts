@@ -1,12 +1,15 @@
 /**
  * CP-2 (ledger `2026-10-16-cp2-public-copy`): `GET /api/fee-policies/keep-rates` states the rates
  * the fee resolver applies today, read through the resolver's own functions.
- *   E1 the expert rate IS `getExpertSplitRates().platformFeeRate`.
+ *   E1 (amended by FE-2 ruling 6, ledger `2026-10-16-fe2-beta-cohort`): with no approval cohort the
+ *      expert rate IS `getExpertSplitRates().platformFeeRate` and carries no cohort; with the approval
+ *      cohort set, it is that cohort's band and carries the cohort label and notice days.
  *   E2 under `beta_flat` (or no policy) the provider rate IS the active `beta_flat` band.
  *   E3 under `tiered` there is no single provider rate, so it is null (§13).
- *   E4 (LW-1g, ledger `2026-10-16-lw1g-earn-calculator`) the Ready-Made rate IS
+ *   E4 (FE-2) past the cohort's end date the expert rate falls back to the ordinary split.
+ *   E5 (LW-1g, ledger `2026-10-16-lw1g-earn-calculator`) the Ready-Made rate IS
  *      `resolveReadyMadeTakeRate()`, and it follows the `ready_made_trip` band when an admin edits it.
- * The policy row and the band are restored in after(); nothing else is written.
+ * The policy row, the FE-2 settings and the band are restored in after(); nothing else is written.
  *
  * Run solo: npx tsx --test server/__tests__/earn-keep-rates.db.test.ts
  */
@@ -21,6 +24,18 @@ import { resolveReadyMadeTakeRate } from "../services/ready-made-purchase.servic
 
 const KEY = "active_provider_commission_policy";
 let saved: { exists: boolean; value: unknown } | null = null;
+const fe2Saved = new Map<string, string | null>();
+
+async function setFe2(key: string, value: string) {
+  if (!fe2Saved.has(key)) {
+    const r: any = await db.execute(sql`SELECT setting_value FROM platform_settings WHERE setting_key = ${key} LIMIT 1`);
+    fe2Saved.set(key, r.rows?.[0]?.setting_value ?? null);
+  }
+  await db.execute(sql`
+    INSERT INTO platform_settings (setting_key, setting_value) VALUES (${key}, ${value})
+    ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
+  `);
+}
 
 async function readPolicyRow() {
   const r: any = await db.execute(sql`SELECT setting_value FROM platform_settings WHERE setting_key = ${KEY} LIMIT 1`);
@@ -40,6 +55,10 @@ after(async () => {
   if (savedReadyMadeRate !== undefined) {
     await db.execute(sql`UPDATE fee_bands SET default_rate = ${savedReadyMadeRate} WHERE band_key = 'ready_made_trip'`);
   }
+  for (const [key, value] of fe2Saved) {
+    if (value === null) await db.execute(sql`DELETE FROM platform_settings WHERE setting_key = ${key}`);
+    else await db.execute(sql`UPDATE platform_settings SET setting_value = ${value} WHERE setting_key = ${key}`);
+  }
   if (!saved) return;
   if (saved.exists) {
     await db.execute(sql`UPDATE platform_settings SET setting_value = ${saved.value as any} WHERE setting_key = ${KEY}`);
@@ -48,9 +67,20 @@ after(async () => {
   }
 });
 
-test("E1: the expert rate is the resolver's expert split", async () => {
-  const rates = await resolvePublicKeepRates();
-  assert.equal(rates.expertPlatformRate, (await getExpertSplitRates()).platformFeeRate);
+test("E1: no approval cohort — the resolver's expert split, no cohort; with one — its band, label and notice", async () => {
+  await setFe2("expert_approval_rate_cohort", "");
+  const plain = await resolvePublicKeepRates();
+  assert.equal(plain.expertPlatformRate, (await getExpertSplitRates()).platformFeeRate);
+  assert.equal(plain.expertCohort, null);
+
+  await setFe2("expert_approval_rate_cohort", "beta_2026");
+  await setFe2("expert_beta_end_date", "");
+  await setFe2("expert_rate_change_notice_days", "30");
+  const band = await readBand("expert_beta_2026");
+  assert.ok(band && band.rateType === "percent", "expert_beta_2026 is seeded (migration 382)");
+  const cohort = await resolvePublicKeepRates();
+  assert.equal(cohort.expertPlatformRate, band!.rate);
+  assert.deepEqual(cohort.expertCohort, { label: "beta", noticeDays: 30 });
 });
 
 test("E2: under beta_flat the provider rate is the beta_flat band", async () => {
@@ -65,10 +95,18 @@ test("E3: under tiered there is no single provider rate", async () => {
   assert.equal((await resolvePublicKeepRates()).providerPlatformRate, null);
 });
 
-test("E4: the Ready-Made rate is the purchase path's own rate, and follows the band", async () => {
+test("E4: past the cohort's end date the expert rate is the ordinary split again", async () => {
+  await setFe2("expert_approval_rate_cohort", "beta_2026");
+  await setFe2("expert_beta_end_date", "2020-01-01");
+  const rates = await resolvePublicKeepRates();
+  assert.equal(rates.expertPlatformRate, (await getExpertSplitRates()).platformFeeRate);
+  assert.equal(rates.expertCohort, null);
+});
+
+test("E5: the Ready-Made rate is the purchase path's own rate, and follows the band", async () => {
   assert.equal((await resolvePublicKeepRates()).readyMadePlatformRate, await resolveReadyMadeTakeRate());
   const r: any = await db.execute(sql`SELECT default_rate::text AS rate FROM fee_bands WHERE band_key = 'ready_made_trip' AND is_active = true LIMIT 1`);
-  if (!r.rows?.[0]) return; // no active band here: the fallback is what E4's first line already pinned
+  if (!r.rows?.[0]) return; // no active band here: the fallback is what E5's first line already pinned
   savedReadyMadeRate = r.rows[0].rate;
   const edited = Number(savedReadyMadeRate) === 0.15 ? "0.2" : "0.15"; // fee-literal-ok: a test edit of the band, then restored
   await db.execute(sql`UPDATE fee_bands SET default_rate = ${edited} WHERE band_key = 'ready_made_trip'`);

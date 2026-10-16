@@ -47,6 +47,8 @@ Maintained by the architect session. One line per item: what, why, and the condi
 | #1404 d-3b on-screen wording "Paid to Nuitée…" | Leon | Comment "wording approved — Leon" on #1404 after Events reverts the Copilot commit. |
 | R228 Route Matrix storage rule (30-day recompute on open) | Logistics | Phase 0 after TC-3. |
 | 9a-ii OSRM on Replit Reserved VM | Leon runs operator steps | Steps delivered Oct 9. |
+| AUTH-1 A06 — tell the existing account's owner when someone signs up with their address (added Oct 16; AUTH-1 fix 3b answers a duplicate sign-up neutrally and sends nothing) | Launch session | After the mailbox: the outbound email path is live and its consent model is written. |
+| Waitlist retention job (delete or anonymize `launch_waitlist` rows after N days) (added Oct 16) | Launch session (LW-1e follow-up) | Leon's retention number. |
 
 ## Closed (moved here when done)
 

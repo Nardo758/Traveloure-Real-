@@ -13,7 +13,8 @@ import { assertDisposableDb, closePool, pool, registerUser, rows, uid } from "./
  *
  *   /experiences (signed out) → the one modal → "Build it myself" → the GUEST map (/plans/new) with the
  *   answers → Browse lists the fixture listing → "Add to plan" → the existing sign-in modal with the
- *   board's copy → create an account → the plan is created ONCE, lands on its map, the answers kept,
+ *   board's copy → create an account (the neutral result, nothing created — AUTH-1 fix 3b) → sign in → the
+ *   plan is created ONCE, lands on its map, the answers kept,
  *   ONE Day 1 item naming the listing → a reload creates nothing more.
  *
  * SUPPLY, stated (§18d): one fixture listing — approved, active, located, Kyoto, `activity_provider` —
@@ -97,6 +98,21 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await testid(page, "input-password").fill("Journey!Pass123");
   await testid(page, "checkbox-signup-terms").click();
   await testid(page, "checkbox-signup-privacy").click();
+  await testid(page, "button-auth-submit").click();
+
+  // AUTH-1 fix 3b (ledger `2026-10-16-auth1-3b-neutral-registration`; sanctioned rewrite — the proposal's proof 4):
+  // signing up shows the neutral result and signs nobody in, so nothing is created yet and the guest's record and
+  // return path are KEPT for the actual sign-in.
+  await expect(testid(page, "signup-neutral-result")).toBeVisible({ timeout: 10_000 });
+  await expect(page).toHaveURL(/\/plans\/new\?view=map$/);
+  expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
+  const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
+  expect(pre.n, "signing up creates no plan").toBe(0);
+
+  // Then sign in, in the same window.
+  await testid(page, "link-neutral-sign-in").click();
+  await testid(page, "input-email").fill(email);
+  await testid(page, "input-password").fill("Journey!Pass123");
   await testid(page, "button-auth-submit").click();
 
   // The reload replays the record: ONE plan, landing on its map.
