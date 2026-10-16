@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { deliveryDisplay } from "@/lib/email-delivery-status";
+import { parseTravelerSignupMode, TRAVELER_SIGNUP_MODE_SETTING, type TravelerSignupMode } from "@shared/launch-signup";
 
 interface PlatformSettingRow {
   setting_key: string;
@@ -123,6 +124,24 @@ export default function AdminSystem() {
     },
     onError: (err: Error) => {
       setTestEmailResult({ ok: false, error: err.message });
+    },
+  });
+
+  // LW-1b: the traveler sign-up switch is a two-value setting, not a boolean flag. Read fail-closed exactly as the
+  // server does (only "open" is open), so a missing row shows as waitlist here too.
+  const travelerSignupOpen =
+    parseTravelerSignupMode(settingsRows?.find((r) => r.setting_key === TRAVELER_SIGNUP_MODE_SETTING)?.setting_value) === "open";
+  const updateSignupMode = useMutation({
+    mutationFn: async (mode: TravelerSignupMode) => {
+      await apiRequest("PATCH", `/api/admin/platform-settings/${TRAVELER_SIGNUP_MODE_SETTING}`, { settingValue: mode });
+      return mode;
+    },
+    onSuccess: (mode) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
+      toast({ title: mode === "open" ? "Traveler sign-up opened" : "Traveler sign-up set to waitlist" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not change traveler sign-up", description: err.message, variant: "destructive" });
     },
   });
 
@@ -282,6 +301,22 @@ export default function AdminSystem() {
                   disabled={updateFlag.isPending}
                   onCheckedChange={(v) => updateFlag.mutate({ key: "new_user_registration_enabled", value: v })}
                   data-testid="switch-registration"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Traveler Sign-up Open</Label>
+                  <p className="text-sm text-gray-500">
+                    Off = waitlist: new travelers are sent to the launch waitlist. People offering services,
+                    existing accounts and admins are never refused.
+                  </p>
+                </div>
+                <Switch
+                  checked={travelerSignupOpen}
+                  disabled={updateSignupMode.isPending}
+                  onCheckedChange={(v) => updateSignupMode.mutate(v ? "open" : "waitlist")}
+                  data-testid="switch-traveler-signup-open"
                 />
               </div>
 

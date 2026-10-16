@@ -39,6 +39,15 @@ runs:
       env:
         DATABASE_URL: ${{ inputs.database-url }}
 
+    - name: Open traveler sign-up for CI fixtures
+      # LW-1b (ledger `2026-10-15-lw1b-traveler-signup-switch`): the traveler sign-up switch reads fail-closed and
+      # migration 381 seeds it 'waitlist' (production's launch posture). CI journeys register travelers, so CI
+      # fixture databases run it 'open'. The script refuses any non-local DATABASE_URL.
+      run: npx tsx scripts/ci-open-traveler-signup.ts
+      shell: bash
+      env:
+        DATABASE_URL: ${{ inputs.database-url }}
+
     - name: Create sessions table (connect-pg-simple workaround)
       # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
       # incompatible with Postgres 12+. Pre-create the table here so that
