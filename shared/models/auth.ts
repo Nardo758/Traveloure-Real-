@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, decimal, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, decimal, index, jsonb, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -122,6 +122,10 @@ export const users = pgTable("users", {
   // set; the occasion-drafts scheduler skips a member with no home city (never errors). No DB
   // CHECK — validated app-side against the market list, not the database (publish-trap posture).
   homeCity: varchar("home_city", { length: 120 }),
+  // LW-1 (migration 381, HELD): where a SUPPLY sign-up came from — an allowlisted value, else 'other'
+  // (shared/launch-waitlist.ts). Nullable, no default: NULL = not recorded (every traveler and every
+  // account created before 381). Written once, server-side, at sign-up; no user-update rail sets it (§19).
+  signupSource: text("signup_source"),
 }, (table) => [
   index("users_role_idx").on(table.role),
   // Migrations 102 + 105: partial indexes for soft-delete and suspension fast-paths.
