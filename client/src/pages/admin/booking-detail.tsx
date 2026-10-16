@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ADMIN_BOOKING_LIST_KINDS } from "@shared/admin-booking-list";
 
 interface TimelineEntry {
   at: string;
@@ -40,13 +41,20 @@ interface AdminBookingDetail {
 
 const PI_PATTERN = /^pi_[A-Za-z0-9]+$/;
 
+/** PAY-1c: a 404 (no such booking, or a kind the route does not serve) is "Booking not found" — never the raw body. */
+function bookingNotFound(error: unknown): boolean {
+  return error instanceof Error && /^404\b/.test(error.message);
+}
+
 export default function AdminBookingDetailPage() {
   const params = useParams<{ kind?: string; id?: string }>();
   const kind = params.kind ?? "";
   const id = params.id ?? "";
   const url = `/api/admin/bookings/${kind}/${id}`;
   const { toast } = useToast();
-  const { data, isLoading, error } = useQuery<AdminBookingDetail>({ queryKey: [url], enabled: !!kind && !!id });
+  // A kind the route does not serve is "not found" without a request (PAY-1c).
+  const kindKnown = (ADMIN_BOOKING_LIST_KINDS as readonly string[]).includes(kind);
+  const { data, isLoading, error } = useQuery<AdminBookingDetail>({ queryKey: [url], enabled: kindKnown && !!id, retry: false });
 
   const [outcome, setOutcome] = useState<"confirmed" | "cancelled">("confirmed");
   const [reason, setReason] = useState("");
@@ -80,9 +88,16 @@ export default function AdminBookingDetailPage() {
   return (
     <AdminLayout title="Booking">
       <div className="space-y-6 p-6" data-testid="admin-booking-detail">
-        <Link href="/admin/reconciliation" className="text-sm text-blue-600 hover:underline">← Reconciliation</Link>
+        <Link href="/admin/bookings" className="text-sm text-blue-600 hover:underline" data-testid="admin-booking-back">← Bookings</Link>
         {isLoading && <p className="text-sm text-gray-500">Loading…</p>}
-        {error && <p className="text-sm text-red-600" data-testid="admin-booking-error">{(error as Error).message}</p>}
+        {(!kindKnown || (error && bookingNotFound(error))) ? (
+          <div data-testid="admin-booking-not-found">
+            <h1 className="text-xl font-semibold">Booking not found</h1>
+            <p className="text-sm text-gray-500">There is no {kindKnown ? kind : "such"} booking with this id.</p>
+          </div>
+        ) : error && (
+          <p className="text-sm text-red-600" data-testid="admin-booking-error">The booking could not be loaded. Try again.</p>
+        )}
         {data && (
           <>
             <Card>
