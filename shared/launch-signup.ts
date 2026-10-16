@@ -8,6 +8,20 @@
 export const TRAVELER_SIGNUP_MODE_SETTING = "traveler_signup_mode";
 /** platform_settings key; seeded 'kyoto' by migration 381. The market the waitlist is for — never a literal. */
 export const LAUNCH_MARKET_SLUG_SETTING = "launch_market_slug";
+/**
+ * LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`; Leon, Oct 16, 2026): the instant traveler sign-up FIRST flipped
+ * to "open", as an ISO-8601 UTC string. Written ONLY by the server, in the same transaction as that flip, and never
+ * overwritten (a later close-and-reopen keeps the first date). No row = sign-up has never opened. It starts the
+ * waitlist's retention clock (shared/launch-waitlist.ts).
+ */
+export const TRAVELER_SIGNUP_OPENED_AT_SETTING = "traveler_signup_opened_at";
+
+/** The stored opened-at instant, or null when it is absent or not a valid ISO-8601 instant. */
+export function parseSignupOpenedAt(value: string | null | undefined): Date | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value.trim())) return null;
+  const d = new Date(value.trim());
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 
 export const TRAVELER_SIGNUP_MODES = ["waitlist", "open"] as const;
 export type TravelerSignupMode = (typeof TRAVELER_SIGNUP_MODES)[number];

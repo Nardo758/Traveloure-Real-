@@ -48,12 +48,12 @@ Maintained by the architect session. One line per item: what, why, and the condi
 | R228 Route Matrix storage rule (30-day recompute on open) | Logistics | Phase 0 after TC-3. |
 | 9a-ii OSRM on Replit Reserved VM | Leon runs operator steps | Steps delivered Oct 9. |
 | AUTH-1 A06 — tell the existing account's owner when someone signs up with their address (added Oct 16; AUTH-1 fix 3b answers a duplicate sign-up neutrally and sends nothing) | Launch session | After the mailbox: the outbound email path is live and its consent model is written. |
-| Waitlist retention job (delete or anonymize `launch_waitlist` rows after N days) (added Oct 16) | Launch session (LW-1e follow-up) | Leon's retention number. |
 
 ## Closed (moved here when done)
 
 | Item | Closed by |
 |---|---|
+| Waitlist retention job (Leon, Oct 16: 12 months from the day traveler sign-up first opens, never-converted rows only) | LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`) |
 | `origin='superseded'` interim marker → `superseded_at` | TC-3a #1401 (migration 368) |
 | S1-c Places hotel seed | Cancelled Oct 9 — LiteAPI replaced it |
 | Amadeus dead path | S1-d-1 #1382 |

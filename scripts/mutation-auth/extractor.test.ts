@@ -269,6 +269,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * and PUT /api/admin/ticker/order — the launch-market ticker's admin writes, admin-only behind the blanket
  * /api/admin guard (and their own admin check), each audit-logged in its transaction; admin 178 → 181,
  * admin-role 178 → 181.
+ * 703 / 694 → 704 / 695 (ledger `2026-10-16-lw1h-waitlist-retention`): POST /internal/jobs/waitlist-retention — the
+ * daily waitlist retention pass, behind the internal job secret; other 241 → 242, public-or-system 49 → 50.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -277,8 +279,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 703);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 694);
+  assert.equal(result.mutations.length, 704);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 695);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -288,9 +290,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 694);
-  assert.equal(manifest.rawRegistrationCount, 703);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 694);
+  assert.equal(endpointRows.length, 695);
+  assert.equal(manifest.rawRegistrationCount, 704);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 695);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -322,7 +324,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + DELETE /api/admin/waitlist/:id (LW-1e): admin, behind the blanket /api/admin guard.
   // + POST /api/admin/ticker, PATCH /api/admin/ticker/:id, PUT /api/admin/ticker/order (LW-1f): admin, behind the
   // blanket /api/admin guard.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 181, "user-data": 241, other: 241 });
+  // + POST /internal/jobs/waitlist-retention (LW-1h): other, public-or-system — the internal-secret trigger.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 181, "user-data": 241, other: 242 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -348,9 +351,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/admin/bookings/:kind/:id/resolve (PAY-1): admin-role 176 → 177.
   // + DELETE /api/admin/waitlist/:id (LW-1e): admin-role 177 → 178.
   // + the three /api/admin/ticker writes (LW-1f): admin-role 178 → 181.
+  // + POST /internal/jobs/waitlist-retention (LW-1h): public-or-system 49 → 50.
   assert.deepEqual(manifest.boundaryTotals, {
     "admin-role": 181, "session-self": 356, "resource-owner": 102,
-    signature: 6, "public-or-system": 49, unknown: 0,
+    signature: 6, "public-or-system": 50, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,
