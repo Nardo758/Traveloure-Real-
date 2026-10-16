@@ -33,6 +33,7 @@ import { BLOG_POST_STATUSES, BLOG_REACTION_KINDS } from "@shared/blog";
 import {
   BlogError,
   addReaction,
+  blogFooterVisible,
   adminListPosts,
   createPost,
   editPost,
@@ -192,6 +193,11 @@ router.post("/api/expert/blog/posts/:id/sign", isAuthenticated, async (req, res)
 });
 
 // ── Public ───────────────────────────────────────────────────────────────────────────────────
+
+// ED-1 footer count: a bare boolean — no count, no minimum. Any failure answers false (hidden).
+router.get("/api/blog/footer-visible", async (_req, res) => {
+  try { res.json(await blogFooterVisible()); } catch { res.json(false); }
+});
 
 router.get("/api/blog/posts", async (req, res) => {
   const market = typeof req.query.market === "string" ? req.query.market.slice(0, 40) : null;

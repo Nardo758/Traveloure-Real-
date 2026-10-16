@@ -2378,6 +2378,11 @@ This document captures architectural decisions to maintain consistency across co
     `/expert/blog-review`): buttons mirror the server's from-states through ONE pure `client/src/lib/blog-console.ts`,
     and the expert signs the `contentSha256` the review rail returned, never one computed client-side. **Not built, named:** the footer's Blog link, which returns behind a count of
     five published posts and never a hand-flipped flag.
+    **AMENDED — THE FOOTER BLOG LINK IS BUILT (decision-maker, Oct 16, 2026 — ED-1 footer addendum; ledger
+    `2026-10-16-blog-footer-count`).** The footer shows Blog only when the count of `published` posts in the post store
+    meets `platform_settings.blog_footer_min_published` (admin-editable, default 5). `GET /api/blog/footer-visible`
+    answers a bare boolean; a failed or absent read is hidden, never shown. The `/blog` route and its `noindex` empty
+    state are unchanged.
 
 57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
     WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;
