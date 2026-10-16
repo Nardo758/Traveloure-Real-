@@ -398,8 +398,8 @@ export async function handleStripePaymentSuccess(sessionId: string): Promise<voi
     const [promotedOption] = await db
       .update(transportBookingOptions)
       .set({
+        // Status only (PAY-1b): `booking_id` is int4, nothing reads it, and the parsed epoch overflowed it.
         bookingStatus: "confirmed",
-        bookingId: parseInt(bookingId.split("-")[1]) || undefined,
       })
       .where(
         and(
