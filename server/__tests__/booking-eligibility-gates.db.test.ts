@@ -32,6 +32,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { resolveBookingEligibility, timeOfDayMinutes } from "../services/booking-eligibility.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -61,17 +62,9 @@ async function assertDisposableDb(): Promise<void> {
 interface Actor { id: string; email: string; cookie: string; }
 async function registerTraveler(label: string): Promise<Actor> {
   const email = `elig-${RUN}-${label}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "EL", lastName: label }),
-  });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "EL", lastName: label });
   createdEmails.push(email);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 async function loginCookie(email: string, password: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {

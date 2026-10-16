@@ -10,6 +10,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { closePool, rows } from "./journeys/_journey-helpers";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -26,10 +27,11 @@ type FinalState = {
 
 async function registerAndTrip(page: Page): Promise<string> {
   const email = `e2e-finalize-${uid()}@example.com`;
-  const reg = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email, password: "TestFinalize123!", firstName: "Fin", lastName: "Tester", userType: "user" },
-  });
-  expect(reg.status(), `register failed: ${await reg.text()}`).toBe(201);
+  await registerAndSignIn(
+    page.request,
+    { email, password: "TestFinalize123!", firstName: "Fin", lastName: "Tester", extra: { userType: "user" } },
+    BASE_URL,
+  );
   const start = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
   const end = new Date(Date.now() + 33 * 86400_000).toISOString().slice(0, 10);
   const res = await page.request.post(`${BASE_URL}/api/trips`, {

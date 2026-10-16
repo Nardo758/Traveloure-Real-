@@ -25,6 +25,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -98,12 +99,8 @@ before(async () => {
   await assertDisposableDb();
 
   const email = `pb1-${RUN}@t.test`;
-  const reg = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "PB", lastName: "One",
-  }));
-  assert.equal(reg.status, 201, `register failed (${reg.status}): ${reg.text}`);
+  const { id } = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "PB", lastName: "One" });
   createdEmails.push(email);
-  const id = reg.body.user.id as string;
   await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${id}`);
   await db.execute(sql`
     INSERT INTO service_provider_forms

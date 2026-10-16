@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { fulfillReadyMadePurchase } from "../server/services/ready-made-purchase.service";
+import { registerAndSignIn } from "./lib/register-and-sign-in";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const PASSWORD = "FlushLoop!2026";
@@ -64,21 +65,11 @@ function makeActor() {
 
 async function register(email: string, role: string | null) {
   const actor = makeActor();
-  let reg = await actor.req("POST", "/api/auth/register", {
-    email, password: PASSWORD, firstName: "Flush", lastName: "Loop",
+  await registerAndSignIn(actor.req, { email, password: PASSWORD, firstName: "Flush", lastName: "Loop" }, {
+    beforeSignIn: async () => {
+      if (role) await db.update(users).set({ role } as any).where(eq(users.email, email.toLowerCase()));
+    },
   });
-  if (reg.status === 429) {
-    const waitSec = Number(reg.json?.retryAfter ?? 60) + 2;
-    console.log(`  ⏳ register rate-limited — waiting ${waitSec}s`);
-    await new Promise((r) => setTimeout(r, waitSec * 1000));
-    reg = await actor.req("POST", "/api/auth/register", {
-      email, password: PASSWORD, firstName: "Flush", lastName: "Loop",
-    });
-  }
-  if (reg.status !== 200 && reg.status !== 201) throw new Error(`register ${email}: ${reg.status} ${reg.text.slice(0, 200)}`);
-  if (role) await db.update(users).set({ role } as any).where(eq(users.email, email.toLowerCase()));
-  const login = await actor.req("POST", "/api/auth/login", { email, password: PASSWORD });
-  if (login.status !== 200) throw new Error(`login ${email}: ${login.status}`);
   return actor;
 }
 

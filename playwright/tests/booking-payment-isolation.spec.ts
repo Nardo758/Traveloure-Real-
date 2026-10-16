@@ -23,6 +23,7 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
+import { registerAndSignIn } from '../utils/auth';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 
@@ -53,18 +54,12 @@ async function register(
   email: string,
   password: string,
 ): Promise<string> {
-  const res = await req.post(`${BASE_URL}/api/auth/register`, {
-    data: {
-      email,
-      password,
-      firstName: 'Test',
-      lastName: 'User',
-      userType: 'user',
-    },
-  });
-  expect(res.status(), `register ${email}`).toBe(201);
-  const body = await res.json();
-  return body.user.id as string;
+  const { id } = await registerAndSignIn(
+    req,
+    { email, password, firstName: 'Test', lastName: 'User', extra: { userType: 'user' } },
+    BASE_URL,
+  );
+  return id;
 }
 
 /**

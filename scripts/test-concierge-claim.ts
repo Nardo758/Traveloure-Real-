@@ -5,6 +5,7 @@
  */
 import { createHmac } from "crypto";
 import pg from "pg";
+import { registerAndSignIn } from "./lib/register-and-sign-in";
 
 const BASE = "http://localhost:5000";
 const DB_URL = process.env.DATABASE_URL!;
@@ -44,14 +45,14 @@ async function apiFetch(
 }
 
 async function register(email: string, password = "TestPass123!") {
+  // AUTH-1 fix 3a: register, then sign in; the user id comes from the sign-in, never the register body.
   const jar: Jar = {};
-  const r = await apiFetch("/api/auth/register", {
-    method: "POST",
-    body: { email, password, firstName: "Test", lastName: "Claim" },
-  }, jar);
-  if (r.status !== 201 && r.status !== 200)
-    throw new Error(`register failed ${r.status}: ${JSON.stringify(r.body)}`);
-  return { jar, userId: r.body?.user?.id as string };
+  const req = async (method: string, path: string, body?: unknown) => {
+    const r = await apiFetch(path, { method, body }, jar);
+    return { status: r.status, json: r.body, text: typeof r.body === "string" ? r.body : JSON.stringify(r.body) };
+  };
+  const { id } = await registerAndSignIn(req, { email, password, firstName: "Test", lastName: "Claim" });
+  return { jar, userId: id };
 }
 
 async function login(email: string, password = "TestPass123!") {

@@ -17,6 +17,7 @@ import { db } from "../server/db";
 import { users, trips, readyMadeTrips, readyMadePurchases, itineraryItems, expertEarnings } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { fulfillReadyMadePurchase, refundReadyMadePurchaseLedger } from "../server/services/ready-made-purchase.service";
+import { registerAndSignIn } from "./lib/register-and-sign-in";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const PASSWORD = "VerifyPhase2!2026";
@@ -58,27 +59,13 @@ function makeActor() {
 
 async function registerAndPromote(email: string, role: string) {
   const actor = makeActor();
-  // /api/auth/register is rate-limited (60s window), which back-to-back gate runs trip.
-  // Wait out the limiter rather than reporting a red that isn't about the code under test.
-  let reg = await actor.req("POST", "/api/auth/register", {
-    email, password: PASSWORD, firstName: "Verify", lastName: "Phase2",
-  });
-  if (reg.status === 429) {
-    const waitSec = Number(reg.json?.retryAfter ?? 60) + 2;
-    console.log(`  ⏳ register rate-limited — waiting ${waitSec}s (limiter, not a failure)`);
-    await new Promise((r) => setTimeout(r, waitSec * 1000));
-    reg = await actor.req("POST", "/api/auth/register", {
-      email, password: PASSWORD, firstName: "Verify", lastName: "Phase2",
-    });
-  }
-  if (reg.status !== 200 && reg.status !== 201) {
-    throw new Error(`register failed for ${email}: ${reg.status} ${reg.text.slice(0, 200)}`);
-  }
   // Role upgrades are deliberately impossible over the API (registration forces 'user'),
-  // so the fixture promotes in the DB — the same thing an approved application does.
-  await db.update(users).set({ role } as any).where(eq(users.email, email.toLowerCase()));
-  const login = await actor.req("POST", "/api/auth/login", { email, password: PASSWORD });
-  if (login.status !== 200) throw new Error(`login failed for ${email}: ${login.status} ${login.text.slice(0, 200)}`);
+  // so the fixture promotes in the DB — the same thing an approved application does — before signing in.
+  await registerAndSignIn(actor.req, { email, password: PASSWORD, firstName: "Verify", lastName: "Phase2" }, {
+    beforeSignIn: async () => {
+      await db.update(users).set({ role } as any).where(eq(users.email, email.toLowerCase()));
+    },
+  });
   return actor;
 }
 
@@ -292,21 +279,11 @@ async function main() {
     // Admin actor (registered like the others, promoted in DB — same as an approved application).
     const adminEmail = `rm2-admin-${stamp}@t.test`;
     const admin = makeActor();
-    {
-      let reg = await admin.req("POST", "/api/auth/register", {
-        email: adminEmail, password: PASSWORD, firstName: "Verify", lastName: "Admin",
-      });
-      if (reg.status === 429) {
-        const waitSec = Number(reg.json?.retryAfter ?? 60) + 2;
-        console.log(`  ⏳ register rate-limited — waiting ${waitSec}s`);
-        await new Promise((r) => setTimeout(r, waitSec * 1000));
-        reg = await admin.req("POST", "/api/auth/register", {
-          email: adminEmail, password: PASSWORD, firstName: "Verify", lastName: "Admin",
-        });
-      }
-      await db.update(users).set({ role: "admin" } as any).where(eq(users.email, adminEmail));
-      await admin.req("POST", "/api/auth/login", { email: adminEmail, password: PASSWORD });
-    }
+    await registerAndSignIn(admin.req, { email: adminEmail, password: PASSWORD, firstName: "Verify", lastName: "Admin" }, {
+      beforeSignIn: async () => {
+        await db.update(users).set({ role: "admin" } as any).where(eq(users.email, adminEmail));
+      },
+    });
 
     // Ensure the listing is 'submitted' with a priced, plan-typed, 3-day build (state from 5b).
     await db.update(readyMadeTrips)

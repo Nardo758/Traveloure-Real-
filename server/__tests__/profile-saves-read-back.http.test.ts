@@ -27,6 +27,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -74,17 +75,9 @@ before(async () => {
   assert.ok(health?.ok, `dev server must be running on ${BASE_URL}`);
   assert.equal(process.env.JOURNEY_DB_WRITES_OK, "1", "Refusing to write fixtures without JOURNEY_DB_WRITES_OK=1");
 
-  const reg = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD, firstName: "Profile", lastName: "Saves" }),
-  });
-  const regText = await reg.text();
-  assert.equal(reg.status, 201, regText);
-  const setCookie = reg.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  cookie = setCookie!.split(";")[0];
-  userId = (JSON.parse(regText) as { user: { id: string } }).user.id;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email: EMAIL, password: PASSWORD, firstName: "Profile", lastName: "Saves" });
+  cookie = actor.cookie;
+  userId = actor.id;
 
   // A handled provider with one approved listing has a public storefront, which is where the
   // storefront save is read back from.

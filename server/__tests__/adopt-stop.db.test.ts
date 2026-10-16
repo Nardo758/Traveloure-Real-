@@ -27,6 +27,7 @@ import {
   itineraryVariantItems,
   itineraryItems,
 } from "@shared/schema";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -51,15 +52,10 @@ async function assertDisposableDb(): Promise<void> {
 interface Actor { id: string; email: string; cookie: string; }
 async function registerTraveler(label: string): Promise<Actor> {
   const email = `adopt-${RUN}-${label}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "AD", lastName: label, userType: "user" }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: PASSWORD, firstName: "AD", lastName: label, extra: { userType: "user" },
   });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0];
-  const body = await res.json();
-  return { id: body.user.id as string, email, cookie };
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 
 async function createTrip(actor: Actor): Promise<string> {

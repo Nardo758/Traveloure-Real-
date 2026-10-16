@@ -32,6 +32,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -79,12 +80,8 @@ let plainServiceId = "";
 /** Publishing/verification is irrelevant here, but a provider ROLE is required by the rails. */
 async function createProvider(): Promise<void> {
   const email = `fp3-${RUN}@t.test`;
-  const res = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "FP", lastName: "Three",
-  }));
-  assert.equal(res.status, 201, `register failed (${res.status}): ${res.text}`);
+  const { id } = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "FP", lastName: "Three" });
   createdEmails.push(email);
-  const id = res.body.user.id as string;
   await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${id}`);
   const login = await api("/api/auth/login", undefined, "POST", { email, password: PASSWORD });
   assert.equal(login.status, 200, "login must succeed");

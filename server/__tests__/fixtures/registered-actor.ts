@@ -21,8 +21,8 @@
  * connection and never calls `setTimeout`; the round-trip is the only thing that has been
  * shown to work, and a timer would be a guess dressed as a fix.
  *
- * §13 — THE FAILURE MODES ARE DIFFERENT FACTS AND ARE REPORTED AS SUCH. "the register did
- * not return 201", "the actor never became visible to this connection within N reads" and
+ * §13 — THE FAILURE MODES ARE DIFFERENT FACTS AND ARE REPORTED AS SUCH. "the register was
+ * refused or the sign-in after it failed", "the actor never became visible to this connection within N reads" and
  * "the role UPDATE matched no row" are three different things; each throws with its own
  * sentence rather than being funnelled into one FK error raised much later by an unrelated
  * INSERT. The role UPDATE in particular used to be able to match ZERO rows in silence, which
@@ -35,6 +35,7 @@
 import assert from "node:assert/strict";
 import { sql } from "drizzle-orm";
 import { db as defaultDb } from "../../db";
+import { registerAndSignIn } from "./register-and-sign-in";
 
 export interface RegisteredActor {
   id: string;
@@ -62,19 +63,8 @@ export async function registerActorWithReadBack(options: {
   const { baseUrl, email, password, firstName, lastName, role } = options;
   const db = options.db ?? defaultDb;
 
-  const res = await fetch(`${baseUrl}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password, firstName, lastName }),
-  });
-  if (res.status !== 201) {
-    assert.fail(`register(${email}) failed (${res.status}): ${await res.text()}`);
-  }
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, `register(${email}) must set a session cookie`);
-  const body = (await res.json()) as { user?: { id?: string } };
-  const id = body?.user?.id;
-  assert.ok(id, `register(${email}) must return the created user id, got ${JSON.stringify(body)}`);
+  const actor = await registerAndSignIn({ baseUrl, email, password, firstName, lastName });
+  const id = actor.id;
 
   let visible = false;
   for (let attempt = 0; attempt < MAX_READ_BACKS; attempt += 1) {
@@ -99,5 +89,5 @@ export async function registerActorWithReadBack(options: {
     );
   }
 
-  return { id, email, cookie: setCookie!.split(";")[0] };
+  return { id, email, cookie: actor.cookie };
 }

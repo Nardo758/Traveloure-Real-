@@ -21,6 +21,7 @@ import crypto from "crypto";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { TRIP_ADVISOR_WRITE_ACCESS_STATUSES } from "../utils/trip-advisor";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE = process.env.XSS_TEST_BASE_URL || "http://127.0.0.1:5000";
 
@@ -71,10 +72,10 @@ beforeAll(async () => {
   const ping = await fetch(`${BASE}/api/auth/user`).catch(() => null);
   if (!ping) throw new Error(`Dev server unreachable at ${BASE} — start the 'Start application' workflow`);
 
-  const reg = await api("POST", "/api/auth/register", {
-    email: EMAIL, password: PASSWORD, firstName: "Xss", lastName: "Regress",
+  const actor = await registerAndSignIn({
+    baseUrl: BASE, email: EMAIL, password: PASSWORD, firstName: "Xss", lastName: "Regress",
   });
-  if (reg.status >= 400) throw new Error(`register failed: ${reg.status} ${await reg.text()}`);
+  cookie = actor.cookie;
   await api("POST", "/api/auth/accept-terms", {});
   const me = await (await api("GET", "/api/auth/user")).json();
   userId = me.id;

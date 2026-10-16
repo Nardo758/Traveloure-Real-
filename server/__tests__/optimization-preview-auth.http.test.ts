@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -42,9 +43,8 @@ function api(path: string, cookie: string | undefined, method = "GET", payload?:
 }
 
 async function register(email: string): Promise<{ cookie: string; id: string }> {
-  const reg = await api("/api/auth/register", undefined, "POST", { email, password: PASSWORD, firstName: "Opt", lastName: "Preview" });
-  if (reg.status !== 201) assert.fail(`register failed (${reg.status}): ${await reg.text().catch(() => "")}`);
-  return { cookie: reg.headers.get("set-cookie")!.split(";")[0], id: ((await reg.json()) as any).user.id };
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Opt", lastName: "Preview" });
+  return { cookie: actor.cookie, id: actor.id };
 }
 
 before(async () => {

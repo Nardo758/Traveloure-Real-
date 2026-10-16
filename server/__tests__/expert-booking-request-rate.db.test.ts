@@ -19,6 +19,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret";
 // stripe.service.ts hard-fails on a non-test key at import time (the storage/routes graph pulls it
@@ -80,17 +81,11 @@ async function assertDisposableDb(): Promise<void> {
 
 async function registerUser(tag: string): Promise<{ id: string; cookie: string }> {
   const email = `ebr-${RUN}-${tag}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: "Sup3rSecret!23", firstName: "EBR", lastName: tag }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: "Sup3rSecret!23", firstName: "EBR", lastName: tag,
   });
-  const raw = await res.text();
-  assert.ok(res.ok, `register(${tag}) must succeed: ${res.status} ${raw}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  createdUserIds.push(JSON.parse(raw).user.id);
-  return { id: JSON.parse(raw).user.id, cookie: setCookie.split(";")[0] };
+  createdUserIds.push(actor.id);
+  return { id: actor.id, cookie: actor.cookie };
 }
 
 function api(path: string, cookie: string | undefined, method = "GET", body?: unknown) {
