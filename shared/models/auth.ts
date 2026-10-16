@@ -67,6 +67,15 @@ export const users = pgTable("users", {
   // wins over the old expert-share column: platform rate = value/100, earner share = 1 − that.
   // NULL = no override. Written only by the admin PATCH /api/admin/users/:id/commission-override.
   commissionOverridePlatformFeePercent: decimal("commission_override_platform_fee_percent", { precision: 5, scale: 2 }), // money-derive-ok: §18 rule 4 — admin-only per-earner override, set by the requireAdmin-guarded commission-override PATCH, never by a client-reachable insert schema
+  // FE-2 (ledger `2026-10-16-fe2-beta-cohort`): the expert's rate cohort, stamped once at approval
+  // inside the role-change transaction (with its audit row) or by the held backfill. The cohort
+  // names its band in shared/expert-rate-cohort.ts. NULL = no cohort; the ordinary expert band applies.
+  rateCohort: varchar("rate_cohort", { length: 30 }), // money-derive-ok: written only by the approval transaction and the backfill migration, never by a client body
+  // When the cohort was stamped. Set once; a re-approval never moves it. NULL = no cohort.
+  rateLockedAt: timestamp("rate_locked_at"),
+  // When the expert was last sent written notice of a change to their cohort rate. Notice emails
+  // are a later lane; nothing writes this yet. NULL = never sent.
+  rateNoticeSentAt: timestamp("rate_notice_sent_at"),
   // Listing Engine publish-gate (Step 1). Admins flip providerVerificationStatus to "verified"
   // and backgroundCheckConfirmed to true after manual review. Until then any category with
   // requiresBackgroundCheck=true or insuranceBand >= 2 blocks publish and returns HTTP 422.

@@ -175,7 +175,7 @@ import {
   adminGlobalSearch, getAdminSearchCounts,
   getServiceReviewsList, getAdminReviews, getReviewModerationLogs, getServiceReviewById, getReviewById,
   updateServiceReviewStatus, moderateReview, insertReviewModerationLog,
-  getFeeBands, getFeeBand, updateFeeBand, checkActiveBand,
+  getFeeBands, getFeeBand, checkActiveBand,
   getPlatformSettings, getPlatformSettingValue, upsertPlatformSetting,
   getServiceOfferingTypesList, getAllServiceOfferingTypes,
   createServiceOfferingTypeRow, updateServiceOfferingTypeRow, deleteServiceOfferingTypeRow,
@@ -207,6 +207,9 @@ import {
   getRoleChangeAuditLogs,
   getAuditLogsForResource,
 } from "../services/admin-query.service";
+import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
+import { expertCohortSettingRefusal } from "@shared/expert-rate-cohort";
+import { parseAdminBookingListQuery } from "@shared/admin-booking-list";
 // THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
 // CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). The lead-confirm handler below calls it;
 // it never inserts the row itself.
@@ -411,6 +414,16 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
       return res.status(403).json({ message: "Admin access required" });
     }
     try {
+      // PAY-1c: with `kind` (service | legacy | liteapi) this answers the /admin/bookings list — one
+      // table, filtered by status and by creation day — through the same service the detail page
+      // reads. Without `kind` the response is the original enriched service-bookings array, unchanged.
+      if (req.query.kind !== undefined) {
+        const parsed = parseAdminBookingListQuery(req.query as Record<string, unknown>);
+        if (!parsed.ok) return res.status(400).json({ message: parsed.message });
+        const { listAdminBookings, ADMIN_BOOKING_LIST_LIMIT } = await import("../services/admin-booking-detail.service");
+        const rows = await listAdminBookings(parsed.filters);
+        return res.json({ rows, limit: ADMIN_BOOKING_LIST_LIMIT, filters: parsed.filters });
+      }
       const status = req.query.status as string | undefined;
       const allBookings = await storage.getServiceBookings(status ? { status } : {});
       const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
@@ -3037,7 +3050,7 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
           actorId: user.id,
           actorRole: user.role,
           reason: "admin_expert_application_approved",
-        });
+        }, { assignRateCohort: true });
       } catch (err) {
         // Role+audit transaction rolled back — revert the form status too so an
         // approved-but-unprivileged applicant is impossible, and fail loudly.
@@ -7873,8 +7886,18 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       const nextDisplayName = displayName ?? before.display_name ?? null;
       const nextDescription = description ?? before.description ?? null;
       const nextIsActive = isActive ?? before.is_active;
+      // FE-2 ruling 2 — LOCK = IMMUTABILITY. A band that some expert's current rate cohort pays may
+      // not have its rate changed: an admin creates a new cohort instead. Checked INSIDE the edit's
+      // transaction, so a refusal writes nothing. The cohort → band map is @shared/expert-rate-cohort.
+      const rateChanging =
+        defaultRate !== undefined && Number(defaultRate) !== Number(before.default_rate);
+      let cohortLocked = false;
       try {
         await db.transaction(async (tx) => {
+          if (rateChanging && (await bandLockedByCohort(bandKey, tx))) {
+            cohortLocked = true;
+            throw new Error("cohort_band_locked");
+          }
           await tx.execute(sql`
             UPDATE fee_bands
             SET
@@ -7921,6 +7944,23 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
           } as any);
         });
       } catch (txErr: any) {
+        if (cohortLocked) {
+          await recordAdminAudit({
+            actorId: userId,
+            actorRole: user.role,
+            action: "fee_band_rate_edit_refused",
+            resourceType: "fee_band",
+            resourceId: bandKey,
+            metadata: { reason: "cohort_band_locked", attemptedDefaultRate: defaultRate, currentDefaultRate: before.default_rate },
+            ipAddress: req.ip ?? null,
+            userAgent: req.get("user-agent") ?? null,
+          });
+          return res.status(422).json({
+            error: "This band's rate is locked: experts in a rate cohort pay it. Create a new cohort instead.",
+            code: "cohort_band_locked",
+            bandKey,
+          });
+        }
         console.error(`[fee-bands] band ${bandKey} edit rolled back — the audit row could not be written:`, txErr?.message || txErr);
         return res.status(500).json({
           error: "The band was not changed: its audit record could not be written. Try again.",
@@ -8181,6 +8221,12 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
       if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a market slug (lower-case letters, digits, hyphens)`, got: settingValue });
+      }
+      // FE-2 (ledger 2026-10-16-fe2-beta-cohort): the cohort end date, the approval cohort and the
+      // notice days are checked at the boundary, so a typo never ends or extends a cohort by accident.
+      const cohortSettingRefusal = expertCohortSettingRefusal(settingKey, settingValue);
+      if (cohortSettingRefusal) {
+        return res.status(400).json({ error: cohortSettingRefusal, got: settingValue });
       }
       if (settingKey === "active_provider_commission_policy" && !["beta_flat", "tiered"].includes(settingValue)) {
         return res.status(400).json({ error: "active_provider_commission_policy must be 'beta_flat' or 'tiered'", got: settingValue });

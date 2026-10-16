@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogIn, Mail, Lock, User, Loader2 } from "lucide-react";
+import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRoleHomePath } from "@/lib/role-utils";
@@ -53,6 +54,9 @@ export function SignInModal({
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  // AUTH-1 fix 3b: a sign-up gets the server's neutral answer — no session, so no guest claim, no navigation and
+  // no "Account created". Guest state and the return destination wait for an actual sign-in.
+  const [signupSubmitted, setSignupSubmitted] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
@@ -68,6 +72,8 @@ export function SignInModal({
 
   // Clear inline error whenever the user switches sign-in mode
   useEffect(() => { setAuthError(null); }, [mode]);
+  // A reopened window starts on its form again, not on a previous sign-up's neutral result.
+  useEffect(() => { if (!open) setSignupSubmitted(false); }, [open]);
 
   const migrateGuestCart = async () => {
     try {
@@ -147,6 +153,11 @@ export function SignInModal({
 
       const data = await response.json();
 
+      if (mode === "signup" && isRegistrationNeutral(response.status, data)) {
+        setSignupSubmitted(true);
+        return;
+      }
+
       if (!response.ok) {
         // LW-1b: traveler sign-up is waitlist-only — go to the waitlist page the server named. No email in the URL.
         if (response.status === 403 && data?.code === TRAVELER_WAITLIST) {
@@ -156,12 +167,15 @@ export function SignInModal({
         }
         throw new Error(data.message || "Authentication failed");
       }
+      // Only a sign-in reaches here with a session. A sign-up answered with anything but the neutral contract is
+      // not treated as signed in.
+      if (mode !== "signin") throw new Error("Authentication failed");
 
       await Promise.all([migrateGuestCart(), claimGuestConcierge()]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
 
       toast({
-        title: mode === "signin" ? "Welcome back!" : "Account created!",
+        title: "Welcome back!",
         description: data.message,
       });
 
@@ -227,7 +241,33 @@ export function SignInModal({
           </DialogDescription>
         </DialogHeader>
 
-        {mode === "reset" && resetSent ? (
+        {mode === "signup" && signupSubmitted ? (
+          <div className="py-6 text-center space-y-3" data-testid="signup-neutral-result">
+            <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+              <Mail className="h-6 w-6 text-green-600" />
+            </div>
+            <p className="font-medium text-gray-900">{t("registered.title")}</p>
+            <p className="text-sm text-muted-foreground" data-testid="text-signup-neutral">{t("registered.body")}</p>
+            <div className="flex justify-center gap-4">
+              <button
+                type="button"
+                className="text-sm text-primary hover:underline"
+                onClick={() => { setSignupSubmitted(false); setMode("signin"); }}
+                data-testid="link-neutral-sign-in"
+              >
+                {t("registered.signIn")}
+              </button>
+              <button
+                type="button"
+                className="text-sm text-primary hover:underline"
+                onClick={() => { setSignupSubmitted(false); setMode("reset"); }}
+                data-testid="link-neutral-reset"
+              >
+                {t("registered.resetPassword")}
+              </button>
+            </div>
+          </div>
+        ) : mode === "reset" && resetSent ? (
           <div className="py-6 text-center space-y-3">
             <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
               <Mail className="h-6 w-6 text-green-600" />

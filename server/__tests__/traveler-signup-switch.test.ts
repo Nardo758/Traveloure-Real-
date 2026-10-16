@@ -31,6 +31,7 @@ import assert from "node:assert/strict";
 import { db } from "../db.js";
 import { invalidatePlatformFlagCache, getTravelerSignupMode, getLaunchMarketSlug } from "../services/platform-flags.js";
 import { setupEmailAuth } from "../replit_integrations/auth/emailAuth.js";
+import { REGISTRATION_NEUTRAL_CODE, REGISTRATION_NEUTRAL_STATUS } from "../../shared/registration-neutral.js";
 import { qaSignupCodeMatches, qaSignupAllowed } from "../services/qa-signup-code.js";
 import { authStorage } from "../replit_integrations/auth/storage.js";
 import { upsertUser } from "../replit_integrations/auth/replitAuth.js";
@@ -77,7 +78,7 @@ before(() => {
     return { rows: value === undefined || value === null ? [] : [{ setting_value: value }] };
   };
   // The existing-email check is the first thing after the gate: answering it with an existing account makes the
-  // handler stop with 400 "already exists" — proof the request got PAST the gate without creating anything.
+  // handler stop with the neutral 202 (AUTH-1 fix 3b) — proof the request got PAST the gate without creating anything.
   (db as any).select = () => {
     selectCalls += 1;
     const chain: any = { from: () => chain, where: () => chain, limit: () => chain, then: (f: any) => Promise.resolve([{ id: "existing" }]).then(f) };
@@ -163,8 +164,9 @@ describe("S2 — email register in waitlist mode", () => {
   });
   it("lets a supply sign-up past the gate", async () => {
     const res = await register({ intent: "supply" });
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body.message, /already exists/);
+    // AUTH-1 fix 3b: an existing address gets the neutral 202, never "already exists".
+    assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
     assert.equal(selectCalls, 1);
   });
   it("an unknown intent is a traveler", async () => {
@@ -183,8 +185,9 @@ describe("S3 — email register in open mode", () => {
   it("lets a traveler past the gate", async () => {
     settings.traveler_signup_mode = "open";
     const res = await register();
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body.message, /already exists/);
+    // AUTH-1 fix 3b: an existing address gets the neutral 202, never "already exists".
+    assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
   });
 });
 
@@ -192,8 +195,9 @@ describe("S4 — the QA sign-up needs the QA domain AND the code", () => {
   it("a QA-domain address with the matching code passes a waitlist-mode traveler", async () => {
     process.env.QA_SIGNUP_CODE = "qa-secret-123";
     const res = await register({ qaCode: "qa-secret-123" });
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body.message, /already exists/);
+    // AUTH-1 fix 3b: an existing address gets the neutral 202, never "already exists".
+    assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
   });
   it("a QA-domain address with a wrong, absent or unset code refuses", async () => {
     process.env.QA_SIGNUP_CODE = "qa-secret-123";

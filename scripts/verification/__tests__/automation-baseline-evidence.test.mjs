@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { serializeEvidence, redact } from "../automation-baseline-reporter.mjs";
 
 const require = createRequire(import.meta.url);
-const runner = require("../../check-automation-golden-baseline.cjs");
+const runner = require("../../automation/golden-baseline.cjs");
 
 test("structured evidence retains nested rows, timestamps, counts and types", () => {
   const document = {
@@ -69,11 +69,26 @@ test("unsupported email mode refuses before any child or evidence directory", ()
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "automation-refusal-"));
   try {
     const child = spawnSync(process.execPath, [
-      path.resolve("scripts/check-automation-golden-baseline.cjs"), "--live-proof",
+      path.resolve("scripts/automation/golden-baseline.cjs"), "--live-proof",
     ], { env: runner.providerFreeEnvironment(), encoding: "utf8", cwd: scratch });
     assert.equal(child.status, 1);
     assert.equal(child.stdout, "");
     assert.match(child.stderr, /Golden baseline infrastructure failed/);
+    assert.deepEqual(fs.readdirSync(scratch), []);
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("without DATABASE_URL the runner prints the skip notice, exits 0 and creates no files", () => {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "automation-skip-"));
+  try {
+    const env = runner.providerFreeEnvironment();
+    delete env.DATABASE_URL;
+    const child = spawnSync(process.execPath, [path.resolve("scripts/automation/golden-baseline.cjs")],
+      { env, encoding: "utf8", cwd: scratch });
+    assert.equal(child.status, 0);
+    assert.match(child.stdout, /Golden baseline skipped: DATABASE_URL is not set/);
     assert.deepEqual(fs.readdirSync(scratch), []);
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });

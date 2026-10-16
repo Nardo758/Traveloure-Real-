@@ -236,6 +236,27 @@ router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) =
     }
   });
 
+  // FE-2 (ledger 2026-10-16-fe2-beta-cohort): the session expert's own planning-fee rate, read
+  // through the commission resolver, with the cohort label and lock date only when the cohort is
+  // what priced it. The SESSION user only (§14) — there is no id parameter.
+  router.get("/api/expert/rate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { resolveExpertRateView } = await import("../services/expert-rate-cohort.service");
+      const view = await resolveExpertRateView(userId);
+      res.set("Cache-Control", "no-store");
+      res.json({
+        platformRate: view.platformRate,
+        cohortLabel: view.cohortLabel,
+        lockedAt: view.lockedAt,
+        basis: view.basis,
+      });
+    } catch (error: any) {
+      console.error("Expert rate error:", error);
+      res.status(500).json({ message: "Failed to load your rate" });
+    }
+  });
+
   // Expert earnings details endpoint
   // Uses same auth pattern as /api/provider/services, /api/provider/bookings
 
