@@ -150,7 +150,7 @@ export default function AdminBookingDetailPage() {
                     </label>
                     <label className="flex items-center gap-2">
                       <input type="radio" checked={outcome === "cancelled"} onChange={() => setOutcome("cancelled")} data-testid="resolve-cancelled" />
-                      Cancelled (status only — no refund is issued)
+                      Canceled (status only — no refund is issued)
                     </label>
                   </div>
                   {outcome === "confirmed" && data.paidThrough === "stripe" && !data.hasPaymentIntent && (
