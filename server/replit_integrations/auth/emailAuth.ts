@@ -2,8 +2,8 @@ import type { Express } from "express";
 import { z } from "zod";
 import crypto from "crypto";
 import { db } from "../../db";
-import { users, passwordResetTokens, emailVerificationTokens } from "@shared/models/auth";
-import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
+import { users, emailVerificationTokens } from "@shared/models/auth";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { sendPasswordResetEmail, sendEmailVerificationEmail, getAppBaseUrl } from "../../services/email.service";
 import { enqueueSignupWelcome } from "../../services/signup-welcome-outbox.service";
 import { deliverQueuedEmail } from "../../services/email-outbox.service";
@@ -13,7 +13,9 @@ import { qaSignupAllowed } from "../../services/qa-signup-code";
 import { recordSignupSource } from "../../services/signup-source-record";
 import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
-import { dispatchModerationEvent } from "../../automations/moderation/runtime";
+import {
+  RESET_TOKEN_TTL_MIN, hashAuthToken, issuePasswordResetToken, consumePasswordResetToken,
+} from "../../services/password-reset-tokens.service";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -77,6 +79,26 @@ const loginSchema = z.object({
   // (b) locks out anyone whose real password has leading/trailing spaces. Compare exactly.
   password: z.string().min(1, "Password is required"),
 });
+
+// ─── Email verification issuer ───────────────────────────────────────────────
+// Same token shape as the password reset: the raw token is emailed, only its sha256 is stored,
+// single-use with a TTL. Exported so a first-time Facebook account gets the same verification email
+// an email sign-up gets (AUTH-1 Finding A (i): Facebook is never trusted as verified).
+const VERIFY_TOKEN_TTL_HOURS = 24;
+
+export async function issueEmailVerification(userId: string, email: string, firstName: string | null): Promise<void> {
+  const raw = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashAuthToken(raw);
+  const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000);
+  await db.insert(emailVerificationTokens).values({ userId, tokenHash, expiresAt });
+  const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
+  await sendEmailVerificationEmail({
+    toEmail: email,
+    firstName,
+    verifyUrl,
+    expiresInHours: VERIFY_TOKEN_TTL_HOURS,
+  });
+}
 
 export function setupEmailAuth(app: Express): void {
   // Register new user with email/password
@@ -174,7 +196,7 @@ export function setupEmailAuth(app: Express): void {
       // Fire-and-forget verification email. Failure here MUST NOT block signup —
       // the user can request a resend later. RESEND_API_KEY absence is logged
       // inside sendEmailVerificationEmail.
-      issueAndSendVerification(newUser.id, newUser.email!, newUser.firstName ?? null).catch(
+      issueEmailVerification(newUser.id, newUser.email!, newUser.firstName ?? null).catch(
         (err) => console.error("[auth/register] verification email issue failed:", err)
       );
 
@@ -335,13 +357,9 @@ export function setupEmailAuth(app: Express): void {
   // generates a single-use token, emails the raw token via Resend, and stores
   // ONLY the sha256 hash; POST /reset-password validates the token, sets the
   // new password through the existing scrypt hashPassword(), invalidates the
-  // user's existing sessions, and marks the token used.
-
-  const RESET_TOKEN_TTL_MIN = 60;
-
-  function hashToken(raw: string): string {
-    return crypto.createHash("sha256").update(raw).digest("hex");
-  }
+  // user's existing sessions, and marks the token used. AUTH-1 Finding B: issuing a link revokes
+  // every earlier one, and issuing and using lock the account in the same order
+  // (server/services/password-reset-tokens.service.ts).
 
   const forgotPasswordSchema = z.object({
     email: z.string().email("Invalid email address").max(254, "Email is too long"),
@@ -367,15 +385,7 @@ export function setupEmailAuth(app: Express): void {
       if (user && user.password) {
         // Skip OAuth-only accounts (no password set) — generating a reset for
         // them would be a no-op + signal that the email exists in another way.
-        const raw = crypto.randomBytes(32).toString("hex");
-        const tokenHash = hashToken(raw);
-        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000);
-
-        await db.insert(passwordResetTokens).values({
-          userId: user.id,
-          tokenHash,
-          expiresAt,
-        });
+        const { raw } = await issuePasswordResetToken(user.id);
 
         const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
         try {
@@ -423,40 +433,8 @@ export function setupEmailAuth(app: Express): void {
       }
 
       const { token, newPassword } = validation.data;
-      const tokenHash = hashToken(token);
-      const now = new Date();
-
       const hashedPassword = await hashPassword(newPassword);
-      const resetApplied = await db.transaction(async (tx) => {
-        // Claim the token atomically. Concurrent replays race on this conditional
-        // UPDATE; exactly one can transition used_at from NULL.
-        const [claimed] = await tx
-          .update(passwordResetTokens)
-          .set({ usedAt: now })
-          .where(and(
-            eq(passwordResetTokens.tokenHash, tokenHash),
-            isNull(passwordResetTokens.usedAt),
-            gt(passwordResetTokens.expiresAt, now),
-          ))
-          .returning({ userId: passwordResetTokens.userId });
-        if (!claimed) return false;
-
-        await tx.update(users).set({ password: hashedPassword }).where(eq(users.id, claimed.userId));
-        // Session invalidation is part of the same transaction and covers both
-        // Passport user shapes. A failure rolls back the password/token change.
-        await dispatchModerationEvent(
-          "moderation.password-reset-session-purge",
-          "password_reset.password_persisted",
-          { userId: claimed.userId, resetTokenClaimed: true },
-          { userId: claimed.userId, resetTokenClaimed: true },
-          () => tx.execute(drizzleSql`
-            DELETE FROM sessions
-            WHERE sess->'passport'->'user'->'claims'->>'sub' = ${claimed.userId}
-               OR sess->'passport'->'user'->>'id' = ${claimed.userId}
-          `),
-        );
-        return true;
-      });
+      const resetApplied = await consumePasswordResetToken(token, hashedPassword);
       if (!resetApplied) {
         return res.status(400).json({
           message: "This reset link is invalid or has expired. Please request a new one.",
@@ -473,24 +451,7 @@ export function setupEmailAuth(app: Express): void {
   });
 
   // ─── Email verification on signup ──────────────────────────────────────────
-  // Same token shape + storage pattern as the password-reset flow: raw token
-  // sent via email, only the sha256 hash persisted, single-use + TTL.
-
-  const VERIFY_TOKEN_TTL_HOURS = 24;
-
-  async function issueAndSendVerification(userId: string, email: string, firstName: string | null) {
-    const raw = crypto.randomBytes(32).toString("hex");
-    const tokenHash = hashToken(raw);
-    const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000);
-    await db.insert(emailVerificationTokens).values({ userId, tokenHash, expiresAt });
-    const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
-    await sendEmailVerificationEmail({
-      toEmail: email,
-      firstName,
-      verifyUrl,
-      expiresInHours: VERIFY_TOKEN_TTL_HOURS,
-    });
-  }
+  // The issuer is issueEmailVerification above, shared with the Facebook sign-in.
 
   // POST /api/auth/send-verification — authenticated; (re)issues a token to the
   // caller's email. Used by the "Resend verification email" UI button.
@@ -516,7 +477,7 @@ export function setupEmailAuth(app: Express): void {
           eq(emailVerificationTokens.userId, userId),
           isNull(emailVerificationTokens.usedAt),
         ));
-      await issueAndSendVerification(userId, user.email, user.firstName ?? null);
+      await issueEmailVerification(userId, user.email, user.firstName ?? null);
       return res.status(200).json({
         message: "Verification email sent. Check your inbox.",
       });
@@ -541,7 +502,7 @@ export function setupEmailAuth(app: Express): void {
           errors: parsed.error.errors,
         });
       }
-      const tokenHash = hashToken(parsed.data.token);
+      const tokenHash = hashAuthToken(parsed.data.token);
       const now = new Date();
       const tokenRow = await db
         .select()
