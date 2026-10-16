@@ -14,6 +14,7 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { Pool } from "pg";
+import { registerAndSignIn } from "../../utils/auth";
 
 export const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:5000";
 export const PASSWORD = "TestPassword123!";
@@ -198,7 +199,7 @@ export function uid(prefix = ""): string {
 
 // ── App-API fixture builders (writes go through the app, never raw SQL) ─────────────────────
 
-/** Register a fresh traveler through the app's own register endpoint; returns the new user id. */
+/** Register a fresh traveler through the app's own register endpoint, then sign in on `ctx`; returns the new user id. */
 export async function registerUser(
   ctx: APIRequestContext,
   emailPrefix: string,
@@ -206,12 +207,12 @@ export async function registerUser(
   lastName = "User",
 ): Promise<{ id: string; email: string }> {
   const email = `${emailPrefix}-${uid()}@traveloure.test`;
-  const res = await ctx.post(`${BASE_URL}/api/auth/register`, {
-    data: { email, password: PASSWORD, firstName, lastName, userType: "user" },
-  });
-  expect(res.status(), `register failed: ${await res.text()}`).toBe(201);
-  const body = await res.json();
-  return { id: body.user.id as string, email };
+  const { id } = await registerAndSignIn(
+    ctx,
+    { email, password: PASSWORD, firstName, lastName, extra: { userType: "user" } },
+    BASE_URL,
+  );
+  return { id, email };
 }
 
 /** Create a fresh trip through the app API; returns tripId. */

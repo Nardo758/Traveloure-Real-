@@ -23,6 +23,7 @@ import { sql, eq } from "drizzle-orm";
 import { db } from "../db";
 import { trips, users, landingMomentEvents } from "@shared/schema";
 import { saveGeneratedItinerarySnapshot } from "../services/content-query.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -95,12 +96,9 @@ test("K2 absent momentKey → moment_key IS NULL", async () => {
 test("K3 invalid momentKey → 400 upstream, the insert is never reached", async () => {
   // Register a traveler and POST with a forged key; the route rejects it before any trip is made.
   const email = `mk-http-${RUN}@t.test`;
-  const reg = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: "TestPass123!", firstName: "MK", lastName: "Test", userType: "user" }),
+  const { cookie } = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: "TestPass123!", firstName: "MK", lastName: "Test", extra: { userType: "user" },
   });
-  assert.equal(reg.status, 201, `register: ${await reg.text()}`);
-  const cookie = (reg.headers.get("set-cookie") ?? "").split(";")[0];
   const res = await fetch(`${BASE_URL}/api/ai/generate-itinerary`, {
     method: "POST", headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ momentKey: "not_a_moment", destination: "Kyoto, Japan", dates: { start: "2026-10-01", end: "2026-10-04" }, travelers: 2 }),

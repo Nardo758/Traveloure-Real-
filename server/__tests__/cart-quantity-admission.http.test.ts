@@ -55,6 +55,7 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -132,19 +133,15 @@ before(async () => {
   assert.ok(health && health.ok, `server must be running on ${BASE_URL}`);
   await assertDisposableDb();
 
-  const reg = await api("/api/auth/register", undefined, "POST", {
+  const buyer = await registerAndSignIn({
+    baseUrl: BASE_URL,
     email: buyerEmail,
     password: PASSWORD,
     firstName: "Cart",
     lastName: "Quantity",
   });
-  if (reg.status !== 201) {
-    assert.fail(`register buyer failed (${reg.status}): ${await reg.text().catch(() => "")}`);
-  }
-  const setCookie = reg.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  buyerCookie = setCookie!.split(";")[0];
-  buyerId = ((await reg.json()) as any).user.id;
+  buyerCookie = buyer.cookie;
+  buyerId = buyer.id;
 
   // WAIT FOR THE SESSION TO BE READABLE, and do it as a PRECONDITION rather than by loosening an
   // assertion. `express-session` persists the row as the response is being written, so a request

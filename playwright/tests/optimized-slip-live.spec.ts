@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { execSync } from "child_process";
 import crypto from "crypto";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
 
@@ -26,17 +27,12 @@ test.describe("live optimized slip apply confirmation", () => {
     let comparisonId: string | undefined;
 
     try {
-      const registration = await page.request.post(`${BASE_URL}/api/auth/register`, {
-        data: {
-          email,
-          password,
-          firstName: "E2E",
-          lastName: "Slip Tester",
-          userType: "user",
-        },
-      });
-      expect(registration.status()).toBe(201);
-      userId = (await registration.json()).user.id;
+      const registration = await registerAndSignIn(
+        page.request,
+        { email, password, firstName: "E2E", lastName: "Slip Tester", extra: { userType: "user" } },
+        BASE_URL,
+      );
+      userId = registration.id;
 
       const trip = await page.request.post(`${BASE_URL}/api/trips`, {
         data: {

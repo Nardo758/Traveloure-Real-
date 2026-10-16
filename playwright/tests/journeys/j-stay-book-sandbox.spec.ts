@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { readFileSync } from "fs";
 import { Pool } from "pg";
 import { BASE_URL, uid, assertDisposableDb } from "./_journey-helpers";
+import { registerAndSignIn } from "../../utils/auth";
 
 /**
  * The rates route answers a failed read as `{ state: "unavailable" }` and nothing more (S1-d-2: the card never shows
@@ -144,10 +145,11 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
     expect(QA_DOMAIN, "QA_ACCOUNT_EMAIL_DOMAIN must be set — QA accounts only").not.toBe("");
     const api = page.request;
     const email = `stay-book-${uid()}@${QA_DOMAIN}`;
-    const reg = await api.post(`${BASE_URL}/api/auth/register`, {
-      data: { email, password: process.env.E2E_TEST_PASSWORD || "TestPass123!", firstName: "Sandbox", lastName: "Traveler", userType: "user" },
-    });
-    expect(reg.status(), await reg.text()).toBe(201);
+    await registerAndSignIn(
+      api,
+      { email, password: process.env.E2E_TEST_PASSWORD || "TestPass123!", firstName: "Sandbox", lastName: "Traveler", extra: { userType: "user" } },
+      BASE_URL,
+    );
 
     // One FRESH Kyoto plan per hotel tried: a comparison holds a capped number of places and a chosen place
     // becomes the plan's own, so a new plan is the honest way to offer the next hotel.

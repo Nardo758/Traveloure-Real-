@@ -22,6 +22,7 @@
 import { test, expect } from "@playwright/test";
 import { execSync } from "child_process";
 import crypto from "crypto";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
 
@@ -49,12 +50,12 @@ async function registerUser(
   firstName = "LB",
   lastName = "P1",
 ): Promise<string> {
-  const res = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: { email, password, firstName, lastName, userType: "user" },
-  });
-  expect(res.status()).toBe(201);
-  const body = await res.json();
-  return body.user.id as string;
+  const { id } = await registerAndSignIn(
+    page.request,
+    { email, password, firstName, lastName, extra: { userType: "user" } },
+    BASE_URL,
+  );
+  return id;
 }
 
 test.describe("LB-P1 — password reset token flow", () => {

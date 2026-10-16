@@ -43,6 +43,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -94,12 +95,9 @@ const PLAIN_LNG = 139.7671; // Tokyo — deliberately far from the property fixt
 
 async function createProviderAccount(): Promise<{ id: string; email: string; cookie: string }> {
   const email = `s8-${RUN}-${crypto.randomUUID().slice(0, 6)}@t.test`;
-  const res = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "S8", lastName: "Provider",
-  }));
-  assert.equal(res.status, 201, `register failed (${res.status}): ${res.text}`);
+  // The helper's own session predates the role flip; the login below (after the flip) is the one used.
+  const { id } = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "S8", lastName: "Provider" });
   createdEmails.push(email);
-  const id = res.body.user.id as string;
   await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${id}`);
   const login = await api("/api/auth/login", undefined, "POST", { email, password: PASSWORD });
   assert.equal(login.status, 200, "login must succeed");
@@ -109,16 +107,9 @@ async function createProviderAccount(): Promise<{ id: string; email: string; coo
 
 async function createTravelerAccount(): Promise<{ id: string; email: string; cookie: string }> {
   const email = `s8-${RUN}-trav-${crypto.randomUUID().slice(0, 6)}@t.test`;
-  const res = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "S8", lastName: "Traveler",
-  }));
-  assert.equal(res.status, 201, `register failed (${res.status}): ${res.text}`);
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "S8", lastName: "Traveler" });
   createdEmails.push(email);
-  const id = res.body.user.id as string;
-  const login = await api("/api/auth/login", undefined, "POST", { email, password: PASSWORD });
-  assert.equal(login.status, 200, "login must succeed");
-  const cookie = login.headers.get("set-cookie")!.split(";")[0];
-  return { id, email, cookie };
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 
 async function insertBooking(opts: { serviceId: string; status: string }): Promise<string> {

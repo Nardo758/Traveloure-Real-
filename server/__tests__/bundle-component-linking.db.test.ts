@@ -29,6 +29,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -87,12 +88,11 @@ async function verifyProviderForm(userId: string, email: string): Promise<void> 
 
 async function createProvider(): Promise<void> {
   const email = `s10-${RUN}@t.test`;
-  const res = await readOnce(await api("/api/auth/register", undefined, "POST", {
-    email, password: PASSWORD, firstName: "S10", lastName: "Bundle",
-  }));
-  assert.equal(res.status, 201, `register failed (${res.status}): ${res.text}`);
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: PASSWORD, firstName: "S10", lastName: "Bundle",
+  });
   createdEmails.push(email);
-  const id = res.body.user.id as string;
+  const id = actor.id;
   await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${id}`);
   await verifyProviderForm(id, email);
   const cookie = (await api("/api/auth/login", undefined, "POST", { email, password: PASSWORD }))

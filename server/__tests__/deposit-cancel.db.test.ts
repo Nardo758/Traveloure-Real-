@@ -74,6 +74,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import Stripe from "stripe";
 import { sql } from "drizzle-orm";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 // Dynamic import, deliberately AFTER the env guards above: static `import` declarations hoist above
 // every statement in ESM, so a static `import { db }` would execute ../db (which throws on a missing
@@ -140,13 +141,10 @@ async function assertDisposableDb(): Promise<void> {
 }
 
 async function registerUser(email: string, first: string): Promise<string> {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: first, lastName: "DepositCancel" }),
+  const actor = await registerAndSignIn({
+    baseUrl: BASE_URL, email, password: PASSWORD, firstName: first, lastName: "DepositCancel",
   });
-  assert.equal(res.status, 201, `register ${email} failed (${res.status}): ${await res.clone().text()}`);
-  return ((await res.json()) as any).user.id;
+  return actor.id;
 }
 
 async function loginCookie(email: string): Promise<string> {

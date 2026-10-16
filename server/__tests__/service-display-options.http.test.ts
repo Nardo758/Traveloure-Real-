@@ -39,6 +39,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -93,18 +94,10 @@ interface Actor {
 
 async function registerActor(label: string): Promise<Actor> {
   const email = emailTag(label);
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "Disp", lastName: label }),
-  });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Disp", lastName: label });
   createdEmails.push(email);
-  await pool.query(`UPDATE users SET role = 'service_provider' WHERE id = $1`, [body.user.id]);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  await pool.query(`UPDATE users SET role = 'service_provider' WHERE id = $1`, [actor.id]);
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 
 function api(path: string, cookie: string | undefined, method = "GET", body?: unknown) {

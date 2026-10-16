@@ -42,22 +42,24 @@
  * Run: npx playwright test home-gate --project=chromium
  */
 import { test, expect, type Page } from "@playwright/test";
+import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /** A signed-in traveler with a plan of their own — `slip-rail-actions.spec.ts`'s pattern. */
 async function registerAndCreateTrip(page: Page, tag: string): Promise<string> {
-  const reg = await page.request.post(`${BASE_URL}/api/auth/register`, {
-    data: {
+  await registerAndSignIn(
+    page.request,
+    {
       email: `e2e-home-${tag}-${uid()}@example.com`,
       password: "HomeGate123!",
       firstName: "Home",
       lastName: "Gate",
-      userType: "user",
+      extra: { userType: "user" },
     },
-  });
-  expect(reg.status(), await reg.text()).toBe(201);
+    BASE_URL,
+  );
   const trip = await page.request.post(`${BASE_URL}/api/trips`, {
     data: {
       title: "Home gate e2e plan",

@@ -47,7 +47,7 @@
 // (`npx tsx scripts/seed-personas.ts --apply`) and the CI admin (`scripts/seed-ci-test-users.ts`).
 
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from "@playwright/test";
-import { loginAs } from "../../playwright/utils/auth";
+import { loginAs, registerAndSignIn } from "../../playwright/utils/auth";
 import { PERSONAS, PERSONA_PASSWORD, CI_ADMIN_EMAIL, CI_ADMIN_PASSWORD } from "../../playwright/tests/personas/_persona-helpers";
 import { PROVISIONAL_BOOKING_HINT } from "../../shared/booking-visibility";
 
@@ -162,10 +162,8 @@ async function publishAndApprove(seller: APIRequestContext, c: SellerCase): Prom
 
 async function registerTraveler(page: Page): Promise<void> {
   const email = `j45-traveler-${RUN}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-  const reg = await page.request.post("/api/auth/register", {
-    data: { email, password: "Journey45!pass", firstName: "Journey", lastName: "Traveler" },
-  });
-  expect(reg.status(), `register traveler: ${await reg.text()}`).toBe(201);
+  // Relative base: page.request resolves against the project's baseURL.
+  await registerAndSignIn(page.request, { email, password: "Journey45!pass", firstName: "Journey", lastName: "Traveler" }, "");
   const terms = await page.request.post("/api/auth/accept-terms", { data: { acceptTerms: true, acceptPrivacy: true } });
   expect(terms.ok()).toBe(true);
 }

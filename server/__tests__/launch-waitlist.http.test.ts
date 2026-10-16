@@ -32,6 +32,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -49,14 +50,8 @@ let memberCookie = "";
 let market = "";
 
 async function register(email: string): Promise<{ cookie: string; id: string }> {
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "Lw", lastName: "One" }),
-  });
-  const text = await res.text();
-  assert.equal(res.status, 201, text);
-  return { cookie: res.headers.get("set-cookie")!.split(";")[0], id: (JSON.parse(text) as any).user.id };
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Lw", lastName: "One" });
+  return { cookie: actor.cookie, id: actor.id };
 }
 
 async function call(method: string, path: string, cookie: string | null, body?: unknown) {

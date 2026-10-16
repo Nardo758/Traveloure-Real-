@@ -43,6 +43,7 @@ import { readBand, resolveTravelerServiceFeeSnapshot } from "../services/fee-res
 import { TRAVELER_SERVICE_FEE_BAND } from "../services/fee-band-requirements";
 import { buildTravelerFeePreview } from "../services/traveler-fee-preview.service";
 import { grantTripPass } from "../services/trip-entitlement.service";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -127,15 +128,15 @@ before(async () => {
   smallPrice = Math.round((cap / rate / 2) * 100) / 100;
   bigPrice = Math.round((cap / rate) * 3 * 100) / 100;
 
-  const reg = await api("/api/auth/register", undefined, "POST", {
+  const buyer = await registerAndSignIn({
+    baseUrl: BASE_URL,
     email: buyerEmail,
     password: PASSWORD,
     firstName: "Fee",
     lastName: "Preview",
   });
-  if (reg.status !== 201) assert.fail(`register failed (${reg.status}): ${await reg.text().catch(() => "")}`);
-  buyerCookie = reg.headers.get("set-cookie")!.split(";")[0];
-  buyerId = ((await reg.json()) as any).user.id;
+  buyerCookie = buyer.cookie;
+  buyerId = buyer.id;
 
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${ids.provider}, ${`feepv-${RUN}-prov@t.test`}, 'Prov', 'Fixture', 'service_provider')`);

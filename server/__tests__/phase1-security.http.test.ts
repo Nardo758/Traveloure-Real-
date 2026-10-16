@@ -22,6 +22,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 import { bookingRequestWriteStanding } from "../services/booking-agent-claim.service";
 import { eaClientLabel } from "../../client/src/lib/ea-client-label";
 
@@ -38,15 +39,7 @@ const createdRequestIds: string[] = [];
 
 async function register(label: string, role: string | null): Promise<Account> {
   const email = `p1sec-${RUN}-${label}@traveloure.test`;
-  const response = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "Phase", lastName: label }),
-  });
-  const text = await response.text();
-  assert.equal(response.status, 201, text);
-  const cookie = response.headers.get("set-cookie")!.split(";")[0];
-  const id = (JSON.parse(text) as { user: { id: string } }).user.id;
+  const { id, cookie } = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Phase", lastName: label });
   if (role) await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, id]);
   const account = { id, email, cookie };
   accounts[label] = account;

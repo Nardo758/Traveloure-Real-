@@ -38,6 +38,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 import { storage } from "../storage";
 import { resolvePublishVerification } from "../services/publish-verification.service";
 
@@ -73,18 +74,10 @@ async function assertDisposableDb(): Promise<void> {
 interface Actor { id: string; email: string; cookie: string; }
 async function registerProvider(label: string): Promise<Actor> {
   const email = `office-${RUN}-${label}@t.test`;
-  const res = await fetch(`${BASE_URL}/api/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password: PASSWORD, firstName: "OF", lastName: label }),
-  });
-  if (res.status !== 201) assert.fail(`register(${label}) failed (${res.status}): ${await res.text()}`);
-  const setCookie = res.headers.get("set-cookie");
-  assert.ok(setCookie, "register must set a session cookie");
-  const body = (await res.json()) as any;
+  const actor = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "OF", lastName: label });
   createdEmails.push(email);
-  await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${body.user.id}`);
-  return { id: body.user.id, email, cookie: setCookie!.split(";")[0] };
+  await db.execute(sql`UPDATE users SET role = 'service_provider' WHERE id = ${actor.id}`);
+  return { id: actor.id, email, cookie: actor.cookie };
 }
 async function loginCookie(email: string, password: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
