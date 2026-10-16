@@ -23,3 +23,17 @@ test("K3: a rate with no usable answer gives no sentence for its half", () => {
   assert.equal(earnKeepSentence(null), null);
   assert.equal(earnKeepSentence({ expertPlatformRate: null, providerPlatformRate: 0.1 }), "Providers keep 90% (10%).");
 });
+
+test("K4 (FE-2): a cohort rate carries the F3 clause, with the server's notice days", () => {
+  assert.equal(
+    earnKeepSentence({ expertPlatformRate: 0.15, providerPlatformRate: 0.1, expertCohort: { label: "beta", noticeDays: 30 } }),
+    "Experts and planners keep 85% of your planning fee: beta cohort rate, locked when you join, 30 days' written notice before any change. Providers keep 90% (10%).",
+  );
+  // No notice days from the server: the notice clause is left out, never a typed number.
+  assert.equal(
+    earnKeepSentence({ expertPlatformRate: 0.15, expertCohort: { label: "beta", noticeDays: null } }),
+    "Experts and planners keep 85% of your planning fee: beta cohort rate, locked when you join.",
+  );
+  // A cohort with no rate still gives no sentence.
+  assert.equal(earnKeepSentence({ expertPlatformRate: null, expertCohort: { label: "beta", noticeDays: 30 } }), null);
+});

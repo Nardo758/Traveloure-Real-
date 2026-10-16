@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { guardedDeleteProviderService } from "./service-delete-guard";
 import { assertRoleTransitionAllowed } from "./role-transition";
+import { stampApprovalCohort } from "./expert-rate-cohort.service";
 import {
   users, contactSubmissions, notifications, accessAuditLogs,
   serviceBookings, providerServices, serviceReviews, reviewModerationLogs,
@@ -223,6 +224,7 @@ export async function updateUserRole(
   userId: string,
   role: string,
   actor: { actorId: string; actorRole: string; reason?: string },
+  options: { assignRateCohort?: boolean } = {},
 ) {
   // ATOMIC: role update and audit insert commit or roll back together.
   // A role change without an audit record must never be possible — if the
@@ -255,6 +257,18 @@ export async function updateUserRole(
         reason: actor.reason ?? null,
       },
     } as any);
+
+    // FE-2 (ledger 2026-10-16-fe2-beta-cohort): an expert approval joins the approval cohort IN THIS
+    // TRANSACTION, with its own `rate_cohort_assigned` audit row, so a role change, its cohort stamp
+    // and both audit rows commit or roll back together. Stamps once; a re-approval never re-stamps.
+    if (options.assignRateCohort) {
+      await stampApprovalCohort(tx as any, {
+        userId,
+        role,
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+      });
+    }
   });
 }
 

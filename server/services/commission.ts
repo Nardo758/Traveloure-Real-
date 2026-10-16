@@ -8,6 +8,8 @@
  *   Tier 2 — Affiliate        → platform 0.70 / partner 0.30 (constant; per-partner bands seeded dormant)
  *   Tier 3 — Per-expert EXP-OVR → users.commission_override_platform_fee_percent, else the deprecated
  *            users.commission_override_expert_share_percent (override-wins; resolveCommissionOverride)
+ *   Tier 3b — Expert rate cohort (FE-2) → users.rate_cohort's band, planning fees only, until the
+ *            cohort's end date (shared/expert-rate-cohort.ts); else the ordinary band lookup below
  *   Tier 4 — Provider line item → policy-aware band (beta_flat OR tiered category band)
  *   Tier 5 — Expert / default  → fee_bands.expert_standard
  *   Tier 6 — Safety net        → constants EXPERT_SHARE_RATE / PLATFORM_FEE_RATE
@@ -28,6 +30,7 @@
  */
 
 import { resolveCommissionOverride } from "./commission-override";
+import { resolveCohortBandRate } from "./expert-rate-cohort.service";
 import { db } from "../db";
 import { eq, sql } from "drizzle-orm";
 import { users } from "@shared/schema";
@@ -598,6 +601,17 @@ async function resolveInsuranceFromCategory(_category?: string | null) {
  *
  * expertShareRate + platformFeeRate always sum to 1.
  */
+/**
+ * FE-2 ruling 4: a rate cohort applies to an expert's PLANNING fees. A provider line, a tip and the
+ * flat Booking Concierge fee are not planning fees, so the cohort never prices them.
+ */
+export function cohortAppliesToLine(opts: { source?: string | null; category?: string | null }): boolean {
+  if (opts.source === "provider" || opts.source === "ai" || opts.source === "affiliate") return false;
+  if (opts.category === "provider_commission_percent") return false;
+  if (opts.category === "tip" || opts.category === CONCIERGE_BOOKING_CONCERN) return false;
+  return true;
+}
+
 export async function resolveCommissionRates(
   categoryOrOptions?: string | null | ResolveOptions,
 ): Promise<CommissionRates> {
@@ -647,6 +661,7 @@ export async function resolveCommissionRates(
         .select({
           platformFee: users.commissionOverridePlatformFeePercent,
           expertShare: users.commissionOverrideExpertSharePercent,
+          rateCohort: users.rateCohort,
         })
         .from(users)
         .where(eq(users.id, expertId))
@@ -661,6 +676,17 @@ export async function resolveCommissionRates(
           platformFeeRate: override.platformRate,
           ...insuranceFields,
         };
+      }
+      // Tier 3b — FE-2 rate cohort (ledger 2026-10-16-fe2-beta-cohort). An expert in a cohort pays
+      // the cohort's band on planning fees (ruling 4): not on a provider line, a tip or the flat
+      // Booking Concierge fee, and Ready-Made sales never reach this resolver. A cohort past its
+      // end date, or whose band is unusable, gives null and the ordinary band lookup below applies.
+      if (row?.rateCohort && cohortAppliesToLine({ source, category })) {
+        const cohortBand = await resolveCohortBandRate(row.rateCohort);
+        if (cohortBand) {
+          const insuranceFields = await resolveInsuranceFromCategory(category);
+          return buildRatesFromBand(cohortBand.rate, insuranceFields);
+        }
       }
     } catch {
       // fall through to band lookup
