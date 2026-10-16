@@ -10,7 +10,7 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `4bbdb03d30c38501676c8ad5e76c3950df859e4aaa2d92a48c7d2672e0da8315`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `fc7e659e2dc0db973c19d0eb2a6222d74b9c04720497d3f3e8281e045d4ed960`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -673,7 +673,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/vendors | other | session-self | server/routes.ts:2742 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/viator/availability | other | session-self | server/routes/content.routes.ts:3577 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/visa/requirements | other | public-or-system | server/routes/experts.routes.ts:649 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/waitlist | other | session-self | server/routes/launch-waitlist.routes.ts:28 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/waitlist | other | public-or-system | server/routes/launch-waitlist.routes.ts:28 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/wallet/add-credits | payments | session-self | server/routes/payments.routes.ts:277 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/webhooks/persona | other | signature | server/routes/webhooks.routes.ts:103 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/webhooks/stripe | payments | signature | server/routes/webhooks.routes.ts:530 | Not run: evidence manifest SHA-256 is stale. |

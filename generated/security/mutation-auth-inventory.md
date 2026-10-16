@@ -5,7 +5,7 @@ Generated from `server/routes.ts`. **698** raw mounted mutation registrations an
 The unique-pair count is **+143** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
 Category totals: payments 31; admin 176; user-data 241; other 241.
-Boundary totals: admin-role 176; session-self 357; resource-owner 102; signature 6; public-or-system 48; unknown 0.
+Boundary totals: admin-role 176; session-self 356; resource-owner 102; signature 6; public-or-system 49; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -670,7 +670,7 @@ Boundary totals: admin-role 176; session-self 357; resource-owner 102; signature
 | POST | `/api/vendors` | other | session-self | no | unknown | `server/routes.ts:2742` | unknown | unknown |
 | POST | `/api/viator/availability` | other | session-self | no | unknown | `server/routes/content.routes.ts:3577` | unknown | unknown |
 | POST | `/api/visa/requirements` | other | public-or-system | no | unknown | `server/routes/experts.routes.ts:649` | unknown | unknown |
-| POST | `/api/waitlist` | other | session-self | no | unknown | `server/routes/launch-waitlist.routes.ts:28` | unknown | unknown |
+| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:28` | unknown | unknown |
 | POST | `/api/wallet/add-credits` | payments | session-self | no | self | `server/routes/payments.routes.ts:277` | unknown | unknown |
 | POST | `/api/webhooks/persona` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:103` (/persona) | unknown | unknown |
 | POST | `/api/webhooks/stripe` | payments | signature | no | unknown | `server/routes/webhooks.routes.ts:530` (/stripe) | unknown | unknown |

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "4bbdb03d30c38501676c8ad5e76c3950df859e4aaa2d92a48c7d2672e0da8315",
+  "manifestSha256": "fc7e659e2dc0db973c19d0eb2a6222d74b9c04720497d3f3e8281e045d4ed960",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -13228,17 +13228,17 @@
       "source": "server/routes/launch-waitlist.routes.ts",
       "line": 28,
       "risk": "other",
-      "expectedAuth": "required",
+      "expectedAuth": "public",
       "expectedRoles": [],
       "expectedOwnership": "unknown",
-      "expectedBoundary": "session-self",
+      "expectedBoundary": "public-or-system",
       "ownershipApplies": false,
       "fixtureStatus": "unknown",
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/waitlist",
       "tested": false,
-      "reason": "Other-category endpoint is intentionally outside the strict tested set."
+      "reason": "Public-or-system boundary is intentionally outside the strict protected-endpoint test set."
     },
     {
       "method": "POST",

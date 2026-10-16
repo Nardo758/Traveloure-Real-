@@ -151,10 +151,10 @@
   },
   "boundaryTotals": {
     "admin-role": 176,
-    "session-self": 357,
+    "session-self": 356,
     "resource-owner": 102,
     "signature": 6,
-    "public-or-system": 48,
+    "public-or-system": 49,
     "unknown": 0
   },
   "historicalComparison": {
@@ -11914,10 +11914,10 @@
       "source": "server/routes/launch-waitlist.routes.ts",
       "line": 28,
       "risk": "other",
-      "expectedAuth": "required",
+      "expectedAuth": "public",
       "expectedRoles": [],
       "expectedOwnership": "unknown",
-      "expectedBoundary": "session-self",
+      "expectedBoundary": "public-or-system",
       "ownershipApplies": false,
       "fixtureStatus": "unknown",
       "testStatus": "unknown",
