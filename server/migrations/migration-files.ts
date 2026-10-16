@@ -2022,7 +2022,7 @@ export const MIGRATION_FILES = [
   // 375 — FE-1 (a), ledger 2026-10-12-fe1-fee-integrity: users.commission_override_platform_fee_percent,
   // the per-earner override stated as the platform fee (additive nullable numeric(5,2), no default /
   // CHECK / index / backfill). Both resolvers prefer it over the old expert-share column, which stays
-  // readable. HELD FOR LEON'S COMMENT on the PR.
+  // readable. Migration 375 SQL approved by Leon — comment 19:26Z on #1437.
   "375_users_platform_fee_override.sql",
   // 376 — affiliate partner licence, attribution and public_ok (TC-2 Phase 1 decision 1, ledger
   // 2026-10-12-tc2-affiliate-legs). Three additive nullable columns on affiliate_partners; no DEFAULT,
