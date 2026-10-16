@@ -34,6 +34,15 @@
  *       or an unknown id is 404 and writes no audit row.
  *   W16 (LW-1e) A QA-domain address is flagged is_qa from its insert: left out of the counts (reported as
  *       qaExcluded) and the default CSV, present with is_qa=true under `?includeQa=1`.
+ *   W17 (LW-2) The market: none ⇒ the launch market; `goa` ⇒ goa with source `goa_waitlist_page`; a key outside
+ *       OPERATING_MARKETS (`lisbon`) ⇒ 400 UNKNOWN_MARKET and nothing written.
+ *   W18 (LW-2) The same email in two cities is two rows; a repeat in the same city answers byte-for-byte the same and
+ *       keeps one row.
+ *   W19 (LW-2) Consent is per city: each row names the version it was shown, `f1-2026-10-15:<market>`, whose stored
+ *       wording is the line that city's tick shows; a tick for one city never consents another.
+ *   W20 (LW-2) Admin: `byMarket` counts every market with QA rows left out; `?market=` filters the counts and the CSV
+ *       (whose market_slug column names the city); an unknown market is 400; search and delete still work.
+ *   W21 (LW-2) A provider sign-up for another city is filed under that city.
  *
  * Run against a disposable dev database only, with the app started:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/launch-waitlist.http.test.ts
@@ -42,7 +51,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
 import { registerAndSignIn } from "./fixtures/register-and-sign-in";
-import { isWaitlistQaEmail } from "../../shared/launch-waitlist";
+import { isWaitlistQaEmail, waitlistConsentLine } from "../../shared/launch-waitlist";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -457,4 +466,99 @@ test("W16 — a QA-domain row is flagged is_qa, left out of the counts and the d
     [adminId],
   );
   assert.equal(audit.rows[0].metadata.includeQa, true, "the export audit row says QA rows were included");
+});
+
+test("W17 — the market: none is the launch market, goa is goa, lisbon is refused", async () => {
+  const email = W_EMAIL("w17");
+  assert.equal((await call("POST", "/api/waitlist", null, { email })).status, 200);
+  assert.equal((await call("POST", "/api/waitlist", null, { email, market: "GOA" })).status, 200);
+  const rows = await rowsFor(email);
+  assert.deepEqual(rows.map((r: any) => r.market_slug).sort(), [market, "goa"].sort());
+  assert.equal(rows.find((r: any) => r.market_slug === "goa").source, "goa_waitlist_page");
+
+  const other = W_EMAIL("w17-lisbon");
+  const refused = await call("POST", "/api/waitlist", null, { email: other, market: "lisbon" });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.json?.code, "UNKNOWN_MARKET");
+  assert.equal((await rowsFor(other)).length, 0);
+});
+
+test("W18 — two cities are two rows; a repeat in one city is the same answer and one row", async () => {
+  const email = W_EMAIL("w18");
+  const first = await call("POST", "/api/waitlist", null, { email, market: "porto" });
+  const second = await call("POST", "/api/waitlist", null, { email, market: "porto" });
+  assert.equal(first.status, second.status);
+  assert.equal(first.text, second.text);
+  await call("POST", "/api/waitlist", null, { email, market: "bogota" });
+  const rows = await rowsFor(email);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r: any) => r.market_slug).sort(), ["bogota", "porto"]);
+});
+
+test("W19 — the stored consent version is the city shown, and a tick covers only that city", async () => {
+  const email = W_EMAIL("w19");
+  await call("POST", "/api/waitlist", null, { email, market: "goa", consent: true });
+  await call("POST", "/api/waitlist", null, { email, market: "mumbai", consent: false });
+  await call("POST", "/api/waitlist", null, { email, consent: true });
+  const rows = await rowsFor(email);
+  const goa = rows.find((r: any) => r.market_slug === "goa");
+  const mumbai = rows.find((r: any) => r.market_slug === "mumbai");
+  const launch = rows.find((r: any) => r.market_slug === market);
+  assert.ok(goa.consent_at);
+  assert.equal(mumbai.consent_at, null, "a tick for Goa does not consent Mumbai");
+  assert.equal(mumbai.consent_text_version, null);
+  for (const row of [goa, launch]) {
+    assert.equal(row.consent_text_version, `f1-2026-10-15:${row.market_slug}`);
+    const t = await pool.query(
+      `SELECT body FROM consent_texts WHERE consent_key = 'launch_waitlist_updates' AND version = $1`,
+      [row.consent_text_version],
+    );
+    assert.equal(t.rows.length, 1);
+    assert.ok(t.rows[0].body.startsWith(waitlistConsentLine(row.market_slug)), `the wording shown for ${row.market_slug}`);
+  }
+  assert.match(waitlistConsentLine("goa"), /^Email me when Traveloure opens in Goa\.$/);
+});
+
+test("W20 — admin: per-market counts without QA rows, a market filter, the market column", async () => {
+  const before = (await call("GET", "/api/admin/waitlist", adminCookie)).json;
+  const goaBefore = before.byMarket.find((m: any) => m.marketSlug === "goa");
+  assert.ok(goaBefore, "every operating market is listed");
+  const real = W_EMAIL("w20");
+  const qa = QA_EMAIL("w20");
+  await call("POST", "/api/waitlist", null, { email: real, market: "goa" });
+  await call("POST", "/api/waitlist", null, { email: qa, market: "goa" });
+  const after = (await call("GET", "/api/admin/waitlist", adminCookie)).json;
+  assert.equal(after.byMarket.find((m: any) => m.marketSlug === "goa").travelers, goaBefore.travelers + 1, "the QA row is left out");
+  assert.equal(after.marketSlug, market, "the default is still the launch market");
+
+  const goaCounts = (await call("GET", "/api/admin/waitlist?market=goa", adminCookie)).json;
+  assert.equal(goaCounts.marketSlug, "goa");
+  assert.equal((await call("GET", "/api/admin/waitlist?market=lisbon", adminCookie)).status, 400);
+  assert.equal((await call("GET", "/api/admin/waitlist?market=goa", memberCookie)).status, 403);
+
+  const csv = parseCsv((await call("GET", "/api/admin/waitlist/export?market=goa", adminCookie)).text);
+  assert.ok(csv.length > 0 && csv.every((x) => x.market_slug === "goa"), "the CSV is filtered and names the market");
+  assert.ok(csv.some((x) => x.email === real));
+  assert.ok(!csv.some((x) => x.email === qa), "QA rows stay out of the default CSV");
+  const all = parseCsv((await call("GET", "/api/admin/waitlist/export?market=all", adminCookie)).text);
+  assert.ok(new Set(all.map((x) => x.market_slug)).size >= 2);
+  assert.equal((await call("GET", "/api/admin/waitlist/export?market=lisbon", adminCookie)).status, 400);
+
+  const found = (await call("GET", `/api/admin/waitlist/search?email=${encodeURIComponent(real)}`, adminCookie)).json;
+  const row = found.rows.find((r: any) => r.marketSlug === "goa");
+  assert.ok(row, "search finds the Goa row");
+  assert.equal((await call("DELETE", `/api/admin/waitlist/${row.id}`, adminCookie)).status, 200);
+});
+
+test("W21 — a provider sign-up for another city is filed under it", async () => {
+  const email = W_EMAIL("w21");
+  const r = await call("POST", "/api/waitlist", null, {
+    role: "provider", email, market: "jaipur", contactName: "Asha", serviceType: "guide_planner",
+  });
+  assert.equal(r.status, 200, r.text);
+  const rows = await rowsFor(email);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].market_slug, "jaipur");
+  assert.equal(rows[0].role, "provider");
+  assert.equal(rows[0].source, "jaipur_waitlist_page");
 });
