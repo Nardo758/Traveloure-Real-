@@ -17,6 +17,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getRoleHomePath } from "@/lib/role-utils";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
+import { socialSignInHref } from "@/lib/social-sign-in";
 
 interface SignInModalProps {
   open: boolean;
@@ -200,7 +201,8 @@ export function SignInModal({
     if (returnTo) {
       sessionStorage.setItem("traveloure_return_to", returnTo);
     }
-    window.location.href = "/api/login";
+    // LW-1b: a supply door carries its intent (and the page to return to) through the round trip.
+    window.location.href = intent === "supply" ? socialSignInHref("/api/login", { intent, returnTo }) : "/api/login";
   };
 
   return (

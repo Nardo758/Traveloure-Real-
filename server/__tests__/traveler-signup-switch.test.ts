@@ -16,6 +16,11 @@
  * S6 — the Ready-Made purchase gate: waitlist mode refuses a traveler and passes an admin and a QA-tagged account;
  *      open mode passes everyone.
  * S7 — the pure rules (decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath).
+ * S8 — Replit OIDC: a first-time traveler is refused in waitlist mode and passes in open mode; a first-time supply
+ *      sign-up passes in waitlist mode; an existing account signs in in waitlist mode.
+ * S9 — Facebook: the same four cases, and a new Facebook account records authProvider "facebook".
+ * S10 — the session stash: intent and a same-site return path survive; an open redirect, a stale stash and a
+ *      missing stash read as a traveler with no return path; taking the return path clears the stash.
  */
 
 import { describe, it, before, after, beforeEach } from "node:test";
@@ -25,6 +30,11 @@ import { db } from "../db.js";
 import { invalidatePlatformFlagCache, getTravelerSignupMode, getLaunchMarketSlug } from "../services/platform-flags.js";
 import { setupEmailAuth } from "../replit_integrations/auth/emailAuth.js";
 import { qaSignupCodeMatches } from "../services/qa-signup-code.js";
+import { authStorage } from "../replit_integrations/auth/storage.js";
+import { upsertUser } from "../replit_integrations/auth/replitAuth.js";
+import { facebookVerify } from "../replit_integrations/auth/facebookAuth.js";
+import { stashSignupIntent, readSignupIntent, takeStashedReturnTo } from "../replit_integrations/auth/signup-intent-stash.js";
+import { OAUTH_STATE_TTL_MS } from "../utils/oauth-state.js";
 import { decideWaitlistPurchase } from "../services/waitlist-purchase-gate.js";
 import {
   TRAVELER_WAITLIST,
@@ -39,6 +49,10 @@ import {
 const origExecute = (db as any).execute;
 const origSelect = (db as any).select;
 const origQaCode = process.env.QA_SIGNUP_CODE;
+const origGetUser = authStorage.getUser;
+const origGetUserByEmail = authStorage.getUserByEmail;
+const origUpsertUser = authStorage.upsertUser;
+const origFetch = global.fetch;
 
 let settings: Record<string, string | null> = {};
 let readThrows = false;
@@ -67,6 +81,10 @@ before(() => {
 });
 
 after(() => {
+  authStorage.getUser = origGetUser;
+  authStorage.getUserByEmail = origGetUserByEmail;
+  authStorage.upsertUser = origUpsertUser;
+  (global as any).fetch = origFetch;
   (db as any).execute = origExecute;
   (db as any).select = origSelect;
   if (origQaCode === undefined) delete process.env.QA_SIGNUP_CODE;
@@ -232,5 +250,92 @@ describe("S7 — the pure rules", () => {
     assert.equal(waitlistBlockedPath("kyoto"), "/kyoto?blocked=1");
     assert.equal(waitlistBlockedPath("../evil"), "/");
     assert.equal(waitlistBlockedPath(null), "/");
+  });
+});
+
+describe("S8 — Replit OIDC", () => {
+  let created: any[] = [];
+  beforeEach(() => {
+    created = [];
+    (global as any).fetch = async () => { throw new Error("network disabled in test"); };
+    authStorage.getUser = async () => undefined as any;
+    authStorage.getUserByEmail = async () => undefined as any;
+    authStorage.upsertUser = async (u: any) => { created.push(u); return { ...u, isSuspended: false } as any; };
+  });
+  it("waitlist mode refuses a first-time traveler and creates nothing", async () => {
+    await assert.rejects(() => upsertUser({ sub: "r-new-1" }), new RegExp(TRAVELER_WAITLIST));
+    assert.equal(created.length, 0);
+  });
+  it("waitlist mode lets a first-time supply sign-up through", async () => {
+    assert.equal(await upsertUser({ sub: "r-new-2" }, { intent: "supply" }), "r-new-2");
+    assert.equal(created.length, 1);
+  });
+  it("open mode lets a first-time traveler through", async () => {
+    settings.traveler_signup_mode = "open";
+    assert.equal(await upsertUser({ sub: "r-new-3" }), "r-new-3");
+  });
+  it("an existing account signs in in waitlist mode", async () => {
+    authStorage.getUser = async () => ({ id: "r-old", isSuspended: false }) as any;
+    assert.equal(await upsertUser({ sub: "r-old" }), "r-old");
+  });
+});
+
+describe("S9 — Facebook", () => {
+  const profile: any = { id: "4242", displayName: "F B", emails: [{ value: "fb-new@traveloure-qa.test" }], photos: [], name: { givenName: "F" } };
+  let created: any[] = [];
+  beforeEach(() => {
+    created = [];
+    (global as any).fetch = async () => { throw new Error("network disabled in test"); };
+    authStorage.getUser = async () => undefined as any;
+    authStorage.getUserByEmail = async () => undefined as any;
+    authStorage.upsertUser = async (u: any) => { created.push(u); return { ...u, isSuspended: false } as any; };
+  });
+  async function verify(intent?: "supply") {
+    let out: any;
+    await facebookVerify("t", "r", profile, (err, user, info) => { out = { err, user, info }; }, intent ? { intent } : {});
+    return out;
+  }
+  it("waitlist mode refuses a first-time traveler and creates nothing", async () => {
+    const out = await verify();
+    assert.equal(out.user, false);
+    assert.equal(out.info.code, TRAVELER_WAITLIST);
+    assert.ok(!JSON.stringify(out.info).includes("@"), "the refusal carries no email");
+    assert.equal(created.length, 0);
+  });
+  it("waitlist mode lets a first-time supply sign-up through, recorded as a Facebook account", async () => {
+    const out = await verify("supply");
+    assert.equal(out.user?.claims?.sub, "fb_4242");
+    assert.equal(created[0]?.authProvider, "facebook");
+  });
+  it("open mode lets a first-time traveler through", async () => {
+    settings.traveler_signup_mode = "open";
+    const out = await verify();
+    assert.equal(out.user?.claims?.sub, "fb_4242");
+  });
+  it("an existing Facebook account signs in in waitlist mode", async () => {
+    authStorage.getUser = async (id: string) => (id === "fb_4242" ? { id, email: "x@y.z", isSuspended: false } : undefined) as any;
+    const out = await verify();
+    assert.equal(out.user?.claims?.sub, "fb_4242");
+  });
+});
+
+describe("S10 — the session stash", () => {
+  it("carries intent and a same-site return path, and taking it clears it", () => {
+    const req: any = { query: { intent: "supply", returnTo: "/become-expert?type=local_expert" }, session: {} };
+    stashSignupIntent(req, 1_000);
+    assert.equal(readSignupIntent(req, 2_000), "supply");
+    assert.equal(takeStashedReturnTo(req, 2_000), "/become-expert?type=local_expert");
+    assert.equal(readSignupIntent(req, 2_000), "traveler");
+    assert.equal(takeStashedReturnTo(req, 2_000), null);
+  });
+  it("an open redirect is dropped, an unknown intent is a traveler, a stale stash reads as nothing", () => {
+    const req: any = { query: { intent: "admin", returnTo: "//evil.example/x" }, session: {} };
+    stashSignupIntent(req, 1_000);
+    assert.equal(readSignupIntent(req, 1_000), "traveler");
+    assert.equal(takeStashedReturnTo(req, 1_000), null);
+    const stale: any = { query: { intent: "supply", returnTo: "/x" }, session: {} };
+    stashSignupIntent(stale, 0);
+    assert.equal(readSignupIntent(stale, OAUTH_STATE_TTL_MS + 1), "traveler");
+    assert.equal(readSignupIntent({ session: {} }, 0), "traveler");
   });
 });
