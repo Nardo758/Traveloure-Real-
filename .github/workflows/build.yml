@@ -2413,6 +2413,13 @@ jobs:
       # still pass NO city. Static source pins: no DOM, no DB, no network.
       - name: Door source-field pins
         run: npx tsx --test client/src/lib/__tests__/plan-entry-source-fields.test.ts
+      # LW-1f (ledger `2026-10-16-lw1f-kyoto-ticker`): the single-city ticker. The committed client route list
+      # (shared/client-routes.generated.ts) must match App.tsx — a stale list would let the ticker's save-time link
+      # check refuse a real page or accept a removed one. Then the ticker's pure rules and its render proofs.
+      - name: Client route list is current
+        run: node scripts/generate-client-routes.cjs --check
+      - name: Ticker rules and ribbon render
+        run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts client/src/components/__tests__/ticker-ribbon.test.tsx
 
   trip-card-honesty:
     name: trip-card-honesty (L4 — 2026-09-07-trip-card-honesty)

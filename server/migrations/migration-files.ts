@@ -2049,4 +2049,8 @@ export const MIGRATION_FILES = [
   // 380 — bot_proposals.fact_id → place_facts(id) ON DELETE SET NULL (ledger 2026-10-15-bot-proposal-fact-fk), registered after 381, the order it landed. One
   // constraint, named as drizzle names it and declared in shared/schema.ts; idempotent. Migration 380 SQL approved by Leon — comment 01:33Z on #1463.
   "380_bot_proposals_fact_fk.sql",
+  // 384 — ticker_items (LW-1f, ledger 2026-10-16-lw1f-kyoto-ticker). One NEW table, no DEFAULT, CHECK, FK or index;
+  // every column but the key nullable; four seed rows (Marketing's lines, two inactive) ON CONFLICT (id) DO NOTHING.
+  // 382/383 are taken by FE-2 (#1475). Declared in shared/schema.ts. HELD for Leon's SQL comment.
+  "384_ticker_items.sql",
 ] as const;

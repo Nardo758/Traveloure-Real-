@@ -150,6 +150,8 @@ const AdminNeighborhoods = lazy(() => import("@/pages/admin/neighborhoods"));
 const AdminMarkets = lazy(() => import("@/pages/admin/markets"));
 // LW-1c: the launch waitlist — counts and a CSV download (admin only).
 const AdminWaitlist = lazy(() => import("@/pages/admin/waitlist"));
+// LW-1f: the launch-market ticker's lines — add, edit, reorder, turn on or off, preview (admin only).
+const AdminTicker = lazy(() => import("@/pages/admin/ticker"));
 // LW-1c: the launch market's waitlist page.
 const LaunchWaitlistPage = lazy(() => import("@/pages/launch-waitlist"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
@@ -1254,6 +1256,9 @@ function Router() {
       </Route>
       <Route path="/admin/waitlist">
         {() => <ProtectedRoute component={AdminWaitlist} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/ticker">
+        {() => <ProtectedRoute component={AdminTicker} requiredRole="admin" />}
       </Route>
       <Route path="/admin/event-packages">
         {() => <ProtectedRoute component={AdminEventPackages} requiredRole="admin" />}
