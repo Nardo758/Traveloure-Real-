@@ -20,6 +20,7 @@ import {
   writeEvidence,
 } from "./helpers";
 import { assertDisposableDb } from "../tests/journeys/_journey-helpers";
+import { registerAndSignIn } from "../utils/auth";
 
 const ROLE_USERS = {
   expert: { email: "ci-expert@traveloure.test", password: "CITestExpert!99", role: /expert/ },
@@ -85,21 +86,15 @@ async function loginRole(context: BrowserContext, key: keyof typeof ROLE_USERS):
 
 async function registerTraveler(context: BrowserContext, label: string): Promise<{ id: string; email: string }> {
   const email = uniqueEmail(label);
-  const response = await context.request.post(`${BASE_URL}/api/auth/register`, {
-    data: {
-      email,
-      password: "DeepUiAudit!24",
-      firstName: "DeepUI",
-      lastName: "Audit",
-      userType: "user",
-    },
-  });
-  expect(response.ok(), `traveler registration failed: ${response.status()} ${await response.text()}`).toBe(true);
-  const body = await response.json();
+  const { id } = await registerAndSignIn(
+    context.request,
+    { email, password: "DeepUiAudit!24", firstName: "DeepUI", lastName: "Audit", extra: { userType: "user" } },
+    BASE_URL,
+  );
   await context.request.post(`${BASE_URL}/api/auth/accept-terms`, {
     data: { acceptTerms: true, acceptPrivacy: true },
   });
-  return { id: String(body.user?.id), email };
+  return { id, email };
 }
 
 async function auditPage(page: Page): Promise<
