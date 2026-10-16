@@ -7,6 +7,9 @@ import {
   type SendEmailParams,
   type SendEmailResult,
 } from "./email.service";
+import { getWelcomeVerificationWindowDays } from "./platform-flags";
+import { welcomeVerificationRetryMinutes } from "../config/signup-welcome.config";
+import { WELCOME_AWAITING_VERIFICATION, WELCOME_NEVER_VERIFIED } from "@shared/welcome-verification";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export const SIGNUP_WELCOME_EMAIL_TYPE = "signup_welcome";
@@ -82,6 +85,9 @@ export async function deliverSignupWelcome(
   send: (payload: SendEmailParams) => Promise<SendEmailResult>,
   nextRetryAfter: (attempt: number) => Date,
 ): Promise<void> {
+  // Read outside the transaction: a cached settings read, never a lock holder.
+  const windowDays = await getWelcomeVerificationWindowDays();
+  const retryMinutes = welcomeVerificationRetryMinutes();
   await db.transaction(async (tx) => {
     const [row] = await tx.select().from(emailOutbox).where(eq(emailOutbox.id, outboxId)).for("update");
     if (!row || row.status !== "processing" || row.emailType !== SIGNUP_WELCOME_EMAIL_TYPE) return;
@@ -102,6 +108,23 @@ export async function deliverSignupWelcome(
     if (reason) {
       await tx.update(emailOutbox).set({
         status: "cancelled", lastError: reason, retryAfter: null, updatedAt: new Date(),
+      }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
+      return;
+    }
+
+    // AUTH-1 Finding A: no welcome reaches the provider before the address is verified. The account row
+    // is locked above, so a verification committing now is either seen here or waits for this to finish.
+    // A held row goes back to `pending` with no attempt counted and nothing sent; once the window has
+    // passed since the welcome was enqueued, it is cancelled instead. Times are the database's.
+    if (!account!.emailVerified) {
+      const ageCheck = await tx.execute(sql`
+        SELECT (${row.createdAt} <= NOW() - make_interval(days => ${windowDays})) AS expired`);
+      const expired = (ageCheck.rows?.[0] as { expired?: boolean } | undefined)?.expired === true;
+      await tx.update(emailOutbox).set(expired ? {
+        status: "cancelled", lastError: WELCOME_NEVER_VERIFIED, retryAfter: null, updatedAt: new Date(),
+      } : {
+        status: "pending", lastError: WELCOME_AWAITING_VERIFICATION,
+        retryAfter: sql`NOW() + make_interval(secs => ${retryMinutes * 60})`, updatedAt: new Date(),
       }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
       return;
     }
