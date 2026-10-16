@@ -42,6 +42,9 @@
  *       row that left a cancellable state between the handler's read and its write is REFUSED and
  *       writes nothing, rather than a second cancellation landing on a completed or already
  *       cancelled booking. Proven against a real database, both directions, plus the route shape.
+ *   T8  (PAY-1b) a paid session confirms the transport OPTION as well as the booking — the option
+ *       promotion no longer writes the int4 `booking_id` it overflowed — and a replayed delivery
+ *       against the confirmed booking resolves (the webhook's 200) instead of throwing.
  *
  * ONE FINDING BEYOND R-1'S TEXT, recorded and not repaired: R-1 reads the handler as storing the
  * checkout SESSION id as the confirmation code. It stores NOTHING — `service_bookings` has no
@@ -601,4 +604,61 @@ test("T7: a row that has left a cancellable state is REFUSED, and writes nothing
     !/booking\.status !== "pending" && booking\.status !== "confirmed"/.test(handler),
     "the re-typed status pair must be gone, not merely shadowed by the shared predicate",
   );
+});
+
+// ══ T8 — the option confirms, and a replay against a confirmed booking is a 200 (PAY-1b) ═══════
+//
+// The option promotion wrote `bookingId: parseInt(<booking-epoch>)` into the int4
+// `transport_booking_options.booking_id`. An epoch in milliseconds overflows int4, so every real
+// paid session confirmed the booking, threw on the option, skipped the fee ledger and answered 500
+// on every redelivery. Nothing reads that column (the link back is `booking_details.optionId`), so
+// the promotion now writes the status only. This drives the dispatcher the webhook route answers
+// from: a resolved call is the route's 200, a throw its 500. The session lookup is stubbed on the
+// SDK's shared resource prototype; no request reaches Stripe.
+test("T8: a paid session confirms the option; a replayed delivery against a confirmed booking resolves", async () => {
+  const Stripe = (await import("stripe")).default;
+  const { stripePaymentService } = await import("../services/stripe-payment.service");
+  const sessionsProto = Object.getPrototypeOf(new Stripe("sk_test_t8_probe").checkout.sessions);
+  const originalRetrieve = sessionsProto.retrieve;
+
+  const bookingId = await seedTransportBooking({ status: "pending" });
+  const optionId = `tpi-${RUN}-opt-t8`;
+  await db.execute(sql`
+    INSERT INTO transport_booking_options (id, booking_type, source, title, mode_type)
+    VALUES (${optionId}, 'platform', 'platform', 'T8 fixture train', 'train')
+  `);
+  const sessionId = `cs_test_${RUN}_t8`;
+  const pi = `pi_${RUN}_t8`;
+  sessionsProto.retrieve = async (id: string) => ({
+    id,
+    object: "checkout.session",
+    payment_status: "paid",
+    payment_intent: pi,
+    amount_total: 24999,
+    metadata: { type: "transport_booking", bookingId, optionId },
+  });
+  const delivery = () =>
+    stripePaymentService.handleWebhook({
+      type: "checkout.session.completed",
+      data: { object: { id: sessionId, metadata: { type: "transport_booking" } } },
+    } as any);
+
+  try {
+    await delivery();
+    const booking = await readBooking(bookingId);
+    assert.equal(booking.status, "confirmed");
+    assert.equal(booking.stripe_payment_intent_id, pi);
+    const opt = await db.execute(sql`
+      SELECT booking_status, booking_id FROM transport_booking_options WHERE id = ${optionId}
+    `);
+    assert.equal((opt.rows[0] as any).booking_status, "confirmed", "the option must confirm with its booking");
+    assert.equal((opt.rows[0] as any).booking_id, null, "the int4 booking_id is no longer written");
+
+    await assert.doesNotReject(delivery(), "a replay against a confirmed booking must not throw (the route's 200)");
+    assert.equal((await readBooking(bookingId)).status, "confirmed");
+  } finally {
+    sessionsProto.retrieve = originalRetrieve;
+    await db.execute(sql`DELETE FROM transport_booking_options WHERE id = ${optionId}`).catch(() => {});
+    await db.execute(sql`DELETE FROM fee_ledger WHERE booking_id = ${bookingId}`).catch(() => {});
+  }
 });
