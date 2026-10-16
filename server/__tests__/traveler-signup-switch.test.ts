@@ -20,6 +20,7 @@
  * S8 — Replit OIDC: a first-time traveler is refused in waitlist mode and passes in open mode; a first-time supply
  *      sign-up passes in waitlist mode; an existing account signs in in waitlist mode.
  * S9 — Facebook: the same four cases, and a new Facebook account records authProvider "facebook".
+ * S11 — GET /api/public/signup-mode answers exactly { mode, launchMarketSlug }, no-store.
  * S10 — the session stash: intent and a same-site return path survive; an open redirect, a stale stash and a
  *      missing stash read as a traveler with no return path; taking the return path clears the stash.
  */
@@ -37,6 +38,7 @@ import { facebookVerify } from "../replit_integrations/auth/facebookAuth.js";
 import { stashSignupIntent, readSignupIntent, takeStashedReturnTo } from "../replit_integrations/auth/signup-intent-stash.js";
 import { OAUTH_STATE_TTL_MS } from "../utils/oauth-state.js";
 import { decideWaitlistPurchase } from "../services/waitlist-purchase-gate.js";
+import launchPublicRouter from "../routes/launch-public.routes.js";
 import {
   TRAVELER_WAITLIST,
   TRAVELER_WAITLIST_MESSAGE,
@@ -359,5 +361,31 @@ describe("S10 — the session stash", () => {
     stashSignupIntent(stale, 0);
     assert.equal(readSignupIntent(stale, OAUTH_STATE_TTL_MS + 1), "traveler");
     assert.equal(readSignupIntent({ session: {} }, 0), "traveler");
+  });
+});
+
+describe("S11 — the public signup-mode read", () => {
+  async function readSignupMode() {
+    const layer = (launchPublicRouter as any).stack.find((l: any) => l.route?.path === "/api/public/signup-mode");
+    assert.ok(layer, "the route is registered");
+    const res: any = {
+      headers: {} as Record<string, string>,
+      body: undefined,
+      set(k: string, v: string) { this.headers[k] = v; return this; },
+      json(payload: any) { this.body = payload; return this; },
+    };
+    await layer.route.stack[0].handle({}, res);
+    return res;
+  }
+  it("answers exactly { mode, launchMarketSlug }, never cached", async () => {
+    const res = await readSignupMode();
+    assert.deepEqual(res.body, { mode: "waitlist", launchMarketSlug: "kyoto" });
+    assert.equal(res.headers["Cache-Control"], "no-store");
+  });
+  it("reads open mode and an unset market honestly", async () => {
+    settings = { new_user_registration_enabled: "true", traveler_signup_mode: "open" };
+    invalidatePlatformFlagCache();
+    const res = await readSignupMode();
+    assert.deepEqual(res.body, { mode: "open", launchMarketSlug: null });
   });
 });

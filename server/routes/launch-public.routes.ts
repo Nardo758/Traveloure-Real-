@@ -4,14 +4,15 @@
 // the flag cache's TTL.
 import { Router } from "express";
 import { getTravelerSignupMode, getLaunchMarketSlug } from "../services/platform-flags";
-import { waitlistBlockedPath } from "@shared/launch-signup";
 
 const router = Router();
 
 router.get("/api/public/signup-mode", async (_req, res) => {
   const [mode, launchMarketSlug] = await Promise.all([getTravelerSignupMode(), getLaunchMarketSlug()]);
   res.set("Cache-Control", "no-store");
-  res.json({ mode, launchMarketSlug, waitlistPath: waitlistBlockedPath(launchMarketSlug).replace(/\?blocked=1$/, "") });
+  // Exactly these two keys (decision-maker, Oct 16, 2026): the mode, and the launch market the client builds the
+  // waitlist path from. No derived path is published beside them.
+  res.json({ mode, launchMarketSlug });
 });
 
 export default router;
