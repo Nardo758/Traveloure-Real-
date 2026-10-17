@@ -47,6 +47,10 @@ const fs = require("fs");
 
 const SPEC_RE = /([A-Za-z0-9_.\-\/]+\.spec\.ts)\b/g;
 const WORKFLOW_HEADER_RE = /^\+\+\+ b\/(\.github\/workflows\/[^\s]+\.ya?ml)\s*$/;
+// A DELETED workflow's diff names it only on the `--- a/<path>` line (its `+++` is /dev/null), and
+// every line it held is a `-` line: those are removals, so a spec moved out of a deleted workflow into
+// another one is a relocation, never an arming (CI-1b (e)2 consolidated seven gates exactly this way).
+const WORKFLOW_MINUS_RE = /^--- a\/(\.github\/workflows\/[^\s]+\.ya?ml)\s*$/;
 const RUN_ID_RE = /actions\/runs\/(\d+)/g;
 
 function basename(p) {
@@ -57,15 +61,23 @@ function basename(p) {
 function specDeltaByWorkflow(diffText) {
   const byWf = new Map();
   let wf = null;
+  let minusWf = null;
   for (const line of (diffText || "").split("\n")) {
+    if (line.startsWith("--- ") && !wf) {
+      const m = WORKFLOW_MINUS_RE.exec(line);
+      minusWf = m ? m[1] : null;
+      continue;
+    }
     if (line.startsWith("+++ ")) {
       const m = WORKFLOW_HEADER_RE.exec(line);
-      wf = m ? m[1] : null;
+      wf = m ? m[1] : /^\+\+\+ \/dev\/null\s*$/.test(line) ? minusWf : null;
+      minusWf = null;
       if (wf && !byWf.has(wf)) byWf.set(wf, { added: new Set(), removed: new Set() });
       continue;
     }
     if (line.startsWith("diff --git")) {
       wf = null;
+      minusWf = null;
       continue;
     }
     if (line.startsWith("--- ") || !wf) continue;
@@ -176,6 +188,35 @@ function selfTest() {
   const comment = ["diff --git a/.github/workflows/g.yml b/.github/workflows/g.yml", "--- /dev/null", "+++ b/.github/workflows/g.yml", "@@", "+# cites create-service-layout.spec.ts", "+name: G"].join("\n");
   results.D_comment_not_arming = analyze({ diffText: comment }).length === 0;
   results.E_empty_diff = analyze({ diffText: "" }).length === 0;
+  // A spec moved out of a DELETED workflow (`+++ /dev/null`) into another file is a relocation.
+  const deletedMove = [
+    "diff --git a/.github/workflows/new.yml b/.github/workflows/new.yml",
+    "--- /dev/null",
+    "+++ b/.github/workflows/new.yml",
+    "@@",
+    "+  playwright/tests/paris-surfacing.spec.ts",
+    "diff --git a/.github/workflows/old.yml b/.github/workflows/old.yml",
+    "--- a/.github/workflows/old.yml",
+    "+++ /dev/null",
+    "@@",
+    "-  playwright/tests/paris-surfacing.spec.ts",
+  ].join("\n");
+  results.E2_deleted_workflow_move_not_arming = analyze({ diffText: deletedMove }).length === 0;
+  // Deleting a non-workflow file does not donate removals, and a spec added with no removal still arms.
+  const deletedOther = [
+    "diff --git a/docs/x.yml b/docs/x.yml",
+    "--- a/docs/x.yml",
+    "+++ /dev/null",
+    "@@",
+    "-  playwright/tests/paris-surfacing.spec.ts",
+    "diff --git a/.github/workflows/new.yml b/.github/workflows/new.yml",
+    "--- /dev/null",
+    "+++ b/.github/workflows/new.yml",
+    "@@",
+    "+  playwright/tests/paris-surfacing.spec.ts",
+  ].join("\n");
+  const E3 = analyze({ diffText: deletedOther });
+  results.E3_deleted_non_workflow_still_arms = E3.length === 1 && E3[0].spec === "paris-surfacing.spec.ts";
 
   const ctx = { repo: "o/r", workflow: ".github/workflows/spec-coverage-gate.yml", headSha: "abc" };
   const good = { repository: { full_name: "o/r" }, path: ctx.workflow, head_sha: "abc", status: "completed", conclusion: "success" };
