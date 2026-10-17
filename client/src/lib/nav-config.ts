@@ -279,10 +279,12 @@ export interface FooterSectionConfig {
  * behind a sign-in modal) and `/executive-assistant`. `footer-guest-routes.test.ts` refuses a
  * footer href whose route is wrapped in `ProtectedRoute`, so neither can drift back.
  *
- * BLOG IS HIDDEN, NOT DELETED: the footer shows no Blog link until five posts are published.
- * The `/blog` route stays (inbound links keep resolving) and its empty state is `noindex`.
- * There is no post store yet, so there is no count to read — when one exists, the link returns
- * behind that count, never a hand-flipped flag.
+ * BLOG IS GATED, NOT DELETED (ED-1 footer count, ledger `2026-10-16-blog-footer-count`): the Blog link
+ * lives in `footerGatedLinks`, not in the static sections below, and is added only when the server's
+ * published-count gate says so (`GET /api/blog/footer-visible` — the count of published posts in the post
+ * store against the `blog_footer_min_published` setting, default 5; never a hand-flipped flag). A failed
+ * or absent answer keeps it hidden. The `/blog` route stays (inbound links keep resolving) and its empty
+ * state is `noindex`. `getAllFooterHrefs` lists the static links only.
  */
 export const footerSectionsConfig: FooterSectionConfig[] = [
   {
@@ -331,6 +333,41 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
     ],
   },
 ];
+
+/** A footer link shown only when its server-answered gate is open. */
+export type FooterLinkGate = "blogFooter";
+export type FooterGates = Partial<Record<FooterLinkGate, unknown>>;
+
+export interface GatedFooterLink {
+  /** The `i18nKey` of the section the link joins. */
+  sectionKey: string;
+  gate: FooterLinkGate;
+  link: FooterLinkConfig & { href: string };
+}
+
+export const footerGatedLinks: GatedFooterLink[] = [
+  {
+    sectionKey: 'footer.sections.company',
+    gate: 'blogFooter',
+    link: { label: 'Blog', i18nKey: 'footer.links.blog', href: '/blog' },
+  },
+];
+
+/**
+ * The footer as rendered: the static sections plus each gated link whose gate is exactly `true`.
+ * Anything else — false, a failed read, an answer not yet in — hides it (fail-closed, no flash).
+ */
+export function visibleFooterSections(gates: FooterGates = {}): FooterSectionConfig[] {
+  return footerSectionsConfig.map((section) => ({
+    ...section,
+    links: [
+      ...section.links,
+      ...footerGatedLinks
+        .filter((g) => g.sectionKey === section.i18nKey && gates[g.gate] === true)
+        .map((g) => g.link),
+    ],
+  }));
+}
 
 /**
  * Returns a de-duplicated array of every href referenced in the footer.
