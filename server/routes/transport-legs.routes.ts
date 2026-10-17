@@ -361,7 +361,7 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
  * the R299 gate) and stored on the leg's own row; a re-open costs nothing. The leg PATCH's gate — a plan
  * WRITE (it writes the leg row and spends the plan's calls), never a `pending` advisor. No body.
  */
-router.post("/api/trips/:tripId/transport-legs/:legId/options", isAuthenticated, async (req, res) => {
+async function legOptionsHandler(req: any, res: any) {
   try {
     const { tripId, legId } = req.params;
     const denied = await authorizeTripLogistics(
@@ -380,7 +380,15 @@ router.post("/api/trips/:tripId/transport-legs/:legId/options", isAuthenticated,
     console.error("[TransportLegs] options error:", err);
     res.status(500).json({ message: "Failed to load travel options" });
   }
-});
+}
+router.post("/api/trips/:tripId/transport-legs/:legId/options", isAuthenticated, legOptionsHandler);
+// LG-1 item 4 (ledger `2026-10-17-lg1-leg-options-provenance`): the dispatched path `/api/trips/:id/legs/:legId/options`
+// answered 404 because no route served it — the options rail was only POST on `transport-legs`. The same handler now
+// also answers GET and POST on `legs/…`, and GET on `transport-legs/…`: one implementation, one gate (a plan WRITE —
+// the ask stores the options on the leg row, so a re-open costs nothing).
+router.get("/api/trips/:tripId/transport-legs/:legId/options", isAuthenticated, legOptionsHandler);
+router.post("/api/trips/:tripId/legs/:legId/options", isAuthenticated, legOptionsHandler);
+router.get("/api/trips/:tripId/legs/:legId/options", isAuthenticated, legOptionsHandler);
 
 /** DELETE /api/trips/:tripId/transport-legs/:legId — the expert rejecting a leg. */
 router.delete("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async (req, res) => {
