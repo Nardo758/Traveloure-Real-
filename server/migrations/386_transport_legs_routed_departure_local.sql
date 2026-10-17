@@ -1,5 +1,5 @@
 -- 386 — transport_legs.routed_departure_local (9b-b; ledger `2026-10-16-9b-b-legs-off-google`; 9b spec v1.0 ED2,
--- Phase 0 ruling 6). HELD: applies only after Leon's approval comment on the PR that carries it.
+-- Phase 0 ruling 6). Migration 386 SQL approved by Leon — comment 06:34Z on #1495.
 --
 -- ONE nullable column, added and nothing else: no DEFAULT, no CHECK, no FK, no index, nothing altered, no backfill.
 -- The departure a routed leg was routed FOR, as plan-timezone wall-clock "HH:MM" (the zone is the plan's
