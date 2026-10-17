@@ -20,7 +20,18 @@ name: Guest Trip Mint Responds Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/guest-trip-mint-responds-gate.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -34,6 +45,7 @@ permissions:
 
 jobs:
   guest-trip-mint-responds:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: guest-trip-mint-responds (R-9; ledger 2026-09-14-guest-trip-mint-responds)
     runs-on: ubuntu-latest
     # A HANG MUST FAIL, NEVER STALL (the fee-preview-gate precedent, and this lane's whole subject):

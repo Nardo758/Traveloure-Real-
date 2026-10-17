@@ -23,7 +23,11 @@ export const SHARE_KIT_IMAGES = [
 export const SHARE_KIT_LINK_FORMATS: readonly string[] = ["cover", "story"];
 
 /**
+<<<<<<< HEAD
  * Pure: the link to copy and the download links. With the expert's own short-link code (CP-3, ledger
+=======
+ * Pure: the link to copy and the four download links. With the expert's own short-link code (CP-3, ledger
+>>>>>>> origin/main
  * `2026-10-16-cp3-share-image-ref`), the cover and story downloads carry `&ref=<code>` and print that /r/ link; with
  * none, every card prints the /t/ link as before — never a guessed code.
  */

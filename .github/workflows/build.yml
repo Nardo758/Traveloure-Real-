@@ -13,6 +13,7 @@ name: Build Smoke
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   push:
     branches: [main]
@@ -43,6 +44,32 @@ jobs:
   # a suite leaves the orphan list by being RUN or by being GONE, never by being named an
   # exception). It does not make the 233 rows it carries acceptable, and `e2e/` stays out of
   # TEST_ROOTS by the same ruling, so no e2e spec is seen either way.
+  # CI-1b (c)+(d) (scripts/ci/ci-skip-rules.cjs): decides whether this PR push runs the heavy jobs. A draft or
+  # a docs-only / other-workflow-only push skips them; a job skipped by its `if:` reports success, so every
+  # required check still reports on the merge head. Only an explicit run=false skips: any other event, a file
+  # list it cannot read, or this job failing outright leaves the suites running (fail open).
+  changes:
+    name: changes (skip suites on drafts and docs-only pushes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+        with:
+          sparse-checkout: scripts/ci
+      - name: Skip rules self-test
+        run: node scripts/ci/ci-skip-rules.cjs --self-test
+      - id: decide
+        name: Decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: node scripts/ci/ci-skip-rules.cjs --decide
+
   test-file-reachability:
     name: test-file-reachability (ratchet - new orphans fail)
     runs-on: ubuntu-latest
@@ -59,6 +86,8 @@ jobs:
         run: node scripts/check-test-files-wired.cjs
 
   legacy-webhook-confirmation:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: legacy-webhook-confirmation (isolated PostgreSQL)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -91,6 +120,8 @@ jobs:
         run: node scripts/verification/run-messaging-gate.mjs --isolated-db server/__tests__/legacy-webhook-confirmation.db.test.ts
 
   build:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: build (vite + esbuild bundle)
     runs-on: ubuntu-latest
     # 30, not 20: the tsc ratchet step below may take up to TSC_TIMEOUT_S (15 min) on its own.
@@ -356,6 +387,8 @@ jobs:
           echo "tsc baseline holds at $count ✅"
 
   money-endpoint-guard:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: money-endpoint-guard (CLAUDE.md §14)
     runs-on: ubuntu-latest
     steps:
@@ -373,6 +406,8 @@ jobs:
         run: node scripts/check-money-endpoints.cjs
 
   fee-band-admin-guards:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: fee-band-admin-guards (2026-09-12-fee-band-admin-gaps — V-4/V-5/V-6)
     runs-on: ubuntu-latest
     steps:
@@ -398,6 +433,8 @@ jobs:
       - name: Fee-band admin guards (V-4 cap, V-5 deactivation ruling, V-6 visibility)
         run: npx tsx --test server/__tests__/fee-band-admin-guards.test.ts
   traveler-charge-composition:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)
     runs-on: ubuntu-latest
     steps:
@@ -422,6 +459,8 @@ jobs:
         run: npx tsx --test server/__tests__/traveler-charge-composition.test.ts
 
   offering-activation-gate:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: offering-activation-gate (2026-09-11-offering-activation-validation)
     runs-on: ubuntu-latest
     env:
@@ -460,6 +499,8 @@ jobs:
         run: npx tsx --test server/__tests__/offering-contract-snapshot.test.ts
 
   legacy-rail-traveler-charge:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)
     runs-on: ubuntu-latest
     env:
@@ -511,6 +552,8 @@ jobs:
         run: npx tsx --test server/__tests__/legacy-rail-closed.test.ts
 
   claims-only-lookup-guard:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: claims-only-lookup-guard (session-user extraction)
     runs-on: ubuntu-latest
     steps:
@@ -527,6 +570,8 @@ jobs:
       - name: Claims-only session-user lookup guard
         run: node scripts/check-claims-only-user-lookups.cjs
   migration-chain-integrity:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: migration-chain-integrity (DECISIONS.md rulings 19, 27)
     runs-on: ubuntu-latest
     steps:
@@ -541,6 +586,8 @@ jobs:
         run: npx tsx --test server/migrations/__tests__/chain-integrity.test.ts
 
   walkthrough-pins:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)
     runs-on: ubuntu-latest
     steps:
@@ -575,9 +622,12 @@ jobs:
       # CP-3: the share kit's cover and story downloads carry the expert's own short-link code; map and og never do.
       - name: Share kit links carry the expert's code (CP-3)
         run: npx tsx --test client/src/lib/__tests__/cp3-share-kit-links.test.ts
+<<<<<<< HEAD
       # GC-1: the Leaflet fallback draws no leg lines and shows a list unless every located stop is non-Google.
       - name: Leaflet fallback list and no leg lines (GC-1)
         run: npx tsx --test client/src/lib/__tests__/gc1-leaflet-list.test.ts
+=======
+>>>>>>> origin/main
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
@@ -1185,6 +1235,8 @@ jobs:
       - name: Affiliate sub_id attribution pin (MONEY_MAP F-5 live)
         run: npx tsx --test server/__tests__/affiliate-subid-attribution.test.ts
   category-key-repair:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: category-key-repair (ledger 2026-09-06-category-key-repair — migration 289)
     runs-on: ubuntu-latest
     env:
@@ -1220,6 +1272,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/category-key-repair.db.test.ts
 
   funnel-share-token-purge:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: funnel-share-token-purge (ledger 2026-09-27-funnel-share-token-purged — migration 326)
     runs-on: ubuntu-latest
     env:
@@ -1249,6 +1303,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/funnel-share-token-purge.db.test.ts
 
   archetype-fixtures:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: archetype-fixtures (ledger 2026-09-12-archetype-fixtures)
     runs-on: ubuntu-latest
     env:
@@ -1287,6 +1343,8 @@ jobs:
 
 
   service-quotes:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: service-quotes (punchlist D-28..D-31; ledger 2026-09-15-d28-d31-service-quotes)
     runs-on: ubuntu-latest
     env:
@@ -1322,6 +1380,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/service-quotes.db.test.ts server/__tests__/listing-price-gate.test.ts
 
   quote-born-charge:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)
     runs-on: ubuntu-latest
     env:
@@ -1358,6 +1418,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/quote-born-charge.db.test.ts
 
   quote-plan-link:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: quote-plan-link (migration 314; ledger 2026-09-19-quote-plan-link)
     runs-on: ubuntu-latest
     env:
@@ -1390,6 +1452,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/quote-plan-link.db.test.ts
 
   booking-birth-provenance:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
     runs-on: ubuntu-latest
     env:
@@ -1431,6 +1495,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-birth-provenance.db.test.ts
 
   plan-work-one-rail:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: plan-work-one-rail (rulings 11/12; ledger 2026-09-15-plan-work-one-rail)
     runs-on: ubuntu-latest
     env:
@@ -1471,6 +1537,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/paid-runs-never-pruned.db.test.ts
 
   booking-agent-claim:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: booking-agent-claim (LD 44; ledger 2026-09-08-assignment-is-claimed / 2026-09-15-booking-agent-claim / 2026-09-15-d10-confirmed-needs-partner-evidence)
     runs-on: ubuntu-latest
     env:
@@ -1513,6 +1581,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/booking-agent-confirmed.db.test.ts
 
   transport-payment-intent:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
     runs-on: ubuntu-latest
     env:
@@ -1560,6 +1630,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/pay1-payment-checks.db.test.ts
 
   ready-made-clone-fields:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: ready-made-clone-fields (V-14/V-15; ledger 2026-09-13-clone-carries-content-not-state)
     runs-on: ubuntu-latest
     env:
@@ -1608,6 +1680,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/authored-item-price-contract.db.test.ts
 
   dates-confirmed:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: dates-confirmed (D-22 + R-4; ledger 2026-09-15-d22-dates-confirmed)
     runs-on: ubuntu-latest
     env:
@@ -1648,6 +1722,8 @@ jobs:
         run: npx tsx --test --test-force-exit client/src/lib/__tests__/plan-dates.test.ts
 
   acceptance-rails:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     # Ledgers: 2026-09-15-d24-d26-acceptance-columns, 2026-09-15-d27-artifact-timer-acceptance-prompt,
     # 2026-09-15-d36-d39-completion-declared, 2026-09-16-d32-d35-bundle-components. The job NAME is
     # kept under 100 characters because it is a REQUIRED status context (.github/branch-protection.json;
@@ -1788,6 +1864,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/whole-row-cancel-and-artifact-refund.db.test.ts
 
   plan-proposals:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
     runs-on: ubuntu-latest
     env:
@@ -1898,6 +1976,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/planning-tolls-ledger.db.test.ts
 
   from-state-guards:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
     runs-on: ubuntu-latest
     env:
@@ -1934,6 +2014,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/from-state-guards.db.test.ts
 
   concierge-fee-split:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: concierge-fee-split (Locked Decision 51; ledger 2026-09-18-concierge-fee-cap-split)
     runs-on: ubuntu-latest
     env:
@@ -1971,6 +2053,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-fee-split.db.test.ts
 
   concierge-handoff:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: concierge-handoff (ledger 2026-09-18-concierge-handoff)
     runs-on: ubuntu-latest
     env:
@@ -2005,6 +2089,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-handoff.db.test.ts
 
   concierge-plan-read:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: concierge-plan-read (ledger 2026-09-20-concierge-plan-read)
     runs-on: ubuntu-latest
     env:
@@ -2040,6 +2126,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/concierge-plan-read.db.test.ts
 
   linked-item-purchase-write:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: linked-item-purchase-write (ledger 2026-09-19-linked-item-purchase-write)
     runs-on: ubuntu-latest
     env:
@@ -2075,6 +2163,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/linked-item-purchase-write.db.test.ts
 
   platform-concierge-listing:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: platform-concierge-listing (Locked Decision 51 lane F; ledger 2026-09-18-platform-concierge-listing)
     runs-on: ubuntu-latest
     env:
@@ -2180,6 +2270,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/membership-reconciliation.db.test.ts
 
   one-trip-write-resolver:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
     runs-on: ubuntu-latest
     env:
@@ -2216,6 +2308,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/one-trip-write-resolver.db.test.ts
 
   leads-door-and-trip-read-gate:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)
     runs-on: ubuntu-latest
     env:
@@ -2255,6 +2349,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/leads-door-and-trip-read-gate.db.test.ts
 
   slot-units:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: slot-units (V-26; ledger 2026-09-15-v26-slot-units)
     runs-on: ubuntu-latest
     env:
@@ -2299,6 +2395,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/price-basis.db.test.ts
 
   trip-context-recovery:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: trip-context-recovery (RC-4; ledger 2026-09-25-rc345-active-plan)
     runs-on: ubuntu-latest
     env:
@@ -2335,6 +2433,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/occasion-read-only.db.test.ts
 
   profile-photo:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: profile-photo (RC-10; ledger 2026-09-25-rc10-profile-photo)
     runs-on: ubuntu-latest
     env:
@@ -2368,6 +2468,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/profile-photo.db.test.ts
 
   reconciliation-detection:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
     runs-on: ubuntu-latest
     env:
@@ -2440,6 +2542,8 @@ jobs:
       - name: Reconciliation across a month boundary (M1–M4)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/reconciliation-month-boundary.db.test.ts
   plan-entry-source-fields:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: plan-entry-source-fields (Locked Decision 42 D13 — 2026-09-05-doors-source-fields)
     runs-on: ubuntu-latest
     steps:
@@ -2465,6 +2569,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts client/src/components/__tests__/ticker-ribbon.test.tsx
 
   trip-card-honesty:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: trip-card-honesty (L4 — 2026-09-07-trip-card-honesty)
     runs-on: ubuntu-latest
     steps:
@@ -2486,6 +2592,8 @@ jobs:
         run: npx tsx --test client/src/components/plancard/__tests__/hero-photo-honesty.test.ts
 
   plan-row-model:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: plan-row-model (L3 my-plans-rows — 2026-09-07-my-plans-rows)
     runs-on: ubuntu-latest
     steps:
@@ -2514,6 +2622,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/booking-status-vocabulary.test.ts
 
   event-mint-dedupe:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: event-mint-dedupe (CLAUDE.md LD 30 (b) — 2026-09-06-event-mint-dedupe)
     runs-on: ubuntu-latest
     steps:
@@ -2532,6 +2642,8 @@ jobs:
       - name: Event mint de-duplication
         run: npx tsx --test client/src/lib/__tests__/event-mint-dedupe.test.ts
   slip-small-additions:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: slip-small-additions (CLAUDE.md Locked Decision 42 D18-D22 - 2026-09-06-slip-small-additions)
     runs-on: ubuntu-latest
     steps:
@@ -2579,6 +2691,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/slip-small-additions.test.ts
 
   slip-conformance:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: slip-conformance (CLAUDE.md Locked Decision 42 D6/D16 - 2026-09-06-slip-conformance)
     runs-on: ubuntu-latest
     steps:
@@ -2630,6 +2744,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/slip-rail.test.ts
 
   item-origin-chip:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: item-origin-chip (CLAUDE.md Locked Decision 12 read-exposure - 2026-09-06-item-origin-chip)
     runs-on: ubuntu-latest
     steps:
@@ -2669,6 +2785,8 @@ jobs:
       - name: Item origin chip mapping
         run: npx tsx --test client/src/lib/__tests__/item-origin.test.ts
   console-grammar:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: console-grammar (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-console-one-grammar)
     runs-on: ubuntu-latest
     steps:
@@ -2695,6 +2813,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/console-grammar.test.ts
 
   expert-request-review:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: expert-request-review (Console & AI Concierge brief L19 — 2026-09-07-request-is-a-click)
     runs-on: ubuntu-latest
     steps:
@@ -2722,6 +2842,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/expert-request-review.test.ts
 
   concierge-door:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: concierge-door (Console & AI Concierge brief L6 — 2026-09-07-concierge-door)
     runs-on: ubuntu-latest
     steps:
@@ -2749,6 +2871,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/concierge-tiers.test.ts
 
   trip-card-one-page:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: trip-card-one-page (CLAUDE.md Locked Decision 45 (6) — 2026-09-07-trip-card-one-page)
     runs-on: ubuntu-latest
     steps:
@@ -2783,6 +2907,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/trip-card-one-page.test.ts
 
   home-time-axis:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: home-time-axis (CLAUDE.md Locked Decision 45 (8) — 2026-09-07-home-time-axis)
     runs-on: ubuntu-latest
     steps:
@@ -2814,6 +2940,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/home-time-axis.test.ts client/src/lib/__tests__/chat-thread.test.ts client/src/lib/__tests__/checkout-display-polish.test.ts
 
   my-events-fold:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: my-events-fold (CLAUDE.md Locked Decision 45 (5) — 2026-09-07-my-events-fold)
     runs-on: ubuntu-latest
     steps:
@@ -2839,6 +2967,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/slip-conformance.test.ts
 
   inbox-context:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: inbox-context (CLAUDE.md Locked Decision 40 + D22 — 2026-09-07-inbox-context)
     runs-on: ubuntu-latest
     steps:
@@ -2858,6 +2988,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/inbox-context.test.ts
 
   discover-in-shell:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: discover-in-shell (CLAUDE.md Locked Decision 45 (7) — 2026-09-07-discover-in-shell)
     runs-on: ubuntu-latest
     steps:
@@ -2878,6 +3010,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/discover-plan-context.test.ts
 
   doors-pass-tripid:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: doors-pass-tripid (CLAUDE.md Locked Decision 42 D13/D15 — 2026-09-07-doors-pass-tripid)
     runs-on: ubuntu-latest
     steps:
@@ -2915,6 +3049,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/rc1-finish-mints.test.ts
 
   extraction-date-anchor:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: extraction-date-anchor (Console & AI Concierge brief F5 — 2026-09-07-extraction-date-anchor)
     runs-on: ubuntu-latest
     steps:
@@ -2932,6 +3068,8 @@ jobs:
         run: npx tsx --test server/__tests__/trip-context-extraction.test.ts
 
   batch3-bookings-cleanup:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: batch3-bookings-cleanup (L12 · §18c · LD 42 D7 · §14 — 2026-09-07)
     runs-on: ubuntu-latest
     steps:
@@ -2962,6 +3100,8 @@ jobs:
         run: npx tsx --test server/routes/__tests__/concierge-trip-ownership.test.ts
 
   batch4-vocabulary-link-cleanup:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: batch4-vocabulary-link-cleanup (LD 44 phase 0 · LD 45 (1) · §18c/§18 rule 1 — 2026-09-08)
     runs-on: ubuntu-latest
     steps:
@@ -3007,6 +3147,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/price-unit.test.ts
 
   confirm-honesty:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: confirm-honesty (§13/§18c — transport-confirm-timing · confirmation-code-is-the-server-s · transport-status-self-report-gate · delete-dead-transport-status)
     runs-on: ubuntu-latest
     steps:
@@ -3047,6 +3189,8 @@ jobs:
   # what says so.
   # ---------------------------------------------------------------------------
   unit-suite-shared:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-suite-shared (shared/__tests__ — whole directory)
     runs-on: ubuntu-latest
     steps:
@@ -3060,6 +3204,8 @@ jobs:
         run: npx tsx --test shared/__tests__/*.test.ts*
 
   unit-suite-client-lib:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-suite-client-lib (client/src/lib/__tests__ — whole directory)
     runs-on: ubuntu-latest
     steps:
@@ -3073,6 +3219,8 @@ jobs:
         run: npx tsx --test client/src/lib/__tests__/*.test.ts*
 
   unit-suite-client-components:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-suite-client-components (client component __tests__ — whole directories)
     runs-on: ubuntu-latest
     steps:
@@ -3118,6 +3266,8 @@ jobs:
   # `scripts/test-orphan-baseline.txt` and is owed an app-backed lane.
   # ---------------------------------------------------------------------------
   unit-suite-server-units:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     # Kept under 100 characters: a REQUIRED status context (ledger 2026-09-27-required-checks-promotion).
     name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)
     runs-on: ubuntu-latest
@@ -3140,6 +3290,8 @@ jobs:
         run: npx tsx --test server/services/trend-engine/__tests__/*.test.ts*
 
   suite-server-services:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: suite-server-services (server/services/__tests__ — DB-backed)
     runs-on: ubuntu-latest
     env:
@@ -3179,6 +3331,8 @@ jobs:
         run: npx vitest run --root . server/services/__tests__/anchor-*.test.ts
 
   suite-server-routes-migrations:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)
     runs-on: ubuntu-latest
     env:
