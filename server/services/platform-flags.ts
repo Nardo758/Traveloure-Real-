@@ -27,6 +27,7 @@ import {
 } from "@shared/launch-signup";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, parseWelcomeVerificationWindowDays } from "@shared/welcome-verification";
 import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugs } from "@shared/ticker";
+import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, parseBlogFooterMinPublished } from "@shared/blog-footer";
 
 const TTL_MS = 15_000;
 
@@ -130,5 +131,18 @@ export async function getWelcomeVerificationWindowDays(): Promise<number> {
   } catch (err) {
     console.error(`[platform-flags] read failed for ${WELCOME_VERIFICATION_WINDOW_SETTING}, using the default:`, err);
     return parseWelcomeVerificationWindowDays(null);
+  }
+}
+
+/**
+ * ED-1 footer count: how many published posts the footer's Blog link waits for. An absent row, an
+ * invalid value or a read error is the ruled default (shared/blog-footer.ts).
+ */
+export async function getBlogFooterMinPublished(): Promise<number> {
+  try {
+    return parseBlogFooterMinPublished(await getSettingValue(BLOG_FOOTER_MIN_PUBLISHED_SETTING));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${BLOG_FOOTER_MIN_PUBLISHED_SETTING}, using the default:`, err);
+    return parseBlogFooterMinPublished(null);
   }
 }
