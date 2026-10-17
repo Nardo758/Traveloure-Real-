@@ -22,7 +22,18 @@ name: Suite AI Draft And Availability
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/suite-ai-draft-and-availability.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -36,6 +47,7 @@ permissions:
 
 jobs:
   suite-ai-draft-and-availability:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: suite-ai-draft-and-availability (R-12/R-13 + the two LD 41 (b) suites — DB + app)
     runs-on: ubuntu-latest
     timeout-minutes: 30

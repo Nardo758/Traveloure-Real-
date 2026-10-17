@@ -20,6 +20,17 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/ai-cost-attribution-gate.yml'
   workflow_dispatch:
 
 # Cancel superseded PR runs. A new push to a PR makes the previous run's jobs
@@ -33,6 +44,7 @@ concurrency:
 
 jobs:
   ai-cost-attribution:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: ai-cost-attribution (migration 310; ledger 2026-09-17-ai-cost-actor-id)
     runs-on: ubuntu-latest
     env:
