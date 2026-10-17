@@ -44,7 +44,7 @@ export const PHONE_DELIVERY_ANDROID_STEPS = [
 ] as const;
 
 /** D2: the feed lives for 7 days after the trip's last day; after that it answers 410. */
-export const CALENDAR_FEED_DAYS_AFTER_END = 7;
+export const CALENDAR_LINK_DAYS_AFTER_END = 7;
 /**
  * The instant a feed stops: the start of the day after `endDate + 7 days`, in UTC. `endDate` is a calendar day
  * ("YYYY-MM-DD" or a Date). Null when the date cannot be read (the caller then treats the feed as expired, §13).
@@ -54,7 +54,7 @@ export function calendarFeedExpiresAt(endDate: string | Date | null | undefined)
   const iso = endDate instanceof Date ? endDate.toISOString().slice(0, 10) : String(endDate).slice(0, 10);
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return null;
-  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + CALENDAR_FEED_DAYS_AFTER_END + 1));
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + CALENDAR_LINK_DAYS_AFTER_END + 1));
 }
 
 /**
