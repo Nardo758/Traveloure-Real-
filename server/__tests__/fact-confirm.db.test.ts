@@ -55,7 +55,8 @@ before(async () => {
     (${ids.item2}, ${ids.trip}, 1, 'Ryoan-ji', 'attraction', 'ai'),
     (${ids.item3}, ${ids.other}, 1, 'Ginkaku-ji', 'attraction', 'ai')`);
   await recordFacts([draft({})], { planId: ids.trip, itemId: ids.item });
-  await recordFacts([draft({ origin: "places_api", license: "restricted", value: { weekdayDescriptions: ["Monday: 9–5"] } })], { planId: ids.trip, itemId: ids.item2 });
+  // GH-1: the writer refuses a Google hours draft, so the Places fixture is an address row.
+  await recordFacts([draft({ origin: "places_api", license: "restricted", factType: "address", value: { formattedAddress: "13 Ryoanji Goryonoshitacho, Ukyo Ward, Kyoto" } })], { planId: ids.trip, itemId: ids.item2 });
   await recordFacts([draft({ placeRef: "Ginkaku-ji" })], { planId: ids.other, itemId: ids.item3 });
 });
 

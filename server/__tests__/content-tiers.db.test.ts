@@ -159,7 +159,8 @@ test("D7 — place_facts are born tagged from origin + license", async () => {
   const now = new Date();
   const base = { placeRefKind: "free_text", placeLat: null, placeLng: null, market: null, need: "stop.hours", factType: "hours", value: { text: "9-5" }, sourceId: null, sourceUrl: null, fetchedAt: now, expiresAt: null, costCents: 0 };
   await recordFacts([
-    { ...base, placeRef: id("f-places"), origin: "places_api", license: "restricted" },
+    // GH-1: the writer refuses a Google hours draft, so the Places row is a location fact.
+    { ...base, placeRef: id("f-places"), origin: "places_api", license: "restricted", factType: "location", value: { lat: 35, lng: 135.7 } },
     { ...base, placeRef: id("f-official"), origin: "crawled", license: "official" },
     { ...base, placeRef: id("f-partner"), origin: "crawled", license: "partner" },
   ] as any, { planId: null, itemId: null });

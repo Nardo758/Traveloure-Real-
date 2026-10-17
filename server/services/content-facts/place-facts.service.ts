@@ -22,6 +22,7 @@ import {
   factProvenanceLine,
   isConfirmableFact,
   isFactStale,
+  isGoogleHoursFact,
   isPublishable,
   needForItemType,
   type ContentNeed,
@@ -63,6 +64,11 @@ export async function recordFacts(
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact passes the ONE admission rule or is not
   // stored — an unsourced last admission or last train never reaches a finding (rulings 1/3).
   const drafts = input.filter((d) => {
+    // GH-1 (ledger `2026-10-17-gh1-no-google-hours`; terms ruling, Oct 16, 2026): Google's hours are never stored.
+    if (isGoogleHoursFact(d)) {
+      console.info(`[place-facts] refused places_api hours plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
+      return false;
+    }
     // SS-1b ruling 1 (ledger `2026-10-10-ss1b-official-refresh`): a market-level refresh fact is stored only
     // with its source id, its official https URL, an official license and a verbatim quote — never unsourced.
     if (d.origin === REFRESH_ORIGIN) {
@@ -157,7 +163,8 @@ async function cachedRowsForPlace(placeId: string): Promise<FactDraft[] | null> 
   const rows = await db
     .select()
     .from(placeFacts)
-    .where(and(eq(placeFacts.placeRefKind, "place_id"), eq(placeFacts.placeRef, hit.placeRef), sql`${placeFacts.expiresAt} > now()`));
+    // GH-1: a legacy Google hours row is never copied to another plan.
+    .where(and(eq(placeFacts.placeRefKind, "place_id"), eq(placeFacts.placeRef, hit.placeRef), sql`${placeFacts.expiresAt} > now()`, notGoogleHoursRow()));
   const seen = new Set<string>();
   const out: FactDraft[] = [];
   for (const r of rankFactsByOrigin(rows)) {
@@ -518,7 +525,7 @@ export async function enrichPlanItems(input: {
         if (renamed) summary.renamed += 1;
         const area = attachedArea(kept);
         if (area && (await adoptGoogleArea(input.tripId, item, area))) summary.areas += 1;
-        scheduler.report(day, { attached: kept.length > 0, hasHours });
+        scheduler.report(day, { attached: kept.length > 0 });
         const outcome = outcomeOf(drafts, kept);
         logLookup(ids(item), drafts, cache, started, day, outcome, { facts: recorded, hours: hasHours, renamed });
         note(item, day, outcome, null, {
@@ -560,6 +567,14 @@ export async function officialHoursStoredFor(placeId: string): Promise<boolean> 
   return (await storedOfficialFacts([placeId], ["hours"])).length > 0;
 }
 
+/**
+ * GH-1 (ledger `2026-10-17-gh1-no-google-hours`): the WHERE form of `isGoogleHoursFact` — a `places_api` hours
+ * row stored before GH-1 is never read (it expires within 30 days; nothing deletes it).
+ */
+export function notGoogleHoursRow() {
+  return sql`NOT (${placeFacts.origin} = 'places_api' AND ${placeFacts.factType} = 'hours')`;
+}
+
 async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[]> {
   return db
     .select()
@@ -568,6 +583,7 @@ async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[
       and(
         eq(placeFacts.planId, tripId),
         isNull(placeFacts.supersededBy),
+        notGoogleHoursRow(),
         itemIds ? inArray(placeFacts.itineraryItemId, itemIds.length ? itemIds : ["__none__"]) : sql`true`,
       ),
     );

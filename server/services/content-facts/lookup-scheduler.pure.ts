@@ -5,17 +5,17 @@
  *   · only items that NAME a place are looked up (the caller passes those, already grouped by day);
  *   · round-robin ACROSS DAYS — every day's first named item, then every day's second, … — so the
  *     per-draft budget reaches the last day (production smoke 3);
- *   · SMOKE 5: when a day's FIRST attached lookup stores no hours fact, that day's NEXT named item is
- *     attempted next, before the round-robin continues. A day whose first place has no opening hours
- *     (a market street, a garden path) otherwise ended with no hours at all while the budget went to
- *     days that already had some. It applies once per day — to the first attached lookup — and the
- *     cap (`PLACES_LOOKUPS_PER_DRAFT`) is the caller's and is unchanged.
+ *   · SMOKE 5, AMENDED BY GH-1 (ledger `2026-10-17-gh1-no-google-hours`; sanctioned Oct 17, 2026): when a
+ *     day's FIRST lookup attaches nothing, that day's NEXT named item is attempted next, before the
+ *     round-robin continues. (It used to key on "stores no hours fact"; Google's hours are no longer
+ *     stored, so that test would re-prioritise every day.) It applies once per day — to the day's first
+ *     lookup — and the cap (`PLACES_LOOKUPS_PER_DRAFT`) is the caller's and is unchanged.
  */
 export class LookupScheduler<T> {
   private readonly days: number[];
   private readonly lists: Map<number, T[]>;
   private readonly cursor = new Map<number, number>();
-  private readonly firstAttachSeen = new Set<number>();
+  private readonly firstReportSeen = new Set<number>();
   private readonly priority: number[] = [];
   private dayIndex = 0;
 
@@ -41,11 +41,11 @@ export class LookupScheduler<T> {
     return null;
   }
 
-  /** What the lookup just taken from `day` did. Only the day's FIRST attached lookup can re-prioritise. */
-  report(day: number, outcome: { attached: boolean; hasHours: boolean }): void {
-    if (!outcome.attached || this.firstAttachSeen.has(day)) return;
-    this.firstAttachSeen.add(day);
-    if (!outcome.hasHours) this.priority.push(day);
+  /** What the lookup just taken from `day` did. Only the day's FIRST lookup can re-prioritise. */
+  report(day: number, outcome: { attached: boolean }): void {
+    if (this.firstReportSeen.has(day)) return;
+    this.firstReportSeen.add(day);
+    if (!outcome.attached) this.priority.push(day);
   }
 
   /** Every entry not yet handed out — what a stopped run never tried. */
