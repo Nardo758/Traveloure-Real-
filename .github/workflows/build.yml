@@ -50,7 +50,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -72,7 +72,7 @@ jobs:
 
   test-file-reachability:
     name: test-file-reachability (ratchet - new orphans fail)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -89,7 +89,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: legacy-webhook-confirmation (isolated PostgreSQL)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       DATABASE_URL: postgres://${{ 'postgres' }}:${{ 'postgres' }}@localhost:5432/traveloure
@@ -123,7 +123,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: build (vite + esbuild bundle)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     # 30, not 20: the tsc ratchet step below may take up to TSC_TIMEOUT_S (15 min) on its own.
     timeout-minutes: 30
     steps:
@@ -390,7 +390,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: money-endpoint-guard (CLAUDE.md §14)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -411,7 +411,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-pins (twenty-three no-DB pin lanes)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5.1.0
@@ -1675,7 +1675,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: traveler-charge-composition (docs/ROADMAP.md §A A3 — the commission is never billed to the buyer)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -1701,7 +1701,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: legacy-rail-traveler-charge (2026-09-08-legacy-rail-fee — the same fix on the legacy rail)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       # NO DATABASE IS REACHED. Both suites replace `db.execute` / `db.transaction` before any call
       # and assert on the SQL they were handed; these two vars exist only because `server/db.ts` and
@@ -1754,7 +1754,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: claims-only-lookup-guard (session-user extraction)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -1772,7 +1772,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: migration-chain-integrity (DECISIONS.md rulings 19, 27)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -1794,7 +1794,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: db-suites (fifteen DB-backed lanes, one fresh database each)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     # The env every one of these lanes set at job level; a lane's own extra (STRIPE_SECRET_KEY) is
     # written by its marker step, and written empty for the lanes that never set it.
@@ -2284,7 +2284,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: quote-born-charge (LD 49's charge lane; ledger 2026-09-18-quote-born-charge)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2322,7 +2322,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: booking-birth-provenance (rulings 41/46; ledger 2026-09-12-booking-birth-holes)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2365,7 +2365,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: transport-payment-intent (punchlist R-1; ledger 2026-09-14-transport-confirm-stamps-pi)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2418,7 +2418,7 @@ jobs:
     # kept under 100 characters because it is a REQUIRED status context (.github/branch-protection.json;
     # ledger 2026-09-27-required-checks-promotion) and GitHub truncates a longer check-run name.
     name: acceptance-rails (D-24..D-27, D-32..D-40; four ledgers, see comment)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2556,7 +2556,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: plan-proposals (D-19; ledger 2026-09-15-d19-plan-proposals)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2668,7 +2668,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: from-state-guards (V-23/V-24/V-25b; ledger 2026-09-15-v23-v25-from-state-guards)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2706,7 +2706,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: concierge-fee-split (Locked Decision 51; ledger 2026-09-18-concierge-fee-cap-split)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2745,7 +2745,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: one-trip-write-resolver (V-29; ledger 2026-09-15-v29-one-trip-write-resolver)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2783,7 +2783,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: leads-door-and-trip-read-gate (V-32, V-33; ledger 2026-09-15-v32-v33-leads-door-item-read-gate)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2824,7 +2824,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: slot-units (V-26; ledger 2026-09-15-v26-slot-units)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2870,7 +2870,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: reconciliation-detection (§17; ledger 2026-09-12-readymade-reconciliation-rail)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -2960,7 +2960,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-suite-shared (shared/__tests__ — whole directory)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -2975,7 +2975,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-suite-client-lib (client/src/lib/__tests__ — whole directory)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -2990,7 +2990,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: unit-suite-client-components (client component __tests__ — whole directories)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -3038,7 +3038,7 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     # Kept under 100 characters: a REQUIRED status context (ledger 2026-09-27-required-checks-promotion).
     name: unit-suite-server-units (server utils · seeds · travelpayouts · trend-engine — whole dirs)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -3061,7 +3061,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: suite-server-services (server/services/__tests__ — DB-backed)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -3102,7 +3102,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: suite-server-routes-migrations (server/routes/__tests__ + server/migrations/__tests__ — DB-backed)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production
@@ -3189,7 +3189,7 @@ jobs:
   # ---------------------------------------------------------------------------
   guard-batch:
     name: guard-batch (26 grep/logic guards — each a named step)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
