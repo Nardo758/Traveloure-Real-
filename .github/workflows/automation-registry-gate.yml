@@ -14,8 +14,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/automation-registry-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -27,8 +27,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/fee-preview-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

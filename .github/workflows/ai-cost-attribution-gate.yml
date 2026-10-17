@@ -17,8 +17,6 @@ name: ai-cost-attribution-gate
 # is run by a human before publishing (docs/RELEASE.md).
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow

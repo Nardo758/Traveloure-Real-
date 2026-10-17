@@ -34,8 +34,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/journey-4-5-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

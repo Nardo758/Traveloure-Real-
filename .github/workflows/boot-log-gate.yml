@@ -24,8 +24,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/boot-log-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

@@ -23,15 +23,6 @@ on:
       - 'client/src/pages/admin/payouts.tsx'
       - 'playwright/tests/admin-payout-trigger.spec.ts'
       - '.github/workflows/admin-test-email-gate.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'client/src/pages/admin/system.tsx'
-      - 'server/routes/admin.routes.ts'
-      - 'playwright/tests/admin-test-email.spec.ts'
-      - 'client/src/pages/admin/payouts.tsx'
-      - 'playwright/tests/admin-payout-trigger.spec.ts'
-      - '.github/workflows/admin-test-email-gate.yml'
   workflow_dispatch:
 
 concurrency:

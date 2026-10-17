@@ -45,8 +45,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/payout-parity-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

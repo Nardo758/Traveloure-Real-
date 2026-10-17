@@ -66,8 +66,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/publish-gate-and-fundamentals-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
