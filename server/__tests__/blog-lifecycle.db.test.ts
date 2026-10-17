@@ -44,6 +44,7 @@ before(async () => {
 });
 
 after(async () => {
+  await db.execute(sql`DELETE FROM access_audit_logs WHERE actor_id = ${ADMIN} AND action = 'blog_editorial_publish'`).catch(() => {});
   await db.execute(sql`DELETE FROM blog_posts WHERE slug LIKE ${`t-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id IN (${ADMIN}, ${EXPERT}, ${OTHER})`).catch(() => {});
 });
@@ -161,4 +162,64 @@ test("L10 submission is refused when the byline gate refuses", async () => {
   const p = await createPost(expertInput("gate"), ADMIN, eligible);
   assert.equal(await code(submitForReview(p.id, { gate: async () => ({ eligible: false, reason: "no_verified_neighborhood_in_market" }) })), "byline_no_verified_neighborhood_in_market");
   assert.equal((await row(p.id)).status, "draft");
+});
+
+// ── ED-1a: editorial guides (decision-maker, Oct 16, 2026) ───────────────────────────────────
+const CHECKED = new Date("2026-10-01T00:00:00Z");
+function editorialInput(s: string, extra: Record<string, unknown> = {}) {
+  return {
+    contentType: "editorial_guide", slug: slug(s), title: "Kyoto foliage: closed days and last admission",
+    body: "Check the closed day before you go.", marketSlug: "kyoto",
+    sources: [{ url: "https://kyoto.travel/en/eikando", title: "Eikando", publisher: "Kyoto City", retrievedAt: CHECKED }],
+    ...extra,
+  } as any;
+}
+
+test("L11 an editorial guide is authored by editorial and carries no expert byline", async () => {
+  const p = await createPost(editorialInput("ed-create"), ADMIN, eligible);
+  assert.equal(p.authorship, "editorial");
+  assert.equal(p.bylineExpertId, null);
+  assert.equal(p.status, "draft");
+  assert.equal(await code(createPost(editorialInput("ed-byline", { bylineExpertId: EXPERT }), ADMIN, eligible)), "editorial_post_has_no_expert_byline");
+  assert.equal(await code(submitForReview(p.id, eligible)), "editorial_posts_are_not_reviewed");
+});
+
+test("L12 an editorial source without a checked date is refused, never published undated", async () => {
+  const undated = editorialInput("ed-undated", { sources: [{ url: "https://kyoto.travel/en/eikando", title: "Eikando" }] });
+  assert.equal(await code(createPost(undated, ADMIN, eligible)), "source_checked_date_required");
+  const p = await createPost(editorialInput("ed-edit-undated"), ADMIN, eligible);
+  assert.equal(await code(editPost(p.id, { sources: [{ url: "https://kyoto.travel/en/x" }] }, ADMIN, eligible)), "source_checked_date_required");
+  // Other types keep their rules: an expert source still needs no date.
+  await createPost(expertInput("ed-expert-undated"), ADMIN, eligible);
+});
+
+test("L13 Publish is the audited approval; an edit after publish returns the post to draft", async () => {
+  const p = await createPost(editorialInput("ed-publish"), ADMIN, eligible);
+  await publishPost(p.id, ADMIN, eligible, { ipAddress: "127.0.0.1", userAgent: "ed1-test" });
+  const r = await row(p.id);
+  assert.equal(r.status, "published");
+  assert.equal(r.published_by, ADMIN);
+  const audit = (await db.execute(sql`SELECT * FROM access_audit_logs
+    WHERE action = 'blog_editorial_publish' AND resource_type = 'blog_post' AND resource_id = ${p.id}`)).rows as any[];
+  assert.equal(audit.length, 1, "exactly one approval row");
+  assert.equal(audit[0].actor_id, ADMIN);
+  assert.equal(audit[0].metadata.contentSha256, r.content_sha256, "the row names the version approved");
+  assert.equal(await code(publishPost(p.id, ADMIN, eligible)), "not_a_draft", "a published post is not approved twice");
+
+  await editPost(p.id, { body: "Closed on Wednesdays in November." }, ADMIN, eligible);
+  assert.equal((await row(p.id)).status, "draft");
+  assert.equal(await getPublishedBySlug(slug("ed-publish")), null, "an edited editorial post leaves the public read");
+});
+
+test("L14 the public read: plain editorial byline, no storefront, no platform label, dated sources", async () => {
+  const p = await createPost(editorialInput("ed-public"), ADMIN, eligible);
+  await publishPost(p.id, ADMIN, eligible);
+  const pub = await getPublishedBySlug(slug("ed-public")) as any;
+  assert.equal(pub.byline, null, "no expert byline, so no storefront link and no Ask the local");
+  assert.equal(pub.editorialByline, "Traveloure Editorial");
+  assert.equal(pub.platformLabel, null);
+  assert.equal(pub.sources.length, 1);
+  assert.equal(pub.sources[0].url, "https://kyoto.travel/en/eikando");
+  assert.equal(pub.sources[0].checkedAt, CHECKED.toISOString());
+  assert.equal(JSON.stringify(pub).includes(ADMIN), false, "no user id on the public read (LD 40)");
 });

@@ -72,3 +72,18 @@ test("B5 render: an official-source fact's source line reads 'from <source> — 
   assert.match(post, /\{v\.text\}/);
   assert.match(post, /— \{v\.detail\}/);
 });
+
+test("B6 an editorial post: plain byline, no storefront link, no Ask the local, link + checked date only (ED-1)", () => {
+  const post = { byline: null, editorialByline: "Traveloure Editorial", platformLabel: null };
+  assert.equal(bylinePath(post.byline), null, "no storefront link");
+  assert.equal(canAskTheLocal(post), false, "an editorial post has no local to ask");
+  assert.equal(authorLine(post), "Traveloure Editorial");
+  const v = blogSourceView(
+    { url: "https://kyoto.travel/en/eikando", title: "Eikando", publisher: "Kyoto City", checkedAt: "2026-10-01T12:00:00.000Z" },
+    { editorial: true },
+  );
+  assert.equal(v.href, "https://kyoto.travel/en/eikando");
+  assert.equal(v.text, "Eikando");
+  assert.equal(v.detail, `checked ${publishedLabel("2026-10-01T12:00:00.000Z")}`);
+  assert.equal(blogSourceView({ url: "https://x.test/a" }, { editorial: true }).detail, null, "no date shows no date, never a guess");
+});
