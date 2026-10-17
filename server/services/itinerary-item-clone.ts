@@ -71,6 +71,9 @@ export const CLONE_CARRIED_FIELDS = [
   "dayNumber", "startTime", "endTime", "durationMinutes", "isFlexible",
   // Where
   "locationName", "locationAddress", "latitude", "longitude", "googlePlaceId",
+  // Where that point came from (GC-1, migration 387) — travels WITH latitude/longitude, because the
+  // copy carries the same point; dropping it would make a non-Google point read as Google (NULL).
+  "coordSource",
   // A ride's exit pin (TC-3a, migration 368) — like the boarding pin above, it comes from the catalog
   // ride's own route points, so it is content: the copy's legs route on from where the ride ends.
   "exitLatitude", "exitLongitude",
