@@ -57,6 +57,7 @@ name: Route Coverage Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   push:
     branches: [main]
@@ -79,7 +80,35 @@ jobs:
   # navbar-links-smoke depends on this job and restores both caches, so it
   # never has to re-install browsers or re-build the bundle — even on retries.
   # ─────────────────────────────────────────────────────────────────────────
+  # CI-1b (c)+(d) (scripts/ci/ci-skip-rules.cjs): decides whether this PR push runs the heavy jobs. A draft or
+  # a docs-only / other-workflow-only push skips them; a job skipped by its `if:` reports success, so every
+  # required check still reports on the merge head. Only an explicit run=false skips: any other event, a file
+  # list it cannot read, or this job failing outright leaves the suites running (fail open).
+  changes:
+    name: changes (skip suites on drafts and docs-only pushes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+        with:
+          sparse-checkout: scripts/ci
+      - name: Skip rules self-test
+        run: node scripts/ci/ci-skip-rules.cjs --self-test
+      - id: decide
+        name: Decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: node scripts/ci/ci-skip-rules.cjs --decide
+
   setup:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: setup (build + browser cache warm-up)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -129,11 +158,12 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   navbar-links-smoke:
     # NOTE: this check name must EXACTLY equal the branch-protection required-status
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
     # context "navbar-links-smoke" — a descriptive suffix here orphans the required
     # context and leaves it stuck "Expected — Waiting for status to be reported".
     name: navbar-links-smoke
     runs-on: ubuntu-latest
-    needs: [setup]
+    needs: [changes, setup]
     # 40, not 20: the three suites run serially and app-routes now visits ~176
     # routes (~10 min). At 20 the job was cancelled mid-app-routes. Kept at 1
     # worker (playwright.config CI default) for determinism — bump this before
@@ -282,6 +312,8 @@ jobs:
   # Runs in parallel with setup — it needs no browser, no server, no DB.
   # ─────────────────────────────────────────────────────────────────────────
   hardcoded-links-check:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     # Must EXACTLY equal the branch-protection required context "hardcoded-links-check"
     # (see the navbar-links-smoke note above) — no descriptive suffix.
     name: hardcoded-links-check
@@ -365,8 +397,8 @@ jobs:
   report:
     name: report (PR comment)
     runs-on: ubuntu-latest
-    needs: [navbar-links-smoke, hardcoded-links-check]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [changes, navbar-links-smoke, hardcoded-links-check]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && (always() && github.event_name == 'pull_request') }}
     steps:
       - name: Post pass/fail summary to the PR
         uses: actions/github-script@v7

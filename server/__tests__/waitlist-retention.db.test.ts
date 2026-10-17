@@ -13,6 +13,9 @@
  *       the email's sha256 — never the address. A second run deletes nothing more of ours.
  *   H5  With no recorded account behind the opening, the job deletes nothing and reports an error.
  *   H6  The due date is the opening instant plus 12 UTC calendar months (a 29 Feb opening falls due on 28 Feb).
+ *   H7  (LW-1f-b, issue #1486) The per-row floor: a row that joined after the opening is kept until ITS OWN 12 months
+ *       have passed — deleted only when now > max(opening, created_at) + 12 months — and a row with no created_at is
+ *       never deleted.
  *
  * The settings it touches (traveler_signup_mode, traveler_signup_opened_at) are restored in after().
  * Run: npx tsx --test server/__tests__/waitlist-retention.db.test.ts
@@ -199,6 +202,7 @@ describe("LW-1h: waitlist retention", () => {
     await putOpenedAt("2026-11-01T09:00:00Z", adminId);
     const early = await runWaitlistRetention(new Date("2027-11-01T08:59:59Z"));
     assert.equal(early.status, "not_due");
+    assert.equal((await runWaitlistRetention(new Date("2027-11-01T09:00:00Z"))).status, "not_due", "strictly after the due instant");
     assert.equal((early as any).dueAt, "2027-11-01T09:00:00.000Z");
     assert.equal(await rowExists(keep), true);
   });
@@ -211,7 +215,7 @@ describe("LW-1h: waitlist retention", () => {
     const noEmail = await waitlistRow(null);
     await putOpenedAt("2026-11-01T09:00:00Z", adminId);
 
-    const res = await runWaitlistRetention(new Date("2027-11-01T09:00:00Z"));
+    const res = await runWaitlistRetention(new Date("2027-11-01T09:00:01Z"));
     assert.equal(res.status, "deleted");
     assert.ok(res.deleted >= 2);
     assert.equal(await rowExists(converted), true, `${member.email} has an account, so the row converted`);
@@ -230,7 +234,7 @@ describe("LW-1h: waitlist retention", () => {
     assert.equal(audit.rows[0].metadata.retentionMonths, 12);
     assert.ok(!audit.rows[0].meta.includes(goneEmail.split("@")[0]), "the address is never in the audit row");
 
-    const again = await runWaitlistRetention(new Date("2027-11-01T09:00:00Z"));
+    const again = await runWaitlistRetention(new Date("2027-11-01T09:00:01Z"));
     assert.equal(again.status, "deleted");
     assert.equal(await rowExists(converted), true);
     const twice = await pool.query(
@@ -253,5 +257,24 @@ describe("LW-1h: waitlist retention", () => {
     assert.equal(waitlistRetentionDueAt(new Date("2026-11-01T09:00:00Z")).toISOString(), "2027-11-01T09:00:00.000Z");
     assert.equal(waitlistRetentionDueAt(new Date("2028-02-29T12:00:00Z")).toISOString(), "2029-02-28T12:00:00.000Z");
     assert.equal(waitlistRetentionDueAt(new Date("2026-12-31T23:59:59Z")).toISOString(), "2027-12-31T23:59:59.000Z");
+  });
+
+  it("H7: the per-row floor keeps a late joiner until its own 12 months have passed", async () => {
+    const late = await waitlistRow(`retention-h7-late-${RUN}@example.org`);
+    const noDate = await waitlistRow(`retention-h7-nodate-${RUN}@example.org`);
+    await pool.query(`UPDATE launch_waitlist SET created_at = '2027-06-01 12:00:00' WHERE id = $1`, [late]);
+    await pool.query(`UPDATE launch_waitlist SET created_at = NULL WHERE id = $1`, [noDate]);
+    await putOpenedAt("2026-11-01T09:00:00Z", adminId);
+
+    const due = await runWaitlistRetention(new Date("2027-11-02T00:00:00Z"));
+    assert.equal(due.status, "deleted", "the opening clock has run");
+    assert.equal(await rowExists(late), true, "joined Jun 2027: kept until Jun 2028");
+    assert.equal(await rowExists(noDate), true, "an unknown age is never deleted");
+
+    await runWaitlistRetention(new Date("2028-05-31T00:00:00Z"));
+    assert.equal(await rowExists(late), true, "still inside its own 12 months");
+    await runWaitlistRetention(new Date("2028-06-03T00:00:00Z"));
+    assert.equal(await rowExists(late), false, "past max(opening, created_at) + 12 months");
+    assert.equal(await rowExists(noDate), true);
   });
 });

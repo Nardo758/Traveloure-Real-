@@ -25,8 +25,18 @@ name: Replit-Pending Label Gate
 on:
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/replit-pending-gate.yml'
 permissions:
   contents: read
 
@@ -41,6 +51,7 @@ concurrency:
 
 jobs:
   replit-pending-gate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: replit-pending-gate (label hold)
     runs-on: ubuntu-latest
     timeout-minutes: 5
