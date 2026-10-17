@@ -68,6 +68,10 @@ class LeadRoutingService {
       const routableFilter = ctx.requireRoutable
         ? sql`AND ${await routableExpertFilterSql()}`
         : sql``;
+      // ED-1b: the Traveloure Editorial house account is never scored, on every caller (routed or not).
+      const { getEditorialUserId } = await import('./editorial-account.service');
+      const editorialId = await getEditorialUserId();
+      const notEditorial = editorialId ? sql`AND u.id <> ${editorialId}` : sql``;
 
       const experts = await withQueryTimer(
         "lead-routing-score-experts",
@@ -87,6 +91,7 @@ class LeadRoutingService {
             AND (lef.stripe_connect_status IS NULL OR lef.stripe_connect_status != 'restricted')
             ${requireCanBookOnBehalf ? sql`AND lef.can_book_on_behalf = true` : sql``}
             ${routableFilter}
+            ${notEditorial}
         `)
       );
 
