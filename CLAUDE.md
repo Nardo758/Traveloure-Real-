@@ -111,6 +111,15 @@ This document captures architectural decisions to maintain consistency across co
     brief's L3 ("distance never traveler-facing") is amended to headline *delta claims* only, not map
     annotation. The Advisor **fundamentals** checklist (ratified list in `server/routes/advisor.routes.ts`)
     is deterministic, §13-honest (a check with insufficient data is omitted with a reason, never guessed).
+    **AMENDED — GOOGLE COORDINATES ARE NEVER DRAWN ON A NON-GOOGLE RENDERING (decision-maker, Oct 16, 2026 —
+    GC-1 rulings; ledger `2026-10-17-gc1-google-coords`; migration 387, held).** The store teaser's day-km
+    legend is REMOVED, and no share image or caption carries a minute or a distance (stop counts stay): a
+    leg's minutes and metres may be a Google route's. `itinerary_items.coord_source` records where an item's
+    point came from; NULL = Google, and new writes stamp `places` or `geocode_google`
+    (`shared/item-coord-source.ts`). Until an item's point is non-Google, the Ready-Made map share format is
+    not served and the slip's Leaflet fallback shows the day as a list (R-d as amended by the architect);
+    Leaflet draws no leg lines. The teaser snaps each stop to its neighbourhood's own row in the spine
+    (`city_neighborhoods`), found by name, and draws that row's centroid, never the stop's point.
 
 22. **Service map & route stops; Catalog is the map's home (decision-maker ratified Aug 10, 2026).**
     **(a) `service_route_points`** (migration 192, declared in `shared/schema.ts` — publish-trap rule) is the
@@ -1223,6 +1232,9 @@ This document captures architectural decisions to maintain consistency across co
     corrected 2026-09-15, decision-maker). Read "REDIRECT" here as "does not open as a planning
     surface, and sends the traveler to the slip"; a literal bounce would break that spec and tell
     the traveler nothing about why they moved.
+    **AMENDED — THE SPEC'S WORKFLOW (CI-1b (e)2):** `slip-rail-actions` A12 now runs as the
+    `e2e-slip-rail-actions` step of the `e2e-live-config` job in `.github/workflows/dev-server-gates.yml`;
+    `slip-rail-actions-gate.yml` no longer exists. Read the parenthesis above with that file name.
 
     **D9 — THE BOOKINGS SECTION LIVES ON THE SLIP, AND ITS AUDIENCE IS §15d's.** Balance payment
     (§15d) is offered in a bookings section **on the slip**, visible to **the owner and a
@@ -2705,6 +2717,13 @@ This document captures architectural decisions to maintain consistency across co
     approved — Leon". Re-check notices store no minutes (the card reads "was N min" from the plan's leg); the legacy
     non-routed writer is the labelled straight-line estimate; the matrix refresh job is retired (410); where-to-stay
     ranks by OSRM drive minutes when OSRM is on, else the straight line.
+    **AMENDED BY 9b-d (9b-0 ruling 4, Oct 16, 2026 — ledger `2026-10-17-9b-d-routing-recheck`; no migration).**
+    `routing-recheck` replaces `legs-dayof-recheck`: ONE service, two triggers — hourly at 06:00 in the plan's
+    zone, and the Trip Card's first open on a trip day after 06:00 — under ONE guard, `routing_recheck_max_per_plan_day`
+    (config, default 1; each leg is claimed against the current window's start). A failed or unsupported-mode call
+    (`no_route` with `unanswered`) records nothing and keeps the leg's label; only the source's own "no route" is broken.
+    The engine likewise keeps the last good leg on an unanswered call, and replaces it only on the router's own
+    "no route" — with a labelled straight-line estimate (`source = 'straight_line_est'`, not routed, re-asked every run).
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**

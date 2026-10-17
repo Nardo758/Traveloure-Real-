@@ -6,17 +6,19 @@
  *   cover  1080×1350  logo top-left, the REAL cover photo, title, expert badge, day chips, the price
  *                     line, "Get this trip", the /t/ link and the photo's credit
  *   map    1080×1350  "Your route at a glance": a SCHEMATIC of each day's stops (dashed lines, numbered
- *                     pins) over a soft wash of the cover photo, captioned with the CONFIRMED travel
- *                     minutes per day — never a Google map, never exact points (the teaser's own
- *                     jitter rule redacts every stop), never an invented minute
+ *                     pins) over a soft wash of the cover photo, captioned with each day's stop count —
+ *                     never a Google map, never exact points (the teaser's own jitter rule redacts every
+ *                     stop). GC-1 (ledger `2026-10-17-gc1-google-coords`): no minute or distance on any
+ *                     format, and the map format is NOT SERVED until every located stop's point is
+ *                     non-Google (`everyLocatedPointNonGoogle`) — a Google coordinate is never drawn here
  *   story  1080×1920  full-bleed cover photo, three proof lines, "Get this trip", the link-sticker target
  *   og     1200×630   the link card: photo ≥ 60% of the frame, title and price clear of the bottom 15%
  *
  * Honesty rules (§13), each pinned by a test:
  *   · every figure is the server's: the price line is `readyMadePriceLine` (the purchase's own total);
- *     the minutes are confirmed `transport_legs` rows; the verified stamp is LD 27's fact;
+ *     the confirmed-leg COUNT is the confirmed `transport_legs` rows; the verified stamp is LD 27's fact;
  *   · an absent fact draws nothing — no photo ⇒ a plain ground and no credit line (never a stock
- *     substitute); no price ⇒ no price pill; no confirmed minutes for a day ⇒ that day says nothing;
+ *     substitute); no price ⇒ no price pill;
  *   · a photo is used only with its credit line, and NEVER a Google Places photo (`isAllowedHeroUrl`).
  */
 import fs from "fs";
@@ -40,8 +42,6 @@ export interface ReadyMadeShareMapDay {
   dayNumber: number;
   /** Jittered stop positions, normalised to 0..1 inside the shared frame (never raw coordinates). */
   points: { x: number; y: number }[];
-  /** Sum of the day's CONFIRMED legs' minutes; null when the day has none (the caption says nothing). */
-  confirmedMinutes: number | null;
 }
 
 export interface ReadyMadeShareData {
@@ -148,12 +148,9 @@ export function storyProofLines(data: ReadyMadeShareData): string[] {
   return out;
 }
 
-/** The map slide's per-day caption: "Day 1 · 4 stops · 67 min of confirmed travel". */
+/** The map slide's per-day caption: "Day 1 · 4 stops". GC-1: no minute or distance, ever. */
 export function mapDayCaption(day: ReadyMadeShareMapDay): string {
-  const stops = `${day.points.length} ${day.points.length === 1 ? "stop" : "stops"}`;
-  return day.confirmedMinutes != null && day.confirmedMinutes > 0
-    ? `Day ${day.dayNumber} · ${stops} · ${day.confirmedMinutes} min of confirmed travel`
-    : `Day ${day.dayNumber} · ${stops}`;
+  return `Day ${day.dayNumber} · ${day.points.length} ${day.points.length === 1 ? "stop" : "stops"}`;
 }
 
 function chips(data: ReadyMadeShareData, size: number): El {

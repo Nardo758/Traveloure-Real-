@@ -73,7 +73,7 @@ export function useSlipLegs(data: SlipLegsData | null | undefined, tripId?: stri
             />
           ) : null}
           {ride && tripId ? <RideSwapLine tripId={tripId} suggestion={ride} isOwner={viewer === "owner"} /> : null}
-          {leg?.kind === "unrouted" ? <LegRow kind="unrouted" legId={leg.legId} mode={leg.mode} minutes={leg.minutes} /> : null}
+          {leg?.kind === "unrouted" ? <LegRow kind="unrouted" legId={leg.legId} mode={leg.mode} minutes={leg.minutes} estimate={leg.estimate === true} /> : null}
         </>
       );
     },

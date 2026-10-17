@@ -8,6 +8,10 @@
  * `no_route` (a thin connector, cost 0). OSRM is never capped, so it is never `paused`. The parse keeps
  * only minutes and metres; `overview=false` asks for no geometry and `steps=false` for no directions.
  * Its answers are cacheable (`CACHEABLE_ROUTE_SOURCES`), unlike Google's (T1).
+ *
+ * "checked <date>" is DATA freshness: the VM's proxy sends the OSM extract's replication timestamp as
+ * `X-OSRM-Extract` on every 200, and that is the leg's `checkedAt`. Only when the header is absent or
+ * unreadable does the label fall back to the moment of the call.
  */
 import { OSRM_ROUTES_SOURCE, type RouteAnswer, type RouteOutcome, type RoutePoint, type RoutingAdapter, type RoutingMode } from "@shared/routing-engine";
 import { osrmBaseUrl, osrmCarProfile, osrmFootProfile, osrmTimeoutMs } from "../../config/osrm.config";
@@ -34,6 +38,23 @@ export function osrmRouteUrl(baseUrl: string, profile: string, origin: RoutePoin
   return `${baseUrl}/route/v1/${encodeURIComponent(profile)}/${coord(origin)};${coord(destination)}?overview=false&steps=false&alternatives=false`;
 }
 
+/** The response header the OSRM VM's proxy sets to the extract's OSM replication timestamp. */
+export const OSRM_EXTRACT_HEADER = "x-osrm-extract";
+
+/** Pure: the extract date the proxy stated, or the call time when it stated none (or nothing readable). */
+export function osrmCheckedAt(extractHeader: string | null | undefined, callTime: Date): Date {
+  const raw = (extractHeader ?? "").trim();
+  if (!raw) return callTime;
+  const at = new Date(raw);
+  return Number.isNaN(at.getTime()) ? callTime : at;
+}
+
+/** Pure: OSRM's own answer that no route exists (`NoRoute`, or a point with no road/path near it). */
+export function osrmSaysNoRoute(data: unknown): boolean {
+  const code = (data as { code?: unknown } | null)?.code;
+  return code === "NoRoute" || code === "NoSegment";
+}
+
 /** Pure parse of one OSRM `route` response into a `RouteAnswer`, or null when there is no usable route. */
 export function parseOsrmResponse(data: unknown, checkedAt: Date): RouteAnswer | null {
   const body = data as { code?: unknown; routes?: Array<{ duration?: unknown; distance?: unknown }> } | null;
@@ -56,22 +77,25 @@ export class OsrmRoutingAdapter implements RoutingAdapter {
   constructor(private readonly deps: OsrmRoutingDeps = defaultDeps) {}
 
   async route(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, _departAt: Date | null): Promise<RouteOutcome> {
-    if (mode !== "drive" && mode !== "walk") return { kind: "no_route" };
+    if (mode !== "drive" && mode !== "walk") return { kind: "no_route", unanswered: "unsupported_mode" };
     const base = this.deps.baseUrl();
-    if (!base) return { kind: "no_route" };
+    if (!base) return { kind: "no_route", unanswered: "failed" };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs());
     try {
       const response = await this.deps.fetch(osrmRouteUrl(base, this.deps.profile(mode), origin, destination), { signal: controller.signal });
       if (!response.ok) {
         console.error(`[routing] osrm ${mode} route failed: ${response.status}`);
-        return { kind: "no_route" };
+        return { kind: "no_route", unanswered: "failed" };
       }
-      const route = parseOsrmResponse(await response.json(), this.deps.now());
-      return route ? { kind: "ok", route } : { kind: "no_route" };
+      const body = await response.json();
+      const route = parseOsrmResponse(body, osrmCheckedAt(response.headers?.get?.(OSRM_EXTRACT_HEADER), this.deps.now()));
+      if (route) return { kind: "ok", route };
+      // OSRM's own "no route between these points" is an answer; any other non-Ok body is a failed call.
+      return osrmSaysNoRoute(body) ? { kind: "no_route" } : { kind: "no_route", unanswered: "failed" };
     } catch (err: any) {
       console.error(`[routing] osrm ${mode} route request threw:`, err?.name === "AbortError" ? "timeout" : err?.message ?? err);
-      return { kind: "no_route" };
+      return { kind: "no_route", unanswered: "failed" };
     } finally {
       clearTimeout(timer);
     }

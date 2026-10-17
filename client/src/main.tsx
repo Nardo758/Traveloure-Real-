@@ -6,6 +6,8 @@ import "./index.css";
 // ja-JP browser). Resolution steps 2-4 run here; step 1 (account preference) lands in useLocale.
 import "@/lib/i18n";
 import { installMaintenanceFetchInterceptor } from "@/lib/maintenance";
+// §8 phone delivery: catch the browser's Add to Home Screen offer before it is missed.
+import "@/lib/install-prompt";
 
 installMaintenanceFetchInterceptor();
 

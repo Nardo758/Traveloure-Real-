@@ -34,13 +34,14 @@ export async function viewerSeesExactLocation(
 }
 
 /** A city's neighbourhoods by name and centroid, for naming the area a route starts in. */
-export async function cityNeighborhoodNames(city: string): Promise<Array<{ name: string; lat: number; lng: number }>> {
+export async function cityNeighborhoodNames(city: string): Promise<Array<{ name: string; lat: number; lng: number; radiusKm: number | null }>> {
   const rows = await db
-    .select({ name: cityNeighborhoods.name, lat: cityNeighborhoods.centroidLat, lng: cityNeighborhoods.centroidLng })
+    .select({ name: cityNeighborhoods.name, lat: cityNeighborhoods.centroidLat, lng: cityNeighborhoods.centroidLng, radiusKm: cityNeighborhoods.radiusKm })
     .from(cityNeighborhoods)
     .where(sql`lower(${cityNeighborhoods.city}) = lower(${city})`);
   return rows
-    .map((r) => ({ name: r.name, lat: Number(r.lat), lng: Number(r.lng) }))
+    // GC-1: the radius rides along for the teaser's neighbourhood regions; NULL stays NULL.
+    .map((r) => ({ name: r.name, lat: Number(r.lat), lng: Number(r.lng), radiusKm: r.radiusKm == null ? null : Number(r.radiusKm) }))
     .filter((n) => Number.isFinite(n.lat) && Number.isFinite(n.lng));
 }
 

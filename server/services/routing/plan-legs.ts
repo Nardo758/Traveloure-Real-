@@ -14,6 +14,7 @@
  */
 import {
   DEFAULT_LEG_DEPARTURE_WALL_CLOCK,
+  STRAIGHT_LINE_EST_SOURCE,
   TRANSIT_API_UNCOVERED_REASON,
   TRANSIT_UNAVAILABLE_REASON,
   defaultRoutedMode,
@@ -259,7 +260,8 @@ export function routedFactsOf(leg: {
   calculatedAt?: Date | string | null;
   alternativeModes?: unknown;
 }): { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true; transitApiUncovered?: true } | null {
-  if (!leg.source || !leg.calculatedAt) return null;
+  // 9b-d: a straight-line estimate the engine wrote for a pair with no route is not a routed leg.
+  if (!leg.source || !leg.calculatedAt || leg.source === STRAIGHT_LINE_EST_SOURCE) return null;
   const at = new Date(leg.calculatedAt as any);
   if (Number.isNaN(at.getTime())) return null;
   const alt = Array.isArray(leg.alternativeModes) ? (leg.alternativeModes[0] as any) : null;
@@ -316,7 +318,7 @@ export function legIsRouted(leg: {
 }): boolean {
   const minutes = Number(leg.estimatedDurationMinutes);
   if (!Number.isFinite(minutes) || minutes <= 0) return false;
-  return leg.source != null;
+  return leg.source != null && leg.source !== STRAIGHT_LINE_EST_SOURCE;
 }
 
 /**

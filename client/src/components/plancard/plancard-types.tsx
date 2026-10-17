@@ -277,6 +277,8 @@ export interface PlanCardActivity {
   location: string;
   lat?: number;
   lng?: number;
+  /** GC-1 (migration 387): where the row's own point came from; absent = Google (NULL), as is a Places pin. */
+  coordSource?: string;
   cost: number;
   comments: number;
   changes?: Array<{ who: string; what: string }>;

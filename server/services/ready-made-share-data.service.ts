@@ -6,7 +6,7 @@
  *
  * VERSION = WHAT THE IMAGE SAYS. `ready_made_trips` has no version column, and its `updated_at` does
  * not move when the build's stops do; so the version is a hash of the very data the templates draw
- * (title, price line, days, chips, the schematic, the minutes, the photo URL + credit). Any change a
+ * (title, price line, days, chips, the schematic, the photo URL + credit). Any change a
  * reader could see re-keys the cache; nothing else does. The image URL carries `?v=<version>`, so a
  * shared link always fetches the image for the listing as it now reads.
  *
@@ -26,6 +26,7 @@ import { nearestAreaName } from "../utils/public-service-listing";
 import { cityNeighborhoodNames } from "./listing-location-access.service";
 import { validateRailsRef, type RailsLinkFacts } from "./rails-attribution.service";
 import { decideWaitlistReferral } from "./waitlist-referral.service";
+import { everyLocatedPointNonGoogle } from "@shared/item-coord-source";
 import {
   READY_MADE_SHARE_FORMATS,
   heroCreditLine,
@@ -72,13 +73,13 @@ function num(v: unknown): number | null {
 }
 
 /** The listing's share data WITHOUT the photo bytes, plus its photo source; null when not public. */
-export async function loadReadyMadeShareInputs(listingId: string): Promise<{ data: Omit<ReadyMadeShareData, "hero">; heroUrl: string | null; heroCredit: string | null; id: string; slug: string; authorId: string } | null> {
+export async function loadReadyMadeShareInputs(listingId: string): Promise<{ data: Omit<ReadyMadeShareData, "hero">; heroUrl: string | null; heroCredit: string | null; id: string; slug: string; authorId: string; mapServable: boolean } | null> {
   const [listing] = await db.select().from(readyMadeTrips).where(eq(readyMadeTrips.id, listingId)).limit(1);
   if (!listing || listing.status !== "approved" || listing.active !== true) return null;
   const [author] = await db.select({ firstName: users.firstName }).from(users).where(eq(users.id, listing.authorId)).limit(1);
   const [items, legs, verifiedMarkets] = await Promise.all([
     db
-      .select({ id: itineraryItems.id, title: itineraryItems.title, dayNumber: itineraryItems.dayNumber, latitude: itineraryItems.latitude, longitude: itineraryItems.longitude })
+      .select({ id: itineraryItems.id, title: itineraryItems.title, dayNumber: itineraryItems.dayNumber, latitude: itineraryItems.latitude, longitude: itineraryItems.longitude, coordSource: itineraryItems.coordSource })
       .from(itineraryItems)
       .where(eq(itineraryItems.tripId, listing.sourceTripId))
       .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder)),
@@ -99,15 +100,18 @@ export async function loadReadyMadeShareInputs(listingId: string): Promise<{ dat
     located.push({ dayNumber: i.dayNumber!, lon: jlon, lat: jlat });
   }
   const norm = normaliseSchematic(located, SCHEMATIC_ASPECT);
-  const minutesByDay = new Map<number, number>();
-  for (const l of legs) {
-    const m = num(l.minutes);
-    if (m == null || m <= 0) continue;
-    minutesByDay.set(l.dayNumber, (minutesByDay.get(l.dayNumber) ?? 0) + m);
-  }
+  // GC-1: no minute or distance reaches any image; the confirmed-leg COUNT below stays.
   const map: ReadyMadeShareMapDay[] = Array.from(norm.keys())
     .sort((a, b) => a - b)
-    .map((d) => ({ dayNumber: d, points: norm.get(d)!, confirmedMinutes: minutesByDay.get(d) ?? null }));
+    .map((d) => ({ dayNumber: d, points: norm.get(d)! }));
+  // GC-1: the map format draws stop points, so it is served only when every located stop's own point is
+  // non-Google. NULL is Google, and no writer stamps a non-Google point yet.
+  const mapServable = everyLocatedPointNonGoogle(
+    days.map((i) => {
+      const la = num(i.latitude), lo = num(i.longitude);
+      return { located: la != null && lo != null && !(la === 0 && lo === 0), coordSource: i.coordSource };
+    }),
+  );
   // CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): a chip names the AREA the day starts in — never a stop
   // title. No known area ⇒ the day's stop count, which the image already states elsewhere (§13).
   const neighborhoods = listing.market ? await cityNeighborhoodNames(listing.market) : [];
@@ -127,6 +131,7 @@ export async function loadReadyMadeShareInputs(listingId: string): Promise<{ dat
     id: listing.id,
     slug,
     authorId: listing.authorId,
+    mapServable,
     heroUrl,
     heroCredit: heroUrl ? heroCredit : null,
     data: {
@@ -226,9 +231,17 @@ async function resolveShareImageRef(ref: string, listingId: string, tripAuthorId
   return shareImageRefCode({ link: check.link, valid: check.valid, listingId, tripAuthorId });
 }
 
-export async function getReadyMadeShareImage(listingId: string, format: ReadyMadeShareFormat, ref?: string | null): Promise<ReadyMadeShareImage | null> {
+/** GC-1: the map format exists for this listing but is not served (a located stop's point is Google). */
+export const MAP_FORMAT_NOT_SERVED = "map_not_served" as const;
+
+export async function getReadyMadeShareImage(
+  listingId: string,
+  format: ReadyMadeShareFormat,
+  ref?: string | null,
+): Promise<ReadyMadeShareImage | typeof MAP_FORMAT_NOT_SERVED | null> {
   const inputs = await loadReadyMadeShareInputs(listingId);
   if (!inputs) return null;
+  if (format === "map" && !inputs.mapServable) return MAP_FORMAT_NOT_SERVED;
   // The version names what the listing says, so `?v=` keeps meaning the listing's version whatever the link.
   const version = shareVersion(inputs);
   // Checked on every request, before the cache, so an expired link stops printing at once; a refused code shares
@@ -264,7 +277,8 @@ export async function warmReadyMadeShareImages(listingId: string): Promise<numbe
   let n = 0;
   for (const format of READY_MADE_SHARE_FORMATS) {
     try {
-      if (await getReadyMadeShareImage(listingId, format)) n += 1;
+      const image = await getReadyMadeShareImage(listingId, format);
+      if (image && image !== MAP_FORMAT_NOT_SERVED) n += 1;
     } catch (err) {
       console.error(`[rmt-share] warm ${format} failed for ${listingId}:`, (err as Error)?.message ?? err);
     }

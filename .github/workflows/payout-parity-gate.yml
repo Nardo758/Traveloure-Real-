@@ -45,8 +45,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/payout-parity-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -60,7 +58,7 @@ jobs:
   payout-parity:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: payout-parity (pre-accept promise === minted earnings)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)

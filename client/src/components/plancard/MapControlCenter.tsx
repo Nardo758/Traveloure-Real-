@@ -38,6 +38,7 @@ import {
   type MapVersion,
 } from "@/lib/map-scene";
 import { MAP_FALLBACK_NOTICE, useMapRenderer } from "@/lib/map-renderer";
+import { everyLocatedPointNonGoogle } from "@shared/item-coord-source";
 import {
   BROWSE_TABS,
   addedItemFor,
@@ -71,6 +72,28 @@ export function isLocated(a: Pick<PlanCardActivity, "lat" | "lng">): boolean {
 }
 
 /** "X of Y located" for a day — reads the SAME predicate the pin layer reads. Null for no stops. */
+/** GC-1: what the map says when the fallback shows the day as a list. */
+export const MAP_FALLBACK_LIST_NOTICE = "The map isn't available here, so this day is shown as a list.";
+
+/** GC-1: the day's stops in order — names and times only, no point, line or minute. */
+function MapFallbackList({ tripId, activities }: { tripId: string; activities: readonly PlanCardActivity[] }) {
+  return (
+    <div className="h-full overflow-y-auto bg-card px-4 py-3" data-testid={`map-fallback-list-${tripId}`}>
+      <p className="mb-2 text-xs text-muted-foreground">{MAP_FALLBACK_LIST_NOTICE}</p>
+      {activities.length ? (
+        <ol className="space-y-1 text-sm">
+          {activities.map((a, i) => (
+            <li key={a.id} data-testid={`map-fallback-list-item-${a.id}`}>
+              {i + 1}. {a.name}
+              {a.time ? <span className="text-muted-foreground"> · {a.time}</span> : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
 export function locatedCountLabel(activities: readonly PlanCardActivity[] | undefined): string | null {
   const total = activities?.length ?? 0;
   if (total === 0) return null;
@@ -317,6 +340,13 @@ export function MapControlCenter({
       .filter((l): l is SceneLeg => !!l);
   }, [showTravelMinutes, version, day]);
 
+  // GC-1 (ledger `2026-10-17-gc1-google-coords`; R-d as amended): the Leaflet fallback is not a Google map, so
+  // it draws a day only when every located stop's point is non-Google. NULL is Google, and no writer stamps a
+  // non-Google point yet, so today the fallback shows the day as a list.
+  const leafletMapAllowed = everyLocatedPointNonGoogle(
+    (day?.activities ?? []).map((a) => ({ located: isLocated(a), coordSource: a.coordSource })),
+  );
+
   // The initial center: the first pin, else the anchor, else the server-geocoded destination. No
   // honest center ⇒ no canvas (never Null Island, §13).
   const firstPoint = scene.pins[0] ?? (scene.anchor ? { lat: scene.anchor.lat, lng: scene.anchor.lng } : null);
@@ -473,15 +503,16 @@ export function MapControlCenter({
               onSelectBrowse={(id) => setSelectedBrowseId(browsePlaces.find((b) => b.id === id) ? `${browsePlaces.find((b) => b.id === id)!.kind}:${id}` : null)}
               legs={legs}
             />
-          ) : (
+          ) : leafletMapAllowed ? (
             <SceneMapLeaflet
               scene={scene}
               center={center}
               selectedId={selectedId}
               onSelect={setSelectedId}
               onSelectBrowse={(id) => setSelectedBrowseId(browsePlaces.find((b) => b.id === id) ? `${browsePlaces.find((b) => b.id === id)!.kind}:${id}` : null)}
-              legs={legs}
             />
+          ) : (
+            <MapFallbackList tripId={tripId} activities={day?.activities ?? []} />
           )
         ) : (
           <div className="h-full bg-muted flex items-center justify-center px-4 text-center">
@@ -490,7 +521,7 @@ export function MapControlCenter({
             </p>
           </div>
         )}
-        {renderer === "leaflet" && center ? (
+        {renderer === "leaflet" && center && leafletMapAllowed ? (
           <p className="absolute bottom-1 left-1 z-[500] rounded bg-card/90 px-1.5 py-0.5 text-[10px] text-muted-foreground" data-testid="map-fallback-notice">
             {MAP_FALLBACK_NOTICE}
           </p>

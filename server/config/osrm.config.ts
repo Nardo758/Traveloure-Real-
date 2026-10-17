@@ -25,8 +25,11 @@ export function osrmFootProfile(): string {
   return (process.env.OSRM_FOOT_PROFILE ?? "").trim() || "foot";
 }
 
-/** How long one route request may take before it is treated as a failed call (a thin connector). */
+/**
+ * How long one route request may take before it is treated as a failed call (a thin connector). 15 s by
+ * default: the first request after the VM starts pages the mmapped graph in (the drive graph is ~1.2 GB).
+ */
 export function osrmTimeoutMs(): number {
   const n = Number(process.env.OSRM_TIMEOUT_MS);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 5000;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 15000;
 }

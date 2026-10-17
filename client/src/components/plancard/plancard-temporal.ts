@@ -17,6 +17,17 @@ import type { TraveloureMode } from "@/lib/navigate";
 // "what day is it there". Neither is restated here (§18 rule 1).
 import { calendarDayOf, isUsableTimeZone, zonedWallClockToInstant } from "@shared/plan-timing";
 import { planInstantIsClaimable } from "@shared/plan-dates";
+import {
+  deriveLeaveBy,
+  leaveByBuffer,
+  leaveByConfig,
+  leaveByHero,
+  type LeaveByConfig,
+  type LeaveByLeg,
+  type LeaveByMode,
+  type LeaveByRow,
+} from "@shared/leave-by";
+import { routeProvenanceLabel } from "@shared/routing-engine";
 
 export type TemporalState = "past" | "upcoming" | "future";
 
@@ -227,21 +238,104 @@ export interface UpNextInfo<TLeg extends InlineTransportLegData = InlineTranspor
   /** = nowLineIndex !== null (kept for callers). */
   showNowLine: boolean;
   /**
-   * Step 9b D7 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): "HH:MM" — the up-next stop's start
-   * minus the minutes of the leg INTO it, on the live day only. Null when either is unknown, or when the
-   * subtraction would cross midnight (§13 — never a guessed time).
+   * 9b-c (LB1–LB9, ledger `2026-10-17-9b-c-leave-by`; replaces D7): "HH:MM" — the up-next stop's leave-by,
+   * from `shared/leave-by.ts`, on the live day only. Null when the leg into it is unrouted, transit, an
+   * ineligible mode, or an input is missing (§13 — never a guessed time).
    */
   leaveBy: string | null;
+  /** 9b-c: one leave-by row per stop of the live day (stays excluded); empty off the live day. */
+  leaveByRows: LeaveByRow[];
+  /** 9b-c LB4: the hero's "LEAVE BY · NEXT" — the first leave-by strictly after now in the plan's zone; null when none. */
+  heroLeaveBy: Extract<LeaveByRow, { kind: "leave_by" }> | null;
+  /** 9b-c: now as minutes of the day in the plan's zone (the device's when no zone was captured); null off the live day. */
+  nowMinute: number | null;
 }
 
-/** Pure. D7: a stop's start minus the leg's minutes, as "HH:MM"; null when unknown or before midnight. */
-export function leaveByTime(startTime: string | null | undefined, legMinutes: number | null | undefined): string | null {
+/**
+ * Pure. 9b-c (Phase 0 ruling 3, sanctioned V1 edit): a stop's start minus the leg's minutes minus the mode's
+ * buffer (walk 0, taxi 5 — config by name), rounded down to 5 (the planning tier), as "HH:MM". Any other mode,
+ * an unknown input, or a time before midnight ⇒ null.
+ */
+export function leaveByTime(startTime: string | null | undefined, legMinutes: number | null | undefined, mode: string = "walk", config: LeaveByConfig = leaveByConfig()): string | null {
   const start = wallClockMinutes(startTime);
   const m = Number(legMinutes);
   if (start == null || !Number.isFinite(m) || m <= 0) return null;
-  const t = start - Math.round(m);
+  const buffer = leaveByBuffer({ mode: leaveByModeOf(mode), modeChosen: true }, config);
+  if (buffer == null) return null;
+  const t = Math.floor((start - Math.round(m) - buffer) / 5) * 5;
   if (t < 0) return null;
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/** 9b-c: a stored mode spelling as a leave-by mode. */
+export function leaveByModeOf(raw: string | null | undefined): LeaveByMode {
+  const m = String(raw ?? "").toLowerCase().trim();
+  if (m === "walk" || m === "walking") return "walk";
+  if (m === "taxi" || m === "rideshare" || m === "ride_hail") return "taxi";
+  if (m === "private_car" || m === "car" || m === "private car") return "private_car";
+  if (m === "transit" || m === "train" || m === "bus" || m === "subway" || m === "metro" || m === "tram" || m === "rail") return "transit";
+  if (m === "drive" || m === "driving") return "drive";
+  if (m === "cycle" || m === "bike" || m === "cycling") return "cycle";
+  return "other";
+}
+
+/** 9b-c: a card leg as the leave-by core reads it — routed (the engine's own answer), its mode and who chose it. */
+export function leaveByLegOf(leg: any, timezone?: string | null): LeaveByLeg | null {
+  if (!leg) return null;
+  const minutes = Number(leg.estimatedDurationMinutes ?? leg.duration);
+  const authorTaxi = typeof leg.authorTip === "string" && /\btaxi\b/i.test(leg.authorTip);
+  const picked = leg.userSelectedMode ? leaveByModeOf(leg.userSelectedMode) : null;
+  let mode = leaveByModeOf(leg.userSelectedMode ?? leg.recommendedMode ?? leg.mode ?? null);
+  if (authorTaxi && (mode === "drive" || mode === "other")) mode = "taxi";
+  const modeChosen = authorTaxi || picked === "taxi" || picked === "private_car";
+  const routed = !!leg.routed && Number.isFinite(minutes) && minutes > 0;
+  return {
+    routed,
+    durationMin: Number.isFinite(minutes) ? minutes : null,
+    mode,
+    modeChosen,
+    provenanceLine: routed ? routeProvenanceLabel(leg.routed?.provenance ?? null, timezone ?? null) : null,
+    live: leg.liveTier && Number(leg.liveTier.minutes) > 0 ? { minutes: Number(leg.liveTier.minutes), checkedLabel: String(leg.liveTier.checkedLabel ?? "") } : null,
+  };
+}
+
+/** 9b-c: a stop's length in minutes — its own duration, else end − start; null when neither is known. */
+function stopDuration(a: PlanCardActivity): number | null {
+  const own = Number((a as any).durationMinutes);
+  if (Number.isFinite(own) && own > 0) return own;
+  const s = wallClockMinutes(a.time);
+  const e = wallClockMinutes(a.endTime ?? null);
+  return s != null && e != null && e > s ? e - s : null;
+}
+
+const located = (a: any) => Number.isFinite(Number(a?.lat)) && Number.isFinite(Number(a?.lng)) && a?.lat != null && a?.lng != null;
+
+/** 9b-c: the live day's leave-by rows — every stop (stays excluded), each with the leg INTO it (LB3b for stop 1). */
+export function leaveByRowsForDay(day: PlanCardDay | undefined, legs: readonly any[], timezone?: string | null, config?: LeaveByConfig): LeaveByRow[] {
+  const acts = day?.activities ?? [];
+  const stay = acts.find((a) => isStayActivity(a)) ?? null;
+  const stops = acts.filter((a) => !isStayActivity(a));
+  if (!stops.length) return [];
+  const into = (stopId: string, fromId: string | null) =>
+    legs.find((l) => (l?.toActivityId ?? l?.to) === stopId && (fromId == null || (l?.fromActivityId ?? l?.from) === fromId)) ?? null;
+  const legRows = stops.map((s, k) => leaveByLegOf(k === 0 ? (stay ? into(s.id, stay.id) : null) : into(s.id, stops[k - 1].id), timezone));
+  return deriveLeaveBy({
+    stops: stops.map((a) => ({ id: a.id, name: a.name, start: a.time ?? null, durationMin: stopDuration(a), located: located(a) })),
+    legs: legRows,
+    stayLocated: !!stay && located(stay),
+    config,
+  });
+}
+
+/** 9b-c: now as minutes of the day in the plan's zone; the device's clock when no usable zone was captured. */
+export function nowMinuteIn(now: Date, timezone?: string | null): number {
+  if (isUsableTimeZone(timezone)) {
+    const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone!, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+    const h = Number(parts.find((p) => p.type === "hour")?.value);
+    const m = Number(parts.find((p) => p.type === "minute")?.value);
+    return h * 60 + m;
+  }
+  return now.getHours() * 60 + now.getMinutes();
 }
 
 /**
@@ -304,9 +398,15 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
   const intoLeg = upNextActivity
     ? ((legs as any[]).find((l) => l?.toActivityId === upNextActivity.id) ?? upNextLeg)
     : null;
-  const leaveBy = isLiveDay && upNextActivity ? leaveByTime((upNextActivity as any).time, intoLeg?.estimatedDurationMinutes) : null;
+  // 9b-c (LB1–LB9): every stop's row from the ONE core, on the live day only; the up-next stop's time is its row's.
+  void intoLeg;
+  const leaveByRows = isLiveDay ? leaveByRowsForDay(day, legs as any[], timezone) : [];
+  const upNextRow = upNextActivity ? leaveByRows.find((r) => r.stopId === upNextActivity.id) : undefined;
+  const leaveBy = upNextRow?.kind === "leave_by" ? upNextRow.time : null;
+  const nowMinute = isLiveDay ? nowMinuteIn(now, timezone) : null;
+  const heroLeaveBy = nowMinute != null ? leaveByHero(leaveByRows, nowMinute) : null;
 
-  return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, nowLineIndex, showNowLine, leaveBy };
+  return { isLiveDay, states, upNextIndex, upNextActivity, upNextLeg, upNextMode, lastPastIndex, nowLineIndex, showNowLine, leaveBy, leaveByRows, heroLeaveBy, nowMinute };
 }
 
 /** Pure. R321 (S11-3): the now-line's position on a live day, or null outside the day's window. */
