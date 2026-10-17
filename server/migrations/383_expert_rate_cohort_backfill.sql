@@ -1,4 +1,4 @@
--- FE-2 (ledger 2026-10-16-fe2-beta-cohort). Data migration: the backfill.
+-- FE-2 (ledger 2026-10-16-fe2-beta-cohort). HELD data migration: the backfill.
 -- DATA ONLY. No schema change, so nothing to declare in shared/schema.ts.
 --
 -- Every already-approved expert in the three cohort roles (ruling 3: travel_expert,
