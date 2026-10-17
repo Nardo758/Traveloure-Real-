@@ -23,6 +23,12 @@ on:
   pull_request:
     branches: [main]
 
+# CI-1b (b): a new push to the same PR cancels that PR's run still in progress. Schedule, dispatch and
+# main runs are never cancelled (the build.yml pattern).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   supply-demand:
     name: supply-demand-e2e
