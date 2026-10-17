@@ -482,3 +482,17 @@ mtime_ms = 1792078032399
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/97dd5b36-debe-4443-8440-7ec057f2fcc7/84f5f525-5e1e-4794-821f-b0d30628f009"
 storage_version_token = "1792078097374544"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "Vuz1WoNXP6iqcvrThsvEn"
+uri = "file://.local/signup-existing-account-notice/reports/signup-existing-account-stage1-evidence.md"
+type = "text"
+title = "Stage 1 signup security evidence"
+description = "Approved changes, negative controls, two restricted clean loops, explicit test exclusions and release blockers."
+logical_id = "db926341-4fde-4e8b-8415-1cb772ba5299"
+content_hash = "sha256:1455a1e4f0b04c1e0f00cd0763db74447fa86b256a6b3d5eaf930ae9aa1f3d32"
+size = 9802
+mtime_ms = 1792259377566
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/db926341-4fde-4e8b-8415-1cb772ba5299/9f7fd181-3db3-42df-87f8-2a7c05a9f386"
+storage_version_token = "1792259468090146"
+content_type = "text/markdown"
