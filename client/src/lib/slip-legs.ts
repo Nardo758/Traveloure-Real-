@@ -10,7 +10,7 @@
  * day-end `LogisticsRow` list is retired (FU-9C-1) without any leg losing its render.
  */
 import { PLAN_LEG_REFETCH_DELAY_MS } from "@shared/plan-routed-legs";
-import type { RouteAnswer, RoutingMode } from "@shared/routing-engine";
+import { STRAIGHT_LINE_EST_SOURCE, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
 import { normalizeLegMode } from "@shared/travel-speeds";
 import type { LegOptionView } from "@shared/leg-options";
 
@@ -28,6 +28,7 @@ type SlipLeg = {
   estimatedDurationMinutes?: number;
   durationMin?: number;
   distanceMeters?: number | null;
+  alternativeModes?: Array<{ reason?: string | null }> | null;
   routed?: { line: string | null; fare: { amount: number; currency: string } | null; provenance: { source: string; checkedAt: string }; transitUnavailable?: true; transitApiUncovered?: true };
   routedOptions?: LegOptionView[];
   routedOptionsChecked?: true;
@@ -58,7 +59,7 @@ export type SlipLegView =
       optionsChecked: boolean;
       hostPickupConfirmed: boolean;
     })
-  | { kind: "unrouted"; legId: string; mode: RoutingMode | null; minutes: number };
+  | { kind: "unrouted"; legId: string; mode: RoutingMode | null; minutes: number; estimate?: true };
 
 /**
  * P0-d item 2: a slot's leg can be a BRIDGE — the engine's leg around a stop with no point, from the last
@@ -154,15 +155,21 @@ function legForPair(days: readonly SlipDay[] | null | undefined, prevId: string,
       }
       const minutes = Number(l.estimatedDurationMinutes ?? l.durationMin);
       if (!Number.isFinite(minutes) || minutes <= 0) return null;
-      return { kind: "unrouted", legId: l.id, mode: normalizeLegMode(l.userSelectedMode ?? l.recommendedMode ?? l.mode ?? null), minutes: Math.round(minutes) };
+      // 9b-d: the engine's straight-line stand-in for a pair the router says has no route reads "est.".
+      const estimate = Array.isArray(l.alternativeModes) && l.alternativeModes[0]?.reason === STRAIGHT_LINE_EST_SOURCE;
+      return { kind: "unrouted", legId: l.id, mode: normalizeLegMode(l.userSelectedMode ?? l.recommendedMode ?? l.mode ?? null), minutes: Math.round(minutes), ...(estimate ? { estimate: true as const } : {}) };
     }
   }
   return undefined;
 }
 
-/** "18 min · walk" — a shown leg with no routed facts (an expert's own minutes): no source line, no fare. */
-export function unroutedLegLine(mode: RoutingMode | null, minutes: number): string {
-  return mode ? `${minutes} min · ${mode}` : `${minutes} min`;
+/**
+ * "18 min · walk" — a shown leg with no routed facts (an expert's own minutes): no source line, no fare.
+ * 9b-d: the engine's straight-line stand-in for a no-route pair says so — "18 min · drive · est.".
+ */
+export function unroutedLegLine(mode: RoutingMode | null, minutes: number, estimate = false): string {
+  const base = mode ? `${minutes} min · ${mode}` : `${minutes} min`;
+  return estimate ? `${base} · est.` : base;
 }
 
 /** The routed leg from `prevId` to `nextId`, or null. */

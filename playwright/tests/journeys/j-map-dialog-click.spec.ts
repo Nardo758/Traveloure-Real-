@@ -11,11 +11,16 @@ import { BASE_URL, closePool, createTrip, registerUser } from "./_journey-helper
  * meant for the dialog. Step 8d found it on the guest map and patched only that page; the fix now
  * lives in `MapControlCenter`'s root, so every mount is covered.
  *
- * The proof: a signed-in owner opens their plan on the MAP view (located stops, so Leaflet draws
- * markers), opens the Finalize dialog from the map band, and every point sampled across the dialog's
- * box hit-tests to an element INSIDE the dialog — then the dialog's own button is clicked.
+ * The proof: a signed-in owner opens their plan on the MAP view, opens the Finalize dialog from the
+ * map band, and every point sampled across the dialog's box hit-tests to an element INSIDE the dialog
+ * — then the dialog's own button is clicked.
  *
- * Runs with no Google key (Leaflet), as CI does. Run solo:
+ * GC-1 (ledger `2026-10-17-gc1-google-coords`): an item coordinate with no stamped source reads as
+ * Google, and a Google point is never drawn on Leaflet, so the map band shows the day as a list and
+ * the sweep proves the dialog over that band. The Leaflet stacking-context proof returns when 9b-e
+ * writes a non-Google coordinate source (parked-and-held register).
+ *
+ * Runs with no Google key, as CI does. Run solo:
  *   npx playwright test playwright/tests/journeys/j-map-dialog-click.spec.ts --project=chromium
  */
 
@@ -27,7 +32,7 @@ test("FU-8D-4 — a dialog over the member map receives the click everywhere on 
   test.setTimeout(60_000);
   await registerUser(page.request, "map-dialog", "Map", "Dialog");
   const tripId = await createTrip(page.request, `Map dialog ${Date.now()}`, "Kyoto, Japan");
-  // Two located stops on day 1, so the map centres on them and draws markers.
+  // Two located stops on day 1, sent with no coordSource, so both read as Google (GC-1).
   for (const [title, lat, lng] of [
     ["Nanzen-ji", "35.0110", "135.7940"],
     ["Kiyomizu-dera", "34.9949", "135.7850"],
@@ -40,8 +45,10 @@ test("FU-8D-4 — a dialog over the member map receives the click everywhere on 
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/plans/${tripId}?view=map`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".leaflet-container").first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".leaflet-marker-icon, .leaflet-interactive").first()).toBeVisible({ timeout: 15_000 });
+  const list = testid(page, `map-fallback-list-${tripId}`);
+  await expect(list).toBeVisible({ timeout: 30_000 });
+  await expect(list).toContainText("The map isn't available here, so this day is shown as a list.");
+  await expect(page.locator(".leaflet-container")).toHaveCount(0);
 
   // The map band's Finalize opens the chooser dialog over the map.
   await testid(page, "map-band").getByTestId("slip-action-finalize-plan").click();

@@ -49,6 +49,7 @@ import path from "path";
 import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
 import { isFreeDraftEligible } from "@shared/content-tiers";
+import { admitItemCoordSource } from "@shared/item-coord-source";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
@@ -285,6 +286,7 @@ import reviewRepliesRoutes from "./routes/review-replies.routes";
 import statementsRoutes from "./routes/statements.routes";
 import launchWaitlistRoutes from "./routes/launch-waitlist.routes";
 import tickerRoutes from "./routes/ticker.routes";
+import phoneDeliveryRoutes from "./routes/phone-delivery.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import launchPublicRoutes from "./routes/launch-public.routes";
 import discoverRedirectRoutes from "./routes/discover-redirect.routes";
@@ -1399,6 +1401,8 @@ export async function registerRoutes(
   // LW-1c: POST /api/waitlist + the admin counts/CSV. Mounted per §9.
   app.use(launchWaitlistRoutes);
   app.use(tickerRoutes);
+  // §8 phone delivery (ledger 2026-10-17-phone-delivery-calendar): the chooser rails and the /cal/<token>.ics feed.
+  app.use(phoneDeliveryRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
@@ -13470,7 +13474,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             pendingGemId,
           )
         : null;
-      const item = gemWrite?.item ?? await storage.createItineraryItem(itemData);
+      // GC-1 (migration 387): the body may mark its coordinate as Google (`places` | `geocode_google`) and
+      // nothing else; absent ⇒ NULL, which reads as Google.
+      const item = gemWrite?.item ?? await storage.createItineraryItem(itemData, { coordSource: admitItemCoordSource(req.body) });
       if (!gemWrite || gemWrite.created) {
         logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
       }

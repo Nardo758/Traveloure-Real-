@@ -23,10 +23,12 @@ import {
   itineraryVariantItems,
   providerServices,
   notifications,
+  transportLegs,
 } from "@shared/schema";
 import { db } from "../db";
-import { and, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { legRecheckDedupePrefix } from "@shared/leg-recheck";
+import { runRoutingRecheckOnOpen } from "../jobs/routingRecheck";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole } from "../utils/trip-role";
@@ -641,6 +643,11 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/recheck");
     if (denied) return res.status(denied.status).json({ error: denied.message });
+    // 9b-d (9b-0 ruling 4): the routing re-check's FIRST-OPEN trigger. On a trip day at or after 06:00
+    // in the plan's zone, the first open asks the same pass the 06:00 job runs; the per-window guard
+    // makes every later open (and the job, if it comes second) a no-op. Never awaited and never fails
+    // this read (§15b); its findings are read on the next open.
+    void runRoutingRecheckOnOpen(tripId);
     const [row] = await db
       .select({ data: notifications.data, createdAt: notifications.createdAt })
       .from(notifications)
@@ -658,6 +665,18 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
       .limit(50);
     const seenPairs = new Set<string>();
     const legs: Array<Record<string, unknown>> = [];
+    // 9b-b (Phase 0 ruling 1): the notice stores no minutes; "was N min" is the plan's OWN stored leg, read now.
+    const planMinutes = new Map<string, number>();
+    if (legRows.length) {
+      const shownLegs = await db
+        .select({ dayNumber: transportLegs.dayNumber, fromActivityId: transportLegs.fromActivityId, toActivityId: transportLegs.toActivityId, minutes: transportLegs.estimatedDurationMinutes })
+        .from(transportLegs)
+        .where(and(eq(transportLegs.tripId, tripId), isNull(transportLegs.variantId), isNotNull(transportLegs.proposalStatus)));
+      for (const l of shownLegs) {
+        const m = Number(l.minutes);
+        if (Number.isFinite(m) && m > 0) planMinutes.set(`${l.dayNumber}:${l.fromActivityId}:${l.toActivityId}`, m);
+      }
+    }
     for (const r of legRows) {
       const d = (r.data ?? {}) as Record<string, any>;
       const pair = `${d.dayNumber}:${d.fromActivityId}:${d.toActivityId}`;
@@ -667,8 +686,8 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
         dayNumber: d.dayNumber ?? null,
         toName: d.toName ?? null,
         mode: d.mode ?? null,
-        wasMin: d.wasMin ?? null,
-        nowMin: d.nowMin ?? null,
+        wasMin: planMinutes.get(pair) ?? null,
+        nowMin: null,
         status: d.status,
         checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : r.createdAt ?? null,
       });

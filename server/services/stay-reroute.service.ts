@@ -50,6 +50,7 @@ import { storage } from "../storage";
 import { computeTransportLeg } from "./transport-leg-calculator";
 import { SELECTABLE_TRANSPORT_MODES, recomputeLegForMode } from "./trip-transport-legs.service";
 import { AUTHOR_PICK_ORIGIN } from "./ready-made-clone-legs";
+import { travelTimeServiceEnabled } from "../config/travel-time.config";
 
 export const REROUTED_FOR_STAY_ORIGIN = "rerouted_for_stay";
 /**
@@ -207,6 +208,10 @@ export async function rerouteCopyForStay(tripId: string): Promise<RerouteResult>
     }
     // Else the engine's own recommendation (its driving route). Null without a route — then the
     // caller keeps the leg it would have replaced rather than leave an invented one (§13).
+    // 9b-b (ledger `2026-10-16-9b-b-legs-off-google`): that engine is now the labelled straight-line drive estimate
+    // (no Google call), so with the travel-time service OFF it is not asked at all — the author's legs are kept,
+    // exactly as before, rather than replaced by an estimate nobody switched on.
+    if (!travelTimeServiceEnabled()) return null;
     const loc = (p: typeof from, order: number) => ({ id: p.id ?? "stay", name: p.name, lat: p.lat, lng: p.lng, scheduledTime: "", dayNumber, order });
     const engine = await computeTransportLeg(loc(from, 0), loc(to, 1), dayNumber, legOrder, destination);
     if (!engine) return null;

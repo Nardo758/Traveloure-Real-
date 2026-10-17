@@ -21,6 +21,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 // answers "is this the platform's own reserved Booking Concierge account" — read here so the
 // concierge-fee expert-share re-split is skipped when the listing owner is not a person.
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
+import { isEditorialUserId } from "./services/editorial-account.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
 import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
@@ -160,6 +161,7 @@ import {
   readyMadePurchases,
 } from "@shared/schema";
 import { stampItemSourceClass, PUBLIC_REUSABLE_TAGS } from "@shared/content-tiers";
+import type { GoogleCoordSource } from "@shared/item-coord-source";
 export { stampItemSourceClass };
 import { stripServerAuthoredBookingDetails } from "@shared/booking-details-admission";
 // D-10 (ledger `2026-09-15-d10-confirmed-needs-partner-evidence`): the purchase writer's §15
@@ -1088,13 +1090,13 @@ export interface IStorage {
 
   getItineraryItems(tripId: string): Promise<any[]>;
 
-  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean }): Promise<any>;
+  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource }): Promise<any>;
   createPendingBillboardGemItemIfAbsent(
     item: InsertItineraryItem & { tripId: string },
     gemId: string,
   ): Promise<{ item: ItineraryItem; created: boolean }>;
 
-  updateItineraryItem(id: string, updates: any): Promise<any>;
+  updateItineraryItem(id: string, updates: any, opts?: { coordSource?: GoogleCoordSource }): Promise<any>;
 
   deleteItineraryItem(id: string): Promise<void>;
 
@@ -1508,9 +1510,23 @@ export function stripItineraryItemRoutingFields<T extends Record<string, unknown
     // TC-3a (migration 368): a ride's exit pin is written only by the ride service, never by a generic write.
     exitLatitude: _exitLat,
     exitLongitude: _exitLng,
+    // GC-1 (migration 387): the coordinate's source is stamped by the writer that knows it, through the item
+    // rails' Google-only admission (`admitItemCoordSource`) or the geocode backfill — never a generic body.
+    coordSource: _coordSource,
     ...safe
   } = item as Record<string, unknown>;
   return safe as T;
+}
+
+/**
+ * GC-1 (migration 387): a write that sets a coordinate also says where it came from. The stated source is a
+ * Google value from the item rails' admission, or nothing — and nothing is stored as NULL, which reads as
+ * Google. A write that does not touch the coordinate leaves the stored source alone.
+ */
+export function withItemCoordSource<T extends Record<string, unknown>>(item: T, coordSource: GoogleCoordSource | undefined): T {
+  const touches = Object.prototype.hasOwnProperty.call(item, "latitude") || Object.prototype.hasOwnProperty.call(item, "longitude");
+  if (!touches) return item;
+  return { ...item, coordSource: coordSource ?? null } as T;
 }
 
 /** A second expert application for a user who already has one (board #1725). The routes map it to
@@ -3814,6 +3830,12 @@ export class DatabaseStorage implements IStorage {
     const { providerId, serviceId } = booking;
     if (!providerId || !serviceId) {
       console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    // ED-1b (ledger `2026-10-16-ed1b-editorial-house-account`): the Traveloure Editorial house account
+    // earns nothing — an earning minted to it would be a payable no one can draw.
+    if (await isEditorialUserId(providerId)) {
+      logger.warn({ bookingId: booking.id }, "[mintCompletionEarnings] provider is the editorial house account — refusing to mint");
       return false;
     }
     // #1288, second layer: the status writer already refuses to complete a stamped booking; this
@@ -8086,9 +8108,9 @@ export class DatabaseStorage implements IStorage {
   // caller that sets it at create time (see the schema comment).
   async createItineraryItem(
     item: InsertItineraryItem & { tripId: string },
-    opts: { fromLocalInput?: boolean } = {},
+    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource } = {},
   ): Promise<ItineraryItem> {
-    const safeItem = stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts);
+    const safeItem = withItemCoordSource(stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts), opts.coordSource);
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
@@ -8126,8 +8148,12 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async updateItineraryItem(id: string, updates: Partial<InsertItineraryItem>): Promise<ItineraryItem | undefined> {
-    const safeUpdates = stripItineraryItemRoutingFields(updates as Record<string, unknown>);
+  async updateItineraryItem(
+    id: string,
+    updates: Partial<InsertItineraryItem>,
+    opts: { coordSource?: GoogleCoordSource } = {},
+  ): Promise<ItineraryItem | undefined> {
+    const safeUpdates = withItemCoordSource(stripItineraryItemRoutingFields(updates as Record<string, unknown>), opts.coordSource);
     const [updated] = await db.update(itineraryItems)
       .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(itineraryItems.id, id))
@@ -9137,8 +9163,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void> {
+    // GC-1: this is the Google Geocoding backfill's one writer (`resolveMissingItemCoordinates`).
     await db.update(itineraryItems)
-      .set({ latitude: lat, longitude: lng })
+      .set({ latitude: lat, longitude: lng, coordSource: "geocode_google" })
       .where(eq(itineraryItems.id, id));
   }
 

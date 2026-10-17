@@ -1,7 +1,7 @@
 /**
  * The expert's Share kit for an APPROVED Ready Made Trip (Slice B2 — work plan L3-14; ledger
- * `2026-10-05-rmt-share-images`): copy the public link (`/t/<slug>`, B1) and download the four
- * generated cards. The cards are the server's (`/api/share-image/ready-made/:id.png`), generated when
+ * `2026-10-05-rmt-share-images`): copy the public link (`/t/<slug>`, B1) and download the generated
+ * cards (three since GC-1). The cards are the server's (`/api/share-image/ready-made/:id.png`), generated when
  * the listing was approved and re-rendered whenever what they say changes; nothing here draws one.
  * Shown only for an approved listing — a draft has no public page and no cards (the server 404s).
  *
@@ -11,9 +11,10 @@
 import { useEffect, useState } from "react";
 import { readyMadePreviewPath } from "@shared/ready-made-preview";
 
+// GC-1 (ledger `2026-10-17-gc1-google-coords`): the "Route slide" (map format) is not offered — the server does
+// not serve it while any located stop's point is Google, and no stop has a non-Google point yet.
 export const SHARE_KIT_IMAGES = [
   { format: "cover", label: "Feed cover", size: "1080×1350" },
-  { format: "map", label: "Route slide", size: "1080×1350" },
   { format: "story", label: "Story", size: "1080×1920" },
   { format: "og", label: "Link card", size: "1200×630" },
 ] as const;
@@ -22,7 +23,7 @@ export const SHARE_KIT_IMAGES = [
 export const SHARE_KIT_LINK_FORMATS: readonly string[] = ["cover", "story"];
 
 /**
- * Pure: the link to copy and the four download links. With the expert's own short-link code (CP-3, ledger
+ * Pure: the link to copy and the download links. With the expert's own short-link code (CP-3, ledger
  * `2026-10-16-cp3-share-image-ref`), the cover and story downloads carry `&ref=<code>` and print that /r/ link; with
  * none, every card prints the /t/ link as before — never a guessed code.
  */

@@ -42,7 +42,7 @@ export interface RouteFare {
 }
 
 export interface RouteProvenance {
-  /** Who answered: "google_routes" | "stub". */
+  /** Who answered: "google_routes" | "osrm" | "stub". */
   source: string;
   /** ISO instant the source answered. A cache hit keeps the ORIGINAL instant, never "now". */
   checkedAt: string;
@@ -58,8 +58,23 @@ export interface RouteAnswer {
   provenance: RouteProvenance;
 }
 
-/** `paused` = the caller's daily cap is reached (step 9a ruling 8); `no_route` = the source had no answer. */
-export type RouteOutcome = { kind: "ok"; route: RouteAnswer } | { kind: "no_route" } | { kind: "paused" };
+/**
+ * `paused` = the caller's daily cap is reached (step 9a ruling 8); `no_route` = the source had no answer.
+ * 9b-d: a `no_route` MAY say the question went unanswered — `unsupported_mode` (the source does not serve
+ * that mode, e.g. OSRM and transit) or `failed` (the call itself failed: timeout, non-200, unreadable body).
+ * Without `unanswered` it is the source's own answer: there is no route. A re-check reads an unanswered
+ * `no_route` as "learned nothing" and keeps the leg's last label (§13); every other caller is unchanged.
+ */
+export type RouteUnanswered = "unsupported_mode" | "failed";
+
+/**
+ * 9b-d (Leon's ruling, Oct 17, 2026): the `source` an ENGINE row carries when the router's own answer was
+ * "no route" — the pair shows a labelled straight-line estimate instead of nothing. It is NOT a routed leg:
+ * `routedFactsOf` and `legIsRouted` both answer no for it, so every surface reads it as "est.". It is outside
+ * `CACHEABLE_ROUTE_SOURCES`, so the next engine run asks the pair again (a route found later replaces it).
+ */
+export const STRAIGHT_LINE_EST_SOURCE = "straight_line_est";
+export type RouteOutcome = { kind: "ok"; route: RouteAnswer } | { kind: "no_route"; unanswered?: RouteUnanswered } | { kind: "paused" };
 
 export interface RoutingAdapter {
   /** The provenance `source` this adapter stamps. */
@@ -71,10 +86,16 @@ export interface RoutingAdapter {
 export const ROUTE_FACT_FIELDS = ["durationMin", "distanceM", "line", "fare", "provenance"] as const;
 
 /**
- * Sources whose answers MAY be written to a persistent cache. Google is not one and never will be under
- * the current terms. The stub is (test data, no terms); OSRM (self-hosted, 9a-ii) will be.
+ * The self-hosted OSRM adapter's provenance `source` (9b spec v1.0 T2, ledger `2026-10-16-9b-a-osrm-adapter`).
+ * Its stored minutes read "© OpenStreetMap contributors · checked <date>".
  */
-export const CACHEABLE_ROUTE_SOURCES: ReadonlySet<string> = new Set(["stub"]);
+export const OSRM_ROUTES_SOURCE = "osrm";
+
+/**
+ * Sources whose answers MAY be written to a persistent cache. Google is not one and never will be under
+ * the current terms (9b spec T1). The stub is (test data, no terms); OSRM is (self-hosted, OSM data).
+ */
+export const CACHEABLE_ROUTE_SOURCES: ReadonlySet<string> = new Set(["stub", OSRM_ROUTES_SOURCE]);
 
 /** THE cache boundary: the projected facts when the source may be cached, else null. */
 export function cacheableRouteEntry(route: RouteAnswer): RouteAnswer | null {
@@ -198,7 +219,8 @@ export const DEFAULT_LEG_DEPARTURE_WALL_CLOCK = "10:00";
 // ── The one line a routed leg reads (spec §3 LegRow; L6) ────────────────────────────────────────
 
 const MODE_WORD: Readonly<Record<RoutingMode, string>> = { walk: "walk", cycle: "cycle", transit: "transit", drive: "drive" };
-const SOURCE_LABEL: Readonly<Record<string, string>> = { google_routes: "Google", stub: "Test routes" };
+// 9b T2: OSRM's answers are OpenStreetMap data — the ODbL attribution IS the label.
+const SOURCE_LABEL: Readonly<Record<string, string>> = { google_routes: "Google", osrm: "© OpenStreetMap contributors", stub: "Test routes" };
 
 /** "¥220" in the source's currency, never converted. Null when there is no fare. */
 export function routeFareLabel(fare: RouteFare | null | undefined): string | null {

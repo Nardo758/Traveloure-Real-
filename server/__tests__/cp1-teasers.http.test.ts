@@ -4,7 +4,7 @@
  *   T1  GET /api/ready-made/preview/:slug: the sample day is an outline — `stopCount` and the areas
  *       its stops are in — and the payload names no stop title, time, place name or leg minute.
  *   T2  GET /api/ready-made/:id/teaser-map.svg: no stop pin and no route line — one blurred region
- *       per day; the per-day km legend stays.
+ *       per neighbourhood per day, at the neighbourhood's own centroid; no km legend (GC-1).
  *   T3  The share images: the cover's day chips name the AREA, never a stop title.
  *   T4  The service route share card's data: the stop count and the areas, never a stop name.
  *
@@ -105,11 +105,13 @@ test("T1: the preview's sample day is an outline — a count and areas, no stop"
   }
 });
 
-test("T2: the teaser map draws one blurred region per day — no pin, no route", async () => {
+test("T2: the teaser map draws one blurred region per neighbourhood per day — no pin, no route", async () => {
   const r = await fetch(`${BASE_URL}/api/ready-made/${ids.listing}/teaser-map.svg`);
   const svg = await r.text();
   assert.equal(r.status, 200, svg);
-  assert.equal((svg.match(/filter="url\(#teaser-blur\)"/g) ?? []).length, 2, "one region per day");
+  // GC-1: day 1 reaches Higashiyama and Arashiyama, day 2 Arashiyama — one region per neighbourhood per day.
+  assert.equal((svg.match(/filter="url\(#teaser-blur\)"/g) ?? []).length, 3, "one region per neighbourhood per day");
+  assert.doesNotMatch(svg, /\bkm\b/, "no km legend");
   assert.ok(!/r="6"/.test(svg), "no stop pin");
   assert.ok(!/stroke="#E85D55"|stroke="#3B6EA5"/.test(svg), "no route line in a day colour");
   for (const t of STOP_TITLES) assert.ok(!svg.includes(t));

@@ -11,7 +11,7 @@
  * SH0 ratified render-on-demand, not stored assets).
  */
 import { READY_MADE_SHARE_FORMATS, type ReadyMadeShareFormat } from "../services/ready-made-share-image.service";
-import { getReadyMadeShareImage } from "../services/ready-made-share-data.service";
+import { getReadyMadeShareImage, MAP_FORMAT_NOT_SERVED } from "../services/ready-made-share-data.service";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
@@ -115,6 +115,8 @@ router.get("/api/share-image/ready-made/:id.png", heavyReadRateLimiter, async (r
     const ref = typeof req.query.ref === "string" ? req.query.ref : null;
     const image = await getReadyMadeShareImage(req.params.id, format, ref);
     if (!image) return res.status(404).json({ message: "Trip not found" });
+    // GC-1: the map format draws stop points and is not served while any located stop's point is Google.
+    if (image === MAP_FORMAT_NOT_SERVED) return res.status(404).json({ message: "This image is not available for this trip" });
     res.setHeader("ETag", `"rmt-${format}-${image.version}${image.refCode ? `-${image.refCode}` : ""}"`);
     if (req.query.download === "1") {
       res.setHeader("Content-Disposition", `attachment; filename="traveloure-${image.slug}-${format}.png"`);

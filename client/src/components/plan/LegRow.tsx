@@ -345,6 +345,8 @@ export interface UnroutedLegRowProps {
   legId: string;
   mode: RoutingMode | null;
   minutes: number;
+  /** 9b-d: the engine's straight-line stand-in for a no-route pair — the line says "est.". */
+  estimate?: boolean;
 }
 
 export type LegRowProps = AirportLegRowProps | StopLegRowProps | RoutedLegRowProps | UnroutedLegRowProps;
@@ -403,12 +405,12 @@ function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable
   );
 }
 
-function UnroutedLegRow({ legId, mode, minutes }: UnroutedLegRowProps) {
+function UnroutedLegRow({ legId, mode, minutes, estimate = false }: UnroutedLegRowProps) {
   const Icon = (mode && ROUTED_MODE_ICON[mode]) || Car;
   return (
     <p className={`ml-4 ${legRuleClass(false)} px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5`} data-testid={`slip-leg-unrouted-${legId}`}>
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-      <span>{unroutedLegLine(mode, minutes)}</span>
+      <span>{unroutedLegLine(mode, minutes, estimate)}</span>
     </p>
   );
 }

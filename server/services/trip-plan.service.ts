@@ -913,6 +913,11 @@ export async function assembleTripPlan(
       // Google's location fact, applied behind the plancard gate (`applyGooglePins`).
       lat: item.latitude && rowCoordinatesTrusted(item as any) ? parseFloat(item.latitude.toString()) : null,
       lng: item.longitude && rowCoordinatesTrusted(item as any) ? parseFloat(item.longitude.toString()) : null,
+      // GC-1 (migration 387): where the row's own point came from — present only when stamped and the row's
+      // point is the one shown. Absent = Google (NULL), and so is a pin applied from a Places fact (`pinSource`).
+      ...((item as any).coordSource && item.latitude && item.longitude && rowCoordinatesTrusted(item as any)
+        ? { coordSource: String((item as any).coordSource) }
+        : {}),
       mapsUrl: placeMapsUrl(item.googlePlaceId),
       meetingPoint: item.providerServiceId
         ? (meetingPointByServiceId[item.providerServiceId] ?? null)

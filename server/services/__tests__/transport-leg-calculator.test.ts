@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildSameDayActivityPairs, calculateTransportLegs, computeTransportLeg } from "../transport-leg-calculator";
+import { straightLineMinutes } from "@shared/travel-speeds";
 
 const prefs = {
   prioritize: "time" as const,
@@ -18,8 +19,15 @@ function mockGoogleRoute(distanceMeters: number, durationSeconds: number) {
   }), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-test("uses the Google driving distance and duration (Compute Routes Essentials, R299)", async () => {
+// 9b-b, sanctioned edit (Phase 0 ruling 2): this writer stores its answer, so it no longer calls Google Routes —
+// it returns the labelled straight-line estimate for a drive, and never makes a request.
+test("returns the straight-line drive estimate, labelled, and makes no Google request (9b-b)", async () => {
   mockGoogleRoute(481_000, 21_600);
+  let calls = 0;
+  global.fetch = async () => {
+    calls++;
+    return new Response("{}", { status: 200 });
+  };
   const leg = await computeTransportLeg(
     { id: "a", name: "A", lat: 36.2704233, lng: -121.8080556, scheduledTime: "09:00", dayNumber: 2, order: 0 },
     { id: "b", name: "B", lat: 34.0549076, lng: -118.242643, scheduledTime: "12:00", dayNumber: 2, order: 1 },
@@ -30,12 +38,13 @@ test("uses the Google driving distance and duration (Compute Routes Essentials, 
   );
   assert.ok(leg);
   assert.equal(leg.recommendedMode, "driving");
-  assert.equal(leg.distanceMeters, 481_000);
-  assert.equal(leg.estimatedDurationMinutes, 360);
-  assert.equal(leg.routeProvider, "google_routes");
+  assert.equal(leg.routeProvider, "straight_line_est");
+  assert.ok(leg.distanceMeters > 350_000 && leg.distanceMeters < 450_000, "the straight line, not a road distance");
+  assert.equal(leg.estimatedDurationMinutes, straightLineMinutes(leg.distanceMeters, "drive"));
+  assert.equal(calls, 0);
 });
 
-test("returns honest absence when Google routing is unavailable", async () => {
+test("an unavailable Google route no longer matters: the estimate is returned (9b-b)", async () => {
   process.env.GOOGLE_MAPS_API_KEY = "test-key";
   process.env.MAPS_ROUTES_DRIVE_ENABLED = "1";
   global.fetch = async () => new Response("unavailable", { status: 503 });
@@ -47,7 +56,8 @@ test("returns honest absence when Google routing is unavailable", async () => {
     "default",
     prefs,
   );
-  assert.equal(leg, null);
+  assert.ok(leg);
+  assert.equal(leg.routeProvider, "straight_line_est");
 });
 
 test("activity pairs stay within a day and never imply an overnight transfer", () => {
@@ -59,7 +69,7 @@ test("activity pairs stay within a day and never imply an overnight transfer", (
   assert.deepEqual(pairs.map((pair) => [pair.from.id, pair.to.id]), [["d1a", "d1b"]]);
 });
 
-test("R299: with the drive switch off no request is made and the leg is honestly absent", async () => {
+test("R299 as amended by 9b-b: with the drive switch off no request is made and the leg is the estimate", async () => {
   process.env.GOOGLE_MAPS_API_KEY = "test-key";
   delete process.env.MAPS_ROUTES_DRIVE_ENABLED;
   let calls = 0;
@@ -75,7 +85,7 @@ test("R299: with the drive switch off no request is made and the leg is honestly
     "default",
     prefs,
   );
-  assert.equal(leg, null);
+  assert.equal(leg?.routeProvider, "straight_line_est");
   assert.equal(calls, 0);
 });
 

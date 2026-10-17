@@ -26,6 +26,7 @@ import { factsForTrip } from "../services/content-facts/place-facts.service";
 import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, temporalAnchors, users, adminNotifications } from "@shared/schema";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
+import { cityNeighborhoodNames } from "../services/listing-location-access.service";
 import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { getAuthoredTrip } from "../utils/trip-authorship";
@@ -1318,6 +1319,7 @@ router.get("/api/ready-made/:id/teaser-map.svg", async (req, res) => {
         status: readyMadeTrips.status,
         active: readyMadeTrips.active,
         sourceTripId: readyMadeTrips.sourceTripId,
+        market: readyMadeTrips.market,
       })
       .from(readyMadeTrips)
       .where(eq(readyMadeTrips.id, req.params.id))
@@ -1347,30 +1349,15 @@ router.get("/api/ready-made/:id/teaser-map.svg", async (req, res) => {
       .where(eq(itineraryItems.tripId, listing.sourceTripId))
       .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder));
 
-    // Per-day distance legend — ONLY real transport_legs rows, trip-scoped (variantId IS NULL
-    // per the migration-154 scope rule). No legs → the service omits the legend entirely; never
-    // estimated here (§13).
-    const legRows = await db
-      .select({
-        dayNumber: transportLegs.dayNumber,
-        totalMeters: sql<number>`sum(${transportLegs.distanceMeters})::int`,
-      })
-      .from(transportLegs)
-      // R-ax / L1-2: confirmed legs only — a machine proposal the author never accepted is not part
-      // of the trip being sold.
-      .where(and(
-        eq(transportLegs.tripId, listing.sourceTripId),
-        isNull(transportLegs.variantId),
-        eq(transportLegs.proposalStatus, "confirmed"),
-      ))
-      .groupBy(transportLegs.dayNumber)
-      .orderBy(asc(transportLegs.dayNumber));
+    // GC-1 (ledger `2026-10-17-gc1-google-coords`): no distance legend (a leg's distance may be a Google
+    // route's), and each stop snaps to its neighbourhood row from the listing market's spine.
+    const neighborhoods = listing.market ? await cityNeighborhoodNames(listing.market) : [];
 
     const svg = renderReadyMadeTeaserMapSvg({
       listingId: listing.id,
       destination: trip?.destination ?? null,
       items,
-      dayDistances: legRows.map((r) => ({ dayNumber: r.dayNumber, totalMeters: Number(r.totalMeters) })),
+      neighborhoods,
     });
 
     res.set({

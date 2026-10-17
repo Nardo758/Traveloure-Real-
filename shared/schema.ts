@@ -5785,6 +5785,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   locationAddress: text("location_address"),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // GC-1 (migration 387; ledger `2026-10-17-gc1-google-coords`): where latitude/longitude came from. NULL = Google;
+  // new writes stamp 'places' or 'geocode_google' (shared/item-coord-source.ts). Server-written only (§19): the
+  // insert schema omits it and storage strips it; the item rails admit only the Google values.
+  coordSource: text("coord_source"),
   googlePlaceId: varchar("google_place_id", { length: 255 }),
   
   // Travel to this item
@@ -6386,7 +6390,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true, coordSource: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275
@@ -8191,9 +8195,13 @@ export const transportLegs = pgTable("transport_legs", {
   supersededAt: timestamp("superseded_at"),
   supersededByItemId: varchar("superseded_by_item_id"),
   // Migration 357 (ledger `2026-10-07-step9a-routing-engine`, step 9a ruling 3): the routing source that
-  // computed this leg — `google_routes` | `stub`. NULL = not a routing-engine leg. A traveler sees an
+  // computed this leg — `google_routes` | `osrm` | `stub`. NULL = not a routing-engine leg. A traveler sees an
   // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
   source: varchar("source", { length: 30 }),
+  // Migration 386 (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec ED2): the departure this leg was routed for,
+  // plan-timezone wall-clock "HH:MM", verbatim. One writer, the routing engine. NULL = not recorded. Nullable, no
+  // DEFAULT/CHECK/index/FK.
+  routedDepartureLocal: text("routed_departure_local"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -8300,7 +8308,7 @@ export const transportBookingOptions = pgTable("transport_booking_options", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true, source: true });
+export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true, source: true, routedDepartureLocal: true });
 export const insertTransportBookingOptionSchema = createInsertSchema(transportBookingOptions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSharedItinerarySchema = createInsertSchema(sharedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMapsExportCacheSchema = createInsertSchema(mapsExportCache).omit({ id: true });
@@ -12657,6 +12665,34 @@ export const tickerItems = pgTable("ticker_items", {
   updatedBy: varchar("updated_by"),
   updatedAt: timestamp("updated_at"),
 });
+
+// §8 phone delivery (migration 388, ledger `2026-10-17-phone-delivery-calendar`): a trip owner's calendar links. Only
+// the token's SHA-256 is stored; a reset revokes the live row and inserts a new one. No DEFAULT, CHECK or FK; the ONE
+// writer is server/services/phone-delivery.service.ts. The UNIQUE hash index is declared here so the deploy keeps it.
+export const calendarFeeds = pgTable("calendar_feeds", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id"),
+  userId: varchar("user_id"),
+  tokenSha256: varchar("token_sha256", { length: 64 }),
+  createdAt: timestamp("created_at"),
+  revokedAt: timestamp("revoked_at"),
+  lastFetchedAt: timestamp("last_fetched_at"),
+}, (table) => ({
+  tokenUniq: uniqueIndex("uq_calendar_feeds_token_sha256").on(table.tokenSha256),
+  tripUserIdx: index("idx_calendar_feeds_trip_user").on(table.tripId, table.userId),
+}));
+
+// §8 phone delivery (migration 388): every opt-in / opt-out, per channel per trip, with its time. Append-only.
+export const phoneDeliveryChoices = pgTable("phone_delivery_choices", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id"),
+  userId: varchar("user_id"),
+  channel: varchar("channel", { length: 32 }),
+  choice: varchar("choice", { length: 16 }),
+  createdAt: timestamp("created_at"),
+}, (table) => ({
+  tripIdx: index("idx_phone_delivery_choices_trip").on(table.tripId, table.userId, table.channel),
+}));
 
 export const launchWaitlist = pgTable("launch_waitlist", {
   id: varchar("id").primaryKey(),

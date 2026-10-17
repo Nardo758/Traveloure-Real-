@@ -42,11 +42,7 @@ name: Journey Suite (Journey Wave 1 · Tier-1)
 
 on:
   push:
-    # claude/sync-local-repo-2j7ghv added TEMPORARILY: workflow_dispatch is denied to the
-    # integration token (403, standing BRANCH_PROTECTION_PAT gap), and the OC1-OC4 one-click
-    # Stripe proof on this branch needs a run before merge. Push-triggering on the feature
-    # branch is the only self-serve path. REMOVE this entry when the branch merges to main.
-    branches: [main, claude/sync-local-repo-2j7ghv]
+    branches: [main]
   schedule:
     # Nightly at 07:00 UTC.
     - cron: '0 7 * * *'
@@ -63,7 +59,7 @@ permissions:
 jobs:
   journeys:
     name: journeys (J1 golden path + J2 AI entry)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     # NO `continue-on-error` — see the header. This workflow has no `pull_request` trigger, so
     # it cannot block a merge in any case; masking the job conclusion only made the RUN read
     # green over red specs. Red tests must be red at a glance in the Actions list.
