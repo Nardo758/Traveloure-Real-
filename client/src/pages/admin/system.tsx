@@ -41,7 +41,20 @@ const FLAG_DEFAULTS: Record<string, boolean> = {
   maintenance_mode: false,
   new_user_registration_enabled: true,
   email_notifications_enabled: true,
+  // §8 phone delivery: every channel starts off (a missing row is off on the server too).
+  phone_delivery_calendar_enabled: false,
+  phone_delivery_home_screen_enabled: false,
+  phone_delivery_email_enabled: false,
+  phone_delivery_push_enabled: false,
 };
+
+/** §8 phone delivery: the per-channel switches drawn below, in the chooser's order. */
+const PHONE_DELIVERY_SWITCH_ROWS = [
+  { key: "phone_delivery_calendar_enabled", label: "Phone delivery: calendar link", help: "Offer \"Add to my calendar\" on Trip Cards. Off stops every existing link (404)." },
+  { key: "phone_delivery_home_screen_enabled", label: "Phone delivery: Add to Home Screen", help: "Offer \"Add to Home Screen\" on Trip Cards." },
+  { key: "phone_delivery_email_enabled", label: "Phone delivery: email", help: "Not built yet: no email channel is shown until the mailbox exists." },
+  { key: "phone_delivery_push_enabled", label: "Phone delivery: push", help: "Shows the phone notifications card in earner settings. Off hides it; subscribed devices are kept." },
+] as const;
 
 interface TestEmailResult {
   ok: boolean;
@@ -158,6 +171,7 @@ export default function AdminSystem() {
         maintenance_mode: "Maintenance mode",
         new_user_registration_enabled: "New user registration",
         email_notifications_enabled: "Email notifications",
+        ...Object.fromEntries(PHONE_DELIVERY_SWITCH_ROWS.map((r) => [r.key, r.label])),
       };
       toast({
         title: `${labels[key] ?? key} ${value ? "enabled" : "disabled"}`,
@@ -334,6 +348,21 @@ export default function AdminSystem() {
                   data-testid="switch-emails"
                 />
               </div>
+
+              {PHONE_DELIVERY_SWITCH_ROWS.map((row) => (
+                <div key={row.key} className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">{row.label}</Label>
+                    <p className="text-sm text-gray-500">{row.help}</p>
+                  </div>
+                  <Switch
+                    checked={flagValue(row.key)}
+                    disabled={updateFlag.isPending}
+                    onCheckedChange={(v) => updateFlag.mutate({ key: row.key, value: v })}
+                    data-testid={`switch-${row.key}`}
+                  />
+                </div>
+              ))}
 
               {/* Test email delivery */}
               <div className="pt-2 border-t border-gray-100">
