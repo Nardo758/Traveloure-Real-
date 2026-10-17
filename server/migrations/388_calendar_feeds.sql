@@ -1,6 +1,6 @@
 -- 388 — calendar feeds and phone-delivery choices (§8 phone delivery; ledger `2026-10-17-phone-delivery-calendar`;
 -- bots' review Part C ratified by Leon Oct 16, 2026, D2: "token 32+ random bytes, one per trip and owner, stored
--- hashed"; "Every opt-in/opt-out stored with a timestamp per channel per trip"). HELD until Leon's SQL comment.
+-- hashed"; "Every opt-in/opt-out stored with a timestamp per channel per trip"). Held for founder comment on #1500.
 --
 -- TWO new tables, born empty. Additive only: nothing existing is altered. No DEFAULT, no CHECK, no FK (app-enforced:
 -- the ONE writer is server/services/phone-delivery.service.ts). Both are declared in shared/schema.ts with their

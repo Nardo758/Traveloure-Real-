@@ -2062,6 +2062,6 @@ export const MIGRATION_FILES = [
   "384_ticker_items.sql",
   // 388 — calendar_feeds + phone_delivery_choices (§8 phone delivery, ledger 2026-10-17-phone-delivery-calendar). Two NEW
   // tables born empty: no DEFAULT, CHECK or FK; a UNIQUE index on the token hash and two lookup indexes. 385–387 are
-  // taken by open PRs. Declared in shared/schema.ts. HELD for Leon's SQL comment.
+  // taken by open PRs. Declared in shared/schema.ts. Held for founder comment on #1500.
   "388_calendar_feeds.sql",
 ] as const;

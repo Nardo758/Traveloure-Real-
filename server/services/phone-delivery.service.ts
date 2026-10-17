@@ -149,7 +149,7 @@ export async function mintCalendarFeed(tripId: string, userId: string, now = new
   const trip = await ownedTrip(tripId, userId);
   const reason = await calendarRefusalReason(trip, now);
   if (reason === "trip_ended") throw new PhoneDeliveryRefusal(410, reason, "This trip has ended.");
-  if (reason) throw new PhoneDeliveryRefusal(409, reason, reason === "not_final" ? "Finalize the Trip Card first." : "Set your dates first.");
+  if (reason) throw new PhoneDeliveryRefusal(409, reason, reason === "not_final" ? "Finalize your Trip Card first." : "Set your dates first.");
   const token = crypto.randomBytes(32).toString("base64url");
   const reset = await db.transaction(async (tx) => {
     const revoked = await tx
