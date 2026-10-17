@@ -32,7 +32,18 @@ name: Provider Console Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/provider-console-gate.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -52,6 +63,7 @@ concurrency:
 
 jobs:
   i18n-key-parity:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: i18n-key-parity (logic gate, no DB or browser)
     runs-on: ubuntu-latest
     steps:
@@ -77,6 +89,7 @@ jobs:
           CI: 'true'
 
   e2e-provider-console:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: e2e-provider-console (DOM gate)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -201,7 +214,7 @@ jobs:
     name: report (PR completion comment)
     runs-on: ubuntu-latest
     needs: [i18n-key-parity, e2e-provider-console]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
     steps:
       - name: Post pass/fail summary to the PR
         uses: actions/github-script@v7

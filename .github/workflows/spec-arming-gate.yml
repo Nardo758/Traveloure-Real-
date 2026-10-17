@@ -32,8 +32,16 @@ name: Spec-Arming Gate
 on:
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, edited]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
 permissions:
   contents: read
   # Ledger `2026-10-11-spec-arming-verified`: the verdict comes from the Actions API (the arming workflow's run on
@@ -51,6 +59,7 @@ concurrency:
 
 jobs:
   spec-arming-gate:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: spec-arming-gate (green-run evidence)
     runs-on: ubuntu-latest
     # Waits (bounded by SPEC_ARMING_WAIT_MINUTES) for the arming workflow's own run on the head commit to finish.
