@@ -529,6 +529,9 @@ export default function TermsOfServicePage() {
             <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>Changes to These Terms</h2>
             <ul className="list-disc pl-6 text-muted-foreground space-y-2">
               <li>
+                <strong>October 16, 2026:</strong> Section 2.3 now states that Traveloure currently operates in Kyoto, Japan, in place of the earlier list of eight markets. This clarification removes no right and changes no obligation.
+              </li>
+              <li>
                 <strong>September 27, 2026:</strong> Section 8.3 clarifies that refunds include Traveloure's service fee at the same percentage as the booking, that payment-processing costs are never deducted from a refund, and that fees charged by your bank or card issuer are not charged or refunded by Traveloure. This clarification removes no right and changes no obligation.
               </li>
             </ul>
