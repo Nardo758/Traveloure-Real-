@@ -2068,4 +2068,8 @@ export const MIGRATION_FILES = [
   // nullable text column, no DEFAULT/CHECK/FK/index, no backfill: plan-tz "HH:MM" the leg was routed for. Declared
   // in shared/schema.ts. Migration 386 SQL approved by Leon — comment 06:34Z on #1495. (385 is ED-1b's house account, #1491.)
   "386_transport_legs_routed_departure_local.sql",
+  // 388 — calendar_feeds + phone_delivery_choices (§8 phone delivery, ledger 2026-10-17-phone-delivery-calendar). Two NEW
+  // tables born empty: no DEFAULT, CHECK or FK; a UNIQUE index on the token hash and two lookup indexes. 385–387 are
+  // taken by open PRs. Declared in shared/schema.ts. Held for founder comment on #1500.
+  "388_calendar_feeds.sql",
 ] as const;

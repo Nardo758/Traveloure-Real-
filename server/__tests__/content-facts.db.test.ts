@@ -278,6 +278,11 @@ test("C5: no Places fact reaches a public route", async () => {
     // `enrichPlanItems`, behind the item POST's owner check, and the per-stop check read, behind the plan's read
     // gate (`authorizeTripLogistics`). What leaves is the findings' own hours lines and a leg line, never fact content.
     "server/services/add-checks.service.ts",
+    // §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`, D1): the owner's calendar feed reads the plan's
+    // `hours` views through `factsForTrip` and emits a line ONLY for a fact that `isPublishable` passes and whose origin
+    // is not `places_api` — person-checked or official (`public_ok`) hours, with their provenance line. The feed is
+    // reachable by its link, so nothing a public page may not carry leaves; no Places fact and no point is read out.
+    "server/services/phone-delivery.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

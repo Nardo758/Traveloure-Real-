@@ -234,3 +234,192 @@ export function generateIcsContent(
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
 }
+
+// ─── §8 phone delivery: the per-trip SUBSCRIPTION feed (ledger `2026-10-17-phone-delivery-calendar`) ──────────
+//
+// D5 (Part C, ratified by Leon Oct 16, 2026): TZID-QUALIFIED events in the plan's time zone. The download above emits
+// UTC instants to avoid hand-writing a VTIMEZONE; the feed instead GENERATES one from the runtime's own IANA data
+// (the same `zoneOffsetMs` the download uses — no offset table, no hand-rolled DST rule), covering only the trip's
+// window, with one observance per real transition inside it. Rules this builder keeps, each a ruling:
+//   • a stop with a start time is `DTSTART;TZID=<zone>:<local wall clock>` with its OWN duration as `DURATION`
+//     (elapsed time, so it stays right across a DST change); no duration ⇒ no end is claimed;
+//   • a stop with no start time is an ALL-DAY event on its day — never a guessed 09:00 (§13);
+//   • no usable zone ⇒ floating local times (no TZID, no Z), the same honest fallback as the download;
+//   • UID is `<item id>@traveloure.com` (stable across re-finals), SEQUENCE is the final's version (D7);
+//   • text is escaped (\ ; , and line breaks) and folded at 75 octets (RFC 5545 §3.1).
+
+export interface TripFeedEvent {
+  uid: string;
+  sequence: number;
+  /** The stop's calendar day, "YYYY-MM-DD". */
+  date: string;
+  /** "HH:MM" wall clock in the plan's zone, or null for an all-day stop. */
+  startTime: string | null;
+  durationMinutes: number | null;
+  summary: string;
+  location?: string | null;
+  description?: string | null;
+  url?: string | null;
+}
+
+export interface TripFeedInput {
+  calendarName: string;
+  calendarDescription?: string | null;
+  timezone: string | null;
+  /** When this copy was made (the final's time): DTSTAMP on every event. */
+  madeAt: Date;
+  events: TripFeedEvent[];
+}
+
+/** A strict "HH:MM" (24h) or "h:mm AM/PM" wall clock, as minutes; null when it is not a time (§13 — no 09:00 guess). */
+export function parseFeedStartMinutes(value: string | null | undefined): number | null {
+  const m = typeof value === "string" ? value.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i) : null;
+  if (!m) return null;
+  let hours = Number(m[1]);
+  const minutes = Number(m[2]);
+  if (m[3]) {
+    if (hours < 1 || hours > 12) return null;
+    if (m[3].toUpperCase() === "PM" && hours < 12) hours += 12;
+    if (m[3].toUpperCase() === "AM" && hours === 12) hours = 0;
+  }
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function feedEscape(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r\n|\r|\n/g, "\\n");
+}
+
+/** RFC 5545 §3.1: lines longer than 75 octets are folded with CRLF + one space, never inside a UTF-8 character. */
+function foldLine(line: string): string {
+  const bytes = Buffer.from(line, "utf8");
+  if (bytes.length <= 75) return line;
+  const out: string[] = [];
+  let chunk = "";
+  let size = 0;
+  let limit = 75;
+  for (const ch of line) {
+    const n = Buffer.byteLength(ch, "utf8");
+    if (size + n > limit) {
+      out.push(chunk);
+      chunk = "";
+      size = 0;
+      limit = 74; // continuation lines start with a space
+    }
+    chunk += ch;
+    size += n;
+  }
+  out.push(chunk);
+  return out.join("\r\n ");
+}
+
+function offsetString(ms: number): string {
+  const sign = ms < 0 ? "-" : "+";
+  const total = Math.round(Math.abs(ms) / 60_000);
+  return `${sign}${String(Math.floor(total / 60)).padStart(2, "0")}${String(total % 60).padStart(2, "0")}`;
+}
+
+function usableFeedZone(timeZone: string | null): string | null {
+  if (!timeZone) return null;
+  try {
+    zoneOffsetMs(Date.now(), timeZone);
+    return timeZone;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The VTIMEZONE for `timeZone` over [fromMs, toMs]: the offset at the start, then one observance per transition found
+ * inside the window (hourly scan, then a minute-exact binary search). Every value comes from Intl's IANA data.
+ */
+/** The zone's offset at an instant, in whole minutes (zoneOffsetMs drops the instant's milliseconds). */
+function feedOffsetMs(instantMs: number, timeZone: string): number {
+  return Math.round(zoneOffsetMs(instantMs, timeZone) / 60_000) * 60_000;
+}
+
+function vtimezone(timeZone: string, fromMs: number, toMs: number): string[] {
+  const HOUR = 3_600_000;
+  const lines = ["BEGIN:VTIMEZONE", `TZID:${timeZone}`];
+  let prevOffset = feedOffsetMs(fromMs, timeZone);
+  const observances: { atMs: number; from: number; to: number }[] = [];
+  for (let t = fromMs + HOUR; t <= toMs; t += HOUR) {
+    const off = feedOffsetMs(t, timeZone);
+    if (off !== prevOffset) {
+      let lo = t - HOUR;
+      let hi = t;
+      while (hi - lo > 1_000) {
+        const mid = lo + Math.floor((hi - lo) / 2);
+        if (feedOffsetMs(mid, timeZone) === prevOffset) lo = mid;
+        else hi = mid;
+      }
+      // IANA transitions fall on a whole minute; the first second of the new offset rounds up to it.
+      observances.push({ atMs: Math.ceil(hi / 60_000) * 60_000, from: prevOffset, to: off });
+      prevOffset = off;
+    }
+  }
+  const startOffset = feedOffsetMs(fromMs, timeZone);
+  const all = [{ atMs: fromMs, from: startOffset, to: startOffset }, ...observances];
+  const maxOffset = Math.max(...all.map((o) => o.to));
+  for (const o of all) {
+    // DTSTART of an observance is the local time at which it begins, read in the offset it begins FROM.
+    const kind = o.to === maxOffset && all.some((x) => x.to !== maxOffset) ? "DAYLIGHT" : "STANDARD";
+    lines.push(
+      `BEGIN:${kind}`,
+      `DTSTART:${stampFromMs(o.atMs + o.from, false)}`,
+      `TZOFFSETFROM:${offsetString(o.from)}`,
+      `TZOFFSETTO:${offsetString(o.to)}`,
+      `END:${kind}`,
+    );
+  }
+  lines.push("END:VTIMEZONE");
+  return lines;
+}
+
+export function generateTripFeedIcs(input: TripFeedInput): string {
+  const zone = usableFeedZone(input.timezone);
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Traveloure//Trip Card//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${feedEscape(input.calendarName)}`,
+  ];
+  if (input.calendarDescription) lines.push(`X-WR-CALDESC:${feedEscape(input.calendarDescription)}`);
+  if (zone) lines.push(`X-WR-TIMEZONE:${zone}`);
+
+  const dates = input.events.map((e) => e.date).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (zone && dates.length > 0) {
+    const from = Date.parse(`${dates[0]}T00:00:00Z`) - 2 * DAY_MS;
+    const to = Date.parse(`${dates[dates.length - 1]}T00:00:00Z`) + 3 * DAY_MS;
+    lines.push(...vtimezone(zone, from, to));
+  }
+
+  const stamp = utcStamp(input.madeAt);
+  for (const e of input.events) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date)) continue;
+    const day = e.date.replace(/-/g, "");
+    const minutes = parseFeedStartMinutes(e.startTime);
+    lines.push("BEGIN:VEVENT", `UID:${e.uid}`, `SEQUENCE:${e.sequence}`, `DTSTAMP:${stamp}`);
+    if (minutes === null) {
+      const next = new Date(Date.parse(`${e.date}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10).replace(/-/g, "");
+      lines.push(`DTSTART;VALUE=DATE:${day}`, `DTEND;VALUE=DATE:${next}`);
+    } else {
+      const wall = stampFromMs(wallClockMs(e.date, 0, minutes), false);
+      lines.push(zone ? `DTSTART;TZID=${zone}:${wall}` : `DTSTART:${wall}`);
+      if (e.durationMinutes && e.durationMinutes > 0) lines.push(`DURATION:PT${Math.round(e.durationMinutes)}M`);
+    }
+    lines.push(`SUMMARY:${feedEscape(e.summary)}`);
+    if (e.location) lines.push(`LOCATION:${feedEscape(e.location)}`);
+    if (e.description) lines.push(`DESCRIPTION:${feedEscape(e.description)}`);
+    if (e.url) lines.push(`URL:${e.url}`);
+    lines.push("END:VEVENT");
+  }
+  lines.push("END:VCALENDAR");
+  return lines.map(foldLine).join("\r\n") + "\r\n";
+}

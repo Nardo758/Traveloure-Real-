@@ -22,7 +22,7 @@ import {
   pushSupported,
 } from "@/lib/web-push";
 
-type PushConfig = { available: boolean; publicKey: string | null };
+type PushConfig = { available: boolean; publicKey: string | null; shown?: boolean };
 
 export function PhoneNotificationsCard() {
   const { toast } = useToast();
@@ -96,6 +96,10 @@ export function PhoneNotificationsCard() {
       setBusy(false);
     }
   };
+
+  // §8 phone delivery (Part C ruling 4): hidden while the push channel's admin switch is off (push is not in beta).
+  // Hiding the card never unsubscribes a device. Until the config answers, nothing is drawn either.
+  if (!config || config.shown !== true) return null;
 
   const message: Record<typeof state, string> = {
     loading: "Checking this device…",
