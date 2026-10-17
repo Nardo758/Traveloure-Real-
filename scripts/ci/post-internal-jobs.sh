@@ -301,10 +301,10 @@ post_route_with_retry() {
 # BUCKET_ROUTES_TABLE_BEGIN
 declare -A BUCKET_ROUTES=(
   ["backstops"]="checkout-sweep itinerary-generation-sweep email-outbox"
-  ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims handoff-timers legs-dayof-recheck"
+  ["hourly"]="earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck"
   ["four-hourly"]="booking-expiry"
   ["six-hourly"]="travelpayouts-report-poll"
-  ["daily"]="stripe-reconciliation availability-materialization travel-matrix-refresh travelpulse-weekly facts-recheck leg-google-coords content-expiry-census waitlist-retention liteapi-sync official-refresh liteapi-booking-sync"
+  ["daily"]="stripe-reconciliation availability-materialization travelpulse-weekly facts-recheck leg-google-coords content-expiry-census waitlist-retention liteapi-sync official-refresh liteapi-booking-sync"
 )
 # BUCKET_ROUTES_TABLE_END
 BUCKET_ORDER=(backstops hourly four-hourly six-hourly daily)

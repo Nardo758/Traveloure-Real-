@@ -1,0 +1,590 @@
+name: Dev-server Gates
+
+# CI-1b (e)2: SEVEN PLAYWRIGHT GATES, TWO JOBS, ONE SERVER BOOT EACH.
+#
+# Until this file, seven workflows — provider-console-gate, spec-coverage-gate, unwired-spec-gate,
+# home-gate, slip-rail-actions-gate, discover-tabs-gate and cart-checkout-redirect-gate — each
+# spent a runner on the same setup (checkout, Postgres, npm ci, Playwright install, migrations,
+# a dev-server boot and the seeding wait) before running a few minutes of specs, plus two light
+# jobs that ran npm ci for one static spec and four PR-comment jobs. Setup was most of every one
+# of them. The decision-maker approved consolidating them (CI-1b Phase 0, cut (e)2).
+#
+# THE SPLIT IS THE SERVER'S CONFIGURATION, NOT THE SUBJECT. A spec sees the server it was proven
+# against, and the seven ran against two different ones:
+#   · e2e-ai-stub     — E2E_AI_STUB=1, CI test users seeded: provider console, spec coverage,
+#                       unwired specs (and i18n key parity, which needs no server).
+#   · e2e-live-config — no AI stub, the AI providers configured with stub keys, no CI users:
+#                       Home, the slip rail, Discover, the cart redirect (and its static check).
+# Two jobs, so no spec runs against a server configuration it was never proven on.
+#
+# EVERY FORMER GATE STILL RUNS, AND STILL FAILS BY NAME. Each is its own step, named for its old
+# job, and runs with `!cancelled()` once the server is ready — so a red provider-console step does
+# not hide the unwired specs behind it. Each step's HTML and JSON reports are moved under
+# reports/<gate>/ before the next runs (Playwright writes both to fixed paths), and every JSON report
+# is uploaded as its own `playwright-json-<gate>` artifact, which the spec-arming gate reads
+# (scripts/check-spec-arming.cjs downloads every `playwright-json*` artifact of a run).
+#
+# ANTI-VACUITY is unchanged: every spec path is asserted to exist before Playwright is invoked.
+# Build identity is verified before any assertion — a mismatch fails fast.
+#
+# STATED RISK: specs that used to have a database each now share one with the gates before them in
+# their job. Workers stay at 1 where the old gate set it, and the order inside each job is the
+# order below. A failure that appears only here is a cross-spec state dependency to fix in the
+# spec, never by splitting the job back out.
+#
+# DELIBERATELY NOT GATED YET — playwright/tests/catalog-preview-toggle.spec.ts in provider-console
+# (its premise is a seeded-fact question, filed in QA_PUNCH_LIST); it does run in unwired-specs.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/dev-server-gates.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+# Cancel superseded PR runs; a push to main keeps its run (a cancelled main run leaves a merged
+# commit with no green record).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e-ai-stub:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: e2e-ai-stub (provider console · spec coverage · unwired specs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5.1.0
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Assert every gated spec exists at its expected path
+        # ANTI-VACUITY: `npx playwright test <name>` exits 0 when the name matches nothing, so a
+        # renamed or deleted spec would turn a step green with zero assertions.
+        run: |
+          set -euo pipefail
+          FAIL=0
+          for f in \
+            playwright/tests/i18n-key-parity.spec.ts \
+            playwright/tests/catalog-map-located.spec.ts \
+            playwright/tests/distribute-channels.spec.ts \
+            playwright/tests/distribute-shell.spec.ts \
+            playwright/tests/service-logistics-step.spec.ts \
+            playwright/tests/auth-form-validation.spec.ts \
+            playwright/tests/booking-payment-isolation.spec.ts \
+            playwright/tests/concierge-phase-a.spec.ts \
+            playwright/tests/create-service-layout.spec.ts \
+            playwright/tests/executive-card-expand.spec.ts \
+            playwright/tests/expert-booking-decline-dialog.spec.ts \
+            playwright/tests/expert-inbox-questions.spec.ts \
+            playwright/tests/navbar-responsive.spec.ts \
+            playwright/tests/rbac-security.spec.ts \
+            playwright/tests/stripe-connect-reminder-notification.spec.ts \
+            playwright/tests/catalog-preview-toggle.spec.ts \
+            playwright/tests/ea-console-pages.spec.ts \
+            playwright/tests/landing-market-ticker.spec.ts \
+            playwright/tests/logo-navigation-surfaces.spec.ts \
+            playwright/tests/optimized-slip-confirmation.spec.ts \
+            playwright/tests/paris-surfacing.spec.ts \
+            playwright/tests/plan-guests.spec.ts \
+            playwright/tests/planning-entry.spec.ts \
+            playwright/tests/service-display-options.spec.ts \
+            playwright/tests/trip-pass.spec.ts \
+            playwright/tests/vendors-creator-filter.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
+              FAIL=1
+            else
+              echo "OK  $f"
+            fi
+          done
+          [ "$FAIL" -eq 0 ] || { echo "::error::One or more gated specs are missing."; exit 1; }
+      - name: "i18n-key-parity: locale key parity (en ⇄ ja, every namespace)"
+        # Pure static analysis over client/src/locales — no server, no browser, no DB. A key added to
+        # en but not ja silently falls back to English (fallbackLng is deliberate, ruling 60); this
+        # supplies the detection that fallback hides. Runs before the browser install on purpose.
+        id: i18n_key_parity
+        run: npx playwright test playwright/tests/i18n-key-parity.spec.ts
+        env:
+          CI: 'true'
+      - name: Keep the i18n-key-parity reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/i18n-key-parity
+          [ -d playwright-report ] && mv playwright-report reports/i18n-key-parity/html || true
+          [ -d playwright-json ] && mv playwright-json reports/i18n-key-parity/json || true
+      - name: Cache Playwright browsers
+        if: ${{ !cancelled() }}
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright (chromium)
+        if: ${{ !cancelled() && steps.playwright-cache.outputs.cache-hit != 'true' }}
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: ${{ !cancelled() && steps.playwright-cache.outputs.cache-hit == 'true' }}
+        run: npx playwright install-deps chromium
+      - name: Set up CI database (migrations, sessions table, test users)
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'true'
+      - name: Start dev server (PR artifact — localhost only)
+        if: ${{ !cancelled() }}
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Stub keys — no spec here makes a real Stripe or xAI call.
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          E2E_AI_STUB: "1"
+          # Loopback-only rate-limit exemption (server/infrastructure/rate-limiter.ts). Load-bearing:
+          # these specs log in as the same fixtures many times, and retries log in again.
+          RATE_LIMIT_LOOPBACK_SKIP: "1"
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server, seeding, and an HTTP-200 readiness verdict
+        id: ready
+        if: ${{ !cancelled() }}
+        # The provider-console specs authenticate as the BOOT-SEEDED provider
+        # kyoto-interpreter@traveloure.test, so waiting for seeding is load-bearing.
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /tmp/ready.json -w '%{http_code}' http://localhost:5000/api/ready || true)
+            if [ "$code" = "200" ]; then
+              echo "Server ready, seeding complete, readiness 200"; exit 0
+            fi
+            echo "attempt $i/60: http=$code $(cat /tmp/ready.json 2>/dev/null | head -c 200)"; sleep 5
+          done
+          echo "::error::Server did not reach an HTTP-200 readiness within 5 minutes. If the body says ready:true, a health check is graded 'fail' — check which env var is missing."
+          cat /tmp/ready.json 2>/dev/null || true
+          pgrep -a tsx || true
+          exit 1
+      - name: Verify build identity (artifact == PR commit)
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA. Tests would run against the wrong artifact."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA"
+      - name: "e2e-provider-console: Catalog map, Distribute, ServiceForm steps"
+        id: provider_console
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        # Workers=1: several of these mutate the seeded provider rows and restore them in a finally block.
+        run: npx playwright test --project=chromium --workers=1 playwright/tests/catalog-map-located.spec.ts playwright/tests/distribute-channels.spec.ts playwright/tests/distribute-shell.spec.ts playwright/tests/service-logistics-step.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Keep the provider-console reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/provider-console
+          [ -d playwright-report ] && mv playwright-report reports/provider-console/html || true
+          [ -d playwright-json ] && mv playwright-json reports/provider-console/json || true
+      - name: "e2e-spec-coverage: specs proven green by the Aug 16 sweep"
+        id: spec_coverage
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test --project=chromium --workers=1 playwright/tests/auth-form-validation.spec.ts playwright/tests/booking-payment-isolation.spec.ts playwright/tests/concierge-phase-a.spec.ts playwright/tests/create-service-layout.spec.ts playwright/tests/executive-card-expand.spec.ts playwright/tests/expert-booking-decline-dialog.spec.ts playwright/tests/expert-inbox-questions.spec.ts playwright/tests/navbar-responsive.spec.ts playwright/tests/rbac-security.spec.ts playwright/tests/stripe-connect-reminder-notification.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          PW_AUTH_SETUP: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Keep the spec-coverage reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/spec-coverage
+          [ -d playwright-report ] && mv playwright-report reports/spec-coverage/html || true
+          [ -d playwright-json ] && mv playwright-json reports/spec-coverage/json || true
+      - name: "unwired-specs: specs proven green by the 2026-09-14 sweep"
+        id: unwired_specs
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test --project=chromium --workers=1 --timeout=120000 playwright/tests/catalog-preview-toggle.spec.ts playwright/tests/ea-console-pages.spec.ts playwright/tests/landing-market-ticker.spec.ts playwright/tests/logo-navigation-surfaces.spec.ts playwright/tests/optimized-slip-confirmation.spec.ts playwright/tests/paris-surfacing.spec.ts playwright/tests/plan-guests.spec.ts playwright/tests/planning-entry.spec.ts playwright/tests/service-display-options.spec.ts playwright/tests/trip-pass.spec.ts playwright/tests/vendors-creator-filter.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          PW_AUTH_SETUP: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Keep the unwired-specs reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/unwired-specs
+          [ -d playwright-report ] && mv playwright-report reports/unwired-specs/html || true
+          [ -d playwright-json ] && mv playwright-json reports/unwired-specs/json || true
+      - name: Upload i18n-key-parity Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-i18n-key-parity
+          path: reports/i18n-key-parity/json/
+          if-no-files-found: ignore
+      - name: Upload provider-console Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-provider-console
+          path: reports/provider-console/json/
+          if-no-files-found: ignore
+      - name: Upload spec-coverage Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-spec-coverage
+          path: reports/spec-coverage/json/
+          if-no-files-found: ignore
+      - name: Upload unwired-specs Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-unwired-specs
+          path: reports/unwired-specs/json/
+          if-no-files-found: ignore
+      - name: Upload HTML reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-ai-stub-reports
+          path: reports/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  e2e-live-config:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    name: e2e-live-config (home · slip rail · discover · cart redirect)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5.1.0
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Assert every gated spec exists at its expected path
+        # ANTI-VACUITY: `npx playwright test <name>` exits 0 when the name matches nothing, so a
+        # renamed or deleted spec would turn a step green with zero assertions.
+        run: |
+          set -euo pipefail
+          FAIL=0
+          for f in \
+            playwright/tests/cart-checkout-redirect.spec.ts \
+            playwright/tests/home-gate.spec.ts \
+            playwright/tests/home-word-count.spec.ts \
+            playwright/tests/slip-rail-actions.spec.ts \
+            playwright/tests/slip-trip-card-link.spec.ts \
+            playwright/tests/discover-tabs.spec.ts \
+            playwright/tests/earn-captures.spec.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
+              FAIL=1
+            else
+              echo "OK  $f"
+            fi
+          done
+          [ "$FAIL" -eq 0 ] || { echo "::error::One or more gated specs are missing."; exit 1; }
+      - name: "static-redirect-check: cart redirect source analysis (suites A–C)"
+        # Verifies cart.tsx and EnhancedPlanningModal.tsx use /trip/${id} (singular) and App.tsx
+        # declares <Route path="/trip/:id">. No server or browser. Runs before the browser install.
+        id: static_redirect_check
+        run: npx playwright test cart-checkout-redirect --grep "singular|declares"
+        env:
+          CI: 'true'
+      - name: Keep the static-redirect-check reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/static-redirect-check
+          [ -d playwright-report ] && mv playwright-report reports/static-redirect-check/html || true
+          [ -d playwright-json ] && mv playwright-json reports/static-redirect-check/json || true
+      - name: Cache Playwright browsers
+        if: ${{ !cancelled() }}
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright (chromium)
+        if: ${{ !cancelled() && steps.playwright-cache.outputs.cache-hit != 'true' }}
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps (cache hit)
+        if: ${{ !cancelled() && steps.playwright-cache.outputs.cache-hit == 'true' }}
+        run: npx playwright install-deps chromium
+      - name: Set up CI database (migrations + sessions table)
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Start dev server (PR artifact — localhost only)
+        if: ${{ !cancelled() }}
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Stub keys and NO E2E_AI_STUB: these four gates always ran with the AI providers
+          # configured-but-stubbed, and the slip rail's AI actions read that configuration.
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          # Loopback-only rate-limit exemption. The cart-redirect gate ran without it; with one
+          # login per test it never needed it, and the exemption only removes 429s.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      - name: Wait for server and seeding
+        id: ready
+        if: ${{ !cancelled() }}
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+      - name: Verify build identity (artifact == PR commit)
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: |
+          VERSION=$(curl -sf http://localhost:5000/api/version)
+          echo "Server reports: $VERSION"
+          ACTUAL_SHA=$(echo "$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))")
+          EXPECTED_SHA="${{ github.sha }}"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Build identity mismatch — server SHA=$ACTUAL_SHA expected=$EXPECTED_SHA. Tests would run against the wrong artifact."
+            exit 1
+          fi
+          echo "Build identity confirmed: $ACTUAL_SHA"
+      - name: "e2e-home-gate: Home is the time axis (ruling 8)"
+        id: home
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test home-gate --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Keep the home reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/home
+          [ -d playwright-report ] && mv playwright-report reports/home/html || true
+          [ -d playwright-json ] && mv playwright-json reports/home/json || true
+      - name: "e2e-home-gate: Home page word count (H1 budget)"
+        id: home_word_count
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test home-word-count --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Keep the home-word-count reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/home-word-count
+          [ -d playwright-report ] && mv playwright-report reports/home-word-count/html || true
+          [ -d playwright-json ] && mv playwright-json reports/home-word-count/json || true
+      - name: "e2e-slip-rail-actions: press every rail action on a real plan slip"
+        id: slip_rail_actions
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test slip-rail-actions slip-trip-card-link --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the slip-rail-actions reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/slip-rail-actions
+          [ -d playwright-report ] && mv playwright-report reports/slip-rail-actions/html || true
+          [ -d playwright-json ] && mv playwright-json reports/slip-rail-actions/json || true
+      - name: "discover-tabs-smoke: marketplace surfaces"
+        id: discover_tabs
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test discover-tabs --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Keep the discover-tabs reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/discover-tabs
+          [ -d playwright-report ] && mv playwright-report reports/discover-tabs/html || true
+          [ -d playwright-json ] && mv playwright-json reports/discover-tabs/json || true
+      - name: "Earn-grammar captures (Lane 2, screenshots — never fails the job)"
+        id: earn_captures
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        continue-on-error: true
+        run: npx playwright test earn-captures --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Keep the earn-captures reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/earn-captures
+          [ -d playwright-report ] && mv playwright-report reports/earn-captures/html || true
+          [ -d playwright-json ] && mv playwright-json reports/earn-captures/json || true
+      - name: Upload earn-grammar captures
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: earn-captures-${{ github.sha }}
+          path: playwright/earn-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "e2e-cart-redirect: cart redirect browser test (all suites A–D)"
+        id: cart_redirect
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test cart-checkout-redirect --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+      - name: Keep the cart-redirect reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/cart-redirect
+          [ -d playwright-report ] && mv playwright-report reports/cart-redirect/html || true
+          [ -d playwright-json ] && mv playwright-json reports/cart-redirect/json || true
+      - name: Upload static-redirect-check Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-static-redirect-check
+          path: reports/static-redirect-check/json/
+          if-no-files-found: ignore
+      - name: Upload home Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-home
+          path: reports/home/json/
+          if-no-files-found: ignore
+      - name: Upload home-word-count Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-home-word-count
+          path: reports/home-word-count/json/
+          if-no-files-found: ignore
+      - name: Upload slip-rail-actions Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-slip-rail-actions
+          path: reports/slip-rail-actions/json/
+          if-no-files-found: ignore
+      - name: Upload discover-tabs Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-discover-tabs
+          path: reports/discover-tabs/json/
+          if-no-files-found: ignore
+      - name: Upload earn-captures Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-earn-captures
+          path: reports/earn-captures/json/
+          if-no-files-found: ignore
+      - name: Upload cart-redirect Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-cart-redirect
+          path: reports/cart-redirect/json/
+          if-no-files-found: ignore
+      - name: Upload HTML reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-live-config-reports
+          path: reports/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  report:
+    name: report (PR comment)
+    runs-on: ubuntu-latest
+    needs: [e2e-ai-stub, e2e-live-config]
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Dev-server Gates — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl}) — each former gate is its own named step; the failing step names the gate.`,
+              '',
+              '> **e2e-ai-stub**: i18n key parity, the provider console (Catalog map, Distribute, ServiceForm steps), the Aug 16 spec-coverage claims and the 2026-09-14 unwired specs, against one locally-built artifact with the AI stub on.',
+              '> **e2e-live-config**: the cart redirect static check, Home, the slip rail actions, the Discover surfaces and the cart redirect browser test, against one locally-built artifact with the AI providers configured-but-stubbed.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

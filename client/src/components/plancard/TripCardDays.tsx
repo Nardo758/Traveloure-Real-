@@ -52,6 +52,7 @@ import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
 import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
 import { legRuleClass } from "@/lib/leg-rule";
+import { anchorMissedBanner, leaveByMissed, missedLine, type LeaveByRow } from "@shared/leave-by";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -171,6 +172,44 @@ function LegLiveTier({ leg, ride }: { leg: DayTransport; ride?: RideSuggestionVi
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * 9b-c — one stop's leave-by line on today's view (LB2/LB3/LB3a/LB5/LB8). A time reads "leave by about 10:10 · <provenance>"
+ * (planning) or "leave by 10:14 · checked today 9:40 AM" (live); a passed one is struck with "missed · next: HH:MM"; an
+ * anchor's passed one is a conflict banner instead; no time says why, or draws nothing (§13).
+ */
+export function LeaveByLine({ row, rows, nowMinute, stopName, stopId }: { row: LeaveByRow | null; rows: readonly LeaveByRow[]; nowMinute: number | null; stopName: string; stopId: string }) {
+  if (!row) return null;
+  if (row.kind === "conflict") {
+    return (
+      <p className="pl-2 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`card-leave-by-conflict-${stopId}`}>
+        {row.line}
+      </p>
+    );
+  }
+  if (row.kind === "none") {
+    return row.line ? (
+      <p className="pl-2 text-xs text-muted-foreground" data-testid={`card-leave-by-none-${stopId}`} data-reason={row.reason}>
+        {row.line}
+      </p>
+    ) : null;
+  }
+  const banner = nowMinute != null ? anchorMissedBanner(row, nowMinute, stopName) : null;
+  if (banner) {
+    return (
+      <p className="pl-2 text-xs font-semibold text-red-700 dark:text-red-300" data-testid={`card-leave-by-anchor-missed-${stopId}`} role="alert">
+        {banner}
+      </p>
+    );
+  }
+  const missed = nowMinute != null && leaveByMissed(row, nowMinute);
+  return (
+    <p className="pl-2 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`card-leave-by-${stopId}`} data-tier={row.tier}>
+      <span className={missed ? "line-through opacity-70" : undefined}>{row.line}</span>
+      {missed ? <span className="ml-1 no-underline" data-testid={`card-leave-by-missed-${stopId}`}>{missedLine(rows, nowMinute!)}</span> : null}
+    </p>
   );
 }
 
@@ -465,12 +504,8 @@ export function TripCardDays(props: TripCardDaysProps) {
                   onOpenDetails={() => setSheetFor(a)}
                   visited={isToday ? { checked: visited.has(a.id), onToggle: () => toggleVisited(a.id) } : null}
                 />
-                {/* Step 9b D7: "Leave by" — today's up-next row only, from the leg into it (never stored). */}
-                {isToday && upNext?.leaveBy && upNext.upNextActivity?.id === a.id ? (
-                  <p className="pl-2 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`card-leave-by-${a.id}`}>
-                    Leave by {upNext.leaveBy}
-                  </p>
-                ) : null}
+                {/* 9b-c (LB1–LB9): today's leave-by for this stop, derived at read from the ONE core (never stored). */}
+                {isToday && upNext ? <LeaveByLine row={upNext.leaveByRows.find((r) => r.stopId === a.id) ?? null} rows={upNext.leaveByRows} nowMinute={upNext.nowMinute} stopName={a.name} stopId={a.id} /> : null}
                 {idx < acts.length - 1 && cardSlotLeg(legs, acts, idx)?.bridge ? (
                   <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-bridge-${(cardSlotLeg(legs, acts, idx)!.leg as any).id}`}>
                     {bridgeLabelFor(acts, cardSlotLeg(legs, acts, idx)!.bridge!, acts[idx + 1].id)}

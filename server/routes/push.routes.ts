@@ -23,6 +23,8 @@ import { db } from "../db";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { isPushConfigured, pushPublicKey, sendPushToUser } from "../services/web-push.service";
+import { getPlatformFlag } from "../services/platform-flags";
+import { PHONE_DELIVERY_SWITCH } from "@shared/phone-delivery";
 
 const router = Router();
 
@@ -41,9 +43,13 @@ function zodMessage(err: unknown): string | null {
   return err instanceof z.ZodError ? err.errors[0]?.message ?? "Invalid body" : null;
 }
 
-router.get("/api/push/config", isAuthenticated, (_req, res) => {
+// §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`; Part C ruling 4): `shown` is the push channel's admin
+// switch (`phone_delivery_push_enabled`, off ⇒ the Settings card is hidden). It hides the card only: existing device
+// subscriptions and sending are untouched.
+router.get("/api/push/config", isAuthenticated, async (_req, res) => {
   const available = isPushConfigured();
-  res.json({ available, publicKey: available ? pushPublicKey() : null });
+  const shown = await getPlatformFlag(PHONE_DELIVERY_SWITCH.push, false);
+  res.json({ available, publicKey: available ? pushPublicKey() : null, shown });
 });
 
 // The browser sends a SHA-256 of its endpoint, never the endpoint itself: a query string reaches

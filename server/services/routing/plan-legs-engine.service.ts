@@ -14,8 +14,9 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
-import { marketTransitRouting, routedLegReason, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
-import { LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
+import { CACHEABLE_ROUTE_SOURCES, STRAIGHT_LINE_EST_SOURCE, marketTransitRouting, routedLegReason, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
+import { LEG_MODE_STORED, normalizeLegMode, straightLineMinutes } from "@shared/travel-speeds";
+import { haversineMeters } from "@shared/geo";
 import type { StoredLegOption } from "@shared/leg-options";
 import { zonedWallClockToInstant, addCalendarDays } from "@shared/plan-timing";
 import { storage } from "../../storage";
@@ -41,6 +42,11 @@ export type PlanLegsResult =
       kept: number;
       removed: number;
       noRoute: number;
+      /**
+       * 9b-d: pairs whose call went unanswered (a failed call, or a mode the router does not serve) — the
+       * pair keeps its last leg. Present only when > 0.
+       */
+      unanswered?: number;
       /** True when a caller's daily cap stopped the run; existing legs were left as last computed. */
       paused: boolean;
       skippedPairs: number;
@@ -56,6 +62,28 @@ function realPoint(lat: unknown, lng: unknown): { lat: number; lng: number } | n
   const ln = Number(lng);
   if (!Number.isFinite(la) || !Number.isFinite(ln) || Math.abs(la) > 90 || Math.abs(ln) > 180 || (la === 0 && ln === 0)) return null;
   return { lat: la, lng: ln };
+}
+
+/**
+ * 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1/T3, Phase 0 rulings 1–2 and 5): a leg whose
+ * `source` is a router whose answers may not be stored (Google Routes — anything outside
+ * `CACHEABLE_ROUTE_SOURCES`). The engine never keeps one as its answer: a proposed one is recomputed by the
+ * diff, a confirmed one is re-routed and superseded exactly as a legacy `source IS NULL` leg is (P0 ruling 7),
+ * so a run on a plan holding Google legs rebuilds them through the current adapter (OSRM or the stub).
+ */
+export function legNeedsRebuild(source: string | null | undefined): boolean {
+  return source != null && !CACHEABLE_ROUTE_SOURCES.has(source);
+}
+/** The same predicate as SQL, for the conditional supersede: a legacy leg, or one `legNeedsRebuild` names. */
+const legacyOrRebuildSql = sql`(${transportLegs.source} IS NULL OR ${transportLegs.source} NOT IN (${sql.join(Array.from(CACHEABLE_ROUTE_SOURCES).map((s) => sql`${s}`), sql`, `)}))`;
+
+/**
+ * Migration 386 (9b spec ED2): the plan-timezone "HH:MM" this leg was routed for — the same wall clock
+ * `departAt` turns into the instant it asks with (P0 ruling 3's 10:00 when the stop has no time). NULL when
+ * the leg was asked with no departure (no trip start), so nothing is claimed that was not asked.
+ */
+export function routedDepartureLocalFor(leg: Pick<DesiredLeg, "wallClock">, departAt: (leg: any) => Date | null): string | null {
+  return departAt(leg) ? legDepartureWallClock(leg.wallClock) : null;
 }
 
 /** `coord_source`/`coord_fetched_at` for a leg: Google when either end is, with the OLDER fetch time. */
@@ -183,7 +211,8 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
     legOrder: l.legOrder,
     fromActivityId: l.fromActivityId,
     toActivityId: l.toActivityId,
-    legKey: engineLegKey(l.alternativeModes),
+    // 9b-b: a Google-sourced leg never matches a desired key, so the diff recomputes (and replaces) it.
+    legKey: legNeedsRebuild(l.source) ? `rebuild:${l.id}` : engineLegKey(l.alternativeModes),
     userSelectedMode: l.userSelectedMode,
   }));
   const picked = new Map(existing.map((e) => [legPairKey(e.dayNumber, e.fromActivityId, e.toActivityId), selectedModeOf(e)]));
@@ -260,7 +289,8 @@ async function computePlanLegsCore(
   // `superseded_at` (migration 368; TC-3a closed the interim `origin` marker), never deleted — and the mode change is logged in the plan's change log. The
   // expert's own pick (`user_selected_mode`) is kept as the mode; else the engine's default. A pair with
   // no route keeps its legacy leg as it was. Only pairs the plan still has, on days not yet over.
-  const legacyConfirmed = existingRows.filter((l) => l.source == null && l.proposalStatus === "confirmed" && l.variantId == null);
+  // 9b-b: a confirmed Google-sourced leg is re-routed the same way (`legNeedsRebuild`).
+  const legacyConfirmed = existingRows.filter((l) => (l.source == null || legNeedsRebuild(l.source)) && l.proposalStatus === "confirmed" && l.variantId == null);
   const desiredByPair = new Map(desired.map((d) => [d.pairKey, d] as const));
   let superseded = 0;
 
@@ -273,7 +303,9 @@ async function computePlanLegsCore(
     const key = engineLegKey(l.alternativeModes);
     // A fallback drive (P0 ruling 2) is stored under the transit key; it is never a transit answer, so
     // it is not seeded (the diff keeps its own row by key without asking).
-    if (facts && key && !facts.transitUnavailable && Number(l.estimatedDurationMinutes) > 0) {
+    // 9b-b (9b spec T1): a stored Google answer is never re-stored as a new leg — only an OSRM or stub
+    // answer seeds the memo (`CACHEABLE_ROUTE_SOURCES`). An unchanged Google leg is kept by the diff as it is.
+    if (facts && key && !facts.transitUnavailable && Number(l.estimatedDurationMinutes) > 0 && CACHEABLE_ROUTE_SOURCES.has(facts.provenance.source)) {
       memo.seed(key, { durationMin: Number(l.estimatedDurationMinutes), distanceM: Number(l.distanceMeters ?? 0), line: facts.line, fare: facts.fare, provenance: facts.provenance });
     }
   }
@@ -282,6 +314,7 @@ async function computePlanLegsCore(
   for (const l of engineRows) {
     for (const o of (Array.isArray(l.alternativeModes) ? (l.alternativeModes as StoredLegOption[]) : []).slice(1)) {
       if (typeof o?.legKey !== "string" || !o.checkedAt || !(Number(o.durationMinutes) > 0)) continue;
+      if (!CACHEABLE_ROUTE_SOURCES.has(String(o.reason))) continue;
       memo.seed(o.legKey, {
         durationMin: Number(o.durationMinutes),
         distanceM: Number(o.distanceMeters ?? 0),
@@ -294,6 +327,7 @@ async function computePlanLegsCore(
   let calls = 0;
   let reused = 0;
   let noRoute = 0;
+  let unanswered = 0;
   let paused = false;
   let retiredLegacy = 0;
   const unlocatedPairs = new Set(skipped.map((p) => legPairKey(p.dayNumber, p.fromItemId, p.toItemId)));
@@ -310,7 +344,7 @@ async function computePlanLegsCore(
         const retired = await db
           .update(transportLegs)
           .set({ proposalStatus: null, supersededAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), isNull(transportLegs.source)))
+          .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), legacyOrRebuildSql))
           .returning({ id: transportLegs.id });
         if (retired.length) {
           retiredLegacy += 1;
@@ -341,7 +375,7 @@ async function computePlanLegsCore(
       const claimed = await tx
         .update(transportLegs)
         .set({ proposalStatus: null, supersededAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), isNull(transportLegs.source)))
+        .where(and(eq(transportLegs.id, old.id), eq(transportLegs.tripId, tripId), eq(transportLegs.proposalStatus, "confirmed"), legacyOrRebuildSql))
         .returning({ id: transportLegs.id });
       if (!claimed.length) return; // a concurrent run superseded it first (§15)
       await tx.insert(transportLegs).values({
@@ -385,6 +419,7 @@ async function computePlanLegsCore(
         pickupTime: old.pickupTime ?? null,
         pickupProviderServiceId: old.pickupProviderServiceId ?? null,
         source: route.provenance.source,
+        routedDepartureLocal: routedDepartureLocalFor(want, departAt),
         calculatedAt: new Date(route.provenance.checkedAt),
         ...googleCoordStamp(googleFetchedAt.get(want.from.id), googleFetchedAt.get(want.to.id)),
       });
@@ -421,9 +456,47 @@ async function computePlanLegsCore(
       paused = true;
       break;
     }
+    // 9b-d (Leon's ruling, Oct 17, 2026): a call that went UNANSWERED (failed, or a mode the router does
+    // not serve) learned nothing — the pair keeps its last leg and the next run asks again (§13: an outage is
+    // never "no route").
+    if (asked.outcome.kind === "no_route" && asked.outcome.unanswered) {
+      unanswered++;
+      continue;
+    }
     replacedIds.push(...(diff.replaces.get(leg.pairKey) ?? []));
     if (asked.outcome.kind === "no_route") {
+      // The router's OWN answer that no route exists: the pair shows a labelled straight-line estimate (a
+      // drive at the ONE configured speed), never a routed leg — `STRAIGHT_LINE_EST_SOURCE` is read as "est."
+      // everywhere, and it is outside the cacheable set, so the next run asks the pair again.
       noRoute++;
+      const meters = Math.round(haversineMeters(leg.origin.lat, leg.origin.lng, leg.to.point.lat, leg.to.point.lng));
+      const minutes = straightLineMinutes(meters, "drive");
+      rows.push({
+        tripId,
+        dayNumber: leg.dayNumber,
+        legOrder: leg.legOrder,
+        fromActivityId: leg.from.id,
+        fromName: leg.from.name,
+        fromLat: leg.origin.lat,
+        fromLng: leg.origin.lng,
+        toActivityId: leg.to.id,
+        toName: leg.to.name,
+        toLat: leg.to.point.lat,
+        toLng: leg.to.point.lng,
+        distanceMeters: meters,
+        distanceDisplay: formatDistance(meters),
+        recommendedMode: LEG_MODE_STORED.drive,
+        userSelectedMode: null,
+        estimatedDurationMinutes: minutes,
+        estimatedCostUsd: null,
+        alternativeModes: [{ mode: LEG_MODE_STORED.drive, durationMinutes: minutes, costUsd: null, energyCost: 0, reason: STRAIGHT_LINE_EST_SOURCE, line: null, fare: null, legKey: leg.legKey, hourBucket: leg.hourBucket }] as any,
+        energyCost: 0,
+        destinationProfile: trip.destination || null,
+        proposalStatus: "proposed",
+        source: STRAIGHT_LINE_EST_SOURCE,
+        routedDepartureLocal: null,
+        calculatedAt: new Date(),
+      });
       continue;
     }
     const route = asked.outcome.route;
@@ -469,6 +542,7 @@ async function computePlanLegsCore(
       destinationProfile: trip.destination || null,
       proposalStatus: "proposed",
       source: route.provenance.source,
+      routedDepartureLocal: routedDepartureLocalFor(leg, departAt),
       calculatedAt: new Date(route.provenance.checkedAt),
       ...googleCoordStamp(googleFetchedAt.get(leg.from.id), googleFetchedAt.get(leg.to.id)),
     });
@@ -514,6 +588,7 @@ async function computePlanLegsCore(
     kept: diff.keep.length,
     removed: removeIds.length,
     noRoute,
+    ...(unanswered ? { unanswered } : {}),
     paused,
     skippedPairs: skipped.length,
     ...(superseded ? { superseded } : {}),
@@ -576,4 +651,38 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
     },
     placeIdFor: (id) => (id ? refs.get(id)?.placeId ?? null : null),
   };
+}
+
+/**
+ * ONE recompute of an Optimize version's legs from its own items, through the engine (step 9a ruling 6).
+ * Shared by POST /api/itinerary-variants/:variantId/calculate-transport and the 9b-b rebuild (§18 rule 1):
+ * refused when the version belongs to no plan, the plan does not earn routed legs, or the engine is off.
+ * The caller owns authorization.
+ */
+export async function recalculateVariantLegs(
+  variantId: string,
+  userPrefs: Record<string, unknown> = {},
+): Promise<{ refused: "not_found" | "routed_legs_not_included" | "routing_engine_off" } | { legs: import("../transport-leg-calculator").TransportLegResult[] }> {
+  const variant = await storage.getItineraryVariantById(variantId);
+  if (!variant) return { refused: "not_found" };
+  const comparison = await storage.getItineraryComparison(variant.comparisonId);
+  if (!comparison) return { refused: "not_found" };
+  if (!comparison.tripId || !(await tripGetsRoutedLegs(comparison.tripId))) return { refused: "routed_legs_not_included" };
+  const items = await storage.getItineraryVariantItemsByVariantId(variantId);
+  const activities = items
+    .filter((item) => item.latitude && item.longitude)
+    .map((item, idx) => ({
+      id: item.id,
+      name: item.name,
+      lat: parseFloat(item.latitude as any),
+      lng: parseFloat(item.longitude as any),
+      scheduledTime: item.startTime || `09:${String((idx * 30) % 60).padStart(2, "0")}`,
+      dayNumber: item.dayNumber,
+      order: item.sortOrder || idx,
+    }));
+  const routing = (await versionRoutingFor(comparison.id))?.ctx ?? null;
+  if (!routing) return { refused: "routing_engine_off" };
+  const { calculateTransportLegs } = await import("../transport-leg-calculator");
+  const legs = await calculateTransportLegs(variantId, activities, comparison.destination || "", userPrefs as any, routing);
+  return { legs };
 }

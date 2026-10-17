@@ -285,6 +285,7 @@ import reviewRepliesRoutes from "./routes/review-replies.routes";
 import statementsRoutes from "./routes/statements.routes";
 import launchWaitlistRoutes from "./routes/launch-waitlist.routes";
 import tickerRoutes from "./routes/ticker.routes";
+import phoneDeliveryRoutes from "./routes/phone-delivery.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import launchPublicRoutes from "./routes/launch-public.routes";
 import discoverRedirectRoutes from "./routes/discover-redirect.routes";
@@ -1399,6 +1400,8 @@ export async function registerRoutes(
   // LW-1c: POST /api/waitlist + the admin counts/CSV. Mounted per §9.
   app.use(launchWaitlistRoutes);
   app.use(tickerRoutes);
+  // §8 phone delivery (ledger 2026-10-17-phone-delivery-calendar): the chooser rails and the /cal/<token>.ics feed.
+  app.use(phoneDeliveryRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
