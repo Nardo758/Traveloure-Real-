@@ -84,10 +84,12 @@ function PostBody({ post }: { post: PublicBlogPost }) {
           <Link href={storefront} className="font-medium hover:underline" data-testid="link-blog-byline">
             {post.byline.displayName}
           </Link>
+        ) : post.editorialByline ? (
+          <span className="font-medium" data-testid="text-blog-editorial-byline">{post.editorialByline}</span>
         ) : post.platformLabel ? (
           <span data-testid="text-blog-platform-label">{post.platformLabel}</span>
         ) : null}
-        {date && <span>{post.byline || post.platformLabel ? " · " : ""}{date}</span>}
+        {date && <span>{post.byline || post.editorialByline || post.platformLabel ? " · " : ""}{date}</span>}
       </p>
       {post.summary && <p className="mt-6 text-lg text-muted-foreground">{post.summary}</p>}
       <div className="mt-6 space-y-4 leading-relaxed">
@@ -105,14 +107,15 @@ function PostBody({ post }: { post: PublicBlogPost }) {
           <h2 className="text-lg font-semibold">Sources</h2>
           <ol className="mt-3 space-y-3 list-decimal pl-5">
             {post.sources.map((s, i) => {
-              const v = blogSourceView(s);
+              const editorial = !!post.editorialByline;
+              const v = editorial ? blogSourceView(s, { editorial: true }) : blogSourceView(s);
               return (
                 <li key={i} data-testid={`blog-source-${i}`}>
                   <a href={v.href} target="_blank" rel={v.rel} className="underline">
                     {v.text}
                   </a>
                   {v.detail && <span className="text-muted-foreground"> — {v.detail}</span>}
-                  {s.quote && <blockquote className="mt-1 border-l-2 pl-3 text-muted-foreground italic">{s.quote}</blockquote>}
+                  {s.quote && !editorial && <blockquote className="mt-1 border-l-2 pl-3 text-muted-foreground italic">{s.quote}</blockquote>}
                 </li>
               );
             })}

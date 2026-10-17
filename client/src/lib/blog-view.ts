@@ -18,6 +18,8 @@ export interface PublicBlogSource {
   title: string | null;
   publisher: string | null;
   quote: string | null;
+  /** When the source was checked (ISO), or null when the post's source carries no date. */
+  checkedAt?: string | null;
 }
 export interface PublicBlogPost {
   slug: string;
@@ -29,6 +31,8 @@ export interface PublicBlogPost {
   body: string;
   publishedAt: string | null;
   byline: PublicBlogByline | null;
+  /** ED-1: "Traveloure Editorial" on an editorial post — plain text, never a link. Null otherwise. */
+  editorialByline?: string | null;
   platformLabel: string | null;
   sources: PublicBlogSource[];
   /**
@@ -92,12 +96,26 @@ export const BLOG_SOURCE_LINK_REL = "nofollow noopener noreferrer";
  * `2026-10-03-official-facts-public-ok`), so it renders "from <source> — checked <date>" linking to
  * the fact's own URL. The page renders from THIS and restates nothing.
  */
-export function blogSourceView(s: { url: string; title?: string | null; publisher?: string | null }): {
+export function blogSourceView(
+  s: { url: string; title?: string | null; publisher?: string | null; checkedAt?: string | null },
+  opts: { editorial?: boolean } = {},
+): {
   href: string;
   text: string;
   detail: string | null;
   rel: string;
 } {
+  if (opts.editorial) {
+    // ED-1: an editorial source is the link and the date it was checked, nothing else. The server
+    // refuses an undated editorial source, so a missing date here shows no date rather than a guess.
+    const checked = publishedLabel(s.checkedAt ?? null);
+    return {
+      href: s.url,
+      text: s.title?.trim() || s.publisher?.trim() || s.url,
+      detail: checked ? `checked ${checked}` : null,
+      rel: BLOG_SOURCE_LINK_REL,
+    };
+  }
   return { href: s.url, text: s.title?.trim() || s.url, detail: s.publisher?.trim() || null, rel: BLOG_SOURCE_LINK_REL };
 }
 
@@ -126,7 +144,8 @@ export function publishedLabel(iso: string | null | undefined, locale = "en-US")
 }
 
 /** Who wrote it, as one line: the expert's name, or the platform's own label (ruling 5). */
-export function authorLine(post: Pick<PublicBlogPost, "byline" | "platformLabel">): string | null {
+export function authorLine(post: Pick<PublicBlogPost, "byline" | "platformLabel" | "editorialByline">): string | null {
   if (post.byline) return post.byline.displayName;
+  if (post.editorialByline) return post.editorialByline;
   return post.platformLabel ?? null;
 }
