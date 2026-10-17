@@ -2072,4 +2072,8 @@ export const MIGRATION_FILES = [
   // tables born empty: no DEFAULT, CHECK or FK; a UNIQUE index on the token hash and two lookup indexes. 385–387 are
   // taken by open PRs. Declared in shared/schema.ts. Held for founder comment on #1500.
   "388_calendar_feeds.sql",
+  // 387 — itinerary_items.coord_source (GC-1, ledger 2026-10-17-gc1-google-coords). One nullable text column, no
+  // DEFAULT, CHECK, index, FK or backfill; NULL = Google. 385/386 are reserved by other lanes. Declared in
+  // shared/schema.ts. HELD.
+  "387_itinerary_item_coord_source.sql",
 ] as const;

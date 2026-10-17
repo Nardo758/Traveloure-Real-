@@ -5785,6 +5785,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   locationAddress: text("location_address"),
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // GC-1 (migration 387; ledger `2026-10-17-gc1-google-coords`): where latitude/longitude came from. NULL = Google;
+  // new writes stamp 'places' or 'geocode_google' (shared/item-coord-source.ts). Server-written only (§19): the
+  // insert schema omits it and storage strips it; the item rails admit only the Google values.
+  coordSource: text("coord_source"),
   googlePlaceId: varchar("google_place_id", { length: 255 }),
   
   // Travel to this item
@@ -6386,7 +6390,7 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 // projection module (`server/services/cart-projection.service.ts`), and `customVenueId` names a row
 // in ANOTHER table whose owner the server verifies, which is exactly the §14 class a generic body
 // parse would hand to the caller.
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true, dmoExtractedPlaceId: true, affiliateProductId: true, routingStatus: true, bookingId: true, slotId: true, checkIn: true, checkOut: true, userExperienceId: true, customVenueId: true, contentType: true, contentId: true, quantity: true, lockedAt: true, sourceRunId: true, sourceVariantId: true, sourceClass: true, exitLatitude: true, exitLongitude: true, coordSource: true });
 
 /**
  * ALLOWLIST (§19 / #PS18 shape) — the ONLY way a request body may reach the migration-275

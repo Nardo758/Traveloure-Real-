@@ -3,10 +3,14 @@
  * available (step 5 ruling 9). It draws the SAME `sceneMarkers(scene)` list the Google renderer
  * draws, with the same testids, so a pin, a gold moved stop, a ghost and the anchor look the same on
  * either. Tiles come from deployment config (`GET /api/maps/tiles`); ODbL attribution is always drawn.
+ *
+ * GC-1 (ledger `2026-10-17-gc1-google-coords`): it draws NO leg lines and no minutes — a leg is a Google route,
+ * and this is not a Google map. It is mounted only for a day whose every located stop has a non-Google point
+ * (`everyLocatedPointNonGoogle`); otherwise the map shows the day as a list.
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Circle, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
@@ -56,7 +60,7 @@ function Framing({ scene }: { scene: MapScene }) {
   return null;
 }
 
-export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse, legs }: SceneMapProps) {
+export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse }: Omit<SceneMapProps, "legs">) {
   const { data: tiles } = useQuery<{ url: string; attribution: string }>({ queryKey: ["/api/maps/tiles"], staleTime: Infinity });
   const markers = sceneMarkers(scene);
   return (
@@ -72,11 +76,6 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
       {scene.connector.length > 1 ? (
         <Polyline positions={scene.connector.map((p) => [p.lat, p.lng] as [number, number])} pathOptions={{ color: "#64748B", weight: 2, opacity: 0.6 }} />
       ) : null}
-      {(legs ?? []).map((l) => (
-        <Polyline key={l.id} positions={[[l.from.lat, l.from.lng], [l.to.lat, l.to.lng]]} pathOptions={{ color: l.color, weight: 3, opacity: 0.8 }}>
-          {l.durationLabel ? <Tooltip permanent direction="center">{l.durationLabel}</Tooltip> : null}
-        </Polyline>
-      ))}
       {markers.map((m) => (
         <Marker
           key={m.testId}

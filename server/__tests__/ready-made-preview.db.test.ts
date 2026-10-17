@@ -178,13 +178,15 @@ test("P4: the purchase charges the price line's own number", () => {
 const pngSize = (b: Buffer) => [b.readUInt32BE(16), b.readUInt32BE(20)];
 
 test("P5: the four cards render behind the public gate", async () => {
-  const sizes: Record<string, number[]> = { cover: [1080, 1350], feed: [1080, 1350], map: [1080, 1350], story: [1080, 1920], og: [1200, 630] };
+  const sizes: Record<string, number[]> = { cover: [1080, 1350], feed: [1080, 1350], story: [1080, 1920], og: [1200, 630] };
   for (const [format, size] of Object.entries(sizes)) {
     const r = await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=${format}`);
     assert.equal(r.status, 200, format);
     assert.equal(r.headers.get("content-type"), "image/png");
     assert.deepEqual(pngSize(Buffer.from(await r.arrayBuffer())), size, format);
   }
+  // GC-1: the map format is not served until every located stop's point is non-Google.
+  assert.equal((await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=map`)).status, 404, "map");
   assert.equal((await fetch(`${base}/api/share-image/ready-made/${ids.listing}.png?format=poster`)).status, 400);
   assert.equal((await fetch(`${base}/api/share-image/ready-made/${ids.draft}.png?format=cover`)).status, 404, "no card for a draft");
   const slug = readyMadeSlug({ id: ids.listing, title: TITLE });
@@ -200,7 +202,7 @@ test("P5: the four cards render behind the public gate", async () => {
 
 test("P6: publishing warms all four; the version moves with what the image says", async () => {
   shareData._clearReadyMadeShareCaches();
-  assert.equal(await shareData.warmReadyMadeShareImages(ids.listing), 4);
+  assert.equal(await shareData.warmReadyMadeShareImages(ids.listing), 3, "GC-1: the map format is not served, so it is not warmed");
   assert.equal(await shareData.warmReadyMadeShareImages(ids.draft), 0, "a draft has nothing to warm");
   const v1 = await shareData.readyMadeShareVersion(ids.listing);
   assert.equal(await shareData.readyMadeShareVersion(ids.listing), v1, "stable while nothing changes");
