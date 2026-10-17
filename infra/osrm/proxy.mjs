@@ -21,7 +21,8 @@ import { fileURLToPath } from "node:url";
 /** ≥32 bytes of base64url (no padding) is ≥43 characters. */
 export const PREFIX_RE = /^[A-Za-z0-9_-]{43,}$/;
 
-/** OSRM takes `lng,lat`; the adapter sends six decimals. Two points, no more. */
+/** OSRM takes `lng,lat`; the adapter sends six decimals. The proxy still permits exactly two points,
+ * even though OSRM 5.26 requires an upstream --max-viaroute-size of at least 3. */
 const COORD = String.raw`-?\d{1,3}(?:\.\d{1,7})?,-?\d{1,2}(?:\.\d{1,7})?`;
 const ROUTE_RE = new RegExp(String.raw`^/([^/]+)/route/v1/(driving|foot)/(${COORD};${COORD})$`);
 

@@ -14,8 +14,8 @@ for p in driving foot; do
 done
 [ -f "$DATA/EXTRACT.txt" ] && sed -n 's/^osm_replication_timestamp=/OSM extract: /p' "$DATA/EXTRACT.txt"
 
-osrm-routed --algorithm mld --ip 127.0.0.1 --port "$OSRM_DRIVING_PORT" --max-viaroute-size 2 "$DATA/driving/kyoto.osrm" &
-osrm-routed --algorithm mld --ip 127.0.0.1 --port "$OSRM_FOOT_PORT" --max-viaroute-size 2 "$DATA/foot/kyoto.osrm" &
+osrm-routed --algorithm mld --mmap --ip 127.0.0.1 --port "$OSRM_DRIVING_PORT" --max-viaroute-size 3 "$DATA/driving/kyoto.osrm" &
+osrm-routed --algorithm mld --mmap --ip 127.0.0.1 --port "$OSRM_FOOT_PORT" --max-viaroute-size 3 "$DATA/foot/kyoto.osrm" &
 node proxy.mjs &
 
 wait -n

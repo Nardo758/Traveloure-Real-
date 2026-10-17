@@ -5,11 +5,11 @@
 # this writes to ./data. Needs osrm-backend, osmium-tool and curl on PATH (Replit: replit.nix).
 #
 # Source: Geofabrik's Kansai extract (a permitted download; ODbL — the adapter's label carries the
-# attribution). We clip, never serve Kansai: Kyoto prefecture plus a margin, south far enough to take in
-# Osaka Bay and KIX, because airport legs are the one thing routed outside the city.
+# attribution). Driving covers Kyoto prefecture plus Osaka Bay/KIX for airport legs.
+# Foot uses a separate Kyoto-city-only clip.
 #
 # Writes data/{driving,foot}/kyoto.osrm* and data/EXTRACT.txt (source URL, md5, OSM replication timestamp
-# — the extract date that is the "checked <date>" on every leg — bbox, build time). The previous data/ is
+# — the extract date that is the "checked <date>" on every leg — both bboxes, build time). The previous data/ is
 # replaced only after both profiles build.
 set -euo pipefail
 
@@ -18,6 +18,7 @@ SOURCE_URL="https://download.geofabrik.de/asia/japan/kansai-latest.osm.pbf"
 # minlon,minlat,maxlon,maxlat — Kyoto prefecture (≈134.85–136.06 E, 34.70–35.78 N) + ~0.05° margin,
 # south to 34.33 N for KIX (34.43 N, 135.23 E) and Osaka Bay.
 BBOX="134.80,34.33,136.11,35.83"
+FOOT_BBOX="135.60,34.85,135.90,35.15"
 WORK="${OSRM_WORK_DIR:-./build}"
 OUT="${OSRM_DATA_DIR:-./data}"
 
@@ -36,8 +37,10 @@ grep -q "^$MD5" "$WORK/kansai.osm.pbf.md5" || { echo "md5 mismatch for $SOURCE_U
 OSM_TS="$(osmium fileinfo -g header.option.osmosis_replication_timestamp "$WORK/kansai.osm.pbf")"
 echo "   extract timestamp: $OSM_TS"
 
-echo "== clip to $BBOX"
-osmium extract --overwrite -b "$BBOX" -o "$WORK/kyoto.osm.pbf" "$WORK/kansai.osm.pbf"
+echo "== driving clip to $BBOX"
+osmium extract --overwrite -b "$BBOX" -o "$WORK/driving.osm.pbf" "$WORK/kansai.osm.pbf"
+echo "== foot clip to $FOOT_BBOX"
+osmium extract --overwrite -b "$FOOT_BBOX" -o "$WORK/foot.osm.pbf" "$WORK/kansai.osm.pbf"
 
 NEXT="$OUT.next"
 rm -rf "$NEXT"
@@ -45,7 +48,7 @@ for pair in driving:car foot:foot; do
   name="${pair%%:*}"; lua="${pair##*:}"
   echo "== $name ($lua.lua)"
   mkdir -p "$WORK/$name" "$NEXT/$name"
-  cp "$WORK/kyoto.osm.pbf" "$WORK/$name/kyoto.osm.pbf"
+  cp "$WORK/$name.osm.pbf" "$WORK/$name/kyoto.osm.pbf"
   osrm-extract -p "$PROFILES/$lua.lua" "$WORK/$name/kyoto.osm.pbf"
   osrm-partition "$WORK/$name/kyoto.osrm"
   osrm-customize "$WORK/$name/kyoto.osrm"
@@ -57,6 +60,7 @@ source=$SOURCE_URL
 md5=$MD5
 osm_replication_timestamp=$OSM_TS
 bbox=$BBOX
+foot_bbox=$FOOT_BBOX
 built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 licence=ODbL 1.0 — © OpenStreetMap contributors
 EOF
