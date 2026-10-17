@@ -7,9 +7,10 @@
  *        when the server sent them
  *   OS2  the request: lng,lat order, the car profile for drive and the foot profile for walk, no overview,
  *        no steps, no alternatives
- *   OS3  transit and cycle have no OSRM source: `no_route` and NO request
- *   OS4  a failed call is `no_route` (a thin connector, cost 0) — a non-200, OSRM's own non-Ok code, an
- *        unreadable body, a throw, a timeout, no base URL — and OSRM is never `paused`
+ *   OS3  transit and cycle have no OSRM source: `no_route` (unanswered: unsupported_mode) and NO request
+ *   OS4  a failed call is `no_route` (a thin connector, cost 0) marked unanswered: failed — a non-200, a
+ *        non-Ok code, an unreadable body, a throw, a timeout, no base URL; OSRM's own NoRoute/NoSegment is
+ *        a plain `no_route` (an answer, 9b-d); OSRM is never `paused`
  *   OS5  OSRM's answers are cacheable (Google's still are not) and read "© OpenStreetMap contributors"
  *   OS6  the adapter choice: the stub wins in CI, OSRM when enabled with a base URL, else NONE — 9b-b: every
  *        caller stores its answer, so Google Routes is never chosen (9b spec T1)
@@ -105,15 +106,19 @@ test("OS2: the request — lng,lat, the profile per mode, no overview, no steps,
 test("OS3: transit and cycle answer no route and make no request", async () => {
   const { adapter, urls } = osrmWith();
   for (const mode of ["transit", "cycle"] as RoutingMode[]) {
-    assert.deepEqual(await adapter.route(GION, KIYOMIZU, mode, NOW), { kind: "no_route" }, mode);
+    assert.deepEqual(await adapter.route(GION, KIYOMIZU, mode, NOW), { kind: "no_route", unanswered: "unsupported_mode" }, mode);
   }
   assert.equal(urls.length, 0);
 });
 
 test("OS4: a failed call is no route — never paused, never an invented answer", async () => {
+  for (const code of ["NoRoute", "NoSegment"]) {
+    const { adapter } = osrmWith({ body: { code, routes: [] } });
+    assert.deepEqual(await adapter.route(GION, KIYOMIZU, "drive", null), { kind: "no_route" }, `OSRM ${code} is an answer`);
+  }
   const cases: Array<[string, Parameters<typeof osrmWith>[0]]> = [
     ["http 500", { status: 500 }],
-    ["OSRM NoRoute", { body: { code: "NoRoute", routes: [] } }],
+    ["OSRM InvalidQuery", { body: { code: "InvalidQuery" } }],
     ["no routes", { body: { code: "Ok", routes: [] } }],
     ["zero duration", { body: { code: "Ok", routes: [{ duration: 0, distance: 10 }] } }],
     ["unreadable", { body: "<html>" }],
@@ -123,7 +128,7 @@ test("OS4: a failed call is no route — never paused, never an invented answer"
   ];
   for (const [label, opts] of cases) {
     const { adapter } = osrmWith(opts);
-    assert.deepEqual(await adapter.route(GION, KIYOMIZU, "drive", null), { kind: "no_route" }, label);
+    assert.deepEqual(await adapter.route(GION, KIYOMIZU, "drive", null), { kind: "no_route", unanswered: "failed" }, label);
   }
   assert.equal(parseOsrmResponse(null, NOW), null);
 });
