@@ -111,6 +111,15 @@ This document captures architectural decisions to maintain consistency across co
     brief's L3 ("distance never traveler-facing") is amended to headline *delta claims* only, not map
     annotation. The Advisor **fundamentals** checklist (ratified list in `server/routes/advisor.routes.ts`)
     is deterministic, §13-honest (a check with insufficient data is omitted with a reason, never guessed).
+    **AMENDED — GOOGLE COORDINATES ARE NEVER DRAWN ON A NON-GOOGLE RENDERING (decision-maker, Oct 16, 2026 —
+    GC-1 rulings; ledger `2026-10-17-gc1-google-coords`; migration 387, held).** The store teaser's day-km
+    legend is REMOVED, and no share image or caption carries a minute or a distance (stop counts stay): a
+    leg's minutes and metres may be a Google route's. `itinerary_items.coord_source` records where an item's
+    point came from; NULL = Google, and new writes stamp `places` or `geocode_google`
+    (`shared/item-coord-source.ts`). Until an item's point is non-Google, the Ready-Made map share format is
+    not served and the slip's Leaflet fallback shows the day as a list (R-d as amended by the architect);
+    Leaflet draws no leg lines. The teaser snaps each stop to its neighbourhood's own row in the spine
+    (`city_neighborhoods`), found by name, and draws that row's centroid, never the stop's point.
 
 22. **Service map & route stops; Catalog is the map's home (decision-maker ratified Aug 10, 2026).**
     **(a) `service_route_points`** (migration 192, declared in `shared/schema.ts` — publish-trap rule) is the

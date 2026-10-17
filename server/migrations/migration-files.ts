@@ -2060,4 +2060,8 @@ export const MIGRATION_FILES = [
   // every column but the key nullable; four seed rows (Marketing's lines, two inactive) ON CONFLICT (id) DO NOTHING.
   // 382/383 are taken by FE-2 (#1475). Declared in shared/schema.ts. Migration 384 SQL approved by Leon — comment 18:26Z on #1481.
   "384_ticker_items.sql",
+  // 387 — itinerary_items.coord_source (GC-1, ledger 2026-10-17-gc1-google-coords). One nullable text column, no
+  // DEFAULT, CHECK, index, FK or backfill; NULL = Google. 385/386 are reserved by other lanes. Declared in
+  // shared/schema.ts. HELD.
+  "387_itinerary_item_coord_source.sql",
 ] as const;

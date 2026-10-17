@@ -2,9 +2,16 @@
  * ready-made-teaser-map.service.ts — server-rendered pre-purchase teaser SVG for a Ready Made
  * Trips store listing (GET /api/ready-made/:id/teaser-map.svg, server/routes/ready-made.routes.ts).
  *
- * CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): the teaser now draws NO stop and NO route — one blurred
- * region per day, at least 1 km (`teaserDayRegions`). The jitter below survives only for the share
- * image's schematic map (`jitterPoint`, ready-made-share-data.service.ts), which has no basemap.
+ * CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): the teaser now draws NO stop and NO route. The jitter
+ * below survives only for the share image's schematic map (`jitterPoint`, ready-made-share-data.service.ts),
+ * which has no basemap.
+ *
+ * GC-1 (ledger `2026-10-17-gc1-google-coords`): a stop's own point may be Google's, so it is never drawn,
+ * even blurred. Each stop is SNAPPED TO ITS NEIGHBOURHOOD: its point only finds which `city_neighborhoods`
+ * row it is in (the same nearest-within-3 km rule the share chips use, `nearestAreaName`), and the region
+ * drawn is that row's own centroid and radius (the spine, OSM-derived), looked up by name. One region per
+ * neighbourhood per day; a stop in no neighbourhood draws nothing (§13). No distance legend: a leg's
+ * distance may be a Google route's.
  *
  * CRITICAL REDACTION RULE: raw item coordinates must NEVER reach an unpurchased client. Every
  * stop position is jittered ±~250m using a PRNG seeded deterministically from the listing id
@@ -31,8 +38,7 @@
  */
 import { projectPath, projectPoint, type MarketGeography } from "@shared/geo/market-geography";
 import { getMarketGeographyForDestinationSync } from "./market-geography.service";
-import { coarsenPoint } from "@shared/public-listing-location";
-import { haversineMeters } from "@shared/geo";
+import { nearestAreaName } from "../utils/public-service-listing";
 
 const VIEW_WIDTH = 800;
 const VIEW_HEIGHT = 420;
@@ -40,7 +46,6 @@ const GROUND_COLOR = "#FAFAF8";
 const WATER_COLOR = "#EAF1F8";
 const PARK_COLOR = "#EAF4EF";
 const ROAD_COLOR = "#E8E8E2";
-const LEGEND_COLOR = "#7A7A72";
 const ATTRIBUTION_COLOR = "#B8B8B0";
 const DAY_PALETTE = ["#E85D55", "#3B6EA5", "#2E7D5B", "#B45309"];
 // Safety floor so a single stop (or several near-identical stops) never collapses the
@@ -57,9 +62,12 @@ export interface TeaserMapItemInput {
   longitude: string | number | null;
 }
 
-export interface TeaserMapDayDistance {
-  dayNumber: number;
-  totalMeters: number;
+/** GC-1: a neighbourhood row from the spine — its own name, centroid and radius. */
+export interface TeaserNeighborhood {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusKm: number | null;
 }
 
 export interface TeaserMapOptions {
@@ -71,9 +79,8 @@ export interface TeaserMapOptions {
   /** Itinerary items already sorted into itinerary order (dayNumber, then sortOrder) by the
    *  caller — this module never re-sorts, it only groups by day. */
   items: TeaserMapItemInput[];
-  /** Per-day summed transport_legs.distance_meters (trip-scoped, variantId IS NULL). Empty when
-   *  no transport legs exist for this trip — the caller never estimates one (§13). */
-  dayDistances: TeaserMapDayDistance[];
+  /** GC-1: the listing market's neighbourhood rows (the spine). Empty ⇒ no region is drawn. */
+  neighborhoods: TeaserNeighborhood[];
 }
 
 // ─── Deterministic PRNG (mulberry32) seeded from a string hash (FNV-1a) ──────────────────────
@@ -180,33 +187,28 @@ export const TEASER_REGION_MIN_RADIUS_M = 1000;
 const TEASER_REGION_STEP_M = 500;
 
 /**
- * CP-1 PR 2 (ledger `2026-10-15-cp1-teasers`): ONE generalised region per day — the day's located stops
- * reduced to a centre snapped to the ~500 m public grid (`coarsenPoint`) and a radius that covers them
- * all, at least 1 km, rounded up to 500 m, plus a 500 m margin for the snap. No stop and no route is in
- * the output. A day with no located stop draws nothing (§13).
+ * GC-1 (ledger `2026-10-17-gc1-google-coords`): one region per neighbourhood per day, in day order and then in
+ * the order the day first reaches each neighbourhood. A stop's point is used only to find its neighbourhood
+ * (`nearestAreaName`); the region is the neighbourhood row's own centroid and its radius, at least 1 km and
+ * rounded up to 500 m. A stop with no point, or in no neighbourhood, draws nothing (§13).
  */
 export function teaserDayRegions(
   items: ReadonlyArray<TeaserMapItemInput>,
-): Array<{ dayNumber: number; lat: number; lon: number; radiusM: number }> {
-  const byDay = new Map<number, Array<{ lat: number; lon: number }>>();
-  for (const item of items) {
-    const lat = item.latitude != null ? Number(item.latitude) : NaN;
-    const lon = item.longitude != null ? Number(item.longitude) : NaN;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    if (!byDay.has(item.dayNumber)) byDay.set(item.dayNumber, []);
-    byDay.get(item.dayNumber)!.push({ lat, lon });
-  }
-  const out: Array<{ dayNumber: number; lat: number; lon: number; radiusM: number }> = [];
-  for (const [dayNumber, pts] of Array.from(byDay.entries()).sort((a, b) => a[0] - b[0])) {
-    const cLat = pts.reduce((a, p) => a + p.lat, 0) / pts.length;
-    const cLon = pts.reduce((a, p) => a + p.lon, 0) / pts.length;
-    const snapped = coarsenPoint(cLat, cLon);
-    if (snapped.latitude == null || snapped.longitude == null) continue;
-    const lat = Number(snapped.latitude);
-    const lon = Number(snapped.longitude);
-    const farthest = Math.max(...pts.map((p) => haversineMeters(lat, lon, p.lat, p.lon)));
-    const needed = Math.max(TEASER_REGION_MIN_RADIUS_M, farthest + TEASER_REGION_STEP_M);
-    out.push({ dayNumber, lat, lon, radiusM: Math.ceil(needed / TEASER_REGION_STEP_M) * TEASER_REGION_STEP_M });
+  neighborhoods: ReadonlyArray<TeaserNeighborhood>,
+): Array<{ dayNumber: number; name: string; lat: number; lon: number; radiusM: number }> {
+  const byName = new Map(neighborhoods.map((n) => [n.name, n] as const));
+  const seen = new Set<string>();
+  const out: Array<{ dayNumber: number; name: string; lat: number; lon: number; radiusM: number }> = [];
+  const ordered = items.slice().sort((a, b) => a.dayNumber - b.dayNumber);
+  for (const item of ordered) {
+    const name = nearestAreaName(item.latitude, item.longitude, neighborhoods);
+    const row = name ? byName.get(name) : undefined;
+    if (!row) continue;
+    const key = `${item.dayNumber}:${row.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const radius = Math.max(TEASER_REGION_MIN_RADIUS_M, (Number(row.radiusKm) || 0) * 1000);
+    out.push({ dayNumber: item.dayNumber, name: row.name, lat: row.lat, lon: row.lng, radiusM: Math.ceil(radius / TEASER_REGION_STEP_M) * TEASER_REGION_STEP_M });
   }
   return out;
 }
@@ -214,9 +216,9 @@ export function teaserDayRegions(
 const METERS_PER_DEG_LAT = 111_320;
 
 export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
-  const { destination, items, dayDistances } = opts;
+  const { destination, items, neighborhoods } = opts;
 
-  const regions = teaserDayRegions(items);
+  const regions = teaserDayRegions(items, neighborhoods);
   const geo = getMarketGeographyForDestinationSync(destination);
   const corners: [number, number][] = [];
   for (const r of regions) {
@@ -244,7 +246,7 @@ export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
   layers.push(`<rect x="0" y="0" width="${VIEW_WIDTH}" height="${VIEW_HEIGHT}" fill="${GROUND_COLOR}" />`);
   if (geo) layers.push(geographyLayer(geo, bbox));
 
-  // One soft, blurred disc per day — an area, never a pin or a route (CP-1 PR 2).
+  // One soft, blurred disc per neighbourhood per day — the spine's own area, never a stop or a route (GC-1).
   if (regions.length) {
     layers.push(`<defs><filter id="teaser-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14" /></filter></defs>`);
   }
@@ -256,20 +258,6 @@ export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
     layers.push(
       `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${rPx.toFixed(1)}" fill="${color}" fill-opacity="0.28" filter="url(#teaser-blur)" />`,
     );
-  }
-
-  // Distance legend (bottom-left) — ONLY when real transport legs exist; never estimated (§13:
-  // an absent leg set means no legend, not a guessed distance).
-  if (dayDistances.length > 0) {
-    const sorted = dayDistances.slice().sort((a, b) => a.dayNumber - b.dayNumber);
-    const lineHeight = 14;
-    const startY = VIEW_HEIGHT - 16 - (sorted.length - 1) * lineHeight;
-    sorted.forEach((d, i) => {
-      const km = (d.totalMeters / 1000).toFixed(1);
-      layers.push(
-        `<text x="14" y="${startY + i * lineHeight}" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="${LEGEND_COLOR}">${esc(`Day ${d.dayNumber} · ${km} km`)}</text>`,
-      );
-    });
   }
 
   // Attribution (bottom-right, 8px) — required whenever the geography layer rendered (the OSM

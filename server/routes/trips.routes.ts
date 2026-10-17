@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { admitItemCoordSource } from "@shared/item-coord-source";
 import { wallClockMinutes } from "@shared/leg-reachability";
 import { tripGetsRoutedLegs, tripLegsShown } from "../services/routing/plan-routed-legs.service";
 import { routedFactsOf } from "../services/routing/plan-legs";
@@ -3469,7 +3470,8 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
         });
         return res.status(202).json({ suggested: true, suggestion });
       }
-      const updated = await storage.updateItineraryItem(itemId, safeBody);
+      // GC-1 (migration 387): a coordinate edit may say it came from Google; absent ⇒ NULL (read as Google).
+      const updated = await storage.updateItineraryItem(itemId, safeBody, { coordSource: admitItemCoordSource(req.body) });
       if (!updated) return res.status(404).json({ message: "Item not found" });
       // Slice A3 (ledger `2026-10-05-stay-reroute-gaps`): an edit to (or into, or out of) a stay item
       // re-routes a copy's end legs. Best-effort, never fails the edit (§15b).
