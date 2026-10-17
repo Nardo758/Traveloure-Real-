@@ -25,17 +25,21 @@ export function plancardRefetchInterval(
  * `PLANCARD_PENDING_REFETCH_MS` until the key is gone — at which point the facts are on the read.
  * Polling needs no socket and survives a reload or a different server instance answering.
  *
- * Pure. An item still being checked shows "checking hours…" where its facts line will go, and only
- * while it has no facts line of its own.
+ * GH-1 (ledger `2026-10-17-gh1-no-google-hours`): the lookups no longer bring hours (Google's are not stored),
+ * so a pending lookup is no promise of hours and the old pending-lookup label is gone. Polling stays: the
+ * lookups still bring an address, a point and photo references.
  */
-export const CHECKING_HOURS_LABEL = "checking hours…";
 
-export function showsCheckingHours(
-  itemId: string,
-  pending: readonly string[] | null | undefined,
-  hasFactLine: boolean,
-): boolean {
-  return !hasFactLine && Array.isArray(pending) && pending.includes(itemId);
+/** GH-1: what a stop row says where its hours line would go when no admitted hours fact covers it. */
+export const HOURS_NOT_CHECKED_YET_LABEL = "Hours not checked yet";
+
+/**
+ * Pure. True for a stop row (not a stay, not a ride) that has no hours line and no hours fact at all —
+ * official and person-checked hours are the only ones stored. An hours fact with no line for the day (no
+ * date, or a season that does not cover it) is not "not checked", so it says nothing here.
+ */
+export function showsHoursNotChecked(input: { isStop: boolean; hasHoursLine: boolean; hasHoursFact: boolean }): boolean {
+  return input.isStop && !input.hasHoursLine && !input.hasHoursFact;
 }
 
 /**

@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { coordinatesStillPending } from "../../../../server/services/coordinate-backfill.pure";
-import { CHECKING_HOURS_LABEL, PLANCARD_PENDING_REFETCH_MS, plancardRefetchInterval, showsCheckingHours } from "../plancard-refetch";
+import { HOURS_NOT_CHECKED_YET_LABEL, PLANCARD_PENDING_REFETCH_MS, plancardRefetchInterval, showsHoursNotChecked } from "../plancard-refetch";
 import { isAcceptableArrivalLine, normalizedTravelLineTitle } from "@shared/draft-basis";
 
 const read = (rel: string) =>
@@ -76,16 +76,16 @@ test("S5 item 5: the read reports the flag and the slip polls on it", () => {
   assert.match(page, /refetchInterval: \(query\) =>\s*plancardRefetchInterval\(/);
 });
 
-test("S6 item 8: pending lookups poll the plancard and label their rows until the facts land", () => {
+test("S6 item 8: pending lookups poll the plancard; a stop with no hours says so (GH-1)", () => {
   assert.equal(plancardRefetchInterval({ factsPendingItemIds: ["a"] }), PLANCARD_PENDING_REFETCH_MS);
   assert.equal(plancardRefetchInterval({ factsPendingItemIds: [] }), false);
-  assert.equal(showsCheckingHours("a", ["a", "b"], false), true);
-  assert.equal(showsCheckingHours("a", ["a"], true), false, "a row with its facts line shows the facts");
-  assert.equal(showsCheckingHours("c", ["a"], false), false, "an item not being checked shows nothing");
-  assert.equal(showsCheckingHours("a", undefined, false), false);
-  assert.equal(CHECKING_HOURS_LABEL, "checking hours…");
+  // GH-1: a pending lookup no longer means hours are coming, so the label is "Hours not checked yet".
+  assert.equal(showsHoursNotChecked({ isStop: true, hasHoursLine: false, hasHoursFact: false }), true);
+  assert.equal(showsHoursNotChecked({ isStop: true, hasHoursLine: true, hasHoursFact: true }), false, "a row with its facts line shows the facts");
+  assert.equal(showsHoursNotChecked({ isStop: false, hasHoursLine: false, hasHoursFact: false }), false, "a stay or a ride shows nothing");
+  assert.equal(HOURS_NOT_CHECKED_YET_LABEL, "Hours not checked yet");
   const slip = read("../../components/plancard/SlipView.tsx");
-  assert.match(slip, /checkingHours=\{showsCheckingHours\(a\.id, data\.factsPendingItemIds,/);
+  assert.match(slip, /hoursNotChecked=\{showsHoursNotChecked\(\{/);
 });
 
 test("S7 item 10: arrival/departure copy is ours or station-specific", () => {

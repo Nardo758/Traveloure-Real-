@@ -108,7 +108,7 @@ import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { isLocated } from "@/components/plancard/MapControlCenter";
 import { areaShading, planMapAnchor, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
 import { versionMapAnchorKind, type VersionsBoardView } from "@/lib/versions-board";
-import { CHECKING_HOURS_LABEL, showsCheckingHours } from "@/lib/plancard-refetch";
+import { showsHoursNotChecked } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { durationShape, showsSchedule } from "@/lib/occasion-switches";
@@ -769,7 +769,7 @@ function SlipDayItem({
   facts,
   dateIso = null,
   timeZone = null,
-  checkingHours = false,
+  hoursNotChecked = false,
   onOpenExpertDoor,
   onFindHost,
   savedQuestion = null,
@@ -781,7 +781,7 @@ function SlipDayItem({
   /** The plan's destination — what "a generic item" is read against (`findHostHref`). */
   city: string | null;
   facts?: FactView[];
-  checkingHours?: boolean;
+  hoursNotChecked?: boolean;
   dateIso?: string | null;
   /** S9-6: the plan's zone (`trips.timezone`) for the facts line's "checked" day; null ⇒ the UTC day. */
   timeZone?: string | null;
@@ -933,7 +933,7 @@ function SlipDayItem({
                 }
             : null
       }
-      checkingHours={checkingHours}
+      hoursNotChecked={hoursNotChecked}
       menu={menu}
       highlighted={highlighted}
       rowRef={rowRef}
@@ -2725,7 +2725,11 @@ export function SlipView({
                       activity={a}
                       city={data.trip?.destination ?? null}
                       facts={data.placeFacts?.[a.id]}
-                      checkingHours={showsCheckingHours(a.id, data.factsPendingItemIds, !!itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null))}
+                      hoursNotChecked={showsHoursNotChecked({
+                        isStop: !isLodgingItem({ type: a.type, title: a.name }) && a.type !== "transport",
+                        hasHoursLine: !!itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null),
+                        hasHoursFact: (data.placeFacts?.[a.id] ?? []).some((f) => f.factType === "hours"),
+                      })}
                       dateIso={slot.dateIso ?? null}
                       timeZone={data.trip?.timezone ?? null}
                       isOwner={isOwner}

@@ -11,6 +11,7 @@ import { serveStatic } from "./static";
 import { mountWellKnown } from "./well-known";
 import { runMigrations } from "./migrations/run-migrations";
 import { describeLegacyBookingsCutoff } from "./config/legacy-bookings.config";
+import { retiredMapsBrowserKeyWarning } from "@shared/maps-browser-key-retired";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedProviderServiceListings, seedMockExperts, seedProviderServices } from "./seed-expert-services";
@@ -769,6 +770,8 @@ if (process.env.NODE_ENV === "production") {
     const personaTemplate = process.env.PERSONA_TEMPLATE_ID ? "set" : "missing";
     const stripeIdentity = process.env.STRIPE_IDENTITY_WEBHOOK_SECRET ? "set" : "missing";
     console.log(`[readiness] identity/KYB keys: PERSONA_API_KEY=${personaKey} PERSONA_TEMPLATE_ID=${personaTemplate} STRIPE_IDENTITY_WEBHOOK_SECRET=${stripeIdentity}`);
+    const retiredMapsKey = retiredMapsBrowserKeyWarning(process.env);
+    if (retiredMapsKey) logger.warn(retiredMapsKey);
     logger.info({ port }, "Server started");
 
     cacheSchedulerService.start();

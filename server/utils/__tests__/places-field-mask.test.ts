@@ -32,10 +32,12 @@ test("F1 a temple asks no Atmosphere field", () => {
   const m = placesFieldMask("stop.hours");
   assert.deepEqual(m.fields, [...PLACES_BASE_FIELDS]);
   assert.deepEqual(m.fields.filter((f) => ATMOSPHERE.has(f)), []);
-  assert.equal(m.sku, "details_enterprise");
-  for (const f of ["displayName", "location", "formattedAddress", "shortFormattedAddress", "regularOpeningHours.weekdayDescriptions"]) {
+  // GH-1: no hours field is asked, so the highest field left is Pro.
+  assert.equal(m.sku, "details_pro");
+  for (const f of ["displayName", "location", "formattedAddress", "shortFormattedAddress"]) {
     assert.ok(m.fields.includes(f), f);
   }
+  assert.equal(m.fields.some((f) => f.startsWith("regularOpeningHours")), false, "GH-1: Google's hours are never asked");
   assert.ok(!m.fields.includes("priceLevel"));
 });
 
@@ -63,9 +65,9 @@ test("F3 the Details call sends the mask and prices by its tier", async () => {
   const food = await a.fetchByPlaceId("ChIJ-x", { need: "dining", market: "kyoto", query: { text: "Gion Karyo", city: "Kyoto" }, budgetCents: 0 });
   assert.equal(masks[0], PLACES_BASE_FIELDS.join(","));
   assert.equal(masks[1], [...PLACES_BASE_FIELDS, "reservable"].join(","));
-  assert.equal(temple.reduce((n, d) => n + d.costCents, 0), 2);
+  assert.equal(temple.reduce((n, d) => n + d.costCents, 0), 1.7);
   assert.equal(food.reduce((n, d) => n + d.costCents, 0), 2.5);
-  assert.ok(temple.every((d) => d.sku === "details_enterprise"));
+  assert.ok(temple.every((d) => d.sku === "details_pro"));
   assert.ok(food.every((d) => d.sku === "details_enterprise_atmosphere"));
   assert.ok(food.some((d) => d.factType === "dining_basics" && d.value.reservable === true && !("servesVegetarianFood" in d.value)));
 });
@@ -74,7 +76,7 @@ test("F4 config defaults", () => {
   delete process.env.PLACES_ID_LOOKUP_COST_CENTS;
   delete process.env.PLACES_DETAILS_COST_CENTS;
   assert.equal(placesIdLookupCostCents(), 0);
-  assert.equal(placesDetailsCostCents(), 2);
+  assert.equal(placesDetailsCostCents(), 1.7);
 });
 
 test("F5 languageCode=en on every call; the area comes from addressComponents, never the formatted string", async () => {
@@ -134,14 +136,14 @@ test("F5 languageCode=en on every call; the area comes from addressComponents, n
   assert.equal("area" in noArea.value, false);
 });
 
-test("F6 R297: photos in the mask; the billed tier and cost are unchanged; the references are cached", async () => {
+test("F6 R297: photos in the mask; the billed tier and cost are unchanged by them; the references are cached", async () => {
   delete process.env.PLACES_DETAILS_COST_CENTS;
   delete process.env.PLACES_DETAILS_ATMOSPHERE_COST_CENTS;
   delete process.env.PLACE_FACT_TTL_DAYS_PHOTO_REF;
   for (const need of ["stop.hours", "neighbourhood"] as const) {
     const m = placesFieldMask(need);
     assert.ok(m.fields.includes("photos"), `photos asked for ${need}`);
-    assert.equal(m.sku, "details_enterprise", "photos does not raise the tier above Enterprise");
+    assert.equal(m.sku, "details_pro", "photos does not raise the tier above Pro (GH-1)");
   }
   assert.equal(placesFieldMask("dining").sku, "details_enterprise_atmosphere", "dining keeps its tier");
   const masks: string[] = [];
@@ -169,8 +171,8 @@ test("F6 R297: photos in the mask; the billed tier and cost are unchanged; the r
   );
   const drafts = await a.fetchByPlaceId("ChIJ-kinkaku", { need: "stop.hours", market: "kyoto", query: { text: "Kinkaku-ji", city: "Kyoto" }, budgetCents: 0 });
   assert.ok(masks[0].split(",").includes("photos"));
-  assert.equal(drafts.reduce((n, d) => n + d.costCents, 0), 2, "the call costs what it cost before");
-  assert.ok(drafts.every((d) => d.sku === "details_enterprise"));
+  assert.equal(drafts.reduce((n, d) => n + d.costCents, 0), 1.7, "photos add nothing to the call's cost (Pro, GH-1)");
+  assert.ok(drafts.every((d) => d.sku === "details_pro"));
   const ref = drafts.find((d) => d.factType === "photo_ref")!;
   assert.ok(ref, "the references are stored with the facts");
   assert.equal(ref.placeRefKind, "place_id");
