@@ -6,7 +6,8 @@
  *   R2  The author's link for ANOTHER trip does not print on this one (the /t/ image is served).
  *   R3  A link owned by someone who did not author the trip does not print.
  *   R4  An expired, unknown, malformed or absent code prints the /t/ link.
- *   R5  Map and og draw no link: a valid ref changes nothing, and they share the /t/ image's cache entry.
+ *   R5  Og draws no link: a valid ref changes nothing and it shares the /t/ image's cache entry. The map
+ *       format is not served (GC-1), with or without a ref.
  *   R6  The cache is keyed by code: two valid codes give two images, a repeat returns the cached one, and a refused
  *       code shares the /t/ image's entry.
  *   R7  The pure rule `shareImageRefCode`.
@@ -21,6 +22,7 @@ import { sql } from "drizzle-orm";
 import {
   _clearReadyMadeShareCaches,
   getReadyMadeShareImage,
+  MAP_FORMAT_NOT_SERVED,
   shareImageRefCode,
 } from "../services/ready-made-share-data.service";
 
@@ -115,13 +117,15 @@ test("R4 · an expired, unknown, malformed or absent code prints the /t/ link", 
   }
 });
 
-test("R5 · map and og draw no link, so a valid ref changes nothing", async () => {
-  for (const format of ["map", "og"] as const) {
-    const plain = await getReadyMadeShareImage(rmId, format);
-    const withRef = await getReadyMadeShareImage(rmId, format, CODE("a"));
-    assert.equal(withRef!.refCode, null);
-    assert.equal(withRef!.png, plain!.png, `${format} shares the /t/ cache entry`);
-  }
+test("R5 · og draws no link, so a valid ref changes nothing; the map format is not served", async () => {
+  const plain = await getReadyMadeShareImage(rmId, "og");
+  const withRef = await getReadyMadeShareImage(rmId, "og", CODE("a"));
+  assert.ok(plain && plain !== MAP_FORMAT_NOT_SERVED && withRef && withRef !== MAP_FORMAT_NOT_SERVED);
+  assert.equal(withRef.refCode, null);
+  assert.equal(withRef.png, plain.png, "og shares the /t/ cache entry");
+  // GC-1 (ledger `2026-10-17-gc1-google-coords`): the map format is not served, with or without a ref.
+  assert.equal(await getReadyMadeShareImage(rmId, "map"), MAP_FORMAT_NOT_SERVED);
+  assert.equal(await getReadyMadeShareImage(rmId, "map", CODE("a")), MAP_FORMAT_NOT_SERVED);
 });
 
 test("R6 · the cache is keyed by code", async () => {

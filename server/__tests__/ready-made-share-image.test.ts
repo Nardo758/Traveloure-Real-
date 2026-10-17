@@ -5,8 +5,8 @@
  *   I2 an absent fact draws nothing: no photo ⇒ no image and no credit; no price ⇒ no price; not
  *      verified ⇒ never "verified"
  *   I3 never a Google photo: Google hosts are refused, a photo with no credit is not used
- *   I4 the map slide is a schematic (dashed lines, pins, numbers drawn as text), captioned with
- *      CONFIRMED minutes only where a day has them; the normaliser stays inside the box
+ *   I4 the map slide is a schematic (dashed lines, pins, numbers drawn as text), captioned with each
+ *      day's stop count and never a minute (GC-1); the normaliser stays inside the box
  *   I5 the Story's three proof lines are facts the listing carries
  *   I6 every format renders at its size (PNG IHDR), and the version moves only with what the image says
  *   I7 the cover-photo fetch is typed and bounded (JPEG/PNG only, Unsplash asked for JPEG)
@@ -36,9 +36,9 @@ function sample(over: Record<string, unknown> = {}): any {
     hero: { dataUri: PIXEL_PNG, credit: "Photo: Ann Lee / Unsplash" },
     dayChips: [{ dayNumber: 1, label: "Fushimi Inari" }, { dayNumber: 2, label: "Arashiyama" }, { dayNumber: 3, label: "Kinkaku-ji" }],
     map: [
-      { dayNumber: 1, points: [{ x: 0.1, y: 0.2 }, { x: 0.3, y: 0.4 }, { x: 0.5, y: 0.5 }], confirmedMinutes: 67 },
-      { dayNumber: 2, points: [{ x: 0.6, y: 0.1 }, { x: 0.8, y: 0.2 }], confirmedMinutes: null },
-      { dayNumber: 3, points: [{ x: 0.9, y: 0.9 }], confirmedMinutes: null },
+      { dayNumber: 1, points: [{ x: 0.1, y: 0.2 }, { x: 0.3, y: 0.4 }, { x: 0.5, y: 0.5 }] },
+      { dayNumber: 2, points: [{ x: 0.6, y: 0.1 }, { x: 0.8, y: 0.2 }] },
+      { dayNumber: 3, points: [{ x: 0.9, y: 0.9 }] },
     ],
     ...over,
   };
@@ -102,8 +102,10 @@ describe("I4 the map slide", () => {
   it("is a captioned schematic", () => {
     const { texts, imgs } = walk(svc.buildMapSlide(sample()));
     assert.ok(texts.includes("Your route at a glance"));
-    assert.ok(texts.includes("Day 1 · 3 stops · 67 min of confirmed travel"));
+    // GC-1 (ledger `2026-10-17-gc1-google-coords`): the caption carries the stop count and never a minute.
+    assert.ok(texts.includes("Day 1 · 3 stops"));
     assert.ok(texts.includes("Day 2 · 2 stops"), "no minutes claimed without confirmed legs");
+    assert.ok(!texts.some((t) => /\bmin\b/.test(t)), "no minute on the map slide");
     assert.ok(texts.includes("Schematic, not to scale · stops shown approximately"));
     const svgs = imgs.filter((s) => s.startsWith("data:image/svg+xml")).map((s) => Buffer.from(s.split(",")[1], "base64").toString());
     const route = svgs.find((s) => s.includes("<polyline"))!;

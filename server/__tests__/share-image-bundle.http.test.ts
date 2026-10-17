@@ -115,10 +115,13 @@ test("S2: an approved review renders", async () => {
   await assertPng(`/api/share-image/review/${ids.review}.png`, "review");
 });
 
-test("S3: every Ready Made share format renders", async () => {
-  for (const format of ["cover", "map", "story", "og"]) {
+test("S3: every served Ready Made share format renders; the map format is not served (GC-1)", async () => {
+  for (const format of ["cover", "story", "og"]) {
     await assertPng(`/api/share-image/ready-made/${ids.listing}.png?format=${format}`, `ready-made ${format}`);
   }
+  // GC-1 (ledger `2026-10-17-gc1-google-coords`): not served while no located stop has a non-Google point.
+  const map = await fetch(`${BASE_URL}/api/share-image/ready-made/${ids.listing}.png?format=map`);
+  assert.equal(map.status, 404, "the map format is not served");
 });
 
 test("S4: satori is loaded in ONE place, never by a bare default import", () => {
