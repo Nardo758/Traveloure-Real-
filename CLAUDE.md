@@ -2694,7 +2694,7 @@ This document captures architectural decisions to maintain consistency across co
     "P0 ruling 7 amended: legacy confirmed legs are superseded once on the first engine run — re-routed where
     routable, retired where the pair has an unlocated stop. No unsourced leg shows on a routed plan."
     **AMENDED BY 9b-b (9b spec v1.0 T1/T2/T3, Phase 0 rulings 1–6, Oct 16, 2026 — ledger
-    `2026-10-16-9b-b-legs-off-google`; migration 386, HELD for Leon's approval comment on its PR).** No writer
+    `2026-10-16-9b-b-legs-off-google`; migration 386 — Migration 386 SQL approved by Leon — comment 06:34Z on #1495).** No writer
     stores a Google duration or distance: `routingAdapter()` answers the CI stub, self-hosted OSRM, or nothing — never
     Google Routes — and the leg resolver's exact source is that adapter (else the labelled estimate); the
     `travel_time_matrix` is retired as a source (no reader reads it). A Google-sourced leg (`legNeedsRebuild`) is
