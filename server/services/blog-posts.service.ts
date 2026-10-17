@@ -36,6 +36,7 @@ import {
   type BlogContentType,
   type BlogReactionKind,
 } from "@shared/blog";
+import { blogFooterShown } from "@shared/blog-footer";
 import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
 import { rankBlogPosts } from "./blog-ranking";
 import { liveSeriesInstances } from "./blog-event-facts.service";
@@ -515,6 +516,27 @@ export async function getPublishedBySlug(slug: string) {
 export async function countPublished(): Promise<number> {
   const r = await db.execute(sql`SELECT count(*)::int AS n FROM blog_posts WHERE status = 'published'`);
   return Number((r.rows[0] as any)?.n ?? 0);
+}
+
+/**
+ * ED-1 footer count (ledger `2026-10-16-blog-footer-count`): whether the footer shows its Blog link —
+ * the published count from the post store against the `blog_footer_min_published` minimum. A count that
+ * cannot be read is HIDDEN, never shown (fail-closed). Reads are injectable for tests.
+ */
+export async function blogFooterVisible(deps: {
+  count?: () => Promise<number>;
+  minimum?: () => Promise<number>;
+} = {}): Promise<boolean> {
+  let published: number;
+  try {
+    published = await (deps.count ?? countPublished)();
+  } catch (err) {
+    console.error("[blog] footer count read failed — Blog link hidden:", err);
+    return false;
+  }
+  const { getBlogFooterMinPublished } = await import("./platform-flags");
+  const minimum = await (deps.minimum ?? getBlogFooterMinPublished)();
+  return blogFooterShown(published, minimum);
 }
 
 /** The expert's review queue: their own `in_review` posts, with the hash they sign against. */

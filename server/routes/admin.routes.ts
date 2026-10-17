@@ -1,6 +1,7 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
+import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
 import { enteredStatus } from "../utils/form-status-transition";
@@ -8215,6 +8216,10 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // would silently fall back to the default.
       if (settingKey === WELCOME_VERIFICATION_WINDOW_SETTING && !isValidWelcomeVerificationWindowSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
+      }
+      // ED-1 footer count: the published-post minimum for the footer's Blog link is a whole number.
+      if (settingKey === BLOG_FOOTER_MIN_PUBLISHED_SETTING && !isValidBlogFooterMinPublishedSetting(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be a whole number from 1 to 9999`, got: settingValue });
       }
       // LW-1b: the traveler sign-up switch is exactly 'waitlist' or 'open' (shared/launch-signup.ts), and the
       // launch market is a slug — a junk value must never reach the sign-up gates or the waitlist redirect.
