@@ -69,7 +69,7 @@ export function buildClonedLeg(
     checkedAt: leg.checkedAt,
     origin: AUTHOR_PICK_ORIGIN,
     // 9b-b (Phase 0 ruling 5, ledger `2026-10-16-9b-b-legs-off-google`): routed = `source` set, and a copy keeps
-    // it — with the departure it was routed for (migration 385) — so a copied routed leg stays routed and the
+    // it — with the departure it was routed for (migration 386) — so a copied routed leg stays routed and the
     // rebuild finds a Google-sourced copy by the same predicate as its original.
     source: leg.source,
     routedDepartureLocal: leg.routedDepartureLocal,

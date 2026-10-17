@@ -33,7 +33,7 @@ import { ticketUrlRefusal } from "@shared/city-events";
 import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
 import { loadPartnerHosts } from "./partner-hosts.service";
-import { loadMarketCentroids, loadMatrixReader } from "./travel-time-matrix.service";
+import { loadEstimateReader, loadMarketCentroids } from "./travel-time-matrix.service";
 
 export interface EventGuideFacts {
   event: {
@@ -158,7 +158,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
   if (card.marketKey && row.venueLat != null && row.venueLng != null) {
     const [centroids, reader, names] = await Promise.all([
       loadMarketCentroids(card.marketKey),
-      loadMatrixReader(card.marketKey),
+      loadEstimateReader(card.marketKey), // 9b-b: the matrix is retired; "est." answers rank the same way
       db.select({ slug: cityNeighborhoods.slug, name: cityNeighborhoods.name }).from(cityNeighborhoods)
         .where(sql`lower(${cityNeighborhoods.city}) = lower(${row.city})`),
     ]);

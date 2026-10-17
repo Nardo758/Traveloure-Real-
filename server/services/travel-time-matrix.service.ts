@@ -281,6 +281,21 @@ export async function refreshMarketMatrix(opts: {
 }
 
 /**
+ * 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1, Phase 0 ruling 1): THE MATRIX IS RETIRED AS A
+ * SOURCE. Its cells are Google Route Matrix durations, which may not be stored, so no reader reads them: every
+ * caller that read the matrix reads this instead — the SAME `resolveTravelTime` with the market's centroids and
+ * no cells, so every pair answers the labelled straight-line estimate ("est.", §13). The table, its refresh job
+ * and `loadMatrixReader` below go in the deletion PR (after "delete approved — Leon").
+ */
+export async function loadEstimateReader(
+  marketSlug: string,
+  loadCentroids: (market: string) => Promise<Centroid[]> = loadMarketCentroids,
+): Promise<(from: LatLng, to: LatLng, mode: TravelMode) => TravelTime> {
+  const centroids = marketSlug ? await loadCentroids(marketSlug) : [];
+  return (from, to, mode) => resolveTravelTime({ from, to, mode, centroids, lookup: () => undefined });
+}
+
+/**
  * THE READ HELPER plan-fit calls. Loads the market's centroids and every stored cell ONCE, then
  * answers any number of pairs through the pure `resolveTravelTime` — the matrix where it answers,
  * the labelled straight-line estimate everywhere else (§M3). An unknown market answers "est." for

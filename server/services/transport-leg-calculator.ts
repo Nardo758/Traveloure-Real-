@@ -98,7 +98,7 @@ export interface TransportLegResult {
   linkedProductId?: string;
   linkedProductUrl?: string;
   /** A8: a leg resolved by the ONE travel-time service names its tier (R228); step 9a adds the stub. */
-  routeProvider: "google_routes" | "travel_time_matrix" | "straight_line_est" | "stub";
+  routeProvider: "google_routes" | "osrm" | "travel_time_matrix" | "straight_line_est" | "stub";
   routeRetrievedAt: string;
   userSelectedMode?: string | null;
   /** Step 9a: the routing source that computed the leg (`transport_legs.source`); absent otherwise. */
@@ -362,7 +362,7 @@ async function computeRoutedVersionLeg(
       { mode: LEG_MODE_STORED[mode], durationMinutes: route.durationMin, costUsd: null, energyCost: 0, reason: routedLegReason({ transitUnavailable: asked.transitUnavailable, transitApiUncovered: routing.transitApiUncovered === true, mode, picked: false, source: route.provenance.source }), line: route.line, fare: route.fare, legKey: r.legKey } as TransportAlternative,
     ],
     energyCost: 0,
-    routeProvider: route.provenance.source === "stub" ? "stub" : "google_routes",
+    routeProvider: route.provenance.source === "stub" ? "stub" : route.provenance.source === "osrm" ? "osrm" : "google_routes",
     routeRetrievedAt: route.provenance.checkedAt,
     source: route.provenance.source,
   };

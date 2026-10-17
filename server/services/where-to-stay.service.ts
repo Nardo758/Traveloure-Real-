@@ -59,8 +59,6 @@ import {
 import { haversineMeters } from "@shared/geo";
 import { freeStayShortList, readStayPick, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
 import { stayCloseStraightKm } from "../config/stay-closeness.config";
-import { travelTimeServiceEnabled } from "../config/travel-time.config";
-import { loadMatrixReader } from "./travel-time-matrix.service";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
 import { rankFactsByOrigin } from "./upsell-engine.service";
 import {
@@ -379,15 +377,10 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
     ranked = stored.ranked;
     basis = stored.basis;
   } else {
-    let cost: StayCost | undefined;
-    if (travelTimeServiceEnabled() && trip.marketSlug && (await planIsRouted(tripId))) {
-      const reader = await loadMatrixReader(trip.marketSlug);
-      // Minutes ORDER the neighbourhoods and never leave this function (R242).
-      cost = (n, p) => {
-        const t = reader({ lat: n.lat, lng: n.lng }, p, "transit");
-        return Number.isFinite(t?.minutes) ? t.minutes : null;
-      };
-    }
+    // 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1): the transit-minutes cost came from the
+    // Google Route Matrix, which is retired as a source, so the ranking is straight-line (`basis`) for
+    // every plan until an OSRM-backed cost is ruled in.
+    const cost: StayCost | undefined = undefined;
     ({ ranked, basis } = rankStayNeighborhoods({ neighborhoods, days: Array.from(byDay.values()), cost }));
     if (draft && ranked.length && pendingLookupItemIds(draft.factsLookup).length === 0) {
       await storeStayRanking(draft.id, { draftId: draft.id, computedAt: new Date().toISOString(), basis, ranked });

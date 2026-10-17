@@ -8194,7 +8194,7 @@ export const transportLegs = pgTable("transport_legs", {
   // computed this leg — `google_routes` | `osrm` | `stub`. NULL = not a routing-engine leg. A traveler sees an
   // engine leg only on a plan that passes `planGetsRoutedLegs`; a confirmed leg for the pair wins.
   source: varchar("source", { length: 30 }),
-  // Migration 385 (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec ED2): the departure this leg was routed for,
+  // Migration 386 (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec ED2): the departure this leg was routed for,
   // plan-timezone wall-clock "HH:MM", verbatim. One writer, the routing engine. NULL = not recorded. Nullable, no
   // DEFAULT/CHECK/index/FK.
   routedDepartureLocal: text("routed_departure_local"),
