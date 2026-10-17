@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { test, expect, type APIRequestContext } from "@playwright/test";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
 import { Pool } from "pg";
@@ -8,6 +8,7 @@ import {
   assertDisposableDb,
   assertCheckoutAccepted,
   assertCheckoutCommittedNothing,
+  assertCartClearsOnlyAfterPayment,
   STRIPE_UNAVAILABLE,
 } from "./_journey-helpers";
 
@@ -27,7 +28,7 @@ import {
  *      (J1.3 runs the REAL paid flow; see the dedicated test + FINDING at the bottom of this file)
  *   4–5. Expert leg (route with_expert / expert work)  → DEFERRED (deferred:slip-phase-4) — commented placeholder
  *   6. Route item → ready_for_checkout                 → cart projection row upserted + status_transition diary row
- *   7. Checkout via Stripe TEST card 4242              → service_bookings row + item purchased + diary + projection gone
+ *   7. Checkout, then a TEST-mode payment confirm      → service_bookings row + item purchased + diary; projection gone after confirm
  *                                                         + amount resolved from fee_bands (NO fee literal)
  *   8. Trip Card / slip renders the purchased item     → /plans/:tripId slip render (UI supplement)
  *   9. Transition log v1…vN ordering                   → item_transition_log ordering (DB) + slip log render (UI)
@@ -252,9 +253,9 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
 
     // ── Step 7 (matrix-id: J1.7): checkout via Stripe TEST card 4242 ─────────────────────────
     // POST /api/checkout writes the service_bookings row + flips the item to purchased + writes a
-    // checkout diary row + deletes the projection — atomically, at checkout time (before Stripe
-    // confirm). Amount is server-computed (we NEVER send an amount). We then confirm the real
-    // PaymentIntent through the StripeCheckout PaymentElement UI with card 4242.
+    // checkout diary row at checkout time; the cart projection is cleared only once the payment is
+    // confirmed (#1240). Amount is server-computed (we NEVER send an amount). We then confirm the
+    // PaymentIntent in Stripe TEST mode and hand it to confirm-payment.
     const idempotencyKey = crypto.randomUUID();
     const [{ n: cartCountBefore }] = await q<{ n: number }>(
       `SELECT count(*)::int AS n FROM cart_items WHERE user_id=$1`,
@@ -278,8 +279,7 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
       return;
     }
 
-    const checkoutBody = await assertCheckoutAccepted(checkoutRes, "j1");
-    const paymentIntent = checkoutBody?.paymentIntent;
+    await assertCheckoutAccepted(checkoutRes, "j1");
 
     // 7a. DB fact: booking row written, status payment_pending, amounts server-computed.
     const [booking] = await q<{
@@ -355,35 +355,16 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
       actor_type: "checkout",
     });
 
-    // 7e. DB fact: the projection is gone (a purchased item is no longer a cart projection).
-    const [{ n: projGone }] = await q<{ n: number }>(
-      `SELECT count(*)::int AS n FROM cart_items WHERE itinerary_item_id=$1`,
-      [itemId],
-    );
-    expect(Number(projGone), "projection row must be deleted once the item is purchased").toBe(0);
-
-    // 7f. Complete the real Stripe payment through the StripeCheckout PaymentElement (card 4242).
-    //     FINDING (J1.7 Stripe-UI surface): the StripeCheckout component is mounted ONLY by the
-    //     cart page's multi-step `flowStep` payment machine (client/src/pages/cart.tsx); there is
-    //     no route that mounts a bare PaymentElement for an already-created PaymentIntent via a
-    //     direct navigation. The substantive money-path facts (booking row, item→purchased, diary,
-    //     projection removal, fee_bands-derived amount) are ALL written by POST /api/checkout and
-    //     are hard-asserted above — the Stripe confirm is a downstream Stripe/webhook concern. We
-    //     attempt the real PaymentElement confirm; if the element is not reachable on the current
-    //     surface (or JOURNEY_STRIPE_UNAVAILABLE=1 in CI without a real Stripe key) we log an
-    //     EXPLICIT skip (never a silent pass) rather than fail the golden-path DB assertions.
-    if (STRIPE_UNAVAILABLE || !paymentIntent?.clientSecret) {
-      console.log("[j1] JOURNEY_STRIPE_UNAVAILABLE=1 → Stripe PaymentElement confirm explicitly skipped (money-path DB facts already asserted)");
-    } else {
-      const confirmed = await confirmStripePayment(page, paymentIntent.clientSecret);
-      if (!confirmed) {
-        console.log(
-          "[j1] FINDING: StripeCheckout PaymentElement not reachable via direct navigation " +
-            "(only mounted inside cart.tsx flowStep machine) — Stripe UI confirm skipped; " +
-            "money-path DB facts already hard-asserted at /api/checkout. See report.",
-        );
-      }
-    }
+    // 7e + 7f. The #1240 contract: the projection stays through checkout, then the PaymentIntent is
+    //     confirmed in Stripe TEST mode (pm_card_visa) and handed to confirm-payment, after which the
+    //     booking is confirmed and the projection is gone. This replaced the PaymentElement attempt,
+    //     which never reached the element (it mounts only inside cart.tsx's flowStep machine).
+    await assertCartClearsOnlyAfterPayment(request, {
+      label: "j1",
+      bookingId: booking.id,
+      paymentIntentId: booking.stripe_payment_intent_id,
+      itemId,
+    });
 
     // ── Step 8 (Trip Card / slip render): the purchased item shows on /plans/:tripId ─────────
     await page.goto(`${BASE_URL}/plans/${tripId}`);
@@ -596,36 +577,3 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     ).toBe(variantsBefore);
   });
 });
-
-/**
- * Fills the Stripe PaymentElement (an iframe) with the TEST card 4242 4242 4242 4242 and clicks
- * the StripeCheckout "Pay" button. Returns true if the PaymentElement + Pay flow was driven.
- * The PaymentElement renders inside a cross-origin iframe; we address fields by their Stripe
- * frame accessible labels/placeholders, which are stable across Stripe.js versions.
- */
-async function confirmStripePayment(page: Page, _clientSecret: string): Promise<boolean> {
-  // The StripeCheckout component is mounted by the cart's payment step; the running dev server
-  // renders it wherever a PaymentIntent is active. We wait for the Stripe iframe to appear.
-  const payButton = page.getByRole("button", { name: /^Pay \$/ });
-
-  // Give the PaymentElement time to mount its iframe.
-  const stripeFrame = page.frameLocator('iframe[title*="Secure payment input frame"], iframe[name^="__privateStripeFrame"]').first();
-
-  // Card number
-  const cardNumber = stripeFrame.getByPlaceholder(/card number/i).or(stripeFrame.locator('input[name="number"]'));
-  try {
-    await cardNumber.waitFor({ state: "visible", timeout: 5_000 });
-  } catch {
-    return false; // PaymentElement never mounted on this surface — caller asserts explicitly.
-  }
-  await cardNumber.fill("4242424242424242");
-  await stripeFrame.getByPlaceholder(/MM ?\/ ?YY/i).or(stripeFrame.locator('input[name="expiry"]')).fill("12/34");
-  await stripeFrame.getByPlaceholder(/CVC/i).or(stripeFrame.locator('input[name="cvc"]')).fill("123");
-  const zip = stripeFrame.getByPlaceholder(/ZIP|postal/i).or(stripeFrame.locator('input[name="postalCode"]'));
-  if (await zip.count().catch(() => 0)) {
-    await zip.fill("94105").catch(() => {});
-  }
-
-  await payButton.click();
-  return true;
-}
