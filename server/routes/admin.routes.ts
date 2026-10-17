@@ -4,6 +4,7 @@ import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSe
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
+import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugsRefusal } from "@shared/ticker";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -8229,6 +8230,11 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // LW-1h: the opening instant is the server's record of the flip, never an admin's typed value.
       if (settingKey === TRAVELER_SIGNUP_OPENED_AT_SETTING) {
         return res.status(400).json({ error: `${settingKey} is set by the server when traveler sign-up first opens`, code: "server_written_setting" });
+      }
+      // LW-1f-b: the beta list is a JSON array of operating-market keys; an unknown or repeated key is refused.
+      if (settingKey === BETA_MARKET_SLUGS_SETTING) {
+        const refusal = betaMarketSlugsRefusal(settingValue);
+        if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
       }
       if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a market slug (lower-case letters, digits, hyphens)`, got: settingValue });
