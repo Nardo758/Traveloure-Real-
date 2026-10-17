@@ -44,7 +44,16 @@ name: Scheduler Jobs Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
   push:
     branches: [main]
   workflow_dispatch:
@@ -58,6 +67,7 @@ permissions:
 
 jobs:
   scheduler-jobs:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: scheduler-jobs (idempotency + endpoint auth, #1712)
     runs-on: ubuntu-latest
     env:

@@ -8,7 +8,7 @@
  * Instagram does not make a caption link clickable, so the kit says where the link goes: the Story
  * link sticker and the bio.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { readyMadePreviewPath } from "@shared/ready-made-preview";
 
 export const SHARE_KIT_IMAGES = [
@@ -18,18 +18,56 @@ export const SHARE_KIT_IMAGES = [
   { format: "og", label: "Link card", size: "1200×630" },
 ] as const;
 
-/** Pure: the link to copy and the four download links. */
-export function readyMadeShareKitLinks(listing: { id: string; title?: string | null }, origin: string) {
+/** CP-3: the cards that print a link, so they carry the expert's own short link. */
+export const SHARE_KIT_LINK_FORMATS: readonly string[] = ["cover", "story"];
+
+/**
+ * Pure: the link to copy and the four download links. With the expert's own short-link code (CP-3, ledger
+ * `2026-10-16-cp3-share-image-ref`), the cover and story downloads carry `&ref=<code>` and print that /r/ link; with
+ * none, every card prints the /t/ link as before — never a guessed code.
+ */
+export function readyMadeShareKitLinks(listing: { id: string; title?: string | null }, origin: string, refCode: string | null = null) {
   const pagePath = readyMadePreviewPath(listing);
+  const ref = refCode ? `&ref=${encodeURIComponent(refCode)}` : "";
   return {
     pageUrl: `${origin}${pagePath}`,
-    images: SHARE_KIT_IMAGES.map((i) => ({ ...i, href: `/api/share-image/ready-made/${listing.id}.png?format=${i.format}&download=1` })),
+    images: SHARE_KIT_IMAGES.map((i) => ({
+      ...i,
+      href: `/api/share-image/ready-made/${listing.id}.png?format=${i.format}&download=1${SHARE_KIT_LINK_FORMATS.includes(i.format) ? ref : ""}`,
+    })),
   };
+}
+
+/** CP-3: the expert's own short link for this trip (the existing one, else a new one); null on any failure. */
+async function fetchShareKitRefCode(listingId: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/short-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ targetType: "ready_made", targetId: listingId }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { code?: unknown };
+    return typeof data.code === "string" && data.code ? data.code : null;
+  } catch {
+    return null;
+  }
 }
 
 export function ReadyMadeShareKit({ listing }: { listing: { id: string; title?: string | null } }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "https://traveloure.com";
-  const { pageUrl, images } = readyMadeShareKitLinks(listing, origin);
+  const [refCode, setRefCode] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetchShareKitRefCode(listing.id).then((code) => {
+      if (live) setRefCode(code);
+    });
+    return () => {
+      live = false;
+    };
+  }, [listing.id]);
+  const { pageUrl, images } = readyMadeShareKitLinks(listing, origin, refCode);
   const [copied, setCopied] = useState(false);
   return (
     <div style={{ border: "1px solid #E8E8E2", borderRadius: 10, padding: "10px 11px", marginBottom: 14, background: "white" }} data-testid="rm-share-kit">

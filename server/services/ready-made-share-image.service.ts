@@ -54,7 +54,7 @@ export interface ReadyMadeShareData {
   priceLine: string | null;
   expertName: string;
   localVerified: boolean;
-  /** "traveloure.com/t/<slug>" — the link sticker / bio target. */
+  /** "traveloure.com/t/<slug>", or the author's "traveloure.com/r/<code>" (CP-3) — the link sticker / bio target. */
   shareUrl: string;
   /** The cover photo as a data URI with its credit; null ⇒ no photo is drawn. */
   hero: { dataUri: string; credit: string } | null;

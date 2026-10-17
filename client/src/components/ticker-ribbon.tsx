@@ -4,16 +4,19 @@
 import React from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
-import { TICKER_LEFT_LABEL, type PublicTickerItem, type TickerButton } from "@shared/ticker";
+import { betaLabel, type PublicTickerItem, type TickerButton } from "@shared/ticker";
 
 export function TickerRibbon({
   items,
   cityName,
+  betaCities = [],
   button,
   onPlan,
 }: {
   items: PublicTickerItem[];
   cityName: string;
+  /** LW-1f-b: the beta list's city names (the server's `betaCities`); empty ⇒ the launch city. */
+  betaCities?: readonly string[];
   button: TickerButton;
   onPlan?: (city: string) => void;
 }) {
@@ -25,10 +28,12 @@ export function TickerRibbon({
     >
       <div className="container mx-auto max-w-6xl">
         <div className="flex items-center justify-between gap-3 text-sm">
-          <div className="flex items-center gap-1.5 flex-shrink-0 min-w-0">
+          {/* LW-1f-b: on a phone the label wraps (never truncates a city name) and keeps at most ~45% of the row, so
+              the lines still scroll beside a two- or three-city label. */}
+          <div className="flex items-center gap-1.5 flex-shrink-0 min-w-0 max-w-[45%] sm:max-w-none">
             <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="font-semibold whitespace-nowrap" data-testid="text-ticker-label">
-              {TICKER_LEFT_LABEL(cityName)}
+            <span className="font-semibold leading-tight whitespace-normal sm:whitespace-nowrap" data-testid="text-ticker-label">
+              {betaLabel(betaCities, cityName)}
             </span>
           </div>
 
