@@ -129,6 +129,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/auth-three-defects.db.test.ts
       - name: LW-1f ticker rails — public read, no dead links, audited admin writes (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/ticker.db.test.ts
+      - name: ED-1 footer Blog link — published-count gate, fail-closed (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/blog-footer-count.db.test.ts
       - name: LW-1h waitlist retention — opening stamp, never-converted rows only, audited deletes (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/waitlist-retention.db.test.ts
       - name: server/__tests__ 1/4 (node:test)
