@@ -3448,15 +3448,17 @@ PRs merge with their ledger rows still `R?`; after each merge `ledger-stamp.yml`
 
 ### Recording approvals
 
-An approval reference records what a named person approved, where they said it, and when. It carries no
-authority beyond that.
+An approval reference is a citation: it points to the PR comment where a person approved an artifact. The PR
+comment is the record; a file never restates the approval (decision-maker, Oct 17, 2026: sessions never write
+founder approvals into files). It carries no authority beyond pointing there.
 
-- **Placement.** The reference sits immediately beside the artifact approved — the migration, the SQL block,
+- **Placement.** The citation sits immediately beside the artifact approved — the migration, the SQL block,
   the specific clause. Never in a heading, a PR title, a section title, or the header of an amendment. A
   citation in a heading reads as approving everything under it.
-- **Scope.** Name the artifact, not the container. "Migration 369 SQL approved by Leon" is correct.
-  "Approved by Leon" and "#1405 — approved by Leon" are not: both read as approval of the entire PR.
-- **Form.** `<artifact> approved by <name> — comment <HH:MM>Z on #<PR>`
+- **Scope.** The citation's placement names the artifact; it never covers the container. One citation per
+  artifact, beside that artifact.
+- **Form.** `founder comment: #<PR> <ISO time>` (e.g. `founder comment: #1475 2026-10-16T16:00:52Z`). No
+  "approved", no name.
 - **Derivation.** An approval reference may only be written where that person actually approved that
   artifact. It is never inferred, extended to adjacent content, or carried from one PR to another. Content
   that came from rulings in conversation is cited to those rulings, not to a PR comment.
