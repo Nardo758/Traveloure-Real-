@@ -267,8 +267,28 @@ function selfTest() {
   process.exit(0);
 }
 
+/**
+ * fetch with retries for a TRANSPORT failure only: a thrown network error ("fetch failed") or a 5xx is
+ * retried up to 3 attempts (2 s, then 4 s apart); any other answer, a 4xx included, is returned as it
+ * came. A run that dies on a network blip is not a verdict about any spec, so it must not end one.
+ */
+async function fetchWithRetry(url, opts, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 2000 * 2 ** (i - 1)));
+    try {
+      const res = await fetch(url, opts);
+      if (res.status < 500 || i === attempts - 1) return res;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 async function gh(path, token) {
-  const res = await fetch(`https://api.github.com${path}`, {
+  const res = await fetchWithRetry(`https://api.github.com${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
   });
   if (!res.ok) throw new Error(`GitHub API ${res.status} on ${path}`);
@@ -291,7 +311,7 @@ async function reportVerdict(runId, spec, env, how) {
   const suites = [];
   for (const a of arts) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "spec-arming-"));
-    const res = await fetch(a.archive_download_url, { headers: { Authorization: `Bearer ${env.token}`, Accept: "application/vnd.github+json" } });
+    const res = await fetchWithRetry(a.archive_download_url, { headers: { Authorization: `Bearer ${env.token}`, Accept: "application/vnd.github+json" } });
     if (!res.ok) return { ok: false, why: `${how}, but its artifact ${a.name} could not be downloaded (${res.status})` };
     fs.writeFileSync(path.join(dir, "a.zip"), Buffer.from(await res.arrayBuffer()));
     execFileSync("unzip", ["-q", "-o", path.join(dir, "a.zip"), "-d", path.join(dir, "out")]);
