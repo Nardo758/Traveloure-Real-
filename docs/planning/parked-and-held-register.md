@@ -47,6 +47,7 @@ Maintained by the architect session. One line per item: what, why, and the condi
 | #1404 d-3b on-screen wording "Paid to Nuitée…" | Leon | Comment "wording approved — Leon" on #1404 after Events reverts the Copilot commit. |
 | R228 Route Matrix storage rule (30-day recompute on open) | Logistics | Phase 0 after TC-3. |
 | 9a-ii OSRM on Replit Reserved VM | Leon runs operator steps | Steps delivered Oct 9. |
+| /privacy §14.5 transfer-mechanism sentence (Standard Contractual Clauses for EU/UK sign-ups) (added Oct 16; LW-1f-b) | Launch session | Leon confirms Replit's, Google Cloud's and Neon's data processing terms are accepted for our account (Google needs the IAM opt-in). |
 | AUTH-1 A06 — tell the existing account's owner when someone signs up with their address (added Oct 16; AUTH-1 fix 3b answers a duplicate sign-up neutrally and sends nothing) | Launch session | After the mailbox: the outbound email path is live and its consent model is written. |
 
 ## Closed (moved here when done)
