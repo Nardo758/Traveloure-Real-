@@ -94,12 +94,15 @@ export function seedEmailSql(emailExpr: SQL): SQL {
 
 /**
  * SQL form of `isRoutableExpert` for the scorer (aliases `lef` = local_expert_forms, `u` = users),
- * with the concierge pool account EXCLUDED (the addendum — it is the fallback, never a match).
+ * with the concierge pool account EXCLUDED (the addendum — it is the fallback, never a match) and the
+ * Traveloure Editorial house account EXCLUDED (ED-1b).
  */
-export function routableExpertSql(conciergePoolUserId: string | null): SQL {
+export function routableExpertSql(conciergePoolUserId: string | null, editorialUserId: string | null = null): SQL {
   const seedClause = showDemoExperts() ? sql`` : sql` AND NOT ${seedEmailSql(sql`u.email`)}`;
   const routable = sql`(lef.status = 'approved' AND lef.identity_verification_status = 'verified' AND lef.stripe_connect_status = 'complete'${seedClause})`;
-  return conciergePoolUserId ? sql`(u.id <> ${conciergePoolUserId} AND ${routable})` : routable;
+  // ED-1b: the Traveloure Editorial house account is never a match, whatever rows it carries.
+  const notEditorial = editorialUserId ? sql`(u.id <> ${editorialUserId} AND ${routable})` : routable;
+  return conciergePoolUserId ? sql`(u.id <> ${conciergePoolUserId} AND ${notEditorial})` : notEditorial;
 }
 
 /**
@@ -137,7 +140,8 @@ export async function directoryExperts<T extends { id?: unknown }>(experts: read
 /** The routing filter, resolved: `routableExpertSql` over the CURRENT pool-account id. */
 export async function routableExpertFilterSql(): Promise<SQL> {
   const { getPlatformConciergeUserId } = await import("./platform-concierge.service");
-  return routableExpertSql(await getPlatformConciergeUserId());
+  const { getEditorialUserId } = await import("./editorial-account.service");
+  return routableExpertSql(await getPlatformConciergeUserId(), await getEditorialUserId());
 }
 
 /**

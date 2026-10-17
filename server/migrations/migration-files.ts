@@ -2060,4 +2060,8 @@ export const MIGRATION_FILES = [
   // every column but the key nullable; four seed rows (Marketing's lines, two inactive) ON CONFLICT (id) DO NOTHING.
   // 382/383 are taken by FE-2 (#1475). Declared in shared/schema.ts. Migration 384 SQL approved by Leon — comment 18:26Z on #1481.
   "384_ticker_items.sql",
+  // 385 — editorial house account (ED-1b, ledger 2026-10-16-ed1b-editorial-house-account). DATA ONLY: one users row
+  // (no password, role 'user', no handle) and the platform_settings row editorial_user_id; both ON CONFLICT DO NOTHING.
+  // HELD until the decision-maker approves the SQL on its PR.
+  "385_editorial_house_account.sql",
 ] as const;
