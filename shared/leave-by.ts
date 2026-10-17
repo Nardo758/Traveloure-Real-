@@ -190,8 +190,7 @@ export function missedLine(rows: readonly LeaveByRow[], nowMinute: number): stri
   return next ? `missed · next: ${next.time}` : "missed";
 }
 
-/** LB8: an anchor whose leave-by has passed reads as a conflict banner, never a soft strike.
- * Wording approved by Leon — comment 06:35Z on #1499. */
+/** LB8: an anchor whose leave-by has passed reads as a conflict banner, never a soft strike. */
 export function anchorMissedBanner(row: LeaveByRow, nowMinute: number, stopName: string): string | null {
   return row.kind === "leave_by" && row.anchor && row.minute <= nowMinute ? `You may miss ${stopName} — the time to leave has passed` : null;
 }
