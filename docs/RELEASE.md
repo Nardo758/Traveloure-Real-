@@ -99,6 +99,19 @@ npm run preflight:publish -- --strict     # prints the verdict; changes nothing
    left-hand side, and why this step is a human one. See the script header's
    NEGATIVE SPACE section for the rest of what it does not cover.
 
+## Rotating the browser Maps key
+
+The browser's Google Maps key has one name, `GOOGLE_MAPS_BROWSER_KEY`
+(`VITE_GOOGLE_MAPS_API_KEY` is retired and ignored; the build and the boot log warn if it is
+still set). To rotate it:
+
+1. Create the new key in Google Cloud, restricted to HTTP referrers and the Maps JavaScript
+   API with the Places library.
+2. Set `GOOGLE_MAPS_BROWSER_KEY` to the new value in Deployments and in the workspace.
+3. **Republish.** The key is compiled into the client bundle at build, so the change takes
+   effect only after a new build.
+4. Delete the old key in Google Cloud once the new build is serving maps.
+
 ## Before every publish that includes a migration adding/changing a CHECK
 
 1. **Run the preflight against production** (not dev):
