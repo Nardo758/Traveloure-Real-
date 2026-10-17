@@ -2064,4 +2064,8 @@ export const MIGRATION_FILES = [
   // (no password, role 'user', no handle) and the platform_settings row editorial_user_id; both ON CONFLICT DO NOTHING.
   // HELD until the decision-maker approves the SQL on its PR.
   "385_editorial_house_account.sql",
+  // 386 — transport_legs.routed_departure_local (9b-b, ledger 2026-10-16-9b-b-legs-off-google; 9b spec ED2). One
+  // nullable text column, no DEFAULT/CHECK/FK/index, no backfill: plan-tz "HH:MM" the leg was routed for. Declared
+  // in shared/schema.ts. Migration 386 SQL approved by Leon — comment 06:34Z on #1495. (385 is ED-1b's house account, #1491.)
+  "386_transport_legs_routed_departure_local.sql",
 ] as const;

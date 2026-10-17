@@ -23,9 +23,10 @@ import {
   itineraryVariantItems,
   providerServices,
   notifications,
+  transportLegs,
 } from "@shared/schema";
 import { db } from "../db";
-import { and, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { legRecheckDedupePrefix } from "@shared/leg-recheck";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -658,6 +659,18 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
       .limit(50);
     const seenPairs = new Set<string>();
     const legs: Array<Record<string, unknown>> = [];
+    // 9b-b (Phase 0 ruling 1): the notice stores no minutes; "was N min" is the plan's OWN stored leg, read now.
+    const planMinutes = new Map<string, number>();
+    if (legRows.length) {
+      const shownLegs = await db
+        .select({ dayNumber: transportLegs.dayNumber, fromActivityId: transportLegs.fromActivityId, toActivityId: transportLegs.toActivityId, minutes: transportLegs.estimatedDurationMinutes })
+        .from(transportLegs)
+        .where(and(eq(transportLegs.tripId, tripId), isNull(transportLegs.variantId), isNotNull(transportLegs.proposalStatus)));
+      for (const l of shownLegs) {
+        const m = Number(l.minutes);
+        if (Number.isFinite(m) && m > 0) planMinutes.set(`${l.dayNumber}:${l.fromActivityId}:${l.toActivityId}`, m);
+      }
+    }
     for (const r of legRows) {
       const d = (r.data ?? {}) as Record<string, any>;
       const pair = `${d.dayNumber}:${d.fromActivityId}:${d.toActivityId}`;
@@ -667,8 +680,8 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
         dayNumber: d.dayNumber ?? null,
         toName: d.toName ?? null,
         mode: d.mode ?? null,
-        wasMin: d.wasMin ?? null,
-        nowMin: d.nowMin ?? null,
+        wasMin: planMinutes.get(pair) ?? null,
+        nowMin: null,
         status: d.status,
         checkedAt: typeof d.checkedAt === "string" ? d.checkedAt : r.createdAt ?? null,
       });

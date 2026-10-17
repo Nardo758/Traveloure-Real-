@@ -125,7 +125,8 @@ function legFromResolved(
     estimatedCostUsd: null,
     alternativeModes: [resolvedAlternative(r)],
     energyCost: 0,
-    routeProvider: r.basis === "routes" ? "google_routes" : r.basis === "matrix" ? "travel_time_matrix" : "straight_line_est",
+    // 9b-b: a "routes" answer now comes from the engine's adapter (OSRM or the CI stub), never Google.
+    routeProvider: r.basis === "routes" ? "osrm" : r.basis === "matrix" ? "travel_time_matrix" : "straight_line_est",
     routeRetrievedAt: new Date().toISOString(),
   };
 }

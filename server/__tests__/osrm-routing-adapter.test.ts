@@ -11,7 +11,8 @@
  *   OS4  a failed call is `no_route` (a thin connector, cost 0) — a non-200, OSRM's own non-Ok code, an
  *        unreadable body, a throw, a timeout, no base URL — and OSRM is never `paused`
  *   OS5  OSRM's answers are cacheable (Google's still are not) and read "© OpenStreetMap contributors"
- *   OS6  the adapter choice: the stub wins in CI, OSRM when enabled with a base URL, else Google
+ *   OS6  the adapter choice: the stub wins in CI, OSRM when enabled with a base URL, else NONE — 9b-b: every
+ *        caller stores its answer, so Google Routes is never chosen (9b spec T1)
  *   OS7  a transit ask through the engine's one fallback becomes an OSRM drive
  *
  * Run: npx tsx --test server/__tests__/osrm-routing-adapter.test.ts
@@ -139,7 +140,7 @@ test("OS5: OSRM answers are cacheable, Google's are not; the label is the OSM at
   );
 });
 
-test("OS6: the adapter choice — stub in CI, OSRM when enabled with a base URL, else Google", async () => {
+test("OS6: the adapter choice — stub in CI, OSRM when enabled with a base URL, else none (never Google)", async () => {
   const saved = { ...process.env };
   try {
     const { routingAdapter } = await import("../services/routing/index");
@@ -149,10 +150,10 @@ test("OS6: the adapter choice — stub in CI, OSRM when enabled with a base URL,
     process.env.OSRM_BASE_URL = "http://osrm.internal:5000/";
     assert.equal(routingAdapter()?.source, "osrm");
     delete process.env.OSRM_BASE_URL;
-    assert.equal(routingAdapter()?.source, "google_routes", "enabled without a base URL is off");
+    assert.equal(routingAdapter(), null, "enabled without a base URL is off, and Google is never the fallback");
     process.env.OSRM_BASE_URL = BASE;
     process.env.OSRM_ENABLED = "0";
-    assert.equal(routingAdapter()?.source, "google_routes");
+    assert.equal(routingAdapter(), null);
     process.env.OSRM_ENABLED = "1";
     process.env.ROUTING_ADAPTER_STUB = "1";
     assert.equal(routingAdapter()?.source, "stub", "the CI stub wins");

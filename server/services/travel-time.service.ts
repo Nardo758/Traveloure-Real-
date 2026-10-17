@@ -3,8 +3,9 @@
  * `2026-09-30-a8-travel-time-service`, R228).
  *
  * The rule lives in `shared/leg-resolution.ts` (pure, three tiers, one "est." label). This module
- * wires its two sources — the A2 matrix reader for the plan's market and the Routes call for an
- * exact leg — and is the ONLY place either is wired for a leg. Callers: Finalize (through
+ * wires its sources and is the ONLY place they are wired for a leg. Since 9b-b the exact source is the
+ * routing engine's adapter (OSRM or the CI stub, never Google) and the matrix tier is retired (see
+ * `loadLegResolver`). Callers: Finalize (through
  * `activateTripTransport`), activate-transport, a leg's mode switch, and plan-fit's scorer. All four
  * are gated on `travelTimeServiceEnabled()`; with the flag off none of them reach this module.
  */
@@ -14,9 +15,7 @@ import { trips } from "@shared/schema";
 import type { LatLng, TravelMode, TravelTime } from "@shared/travel-time";
 import type { LegMode } from "@shared/travel-speeds";
 import { resolveLeg, unifiedPlanTravel, type LegSources, type ResolvedLeg } from "@shared/leg-resolution";
-import { loadMatrixReader } from "./travel-time-matrix.service";
-import { getRouteForMode } from "./routes.service";
-import { travelTimeRoutesAvailable } from "../config/travel-time.config";
+import { routingAdapter } from "./routing/index";
 
 export type { ResolvedLeg } from "@shared/leg-resolution";
 
@@ -27,16 +26,29 @@ export async function tripMarketSlug(tripId: string): Promise<string | null> {
 
 /**
  * A leg resolver for one plan's market, loaded ONCE and reused for every leg. `exact: true` is the
- * Finalize answer (Routes first, when configured); `exact: false` never calls Routes.
+ * Finalize answer; `exact: false` never asks a router.
+ *
+ * 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1/T2, Phase 0 rulings 1–2): the exact source
+ * is the routing engine's adapter — self-hosted OSRM (drive, walk) or the CI stub — and NEVER Google
+ * Routes, because every caller stores the minutes it is answered. The `travel_time_matrix` (Google Route
+ * Matrix) is RETIRED as a source: no pair is read from it. With no adapter, or for a mode OSRM does not
+ * serve, the answer is the labelled straight-line estimate (§13). `marketSlug` is kept for the callers'
+ * signature; it no longer selects a matrix.
  */
 export async function loadLegResolver(
-  marketSlug: string | null,
+  _marketSlug: string | null,
   opts: { exact: boolean },
 ): Promise<(from: LatLng, to: LatLng, mode: LegMode) => Promise<ResolvedLeg>> {
-  const matrix = marketSlug ? await loadMatrixReader(marketSlug) : null;
+  const adapter = opts.exact ? routingAdapter() : null;
   const sources: LegSources = {
-    matrix,
-    routes: opts.exact && travelTimeRoutesAvailable() ? getRouteForMode : null,
+    matrix: null,
+    routes: adapter
+      ? async (from, to, mode) => {
+          if (mode !== "drive" && mode !== "walk") return null;
+          const out = await adapter.route({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }, mode, null);
+          return out.kind === "ok" ? { minutes: out.route.durationMin, distanceMeters: out.route.distanceM } : null;
+        }
+      : null,
   };
   return (from, to, mode) => resolveLeg({ from, to, mode, exact: opts.exact }, sources);
 }
