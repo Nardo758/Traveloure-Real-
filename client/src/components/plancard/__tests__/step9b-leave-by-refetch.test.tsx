@@ -26,8 +26,12 @@ import { LegRow } from "../../plan/LegRow";
 (globalThis as any).React = React;
 
 describe("V1 leaveByTime", () => {
-  it("subtracts the leg's minutes; refuses the unknown", () => {
-    assert.equal(leaveByTime("14:00", 25), "13:35");
+  // 9b-c, sanctioned edit (Phase 0 ruling 3): walk 0 and taxi 5 minutes' buffer; any other mode has no leave-by.
+  it("subtracts the leg's minutes and the mode's buffer; refuses the unknown", () => {
+    assert.equal(leaveByTime("14:00", 25, "walk"), "13:35");
+    assert.equal(leaveByTime("14:00", 25, "taxi"), "13:30");
+    assert.equal(leaveByTime("14:00", 25, "transit"), null);
+    assert.equal(leaveByTime("14:00", 25, "driving"), null);
     assert.equal(leaveByTime("2:00 PM", 25), "13:35");
     assert.equal(leaveByTime("00:10", 25), null, "never before midnight");
     assert.equal(leaveByTime(null, 25), null);
@@ -42,18 +46,25 @@ const day = (dateIso: string) => ({
   dateIso,
   label: "Day 1",
   activities: [
-    { id: "a", name: "A", time: "09:00", endTime: "10:00" },
-    { id: "b", name: "B", time: "14:00" },
+    // 9b-c (sanctioned V2 edit): located stops — a leave-by needs both ends on the map.
+    { id: "a", name: "A", time: "09:00", endTime: "10:00", lat: 35.0, lng: 135.77 },
+    { id: "b", name: "B", time: "14:00", lat: 35.01, lng: 135.78 },
   ],
 });
-const legs = [{ id: "L", legOrder: 1, fromName: "A", toName: "B", recommendedMode: "transit", userSelectedMode: null, distanceDisplay: "3 km", estimatedDurationMinutes: 25, estimatedCostUsd: null, toActivityId: "b" }];
+// 9b-c, sanctioned edit: leave-by reads routed, eligible legs only — a routed walking leg from A into B.
+const legs = [{ id: "L", legOrder: 1, fromName: "A", toName: "B", fromActivityId: "a", recommendedMode: "walking", userSelectedMode: null, distanceDisplay: "2 km", estimatedDurationMinutes: 25, estimatedCostUsd: null, toActivityId: "b",
+  routed: { line: null, fare: null, provenance: { source: "osrm", checkedAt: "2026-11-01T00:00:00Z" } } }];
 
 describe("V2/V3 getUpNextInfo.leaveBy", () => {
-  it("the live day's up-next stop carries leave-by from the leg into it", () => {
+  it("the live day's up-next stop carries leave-by from the routed, eligible leg into it", () => {
     const now = new Date("2026-11-04T03:00:00Z"); // 12:00 in Tokyo
     const info = getUpNextInfo(day("2026-11-04") as any, legs as any, now, new Set(), "Asia/Tokyo");
     assert.equal(info.upNextActivity?.id, "b");
     assert.equal(info.leaveBy, "13:35");
+    const transit = [{ ...legs[0], recommendedMode: "transit" }];
+    assert.equal(getUpNextInfo(day("2026-11-04") as any, transit as any, now, new Set(), "Asia/Tokyo").leaveBy, null, "transit has no leave-by");
+    const unrouted = [{ ...legs[0], routed: undefined }];
+    assert.equal(getUpNextInfo(day("2026-11-04") as any, unrouted as any, now, new Set(), "Asia/Tokyo").leaveBy, null, "an unrouted leg has none");
   });
   it("another day ⇒ no leave-by", () => {
     const now = new Date("2026-11-04T03:00:00Z");
