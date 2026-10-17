@@ -154,10 +154,11 @@ test("K3: one changed leg ⇒ one finding and its status; the leg itself is not 
   assert.equal(l.recommended_mode, "transit");
   const f = await findings();
   assert.equal(f.length, 1);
-  assert.equal(f[0].message, "Travel to Ginkaku-ji now 31 min (was 18)");
+  // 9b-b, sanctioned K3 edit (Phase 0 ruling 1): the stored notice carries no minutes.
+  assert.equal(f[0].message, "Travel to Ginkaku-ji has changed");
   assert.equal(f[0].data.kind, "leg");
-  assert.equal(f[0].data.nowMin, 31);
-  assert.equal(f[0].data.wasMin, 18);
+  assert.equal("nowMin" in f[0].data, false);
+  assert.equal("wasMin" in f[0].data, false);
 });
 
 test("K4: a second run the same day asks nothing and writes one finding in all", async () => {

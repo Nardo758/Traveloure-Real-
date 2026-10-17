@@ -77,6 +77,8 @@ import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
 import { listStayLinks } from "./stay-link.service";
 import { stayKindForCacheProvider } from "@shared/liteapi";
+import { routingAdapter } from "./routing/index";
+import { RouteRunMemo } from "./routing/route-memo";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -186,6 +188,27 @@ async function chosenStayIsBooked(tripId: string, setId: string): Promise<boolea
  * Ready Made plans (§18 rule 1: one answer to "is this plan paid"). Loaded lazily: the routing module pulls
  * the handoff and entitlement services.
  */
+/** 9b-b: the drive-minutes cost from the engine's adapter, or undefined (straight line) when there is none. */
+export async function osrmStayCost(tripId: string, neighborhoods: readonly StayNeighborhood[], days: readonly StayDay[]): Promise<StayCost | undefined> {
+  const adapter = routingAdapter();
+  if (!adapter || !neighborhoods.length || !(await planIsRouted(tripId))) return undefined;
+  const memo = new RouteRunMemo();
+  const minutes = new Map<string, number>();
+  const key = (n: { lat: number; lng: number }, p: { lat: number; lng: number }) => `${n.lat},${n.lng}|${p.lat},${p.lng}`;
+  for (const n of neighborhoods) {
+    for (const d of days) {
+      for (const p of d.points) {
+        const k = key(n, p);
+        if (minutes.has(k)) continue;
+        const r = await memo.route({ origin: { lat: n.lat, lng: n.lng }, destination: { lat: p.lat, lng: p.lng }, mode: "drive", departAt: null, hourBucket: null }, adapter);
+        if (r.outcome.kind !== "ok") return undefined;
+        minutes.set(k, r.outcome.route.durationMin);
+      }
+    }
+  }
+  return (n, p) => minutes.get(key(n, p)) ?? null;
+}
+
 async function planIsRouted(tripId: string): Promise<boolean> {
   const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
   return tripGetsRoutedLegs(tripId);
@@ -377,10 +400,12 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
     ranked = stored.ranked;
     basis = stored.basis;
   } else {
-    // 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1): the transit-minutes cost came from the
-    // Google Route Matrix, which is retired as a source, so the ranking is straight-line (`basis`) for
-    // every plan until an OSRM-backed cost is ruled in.
-    const cost: StayCost | undefined = undefined;
+    // 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1; decision-maker Oct 16, 2026): the cost was
+    // Google Route Matrix transit minutes, retired. On a routed plan it is now the routing engine's OWN adapter —
+    // OSRM drive minutes (the CI stub in tests) — and with OSRM off it is the straight line (`basis`). One answer
+    // per neighbourhood × stop through ONE run memo; any pair without a route falls the whole ranking back to the
+    // straight line rather than mixing the two. Minutes ORDER the neighbourhoods and never leave this function (R242).
+    const cost: StayCost | undefined = await osrmStayCost(tripId, neighborhoods, Array.from(byDay.values()));
     ({ ranked, basis } = rankStayNeighborhoods({ neighborhoods, days: Array.from(byDay.values()), cost }));
     if (draft && ranked.length && pendingLookupItemIds(draft.factsLookup).length === 0) {
       await storeStayRanking(draft.id, { draftId: draft.id, computedAt: new Date().toISOString(), basis, ranked });

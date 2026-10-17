@@ -10,9 +10,8 @@ import {
   type ActivityPoint,
 } from "./maps-url-builder";
 import { eq } from "drizzle-orm";
-import { getTrafficAwareDrivingRoute } from "./routes.service";
 import { defaultRoutedMode, routedLegReason, routeHourBucket, routeLegKey, type RoutingAdapter } from "@shared/routing-engine";
-import { LEG_MODE_STORED } from "@shared/travel-speeds";
+import { LEG_MODE_STORED, straightLineMinutes } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
 import { routeWithTransitFallback, type RouteRunMemo } from "./routing/route-memo";
 import { departureWallClock, legDepartureWallClock, planDayIsPast } from "./routing/plan-legs";
@@ -376,14 +375,13 @@ async function computeSingleLeg(
   profile: DestinationTransportProfile,
   userPrefs: UserTransportPrefs
 ): Promise<TransportLegResult | null> {
-  // R299: the drive is a Compute Routes ESSENTIALS request (TRAFFIC_UNAWARE, no departure) — see
-  // `getTrafficAwareDrivingRoute`. `from.departureTime` is no longer sent.
-  const routed = await getTrafficAwareDrivingRoute({
-    origin: { lat: from.lat, lng: from.lng },
-    destination: { lat: to.lat, lng: to.lng },
-  });
-  if (!routed) return null;
-  const distanceMeters = routed.distanceMeters;
+  // 9b-b (ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1, Phase 0 ruling 2): this writer stores what it
+  // returns, and a Google duration or distance may not be stored — so it no longer calls Google Routes. The leg is
+  // the labelled straight-line estimate for a drive (the ONE configured speed, `straightLineMinutes`), with
+  // `routeProvider: "straight_line_est"`; a routed plan's legs come from the routing engine, never from here.
+  const distanceMeters = haversineDistance(from.lat, from.lng, to.lat, to.lng);
+  if (!Number.isFinite(distanceMeters)) return null;
+  const durationMinutes = straightLineMinutes(distanceMeters, "drive");
   const distanceKm = distanceMeters / 1000;
   const drivingConfig = profile.availableModes.find((mode) =>
     /drive|car|taxi|rideshare/i.test(mode.mode),
@@ -406,12 +404,12 @@ async function computeSingleLeg(
     distanceMeters: Math.round(distanceMeters),
     distanceDisplay: formatDistance(distanceMeters),
     recommendedMode: "driving",
-    estimatedDurationMinutes: routed.durationMinutes,
+    estimatedDurationMinutes: durationMinutes,
     estimatedCostUsd,
     alternativeModes: [],
     energyCost: 0,
-    routeProvider: routed.provider,
-    routeRetrievedAt: routed.retrievedAt,
+    routeProvider: "straight_line_est",
+    routeRetrievedAt: new Date().toISOString(),
   };
 }
 

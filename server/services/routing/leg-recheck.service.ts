@@ -23,7 +23,7 @@ import { normalizeLegMode } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
 import type { RoutingAdapter, RoutingMode } from "@shared/routing-engine";
 import { FACTS_RECHECK_NOTICE_TYPE } from "@shared/facts-recheck";
-import { classifyLegRecheck, legRecheckDedupeKey, legRecheckLine, LEG_RECHECK_KIND, type LegCheckStatus } from "@shared/leg-recheck";
+import { classifyLegRecheck, legRecheckDedupeKey, legRecheckNoticeLine, LEG_RECHECK_KIND, type LegCheckStatus } from "@shared/leg-recheck";
 import { storage } from "../../storage";
 import { routingAdapter } from "./index";
 import { departureWallClock, legDepartureWallClock } from "./plan-legs";
@@ -210,12 +210,13 @@ export const defaultLegRecheckDeps: LegRecheckDeps = {
   },
   async notifyOnce(n) {
     const dedupeKey = legRecheckDedupeKey(n.tripId, n.leg.fromActivityId, n.leg.toActivityId, n.checkDate);
-    const finding = { toName: n.leg.toName, mode: n.leg.mode, wasMin: n.leg.wasMin, nowMin: n.nowMin, status: n.status };
+    // 9b-b (Phase 0 ruling 1): a notification carries no minutes — neither the plan's nor the re-check's.
+    const finding = { toName: n.leg.toName, mode: n.leg.mode, status: n.status };
     const { inserted } = await storage.createNotificationOnce({
       userId: n.userId,
       type: FACTS_RECHECK_NOTICE_TYPE,
       title: `A change on your ${n.destination ? `${n.destination.split(",")[0].trim()} ` : ""}plan`,
-      message: legRecheckLine(finding, null),
+      message: legRecheckNoticeLine(finding),
       relatedId: n.tripId,
       relatedType: "trip",
       data: {

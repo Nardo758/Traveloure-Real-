@@ -2687,7 +2687,9 @@ This document captures architectural decisions to maintain consistency across co
     stored Google answer never seeds the run memo. Routed = `source` set; a Ready Made copy keeps it.
     `transport_legs.routed_departure_local` (386, nullable text) is the plan-tz "HH:MM" the engine routed the leg for.
     `scripts/rebuild-google-legs.ts` (dry run by default) counts and rebuilds; deletion is its own PR after "delete
-    approved — Leon".
+    approved — Leon". Re-check notices store no minutes (the card reads "was N min" from the plan's leg); the legacy
+    non-routed writer is the labelled straight-line estimate; the matrix refresh job is retired (410); where-to-stay
+    ranks by OSRM drive minutes when OSRM is on, else the straight line.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**

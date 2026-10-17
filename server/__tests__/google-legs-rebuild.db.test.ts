@@ -11,6 +11,8 @@
  *   GR5 a stored Google answer never seeds the run memo; the leg resolver never reads the matrix and never
  *       answers from Google — no adapter ⇒ the labelled straight-line estimate
  *   GR6 a Ready Made copy keeps its leg's source and routed departure
+ *   GR7 where-to-stay's cost: the engine's adapter (drive minutes) on a routed plan, none (straight line) without one
+ *   GR8 a re-check notice stores no minutes; the card's line reads "has changed (was N min)" from the plan's leg
  *
  * NEGATIVE SPACE (§18d): the adapter is the CI stub (no OSRM, no Google); the real Kyoto leg is the 9b-a smoke.
  * The matrix and `travel_from_previous` are counted, never rebuilt — the deletion PR removes them.
@@ -33,6 +35,8 @@ const { countGoogleRouteData, googleRebuildTargets, rebuildGoogleRouteData } = a
 const { legNeedsRebuild } = await import("../services/routing/plan-legs-engine.service");
 const { loadLegResolver } = await import("../services/travel-time.service");
 const { buildClonedLeg } = await import("../services/ready-made-clone-legs");
+const { osrmStayCost } = await import("../services/where-to-stay.service");
+const { legRecheckLine, legRecheckNoticeLine } = await import("@shared/leg-recheck");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const K = crypto.randomInt(0, 100_000) / 1e4;
@@ -182,4 +186,24 @@ test("GR6: a Ready Made copy keeps its leg's source and routed departure", () =>
     new Map([["a", "a2"], ["b", "b2"]]),
   )!;
   assert.deepEqual([out.source, out.routedDepartureLocal], ["osrm", "10:00"]);
+});
+
+test("GR7: where-to-stay's cost is the adapter's drive minutes on a routed plan, and none without an adapter", async () => {
+  const hoods = [{ slug: "n1", name: "N1", lat: P(0.005, 0).lat, lng: P(0.005, 0).lng }] as any;
+  const days = [{ dayNumber: 1, points: [P(0, 0), P(0.02, 0.02)] }];
+  const cost = await osrmStayCost(T, hoods, days);
+  assert.ok(cost, "the stub adapter answers on a routed plan");
+  assert.ok(Number(cost!(hoods[0], P(0, 0))) > 0);
+  process.env.ROUTING_ADAPTER_STUB = "0";
+  try {
+    assert.equal(await osrmStayCost(T, hoods, days), undefined, "no adapter (OSRM off) ⇒ the straight line");
+  } finally {
+    process.env.ROUTING_ADAPTER_STUB = "1";
+  }
+});
+
+test("GR8: a stored notice carries no minutes; the card states the plan's own minutes", () => {
+  assert.equal(legRecheckNoticeLine({ toName: "Kinkaku-ji", mode: "walk", status: "changed" }), "Travel to Kinkaku-ji has changed");
+  assert.equal(legRecheckNoticeLine({ toName: "Kinkaku-ji", mode: "transit", status: "broken" }), "Travel to Kinkaku-ji: no transit route now");
+  assert.equal(legRecheckLine({ toName: "Kinkaku-ji", mode: "walk", wasMin: 18, nowMin: null, status: "changed" }, "8 Nov"), "Travel to Kinkaku-ji has changed (was 18 min) · re-checked 8 Nov");
 });
