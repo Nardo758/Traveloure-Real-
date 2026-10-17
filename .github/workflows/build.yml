@@ -619,6 +619,9 @@ jobs:
       # no average/typical wording, hidden without Ready-Made Trips in the launch market.
       - name: Ready-Made calculator (LW-1g)
         run: npx tsx --test client/src/lib/__tests__/ready-made-calculator.test.tsx
+      # CP-3: the share kit's cover and story downloads carry the expert's own short-link code; map and og never do.
+      - name: Share kit links carry the expert's code (CP-3)
+        run: npx tsx --test client/src/lib/__tests__/cp3-share-kit-links.test.ts
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
