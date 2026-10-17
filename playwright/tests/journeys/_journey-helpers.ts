@@ -56,6 +56,13 @@ export const STRIPE_UNAVAILABLE = process.env.JOURNEY_STRIPE_UNAVAILABLE === "1"
 let _stripeTestKey: string | null | undefined;
 function stripeTestKey(): string | null {
   if (_stripeTestKey !== undefined) return _stripeTestKey;
+  // CI hands the spec process the same sk_test_ secret the server runs on. Read it first, and only
+  // when it is a TEST key — a live key here is never used, and the dev connector below is tried.
+  const envKey = process.env.STRIPE_SECRET_KEY;
+  if (envKey && envKey.startsWith("sk_test_") && envKey !== "sk_test_ci_stub_no_real_calls") {
+    _stripeTestKey = envKey;
+    return _stripeTestKey;
+  }
   try {
     const out = execFileSync("node", ["scripts/dev-stripe-key.cjs"], {
       encoding: "utf8",
@@ -73,15 +80,19 @@ function stripeTestKey(): string | null {
  * Returns the PI status ("succeeded" on success) or null if the test key is unavailable.
  * Uses the Stripe REST API directly with the sk_test_ key — no live Stripe ever.
  */
-export async function confirmPaymentIntentTestMode(paymentIntentId: string): Promise<string | null> {
+export async function confirmPaymentIntentTestMode(
+  paymentIntentId: string,
+  opts: { returnUrl?: string | null } = {},
+): Promise<string | null> {
   const key = stripeTestKey();
   if (!key) return null;
   // The optimization-fee PI enables redirect-capable methods (automatic_payment_methods), so Stripe
   // requires a return_url when confirming; we also forbid redirects so a card PM settles inline.
-  const body = new URLSearchParams({
-    payment_method: "pm_card_visa",
-    return_url: `${BASE_URL}/optimize/return`,
-  });
+  // A checkout PI is created with allow_redirects "never" (LD 43(c)) and takes no return_url, so its
+  // callers pass `returnUrl: null`.
+  const body = new URLSearchParams({ payment_method: "pm_card_visa" });
+  const returnUrl = opts.returnUrl === undefined ? `${BASE_URL}/optimize/return` : opts.returnUrl;
+  if (returnUrl) body.set("return_url", returnUrl);
   const res = await fetch(`https://api.stripe.com/v1/payment_intents/${paymentIntentId}/confirm`, {
     method: "POST",
     headers: {
@@ -99,6 +110,50 @@ export async function confirmPaymentIntentTestMode(paymentIntentId: string): Pro
 
 export function hasStripeTestKey(): boolean {
   return stripeTestKey() != null;
+}
+
+/**
+ * The #1240 cart contract, both halves (decision-maker sanction, Oct 17, 2026):
+ *   1. straight after POST /api/checkout the item's cart projection is STILL there — the cart is
+ *      cleared only once the payment is confirmed;
+ *   2. confirm the booking's PaymentIntent in Stripe TEST mode (pm_card_visa), hand it to
+ *      POST /api/bookings/confirm-payment (the client promotion caller, §15c), and then the booking
+ *      is `confirmed` and the projection is gone.
+ * Half 2 needs a test key in this process; without one it is skipped with a logged reason, never
+ * silently. Returns whether half 2 ran.
+ */
+export async function assertCartClearsOnlyAfterPayment(
+  request: APIRequestContext,
+  args: { label: string; bookingId: string; paymentIntentId: string | null; itemId: string },
+): Promise<boolean> {
+  const projectionCount = async () =>
+    Number(
+      (await scalar<number>(`SELECT count(*)::int AS n FROM cart_items WHERE itinerary_item_id=$1`, [args.itemId])) ?? 0,
+    );
+  expect(
+    await projectionCount(),
+    `[${args.label}] the cart projection stays until the payment is confirmed (#1240)`,
+  ).toBe(1);
+
+  if (!args.paymentIntentId || !hasStripeTestKey()) {
+    console.log(
+      `[${args.label}] no Stripe test key in the spec process (or no PaymentIntent) — the confirm-and-clear half is skipped; ` +
+        "the stays-until-paid half above is asserted",
+    );
+    return false;
+  }
+  const piStatus = await confirmPaymentIntentTestMode(args.paymentIntentId, { returnUrl: null });
+  expect(piStatus, `[${args.label}] the checkout PaymentIntent confirms in test mode`).toBe("succeeded");
+
+  const confirmRes = await request.post(`${BASE_URL}/api/bookings/confirm-payment`, {
+    data: { bookingId: args.bookingId, paymentIntentId: args.paymentIntentId },
+  });
+  expect(confirmRes.ok(), `[${args.label}] confirm-payment: ${confirmRes.status()} ${await confirmRes.text()}`).toBe(true);
+
+  const status = await scalar<string>(`SELECT status FROM service_bookings WHERE id=$1`, [args.bookingId]);
+  expect(status, `[${args.label}] the booking is confirmed once its payment is`).toBe("confirmed");
+  expect(await projectionCount(), `[${args.label}] the cart projection is gone once the payment is confirmed`).toBe(0);
+  return true;
 }
 
 // ── Read-only DB pool (assertions only) ────────────────────────────────────────────────────
