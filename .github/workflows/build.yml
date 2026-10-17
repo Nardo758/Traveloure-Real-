@@ -572,6 +572,9 @@ jobs:
       # no average/typical wording, hidden without Ready-Made Trips in the launch market.
       - name: Ready-Made calculator (LW-1g)
         run: npx tsx --test client/src/lib/__tests__/ready-made-calculator.test.tsx
+      # GH-1: "Hours not checked yet" replaces "checking hours…" on a stop row with no hours fact.
+      - name: Hours not checked yet label (GH-1)
+        run: npx tsx --test client/src/lib/__tests__/gh1-hours-not-checked.test.ts
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin

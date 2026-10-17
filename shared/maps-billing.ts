@@ -22,6 +22,7 @@ export type MapsSku =
   | "geocoding_essentials"
   | "text_search_ids_only"
   | "text_search_enterprise"
+  | "place_details_pro"
   | "place_details_enterprise"
   | "place_details_enterprise_atmosphere";
 
@@ -52,6 +53,7 @@ export const MAPS_CALLER_KEYS = [
   "geocode",
   "places_id_lookup",
   "places_details",
+  "places_stay_link",
   "places_text_search",
 ] as const;
 export type MapsCallerKey = (typeof MAPS_CALLER_KEYS)[number];
@@ -141,16 +143,30 @@ export const MAPS_CALLERS: Readonly<Record<MapsCallerKey, MapsCaller>> = {
   places_details: {
     key: "places_details",
     api: "places_new",
-    sku: "place_details_enterprise",
+    sku: "place_details_pro",
     why:
-      "Place Details by ID. regularOpeningHours puts it in Enterprise (hours are the fact the plan needs); dining adds reservable ⇒ Enterprise + Atmosphere (place_details_enterprise_atmosphere). photos is an Essentials field and does not move the tier.",
+      "Place Details by ID for a plan item's facts. GH-1 (ledger 2026-10-17-gh1-no-google-hours): opening hours are not asked, so displayName and googleMapsUri set the tier at Pro; dining adds reservable ⇒ Enterprise + Atmosphere (place_details_enterprise_atmosphere). photos is an Essentials field and does not move the tier.",
     enabledEnv: "PLACE_FACTS_PLACES_ENABLED",
     dailyCapEnv: "MAPS_PLACES_DETAILS_DAILY_CAP",
     defaultDailyCap: 1000,
     costEnv: "PLACES_DETAILS_COST_CENTS",
     costUnit: "cents_per_call",
-    defaultCost: 2,
+    defaultCost: 1.7,
     costRecordedOn: "place_facts",
+  },
+  places_stay_link: {
+    key: "places_stay_link",
+    api: "places_new",
+    sku: "place_details_enterprise",
+    why:
+      "Place Details by ID for the stay card's link (FU-S1-2): websiteUri is an Enterprise field. Its own row since GH-1 moved the facts Details call to Pro, so its recorded cost stays true. The answer is returned, never stored.",
+    enabledEnv: "PLACE_FACTS_PLACES_ENABLED",
+    dailyCapEnv: "MAPS_PLACES_STAY_LINK_DAILY_CAP",
+    defaultDailyCap: 1000,
+    costEnv: "PLACES_STAY_LINK_COST_CENTS",
+    costUnit: "cents_per_call",
+    defaultCost: 2,
+    costRecordedOn: "api_usage_logs",
   },
   places_text_search: {
     key: "places_text_search",

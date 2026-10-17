@@ -1,7 +1,7 @@
 /**
  * PlacesAdapter — the structured spine (content sourcing brief §2/§6; ledger
- * `2026-09-29-a5-draft-open-set`). Google Places API (New) Text Search, for `stop.hours`, dining
- * basics and coordinates.
+ * `2026-09-29-a5-draft-open-set`). Google Places API (New), for a place's id, coordinates, address,
+ * photo references and dining basics. GH-1 (ledger `2026-10-17-gh1-no-google-hours`): never its hours.
  *
  * Google's terms, applied here and nowhere else:
  *   · display inside a plan only, beside the "Google Maps" attribution — `isPublishable` is false for
@@ -30,22 +30,24 @@ const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 /**
  * THE FIELD MASK (decision-maker ruling, Oct 3, 2026, from Replit's SKU read): a call is billed at
  * the HIGHEST tier any requested field belongs to, so the mask decides the price.
- *   · DEFAULT — displayName, location, formattedAddress, shortFormattedAddress, regularOpeningHours:
- *     Google's ENTERPRISE tier (opening hours lift it there). Nothing from Atmosphere. `id` (IDs
- *     Only), `types` (Essentials — the smoke-7 point-of-interest rename gate) and `googleMapsUri`
- *     (Pro — the "Google Maps" provenance link) ride along: each sits BELOW Enterprise, so none
- *     changes the tier. `priceLevel`, `servesVegetarianFood` and every other field are not asked.
+ *   · DEFAULT — displayName, location, formattedAddress, shortFormattedAddress: Google's PRO tier
+ *     (`displayName` and `googleMapsUri` set it). GH-1: opening hours are no longer asked (they lifted the
+ *     call to Enterprise). Nothing from Atmosphere. `id` (IDs Only) and `types` (Essentials — the smoke-7
+ *     point-of-interest rename gate) ride along below Pro. `priceLevel`, `servesVegetarianFood` and every
+ *     other field are not asked.
  *   · DINING (the item's need is `dining`) adds `reservable` ONLY — the dining need carries
  *     reservation policy — which moves THAT call to ENTERPRISE + ATMOSPHERE. No other item asks it.
  */
-export type PlacesSku = "details_enterprise" | "details_enterprise_atmosphere";
+export type PlacesSku = "details_pro" | "details_enterprise_atmosphere";
+// GH-1 (ledger `2026-10-17-gh1-no-google-hours`; terms ruling, Oct 16, 2026): `regularOpeningHours` is NOT asked.
+// Google's hours are not stored, so asking for them would only buy a field nothing may keep. Without it the
+// highest-tier field is Pro (`displayName`, `googleMapsUri`), so the default call bills at Place Details Pro.
 export const PLACES_BASE_FIELDS = [
   "id",
   "displayName",
   "location",
   "formattedAddress",
   "shortFormattedAddress",
-  "regularOpeningHours.weekdayDescriptions",
   "types",
   "googleMapsUri",
   // Smoke 8 item 2: the AREA (ward / sublocality / locality) is read from the structured components,
@@ -53,7 +55,7 @@ export const PLACES_BASE_FIELDS = [
   "addressComponents",
   // R297 (ledger `2026-10-04-photo-references`): the photo REFERENCES (resource names + author
   // attributions), stored with the facts cache entry. An Essentials-tier field, so the call stays
-  // billed at Enterprise (the hours field already sets the tier) — pinned by the price test F6.
+  // billed at Pro — pinned by the price test F6.
   "photos",
 ] as const;
 
@@ -101,7 +103,7 @@ export const PLACES_ATMOSPHERE_FIELDS = [
 /** Pure. The fields a Details call asks for this need, and the SKU tier that bills it. */
 export function placesFieldMask(need: ContentNeed): { fields: string[]; sku: PlacesSku } {
   if (need === "dining") return { fields: [...PLACES_BASE_FIELDS, "reservable"], sku: "details_enterprise_atmosphere" };
-  return { fields: [...PLACES_BASE_FIELDS], sku: "details_enterprise" };
+  return { fields: [...PLACES_BASE_FIELDS], sku: "details_pro" };
 }
 
 /** The legacy text-search mask: the same fields under `places.`, by need. */
@@ -243,10 +245,8 @@ export class PlacesAdapter implements SourceAdapter {
       const types = Array.isArray(p.types) && p.types.length ? p.types.map(String) : null;
       push({ need: req.need, factType: "location", value: { lat, lng, name, query: text, ...(types ? { types } : {}) }, expiresAt: expiry(fetchedAt, factTtlDays("location")) });
     }
-    const hours = p.regularOpeningHours?.weekdayDescriptions;
-    if (Array.isArray(hours) && hours.length) {
-      push({ need: req.need === "dining" ? "dining" : "stop.hours", factType: "hours", value: { weekdayDescriptions: hours.map(String), query: text }, expiresAt: expiry(fetchedAt, factTtlDays("hours")) });
-    }
+    // GH-1: no hours fact is drafted from a Google answer (Google's hours are not stored — terms ruling,
+    // Oct 16, 2026). In-plan hours come from official and person-checked facts only.
     if (req.need === "dining" && typeof p.reservable === "boolean") {
       // Field-mask ruling: dining asks `reservable` only (no `servesVegetarianFood`).
       const v: Record<string, unknown> = { query: text, reservable: p.reservable };

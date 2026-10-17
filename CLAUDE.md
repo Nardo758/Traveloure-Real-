@@ -2504,6 +2504,8 @@ This document captures architectural decisions to maintain consistency across co
     number in code. Bots never propose nugget-type facts. `bot_proposals.fact_id` gains its FK to `place_facts(id)`,
     ON DELETE SET NULL (ledger `2026-10-15-bot-proposal-fact-fk`; migration 380 — Migration 380 SQL approved by Leon — comment 01:33Z on #1463): 378
     created the column with none, by oversight.
+    **AMENDED — GOOGLE'S HOURS ARE NOT STORED (terms ruling, Oct 16, 2026 — GH-1; ledger
+    `2026-10-17-gh1-no-google-hours`; FOUNDER WORDING REVIEW on the PR).** "Stored hours with 'checked on <date>' are the traveler's record, kept for 30 days, where the source is official or person-checked. Hours from Google are not stored (terms ruling, Oct 16)."
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —
@@ -2793,6 +2795,8 @@ This document captures architectural decisions to maintain consistency across co
     for the same place; Google hours never are (LD 57). Every day block draws ONE line (`feasibilityLine`) from `days[].feasibility`:
     honest counts, "not checked" where nothing is stored. Expert hard constraints never enter a draft (LD 27). Unsourced
     transport-profile hours and Kyoto's last-train note are deleted.
+    **AMENDED — NO LIVE GOOGLE HOURS SOURCE (terms ruling, Oct 16, 2026 — GH-1; ledger `2026-10-17-gh1-no-google-hours`;
+    FOUNDER WORDING REVIEW on the PR).** "The post-draft Places lookup returns location, address, place id and photo references. Hours come from official and person-checked facts only; there is no live Google hours source. The day line counts admitted hours facts."
 
 68. **A RIDE IS A PLAN ITEM; IT LOCKS ON INSERT AND SUPERSEDES THE LEG IT REPLACES WITHOUT DELETING IT (decision-maker,
     Oct 10, 2026 — TC-3 brief rev 1, lane TC-3a; ledger `2026-10-11-tc3a-ride-item`; brief
