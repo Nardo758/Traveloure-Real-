@@ -1223,6 +1223,9 @@ This document captures architectural decisions to maintain consistency across co
     corrected 2026-09-15, decision-maker). Read "REDIRECT" here as "does not open as a planning
     surface, and sends the traveler to the slip"; a literal bounce would break that spec and tell
     the traveler nothing about why they moved.
+    **AMENDED — THE SPEC'S WORKFLOW (CI-1b (e)2):** `slip-rail-actions` A12 now runs as the
+    `e2e-slip-rail-actions` step of the `e2e-live-config` job in `.github/workflows/dev-server-gates.yml`;
+    `slip-rail-actions-gate.yml` no longer exists. Read the parenthesis above with that file name.
 
     **D9 — THE BOOKINGS SECTION LIVES ON THE SLIP, AND ITS AUDIENCE IS §15d's.** Balance payment
     (§15d) is offered in a bookings section **on the slip**, visible to **the owner and a
