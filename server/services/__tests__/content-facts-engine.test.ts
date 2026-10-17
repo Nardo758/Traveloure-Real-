@@ -58,10 +58,11 @@ test("P2: one call ⇒ provenance-carrying facts, cost once, ≤ 30 days", async
   );
   const facts = await a.fetch({ need: "stop.hours", market: "kyoto", query: { text: "Kinkaku-ji", city: "Kyoto, Japan" }, budgetCents: 0 });
   assert.equal(calls.length, 1);
-  assert.match(calls[0].init.headers["X-Goog-FieldMask"], /regularOpeningHours/);
+  // GH-1: hours are never asked, and an answer that carries them drafts none.
+  assert.doesNotMatch(calls[0].init.headers["X-Goog-FieldMask"], /regularOpeningHours/);
   assert.equal(JSON.parse(calls[0].init.body).textQuery, "Kinkaku-ji, Kyoto, Japan");
   // Field-mask ruling (Oct 3, 2026): `priceLevel` is no longer asked, so no price fact is written.
-  assert.deepEqual(facts.map((f) => f.factType), ["location", "hours"]);
+  assert.deepEqual(facts.map((f) => f.factType), ["location"]);
   assert.equal(facts.filter((f) => f.costCents > 0).length, 1, "the call's cost is recorded on one row");
   for (const f of facts) {
     assert.equal(f.origin, "places_api");
@@ -112,7 +113,7 @@ test("P5: the address — two fields added to the mask, both forms kept, neither
   // Field-mask ruling (Oct 3, 2026): the default mask, nothing from the Atmosphere tier.
   assert.deepEqual(masks[0].split(","), [
     "places.id", "places.displayName", "places.location", "places.formattedAddress", "places.shortFormattedAddress",
-    "places.regularOpeningHours.weekdayDescriptions", "places.types", "places.googleMapsUri", "places.addressComponents",
+    "places.types", "places.googleMapsUri", "places.addressComponents",
     // R297: the photo references ride the same call (Essentials tier — the billed tier is unchanged).
     "places.photos",
   ]);

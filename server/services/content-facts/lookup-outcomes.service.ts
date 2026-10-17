@@ -39,7 +39,10 @@ export async function recordLookupOutcomes(run: LookupRun, rows: readonly PlaceL
         reason: r.reason,
         placeId: r.placeId,
         cache: r.cache,
-        costCents: r.costCents,
+        // GH-1: `cost_cents` is an INTEGER column and Places list prices are fractional (Pro 1.7¢, dining 2.5¢),
+        // so a fraction failed this whole insert (and with it AP-1's per-plan count). Whole cents, rounded UP so
+        // the row never under-records; the exact decimal stays on `place_facts.cost_cents`.
+        costCents: r.costCents == null ? null : Math.ceil(r.costCents),
         latencyMs: r.latencyMs,
       })),
     );

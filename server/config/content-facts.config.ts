@@ -80,12 +80,20 @@ export function placesIdLookupCostCents(): number {
 }
 
 /**
- * R-u / field-mask ruling (decision-maker, Oct 3, 2026): the cost of the BILLED fetch by place ID —
- * a Place Details call whose mask stays in the ENTERPRISE tier (hours lift it there; nothing from
- * Atmosphere). Google's list price, 2¢; the operator confirms actual billing in the Cloud console.
+ * R-u / field-mask ruling (decision-maker, Oct 3, 2026): the cost of the BILLED fetch by place ID. GH-1
+ * (ledger `2026-10-17-gh1-no-google-hours`): the mask no longer asks opening hours, so the call bills at
+ * Place Details PRO — Google's list price, 1.7¢ ($17 per 1,000). The operator confirms actual billing.
  */
 export function placesDetailsCostCents(): number {
-  return envNumber("PLACES_DETAILS_COST_CENTS", 2);
+  return envNumber("PLACES_DETAILS_COST_CENTS", 1.7);
+}
+
+/**
+ * GH-1: the stay card's link call (`websiteUri`, an Enterprise field) — Place Details Enterprise list price,
+ * 2¢. Its own setting since the facts call moved to Pro.
+ */
+export function placesStayLinkCostCents(): number {
+  return envNumber("PLACES_STAY_LINK_COST_CENTS", 2);
 }
 
 /**

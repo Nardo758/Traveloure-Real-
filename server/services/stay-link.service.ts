@@ -7,8 +7,8 @@
  *     earlier answer already stored one (`knownPlaceIdForQuery`, a read).
  *   · THE PICKED STAY, LAZILY (`pickedStayLink`, behind `GET /api/trips/:tripId/stay-pick/link`, called
  *     when the card is OPENED): S1's routed pick only. `own` needs no call; otherwise ONE Place Details
- *     call through the EXISTING `places_details` caller (its switch `PLACE_FACTS_PLACES_ENABLED`, its daily
- *     cap) asking `STAY_LINK_FIELDS` only; the place ID comes from a stored earlier answer or the no-charge
+ *     call through its own `places_stay_link` caller (GH-1; the spine's switch `PLACE_FACTS_PLACES_ENABLED`,
+ *     its own daily cap) asking `STAY_LINK_FIELDS` only; the place ID comes from a stored earlier answer or the no-charge
  *     IDs-only lookup (`places_id_lookup`). Answers are memoised for the request only and NEVER stored —
  *     no column, no cache row, no `place_facts` row (Google's terms; LD 57's question is with the founder,
  *     and stored Places facts are untouched). The dollars land on the gate's usage row (FU-S1-1's
@@ -25,7 +25,7 @@ import { distinctiveTokens, matchNamesItem } from "@shared/place-name-gate";
 import { readStayPick } from "@shared/stay-pick";
 import type { StayHotel } from "@shared/where-to-stay";
 import { gatedMapsCall } from "./maps-billing/maps-billing.service";
-import { placesDetailsCostCents } from "../config/content-facts.config";
+import { placesStayLinkCostCents } from "../config/content-facts.config";
 import { PlacesAdapter } from "./content-facts/places-adapter";
 
 /** How long the open waits for Google before answering with the list link. */
@@ -110,9 +110,10 @@ async function googleAnswer(hotel: Hotel, city: string | null, deps: StayLinkDep
   if (!memo.has(id)) {
     memo.set(
       id,
-      gatedMapsCall("places_details", async () => ({ value: await adapter.fetchStayLinkByPlaceId(id) }), {
+      // GH-1: its own caller row (Enterprise), since the facts Details call moved to Pro.
+      gatedMapsCall("places_stay_link", async () => ({ value: await adapter.fetchStayLinkByPlaceId(id) }), {
         sku: "place_details_enterprise",
-        costHere: { usdPer1000: placesDetailsCostCents() * 10, purpose: "stay_link", ref: id },
+        costHere: { usdPer1000: placesStayLinkCostCents() * 10, purpose: "stay_link", ref: id },
       }).then((out) => ("refused" in out ? null : out.value)),
     );
   }

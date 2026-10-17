@@ -81,6 +81,9 @@ before(async () => {
   // Places hours (aggregator): Kiyomizu 6–18, Temple B 9–20, the Arashiyama stop none.
   await recordFacts([fact({ value: { weekdayDescriptions: ["Monday: 6:00 AM – 6:00 PM"] } })], { planId: trip, itemId: id("k") });
   await recordFacts([fact({ placeRef: P2, value: { weekdayDescriptions: ["Monday: 9:00 AM – 8:00 PM"] } })], { planId: trip, itemId: id("b") });
+  // GH-1: the two Google hours writes above are refused, so each stop's place id rides on a Places location row.
+  await recordFacts([fact({ factType: "location", value: { lat: 34.9949, lng: 135.785 } })], { planId: trip, itemId: id("k") });
+  await recordFacts([fact({ placeRef: P2, factType: "location", value: { lat: 35.0, lng: 135.77 } })], { planId: trip, itemId: id("b") });
   await recordFacts([fact({ placeRef: P3, factType: "location", value: { lat: 35.0094, lng: 135.668 } })], { planId: trip, itemId: id("a") });
   // G3: Temple B's OFFICIAL structured hours close at 16:00 — they win for a hard fact.
   await recordFacts(
@@ -159,8 +162,9 @@ test("G2–G5 — the findings: last entry, visit end, last ride; untagged and t
 
 test("G6 — the day counts: honest on day 1, not checked on day 2", async () => {
   const days = await loadDayFeasibility(trip);
-  assert.deepEqual(days.get(1), { stops: 3, hoursChecked: 2, lastEntryChecked: 1, rides: 1, ridesChecked: 1 });
-  assert.equal(feasibilityLine(days.get(1)), "Hours checked for 2 of 3 stops · last entry checked for 1 of 3 stops · last trains checked for 1 of 1 ride");
+  // GH-1: Kiyomizu's hours were Google's, so only Temple B's official hours count.
+  assert.deepEqual(days.get(1), { stops: 3, hoursChecked: 1, lastEntryChecked: 1, rides: 1, ridesChecked: 1 });
+  assert.equal(feasibilityLine(days.get(1)), "Hours checked for 1 of 3 stops · last entry checked for 1 of 3 stops · last trains checked for 1 of 1 ride");
   assert.deepEqual(days.get(2), { stops: 1, hoursChecked: 0, lastEntryChecked: 0, rides: 0, ridesChecked: 0 });
   assert.equal(feasibilityLine(days.get(2)), "Hours not checked · last entry not checked");
 });

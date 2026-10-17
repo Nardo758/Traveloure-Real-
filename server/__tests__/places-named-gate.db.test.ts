@@ -59,7 +59,6 @@ const GENERIC = ["Dinner at Local Izakaya", "Lunch at Traditional Restaurant", "
 function placesFake(
   answer: (query: string) => string,
   opts: {
-    noHours?: (query: string) => boolean;
     types?: (query: string) => string[];
     address?: (query: string) => { formattedAddress?: string; addressComponents?: unknown[] } | null;
   } = {},
@@ -78,7 +77,6 @@ function placesFake(
     location: { latitude: 35.0, longitude: 135.7 },
     // Smoke 7: Google's types — a point of interest by default; a test can answer an area.
     types: opts.types?.(q) ?? ["tourist_attraction", "point_of_interest", "establishment"],
-    ...(opts.noHours?.(q) ? {} : { regularOpeningHours: { weekdayDescriptions: [`Monday: ${RUN}`] } }),
     ...(opts.address?.(q) ?? {}),
   });
   const adapter = new PlacesAdapter(
@@ -202,8 +200,9 @@ test("G4: a 5-day plan with named venues on every day gets facts on every day un
   const r = await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter] });
   assert.equal(state.calls, 5, "the cap still caps billed lookups");
   const rows = await factRows(items.map((i) => i.id));
-  const daysWithHours = new Set(rows.filter((x) => x.fact_type === "hours").map((x) => Number(/-d(\d)-\d+$/.exec(x.item)![1])));
-  assert.deepEqual(Array.from(daysWithHours).sort(), [1, 2, 3, 4, 5]);
+  // GH-1: no Google hours are stored, so "facts on every day" is read off the location rows.
+  const daysWithFacts = new Set(rows.filter((x) => x.fact_type === "location").map((x) => Number(/-d(\d)-\d+$/.exec(x.item)![1])));
+  assert.deepEqual(Array.from(daysWithFacts).sort(), [1, 2, 3, 4, 5]);
   assert.equal(r.looked, 5);
 
   // A cache reuse costs nothing and spends no cap: re-running for fresh item ids reuses day 1–5's
@@ -232,7 +231,7 @@ test("G5: a two-place 'A Alternative: B' title is looked up as B and never given
   assert.doesNotMatch(queries[0], /Fushimi/);
   assert.equal(r.unmatched, 0);
   const rows = await factRows([item.id]);
-  assert.ok(rows.some((x) => x.fact_type === "hours"), "Kiyomizu-dera's hours attach");
+  assert.ok(rows.some((x) => x.fact_type === "location"), "Kiyomizu-dera's location attaches");
 
   // And an answer naming Fushimi Inari for that item is refused outright.
   const fushimiOnly: EnrichItem = { ...item, id: id("alt2"), title: "Fushimi Inari Taisha Alternative: Kiyomizu-dera Temple (2)" };
@@ -276,7 +275,7 @@ test("G6: each item logs its day and outcome; skips log a reason", async () => {
   for (const l of facts) assert.doesNotMatch(l, /Ryozen|Shoren|Shimogamo|Lunch/, "no traveler content in the log");
 });
 
-test("G7 smoke 5 item 7: a day whose first place stores no hours tries its next named place next", async () => {
+test("G7 smoke 5 item 7: a day whose first place attaches nothing tries its next named place next", async () => {
   process.env.PLACES_LOOKUPS_PER_DRAFT = "3";
   const items: EnrichItem[] = [
     { id: id("h1a"), title: "Teramachi Kyogoku", type: "attraction", dayNumber: 1 },
@@ -285,19 +284,20 @@ test("G7 smoke 5 item 7: a day whose first place stores no hours tries its next 
     { id: id("h3a"), title: "Daisen-in", type: "attraction", dayNumber: 3 },
   ];
   await insertItems(items);
-  const { adapter, state } = placesFake((q) => q.split(",")[0], { noHours: (q) => q.startsWith("Teramachi") });
+  // GH-1: the scheduler keys on "attached", so Teramachi's answer names another place and attaches nothing.
+  const { adapter, state } = placesFake((q) => (q.startsWith("Teramachi") ? `Nishiki Market ${RUN} g7` : q.split(",")[0]));
   try {
     await enrichPlanItems({ tripId: TRIP, market: "kyoto", city: CITY, items, adapters: [adapter] });
   } finally {
     delete process.env.PLACES_LOOKUPS_PER_DRAFT;
   }
-  // Day 1's first place had no hours, so day 1's next place is tried BEFORE day 2 — then the
+  // Day 1's first place attached nothing, so day 1's next place is tried BEFORE day 2 — then the
   // round-robin resumes. The cap (3) is unchanged, so day 3 waits. R-u: the cap governs BILLED
   // fetches — `state.billed` — while a capped item may still resolve its ID for free.
   assert.deepEqual(state.billed, ["Teramachi Kyogoku", "Entoku-in", "Kodai-ji"]);
   const rows = await factRows(items.map((i) => i.id));
-  assert.ok(rows.some((x) => x.item === id("h1b") && x.fact_type === "hours"), "day 1 ends with hours");
-  assert.ok(!rows.some((x) => x.item === id("h1a") && x.fact_type === "hours"));
+  assert.ok(rows.some((x) => x.item === id("h1b") && x.fact_type === "location"), "day 1 ends with facts");
+  assert.ok(!rows.some((x) => x.item === id("h1a") && x.fact_type === "location"));
 });
 
 test("G8 smoke 5 item 9: an attached Google name replaces the drafted title — only on attach", async () => {
@@ -382,7 +382,7 @@ test("G12 R-u: two plans sharing a place make one billed lookup; the second cost
   assert.equal(r1.looked, 1);
   assert.equal(r2.looked, 0, "a cached place costs nothing");
   assert.equal(r2.cached, 1);
-  const rows = (await db.execute(sql`SELECT plan_id, fetched_at FROM place_facts WHERE itinerary_item_id IN (${a.id}, ${b.id}) AND fact_type = 'hours'`)).rows as any[];
+  const rows = (await db.execute(sql`SELECT plan_id, fetched_at FROM place_facts WHERE itinerary_item_id IN (${a.id}, ${b.id}) AND fact_type = 'location'`)).rows as any[];
   assert.equal(new Set(rows.map((x) => x.plan_id)).size, 2, "both plans hold the fact");
   assert.equal(new Set(rows.map((x) => new Date(x.fetched_at).getTime())).size, 1, "with the original fetch's own checkedAt");
 });
@@ -402,7 +402,7 @@ test("G13 R-u: every day gets two named items looked up before any day's third",
   assert.equal(state.calls, 6);
   const rows = await factRows(items.map((i) => i.id));
   const perDay = new Map<number, Set<string>>();
-  for (const x of rows.filter((x) => x.fact_type === "hours")) {
+  for (const x of rows.filter((x) => x.fact_type === "location")) {
     const d = Number(/-two-d(\d)-\d+$/.exec(x.item)![1]);
     perDay.set(d, (perDay.get(d) ?? new Set()).add(x.item));
   }
