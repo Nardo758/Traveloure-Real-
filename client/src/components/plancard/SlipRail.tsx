@@ -140,6 +140,7 @@ import type { SlipTrip } from "./SlipView";
 import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
 import { BuildAroundDialog } from "./BuildAroundDialog";
 import { FinalizeBookingModal } from "./FinalizeBookingModal";
+import { PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { openHandoffChooser } from "@/lib/handoff-client";
 import { SlipOrganizeEventsRow } from "./SlipLogisticsSection";
@@ -1014,6 +1015,11 @@ export function FinishCard({
   const finalizeMutation = useFinalizeMutation(trip.id);
   const reopenMutation = useReopenMutation(trip.id);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  // §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`): once Finalize has made a NEW
+  // final, "Get your Trip Card on your phone" follows the booking chooser. The dialog closes
+  // itself, without drawing anything, when no channel's admin switch is on.
+  const [phoneAfterChooser, setPhoneAfterChooser] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
   // Step 6 R-ay: a plan with no run sees its free findings once more before it is made final —
   // the SAME findings the Optimize card reads (shared query key), and the ONE line rule.
   const { data: finishPlan } = useQuery<{
@@ -1057,7 +1063,10 @@ export function FinishCard({
   const refinalize = () =>
     finalizeMutation.mutate(undefined, {
       onSuccess: (data) => {
-        if (data.finalCreated !== false && !data.alreadyFinalized) setFinalizeModalOpen(true);
+        if (data.finalCreated !== false && !data.alreadyFinalized) {
+          setPhoneAfterChooser(true);
+          setFinalizeModalOpen(true);
+        }
       },
     });
 
@@ -1079,12 +1088,21 @@ export function FinishCard({
   // Finalize and was never asked how to book. It is mounted here, above the branch, so the state
   // it is opened from and the state it opens into both keep it alive.
   const chooser = (
-    <FinalizeBookingModal
-      open={finalizeModalOpen}
-      onOpenChange={setFinalizeModalOpen}
-      trip={{ id: trip.id, destination: trip.destination, travelers: trip.travelers }}
-      activities={activities}
-    />
+    <>
+      <FinalizeBookingModal
+        open={finalizeModalOpen}
+        onOpenChange={(open) => {
+          setFinalizeModalOpen(open);
+          if (!open && phoneAfterChooser) {
+            setPhoneAfterChooser(false);
+            setPhoneOpen(true);
+          }
+        }}
+        trip={{ id: trip.id, destination: trip.destination, travelers: trip.travelers }}
+        activities={activities}
+      />
+      <PhoneDeliveryDialog tripId={trip.id} open={phoneOpen} onOpenChange={setPhoneOpen} />
+    </>
   );
 
   if (layout === "bar") {

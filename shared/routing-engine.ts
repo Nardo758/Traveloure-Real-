@@ -58,8 +58,23 @@ export interface RouteAnswer {
   provenance: RouteProvenance;
 }
 
-/** `paused` = the caller's daily cap is reached (step 9a ruling 8); `no_route` = the source had no answer. */
-export type RouteOutcome = { kind: "ok"; route: RouteAnswer } | { kind: "no_route" } | { kind: "paused" };
+/**
+ * `paused` = the caller's daily cap is reached (step 9a ruling 8); `no_route` = the source had no answer.
+ * 9b-d: a `no_route` MAY say the question went unanswered — `unsupported_mode` (the source does not serve
+ * that mode, e.g. OSRM and transit) or `failed` (the call itself failed: timeout, non-200, unreadable body).
+ * Without `unanswered` it is the source's own answer: there is no route. A re-check reads an unanswered
+ * `no_route` as "learned nothing" and keeps the leg's last label (§13); every other caller is unchanged.
+ */
+export type RouteUnanswered = "unsupported_mode" | "failed";
+
+/**
+ * 9b-d (Leon's ruling, Oct 17, 2026): the `source` an ENGINE row carries when the router's own answer was
+ * "no route" — the pair shows a labelled straight-line estimate instead of nothing. It is NOT a routed leg:
+ * `routedFactsOf` and `legIsRouted` both answer no for it, so every surface reads it as "est.". It is outside
+ * `CACHEABLE_ROUTE_SOURCES`, so the next engine run asks the pair again (a route found later replaces it).
+ */
+export const STRAIGHT_LINE_EST_SOURCE = "straight_line_est";
+export type RouteOutcome = { kind: "ok"; route: RouteAnswer } | { kind: "no_route"; unanswered?: RouteUnanswered } | { kind: "paused" };
 
 export interface RoutingAdapter {
   /** The provenance `source` this adapter stamps. */

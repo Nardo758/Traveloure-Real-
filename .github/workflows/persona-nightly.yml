@@ -51,7 +51,7 @@ permissions:
 jobs:
   personas:
     name: personas (supply-expert, supply-provider, journey-traveler, journey-guest, journey-handoff, journey-plus x2)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5.1.0

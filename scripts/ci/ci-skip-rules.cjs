@@ -192,21 +192,44 @@ function checkWorkflow(file, text, required) {
     for (const j of jobs) {
       if (!j.body.includes("github.event.pull_request.draft")) errs.push(`${file}: job ${j.id} does not skip drafts`);
     }
+    // CI-1b (e)1 (ledger `2026-10-17-ci1b-non-required-off-main-push`): a workflow that provides no
+    // required check runs on the PR and not again on the merge push to main.
+    const push = /^  push:\s*\n((?:    .*\n|\s*\n)*)/m.exec(text);
+    if (push) {
+      const br = /^    branches:\s*(.*)$/m.exec(push[1]);
+      if (!br || /\bmain\b/.test(br[1])) errs.push(`${file}: provides no required check, so it may not run on push to main (it ran on the PR)`);
+    }
   }
   return errs;
 }
+// Runner selection (CI runner Phase 1). Every job's runner is this ONE expression: a self-hosted label
+// from the repository variable CI_RUNNER, but ONLY when the event says the repository is private — a
+// public repository runs fork PRs, and a fork's code must never reach a self-hosted machine. Unset
+// variable, a public repository, or an event whose payload carries no repository (a schedule may not)
+// all fall back to GitHub-hosted ubuntu-latest: the failure mode is hosted minutes, never exposure.
+// NEGATIVE SPACE: this reads the workflow text; it cannot see the variable's value or the runner group.
+const RUNS_ON = "${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}";
+function checkRunsOn(file, text) {
+  const errs = [];
+  for (const m of text.matchAll(/^\s+runs-on:\s*(.*?)\s*$/gm)) {
+    if (m[1] !== RUNS_ON) errs.push(`${file}: runs-on must be exactly ${RUNS_ON} (found ${m[1]})`);
+  }
+  return errs;
+}
+
 function runCheck(root = process.cwd()) {
   const dir = path.join(root, ".github/workflows");
   const required = requiredContexts(root);
   const errs = [];
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".yml")).sort()) {
-    errs.push(...checkWorkflow(f, fs.readFileSync(path.join(dir, f), "utf8"), required));
+    const text = fs.readFileSync(path.join(dir, f), "utf8");
+    errs.push(...checkWorkflow(f, text, required), ...checkRunsOn(f, text));
   }
   if (errs.length) {
     errs.forEach((e) => console.error(`::error::${e}`));
     process.exit(1);
   }
-  console.log("ci-skip-rules: every PR-triggered workflow follows the skip rules ✅");
+  console.log("ci-skip-rules: every PR-triggered workflow follows the skip rules, and every job uses the one runner expression ✅");
 }
 
 // ── --self-test ──────────────────────────────────────────────────────────────────────────────────
@@ -253,12 +276,20 @@ function selfTest() {
   assert.deepEqual(checkWorkflow("home-gate.yml", nonOk, req), []);
   assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("github.event.pull_request.draft == false", "true"), req).length, 1, "a job without the draft skip fails");
   assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("      - 'CLAUDE.md'\n", ""), req).length, 1, "a drifted paths list fails");
+  assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("on:\n", "on:\n  push:\n    branches: [main]\n"), req).length, 1, "a non-required workflow on push to main fails");
+  assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("on:\n", "on:\n  push:\n"), req).length, 1, "a non-required workflow on every push fails");
+  assert.deepEqual(checkWorkflow("home-gate.yml", nonOk.replace("on:\n", "on:\n  push:\n    branches: [lane/x]\n"), req), [], "a push trigger on another branch is accepted");
+  assert.deepEqual(checkWorkflow("build.yml", reqOk.replace("on:\n", "on:\n  push:\n    branches: [main]\n"), req), [], "a required workflow keeps its push to main");
   const narrow = `on:\n  pull_request:\n${types}    paths:\n      - 'server/x.ts'\njobs:\n  a:\n    if: github.event.pull_request.draft == false\n`;
   assert.deepEqual(checkWorkflow("narrow.yml", narrow, req), [], "a pre-existing narrow paths list is accepted");
+  assert.deepEqual(checkRunsOn("a.yml", `jobs:\n  a:\n    runs-on: ${RUNS_ON}\n`), [], "the one runner expression passes");
+  assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ubuntu-latest\n").length, 1, "a hard-coded hosted label fails");
+  assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: self-hosted\n").length, 1, "a hard-coded self-hosted label fails");
+  assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}\n").length, 1, "the variable without the private-repository condition fails");
   console.log("ci-skip-rules self-test: all fixtures pass ✅");
 }
 
-module.exports = { GATE, decide, canonicalPaths, pathsMatch, isDocs, checkWorkflow, ALWAYS_JOBS, READS_WORKFLOWS, PR_TYPES };
+module.exports = { RUNS_ON, checkRunsOn, GATE, decide, canonicalPaths, pathsMatch, isDocs, checkWorkflow, ALWAYS_JOBS, READS_WORKFLOWS, PR_TYPES };
 
 if (require.main === module) {
   const arg = process.argv[2];

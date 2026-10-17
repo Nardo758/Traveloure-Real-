@@ -22,8 +22,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/e2e-purge-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -37,7 +35,7 @@ jobs:
   e2e-purge:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: e2e-purge (FK-blocked accounts are named, not swallowed)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production

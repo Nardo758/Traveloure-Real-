@@ -1232,6 +1232,9 @@ This document captures architectural decisions to maintain consistency across co
     corrected 2026-09-15, decision-maker). Read "REDIRECT" here as "does not open as a planning
     surface, and sends the traveler to the slip"; a literal bounce would break that spec and tell
     the traveler nothing about why they moved.
+    **AMENDED — THE SPEC'S WORKFLOW (CI-1b (e)2):** `slip-rail-actions` A12 now runs as the
+    `e2e-slip-rail-actions` step of the `e2e-live-config` job in `.github/workflows/dev-server-gates.yml`;
+    `slip-rail-actions-gate.yml` no longer exists. Read the parenthesis above with that file name.
 
     **D9 — THE BOOKINGS SECTION LIVES ON THE SLIP, AND ITS AUDIENCE IS §15d's.** Balance payment
     (§15d) is offered in a bookings section **on the slip**, visible to **the owner and a
@@ -2702,6 +2705,25 @@ This document captures architectural decisions to maintain consistency across co
     **AMENDED BY P0-b (decision-maker, Oct 11, 2026 — ledger `2026-10-11-p0b-routing-follow-ups`).**
     "P0 ruling 7 amended: legacy confirmed legs are superseded once on the first engine run — re-routed where
     routable, retired where the pair has an unlocated stop. No unsourced leg shows on a routed plan."
+    **AMENDED BY 9b-b (9b spec v1.0 T1/T2/T3, Phase 0 rulings 1–6, Oct 16, 2026 — ledger
+    `2026-10-16-9b-b-legs-off-google`; migration 386 — Migration 386 SQL approved by Leon — comment 06:34Z on #1495).** No writer
+    stores a Google duration or distance: `routingAdapter()` answers the CI stub, self-hosted OSRM, or nothing — never
+    Google Routes — and the leg resolver's exact source is that adapter (else the labelled estimate); the
+    `travel_time_matrix` is retired as a source (no reader reads it). A Google-sourced leg (`legNeedsRebuild`) is
+    rebuilt by the engine — a proposed one recomputed, a confirmed one re-routed and superseded, never deleted — and a
+    stored Google answer never seeds the run memo. Routed = `source` set; a Ready Made copy keeps it.
+    `transport_legs.routed_departure_local` (386, nullable text) is the plan-tz "HH:MM" the engine routed the leg for.
+    `scripts/rebuild-google-legs.ts` (dry run by default) counts and rebuilds; deletion is its own PR after "delete
+    approved — Leon". Re-check notices store no minutes (the card reads "was N min" from the plan's leg); the legacy
+    non-routed writer is the labelled straight-line estimate; the matrix refresh job is retired (410); where-to-stay
+    ranks by OSRM drive minutes when OSRM is on, else the straight line.
+    **AMENDED BY 9b-d (9b-0 ruling 4, Oct 16, 2026 — ledger `2026-10-17-9b-d-routing-recheck`; no migration).**
+    `routing-recheck` replaces `legs-dayof-recheck`: ONE service, two triggers — hourly at 06:00 in the plan's
+    zone, and the Trip Card's first open on a trip day after 06:00 — under ONE guard, `routing_recheck_max_per_plan_day`
+    (config, default 1; each leg is claimed against the current window's start). A failed or unsupported-mode call
+    (`no_route` with `unanswered`) records nothing and keeps the leg's label; only the source's own "no route" is broken.
+    The engine likewise keeps the last good leg on an unanswered call, and replaces it only on the router's own
+    "no route" — with a labelled straight-line estimate (`source = 'straight_line_est'`, not routed, re-asked every run).
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**

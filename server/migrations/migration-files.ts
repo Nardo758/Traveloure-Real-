@@ -2064,6 +2064,14 @@ export const MIGRATION_FILES = [
   // (no password, role 'user', no handle) and the platform_settings row editorial_user_id; both ON CONFLICT DO NOTHING.
   // HELD until the decision-maker approves the SQL on its PR.
   "385_editorial_house_account.sql",
+  // 386 — transport_legs.routed_departure_local (9b-b, ledger 2026-10-16-9b-b-legs-off-google; 9b spec ED2). One
+  // nullable text column, no DEFAULT/CHECK/FK/index, no backfill: plan-tz "HH:MM" the leg was routed for. Declared
+  // in shared/schema.ts. Migration 386 SQL approved by Leon — comment 06:34Z on #1495. (385 is ED-1b's house account, #1491.)
+  "386_transport_legs_routed_departure_local.sql",
+  // 388 — calendar_feeds + phone_delivery_choices (§8 phone delivery, ledger 2026-10-17-phone-delivery-calendar). Two NEW
+  // tables born empty: no DEFAULT, CHECK or FK; a UNIQUE index on the token hash and two lookup indexes. 385–387 are
+  // taken by open PRs. Declared in shared/schema.ts. Held for founder comment on #1500.
+  "388_calendar_feeds.sql",
   // 387 — itinerary_items.coord_source (GC-1, ledger 2026-10-17-gc1-google-coords). One nullable text column, no
   // DEFAULT, CHECK, index, FK or backfill; NULL = Google. 385/386 are reserved by other lanes. Declared in
   // shared/schema.ts. HELD.

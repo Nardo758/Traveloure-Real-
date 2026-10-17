@@ -3,7 +3,7 @@
  * surface spec R-aw, R-bb).
  *
  * A routed plan's legs are asked again at T-3 (the `facts-recheck` job) and on the morning of each trip
- * day (the `legs-dayof-recheck` job). A re-check NEVER writes a leg: it records what it found on the
+ * day (the `routing-recheck` job, 9b-d). A re-check NEVER writes a leg: it records what it found on the
  * leg's own `leg_check_status` / `leg_checked_at` (R-bb's columns, migration 347) and, when a leg
  * changed, ONE banner finding (a deduped notice). The plan is never silently rewritten — the traveler
  * reads "Travel to <stop> now 31 min (was 18)" and decides.
@@ -49,7 +49,9 @@ const MODE_WORD: Record<string, string> = { walk: "walking", transit: "transit",
 export interface LegRecheckFinding {
   toName: string | null;
   mode: string | null;
-  wasMin: number;
+  /** The plan's own stored minutes for the leg; null = not known (the line then states no number). */
+  wasMin: number | null;
+  /** The re-check's minutes. Never stored (9b-b, ruling 1): the card passes null and reads "has changed". */
   nowMin: number | null;
   status: "changed" | "broken";
 }
@@ -57,13 +59,27 @@ export interface LegRecheckFinding {
 /**
  * The banner's line for one changed leg: "Travel to Kinkaku-ji now 31 min (was 18) · re-checked 8 Nov";
  * a broken leg: "Travel to Kinkaku-ji: no transit route now (was 18 min) · re-checked 8 Nov". Minutes
- * in-plan only (R-h) — this renders on the plan's own card.
+ * in-plan only (R-h) — this renders on the plan's own card. 9b-b (ledger `2026-10-16-9b-b-legs-off-google`):
+ * the re-check's minutes are no longer stored, so a changed leg without them reads
+ * "Travel to Kinkaku-ji has changed (was 18 min)", and with no stored minutes either, "… has changed".
  */
 export function legRecheckLine(f: LegRecheckFinding, checkedLabel: string | null): string {
   const to = (f.toName ?? "").trim() || "your next stop";
+  const was = f.wasMin != null && Number.isFinite(f.wasMin) ? Math.round(f.wasMin) : null;
+  const modeWord = MODE_WORD[String(f.mode)];
   const what =
-    f.status === "broken" || f.nowMin == null
-      ? `Travel to ${to}: no ${MODE_WORD[String(f.mode)] ?? "route"}${MODE_WORD[String(f.mode)] ? " route" : ""} now (was ${Math.round(f.wasMin)} min)`
-      : `Travel to ${to} now ${Math.round(f.nowMin)} min (was ${Math.round(f.wasMin)})`;
+    f.status === "broken"
+      ? `Travel to ${to}: no ${modeWord ?? "route"}${modeWord ? " route" : ""} now${was != null ? ` (was ${was} min)` : ""}`
+      : f.nowMin == null
+        ? `Travel to ${to} has changed${was != null ? ` (was ${was} min)` : ""}`
+        : `Travel to ${to} now ${Math.round(f.nowMin)} min${was != null ? ` (was ${was})` : ""}`;
   return checkedLabel ? `${what} · re-checked ${checkedLabel}` : what;
+}
+
+/**
+ * 9b-b (Phase 0 ruling 1): the STORED notification's line — it carries no minutes, the plan's or the re-check's.
+ * "Travel to Kinkaku-ji has changed" / "Travel to Kinkaku-ji: no transit route now".
+ */
+export function legRecheckNoticeLine(f: Pick<LegRecheckFinding, "toName" | "mode" | "status">): string {
+  return legRecheckLine({ ...f, wasMin: null, nowMin: null }, null);
 }

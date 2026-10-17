@@ -143,7 +143,7 @@ test.describe('[PARIS] Service surfacing', () => {
         'This indicates the category_id mapping may not align with the UI filter taxonomy. ' +
         'Marking test as skipped rather than failed since unfiltered results were confirmed in PARIS-2.',
       );
-      test.skip();
+      test.skip(true, 'PARIS-3: the Services category filter control was not found, or no option matched — category_id mapping not exercised');
       return;
     }
 
