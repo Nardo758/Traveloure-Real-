@@ -1,7 +1,7 @@
 /**
  * THE LEG RE-CHECK (step 9b, L8 / D5 / D6 / D9 — ledger `2026-10-07-step9b-optimizer-and-rechecks`;
  * surface spec R-aw, R-bb). ONE pass, two callers: the T-3 `facts-recheck` job (the whole plan) and the
- * hourly `legs-dayof-recheck` job (one trip day, at 06:00 in the plan's own zone).
+ * `routing-recheck` job (9b-d: one trip day, at 06:00 in the plan's own zone or on the card's first open after it).
  *
  * It asks the routing adapter (through the R299 gate, like every routing call) about each leg the plan
  * SHOWS, and it NEVER WRITES A LEG: no minutes, no mode, no row added or removed. What it writes is the
@@ -13,7 +13,9 @@
  *     when it is older than this check's day, so a second run — or a second instance — on the same
  *     day asks nothing and writes nothing (idempotent per plan-day);
  *   · `paused` (the Maps cap) learned nothing: the claim is RELEASED back to its old stamp and the
- *     pass stops, so the next run asks again (§13 — never "ok" for a leg nobody checked);
+ *     pass stops, so the next run asks again (§13 — never "ok" for a leg nobody checked); so does an
+ *     unanswered `no_route` (9b-d: a failed call stops the pass, an unsupported mode skips the leg) —
+ *     the leg keeps its last label;
  *   · a finding's dedupe key is per stop pair per check date, so two runs write one finding.
  */
 import { and, eq, sql } from "drizzle-orm";
@@ -21,7 +23,7 @@ import { db } from "../../db";
 import { transportLegs } from "@shared/schema";
 import { normalizeLegMode } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
-import type { RoutingAdapter, RoutingMode } from "@shared/routing-engine";
+import { STRAIGHT_LINE_EST_SOURCE, type RoutingAdapter, type RoutingMode } from "@shared/routing-engine";
 import { FACTS_RECHECK_NOTICE_TYPE } from "@shared/facts-recheck";
 import { classifyLegRecheck, legRecheckDedupeKey, legRecheckNoticeLine, LEG_RECHECK_KIND, type LegCheckStatus } from "@shared/leg-recheck";
 import { storage } from "../../storage";
@@ -56,6 +58,10 @@ export interface LegRecheckResult {
    * none — COUNTED, never written (9b D6: the re-check never writes a leg). Present only when > 0.
    */
   missing?: number;
+  /** 9b-d: the source failed (timeout, non-200…) — the pass stopped, nothing recorded. Present only when true. */
+  unavailable?: boolean;
+  /** 9b-d: legs in a mode the source does not serve (OSRM and transit) — not checked. Present only when > 0. */
+  unsupported?: number;
   skipped?: "not_routed" | "dates_not_confirmed" | "no_adapter";
 }
 
@@ -110,6 +116,18 @@ export async function recheckPlanLegs(input: LegRecheckInput, deps: LegRecheckDe
       ? zonedWallClockToInstant(addCalendarDays(input.startDate.slice(0, 10), leg.dayNumber - 1), legDepartureWallClock(leg.wallClock), input.timezone)
       : null;
     const outcome = await adapter.route({ lat: leg.fromLat, lng: leg.fromLng }, { lat: leg.toLat, lng: leg.toLng }, leg.mode, departAt);
+    // 9b-d: a `no_route` that went UNANSWERED learned nothing. The claim goes back and the leg keeps its
+    // last label (§13 — an outage is never "no route"). A failed call stops the pass (the source is down;
+    // the next trigger asks again); a mode the source does not serve (OSRM and transit) skips that leg only.
+    if (outcome.kind === "no_route" && outcome.unanswered) {
+      await deps.release(leg.id, at, c.prior);
+      if (outcome.unanswered === "failed") {
+        result.unavailable = true;
+        break;
+      }
+      result.unsupported = (result.unsupported ?? 0) + 1;
+      continue;
+    }
     const status = classifyLegRecheck(
       leg.wasMin,
       outcome.kind === "ok" ? { kind: "ok", durationMin: outcome.route.durationMin } : outcome.kind === "no_route" ? { kind: "no_route" } : { kind: "paused" },
@@ -152,6 +170,9 @@ async function shownRecheckLegs(tripId: string): Promise<RecheckLeg[]> {
     const wasMin = Number(l.estimatedDurationMinutes);
     const pts = [l.fromLat, l.fromLng, l.toLat, l.toLng].map(Number);
     if (!mode || !Number.isFinite(wasMin) || wasMin <= 0 || pts.some((n) => !Number.isFinite(n))) continue;
+    // 9b-d: a straight-line estimate is not a routed leg, so there is nothing to re-check against it; the
+    // engine re-asks that pair on its own next run.
+    if (l.source === STRAIGHT_LINE_EST_SOURCE) continue;
     const from = l.fromActivityId ? byId.get(l.fromActivityId) : undefined;
     const to = l.toActivityId ? byId.get(l.toActivityId) : undefined;
     const wallClock = from

@@ -34,6 +34,12 @@ export function osrmRouteUrl(baseUrl: string, profile: string, origin: RoutePoin
   return `${baseUrl}/route/v1/${encodeURIComponent(profile)}/${coord(origin)};${coord(destination)}?overview=false&steps=false&alternatives=false`;
 }
 
+/** Pure: OSRM's own answer that no route exists (`NoRoute`, or a point with no road/path near it). */
+export function osrmSaysNoRoute(data: unknown): boolean {
+  const code = (data as { code?: unknown } | null)?.code;
+  return code === "NoRoute" || code === "NoSegment";
+}
+
 /** Pure parse of one OSRM `route` response into a `RouteAnswer`, or null when there is no usable route. */
 export function parseOsrmResponse(data: unknown, checkedAt: Date): RouteAnswer | null {
   const body = data as { code?: unknown; routes?: Array<{ duration?: unknown; distance?: unknown }> } | null;
@@ -56,22 +62,25 @@ export class OsrmRoutingAdapter implements RoutingAdapter {
   constructor(private readonly deps: OsrmRoutingDeps = defaultDeps) {}
 
   async route(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, _departAt: Date | null): Promise<RouteOutcome> {
-    if (mode !== "drive" && mode !== "walk") return { kind: "no_route" };
+    if (mode !== "drive" && mode !== "walk") return { kind: "no_route", unanswered: "unsupported_mode" };
     const base = this.deps.baseUrl();
-    if (!base) return { kind: "no_route" };
+    if (!base) return { kind: "no_route", unanswered: "failed" };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs());
     try {
       const response = await this.deps.fetch(osrmRouteUrl(base, this.deps.profile(mode), origin, destination), { signal: controller.signal });
       if (!response.ok) {
         console.error(`[routing] osrm ${mode} route failed: ${response.status}`);
-        return { kind: "no_route" };
+        return { kind: "no_route", unanswered: "failed" };
       }
-      const route = parseOsrmResponse(await response.json(), this.deps.now());
-      return route ? { kind: "ok", route } : { kind: "no_route" };
+      const body = await response.json();
+      const route = parseOsrmResponse(body, this.deps.now());
+      if (route) return { kind: "ok", route };
+      // OSRM's own "no route between these points" is an answer; any other non-Ok body is a failed call.
+      return osrmSaysNoRoute(body) ? { kind: "no_route" } : { kind: "no_route", unanswered: "failed" };
     } catch (err: any) {
       console.error(`[routing] osrm ${mode} route request threw:`, err?.name === "AbortError" ? "timeout" : err?.message ?? err);
-      return { kind: "no_route" };
+      return { kind: "no_route", unanswered: "failed" };
     } finally {
       clearTimeout(timer);
     }

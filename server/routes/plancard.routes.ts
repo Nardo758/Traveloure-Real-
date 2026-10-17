@@ -28,6 +28,7 @@ import {
 import { db } from "../db";
 import { and, count, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { legRecheckDedupePrefix } from "@shared/leg-recheck";
+import { runRoutingRecheckOnOpen } from "../jobs/routingRecheck";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole } from "../utils/trip-role";
@@ -642,6 +643,11 @@ router.get("/api/trips/:tripId/recheck", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const denied = await authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/recheck");
     if (denied) return res.status(denied.status).json({ error: denied.message });
+    // 9b-d (9b-0 ruling 4): the routing re-check's FIRST-OPEN trigger. On a trip day at or after 06:00
+    // in the plan's zone, the first open asks the same pass the 06:00 job runs; the per-window guard
+    // makes every later open (and the job, if it comes second) a no-op. Never awaited and never fails
+    // this read (§15b); its findings are read on the next open.
+    void runRoutingRecheckOnOpen(tripId);
     const [row] = await db
       .select({ data: notifications.data, createdAt: notifications.createdAt })
       .from(notifications)

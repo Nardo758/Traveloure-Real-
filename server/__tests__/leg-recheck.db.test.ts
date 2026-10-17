@@ -11,7 +11,7 @@
  *   K7  day-of timing: due only in the 06:00 local hour of a trip day; the plan's zone, else its market's
  *   K8  the T-3 job runs the leg pass for each plan and reports its counts
  *   K9  legIsRouted: engine leg is routed; an unsourced leg is not, confirmed or not (P0-b item 5); no minutes is not
- *   K10 registration: `legs-dayof-recheck` is hourly on the roster, its route runs through `runJob`, and
+ *   K10 registration: `routing-recheck` (9b-d, which retired `legs-dayof-recheck`) is hourly on the roster, its route runs through `runJob`, and
  *       the cron script's hourly bucket posts it
  *
  * NEGATIVE SPACE (§18d): the adapter is injected (no Maps call); the `/recheck` read and the card's
@@ -32,7 +32,7 @@ process.env.STRIPE_SECRET_KEY ||= "sk_test_leg_recheck";
 const { db } = await import("../db");
 const { classifyLegRecheck, legRecheckLine, LEG_RECHECK_CHANGED_MINUTES } = await import("@shared/leg-recheck");
 const { recheckPlanLegs, defaultLegRecheckDeps } = await import("../services/routing/leg-recheck.service");
-const { dayofDue } = await import("../jobs/legsDayofRecheck");
+const { routingRecheckDue: dayofDue } = await import("../jobs/routingRecheck");
 const { runFactsRecheck } = await import("../jobs/factsRecheck");
 const { legIsRouted } = await import("../services/routing/plan-legs");
 
@@ -208,11 +208,11 @@ test("K9: legIsRouted — the D4 rule", () => {
   assert.equal(legIsRouted({ source: null, proposalStatus: "proposed", estimatedDurationMinutes: 20 }), false);
 });
 
-test("K10: `legs-dayof-recheck` is registered hourly — roster, route and cron bucket", async () => {
+test("K10: `routing-recheck` is registered hourly — roster, route and cron bucket", async () => {
   const { JOB_CADENCE } = await import("../routes/internal.routes");
-  assert.deepEqual(JOB_CADENCE.filter((j) => j.job === "legs-dayof-recheck"), [{ job: "legs-dayof-recheck", expectedIntervalSec: 3_600, bucket: "hourly" }]);
+  assert.deepEqual(JOB_CADENCE.filter((j) => j.job === "routing-recheck"), [{ job: "routing-recheck", expectedIntervalSec: 3_600, bucket: "hourly" }]);
   const routes = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/internal.routes.ts"), "utf8");
-  assert.match(routes, /router\.post\("\/internal\/jobs\/legs-dayof-recheck", requireInternalSecret,[\s\S]{0,120}runJob\("legs-dayof-recheck", \(\) => runLegsDayofRecheck\(\), \(r\) => !!r\?\.error\)/);
+  assert.match(routes, /router\.post\("\/internal\/jobs\/routing-recheck", requireInternalSecret,[\s\S]{0,120}runJob\("routing-recheck", \(\) => runRoutingRecheck\(\), \(r\) => !!r\?\.error\)/);
   const cron = fs.readFileSync(path.resolve(import.meta.dirname, "../../scripts/ci/post-internal-jobs.sh"), "utf8");
-  assert.match(cron, /\["hourly"\]="[^"]*\blegs-dayof-recheck\b/);
+  assert.match(cron, /\["hourly"\]="[^"]*\brouting-recheck\b/);
 });
