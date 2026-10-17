@@ -10,7 +10,8 @@
  *   E5  ONE EDIT ⇒ EXACTLY TWO LEGS recomputed (a stop moved); the rest kept
  *   E6  an inserted stop replaces one leg with two
  *   E7  the cap hit: `paused`, no call, the existing legs stay as last computed, the edit stands
- *   E8  a failed call: no leg for that pair (a thin connector); the next run asks again
+ *   E8  the router's own "no route": a labelled straight-line estimate for that pair; the next run asks again
+ *       (9b-d, Leon's ruling Oct 17, 2026 — was "no leg"; an unanswered call keeps the last leg, p0 L3b)
  *   E9  an expert's CONFIRMED leg wins: the engine never computes that pair and drops its own
  *   E10 the read rule: the plan shows engine legs with their routed facts; a free plan's engine and
  *       variant legs are HIDDEN, not deleted (ruling 5)
@@ -189,13 +190,18 @@ test("E7: the cap hit — paused, no call, legs left as last computed", async ()
   assert.deepEqual((await legs(PAID)).map((l) => [l.id, l.estimated_duration_minutes]), before.map((l) => [l.id, l.estimated_duration_minutes]));
 });
 
-test("E8: a failed call leaves the pair a thin connector; the next run asks again", async () => {
+// AMENDED by 9b-d (Leon's ruling, Oct 17, 2026): the router's OWN "no route" now shows the pair as a labelled
+// straight-line estimate instead of nothing; the next run still asks again and a route replaces it.
+test("E8: the router's own no-route shows a straight-line estimate; the next run asks again", async () => {
   const stub = new StubRoutingAdapter({ noRoute: true });
   const r: any = await computePlanLegs(PAID, { adapter: stub });
   assert.equal(r.noRoute, 1, "only the moved stop's leg was asked");
-  assert.deepEqual(pairs(await legs(PAID)), ["1:a>b", "2:d>x", "2:x>e"], "b→c is gone, never shown stale");
+  const rows = await legs(PAID);
+  assert.deepEqual(pairs(rows), ["1:a>b", "1:b>c", "2:d>x", "2:x>e"], "b→c is an estimate, never the stale routed leg");
+  assert.equal(rows.find((l) => pairs([l])[0] === "1:b>c")!.source, "straight_line_est");
   const healed: any = await computePlanLegs(PAID, { adapter: new StubRoutingAdapter() });
-  assert.equal(healed.written, 1, "the next run routes it — a failure was never remembered");
+  assert.equal(healed.written, 1, "the next run routes it — a no-route was never remembered");
+  assert.equal((await legs(PAID)).find((l) => pairs([l])[0] === "1:b>c")!.source, "stub");
 });
 
 // AMENDED by P0 ruling 7 (ledger `2026-10-10-p0-legs-baseline`; SANCTIONED by the decision-maker, Oct 10, 2026): a
