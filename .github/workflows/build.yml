@@ -479,6 +479,10 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Leaflet fallback list and no leg lines (GC-1)
         run: npx tsx --test client/src/lib/__tests__/gc1-leaflet-list.test.ts
+      # GH-1: "Hours not checked yet" replaces "checking hours…" on a stop row with no hours fact.
+      - if: ${{ !cancelled() }}
+        name: Hours not checked yet label (GH-1)
+        run: npx tsx --test client/src/lib/__tests__/gh1-hours-not-checked.test.ts
       - if: ${{ !cancelled() }}
         name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts

@@ -178,6 +178,15 @@ export function isPageReadOrigin(origin: string | null | undefined): boolean {
   return (PAGE_READ_ORIGINS as readonly string[]).includes(origin ?? "");
 }
 
+/**
+ * GH-1 (ledger `2026-10-17-gh1-no-google-hours`; terms ruling, Oct 16, 2026): Google's opening hours are never
+ * stored and never read. The ONE rule: the writer refuses such a draft, and every reader skips such a row (a
+ * row stored before GH-1 expires on its own within the 30-day Places cap; nothing deletes it).
+ */
+export function isGoogleHoursFact(f: { origin: string | null | undefined; factType: string | null | undefined }): boolean {
+  return f.origin === "places_api" && f.factType === "hours";
+}
+
 export const LICENSE_CLASSES = ["official", "editorial", "partner", "restricted"] as const;
 export type LicenseClass = (typeof LICENSE_CLASSES)[number];
 

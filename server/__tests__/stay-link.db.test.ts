@@ -4,7 +4,7 @@
  *   LK1  a platform stay whose provider typed a website ⇒ `own`, on the list AND when opened, no Google call
  *   LK2  the list makes NO Google call: a partner stay gets a Google Maps URL from its name and city,
  *        pinned to a place ID only when one is already stored
- *   LK3  opened: `google` from ONE Details call through the `places_details` caller; its dollars on the
+ *   LK3  opened: `google` from ONE Details call through the `places_stay_link` caller (GH-1); its dollars on the
  *        gate's own usage row (purpose `stay_link`); NOTHING stored — no `place_facts` row
  *   LK4  opened, Google names no website ⇒ `maps` from the same answer's `googleMapsUri`
  *   LK5  WRONG-HOTEL SAFEGUARD: an answer naming another place ⇒ the list link, never that place's site
@@ -121,9 +121,9 @@ test("LK3 opened ⇒ google from ONE Details call, dollars on the gate row, noth
   assert.deepEqual(f.calls, ["ids", "details"]);
   const r: any = await db.execute(sql`
     SELECT request_count, estimated_cost_cents, metadata FROM api_usage_logs
-    WHERE provider = 'google_maps' AND endpoint = 'places_details' AND metadata->>'ref' = ${`place-${RUN}`}`);
+    WHERE provider = 'google_maps' AND endpoint = 'places_stay_link' AND metadata->>'ref' = ${`place-${RUN}`}`);
   const rows = r.rows ?? r;
-  assert.equal(rows.length, 1, "one Details call, through the existing places_details caller");
+  assert.equal(rows.length, 1, "one Details call, through its own places_stay_link caller (GH-1)");
   assert.equal(rows[0].estimated_cost_cents, 20, "2¢ = 20 tenths of a cent, on the gate's own row");
   assert.equal(rows[0].metadata.purpose, "stay_link");
   assert.equal(Number(((await db.execute(sql`SELECT count(*)::int AS n FROM place_facts`)) as any).rows[0].n), facts0, "no place_facts row written");
