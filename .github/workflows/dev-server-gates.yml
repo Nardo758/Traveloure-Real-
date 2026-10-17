@@ -534,6 +534,13 @@ jobs:
           name: playwright-json-discover-tabs
           path: reports/discover-tabs/json/
           if-no-files-found: ignore
+      - name: Upload earn-captures Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-earn-captures
+          path: reports/earn-captures/json/
+          if-no-files-found: ignore
       - name: Upload cart-redirect Playwright JSON report (the spec-arming gate reads playwright-json*)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
