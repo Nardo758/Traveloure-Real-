@@ -1,6 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { wallClockMinutes } from "@shared/leg-reachability";
-import { tripGetsRoutedLegs, tripLegsShown } from "../services/routing/plan-routed-legs.service";
+import { tripLegsShown } from "../services/routing/plan-routed-legs.service";
 import { routedFactsOf } from "../services/routing/plan-legs";
 import { rerouteIfStayItemChanged } from "../services/stay-reroute.service";
 import { setItemLock } from '../services/item-lock.service';
@@ -189,7 +189,7 @@ import { opportunityEngineService } from "../services/opportunity-engine.service
 import { aiUsageService } from "../services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
-import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
+import { regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
 import { generateKml } from "../services/kml-generator";
 import { generateGpx } from "../services/gpx-generator";
@@ -2703,40 +2703,21 @@ router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenti
       if (!comparison || comparison.userId !== userId) {
         return res.status(403).json({ error: "Not authorized" });
       }
-      // Step 9a ruling 2 (ledger `2026-10-07-step9a-routing-engine`): routed legs are written only for a
-      // plan that passes `planGetsRoutedLegs` — never for a free plan, and never for a plan-less comparison.
-      if (!comparison.tripId || !(await tripGetsRoutedLegs(comparison.tripId))) {
-        return res.status(409).json({ error: "Travel times come with an optimized plan", code: "routed_legs_not_included" });
+      // Step 9a ruling 2 / P0-b item 7: routed legs only for a plan that passes `planGetsRoutedLegs`, and from
+      // the routing engine or not at all. The recompute is the ONE `recalculateVariantLegs` (shared with the
+      // 9b-b rebuild, §18 rule 1).
+      const { recalculateVariantLegs } = await import("../services/routing/plan-legs-engine.service");
+      const result = await recalculateVariantLegs(variantId, userPrefs || {});
+      if ("refused" in result) {
+        if (result.refused === "routed_legs_not_included") {
+          return res.status(409).json({ error: "Travel times come with an optimized plan", code: "routed_legs_not_included" });
+        }
+        if (result.refused === "routing_engine_off") {
+          return res.status(409).json({ error: "Travel times aren't being worked out right now", code: "routing_engine_off" });
+        }
+        return res.status(404).json({ error: "Variant not found" });
       }
-
-      const items = await storage.getItineraryVariantItemsByVariantId(variantId);
-
-      const activities = items
-        .filter(item => item.latitude && item.longitude)
-        .map((item, idx) => ({
-          id: item.id,
-          name: item.name,
-          lat: parseFloat(item.latitude as any),
-          lng: parseFloat(item.longitude as any),
-          scheduledTime: item.startTime || `09:${String(idx * 30 % 60).padStart(2, "0")}`,
-          dayNumber: item.dayNumber,
-          order: item.sortOrder || idx,
-        }));
-
-      // P0-b item 7 (ledger `2026-10-11-p0b-routing-follow-ups`): the version's legs come from the routing
-      // engine or not at all — no routing context (engine off) is a 409, never the retired drive fallback.
-      const { versionRoutingFor } = await import("../services/routing/plan-legs-engine.service");
-      const routing = (await versionRoutingFor(comparison.id))?.ctx ?? null;
-      if (!routing) {
-        return res.status(409).json({ error: "Travel times aren't being worked out right now", code: "routing_engine_off" });
-      }
-      const legs = await calculateTransportLegs(
-        variantId,
-        activities,
-        comparison.destination || "",
-        userPrefs || {},
-        routing,
-      );
+      const legs = result.legs;
 
       res.json({ legs, count: legs.length });
     } catch (err: any) {

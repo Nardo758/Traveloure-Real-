@@ -48,7 +48,6 @@ import { itineraryGenerationSweepScheduler } from "../services/itinerary-generat
 import { drainOutboxAndSweepPush } from "../services/email-outbox.service";
 import { scorePendingClaims } from "../services/evidence-scorer.service";
 import { z } from "zod";
-import { refreshMarketMatrix } from "../services/travel-time-matrix.service";
 import { EVIDENCE_SCORER_JOB_NAME } from "../services/evidence-scorer-scheduler.service";
 import { runModerationSchedule } from "../automations/moderation/runtime";
 import { mapsSpendToday } from "../services/maps-billing/maps-billing.service";
@@ -209,7 +208,6 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "availability-materialization", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // Track A A2 (R216) follow-up, ledger `2026-09-29-matrix-daily`: posted daily; a no-op
   // (`skipped: not_due`) while the matrix is fresh, a real refresh when due or the centroids move.
-  { job: "travel-matrix-refresh", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // TravelPulse weekly (ledger `2026-09-30-travelpulse-weekly-schedule`): posted daily; drafts once per
   // ISO week, and every other day answers `already_drafted` without a model call. Still a real pass.
   { job: "travelpulse-weekly", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
@@ -387,24 +385,12 @@ router.post("/internal/jobs/score-neighborhood-claims", requireInternalSecret, a
   res.status(status).json(body);
 });
 
-// travel-matrix-refresh — Track A step A2 (ledger `2026-09-29-a2-travel-time-matrix`). The ONLY
-// way the launch-city travel-time matrix is refreshed: the operator's signal (first run — confirmed
-// Sep 29, 2026), then the DAILY bucket of the jobs cron (ledger `2026-09-29-matrix-daily`), whose
-// empty body means kyoto, not forced — a no-op (`skipped: not_due`) until the matrix is due. Runs only where GOOGLE_MAPS_API_KEY is set; with none it answers a skip
-// and bills nothing. `{ market, force }` in a .strict() body — `market` must be an operating market
-// key (default kyoto); `force` runs even when the matrix is fresh. A run over the configured
-// ceiling is refused before any Routes call.
-const travelMatrixBody = z.object({ market: z.string().trim().min(1).max(40).optional(), force: z.boolean().optional() }).strict();
-router.post("/internal/jobs/travel-matrix-refresh", requireInternalSecret, async (req, res) => {
-  const parsed = travelMatrixBody.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ ok: false, error: "body must be { market?, force? }" });
-  const market = parsed.data.market ?? "kyoto";
-  const { status, body } = await runJob(
-    "travel-matrix-refresh",
-    () => refreshMarketMatrix({ marketSlug: market, force: parsed.data.force === true }),
-    (r) => r?.status === "failed" || !!r?.refused,
-  );
-  res.status(status).json(body);
+// travel-matrix-refresh — RETIRED (9b-b, ledger `2026-10-16-9b-b-legs-off-google`; 9b spec T1, Phase 0
+// ruling 1). The matrix held Google Route Matrix durations, which may not be stored, so nothing refreshes or reads
+// it. The route stays registered behind the same guard and answers 410 — so a stray caller is told, the guard
+// is still proven before any body, and the mutation-route graph is unchanged. The table goes in the deletion PR.
+router.post("/internal/jobs/travel-matrix-refresh", requireInternalSecret, (_req, res) => {
+  res.status(410).json({ ok: false, retired: true, error: "travel-matrix-refresh is retired (9b-b): the matrix is no longer refreshed or read" });
 });
 
 // travelpulse-weekly — TravelPulse PR 3's scheduled runner (ledger

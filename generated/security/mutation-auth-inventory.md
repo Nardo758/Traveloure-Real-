@@ -307,8 +307,8 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/expert-requests` | other | resource-owner | no | verified | `server/routes/booking-actions.ts:205` (/expert-requests) | unknown | unknown |
 | PATCH | `/api/expert-requests/:id/complete` | other | session-self | no | unknown | `server/routes/booking-actions.ts:435` (/expert-requests/:id/complete) | unknown | unknown |
 | POST | `/api/expert-requests/payment-intent` | payments | resource-owner | yes | verified | `server/routes/booking-actions.ts:117` (/expert-requests/payment-intent) | unknown | unknown |
-| PATCH | `/api/expert-review/:shareToken/acknowledge` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2965` | unknown | unknown |
-| POST | `/api/expert-review/:shareToken/submit` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2841` | unknown | unknown |
+| PATCH | `/api/expert-review/:shareToken/acknowledge` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2946` | unknown | unknown |
+| POST | `/api/expert-review/:shareToken/submit` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2822` | unknown | unknown |
 | POST | `/api/expert-workspace/build-itinerary` | other | resource-owner | no | verified | `server/routes/expert-workspace.routes.ts:584` (/build-itinerary) | unknown | unknown |
 | POST | `/api/expert-workspace/collections` | other | session-self | no | unknown | `server/routes/expert-workspace.routes.ts:541` (/collections) | unknown | unknown |
 | POST | `/api/expert-workspace/collections/:id/items` | other | public-or-system | no | unknown | `server/routes/expert-workspace.routes.ts:767` (/collections/:id/items) | unknown | unknown |
@@ -396,15 +396,15 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/invites/:token/rsvp` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:518` | unknown | unknown |
 | POST | `/api/invites/:token/travel-plans` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:616` | unknown | unknown |
 | POST | `/api/itinerary-comparisons` | other | signature | no | verified | `server/routes.ts:10272` | unknown | unknown |
-| POST | `/api/itinerary-comparisons/:id/adopt-stop` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:405` | unknown | unknown |
-| POST | `/api/itinerary-comparisons/:id/adopt-stops` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:564` | unknown | unknown |
+| POST | `/api/itinerary-comparisons/:id/adopt-stop` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:406` | unknown | unknown |
+| POST | `/api/itinerary-comparisons/:id/adopt-stops` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:565` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/apply-to-cart` | other | session-self | no | unknown | `server/routes.ts:10936`<br>`server/routes/trips.routes.ts:892` | unknown | unknown |
-| POST | `/api/itinerary-comparisons/:id/apply-to-trip` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:114` | unknown | unknown |
+| POST | `/api/itinerary-comparisons/:id/apply-to-trip` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:115` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/generate` | other | resource-owner | no | verified | `server/routes.ts:10640` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/select` | other | session-self | no | unknown | `server/routes.ts:10906`<br>`server/routes/trips.routes.ts:863` | unknown | unknown |
 | POST | `/api/itinerary-items/:id/backup` | other | session-self | no | unknown | `server/routes.ts:13552`<br>`server/routes/trips.routes.ts:1548` | unknown | unknown |
-| PATCH | `/api/itinerary-share/:token/acknowledge` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2808` | unknown | unknown |
-| POST | `/api/itinerary-share/:token/suggest` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2751` | unknown | unknown |
+| PATCH | `/api/itinerary-share/:token/acknowledge` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2789` | unknown | unknown |
+| POST | `/api/itinerary-share/:token/suggest` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2732` | unknown | unknown |
 | POST | `/api/itinerary-variants/:variantId/calculate-transport` | other | session-self | no | unknown | `server/routes/trips.routes.ts:2693` | unknown | unknown |
 | POST | `/api/itinerary-variants/:variantId/share` | other | session-self | no | unknown | `server/routes/trips.routes.ts:2007` | unknown | unknown |
 | POST | `/api/itinerary/estimate-travel` | other | session-self | no | unknown | `server/routes.ts:13654`<br>`server/routes/trips.routes.ts:1583` | unknown | unknown |
@@ -559,7 +559,7 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/transport-booking-options/seed/:variantId` | other | session-self | no | unknown | `server/routes/transport-hub.routes.ts:631` | unknown | unknown |
 | POST | `/api/transport-booking-options/seed/test-variant` | other | session-self | no | unknown | `server/routes/transport-hub.routes.ts:597` | unknown | unknown |
 | PATCH | `/api/transport-legs/:legId/mode` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2336` | unknown | unknown |
-| PATCH | `/api/transport-legs/:legId/status` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:1079` | unknown | unknown |
+| PATCH | `/api/transport-legs/:legId/status` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:1092` | unknown | unknown |
 | POST | `/api/transport-options/click` | other | session-self | no | unknown | `server/routes/transport-hub.routes.ts:544` | unknown | unknown |
 | POST | `/api/transport-packages/generate` | other | session-self | no | unknown | `server/routes/content.routes.ts:4147` | unknown | unknown |
 | POST | `/api/travelpulse/ai/refresh-all` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:5800` | unknown | unknown |
@@ -583,15 +583,15 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/trips/:tripId/advisor/narration` | user-data | session-self | yes | unknown | `server/routes/advisor.routes.ts:478` | unknown | unknown |
 | POST | `/api/trips/:tripId/advisors` | user-data | resource-owner | yes | verified | `server/routes/booking-actions.ts:800` (/trips/:tripId/advisors) | unknown | unknown |
 | POST | `/api/trips/:tripId/alerts` | user-data | session-self | yes | unknown | `server/routes.ts:13809` | unknown | unknown |
-| POST | `/api/trips/:tripId/analytics/infer` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3126` | unknown | unknown |
+| POST | `/api/trips/:tripId/analytics/infer` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3107` | unknown | unknown |
 | POST | `/api/trips/:tripId/anchor-suggestions` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1951` | unknown | unknown |
 | POST | `/api/trips/:tripId/anchor/promote` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:254` | unknown | unknown |
 | POST | `/api/trips/:tripId/anchors` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1701` | unknown | unknown |
 | POST | `/api/trips/:tripId/anchors/:anchorId/impacts` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1931` | unknown | unknown |
 | POST | `/api/trips/:tripId/budget/calculate-split` | user-data | session-self | yes | unknown | `server/routes.ts:13219` | unknown | unknown |
 | POST | `/api/trips/:tripId/calculate-energy` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:2135` (/trips/:tripId/calculate-energy) | unknown | unknown |
-| POST | `/api/trips/:tripId/changes` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1043` | unknown | unknown |
-| DELETE | `/api/trips/:tripId/changes/:changeId` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1161` | unknown | unknown |
+| POST | `/api/trips/:tripId/changes` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1056` | unknown | unknown |
+| DELETE | `/api/trips/:tripId/changes/:changeId` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1174` | unknown | unknown |
 | POST | `/api/trips/:tripId/contracts` | user-data | session-self | yes | unknown | `server/routes.ts:13011` | unknown | unknown |
 | POST | `/api/trips/:tripId/contracts/:contractId/documents` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1134` | unknown | unknown |
 | POST | `/api/trips/:tripId/day-boundaries` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1856` | unknown | unknown |
@@ -601,7 +601,7 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/trips/:tripId/emergency/initialize` | user-data | session-self | yes | unknown | `server/routes.ts:13761` | unknown | unknown |
 | PATCH | `/api/trips/:tripId/expert-notes` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:1856` (/trips/:tripId/expert-notes) | unknown | unknown |
 | POST | `/api/trips/:tripId/expert-suggestions/accept-all` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:291` | unknown | unknown |
-| PATCH | `/api/trips/:tripId/expert-traveler-note` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3571` | unknown | unknown |
+| PATCH | `/api/trips/:tripId/expert-traveler-note` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3552` | unknown | unknown |
 | POST | `/api/trips/:tripId/finalize` | user-data | resource-owner | yes | verified | `server/routes/routing.routes.ts:473` | unknown | unknown |
 | POST | `/api/trips/:tripId/flight-lookup` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1746` | unknown | unknown |
 | POST | `/api/trips/:tripId/generate-presets` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:2194` (/trips/:tripId/generate-presets) | unknown | unknown |
@@ -613,13 +613,13 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/trips/:tripId/items/:itemId/stay-booking/cancel` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:428` | unknown | unknown |
 | POST | `/api/trips/:tripId/items/:itemId/stay-booking/prebook` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:408` | unknown | unknown |
 | POST | `/api/trips/:tripId/itinerary-items` | user-data | resource-owner | yes | verified | `server/routes.ts:13316` | unknown | unknown |
-| DELETE | `/api/trips/:tripId/itinerary-items/:itemId` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3495` | unknown | unknown |
-| PATCH | `/api/trips/:tripId/itinerary-items/:itemId` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3282` | unknown | unknown |
+| DELETE | `/api/trips/:tripId/itinerary-items/:itemId` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3476` | unknown | unknown |
+| PATCH | `/api/trips/:tripId/itinerary-items/:itemId` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3263` | unknown | unknown |
 | POST | `/api/trips/:tripId/itinerary-items/:itemId/fresh-facts` | user-data | session-self | yes | unknown | `server/routes/content-facts.routes.ts:27` | unknown | unknown |
-| PUT | `/api/trips/:tripId/itinerary-items/:itemId/lock` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3154` | unknown | unknown |
+| PUT | `/api/trips/:tripId/itinerary-items/:itemId/lock` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3135` | unknown | unknown |
 | POST | `/api/trips/:tripId/itinerary/optimize-order` | user-data | resource-owner | yes | verified | `server/routes.ts:13616` | unknown | unknown |
 | POST | `/api/trips/:tripId/itinerary/reorder` | user-data | resource-owner | yes | verified | `server/routes.ts:13570` | unknown | unknown |
-| PATCH | `/api/trips/:tripId/occasion` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3692` | unknown | unknown |
+| PATCH | `/api/trips/:tripId/occasion` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3673` | unknown | unknown |
 | POST | `/api/trips/:tripId/option-sets` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:173` | unknown | unknown |
 | POST | `/api/trips/:tripId/option-sets/:setId/choose` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:210` | unknown | unknown |
 | POST | `/api/trips/:tripId/option-sets/:setId/close` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:224` | unknown | unknown |
@@ -633,14 +633,14 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/trips/:tripId/phone-delivery/calendar` | user-data | session-self | yes | unknown | `server/routes/phone-delivery.routes.ts:49` | unknown | unknown |
 | POST | `/api/trips/:tripId/phone-delivery/home-screen` | user-data | session-self | yes | unknown | `server/routes/phone-delivery.routes.ts:68` | unknown | unknown |
 | POST | `/api/trips/:tripId/place-facts/:factId/confirm` | user-data | session-self | yes | unknown | `server/routes/content-facts.routes.ts:61` | unknown | unknown |
-| PUT | `/api/trips/:tripId/profile-overlay` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3265` | unknown | unknown |
-| POST | `/api/trips/:tripId/proposals` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3922` | unknown | unknown |
-| POST | `/api/trips/:tripId/proposals/:id/apply` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:4230` | unknown | unknown |
-| POST | `/api/trips/:tripId/proposals/:id/discard` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:4031` | unknown | unknown |
-| POST | `/api/trips/:tripId/proposals/:id/pay` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:4082` | unknown | unknown |
+| PUT | `/api/trips/:tripId/profile-overlay` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3246` | unknown | unknown |
+| POST | `/api/trips/:tripId/proposals` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3903` | unknown | unknown |
+| POST | `/api/trips/:tripId/proposals/:id/apply` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:4211` | unknown | unknown |
+| POST | `/api/trips/:tripId/proposals/:id/discard` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:4012` | unknown | unknown |
+| POST | `/api/trips/:tripId/proposals/:id/pay` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:4063` | unknown | unknown |
 | POST | `/api/trips/:tripId/reopen` | user-data | resource-owner | yes | verified | `server/routes/routing.routes.ts:600` | unknown | unknown |
-| POST | `/api/trips/:tripId/ride-suggestions/dismiss` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3229` | unknown | unknown |
-| POST | `/api/trips/:tripId/rides` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3185` | unknown | unknown |
+| POST | `/api/trips/:tripId/ride-suggestions/dismiss` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3210` | unknown | unknown |
+| POST | `/api/trips/:tripId/rides` | user-data | resource-owner | yes | verified | `server/routes/trips.routes.ts:3166` | unknown | unknown |
 | POST | `/api/trips/:tripId/slip-events` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:265` | unknown | unknown |
 | POST | `/api/trips/:tripId/stay-pick/seen` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:442` | unknown | unknown |
 | POST | `/api/trips/:tripId/transactions` | user-data | session-self | yes | unknown | `server/routes.ts:13176` | unknown | unknown |
@@ -685,25 +685,25 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/webhooks/stripe-identity` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:38` (/stripe-identity) | unknown | unknown |
 | POST | `/email-preferences` | other | session-self | no | unknown | `server/routes/itinerary-email-preferences.routes.ts:78` | unknown | unknown |
 | POST | `/email-preferences/unsubscribe/:token` | other | resource-owner | no | verified | `server/routes/itinerary-email-preferences.routes.ts:110` | unknown | unknown |
-| POST | `/internal/jobs/availability-materialization` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:312` | unknown | unknown |
-| POST | `/internal/jobs/booking-auto-completion` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:269` | unknown | unknown |
-| POST | `/internal/jobs/booking-expiry` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:325` | unknown | unknown |
-| POST | `/internal/jobs/checkout-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:298` | unknown | unknown |
-| POST | `/internal/jobs/content-expiry-census` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:443` | unknown | unknown |
-| POST | `/internal/jobs/earnings-release` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:255` | unknown | unknown |
-| POST | `/internal/jobs/email-outbox` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:360` | unknown | unknown |
-| POST | `/internal/jobs/facts-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:436` | unknown | unknown |
-| POST | `/internal/jobs/handoff-timers` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:421` | unknown | unknown |
-| POST | `/internal/jobs/itinerary-generation-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:351` | unknown | unknown |
-| POST | `/internal/jobs/leg-google-coords` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:486` | unknown | unknown |
-| POST | `/internal/jobs/legs-dayof-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:478` | unknown | unknown |
-| POST | `/internal/jobs/liteapi-booking-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:470` | unknown | unknown |
-| POST | `/internal/jobs/liteapi-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:456` | unknown | unknown |
-| POST | `/internal/jobs/official-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:463` | unknown | unknown |
-| POST | `/internal/jobs/score-neighborhood-claims` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:378` | unknown | unknown |
-| POST | `/internal/jobs/stripe-reconciliation` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:280` | unknown | unknown |
-| POST | `/internal/jobs/travel-matrix-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:398` | unknown | unknown |
-| POST | `/internal/jobs/travelpayouts-report-poll` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:333` | unknown | unknown |
-| POST | `/internal/jobs/travelpulse-weekly` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:413` | unknown | unknown |
-| POST | `/internal/jobs/waitlist-retention` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:450` | unknown | unknown |
-| POST | `/internal/run-occasion-drafts` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:237` | unknown | unknown |
+| POST | `/internal/jobs/availability-materialization` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:310` | unknown | unknown |
+| POST | `/internal/jobs/booking-auto-completion` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:267` | unknown | unknown |
+| POST | `/internal/jobs/booking-expiry` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:323` | unknown | unknown |
+| POST | `/internal/jobs/checkout-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:296` | unknown | unknown |
+| POST | `/internal/jobs/content-expiry-census` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:429` | unknown | unknown |
+| POST | `/internal/jobs/earnings-release` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:253` | unknown | unknown |
+| POST | `/internal/jobs/email-outbox` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:358` | unknown | unknown |
+| POST | `/internal/jobs/facts-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:422` | unknown | unknown |
+| POST | `/internal/jobs/handoff-timers` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:407` | unknown | unknown |
+| POST | `/internal/jobs/itinerary-generation-sweep` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:349` | unknown | unknown |
+| POST | `/internal/jobs/leg-google-coords` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:472` | unknown | unknown |
+| POST | `/internal/jobs/legs-dayof-recheck` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:464` | unknown | unknown |
+| POST | `/internal/jobs/liteapi-booking-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:456` | unknown | unknown |
+| POST | `/internal/jobs/liteapi-sync` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:442` | unknown | unknown |
+| POST | `/internal/jobs/official-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:449` | unknown | unknown |
+| POST | `/internal/jobs/score-neighborhood-claims` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:376` | unknown | unknown |
+| POST | `/internal/jobs/stripe-reconciliation` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:278` | unknown | unknown |
+| POST | `/internal/jobs/travel-matrix-refresh` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:392` | unknown | unknown |
+| POST | `/internal/jobs/travelpayouts-report-poll` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:331` | unknown | unknown |
+| POST | `/internal/jobs/travelpulse-weekly` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:399` | unknown | unknown |
+| POST | `/internal/jobs/waitlist-retention` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:436` | unknown | unknown |
+| POST | `/internal/run-occasion-drafts` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:235` | unknown | unknown |

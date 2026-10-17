@@ -55,11 +55,9 @@ import {
  *     assumed — ledger `2026-09-29-matrix-daily`.
  *   · §3 A4 (ledger `2026-09-29-a4-plan-fit-compare`): the compare view is proven on the same
  *     fixture-free places, so every price cell reads "price from the hotel"; the dated-offer price is
- *     proven by the DB suite (O14). "No est. on a located pair" runs LIVE wherever a Kyoto matrix
- *     refresh has completed on the database under test (a fixme reading "matrix not refreshed"
- *     elsewhere). The kyoto-slice job completes one through the real writer with the ONE Routes
- *     stand-in (`scripts/ci/seed-kyoto-matrix-standin.ts`, ledger `2026-09-29-matrix-daily`), so in
- *     CI it proves the view READS the matrix — never what Google's minutes for Kyoto are.
+ *     proven by the DB suite (O14). The "no est. on a located pair once the Kyoto matrix is refreshed"
+ *     case is DELETED (9b-b, Leon's ruling Oct 17, 2026): the matrix is retired as a source, so every
+ *     plan-fit figure is a straight-line "est." until an OSRM-backed cost is ruled.
  *
  * Run solo: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium
  * Needs: DATABASE_URL (read-only asserts), the app on BASE_URL (default http://127.0.0.1:5000).
@@ -804,61 +802,6 @@ test.describe("3 · the compare view (A4)", () => {
       await expect(testid(page, `compare-saves-${o.id}`)).toHaveText(`${o.easierByMinutes} min less travel per day than your choice${estOn(o.fit) ? " · est." : ""}`);
     }
     await expect(testid(page, "compare-foot")).toHaveText(`You chose ${worst.title}. You can change your mind until you book.`);
-  });
-
-  test("§3 A4 — no 'est.' on a located pair once the Kyoto matrix is refreshed", async ({ page }) => {
-    const [refresh] = await rows<{ n: number }>(
-      `SELECT count(*)::int AS n FROM travel_time_matrix_refreshes WHERE market_slug = 'kyoto' AND status = 'complete'`,
-    );
-    test.fixme(!refresh || refresh.n === 0, "matrix not refreshed");
-    // Stops on three neighbourhood centroids and places on three OTHER centroids, so every pair is a
-    // matrix pair. (A place in its stop's own neighbourhood is ruled `est` — R216's same-neighbourhood
-    // case — which is proven below instead of being mistaken for a matrix miss.)
-    const hoods = await rows<{ lat: string; lng: string }>(
-      `SELECT centroid_lat AS lat, centroid_lng AS lng FROM city_neighborhoods WHERE lower(city) = 'kyoto' ORDER BY slug LIMIT 6`,
-    );
-    expect(hoods.length, "six Kyoto neighbourhoods to place stops and places apart").toBe(6);
-    const openSet = async (tripId: string) =>
-      ((await (await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
-        data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true },
-      })).json()).set.id as string);
-    const addPlace = async (tripId: string, setId: string, title: string, h: { lat: string; lng: string }) => {
-      const r = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets/${setId}/options`, {
-        data: { source: { kind: "custom", title, lat: Number(h.lat), lng: Number(h.lng) } },
-      });
-      expect(r.status()).toBe(201);
-    };
-
-    const tripId = await planWithOccasion(page, "a4-matrix", "travel");
-    const setId = await openSet(tripId);
-    for (const [i, h] of hoods.slice(0, 3).entries()) {
-      await createItem(page.request, tripId, `Stop ${i + 1}`, 1 + (i % 2), { latitude: h.lat, longitude: h.lng });
-    }
-    for (const [i, h] of hoods.slice(3).entries()) await addPlace(tripId, setId, `Place ${i + 1}`, h);
-    await openCompareView(page, tripId, setId);
-    const set = await serverSet(page, tripId, setId);
-    for (const o of set.options) {
-      expect(o.fit.basis, `${o.title}: every located pair is a matrix pair`).toBe("matrix");
-      await expect(testid(page, `compare-travel-${o.id}-note`)).toHaveText("per day");
-      await expect(testid(page, `compare-fit-${o.id}`)).not.toContainText("est.");
-    }
-
-    // The same-neighbourhood pair stays a straight-line estimate WITH a matrix present, and says so.
-    const sameId = await planWithOccasion(page, "a4-matrix-same", "travel");
-    const sameSet = await openSet(sameId);
-    // Plan-fit scores from three located stops (PLAN_FIT_MIN_LOCATED); all three sit tens of metres
-    // from the place's own centroid, inside its neighbourhood.
-    for (const [i, d] of [0, 0.0003, -0.0003].entries()) {
-      await createItem(page.request, sameId, `Stop ${i + 1} in the same area`, 1, {
-        latitude: (Number(hoods[0].lat) + d).toFixed(6),
-        longitude: (Number(hoods[0].lng) - d).toFixed(6),
-      });
-    }
-    await addPlace(sameId, sameSet, "Place in the same area", hoods[0]);
-    await openCompareView(page, sameId, sameSet);
-    const [same] = (await serverSet(page, sameId, sameSet)).options;
-    expect(same.fit.basis, "a same-neighbourhood pair is ruled est (R216)").toBe("est");
-    await expect(testid(page, `compare-travel-${same.id}-note`)).toHaveText("est.");
   });
 });
 
