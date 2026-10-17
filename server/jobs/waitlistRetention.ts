@@ -4,10 +4,12 @@
  *
  *   - No `traveler_signup_opened_at` row ⇒ sign-up has never opened ⇒ `not_open`, nothing deleted.
  *   - An unreadable value ⇒ an error (the run is marked failed on /internal/jobs/health), nothing deleted.
- *   - Before the opening instant + WAITLIST_RETENTION_MONTHS ⇒ `not_due`, nothing deleted.
- *   - From then on, every launch_waitlist row that NEVER CONVERTED is hard-deleted. A row has converted when an
- *     account exists with the same address (users.email, trimmed and lower-cased on both sides). A row with no
- *     address never converted.
+ *   - Until the opening instant + WAITLIST_RETENTION_MONTHS has passed ⇒ `not_due`, nothing deleted.
+ *   - From then on, a launch_waitlist row is deleted only when it NEVER CONVERTED and its OWN 12 months have passed
+ *     too (LW-1f-b per-row floor, issue #1486, architect's follow-up to reading 2): now > max(opening, created_at) +
+ *     12 months. A row has converted when an account exists with the same address (users.email, trimmed and
+ *     lower-cased on both sides); a row with no address never converted; a row with no created_at is never deleted
+ *     (its age is unknown, §13).
  *
  * Each deletion is one transaction with its audit row (`waitlist_row_retention_delete`): the row id and the sha256
  * of the email, never the address (the LW-1e shape). The audit actor is the admin whose flip started the clock (the
@@ -50,7 +52,7 @@ export async function runWaitlistRetention(now: Date = new Date()): Promise<Wait
     return { status: "error", error: `${TRAVELER_SIGNUP_OPENED_AT_SETTING} is not an ISO-8601 instant`, deleted: 0 };
   }
   const dueAt = waitlistRetentionDueAt(openedAt);
-  if (now.getTime() < dueAt.getTime()) {
+  if (now.getTime() <= dueAt.getTime()) {
     return { status: "not_due", openedAt: openedAt.toISOString(), dueAt: dueAt.toISOString(), deleted: 0 };
   }
   if (!setting.updated_by || !setting.actor_exists) {
@@ -69,6 +71,10 @@ export async function runWaitlistRetention(now: Date = new Date()): Promise<Wait
             SELECT 1 FROM users u
             WHERE w.email IS NOT NULL AND lower(btrim(u.email)) = lower(btrim(w.email))
           )
+          -- the per-row floor: this row's own 12 months have passed too (created_at is a zone-less timestamp written
+          -- by NOW() in the connection's zone, so it is read in that zone before the comparison).
+          AND w.created_at IS NOT NULL
+          AND (w.created_at AT TIME ZONE current_setting('TimeZone')) + make_interval(months => ${WAITLIST_RETENTION_MONTHS}) < ${now.toISOString()}::timestamptz
           ORDER BY w.id
           LIMIT ${WAITLIST_RETENTION_BATCH}
           FOR UPDATE SKIP LOCKED

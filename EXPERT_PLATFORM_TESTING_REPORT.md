@@ -902,7 +902,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 XAI_API_KEY=xai-...
 
 # Google Maps
-VITE_GOOGLE_MAPS_API_KEY=AIza... (already present)
+VITE_GOOGLE_MAPS_API_KEY=<redacted> (already present)
 
 # Session
 SESSION_SECRET=random_string

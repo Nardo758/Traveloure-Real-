@@ -26,7 +26,18 @@ name: Slip Rail Actions Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/slip-rail-actions-gate.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -45,6 +56,7 @@ concurrency:
 
 jobs:
   e2e-slip-rail-actions:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: e2e-slip-rail-actions (DOM gate)
     runs-on: ubuntu-latest
     timeout-minutes: 25
