@@ -2392,6 +2392,11 @@ This document captures architectural decisions to maintain consistency across co
     link, no "Ask the local"), created by an admin from Marketing's files (drafts never enter the repo), and published only by
     an admin: Publish is the approval of that one draft and writes an audit row in the same transaction. Every source carries
     its checked date or is refused; an edit after publish returns the post to draft. The blog index ordering is unchanged.
+    **AMENDED — THE FOOTER BLOG LINK IS BUILT (decision-maker, Oct 16, 2026 — ED-1 footer addendum; ledger
+    `2026-10-16-blog-footer-count`).** The footer shows Blog only when the count of `published` posts in the post store
+    meets `platform_settings.blog_footer_min_published` (admin-editable, default 5). `GET /api/blog/footer-visible`
+    answers a bare boolean; a failed or absent read is hidden, never shown. The `/blog` route and its `noindex` empty
+    state are unchanged.
 
 57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
     WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;

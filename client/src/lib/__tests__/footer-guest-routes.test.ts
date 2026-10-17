@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { footerSectionsConfig, getAllFooterHrefs } from "../nav-config.js";
+import { footerGatedLinks, footerSectionsConfig, getAllFooterHrefs, visibleFooterSections } from "../nav-config.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -107,8 +107,22 @@ describe("Footer hrefs are open to a guest", () => {
     }
   });
 
-  it("the Blog link stays hidden (no post store exists to count five published posts)", () => {
-    assert.ok(!getAllFooterHrefs().includes("/blog"), "/blog is hidden from the footer until 5 posts are published");
+  it("the Blog link is shown only behind the published-count gate, and never to a protected route", () => {
+    const blogHrefs = (gates: Parameters<typeof visibleFooterSections>[0]) =>
+      visibleFooterSections(gates).flatMap((s) => s.links).filter((l) => l.href === "/blog");
+    assert.ok(!getAllFooterHrefs().includes("/blog"), "/blog is not a static footer link; it is gated");
+    assert.equal(blogHrefs({ blogFooter: true }).length, 1, "the gate open shows exactly one Blog link");
+    assert.equal(blogHrefs({ blogFooter: false }).length, 0, "the gate closed hides it");
+    // F5: a failed or absent count read is hidden (fail-closed, no flash while the answer is pending).
+    assert.equal(blogHrefs({}).length, 0, "no answer yet: hidden");
+    assert.equal(blogHrefs({ blogFooter: undefined }).length, 0, "failed read: hidden");
+    assert.equal(blogHrefs({ blogFooter: "true" as unknown }).length, 0, "anything but true: hidden");
+    // The gated link is still a footer link a guest must be able to open.
+    for (const g of footerGatedLinks) {
+      const block = Array.from(blocks.values()).find((b) => matches(b.path, g.link.href.split("?")[0]));
+      assert.ok(block, `${g.link.href}: a <Route> exists`);
+      assert.ok(!GATE_MARKERS.some((re) => re.test(block!.body)), `${g.link.href} must not be a ProtectedRoute/requiredRole route`);
+    }
   });
 
   it("'Start a plan' is the planning-modal action, not a URL", () => {
