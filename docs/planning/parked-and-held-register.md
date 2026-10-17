@@ -50,6 +50,7 @@ Maintained by the architect session. One line per item: what, why, and the condi
 | /privacy §14.5 transfer-mechanism sentence (Standard Contractual Clauses for EU/UK sign-ups) (added Oct 16; LW-1f-b) | Launch session | Leon confirms Replit's, Google Cloud's and Neon's data processing terms are accepted for our account (Google needs the IAM opt-in). |
 | AUTH-1 A06 — tell the existing account's owner when someone signs up with their address (added Oct 16; AUTH-1 fix 3b answers a duplicate sign-up neutrally and sends nothing) | Launch session | After the mailbox: the outbound email path is live and its consent model is written. |
 | Leaflet layering (FU-8D-4) and slip-map version redraw (golden-path §6.5) re-proofs return with 9b-e non-Google coordinates (added Oct 17; GC-1) | 9b-e lane | 9b-e writes a non-Google item coordinate source; then `playwright/tests/journeys/j-map-dialog-click.spec.ts` waits on the Leaflet map again and its dialog sweep re-proves the stacking context, and `j-kyoto-trips-golden-path.spec.ts` §6 step 5 re-proves the version redraw (moved pin, ghost) on the Leaflet path. |
+| The Replit Scheduled Deployment's cadence runner pulls `origin/main` at run time, not the deployed build, so after a merge it posts routes production does not serve yet (seen Oct 17: `routing-recheck` 404 after #1501 merged, before deploy) (added Oct 17) | Ops | Fix later: pin the runner's checkout to `/api/health` `build.commit`. |
 
 ## Closed (moved here when done)
 
