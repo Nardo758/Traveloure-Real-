@@ -11,7 +11,7 @@
  *     POST /api/admin/blog/race-weekends            { eventId, fromMarket? } — a race reached from a launch market (type 3)
  *     PATCH /api/admin/blog/posts/:id               edit — clears any signature (ruling 3)
  *     POST /api/admin/blog/posts/:id/submit         draft → in_review (byline gate)
- *     POST /api/admin/blog/posts/:id/publish        only when signed for THIS content
+ *     POST /api/admin/blog/posts/:id/publish        only when signed for THIS content; platform and editorial drafts publish directly (editorial: audited approval, ED-1)
  *     POST /api/admin/blog/posts/:id/withdraw       published → withdrawn (never deleted)
  *   Expert (the byline expert, from the SESSION — §14):
  *     GET  /api/expert/blog/review                  my posts awaiting my signature
@@ -60,6 +60,12 @@ const sourceBody = z.object({
   title: z.string().max(300).nullable().optional(),
   publisher: z.string().max(200).nullable().optional(),
   quote: z.string().nullable().optional(),
+  // ED-1: the date the source was checked ("YYYY-MM-DD" or an ISO timestamp). Required on an
+  // editorial post (the service refuses a source without one); optional on every other type.
+  retrievedAt: z.string().max(40)
+    .refine((v) => /^\d{4}-\d{2}-\d{2}(T.*)?$/.test(v) && !Number.isNaN(new Date(v).getTime()), "invalid_date")
+    .transform((v) => new Date(v))
+    .nullable().optional(),
 }).strict();
 
 const createBody = z.object({
@@ -171,7 +177,11 @@ router.post("/api/admin/blog/posts/:id/submit", async (req, res) => {
 });
 
 router.post("/api/admin/blog/posts/:id/publish", async (req, res) => {
-  try { res.json({ post: await publishPost(req.params.id, getUserId(req)!) }); } catch (e) { fail(res, e); }
+  try {
+    res.json({ post: await publishPost(req.params.id, getUserId(req)!, {}, {
+      actorRole: "admin", ipAddress: req.ip ?? null, userAgent: req.get("user-agent") ?? null,
+    }) });
+  } catch (e) { fail(res, e); }
 });
 
 router.post("/api/admin/blog/posts/:id/withdraw", async (req, res) => {

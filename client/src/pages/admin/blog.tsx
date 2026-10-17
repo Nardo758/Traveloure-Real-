@@ -100,7 +100,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const emptySource = (): BlogSourceForm => ({ url: "", title: "", publisher: "", quote: "" });
+const emptySource = (): BlogSourceForm => ({ url: "", title: "", publisher: "", quote: "", checkedAt: "" });
 
 function CreatePostForm({ onDone }: { onDone: () => void }) {
   const { toast } = useToast();
@@ -137,6 +137,7 @@ function CreatePostForm({ onDone }: { onDone: () => void }) {
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
             Sources. Quotes over the configured limit and partner domains are refused by the server, never trimmed.
+            An editorial guide shows each source as its link and the date it was checked; a source without a date is refused.
           </p>
           {form.sources.map((s, i) => (
             <div key={i} className="flex flex-wrap gap-2 items-end" data-testid={`row-create-source-${i}`}>
@@ -144,6 +145,7 @@ function CreatePostForm({ onDone }: { onDone: () => void }) {
               <Input className="h-8 w-48" placeholder="Title" value={s.title} onChange={(e) => setSource(i, { title: e.target.value })} />
               <Input className="h-8 w-40" placeholder="Publisher" value={s.publisher} onChange={(e) => setSource(i, { publisher: e.target.value })} />
               <Input className="h-8 w-72" placeholder="Short quote" value={s.quote} onChange={(e) => setSource(i, { quote: e.target.value })} />
+              <Input type="date" className="h-8 w-40" aria-label="Checked on" title="Checked on (required for an editorial guide)" value={s.checkedAt ?? ""} onChange={(e) => setSource(i, { checkedAt: e.target.value })} data-testid={`input-create-source-checked-${i}`} />
               <Button size="sm" variant="ghost" className="h-8" onClick={() => set({ sources: form.sources.filter((_, j) => j !== i) })} aria-label="Remove source">
                 <Trash2 className="w-4 h-4" />
               </Button>
@@ -321,7 +323,8 @@ export default function AdminBlog() {
           <p className="text-sm text-muted-foreground mt-1">
             Expert posts go draft → review → signed by the expert → published. A post is published only when the
             expert's signature covers its current content, and any edit after signing clears that signature.
-            Published posts are withdrawn, never deleted.
+            Published posts are withdrawn, never deleted. An editorial guide (byline "Traveloure Editorial") is
+            published from draft by an admin: pressing Publish approves that one draft and is recorded in the audit log.
           </p>
         </div>
 
