@@ -71,7 +71,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
-import { navGroupsConfig, authNavConfig, footerSectionsConfig, activeNavGroupName } from "@/lib/nav-config";
+import { navGroupsConfig, authNavConfig, visibleFooterSections, activeNavGroupName } from "@/lib/nav-config";
 import { TripStrip } from "@/components/trip/trip-strip";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { showsTicker } from "@/lib/ticker-mount";
@@ -586,6 +586,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { openSignInModal } = useSignInModal();
   // The nav's, the phone menu's and the footer's "Start a plan" all start a NEW plan in PlanEntry (E2).
   const { open: openPlanning } = usePlanning();
+  // ED-1 footer count: the server answers a bare boolean; until it answers `true` the Blog link stays hidden.
+  const { data: blogFooter } = useQuery<boolean>({
+    queryKey: ["/api/blog/footer-visible"],
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
   const [location] = useLocation();
   const search = useSearch();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1123,7 +1129,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             {/* Footer columns */}
-            {footerSectionsConfig.map((section) => (
+            {visibleFooterSections({ blogFooter }).map((section) => (
               <div key={section.title}>
                 <h3
                   className="mb-4 text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-muted)]"
