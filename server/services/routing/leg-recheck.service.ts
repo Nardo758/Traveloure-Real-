@@ -23,7 +23,7 @@ import { db } from "../../db";
 import { transportLegs } from "@shared/schema";
 import { normalizeLegMode } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
-import type { RoutingAdapter, RoutingMode } from "@shared/routing-engine";
+import { STRAIGHT_LINE_EST_SOURCE, type RoutingAdapter, type RoutingMode } from "@shared/routing-engine";
 import { FACTS_RECHECK_NOTICE_TYPE } from "@shared/facts-recheck";
 import { classifyLegRecheck, legRecheckDedupeKey, legRecheckNoticeLine, LEG_RECHECK_KIND, type LegCheckStatus } from "@shared/leg-recheck";
 import { storage } from "../../storage";
@@ -170,6 +170,9 @@ async function shownRecheckLegs(tripId: string): Promise<RecheckLeg[]> {
     const wasMin = Number(l.estimatedDurationMinutes);
     const pts = [l.fromLat, l.fromLng, l.toLat, l.toLng].map(Number);
     if (!mode || !Number.isFinite(wasMin) || wasMin <= 0 || pts.some((n) => !Number.isFinite(n))) continue;
+    // 9b-d: a straight-line estimate is not a routed leg, so there is nothing to re-check against it; the
+    // engine re-asks that pair on its own next run.
+    if (l.source === STRAIGHT_LINE_EST_SOURCE) continue;
     const from = l.fromActivityId ? byId.get(l.fromActivityId) : undefined;
     const to = l.toActivityId ? byId.get(l.toActivityId) : undefined;
     const wallClock = from

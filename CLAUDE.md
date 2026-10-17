@@ -2695,6 +2695,8 @@ This document captures architectural decisions to maintain consistency across co
     zone, and the Trip Card's first open on a trip day after 06:00 — under ONE guard, `routing_recheck_max_per_plan_day`
     (config, default 1; each leg is claimed against the current window's start). A failed or unsupported-mode call
     (`no_route` with `unanswered`) records nothing and keeps the leg's label; only the source's own "no route" is broken.
+    The engine likewise keeps the last good leg on an unanswered call, and replaces it only on the router's own
+    "no route" — with a labelled straight-line estimate (`source = 'straight_line_est'`, not routed, re-asked every run).
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**

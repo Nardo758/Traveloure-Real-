@@ -3,7 +3,9 @@
  *
  *   L1 an unlocated stop is reported AND bridged: A→C is routed, the B pairs are skipped (ruling 1)
  *   L2 a default-transit leg with no transit route is asked once as a drive and flagged (ruling 2)
- *   L3 transit and drive both without a route ⇒ the pair gets no leg, the prior leg is gone (E8 kept)
+ *   L3 transit and drive both without a route ⇒ a labelled straight-line estimate replaces the prior leg
+ *      (9b-d, Leon's ruling Oct 17, 2026 — was "no leg")
+ *   L3b a call that went unanswered (failed, or a mode the router does not serve) keeps the pair's last leg
  *   L4 a leg with no time of day departs at 10:00 local on its trip day, never server-now (ruling 3)
  *   L5 a day already over is frozen: no call, nothing recomputed, nothing deleted (ruling 3)
  *   L6 the gap count ("no route found") reads the same desired pairs; the re-check reports it, writes nothing (rulings 2, 6)
@@ -165,11 +167,35 @@ test("L2: transit with no route ⇒ ONE drive ask, stored as a drive and flagged
   assert.equal(again.calls.length, 0, "an unchanged pair keeps its fallback drive — not re-asked every run");
 });
 
-test("L3: transit and drive both without a route ⇒ the pair has no leg (E8 as amended)", async () => {
+// AMENDED by 9b-d (Leon's ruling, Oct 17, 2026): the router's own "no route" shows a straight-line estimate.
+test("L3: transit and drive both without a route ⇒ a straight-line estimate replaces the prior leg", async () => {
   await db.execute(sql`UPDATE itinerary_items SET longitude = ${String(P(0.23, 0.025).lng)} WHERE id = ${`${NOTRANSIT}-b`}`);
   const r: any = await computePlanLegs(NOTRANSIT, { adapter: new FakeAdapter(new Set<RoutingMode>(["transit", "drive"])) });
   assert.equal(r.noRoute, 1);
-  assert.deepEqual(await legs(NOTRANSIT), [], "the prior leg is gone, never shown stale");
+  const rows = await legs(NOTRANSIT);
+  assert.equal(rows.length, 1, "one leg for the pair — the prior routed leg is gone, never shown stale");
+  assert.equal(rows[0].source, "straight_line_est");
+  assert.equal(rows[0].recommended_mode, "driving");
+  assert.ok(Number(rows[0].estimated_duration_minutes) > 0);
+});
+
+test("L3b: an unanswered call keeps the pair's last leg; nothing is written for it", async () => {
+  // A routed leg first, then the pair moves and every call fails (the router is down).
+  await db.execute(sql`DELETE FROM transport_legs WHERE trip_id = ${NOTRANSIT}`);
+  await computePlanLegs(NOTRANSIT, { adapter: new FakeAdapter() });
+  const before = await legs(NOTRANSIT);
+  assert.equal(before.length, 1);
+  await db.execute(sql`UPDATE itinerary_items SET longitude = ${String(P(0.23, 0.04).lng)} WHERE id = ${`${NOTRANSIT}-b`}`);
+  const down: RoutingAdapter = {
+    source: "stub",
+    async route(_o, _d, mode) {
+      return { kind: "no_route", unanswered: mode === "transit" ? "unsupported_mode" : "failed" };
+    },
+  };
+  const r: any = await computePlanLegs(NOTRANSIT, { adapter: down });
+  assert.equal(r.unanswered, 1);
+  assert.equal(r.written, 0);
+  assert.deepEqual((await legs(NOTRANSIT)).map((l) => [l.id, l.source, Number(l.estimated_duration_minutes)]), before.map((l) => [l.id, l.source, Number(l.estimated_duration_minutes)]), "the last good leg stands");
 });
 
 test("L4: no time of day ⇒ departs 10:00 local on the trip day (01:00 UTC in Kyoto)", async () => {

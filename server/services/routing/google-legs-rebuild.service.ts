@@ -24,7 +24,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
-import { CACHEABLE_ROUTE_SOURCES, OSRM_ROUTES_SOURCE } from "@shared/routing-engine";
+import { CACHEABLE_ROUTE_SOURCES, OSRM_ROUTES_SOURCE, STRAIGHT_LINE_EST_SOURCE } from "@shared/routing-engine";
 import { routingAdapter } from "./index";
 import { computePlanLegs, recalculateVariantLegs } from "./plan-legs-engine.service";
 import { tripGetsRoutedLegs } from "./plan-routed-legs.service";
@@ -44,7 +44,9 @@ export interface GoogleRouteDataCounts {
   itemsWithGoogleTravelFromPrevious: number;
 }
 
-const cacheable = () => sql.join(Array.from(CACHEABLE_ROUTE_SOURCES).map((s) => sql`${s}`), sql`, `);
+// Sources that are NOT a stored Google answer: the cacheable routers, and 9b-d's straight-line estimate (an
+// engine "no route" stand-in — re-asked by the engine every run, never a rebuild target).
+const cacheable = () => sql.join([...Array.from(CACHEABLE_ROUTE_SOURCES), STRAIGHT_LINE_EST_SOURCE].map((s) => sql`${s}`), sql`, `);
 const n = (rows: any): number => Number(((rows as any).rows ?? rows)[0]?.n ?? 0);
 
 /** Read only. The same five numbers Replit reads against production (Oct 16: 1 · 0 · 24 · 192 · 9). */

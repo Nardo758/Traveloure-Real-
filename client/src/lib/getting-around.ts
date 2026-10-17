@@ -61,7 +61,7 @@ export function gettingAroundDays(days: readonly any[] | null | undefined, timeZ
       const title = leg?.bridge ? bridgeLabelFor(stops, leg.bridge, String(to.id)) : `${stopName(from)} → ${stopName(to)}`;
       const key = `${from.id}>${to.id}`;
       if (leg?.kind === "routed") gaps.push({ key, title, kind: "routed", line: routedLegLine({ mode: leg.mode, route: leg.route }, timeZone) });
-      else if (leg?.kind === "unrouted") gaps.push({ key, title, kind: "unrouted", line: unroutedLegLine(leg.mode, leg.minutes) });
+      else if (leg?.kind === "unrouted") gaps.push({ key, title, kind: "unrouted", line: unroutedLegLine(leg.mode, leg.minutes, leg.estimate === true) });
       else {
         const unlocated = [from, to].find((a) => !hasPoint(a));
         gaps.push({ key, title, kind: "pending", line: unlocated ? gettingAroundUnlocatedLine(stopName(unlocated)) : GETTING_AROUND_PENDING });

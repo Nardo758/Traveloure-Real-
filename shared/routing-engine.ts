@@ -66,6 +66,14 @@ export interface RouteAnswer {
  * `no_route` as "learned nothing" and keeps the leg's last label (§13); every other caller is unchanged.
  */
 export type RouteUnanswered = "unsupported_mode" | "failed";
+
+/**
+ * 9b-d (Leon's ruling, Oct 17, 2026): the `source` an ENGINE row carries when the router's own answer was
+ * "no route" — the pair shows a labelled straight-line estimate instead of nothing. It is NOT a routed leg:
+ * `routedFactsOf` and `legIsRouted` both answer no for it, so every surface reads it as "est.". It is outside
+ * `CACHEABLE_ROUTE_SOURCES`, so the next engine run asks the pair again (a route found later replaces it).
+ */
+export const STRAIGHT_LINE_EST_SOURCE = "straight_line_est";
 export type RouteOutcome = { kind: "ok"; route: RouteAnswer } | { kind: "no_route"; unanswered?: RouteUnanswered } | { kind: "paused" };
 
 export interface RoutingAdapter {
