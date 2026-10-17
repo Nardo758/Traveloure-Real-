@@ -30,7 +30,18 @@ name: E2E Staging Auth Smoke
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/e2e-staging-auth-smoke.yml'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +61,7 @@ jobs:
   # secrets.* are unavailable in `if:` conditions, so map to job env and publish
   # the answer as an output the smoke job gates on.
   config:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: staging config probe
     runs-on: ubuntu-latest
     outputs:
@@ -85,7 +97,7 @@ jobs:
   auth-smoke:
     name: auth smoke (staging; non-blocking)
     needs: config
-    if: needs.config.outputs.configured == 'true'
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (needs.config.outputs.configured == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -176,7 +188,7 @@ jobs:
   report:
     name: ${{ needs.config.outputs.configured == 'true' && 'auth smoke verdict (staging)' || 'STAGING NOT CONFIGURED — auth smoke DID NOT RUN' }}
     needs: [config, auth-smoke]
-    if: always()
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always()) }}
     runs-on: ubuntu-latest
     steps:
       - name: Summarize

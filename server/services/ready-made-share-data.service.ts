@@ -24,6 +24,8 @@ import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { jitterPoint } from "./ready-made-teaser-map.service";
 import { nearestAreaName } from "../utils/public-service-listing";
 import { cityNeighborhoodNames } from "./listing-location-access.service";
+import { validateRailsRef, type RailsLinkFacts } from "./rails-attribution.service";
+import { decideWaitlistReferral } from "./waitlist-referral.service";
 import {
   READY_MADE_SHARE_FORMATS,
   heroCreditLine,
@@ -70,7 +72,7 @@ function num(v: unknown): number | null {
 }
 
 /** The listing's share data WITHOUT the photo bytes, plus its photo source; null when not public. */
-export async function loadReadyMadeShareInputs(listingId: string): Promise<{ data: Omit<ReadyMadeShareData, "hero">; heroUrl: string | null; heroCredit: string | null; id: string; slug: string } | null> {
+export async function loadReadyMadeShareInputs(listingId: string): Promise<{ data: Omit<ReadyMadeShareData, "hero">; heroUrl: string | null; heroCredit: string | null; id: string; slug: string; authorId: string } | null> {
   const [listing] = await db.select().from(readyMadeTrips).where(eq(readyMadeTrips.id, listingId)).limit(1);
   if (!listing || listing.status !== "approved" || listing.active !== true) return null;
   const [author] = await db.select({ firstName: users.firstName }).from(users).where(eq(users.id, listing.authorId)).limit(1);
@@ -124,6 +126,7 @@ export async function loadReadyMadeShareInputs(listingId: string): Promise<{ dat
   return {
     id: listing.id,
     slug,
+    authorId: listing.authorId,
     heroUrl,
     heroCredit: heroUrl ? heroCredit : null,
     data: {
@@ -194,27 +197,60 @@ export interface ReadyMadeShareImage {
   png: Buffer;
   version: string;
   slug: string;
+  /** CP-3: the short-link code the image prints, or null when it prints the /t/ link. */
+  refCode: string | null;
 }
 
-export async function getReadyMadeShareImage(listingId: string, format: ReadyMadeShareFormat): Promise<ReadyMadeShareImage | null> {
+/** CP-3: the formats that print a link (cover and story); map and og draw none, so `ref` never changes them. */
+export const READY_MADE_SHARE_LINK_FORMATS: readonly ReadyMadeShareFormat[] = ["cover", "story"];
+
+/**
+ * CP-3 (ledger `2026-10-16-cp3-share-image-ref`), pure: may this short link print on THIS trip's image? LW-1d's
+ * author rule (`decideWaitlistReferral` — a Ready-Made link whose owner is the trip's author), plus: the link points
+ * at this trip, so an author's link for one trip never prints on another's image. Anything else ⇒ null (the /t/ image).
+ */
+export function shareImageRefCode(input: { link: RailsLinkFacts | null; valid: boolean; listingId: string; tripAuthorId: string }): string | null {
+  if (!input.valid || !input.link) return null;
+  if (input.link.targetId !== input.listingId) return null;
+  const decision = decideWaitlistReferral({ link: input.link, tripAuthorId: input.tripAuthorId });
+  return decision.credited ? decision.shortLinkCode : null;
+}
+
+/**
+ * CP-3: the code a request's `?ref=` resolves to, read through `validateRailsRef` (the one short-link reader). No
+ * viewer is passed: the person downloading is usually the expert who owns the link, and the self-referral refusal
+ * is a credit rule, not a drawing rule. A refusal is not logged — it only means the /t/ image is served.
+ */
+async function resolveShareImageRef(ref: string, listingId: string, tripAuthorId: string): Promise<string | null> {
+  const check = await validateRailsRef({ ref, travelerUserId: "" });
+  return shareImageRefCode({ link: check.link, valid: check.valid, listingId, tripAuthorId });
+}
+
+export async function getReadyMadeShareImage(listingId: string, format: ReadyMadeShareFormat, ref?: string | null): Promise<ReadyMadeShareImage | null> {
   const inputs = await loadReadyMadeShareInputs(listingId);
   if (!inputs) return null;
+  // The version names what the listing says, so `?v=` keeps meaning the listing's version whatever the link.
   const version = shareVersion(inputs);
-  const key = `${inputs.id}:${format}:${version}`;
+  // Checked on every request, before the cache, so an expired link stops printing at once; a refused code shares
+  // the /t/ image's cache entry, so codes that do not pass never grow the cache.
+  const refCode =
+    ref && READY_MADE_SHARE_LINK_FORMATS.includes(format) ? await resolveShareImageRef(ref, inputs.id, inputs.authorId) : null;
+  const key = `${inputs.id}:${format}:${version}${refCode ? `:${refCode}` : ""}`;
   const hit = imageCache.get(key);
   if (hit) {
     imageCache.delete(key);
     imageCache.set(key, hit);
-    return { png: hit, version, slug: inputs.slug };
+    return { png: hit, version, slug: inputs.slug, refCode };
   }
   const dataUri = inputs.heroUrl ? await fetchHeroDataUri(inputs.heroUrl) : null;
   const png = await renderReadyMadeShareImage(format, {
     ...inputs.data,
+    shareUrl: refCode ? `${SHARE_SITE_HOST}/r/${refCode}` : inputs.data.shareUrl,
     hero: dataUri && inputs.heroCredit ? { dataUri, credit: inputs.heroCredit } : null,
   });
   imageCache.set(key, png);
   if (imageCache.size > IMAGE_CACHE_MAX) imageCache.delete(imageCache.keys().next().value!);
-  return { png, version, slug: inputs.slug };
+  return { png, version, slug: inputs.slug, refCode };
 }
 
 /** The current version of a public listing's images (for `?v=`), or null when it is not public. */

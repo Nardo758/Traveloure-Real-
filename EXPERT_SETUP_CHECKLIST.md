@@ -111,7 +111,7 @@ EOF
 ### Google Maps (Already configured)
 ```bash
 # Already in .replit:
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyAlhW2MsmHjk_W4toxac-sILDb-YLOeg3s
+VITE_GOOGLE_MAPS_API_KEY=<redacted>
 ```
 
 ---
@@ -351,7 +351,7 @@ XAI_API_KEY=xai-...
 
 ### Already Configured
 ```env
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyAlhW2MsmHjk_W4toxac-sILDb-YLOeg3s
+VITE_GOOGLE_MAPS_API_KEY=<redacted>
 TWELVEGO_AFFILIATE_ID=13805109
 VITE_TWELVEGO_AFFILIATE_ID=13805109
 ```

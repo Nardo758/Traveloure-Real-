@@ -27,7 +27,18 @@ name: Discover Tabs Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/discover-tabs-gate.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -49,6 +60,7 @@ jobs:
   # Chromium. No PW_AUTH_SETUP — the surfaces require no login.
   # ─────────────────────────────────────────────────────────────────────────
   discover-tabs-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     # NOTE: this job name must EXACTLY equal the branch-protection required-status
     # context "discover-tabs-smoke" — a descriptive suffix here would orphan the
     # required context and leave it stuck "Expected — Waiting for status to be reported".
@@ -185,7 +197,7 @@ jobs:
     name: report (PR comment)
     runs-on: ubuntu-latest
     needs: [discover-tabs-smoke]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
     steps:
       - name: Post pass/fail summary to the PR
         uses: actions/github-script@v7
