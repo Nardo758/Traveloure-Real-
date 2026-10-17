@@ -8,6 +8,10 @@
  * `no_route` (a thin connector, cost 0). OSRM is never capped, so it is never `paused`. The parse keeps
  * only minutes and metres; `overview=false` asks for no geometry and `steps=false` for no directions.
  * Its answers are cacheable (`CACHEABLE_ROUTE_SOURCES`), unlike Google's (T1).
+ *
+ * "checked <date>" is DATA freshness: the VM's proxy sends the OSM extract's replication timestamp as
+ * `X-OSRM-Extract` on every 200, and that is the leg's `checkedAt`. Only when the header is absent or
+ * unreadable does the label fall back to the moment of the call.
  */
 import { OSRM_ROUTES_SOURCE, type RouteAnswer, type RouteOutcome, type RoutePoint, type RoutingAdapter, type RoutingMode } from "@shared/routing-engine";
 import { osrmBaseUrl, osrmCarProfile, osrmFootProfile, osrmTimeoutMs } from "../../config/osrm.config";
@@ -32,6 +36,17 @@ const defaultDeps: OsrmRoutingDeps = {
 export function osrmRouteUrl(baseUrl: string, profile: string, origin: RoutePoint, destination: RoutePoint): string {
   const coord = (p: RoutePoint) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`;
   return `${baseUrl}/route/v1/${encodeURIComponent(profile)}/${coord(origin)};${coord(destination)}?overview=false&steps=false&alternatives=false`;
+}
+
+/** The response header the OSRM VM's proxy sets to the extract's OSM replication timestamp. */
+export const OSRM_EXTRACT_HEADER = "x-osrm-extract";
+
+/** Pure: the extract date the proxy stated, or the call time when it stated none (or nothing readable). */
+export function osrmCheckedAt(extractHeader: string | null | undefined, callTime: Date): Date {
+  const raw = (extractHeader ?? "").trim();
+  if (!raw) return callTime;
+  const at = new Date(raw);
+  return Number.isNaN(at.getTime()) ? callTime : at;
 }
 
 /** Pure: OSRM's own answer that no route exists (`NoRoute`, or a point with no road/path near it). */
@@ -74,7 +89,7 @@ export class OsrmRoutingAdapter implements RoutingAdapter {
         return { kind: "no_route", unanswered: "failed" };
       }
       const body = await response.json();
-      const route = parseOsrmResponse(body, this.deps.now());
+      const route = parseOsrmResponse(body, osrmCheckedAt(response.headers?.get?.(OSRM_EXTRACT_HEADER), this.deps.now()));
       if (route) return { kind: "ok", route };
       // OSRM's own "no route between these points" is an answer; any other non-Ok body is a failed call.
       return osrmSaysNoRoute(body) ? { kind: "no_route" } : { kind: "no_route", unanswered: "failed" };

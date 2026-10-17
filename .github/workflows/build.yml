@@ -1459,6 +1459,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Upcoming builder pins
         run: npx tsx --test server/services/__tests__/upcoming.test.ts
+      # 9b-e: the item re-geocode lookup and classification (resolved / ambiguous / unresolved / unreachable),
+      # with a fake fetch. Pure; no request leaves the process.
+      - if: ${{ !cancelled() }}
+        name: Item OSM re-geocode pins
+        run: npx tsx --test server/services/__tests__/item-osm-regeocode.test.ts
       # The client half: the mono relative-day label (a calendar day is read on the VIEWER's
       # calendar, an instant as an instant — no zone invented either way) and the ONE derived
       # greeting sentence, which never says "0 things are due".
