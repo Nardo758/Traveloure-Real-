@@ -6,6 +6,7 @@ import {
   assertDisposableDb,
   assertCheckoutAccepted,
   assertCheckoutCommittedNothing,
+  assertCartClearsOnlyAfterPayment,
   STRIPE_UNAVAILABLE,
 } from "./_journey-helpers";
 
@@ -20,7 +21,7 @@ import {
  *   2. Materialize a trip + catalog-linked items       → itinerary_items born in_planning, providerServiceId set
  *      (in_planning)                                       (H5 guard: the catalog link is set at birth and must SURVIVE)
  *   3. Route ONE item → ready_for_checkout             → cart projection row upserted, serviceId = providerServiceId (H5 survives)
- *   4. J1-style checkout of that ONE item              → service_bookings row + item purchased + diary + projection gone
+ *   4. J1-style checkout of that ONE item              → service_bookings row + item purchased + diary; projection gone after a TEST-mode confirm
  *
  * FINDING (J2 flow shape): the brief's phrase "AI entry generates a draft → trip + items in_planning,
  * providerServiceId linkage survives (H5 guard)" describes a single endpoint that does not exist
@@ -288,7 +289,7 @@ test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
     expect(untouched.routing_status, "the un-routed item must remain in_planning").toBe("in_planning");
     expect(untouched.booking_id, "the un-routed item must have no booking").toBeNull();
 
-    // DB fact: checkout diary row + projection gone for the purchased item.
+    // DB fact: checkout diary row for the purchased item.
     const purchaseDiary = await q<{ from_status: string; to_status: string; actor_type: string }>(
       `SELECT from_status, to_status, actor_type FROM item_transition_log
        WHERE item_id=$1 AND to_status='purchased' ORDER BY created_at`,
@@ -301,10 +302,13 @@ test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
       actor_type: "checkout",
     });
 
-    const [{ n: projGone }] = await q<{ n: number }>(
-      `SELECT count(*)::int AS n FROM cart_items WHERE itinerary_item_id=$1`,
-      [targetItemId],
-    );
-    expect(Number(projGone), "projection must be deleted once the item is purchased").toBe(0);
+    // The #1240 contract: the projection stays through checkout and is gone once the payment is
+    // confirmed (TEST-mode confirm, then confirm-payment).
+    await assertCartClearsOnlyAfterPayment(request, {
+      label: "j2",
+      bookingId: booking.id,
+      paymentIntentId: booking.stripe_payment_intent_id,
+      itemId: targetItemId,
+    });
   });
 });
