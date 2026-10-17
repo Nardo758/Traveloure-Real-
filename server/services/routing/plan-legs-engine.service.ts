@@ -14,8 +14,9 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
-import { CACHEABLE_ROUTE_SOURCES, marketTransitRouting, routedLegReason, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
-import { LEG_MODE_STORED, normalizeLegMode } from "@shared/travel-speeds";
+import { CACHEABLE_ROUTE_SOURCES, STRAIGHT_LINE_EST_SOURCE, marketTransitRouting, routedLegReason, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
+import { LEG_MODE_STORED, normalizeLegMode, straightLineMinutes } from "@shared/travel-speeds";
+import { haversineMeters } from "@shared/geo";
 import type { StoredLegOption } from "@shared/leg-options";
 import { zonedWallClockToInstant, addCalendarDays } from "@shared/plan-timing";
 import { storage } from "../../storage";
@@ -41,6 +42,11 @@ export type PlanLegsResult =
       kept: number;
       removed: number;
       noRoute: number;
+      /**
+       * 9b-d: pairs whose call went unanswered (a failed call, or a mode the router does not serve) — the
+       * pair keeps its last leg. Present only when > 0.
+       */
+      unanswered?: number;
       /** True when a caller's daily cap stopped the run; existing legs were left as last computed. */
       paused: boolean;
       skippedPairs: number;
@@ -321,6 +327,7 @@ async function computePlanLegsCore(
   let calls = 0;
   let reused = 0;
   let noRoute = 0;
+  let unanswered = 0;
   let paused = false;
   let retiredLegacy = 0;
   const unlocatedPairs = new Set(skipped.map((p) => legPairKey(p.dayNumber, p.fromItemId, p.toItemId)));
@@ -449,9 +456,47 @@ async function computePlanLegsCore(
       paused = true;
       break;
     }
+    // 9b-d (Leon's ruling, Oct 17, 2026): a call that went UNANSWERED (failed, or a mode the router does
+    // not serve) learned nothing — the pair keeps its last leg and the next run asks again (§13: an outage is
+    // never "no route").
+    if (asked.outcome.kind === "no_route" && asked.outcome.unanswered) {
+      unanswered++;
+      continue;
+    }
     replacedIds.push(...(diff.replaces.get(leg.pairKey) ?? []));
     if (asked.outcome.kind === "no_route") {
+      // The router's OWN answer that no route exists: the pair shows a labelled straight-line estimate (a
+      // drive at the ONE configured speed), never a routed leg — `STRAIGHT_LINE_EST_SOURCE` is read as "est."
+      // everywhere, and it is outside the cacheable set, so the next run asks the pair again.
       noRoute++;
+      const meters = Math.round(haversineMeters(leg.origin.lat, leg.origin.lng, leg.to.point.lat, leg.to.point.lng));
+      const minutes = straightLineMinutes(meters, "drive");
+      rows.push({
+        tripId,
+        dayNumber: leg.dayNumber,
+        legOrder: leg.legOrder,
+        fromActivityId: leg.from.id,
+        fromName: leg.from.name,
+        fromLat: leg.origin.lat,
+        fromLng: leg.origin.lng,
+        toActivityId: leg.to.id,
+        toName: leg.to.name,
+        toLat: leg.to.point.lat,
+        toLng: leg.to.point.lng,
+        distanceMeters: meters,
+        distanceDisplay: formatDistance(meters),
+        recommendedMode: LEG_MODE_STORED.drive,
+        userSelectedMode: null,
+        estimatedDurationMinutes: minutes,
+        estimatedCostUsd: null,
+        alternativeModes: [{ mode: LEG_MODE_STORED.drive, durationMinutes: minutes, costUsd: null, energyCost: 0, reason: STRAIGHT_LINE_EST_SOURCE, line: null, fare: null, legKey: leg.legKey, hourBucket: leg.hourBucket }] as any,
+        energyCost: 0,
+        destinationProfile: trip.destination || null,
+        proposalStatus: "proposed",
+        source: STRAIGHT_LINE_EST_SOURCE,
+        routedDepartureLocal: null,
+        calculatedAt: new Date(),
+      });
       continue;
     }
     const route = asked.outcome.route;
@@ -543,6 +588,7 @@ async function computePlanLegsCore(
     kept: diff.keep.length,
     removed: removeIds.length,
     noRoute,
+    ...(unanswered ? { unanswered } : {}),
     paused,
     skippedPairs: skipped.length,
     ...(superseded ? { superseded } : {}),

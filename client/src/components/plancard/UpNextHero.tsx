@@ -15,7 +15,8 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 import { openInMaps } from "@/lib/navigate";
 import type { PlanCardDay, PlanCardLegData } from "./plancard-types";
-import { useLiveNow, useVisitedActivities, getUpNextInfo, formatCountdown, machineDay } from "./plancard-temporal";
+import { useLiveNow, useVisitedActivities, getUpNextInfo, formatCountdown, machineDay, leaveByLegOf } from "./plancard-temporal";
+import { LEAVE_BY_COPY, travelPlanned } from "@shared/leave-by";
 import { resolvePrimaryAction } from "./primary-action";
 import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
 
@@ -88,10 +89,32 @@ function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityN
   );
 }
 
+function HeroLeaveByCells({ heroLeaveBy, legs, timezone }: { heroLeaveBy: { time: string; tier: "planning" | "live" } | null; rowsCount: number; legs: PlanCardLegData[]; timezone: string | null }) {
+  const planned = travelPlanned((legs as any[]).map((l) => leaveByLegOf(l, timezone)));
+  if (!heroLeaveBy && !planned) return null;
+  return (
+    <div className="flex gap-4 mb-2 text-[11px]" data-testid="hero-leave-by-cells">
+      {heroLeaveBy ? (
+        <div data-testid="hero-leave-by-next">
+          <div className="font-extrabold tracking-wider text-white/70">{LEAVE_BY_COPY.heroLabel}</div>
+          <div className="text-[15px] font-bold tabular-nums">{heroLeaveBy.tier === "planning" ? `about ${heroLeaveBy.time}` : heroLeaveBy.time}</div>
+        </div>
+      ) : null}
+      {planned ? (
+        <div data-testid="hero-travel-planned">
+          <div className="font-extrabold tracking-wider text-white/70">{LEAVE_BY_COPY.travelPlannedLabel}</div>
+          <div className="text-[15px] font-bold tabular-nums">{planned.minutes} min</div>
+          {planned.routedOnly ? <div className="text-white/60" data-testid="hero-travel-planned-routed-only">{LEAVE_BY_COPY.routedOnly}</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed = true }: UpNextHeroProps) {
   const now = useLiveNow();
   const [visited] = useVisitedActivities(tripId, day);
-  const { isLiveDay, upNextActivity, upNextLeg } = getUpNextInfo(day, legs, now, visited, timezone);
+  const { isLiveDay, upNextActivity, upNextLeg, heroLeaveBy, leaveByRows } = getUpNextInfo(day, legs, now, visited, timezone);
 
   // §13: no hero on a fully-past or not-yet-started day — only the live day with a real
   // upcoming activity renders anything here.
@@ -123,6 +146,9 @@ export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed 
         )}
       </div>
 
+      {/* 9b-c LB4/LB6: the next leave-by after now (plan zone) and the day's routed travel. A cell with nothing to
+          say is OMITTED, never "—" (LB3). */}
+      <HeroLeaveByCells heroLeaveBy={heroLeaveBy} rowsCount={leaveByRows.length} legs={legs} timezone={timezone} />
       <h3 className="text-[18px] font-bold leading-tight mb-0.5" data-testid="text-hero-title">
         {upNextActivity.name}
       </h3>

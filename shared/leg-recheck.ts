@@ -3,7 +3,7 @@
  * surface spec R-aw, R-bb).
  *
  * A routed plan's legs are asked again at T-3 (the `facts-recheck` job) and on the morning of each trip
- * day (the `legs-dayof-recheck` job). A re-check NEVER writes a leg: it records what it found on the
+ * day (the `routing-recheck` job, 9b-d). A re-check NEVER writes a leg: it records what it found on the
  * leg's own `leg_check_status` / `leg_checked_at` (R-bb's columns, migration 347) and, when a leg
  * changed, ONE banner finding (a deduped notice). The plan is never silently rewritten — the traveler
  * reads "Travel to <stop> now 31 min (was 18)" and decides.

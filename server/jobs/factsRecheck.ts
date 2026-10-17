@@ -15,7 +15,7 @@
  * Step 9b (L8 / D5 / D9, ledger `2026-10-07-step9b-optimizer-and-rechecks`; R-aw): the same pass then
  * re-checks the plan's LEGS through the ONE `recheckPlanLegs` — only on a plan that earns routed legs
  * and whose dates were chosen; it writes the legs' check status and one deduped finding per changed
- * leg, never a leg. The day-of half is the separate hourly `legs-dayof-recheck` job (D6).
+ * leg, never a leg. The trip-day half is the separate `routing-recheck` job (9b-d: hourly at 06:00 local, plus the card's first open).
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
