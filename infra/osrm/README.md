@@ -8,7 +8,7 @@ Ledger `2026-10-17-9a-ii-osrm-vm`. Serves the planning-tier `drive` and `walk` l
 | `build.sh` | workspace | Downloads Geofabrik Kansai, checks its md5, clips separately for wide-area `driving` (car.lua) and Kyoto-city `foot` (foot.lua), builds both with MLD into `data/`, writes `data/EXTRACT.txt` (extract date = the "checked <date>" on legs). |
 | `start.sh` | VM | Two `osrm-routed --mmap` on 127.0.0.1:5001/5002 behind `proxy.mjs`. Builds nothing. |
 | `proxy.mjs` | VM | The one public port. Allowlist: `GET /<prefix>/route/v1/{driving,foot}/<2 points>?overview=false&steps=false&alternatives=false`. Everything else is 404 with no body. |
-| `proxy.test.mjs` | CI | OP1–OP6. |
+| `proxy.test.mjs` | CI | OP1–OP7; OP7 verifies the extract header on 200 responses, its absence on 404/no-extract responses, and timestamp parsing. |
 | `.replit.example`, `replit.nix.example` | dedicated OSRM Repl | Root configuration templates: copy as `.replit` and `replit.nix` to the repository root in that Repl only. Replit's config guard blocks writing even nested files with the exact config names. |
 
 Driving retains `BBOX=134.80,34.33,136.11,35.83` for Kyoto plus Osaka Bay/KIX.
@@ -20,6 +20,13 @@ The public proxy still accepts **exactly two coordinate points**, unchanged.
 The upstream engines use `--max-viaroute-size 3` because OSRM 5.26 rejects 2 at
 startup; that engine limit does not widen the proxy allowlist. Both engines use
 `--mmap`; memory usage must be measured again after rebuilding.
+
+`start.sh` warms both profiles over loopback before starting the public proxy.
+The proxy reads `osm_replication_timestamp` once from `$OSRM_DATA_DIR/EXTRACT.txt`
+(default `./data`) and adds `X-OSRM-Extract` to 200 responses only. Missing extract
+metadata means no header; the adapter may use its call-time fallback. This source
+update needs no data rebuild. Confirm `curl` is present in the VM runtime image
+before republishing through the approved operator path.
 
 ## Operator steps (Replit)
 

@@ -8,16 +8,19 @@
  *   OP4  more than two points, any other query key/value, a repeated key, a non-GET → 404
  *   OP5  a dead upstream → 502, empty body
  *   OP6  a prefix shorter than 32 bytes of base64url refuses to start
+ *   OP7  a 200 carries X-OSRM-Extract (the extract's replication timestamp); a 404, a 502 or a proxy with no
+ *        extract carries none
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { randomBytes } from "node:crypto";
-import { createProxy } from "./proxy.mjs";
+import { EXTRACT_HEADER, createProxy, extractTimestamp } from "./proxy.mjs";
 
 const PREFIX = randomBytes(32).toString("base64url");
 const COORDS = "135.778519,35.003674;135.785046,34.994856";
 const QUERY = "overview=false&steps=false&alternatives=false";
+const EXTRACT = "2026-10-16T20:21:21Z";
 
 const seen = { driving: [], foot: [] };
 const upstreams = {};
@@ -28,12 +31,12 @@ function listen(server) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
 }
 
-function get(path, method = "GET") {
+function get(path, method = "GET", at = base) {
   return new Promise((resolve, reject) => {
-    const req = http.request(`${base}${path}`, { method }, (res) => {
+    const req = http.request(`${at}${path}`, { method }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
-      res.on("end", () => resolve({ status: res.statusCode, body }));
+      res.on("end", () => resolve({ status: res.statusCode, body, extract: res.headers[EXTRACT_HEADER] }));
     });
     req.on("error", reject);
     req.end();
@@ -50,7 +53,7 @@ before(async () => {
     upstreams[profile] = await listen(s);
     servers.push(s);
   }
-  const proxy = createProxy({ prefix: PREFIX, upstreams });
+  const proxy = createProxy({ prefix: PREFIX, upstreams, extract: EXTRACT });
   base = `http://127.0.0.1:${await listen(proxy)}`;
   servers.push(proxy);
 });
@@ -139,4 +142,25 @@ test("OP6 a short or missing prefix refuses to start", () => {
   for (const prefix of ["", "short", randomBytes(31).toString("base64url"), `${randomBytes(32).toString("base64url")}/x`]) {
     assert.throws(() => createProxy({ prefix, upstreams: { driving: 1, foot: 2 } }));
   }
+});
+
+test("OP7 a 200 carries the extract timestamp; a 404 and a proxy with no extract do not", async () => {
+  const ok = await get(`/${PREFIX}/route/v1/driving/${COORDS}?${QUERY}`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.extract, EXTRACT);
+  const nf = await get(`/${PREFIX}/table/v1/driving/${COORDS}`);
+  assert.equal(nf.status, 404);
+  assert.equal(nf.extract, undefined);
+  const bare = createProxy({ prefix: PREFIX, upstreams });
+  const p = await listen(bare);
+  try {
+    const r = await get(`/${PREFIX}/route/v1/foot/${COORDS}?${QUERY}`, "GET", `http://127.0.0.1:${p}`);
+    assert.equal(r.status, 200);
+    assert.equal(r.extract, undefined);
+  } finally {
+    bare.close();
+  }
+  assert.equal(extractTimestamp(`source=x\nosm_replication_timestamp=${EXTRACT}\nbbox=y\n`), EXTRACT);
+  assert.equal(extractTimestamp("source=x\n"), null);
+  assert.equal(extractTimestamp(undefined), null);
 });

@@ -16,6 +16,24 @@ done
 
 osrm-routed --algorithm mld --mmap --ip 127.0.0.1 --port "$OSRM_DRIVING_PORT" --max-viaroute-size 3 "$DATA/driving/kyoto.osrm" &
 osrm-routed --algorithm mld --mmap --ip 127.0.0.1 --port "$OSRM_FOOT_PORT" --max-viaroute-size 3 "$DATA/foot/kyoto.osrm" &
+
+# Warm each profile with one loopback route before the proxy takes traffic: the first request after a start
+# pages the mmapped graph in (the driving graph is ~1.2 GB) and would otherwise time out the first caller.
+warm() {
+  local port="$1" profile="$2" i
+  for i in $(seq 1 60); do
+    if curl -fsS --max-time 60 -o /dev/null \
+      "http://127.0.0.1:${port}/route/v1/${profile}/135.778519,35.003674;135.785046,34.994856?overview=false&steps=false&alternatives=false"; then
+      echo "warm: ${profile}"; return 0
+    fi
+    sleep 2
+  done
+  echo "warm: ${profile} did not answer — stopping so the deployment restarts" >&2
+  return 1
+}
+warm "$OSRM_DRIVING_PORT" driving
+warm "$OSRM_FOOT_PORT" foot
+
 node proxy.mjs &
 
 wait -n
