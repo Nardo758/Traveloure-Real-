@@ -6,15 +6,86 @@ import { CLIENT_ROUTES } from "./client-routes.generated";
 import { OPERATING_MARKETS } from "./operating-markets";
 
 export const TICKER_TEXT_MAX = 90;
-/** Admin help text — the content rule (Part A item 11), enforced by people, so it is said where they edit. */
+/**
+ * Admin help text — the content rule (Part A item 11, amended by LW-1f-b, issue #1486), enforced by people, so it is
+ * said where they edit. Product Bot's wording, word for word.
+ */
 export const TICKER_CONTENT_RULE =
-  "Only things that are true today, for this city. No other cities, no counts, no \"verified\", \"live\" or " +
-  "\"daily\", and no exact spots, times or routes — those belong in paid plans.";
+  "Only things that are true today. Call a city 'in beta' only if it's on the beta list. Other operating cities " +
+  "may be named as next or, once their waitlist is live, as waitlist open. No counts, no \"verified\", \"live\" " +
+  "or \"daily\", and no exact spots, times or routes. Those belong in paid plans.";
 
 /** Marketing's labels (F4), word for word. */
 export const TICKER_WAITLIST_BUTTON = (cityName: string) => `Join the ${cityName} waitlist`;
 export const TICKER_OPEN_BUTTON = "Start planning";
-export const TICKER_LEFT_LABEL = (cityName: string) => `Now in beta in ${cityName}`;
+
+/**
+ * LW-1f-b (ledger `2026-10-16-lw1f-b-beta-cities`, issue #1486): the cities that may be called "in beta". A MANUAL
+ * setting Leon switches per city in admin — never worked out from listings, supply or counts. Stored in
+ * `platform_settings.beta_market_slugs` as a JSON array of `OPERATING_MARKETS` keys. Absent, unreadable or empty ⇒
+ * the launch market alone, so Kyoto is beta today with no row and no migration.
+ */
+export const BETA_MARKET_SLUGS_SETTING = "beta_market_slugs";
+export const BETA_MARKET_SLUGS_HELP = "Switch a city on by hand, only once it has experts or providers live.";
+
+/** The refusal for a value an admin tries to save, or null when it is a valid list. */
+export function betaMarketSlugsRefusal(value: unknown): string | null {
+  let parsed: unknown;
+  try {
+    parsed = typeof value === "string" ? JSON.parse(value) : null;
+  } catch {
+    return `${BETA_MARKET_SLUGS_SETTING} must be a JSON array of market keys`;
+  }
+  if (!Array.isArray(parsed)) return `${BETA_MARKET_SLUGS_SETTING} must be a JSON array of market keys`;
+  const seen = new Set<string>();
+  for (const key of parsed) {
+    if (typeof key !== "string" || !OPERATING_MARKETS.some((m) => m.marketKey === key)) {
+      return `unknown market: ${String(key)}`;
+    }
+    if (seen.has(key)) return `duplicate market: ${key}`;
+    seen.add(key);
+  }
+  return null;
+}
+
+/**
+ * The beta market keys, in the stored order: the stored list when it is a valid non-empty list, else the launch
+ * market alone (else nothing, when the launch market names no operating market). Unknown keys in a stored value are
+ * dropped rather than shown (§13).
+ */
+export function betaMarketSlugs(stored: string | null | undefined, launchMarketSlug: string | null | undefined): string[] {
+  let keys: string[] = [];
+  if (typeof stored === "string") {
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        keys = parsed.filter((k, i): k is string =>
+          typeof k === "string" && parsed.indexOf(k) === i && OPERATING_MARKETS.some((m) => m.marketKey === k));
+      }
+    } catch {
+      keys = [];
+    }
+  }
+  if (keys.length > 0) return keys;
+  return launchMarketSlug && OPERATING_MARKETS.some((m) => m.marketKey === launchMarketSlug) ? [launchMarketSlug] : [];
+}
+
+/** City names for the beta keys, in order. */
+export function betaCityNames(slugs: readonly string[]): string[] {
+  return slugs.map((k) => OPERATING_MARKETS.find((m) => m.marketKey === k)?.cityName).filter((n): n is string => !!n);
+}
+
+/**
+ * THE ONE beta label (the ribbon now; the CP-2 hero pill later): "Now in beta in Kyoto", "Now in beta in Kyoto and
+ * Goa", "Now in beta in Kyoto, Goa and Porto". The cities are named, never counted. An empty list falls back to the
+ * launch city; with neither there is no label (null).
+ */
+export function betaLabel(cityNames: readonly string[], launchCityName?: string | null): string | null {
+  const names = cityNames.length > 0 ? [...cityNames] : launchCityName ? [launchCityName] : [];
+  if (names.length === 0) return null;
+  const joined = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `Now in beta in ${joined}`;
+}
 
 /** What the public read returns per item: text and href only (Part A item 3). */
 export interface PublicTickerItem {

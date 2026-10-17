@@ -13,7 +13,10 @@
  *       guest planner or the waitlist page itself.
  *   K7  the committed route list is current (the same check CI runs) and holds the seeded links.
  *
- * Run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts
+ * Run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts *   K8  (LW-1f-b, issue #1486) the beta list: absent, unreadable, empty or all-unknown ⇒ the launch market alone;
+ *       a valid list in its stored order; a save of an unknown or repeated key, or a non-array, is refused.
+ *   K9  the one label helper names the cities (one, two, three) and falls back to the launch city; neither ⇒ none.
+ *   K10 no label, help text or content rule states a number of cities.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -26,6 +29,12 @@ import {
   isClientRoutePath,
   launchCityName,
   tickerButton,
+  BETA_MARKET_SLUGS_HELP,
+  TICKER_CONTENT_RULE,
+  betaCityNames,
+  betaLabel,
+  betaMarketSlugs,
+  betaMarketSlugsRefusal,
 } from "../../../../shared/ticker";
 import { CLIENT_ROUTES } from "../../../../shared/client-routes.generated";
 import { showsTicker } from "../ticker-mount";
@@ -118,5 +127,53 @@ describe("K7 — the committed route list", () => {
     assert.ok(isClientRoutePath("/kyoto", CLIENT_ROUTES));
     assert.ok(isClientRoutePath("/signup", CLIENT_ROUTES));
     assert.ok(isClientRoutePath("/blog/any-post", CLIENT_ROUTES));
+  });
+});
+
+describe("K8 — the beta list setting", () => {
+  it("defaults to the launch market and keeps a valid stored list", () => {
+    assert.deepEqual(betaMarketSlugs(null, "kyoto"), ["kyoto"]);
+    assert.deepEqual(betaMarketSlugs("not json", "kyoto"), ["kyoto"]);
+    assert.deepEqual(betaMarketSlugs("[]", "kyoto"), ["kyoto"]);
+    assert.deepEqual(betaMarketSlugs('["lisbon"]', "kyoto"), ["kyoto"]);
+    assert.deepEqual(betaMarketSlugs('["goa","kyoto","goa","lisbon"]', "kyoto"), ["goa", "kyoto"]);
+    assert.deepEqual(betaMarketSlugs(null, "lisbon"), []);
+  });
+  it("refuses an unknown or repeated key, or a value that is not an array, at save", () => {
+    assert.equal(betaMarketSlugsRefusal('["kyoto","goa"]'), null);
+    assert.equal(betaMarketSlugsRefusal("[]"), null);
+    assert.equal(betaMarketSlugsRefusal('["lisbon"]'), "unknown market: lisbon");
+    assert.equal(betaMarketSlugsRefusal('["goa","goa"]'), "duplicate market: goa");
+    assert.match(betaMarketSlugsRefusal('"kyoto"')!, /JSON array/);
+    assert.match(betaMarketSlugsRefusal("kyoto")!, /JSON array/);
+    assert.equal(betaMarketSlugsRefusal("[1]"), "unknown market: 1");
+  });
+});
+
+describe("K9 — the one beta label", () => {
+  it("names the cities and falls back to the launch city", () => {
+    assert.equal(betaLabel(betaCityNames(["kyoto"])), "Now in beta in Kyoto");
+    assert.equal(betaLabel(betaCityNames(["kyoto", "goa"])), "Now in beta in Kyoto and Goa");
+    assert.equal(betaLabel(betaCityNames(["kyoto", "goa", "porto"])), "Now in beta in Kyoto, Goa and Porto");
+    assert.equal(betaLabel([], "Kyoto"), "Now in beta in Kyoto");
+    assert.equal(betaLabel([], null), null);
+  });
+});
+
+describe("K10 — no count of cities anywhere", () => {
+  it("in the labels, the help text and the content rule", () => {
+    const texts = [
+      TICKER_CONTENT_RULE,
+      BETA_MARKET_SLUGS_HELP,
+      ...[["kyoto"], ["kyoto", "goa"], ["kyoto", "goa", "porto", "jaipur", "mumbai"]].map((k) => betaLabel(betaCityNames(k))!),
+    ];
+    for (const t of texts) {
+      assert.doesNotMatch(t, /\d/, t);
+      assert.doesNotMatch(t, /\b(one|two|three|four|five|six|seven|eight)\s+(cities|markets)\b/i, t);
+    }
+    assert.equal(
+      TICKER_CONTENT_RULE,
+      "Only things that are true today. Call a city 'in beta' only if it's on the beta list. Other operating cities may be named as next or, once their waitlist is live, as waitlist open. No counts, no \"verified\", \"live\" or \"daily\", and no exact spots, times or routes. Those belong in paid plans.",
+    );
   });
 });
