@@ -153,7 +153,7 @@ after(async () => {
   }
 });
 
-test("S1 the save stands; the lookup's hours name the finding with the stop's start time", async () => {
+test("S1 the save stands; the hand-add lookup still runs and bills, and brings no hours (GH-1)", async () => {
   const fake = placesFake();
   await add(TRIP, "Kinkaku-ji", 2, "15:00");
   const item = await add(TRIP, "Ginkaku-ji Temple", 2, "17:10");
@@ -162,9 +162,8 @@ test("S1 the save stands; the lookup's hours name the finding with the stop's st
   assert.equal(checks!.itemId, item.id);
   await lookup;
   const after = await loadStopChecks(TRIP, item.id);
-  assert.equal(after!.hours.status, "checked");
-  assert.deepEqual((after!.hours as any).lines, ["Ginkaku-ji Temple · Day 2 · 17:10 starts after closing (5:00 PM)"]);
-  assert.ok((after!.hours as any).caveat, "hours read long before the trip carry the findings' own caveat (R-v)");
+  // GH-1: Google's hours are never stored, so the stop reads not checked; S3 proves the finding on an official fact.
+  assert.deepEqual(after!.hours, { status: "not_checked" });
   assert.equal(fake.state.billed, 1);
 });
 

@@ -11,7 +11,7 @@
  *   time · title                                   ⋯ (Swap · Move · Remove · Ask a local about this
  *   place line — a Google-located ward/area, or       · Find a host · Build my days around this)
  *     the words a person typed; NEVER AI text
- *   facts line — "<Wkd> · <hours> · Google Maps · checked <d Mon>" (or "checking hours…")
+ *   facts line — "<Wkd> · <hours> · <source> · checked <d Mon>" (or "Hours not checked yet", GH-1)
  *   booking line — only when a real booking says something
  *   expert note — `ExpertNote`, with the follow-up thread under it
  * No routing pill, no kind chip, no origin chip, and no per-item checkout control (R-l): the draft is
@@ -31,7 +31,7 @@ import {
 import type { FactView } from "@shared/content-facts";
 import type { PlanCardActivity } from "@/components/plancard/plancard-types";
 import { factsLineParts, itemClosingWarning, itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
-import { CHECKING_HOURS_LABEL } from "@/lib/plancard-refetch";
+import { HOURS_NOT_CHECKED_YET_LABEL } from "@/lib/plancard-refetch";
 import { AnchorRow, anchorLabel } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
 import { PlacePhoto } from "./PlacePhoto";
@@ -106,7 +106,8 @@ export interface ItemRowProps {
     title?: string | null;
   } | null;
   /** The place-facts run is still checking this stop. */
-  checkingHours?: boolean;
+  /** GH-1: draw "Hours not checked yet" where the hours line would go (`showsHoursNotChecked`). */
+  hoursNotChecked?: boolean;
   menu?: ItemRowMenu | null;
   highlighted?: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
@@ -214,9 +215,9 @@ export function ItemRow(props: ItemRowProps) {
             factsLine.text
           )}
         </p>
-      ) : props.checkingHours ? (
-        <p className="mt-0.5 text-xs text-muted-foreground italic" data-testid={`slip-item-facts-checking-${a.id}`}>
-          {CHECKING_HOURS_LABEL}
+      ) : props.hoursNotChecked ? (
+        <p className="mt-0.5 text-xs text-muted-foreground italic" data-testid={`slip-item-hours-not-checked-${a.id}`}>
+          {HOURS_NOT_CHECKED_YET_LABEL}
         </p>
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
@@ -493,9 +494,9 @@ function BoardItemRow(
             <BoardFactsText text={factsLine.text} />
           )}
         </p>
-      ) : props.checkingHours ? (
-        <p className="text-xs italic text-[color:var(--slip-muted)]" data-testid={`slip-item-facts-checking-${a.id}`}>
-          {CHECKING_HOURS_LABEL}
+      ) : props.hoursNotChecked ? (
+        <p className="text-xs italic text-[color:var(--slip-muted)]" data-testid={`slip-item-hours-not-checked-${a.id}`}>
+          {HOURS_NOT_CHECKED_YET_LABEL}
         </p>
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}

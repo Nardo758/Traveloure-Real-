@@ -27,6 +27,7 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { enrichPlanItems, factPointsForTrip, factsForTrip, recordFacts } from "../services/content-facts/place-facts.service";
 import { PlacesAdapter } from "../services/content-facts/places-adapter";
+import { placesDetailsCostCents } from "../config/content-facts.config";
 import { addOption, createOptionSet, draftBasisInputs, listOptionSetsWithFit } from "../services/plan-option-sets.service";
 import { assembleTripPlan } from "../services/trip-plan.service";
 
@@ -86,16 +87,20 @@ after(async () => {
 });
 
 test("C1: the engine's order picks the fact; every view carries provenance", async () => {
+  // GH-1: a Google hours draft is refused by the writer, so the hours view is the listing's alone.
   await recordFacts([fact({})], { planId: ids.trip, itemId: ids.s4 });
   await recordFacts([fact({ origin: "platform_listing", license: null, sourceUrl: null, value: { weekdayDescriptions: ["Monday: from the listing"] } })], { planId: ids.trip, itemId: ids.s4 });
   const facts = await factsForTrip(ids.trip);
   const hours = facts[ids.s4].filter((f) => f.factType === "hours");
   assert.equal(hours.length, 1, "one fact per type");
-  assert.equal(hours[0].origin, "platform_listing", "platform-native before Places");
+  assert.equal(hours[0].origin, "platform_listing", "platform-native; Google hours are never stored");
   assert.equal(hours[0].publishable, true);
   assert.match(hours[0].provenance, /^Traveloure · checked/);
   await db.execute(sql`DELETE FROM place_facts WHERE itinerary_item_id = ${ids.s4} AND origin = 'platform_listing'`);
-  const places = (await factsForTrip(ids.trip))[ids.s4].find((f) => f.factType === "hours")!;
+  assert.equal(((await factsForTrip(ids.trip))[ids.s4] ?? []).some((f) => f.factType === "hours"), false, "no Google hours reach a view");
+  // The Places half of the provenance rule, on an address fact.
+  await recordFacts([fact({ factType: "address", value: { formattedAddress: "1 Kinkakujicho, Kita Ward, Kyoto" } })], { planId: ids.trip, itemId: ids.s4 });
+  const places = (await factsForTrip(ids.trip))[ids.s4].find((f) => f.factType === "address")!;
   assert.equal(places.origin, "places_api");
   assert.equal(places.publishable, false);
   assert.match(places.provenance, /^Google Maps · checked/);
@@ -119,7 +124,7 @@ function googleFake(place: Record<string, any>, onBilled: () => void) {
 
 test("C2: the cache answers a repeated query at zero cost and never extends the expiry", async () => {
   let calls = 0;
-  const place = { id: id("kinkaku"), displayName: { text: "Kinkaku-ji" }, location: { latitude: 35.0394, longitude: 135.7292 }, regularOpeningHours: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } };
+  const place = { id: id("kinkaku"), displayName: { text: "Kinkaku-ji" }, location: { latitude: 35.0394, longitude: 135.7292 } };
   const adapter = new PlacesAdapter(
     // R-u: the IDs-only search is free and uncounted; the billed call is Place Details by ID.
     googleFake(place, () => { calls += 1; }),
@@ -137,9 +142,10 @@ test("C2: the cache answers a repeated query at zero cost and never extends the 
   `)).rows as any[];
   const a = rows.filter((r) => r.item === ids.s1);
   const b = rows.filter((r) => r.item === ids.s2);
-  assert.equal(a.reduce((n, r) => n + r.cost, 0), 2, "one call's cost, on one row (Place Details, Enterprise tier — the field-mask ruling)");
+  assert.equal(a.reduce((n, r) => n + r.cost, 0), placesDetailsCostCents(), "one call's cost, on one row (Place Details, Pro tier — GH-1)");
   assert.equal(b.reduce((n, r) => n + r.cost, 0), 0, "the copy cost nothing");
-  for (const t of ["hours", "location"]) {
+  assert.deepEqual(b.map((r) => r.fact_type).sort(), ["location"], "GH-1: no hours row is drafted or copied");
+  for (const t of ["location"]) {
     assert.equal(
       new Date(b.find((r) => r.fact_type === t).expires_at).getTime(),
       new Date(a.find((r) => r.fact_type === t).expires_at).getTime(),
@@ -313,8 +319,11 @@ test("C6: a cached answer from before the address lane is reused as-is — no ca
   const place = id("tofuku");
   await recordFacts([
     fact({ placeRef: place, factType: "location", need: "stop.hours", value: { lat: 34.97, lng: 135.77, name: "Tofuku-ji", query } }),
-    fact({ placeRef: place, value: { weekdayDescriptions: ["Monday: 9:00 AM – 4:00 PM"], query } }),
   ], { planId: null, itemId: null });
+  // A Google hours row stored before GH-1: the writer now refuses it, so it is inserted directly.
+  await db.execute(sql`INSERT INTO place_facts (id, place_ref_kind, place_ref, market, need, fact_type, value, origin, license, fetched_at, expires_at)
+    VALUES (${crypto.randomUUID()}, 'place_id', ${place}, 'kyoto', 'stop.hours', 'hours', ${JSON.stringify({ weekdayDescriptions: ["Monday: 9:00 AM – 4:00 PM"], query })}::jsonb,
+      'places_api', 'restricted', ${new Date()}, ${new Date(Date.now() + 7 * 86_400_000)})`);
   let calls = 0;
   const adapter = new PlacesAdapter(
     googleFake({ id: place, displayName: { text: "Tofuku-ji" }, formattedAddress: "15 Honmachi, Higashiyama Ward, Kyoto" }, () => { calls += 1; }),
@@ -325,5 +334,5 @@ test("C6: a cached answer from before the address lane is reused as-is — no ca
   assert.deepEqual({ looked: r.looked, cached: r.cached }, { looked: 0, cached: 1 });
   assert.equal(calls, 0, "no forced refresh");
   const types = ((await db.execute(sql`SELECT fact_type FROM place_facts WHERE itinerary_item_id = ${item}`)).rows as any[]).map((x) => x.fact_type).sort();
-  assert.deepEqual(types, ["hours", "location"]);
+  assert.deepEqual(types, ["location"], "GH-1: the legacy Google hours row is never copied to another plan");
 });
