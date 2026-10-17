@@ -21,12 +21,13 @@ The upstream engines use `--max-viaroute-size 3` because OSRM 5.26 rejects 2 at
 startup; that engine limit does not widen the proxy allowlist. Both engines use
 `--mmap`; memory usage must be measured again after rebuilding.
 
-`start.sh` warms both profiles over loopback before starting the public proxy.
+`start.sh` warms both profiles over loopback before starting the public proxy,
+with Node's `fetch` (no `curl` needed): a 15 s ceiling per profile, and a profile
+that does not answer is logged and skipped — the warm-up never stops the VM.
 The proxy reads `osm_replication_timestamp` once from `$OSRM_DATA_DIR/EXTRACT.txt`
 (default `./data`) and adds `X-OSRM-Extract` to 200 responses only. Missing extract
 metadata means no header; the adapter may use its call-time fallback. This source
-update needs no data rebuild. Confirm `curl` is present in the VM runtime image
-before republishing through the approved operator path.
+update needs no data rebuild.
 
 ## Operator steps (Replit)
 

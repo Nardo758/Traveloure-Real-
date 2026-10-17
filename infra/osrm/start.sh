@@ -19,17 +19,30 @@ osrm-routed --algorithm mld --mmap --ip 127.0.0.1 --port "$OSRM_FOOT_PORT" --max
 
 # Warm each profile with one loopback route before the proxy takes traffic: the first request after a start
 # pages the mmapped graph in (the driving graph is ~1.2 GB) and would otherwise time out the first caller.
+# Node's fetch, not curl (the VM image is not assumed to carry curl). Each profile gets a 15 s ceiling,
+# retrying while osrm-routed is still coming up; a profile that does not answer is logged and skipped —
+# the warm-up never stops the VM (a cold first request is slow, not wrong).
 warm() {
-  local port="$1" profile="$2" i
-  for i in $(seq 1 60); do
-    if curl -fsS --max-time 60 -o /dev/null \
-      "http://127.0.0.1:${port}/route/v1/${profile}/135.778519,35.003674;135.785046,34.994856?overview=false&steps=false&alternatives=false"; then
-      echo "warm: ${profile}"; return 0
-    fi
-    sleep 2
-  done
-  echo "warm: ${profile} did not answer — stopping so the deployment restarts" >&2
-  return 1
+  local port="$1" profile="$2"
+  node -e '
+    const [port, profile] = process.argv.slice(1);
+    const url = `http://127.0.0.1:${port}/route/v1/${profile}/135.778519,35.003674;135.785046,34.994856?overview=false&steps=false&alternatives=false`;
+    const deadline = Date.now() + 15000;
+    (async () => {
+      let last = "no attempt";
+      while (Date.now() < deadline) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) });
+          if (res.ok) { await res.arrayBuffer(); console.log(`warm: ${profile}`); return; }
+          last = `HTTP ${res.status}`;
+        } catch (err) {
+          last = err?.name === "TimeoutError" ? "timeout" : (err?.cause?.code ?? err?.message ?? String(err));
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      console.error(`warm: ${profile} did not answer within 15 s (${last}) — continuing`);
+    })();
+  ' "$port" "$profile" || echo "warm: ${profile} check could not run — continuing" >&2
 }
 warm "$OSRM_DRIVING_PORT" driving
 warm "$OSRM_FOOT_PORT" foot
