@@ -2696,6 +2696,18 @@ This document captures architectural decisions to maintain consistency across co
     **AMENDED BY P0-b (decision-maker, Oct 11, 2026 — ledger `2026-10-11-p0b-routing-follow-ups`).**
     "P0 ruling 7 amended: legacy confirmed legs are superseded once on the first engine run — re-routed where
     routable, retired where the pair has an unlocated stop. No unsourced leg shows on a routed plan."
+    **AMENDED BY 9b-b (9b spec v1.0 T1/T2/T3, Phase 0 rulings 1–6, Oct 16, 2026 — ledger
+    `2026-10-16-9b-b-legs-off-google`; migration 386 — Migration 386 SQL approved by Leon — comment 06:34Z on #1495).** No writer
+    stores a Google duration or distance: `routingAdapter()` answers the CI stub, self-hosted OSRM, or nothing — never
+    Google Routes — and the leg resolver's exact source is that adapter (else the labelled estimate); the
+    `travel_time_matrix` is retired as a source (no reader reads it). A Google-sourced leg (`legNeedsRebuild`) is
+    rebuilt by the engine — a proposed one recomputed, a confirmed one re-routed and superseded, never deleted — and a
+    stored Google answer never seeds the run memo. Routed = `source` set; a Ready Made copy keeps it.
+    `transport_legs.routed_departure_local` (386, nullable text) is the plan-tz "HH:MM" the engine routed the leg for.
+    `scripts/rebuild-google-legs.ts` (dry run by default) counts and rebuilds; deletion is its own PR after "delete
+    approved — Leon". Re-check notices store no minutes (the card reads "was N min" from the plan's leg); the legacy
+    non-routed writer is the labelled straight-line estimate; the matrix refresh job is retired (410); where-to-stay
+    ranks by OSRM drive minutes when OSRM is on, else the straight line.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**
