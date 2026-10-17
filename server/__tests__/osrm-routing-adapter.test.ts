@@ -15,6 +15,8 @@
  *   OS6  the adapter choice: the stub wins in CI, OSRM when enabled with a base URL, else NONE — 9b-b: every
  *        caller stores its answer, so Google Routes is never chosen (9b spec T1)
  *   OS7  a transit ask through the engine's one fallback becomes an OSRM drive
+ *   OS8  "checked" is the extract date the proxy states in X-OSRM-Extract; the call time only when the
+ *        header is absent or unreadable; the default request timeout is 15 s (cold mmap page-in)
  *
  * Run: npx tsx --test server/__tests__/osrm-routing-adapter.test.ts
  */
@@ -29,7 +31,7 @@ import {
   routedLegLine,
   type RoutingMode,
 } from "@shared/routing-engine";
-import { OsrmRoutingAdapter, osrmRouteUrl, parseOsrmResponse } from "../services/routing/osrm-routing-adapter";
+import { OSRM_EXTRACT_HEADER, OsrmRoutingAdapter, osrmCheckedAt, osrmRouteUrl, parseOsrmResponse } from "../services/routing/osrm-routing-adapter";
 import { RouteRunMemo, routeWithTransitFallback } from "../services/routing/route-memo";
 
 const GION = { lat: 35.0037, lng: 135.7788, placeId: "ChIJgion" };
@@ -180,4 +182,42 @@ test("OS7: a transit ask through the engine's one fallback becomes an OSRM drive
   assert.equal(out.outcome.kind, "ok");
   assert.equal(urls.length, 1, "only the drive was requested");
   assert.ok(urls[0].includes("/route/v1/car/"));
+});
+
+test("OS8: checked is the extract date from X-OSRM-Extract, else the call time; default timeout 15 s", async () => {
+  const EXTRACT = "2026-10-16T20:21:21Z";
+  const headerAdapter = (value: string | null) =>
+    new OsrmRoutingAdapter({
+      now: () => NOW,
+      baseUrl: () => BASE,
+      profile: (mode) => (mode === "drive" ? "car" : "foot"),
+      timeoutMs: () => 20,
+      fetch: (async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => (name.toLowerCase() === OSRM_EXTRACT_HEADER && value !== null ? value : null) },
+        json: async () => OSRM_BODY,
+      })) as any,
+    });
+  const stated = await headerAdapter(EXTRACT).route(GION, KIYOMIZU, "drive", null);
+  assert.ok(stated.kind === "ok");
+  assert.equal((stated as any).route.provenance.checkedAt, new Date(EXTRACT).toISOString(), "the extract date, not the call time");
+  assert.equal(routeProvenanceLabel((stated as any).route.provenance, "Asia/Tokyo"), "© OpenStreetMap contributors · checked 17 Oct");
+  for (const value of [null, "", "not-a-date"]) {
+    const out = await headerAdapter(value).route(GION, KIYOMIZU, "walk", null);
+    assert.ok(out.kind === "ok");
+    assert.equal((out as any).route.provenance.checkedAt, NOW.toISOString(), `header ${JSON.stringify(value)} ⇒ call time`);
+  }
+  assert.equal(osrmCheckedAt(undefined, NOW), NOW);
+  const saved = process.env.OSRM_TIMEOUT_MS;
+  try {
+    delete process.env.OSRM_TIMEOUT_MS;
+    const { osrmTimeoutMs } = await import("../config/osrm.config");
+    assert.equal(osrmTimeoutMs(), 15000);
+    process.env.OSRM_TIMEOUT_MS = "7000";
+    assert.equal(osrmTimeoutMs(), 7000);
+  } finally {
+    if (saved === undefined) delete process.env.OSRM_TIMEOUT_MS;
+    else process.env.OSRM_TIMEOUT_MS = saved;
+  }
 });
