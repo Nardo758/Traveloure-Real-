@@ -2076,4 +2076,8 @@ export const MIGRATION_FILES = [
   // DEFAULT, CHECK, index, FK or backfill; NULL = Google. 385/386 are reserved by other lanes. Declared in
   // shared/schema.ts. founder comment: #1498 2026-10-17T06:27:40Z.
   "387_itinerary_item_coord_source.sql",
+  // 389 — osm_place_coords + admin_place_coords (LG-1, ledger 2026-10-17-lg1-osm-place-coords). Two NEW tables born
+  // empty, keyed by the Google place id: a primary key only — no DEFAULT, CHECK, FK or other index. OSM points kept
+  // apart from place_facts/itinerary_items (ODbL share-alike). Declared in shared/schema.ts. Held for founder comment.
+  "389_open_place_coords.sql",
 ] as const;

@@ -28,6 +28,8 @@ export interface ActivityLocation {
   departureTime?: string;
   /** Step 9a: the stop's Google place ID when known (the plan item's unexpired fact) — part of the leg key. */
   placeId?: string | null;
+  /** LG-1: where lat/lng came from (`shared/open-coords.ts`); OSRM routes only open origins. Absent ⇒ untagged. */
+  coordOrigin?: import("@shared/open-coords").CoordOrigin | null;
   /** Step 9a: minutes at the stop, for the departure hour. */
   durationMinutes?: number | null;
   /**
@@ -324,8 +326,8 @@ async function computeRoutedVersionLeg(
   legOrder: number,
   routing: VersionRoutingContext,
 ): Promise<TransportLegResult | null> {
-  const origin = { lat: from.lat, lng: from.lng, placeId: from.placeId ?? null };
-  const destination = { lat: to.lat, lng: to.lng, placeId: to.placeId ?? null };
+  const origin = { lat: from.lat, lng: from.lng, placeId: from.placeId ?? null, coordOrigin: from.coordOrigin ?? null };
+  const destination = { lat: to.lat, lng: to.lng, placeId: to.placeId ?? null, coordOrigin: to.coordOrigin ?? null };
   // P0 ruling 3 (ledger `2026-10-10-p0-legs-baseline`): a day already over is never routed.
   if (planDayIsPast(routing.tripStart, dayNumber, routing.timezone, routing.now ? routing.now() : new Date())) return null;
   const desiredMode = defaultRoutedMode(origin, destination, routing.hasTransitCoverage);
