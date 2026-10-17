@@ -202,7 +202,7 @@
 ## ⚠️ Manual Actions Required
 
 ### 1. 🔴 CRITICAL: Rotate Google Maps API Key
-**Current key exposed:** `AIzaSyAlhW2MsmHjk_W4toxac-sILDb-YLOeg3s`
+**Current key exposed:** `<redacted>`
 
 **Steps:**
 1. Go to: https://console.cloud.google.com/apis/credentials
