@@ -15,6 +15,7 @@ import {
 } from "../utils/trip-advisor-status";
 import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
 import { isPlatformConciergeUserId } from "./platform-concierge.service";
+import { isEditorialUserId } from "./editorial-account.service";
 import { AdvisorNotRoutableError, isExpertIdRoutable, isRoutableExpert, publicExpertSql } from "./expert-routability";
 import { isExpertRole } from "@shared/roles";
 import { logger } from "../infrastructure/logger";
@@ -808,6 +809,11 @@ export async function upsertTripAdvisorRow(
   if (await isPlatformConciergeUserId(input.localExpertId)) {
     throw new Error(
       "trip_expert_advisors: the platform concierge account is a pool marker, never an advisor (LD 51)",
+    );
+  }
+  if (await isEditorialUserId(input.localExpertId)) {
+    throw new Error(
+      "trip_expert_advisors: the Traveloure Editorial house account advises no plan (ED-1b)",
     );
   }
   // The tx handle exposes the same query-builder surface as `db`; the cast keeps the union from
