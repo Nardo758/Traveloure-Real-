@@ -1,3 +1,4 @@
+import type { GoogleCoordSource } from "@shared/item-coord-source";
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { ExpertRateLine } from "@/components/expert/expert-rate-line";
@@ -518,14 +519,14 @@ function PlacesAutocompleteInput(props: {
 async function geocodeLocationText(
   locationName: string,
   destination?: string,
-): Promise<{ latitude: string; longitude: string } | undefined> {
+): Promise<{ latitude: string; longitude: string; coordSource: GoogleCoordSource } | undefined> {
   try {
     const address = destination ? `${locationName}, ${destination}` : locationName;
     const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
     if (res.ok) {
       const j = await res.json();
       if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
-        return { latitude: String(j.lat), longitude: String(j.lng) };
+        return { latitude: String(j.lat), longitude: String(j.lng), coordSource: "geocode_google" };
       }
     }
   } catch {
@@ -592,10 +593,10 @@ function InlineAddItemForm({ tripId, dayNumber, destination, workspaceMode, onAd
   //     city-center guess. Geocoding is best-effort and must never block the add.
   const handleSubmit = async () => {
     if (!form.title.trim()) return;
-    let coords: { latitude: string; longitude: string } | undefined;
+    let coords: { latitude: string; longitude: string; coordSource: GoogleCoordSource } | undefined;
     const locationName = form.locationName.trim();
     if (placeCoords) {
-      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng, coordSource: "places" };
     } else if (locationName) {
       setGeocoding(true);
       coords = await geocodeLocationText(locationName, destination);
@@ -693,10 +694,10 @@ function LogBookingForm({
   });
   const handleSubmit = async () => {
     if (!form.title.trim()) return;
-    let coords: { latitude: string; longitude: string } | undefined;
+    let coords: { latitude: string; longitude: string; coordSource: GoogleCoordSource } | undefined;
     const locationName = form.locationName.trim();
     if (placeCoords) {
-      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng, coordSource: "places" };
     } else if (locationName) {
       setGeocoding(true);
       coords = await geocodeLocationText(locationName, destination);
@@ -820,9 +821,9 @@ function ItemEditDetails({
 
   const saveLocation = async () => {
     const text = locationDraft.trim();
-    let coords: { latitude: string; longitude: string } | undefined;
+    let coords: { latitude: string; longitude: string; coordSource: GoogleCoordSource } | undefined;
     if (pickCoords) {
-      coords = { latitude: pickCoords.lat, longitude: pickCoords.lng };
+      coords = { latitude: pickCoords.lat, longitude: pickCoords.lng, coordSource: "places" };
     } else if (text) {
       setGeocoding(true);
       coords = await geocodeLocationText(text, destination);

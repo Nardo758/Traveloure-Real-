@@ -1313,17 +1313,26 @@ test.describe("6 · paid run", () => {
     await testid(page, "button-slip-view-map").click();
     const map = testid(page, `map-control-center-${tripId}`);
     await expect(map).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, `map-pin-${kiyo}`)).toHaveCount(1, { timeout: 20_000 });
-    await expect(testid(page, `map-pin-${gion}`)).toHaveCount(1);
-    await expect(testid(page, `map-pin-${area}`)).toHaveCount(0);
-    await expect(testid(page, "map-not-on-map")).toContainText("Arashiyama");
-    if ((await map.getAttribute("data-map-renderer")) === "leaflet") await expect(testid(page, "map-fallback-notice")).toHaveText("Map by OpenStreetMap");
-    await testid(page, "map-version-B").click();
-    await expect(testid(page, `map-pin-${run}-b1`)).toHaveAttribute("data-pin-state", "moved", { timeout: 10_000 }).catch(async () => {
-      // The Google renderer draws its own marker element; the state is the scene's either way.
-      await expect(testid(page, `map-pin-${run}-b1`)).toHaveCount(1);
-    });
-    await expect(testid(page, `map-ghost-${kiyo}`)).toHaveCount(1);
+    if ((await map.getAttribute("data-map-renderer")) === "leaflet") {
+      // GC-1: these points carry no stamped source, so they read as Google and the Leaflet fallback
+      // shows the day as a list. The version redraw is proven on the Google renderer only.
+      const list = testid(page, `map-fallback-list-${tripId}`);
+      await expect(list).toBeVisible({ timeout: 20_000 });
+      for (const t of ["Kiyomizu-dera", "Gion stroll", "Arashiyama (area)"]) await expect(list).toContainText(t);
+      await expect(page.locator(".leaflet-container")).toHaveCount(0);
+      await expect(testid(page, "map-not-on-map")).toContainText("Arashiyama");
+    } else {
+      await expect(testid(page, `map-pin-${kiyo}`)).toHaveCount(1, { timeout: 20_000 });
+      await expect(testid(page, `map-pin-${gion}`)).toHaveCount(1);
+      await expect(testid(page, `map-pin-${area}`)).toHaveCount(0);
+      await expect(testid(page, "map-not-on-map")).toContainText("Arashiyama");
+      await testid(page, "map-version-B").click();
+      await expect(testid(page, `map-pin-${run}-b1`)).toHaveAttribute("data-pin-state", "moved", { timeout: 10_000 }).catch(async () => {
+        // The Google renderer draws its own marker element; the state is the scene's either way.
+        await expect(testid(page, `map-pin-${run}-b1`)).toHaveCount(1);
+      });
+      await expect(testid(page, `map-ghost-${kiyo}`)).toHaveCount(1);
+    }
 
     // ── The board: 4a cards, then 4c — drag B's day 1 onto Your plan, apply ─────────────────────
     await page.goto(`/itinerary-comparison/${cmp}`);

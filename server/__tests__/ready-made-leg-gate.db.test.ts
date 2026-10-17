@@ -7,7 +7,7 @@
  *   G2  submit with a located pair and NO leg row at all ⇒ 400 `legs` line without a legId
  *   G3  admin approve refuses the same listing with the same lines (it calls the same gate)
  *   G4  a fully picked build passes submit; an unlocated stop does not block (advisory only)
- *   T1  the public teaser's per-day km counts confirmed legs only
+ *   T1  the public teaser shows no distance (GC-1 removed the per-day km legend)
  *   U1  `readyMadeLegLines` / `consecutiveStopPairs` pure cases
  *   E1  the engine, now iterating `consecutiveStopPairs`, still keeps a confirmed leg, skips an
  *       unlocated pair as `missing_coordinates`, and proposes exactly the gaps the gate names
@@ -174,7 +174,7 @@ test("G4: a fully picked build passes; an unlocated stop does not block", async 
   await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0056, longitude = 135.7740 WHERE id = ${ids.c}`);
 });
 
-test("T1: the teaser's day distance counts confirmed legs only", async () => {
+test("T1: the teaser shows no distance, whatever legs exist (GC-1)", async () => {
   await db.execute(sql`UPDATE ready_made_trips SET status = 'approved', active = true WHERE id = ${ids.listing}`);
   await setLegs([
     { id: ids.legAB, from: ids.a, to: ids.b, status: "confirmed", mode: "walk", meters: 1100 },
@@ -182,8 +182,8 @@ test("T1: the teaser's day distance counts confirmed legs only", async () => {
   ]);
   const r = await request(null, "GET", `/api/ready-made/${ids.listing}/teaser-map.svg`);
   assert.equal(r.status, 200);
-  assert.match(String(r.body), /Day 1 · 1\.1 km/);
-  assert.doesNotMatch(String(r.body), /6\.1 km/);
+  // GC-1 (ledger `2026-10-17-gc1-google-coords`): the day-km legend is removed — a leg's metres may be a Google route's.
+  assert.doesNotMatch(String(r.body), /\bkm\b/);
 });
 
 test("U1: pure pairing and line rules", () => {

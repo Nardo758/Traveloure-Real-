@@ -475,6 +475,10 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Share kit links carry the expert's code (CP-3)
         run: npx tsx --test client/src/lib/__tests__/cp3-share-kit-links.test.ts
+      # GC-1: the Leaflet fallback draws no leg lines and shows a list unless every located stop is non-Google.
+      - if: ${{ !cancelled() }}
+        name: Leaflet fallback list and no leg lines (GC-1)
+        run: npx tsx --test client/src/lib/__tests__/gc1-leaflet-list.test.ts
       - if: ${{ !cancelled() }}
         name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
