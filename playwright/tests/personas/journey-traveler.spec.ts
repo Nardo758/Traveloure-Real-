@@ -602,7 +602,7 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
       await routeItem(request, coveredTripId, itemId, "ready_for_checkout");
 
       // ── Fee-preview waiver parity (display-honesty fix) — a pure read, Stripe-independent,
-      // asserted while the item is still in the cart (checkout below clears it). ────────────
+      // asserted while the item is still in the cart (the payment confirm below clears it). ────────────
       const previewRes = await request.get(`${BASE_URL}/api/cart/fee-preview?tripId=${coveredTripId}`);
       const previewBody = previewRes.ok() ? await previewRes.json().catch(() => ({})) : {};
       report.record({
@@ -639,8 +639,12 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
         });
       } else {
         await assertCheckoutAccepted(checkoutRes, "journey-traveler-trip-pass-covered");
-        const [booking] = await rows<{ id: string; booking_details: { tripPassFeeWaiver?: { basis?: string; waived?: boolean } } }>(
-          `SELECT id, booking_details FROM service_bookings WHERE traveler_id = $1 AND trip_id = $2 ORDER BY created_at DESC LIMIT 1`,
+        const [booking] = await rows<{
+          id: string;
+          stripe_payment_intent_id: string | null;
+          booking_details: { tripPassFeeWaiver?: { basis?: string; waived?: boolean } };
+        }>(
+          `SELECT id, stripe_payment_intent_id, booking_details FROM service_bookings WHERE traveler_id = $1 AND trip_id = $2 ORDER BY created_at DESC LIMIT 1`,
           [actor.id, coveredTripId],
         );
         const waiver = booking?.booking_details?.tripPassFeeWaiver;
@@ -650,6 +654,38 @@ test.describe("journey-traveler — Trip Pass traveler", () => {
           db: `booking_details.tripPassFeeWaiver=${JSON.stringify(waiver)}`,
           verdict: waiver?.waived === true && waiver?.basis === "trip_pass" ? "PASS" : "FAIL",
         });
+
+        // ── The #1240 contract: the cart clears only once the payment is confirmed. Confirm the
+        //    PaymentIntent in Stripe TEST mode and hand it to confirm-payment, so this traveler's
+        //    cart is empty again — which is also what lets the idempotence pass's optimizer step
+        //    run instead of answering 409 trip_empty_convert_cart. ─────────────────────────────
+        if (!booking?.stripe_payment_intent_id || !hasStripeTestKey()) {
+          report.record({
+            action: "confirm the covered checkout's payment, then the cart is empty",
+            ui: "skipped — no Stripe test key in the spec process, or no PaymentIntent on the booking",
+            db: "n/a",
+            verdict: "EXTERNAL",
+          });
+        } else {
+          const piStatus = await confirmPaymentIntentTestMode(booking.stripe_payment_intent_id, { returnUrl: null });
+          const confirmRes = await request.post(`${BASE_URL}/api/bookings/confirm-payment`, {
+            data: { bookingId: booking.id, paymentIntentId: booking.stripe_payment_intent_id },
+          });
+          const status = await scalar<string>(`SELECT status FROM service_bookings WHERE id = $1`, [booking.id]);
+          const cartLeft = await scalar<number>(
+            `SELECT count(*)::int FROM cart_items WHERE user_id = $1`,
+            [actor.id],
+          );
+          report.record({
+            action: "confirm the covered checkout's payment, then the cart is empty",
+            ui: `PaymentIntent ${piStatus}; POST /api/bookings/confirm-payment status ${confirmRes.status()}`,
+            db: `service_bookings.status=${status}; cart_items for this traveler=${cartLeft}`,
+            verdict:
+              piStatus === "succeeded" && confirmRes.ok() && status === "confirmed" && Number(cartLeft) === 0
+                ? "PASS"
+                : "FAIL",
+          });
+        }
       }
     }
 
