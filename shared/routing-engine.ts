@@ -42,7 +42,7 @@ export interface RouteFare {
 }
 
 export interface RouteProvenance {
-  /** Who answered: "google_routes" | "stub". */
+  /** Who answered: "google_routes" | "osrm" | "stub". */
   source: string;
   /** ISO instant the source answered. A cache hit keeps the ORIGINAL instant, never "now". */
   checkedAt: string;
@@ -71,10 +71,16 @@ export interface RoutingAdapter {
 export const ROUTE_FACT_FIELDS = ["durationMin", "distanceM", "line", "fare", "provenance"] as const;
 
 /**
- * Sources whose answers MAY be written to a persistent cache. Google is not one and never will be under
- * the current terms. The stub is (test data, no terms); OSRM (self-hosted, 9a-ii) will be.
+ * The self-hosted OSRM adapter's provenance `source` (9b spec v1.0 T2, ledger `2026-10-16-9b-a-osrm-adapter`).
+ * Its stored minutes read "© OpenStreetMap contributors · checked <date>".
  */
-export const CACHEABLE_ROUTE_SOURCES: ReadonlySet<string> = new Set(["stub"]);
+export const OSRM_ROUTES_SOURCE = "osrm";
+
+/**
+ * Sources whose answers MAY be written to a persistent cache. Google is not one and never will be under
+ * the current terms (9b spec T1). The stub is (test data, no terms); OSRM is (self-hosted, OSM data).
+ */
+export const CACHEABLE_ROUTE_SOURCES: ReadonlySet<string> = new Set(["stub", OSRM_ROUTES_SOURCE]);
 
 /** THE cache boundary: the projected facts when the source may be cached, else null. */
 export function cacheableRouteEntry(route: RouteAnswer): RouteAnswer | null {
@@ -198,7 +204,8 @@ export const DEFAULT_LEG_DEPARTURE_WALL_CLOCK = "10:00";
 // ── The one line a routed leg reads (spec §3 LegRow; L6) ────────────────────────────────────────
 
 const MODE_WORD: Readonly<Record<RoutingMode, string>> = { walk: "walk", cycle: "cycle", transit: "transit", drive: "drive" };
-const SOURCE_LABEL: Readonly<Record<string, string>> = { google_routes: "Google", stub: "Test routes" };
+// 9b T2: OSRM's answers are OpenStreetMap data — the ODbL attribution IS the label.
+const SOURCE_LABEL: Readonly<Record<string, string>> = { google_routes: "Google", osrm: "© OpenStreetMap contributors", stub: "Test routes" };
 
 /** "¥220" in the source's currency, never converted. Null when there is no fare. */
 export function routeFareLabel(fare: RouteFare | null | undefined): string | null {
